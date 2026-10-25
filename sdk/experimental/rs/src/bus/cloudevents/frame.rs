@@ -8,11 +8,12 @@ use std::fmt;
 use serde_json::Value;
 
 use super::json::{members, valid};
+use super::rules::wide_offset_timestamp;
 use super::{
     from_cloud_event, to_cloud_event, CloudEvent, CloudEventError, ExtensionValue,
     OFFSET_EXTENSION, ORIGIN_EXTENSION, ZERO_TIMESTAMP,
 };
-use crate::bus::event::{canonical_timestamp, Event};
+use crate::bus::event::{canonical_timestamp, Event, TimestampError};
 use crate::bus::topic::Topic;
 
 /// How an event frame is encoded. Inbound frames are accepted in either
@@ -121,7 +122,9 @@ fn classify(doc: &str) -> Result<(FrameFormat, BTreeMap<String, &str>), FrameErr
 /// Decodes an inbound frame of either format (see [`frame_kind`]).
 ///
 /// A kit frame's members are matched by exact key; `null` or absent means
-/// unset, and a member of the wrong JSON type drops the frame. A
+/// unset, and a member of the wrong JSON type drops the frame. Its
+/// `timestamp` is read as Go's `time.Time` JSON: an offset hour up to 24
+/// and minute up to 60 is accepted and the timestamp kept in UTC. A
 /// CloudEvents frame must decode as a [`CloudEvent`]; its `kitorigin`
 /// must be a string, and it and `kitoffset` are stripped before the event
 /// is built (an offset on a link without offsets is not checked).
@@ -158,7 +161,13 @@ fn decode_kit(m: &BTreeMap<String, &str>) -> Result<Frame, FrameError> {
         None => ZERO_TIMESTAMP.to_string(),
         Some(raw) => serde_json::from_str::<String>(raw)
             .ok()
-            .and_then(|s| canonical_timestamp(&s).ok())
+            .and_then(|s| match canonical_timestamp(&s) {
+                Ok(t) => Some(t),
+                // Go's time.Time JSON takes offsets up to +24:60; an
+                // event timestamp cannot carry them, so they become UTC.
+                Err(TimestampError::Offset) => wide_offset_timestamp(&s),
+                Err(TimestampError::Invalid) => None,
+            })
             .ok_or(FrameError::Member("timestamp"))?,
     };
     let payload = match raw("payload") {

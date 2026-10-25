@@ -6,7 +6,9 @@
 
 use std::collections::BTreeMap;
 
-use hop_top_kit::bus::cloudevents::{CloudEvent, Data, ExtensionValue, SPEC_VERSION};
+use hop_top_kit::bus::cloudevents::{
+    from_cloud_event, unmarshal_cloud_event, CloudEvent, Data, ExtensionValue, SPEC_VERSION,
+};
 
 const ID: &str = "evt_01jg000000e008000000000000";
 const CE_TIME: &str = "2026-10-25T12:00:00.5Z";
@@ -319,4 +321,29 @@ fn base64_round_trip() {
 fn spec_version_constant() {
     assert_eq!(SPEC_VERSION, "1.0");
     assert_eq!(valid_ce().spec_version, SPEC_VERSION);
+}
+
+/// A safety divergence from Go, pinned: `serde_json` builds a payload
+/// only up to 128 levels of nesting (Go allows 10000). The document itself
+/// is checked without building values, so `data` text of any depth decodes;
+/// mapping it to an [`Event`](hop_top_kit::bus::Event) payload fails.
+#[test]
+fn data_nested_128_deep_cannot_become_a_payload() {
+    let doc = |depth: usize| {
+        format!(
+            r#"{{"specversion":"1.0","id":"x","source":"s","type":"t","data":{}{}}}"#,
+            "[".repeat(depth),
+            "]".repeat(depth)
+        )
+    };
+    assert!(unmarshal_cloud_event(doc(127).as_bytes()).is_ok());
+    for depth in [128, 100_000] {
+        let c = CloudEvent::from_json(doc(depth).as_bytes()).expect("document decodes");
+        let err = from_cloud_event(c).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "cloudevents: data: invalid JSON",
+            "depth {depth}"
+        );
+    }
 }

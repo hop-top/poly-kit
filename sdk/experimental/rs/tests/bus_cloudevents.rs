@@ -310,3 +310,18 @@ fn from_cloud_event_workspace_extension_must_be_string() {
         "cloudevents: workspaceid: must be a string"
     );
 }
+
+#[test]
+fn event_validate_extensions_reserves_kitoffset() {
+    let e = event("kit.test.order.created", "src", Value::Null).with_extension("kitoffset", "1");
+    let err = e.validate_extensions().unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "cloudevents: kitoffset: reserved for the stream offset"
+    );
+    // Same text as shaping the event.
+    assert_eq!(
+        to_cloud_event(&e.with_id("x")).unwrap_err().to_string(),
+        err.to_string()
+    );
+}

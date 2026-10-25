@@ -39,8 +39,16 @@
 //! - **Data numbers.** A decoded payload keeps integers as integers; Go
 //!   decodes every JSON number to `float64`. [`Data::Json`] keeps the
 //!   exact text either way.
-//! - **Nesting.** `serde_json` refuses documents nested deeper than 128
-//!   levels (`cloudevents: invalid JSON`); Go's limit is 10000.
+//! - **Nesting.** A safety limit: `serde_json` builds values only up to
+//!   128 levels deep, Go up to 10000. A document is checked without
+//!   building values, so [`CloudEvent::from_json`] keeps `data` of any
+//!   depth; mapping data nested 128 or more levels deep to a payload fails
+//!   with `cloudevents: data: invalid JSON`, and a kit frame with such a
+//!   payload is dropped.
+//! - **Kit-frame offsets.** Go's `time.Time` JSON takes offsets up to
+//!   `+24:60`, which an event timestamp cannot carry: such a timestamp is
+//!   kept as the same instant in UTC, and dropped when its UTC year leaves
+//!   0000-9999 (Go keeps it).
 //! - **Extension values from an [`Event`]** follow
 //!   [`Event::validate_extensions`]'s caveats: a JSON integer beyond `u64`
 //!   or `-0` is a float to `serde_json`. Decoding CloudEvents JSON does

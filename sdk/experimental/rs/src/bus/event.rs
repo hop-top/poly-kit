@@ -279,8 +279,8 @@ impl Event {
     /// rules, as Go does when it shapes an event as a CloudEvent.
     ///
     /// Entries are checked in ascending byte order of name and the first
-    /// failure wins. Per entry: `workspaceid` and `kitorigin` are
-    /// reserved to the envelope; then the name must be `[a-z0-9]+` (any
+    /// failure wins. Per entry: `workspaceid`, `kitorigin` and `kitoffset`
+    /// are reserved to the envelope; then the name must be `[a-z0-9]+` (any
     /// length) and not a CloudEvents attribute name; then the value must
     /// be a string, a bool, or an integer in `i32` range.
     pub fn validate_extensions(&self) -> Result<(), EventError> {
@@ -333,6 +333,9 @@ fn check_extension(name: &str, value: &Value) -> Result<(), EventError> {
         }
         ORIGIN_EXTENSION => {
             return Err(EventError::new(name, "reserved for the network origin"));
+        }
+        "kitoffset" => {
+            return Err(EventError::new(name, "reserved for the stream offset"));
         }
         _ => {}
     }

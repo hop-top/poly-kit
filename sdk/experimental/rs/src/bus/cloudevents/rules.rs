@@ -1,6 +1,8 @@
 //! CloudEvents attribute rules: time grammar, base64, media types and
 //! extension names. Mirrors `go/runtime/bus/cloudevents_rules.go`.
 
+use crate::bus::event::canonical_timestamp;
+
 /// An instant: seconds since the Unix epoch (UTC) and nanoseconds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Instant {
@@ -117,6 +119,35 @@ pub(super) fn parse_time(s: &str) -> Option<Instant> {
 /// Go's `time.Parse` accepts, ready for `canonical_timestamp`.
 pub(super) fn upper_time(s: &str) -> String {
     s.to_ascii_uppercase()
+}
+
+/// A kit-frame timestamp whose offset `canonical_timestamp` refuses, read
+/// as Go's `time.Time` JSON reads it: an offset hour up to 24 and minute
+/// up to 60, applied to the local time. Returns the instant in UTC, or
+/// `None` when the text is not RFC 3339 or the UTC year leaves 0000-9999
+/// (which Go accepts but an event timestamp cannot carry).
+pub(super) fn wide_offset_timestamp(s: &str) -> Option<String> {
+    let (local, off) = s.split_at_checked(s.len().checked_sub(6)?)?;
+    let b = off.as_bytes();
+    if !matches!(b[0], b'+' | b'-') || b[3] != b':' {
+        return None;
+    }
+    let two = |x: &[u8]| -> Option<i64> {
+        x.iter().try_fold(0i64, |acc, &c| {
+            c.is_ascii_digit().then(|| acc * 10 + i64::from(c - b'0'))
+        })
+    };
+    let (oh, om) = (two(&b[1..3])?, two(&b[4..6])?);
+    if oh > 24 || om > 60 {
+        return None;
+    }
+    let shift = (oh * 3600 + om * 60) * if b[0] == b'-' { -1 } else { 1 };
+    let t = parse_time(&canonical_timestamp(&format!("{local}Z")).ok()?)?;
+    let utc = Instant {
+        secs: t.secs - shift,
+        nanos: t.nanos,
+    };
+    utc.encodable().then(|| utc.format_utc())
 }
 
 fn days_in_month(year: i64, month: i64) -> i64 {
@@ -300,6 +331,28 @@ mod tests {
         assert_eq!(decode_base64(""), Some(vec![]));
         assert_eq!(encode_base64(&[0xde, 0xad]), "3q0=");
         assert_eq!(encode_base64(b"hi!"), "aGkh");
+    }
+
+    #[test]
+    fn wide_offsets() {
+        let w = wide_offset_timestamp;
+        assert_eq!(
+            w("2026-10-25T12:00:00+24:00").as_deref(),
+            Some("2026-10-24T12:00:00Z")
+        );
+        assert_eq!(
+            w("2026-10-25T12:00:00.50-23:60").as_deref(),
+            Some("2026-10-26T12:00:00.5Z")
+        );
+        assert_eq!(
+            w("2026-10-25T12:00:00,5+00:60").as_deref(),
+            Some("2026-10-25T11:00:00.5Z")
+        );
+        assert_eq!(w("2026-10-25T12:00:00+25:00"), None);
+        assert_eq!(w("2026-10-25T12:00:00+24:61"), None);
+        assert_eq!(w("2026-10-25T12:00:00+2400"), None);
+        assert_eq!(w("0000-01-01T00:00:00+24:00"), None);
+        assert_eq!(w("+24:00"), None);
     }
 
     #[test]
