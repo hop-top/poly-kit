@@ -47,6 +47,7 @@ type memBus struct {
 	sem       chan struct{} // bounded goroutine pool semaphore
 	enforce   Mode
 	onInvalid ErrFunc
+	observers []observerEntry
 }
 
 // Option configures Bus construction.
@@ -283,6 +284,12 @@ func (b *memBus) Publish(ctx context.Context, e Event) error {
 		}
 	}
 
+	// Observers see every accepted event, in the publishing goroutine,
+	// after all sync handlers succeeded and before async handlers start.
+	for _, o := range b.observers {
+		o.fn(ctx, e)
+	}
+
 	// Collect async handlers under RLock (snapshot matching subs).
 	var asyncHandlers []AsyncHandler
 	for _, s := range matching {
@@ -338,4 +345,68 @@ func (b *memBus) Close(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// Observer is called once for every event a bus accepted: after all
+// sync handlers returned nil, in the publishing goroutine, before async
+// handlers start. It runs under the bus's read lock, so it must not
+// block and must not publish.
+type Observer func(ctx context.Context, e Event)
+
+// PublishObserver is implemented by buses that can report accepted
+// events in publish order. The network adapter uses it to keep an
+// ordered log; a bus without it gets unordered forwarding.
+type PublishObserver interface {
+	ObservePublished(o Observer) Unsubscribe
+}
+
+type observerEntry struct {
+	id uint64
+	fn Observer
+}
+
+// ObservePublished registers o; see [Observer].
+func (b *memBus) ObservePublished(o Observer) Unsubscribe {
+	b.mu.Lock()
+	id := b.nextID
+	b.nextID++
+	b.observers = append(b.observers, observerEntry{id: id, fn: o})
+	b.mu.Unlock()
+	return func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		for i, ob := range b.observers {
+			if ob.id == id {
+				b.observers = append(b.observers[:i], b.observers[i+1:]...)
+				return
+			}
+		}
+	}
+}
+
+// publishObserverOf finds the publish hook of b: b itself, or the bus
+// inside one of kit's wrappers. It returns nil when there is none.
+func publishObserverOf(b Bus) PublishObserver {
+	for b != nil {
+		if po, ok := b.(PublishObserver); ok {
+			return po
+		}
+		switch w := b.(type) {
+		case *networkedBus:
+			b = w.Bus
+		case *TeeBus:
+			b = w.bus
+		case *adapterBus:
+			if ma, ok := w.adapter.(*MemoryAdapter); ok {
+				return ma.bus
+			}
+			if po, ok := w.adapter.(PublishObserver); ok {
+				return po
+			}
+			return nil
+		default:
+			return nil
+		}
+	}
+	return nil
 }
