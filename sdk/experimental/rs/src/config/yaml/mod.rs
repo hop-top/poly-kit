@@ -8,10 +8,14 @@
 //! encode with yaml.v3's rules ([`de`], [`ser`]).
 
 pub(crate) mod de;
+mod de_access;
+mod decode_support;
 pub(crate) mod emit;
 mod parse;
 pub(crate) mod resolve;
 pub(crate) mod ser;
+mod style;
+mod timestamp;
 
 pub(crate) use parse::{parse, ParseError};
 
