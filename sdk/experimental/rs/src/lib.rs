@@ -50,3 +50,6 @@ pub mod mcp;
 
 #[cfg(feature = "serve")]
 pub mod serve;
+
+// Retry/backoff policy. Pure std: no feature gate, wasm32-safe.
+pub mod util;

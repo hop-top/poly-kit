@@ -12,6 +12,8 @@ shared schemas and cross-language constants.
   matching, both topic validators with their error texts, `PrefixTopics`,
   qualifiers, enforcement-mode parsing and the event envelope JSON. Go is
   canonical; the Go and Rust runners read the same files.
+- [retry-v1/](retry-v1/): kit/core/util retry backoff corpus (delay table,
+  full-jitter bounds, stop rule); Go and Rust runners.
 - [kv-v1/](kv-v1/): kit/storage/kv cross-language storage-binding corpus —
   `keys.json` (key/value cases in hex, expected `ORDER BY key` sequence,
   prefix-scan expectations). Contract of record for how keys bind to
