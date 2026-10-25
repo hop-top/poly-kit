@@ -5,7 +5,12 @@
 //! `@@…@@` tokens, so a kit-rs program writes byte for byte what a Go
 //! kit program of the same name writes (pinned by
 //! `contracts/completion-v1/scripts`). cobra is Apache-2.0; its licence
-//! ships next to the templates as `LICENSE-cobra.txt`.
+//! ships next to the templates as `LICENSE-cobra.txt` and the crate's
+//! `NOTICE` names them.
+//!
+//! Do not edit the templates by hand: `make completion-regen` derives them
+//! from the cobra version in go.mod, and the Go test
+//! `TestCompletionTemplatesInSync` fails when they drift.
 
 use std::fmt;
 use std::io::{self, Write};

@@ -4,7 +4,7 @@
 	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	test-parity test-parity-bus test-parity-completion test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-taxonomy test-parity-typeid test-py \
+	completion-regen test-parity test-parity-bus test-parity-completion test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint
 
@@ -310,6 +310,12 @@ test-parity-retry: ## retry-v1 conformance corpus (Go and Rust runners)
 	go test ./go/core/util/ -run '^TestConformanceRetry' -count=1
 	@echo "==> retry-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --test retry_conformance --locked
+
+# After a cobra bump: rewrite the completion-v1 script goldens and the
+# Rust script templates from the cobra version in go.mod, then run
+# test-parity-completion. Review the diff; both runners pin the result.
+completion-regen: ## Regenerate completion-v1 script goldens and the Rust completion templates from cobra
+	go test ./go/console/cli/completion/ -run '^(TestConformanceCompletionScripts|TestCompletionTemplatesInSync)$$' -count=1 -update
 
 test-parity-completion: ## completion-v1 conformance corpus (Go and Rust runners)
 	@echo "==> completion-v1 conformance: Go"
