@@ -395,7 +395,9 @@ func TestConformanceCompletionScripts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		goldens["scripts/"+e.Name()] = false
+		if e.Name() != "README.md" {
+			goldens["scripts/"+e.Name()] = false
+		}
 	}
 	for _, c := range f.Cases {
 		t.Run(c.Name, func(t *testing.T) {
