@@ -12,6 +12,10 @@ in each corpus's own README.
 - [bus-v1/](bus-v1/README.md): kit/runtime/bus conformance corpus: topic
   matching and validators with error texts, `PrefixTopics`, qualifiers,
   enforcement-mode parsing, event envelope JSON. Go and Rust runners.
+- [completion-v1/](completion-v1/README.md): kit/console/cli shell
+  completion corpus: completer outputs, `__complete` wire output over
+  command trees, `completion <shell>` scripts byte for byte. Go and Rust
+  runners.
 - [config-v1/](config-v1/README.md): kit/core/config corpus: scalar
   parsing and typing, overrides, precedence, layered load, set/unset.
   Go and Rust runners.

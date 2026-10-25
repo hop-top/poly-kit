@@ -2,7 +2,7 @@
 name = "hop-top-kit"
 version = "0.5.0-alpha.2"
 edition = "2021"
-license = "MIT"
+license = "MIT AND Apache-2.0"
 description = "Cross-language CLI UX parity toolkit"
 
 [features]
