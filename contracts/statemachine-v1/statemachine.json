@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/statemachine-v1/statemachine.json",
+  "version": "v1",
+  "description": "Domain state machine (Go `domain.StateMachine`). `transitions` run against `rules` with a recording publisher: a rejected transition yields `error` and publishes nothing; an accepted one publishes `payload` (the exact bytes Go's encoding/json writes for `TransitionPayload`, keys From/To/Force) under `source` on the pre topic, then on the post topic. `transition_errors` pins the two `TransitionError` message forms: `allowed` null means no rules for the state, an empty list means rules that allow nothing. `vetoes` pins the wrapped pre-transition veto text. `payloads` pins the JSON encoding, HTML and line-separator escapes included. `topic_prefixes` pins the topics a 3-segment prefix composes, or the panic text for an invalid one. `topic_overrides` pins per-phase overrides, where an empty topic keeps the default.",
+  "source": "domain.statemachine",
+  "default_topics": {
+    "pre_transitioned": "kit.runtime.state.pre_transitioned",
+    "post_transitioned": "kit.runtime.state.post_transitioned"
+  },
+  "rules": {
+    "open": ["in_progress", "closed"],
+    "in_progress": ["open", "closed"],
+    "closed": []
+  },
+  "transitions": [
+    {
+      "name": "allowed",
+      "from": "open",
+      "to": "in_progress",
+      "force": false,
+      "payload": "{\"From\":\"open\",\"To\":\"in_progress\",\"Force\":false}"
+    },
+    {
+      "name": "not in the allowed list",
+      "from": "open",
+      "to": "open",
+      "force": false,
+      "error": "invalid state transition: \"open\" → \"open\" (allowed: [in_progress closed])"
+    },
+    {
+      "name": "rules that allow nothing",
+      "from": "closed",
+      "to": "open",
+      "force": false,
+      "error": "invalid state transition: \"closed\" → \"open\" (allowed: [])"
+    },
+    {
+      "name": "no rules for the state",
+      "from": "unknown",
+      "to": "open",
+      "force": false,
+      "error": "invalid state transition: no rules for state \"unknown\" (attempted \"unknown\" → \"open\")"
+    },
+    {
+      "name": "force bypasses the rules",
+      "from": "closed",
+      "to": "open",
+      "force": true,
+      "payload": "{\"From\":\"closed\",\"To\":\"open\",\"Force\":true}"
+    },
+    {
+      "name": "force from a state without rules",
+      "from": "unknown",
+      "to": "anything",
+      "force": true,
+      "payload": "{\"From\":\"unknown\",\"To\":\"anything\",\"Force\":true}"
+    }
+  ],
+  "transition_errors": [
+    {
+      "name": "allowed list",
+      "from": "draft",
+      "to": "published",
+      "allowed": ["review", "archived"],
+      "error": "invalid state transition: \"draft\" → \"published\" (allowed: [review archived])"
+    },
+    {
+      "name": "empty allowed list",
+      "from": "done",
+      "to": "open",
+      "allowed": [],
+      "error": "invalid state transition: \"done\" → \"open\" (allowed: [])"
+    },
+    {
+      "name": "no rules",
+      "from": "unknown",
+      "to": "open",
+      "allowed": null,
+      "error": "invalid state transition: no rules for state \"unknown\" (attempted \"unknown\" → \"open\")"
+    },
+    {
+      "name": "states are quoted like Go %q, allowed states are not",
+      "from": "a\"b\\c\td\u0001",
+      "to": "é\u00a0\u200b",
+      "allowed": ["x y", "q\"r"],
+      "error": "invalid state transition: \"a\\\"b\\\\c\\td\\x01\" → \"é\\u00a0\\u200b\" (allowed: [x y q\"r])"
+    },
+    {
+      "name": "empty states",
+      "from": "",
+      "to": "",
+      "allowed": null,
+      "error": "invalid state transition: no rules for state \"\" (attempted \"\" → \"\")"
+    }
+  ],
+  "vetoes": [
+    {
+      "name": "subscriber error is wrapped",
+      "veto": "vetoed",
+      "error": "pre-transition veto: vetoed"
+    },
+    {
+      "name": "wrapped text is kept verbatim",
+      "veto": "policy: blocked by reviewer",
+      "error": "pre-transition veto: policy: blocked by reviewer"
+    }
+  ],
+  "payloads": [
+    {
+      "name": "plain",
+      "from": "open",
+      "to": "closed",
+      "force": false,
+      "json": "{\"From\":\"open\",\"To\":\"closed\",\"Force\":false}"
+    },
+    {
+      "name": "forced, empty states",
+      "from": "",
+      "to": "",
+      "force": true,
+      "json": "{\"From\":\"\",\"To\":\"\",\"Force\":true}"
+    },
+    {
+      "name": "html characters and line separators are escaped",
+      "from": "a<b>&c\u2028\u2029",
+      "to": "x",
+      "force": false,
+      "json": "{\"From\":\"a\\u003cb\\u003e\\u0026c\\u2028\\u2029\",\"To\":\"x\",\"Force\":false}"
+    },
+    {
+      "name": "control characters, quotes and non-ascii",
+      "from": "\u0001\b\f\n\r\t\"\\\u007f",
+      "to": "é日🙂",
+      "force": false,
+      "json": "{\"From\":\"\\u0001\\b\\f\\n\\r\\t\\\"\\\\\u007f\",\"To\":\"é日🙂\",\"Force\":false}"
+    }
+  ],
+  "topic_prefixes": [
+    {
+      "name": "valid prefix",
+      "prefix": "myapp.task.state",
+      "pre_transitioned": "myapp.task.state.pre_transitioned",
+      "post_transitioned": "myapp.task.state.post_transitioned"
+    },
+    {
+      "name": "job engine prefix",
+      "prefix": "hop.runtime.job",
+      "pre_transitioned": "hop.runtime.job.pre_transitioned",
+      "post_transitioned": "hop.runtime.job.post_transitioned"
+    },
+    {
+      "name": "empty",
+      "prefix": "",
+      "panic": "domain.WithSMTopicPrefix(\"\"): prefix is empty"
+    },
+    {
+      "name": "too few segments",
+      "prefix": "myapp.state",
+      "panic": "domain.WithSMTopicPrefix(\"myapp.state\"): prefix \"myapp.state\" has 2 segments; expected 3 (source.category.object)"
+    },
+    {
+      "name": "too many segments",
+      "prefix": "a.b.c.d",
+      "panic": "domain.WithSMTopicPrefix(\"a.b.c.d\"): prefix \"a.b.c.d\" has 4 segments; expected 3 (source.category.object)"
+    },
+    {
+      "name": "trailing dot",
+      "prefix": "myapp.task.state.",
+      "panic": "domain.WithSMTopicPrefix(\"myapp.task.state.\"): prefix \"myapp.task.state.\" must not end with '.'"
+    },
+    {
+      "name": "empty segment",
+      "prefix": "myapp..state",
+      "panic": "domain.WithSMTopicPrefix(\"myapp..state\"): prefix \"myapp..state\" has empty segment at position 1"
+    },
+    {
+      "name": "uppercase",
+      "prefix": "MyApp.task.state",
+      "panic": "domain.WithSMTopicPrefix(\"MyApp.task.state\"): prefix \"MyApp.task.state\" segment \"MyApp\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "no length cap on the composed topics",
+      "prefix": "a.b.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "pre_transitioned": "a.b.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.pre_transitioned",
+      "post_transitioned": "a.b.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.post_transitioned"
+    }
+  ],
+  "topic_overrides": [
+    {
+      "name": "pre only, post keeps the default",
+      "pre_transitioned": "x.y.z.pre_transitioned",
+      "post_transitioned": "",
+      "want_pre": "x.y.z.pre_transitioned",
+      "want_post": "kit.runtime.state.post_transitioned"
+    },
+    {
+      "name": "post only, pre keeps the default",
+      "pre_transitioned": "",
+      "post_transitioned": "x.y.z.post_transitioned",
+      "want_pre": "kit.runtime.state.pre_transitioned",
+      "want_post": "x.y.z.post_transitioned"
+    },
+    {
+      "name": "both",
+      "pre_transitioned": "wsm.runtime.workspace.pre_transitioned",
+      "post_transitioned": "wsm.runtime.workspace.post_transitioned",
+      "want_pre": "wsm.runtime.workspace.pre_transitioned",
+      "want_post": "wsm.runtime.workspace.post_transitioned"
+    },
+    {
+      "name": "neither",
+      "pre_transitioned": "",
+      "post_transitioned": "",
+      "want_pre": "kit.runtime.state.pre_transitioned",
+      "want_post": "kit.runtime.state.post_transitioned"
+    }
+  ]
+}
