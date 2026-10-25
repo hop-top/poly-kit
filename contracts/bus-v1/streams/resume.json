@@ -1,0 +1,20 @@
+{
+  "version": "v1",
+  "description": "Acceptor resume decision. Inputs: the log (`stream` id, `oldest` retained offset, `head`; `oldest` is head+1 when empty) and the dialer's request (absent, or {stream, after}). Rules in order: no request -> no outcome, cursor head; stream differs -> reset `stream`; after > head -> reset `ahead`; after < oldest-1 -> reset `evicted`; otherwise replaying, cursor after. A reset outcome carries the request's `after` and the log's `head`, and sets the cursor to head. A replaying outcome carries `after` and `head`.",
+  "cases": [
+    {"name": "no request starts live", "log": {"stream": "S", "oldest": "17", "head": "57"}, "outcome": null, "cursor": "57"},
+    {"name": "no request on an empty log", "log": {"stream": "S", "oldest": "1", "head": "0"}, "outcome": null, "cursor": "0"},
+    {"name": "replay inside the window", "log": {"stream": "S", "oldest": "17", "head": "57"}, "request": {"stream": "S", "after": "41"}, "outcome": {"status": "replaying", "after": "41", "head": "57"}, "cursor": "41"},
+    {"name": "replay from oldest minus one", "log": {"stream": "S", "oldest": "17", "head": "57"}, "request": {"stream": "S", "after": "16"}, "outcome": {"status": "replaying", "after": "16", "head": "57"}, "cursor": "16"},
+    {"name": "caught up replays nothing", "log": {"stream": "S", "oldest": "17", "head": "57"}, "request": {"stream": "S", "after": "57"}, "outcome": {"status": "replaying", "after": "57", "head": "57"}, "cursor": "57"},
+    {"name": "whole stream while nothing evicted", "log": {"stream": "S", "oldest": "1", "head": "9"}, "request": {"stream": "S", "after": "0"}, "outcome": {"status": "replaying", "after": "0", "head": "9"}, "cursor": "0"},
+    {"name": "empty log, after zero", "log": {"stream": "S", "oldest": "1", "head": "0"}, "request": {"stream": "S", "after": "0"}, "outcome": {"status": "replaying", "after": "0", "head": "0"}, "cursor": "0"},
+    {"name": "evicted", "log": {"stream": "S", "oldest": "17", "head": "57"}, "request": {"stream": "S", "after": "15"}, "outcome": {"status": "reset", "reason": "evicted", "after": "15", "head": "57"}, "cursor": "57"},
+    {"name": "whole stream after eviction", "log": {"stream": "S", "oldest": "17", "head": "57"}, "request": {"stream": "S", "after": "0"}, "outcome": {"status": "reset", "reason": "evicted", "after": "0", "head": "57"}, "cursor": "57"},
+    {"name": "ahead", "log": {"stream": "S", "oldest": "17", "head": "57"}, "request": {"stream": "S", "after": "58"}, "outcome": {"status": "reset", "reason": "ahead", "after": "58", "head": "57"}, "cursor": "57"},
+    {"name": "ahead of an empty log", "log": {"stream": "S", "oldest": "1", "head": "0"}, "request": {"stream": "S", "after": "3"}, "outcome": {"status": "reset", "reason": "ahead", "after": "3", "head": "0"}, "cursor": "0"},
+    {"name": "other stream", "log": {"stream": "S", "oldest": "17", "head": "57"}, "request": {"stream": "T", "after": "41"}, "outcome": {"status": "reset", "reason": "stream", "after": "41", "head": "57"}, "cursor": "57"},
+    {"name": "stream checked before range", "log": {"stream": "S", "oldest": "17", "head": "57"}, "request": {"stream": "T", "after": "99"}, "outcome": {"status": "reset", "reason": "stream", "after": "99", "head": "57"}, "cursor": "57"},
+    {"name": "stream ids compare by bytes", "log": {"stream": "stm_A", "oldest": "1", "head": "2"}, "request": {"stream": "STM_A", "after": "1"}, "outcome": {"status": "reset", "reason": "stream", "after": "1", "head": "2"}, "cursor": "2"}
+  ]
+}

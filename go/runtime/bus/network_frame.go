@@ -53,8 +53,15 @@ func WithFrameFormat(f FrameFormat) NetworkOption {
 // encodeFrame renders e as one wire frame in format f, stamping origin
 // for loop prevention.
 func encodeFrame(f FrameFormat, e Event, origin string) ([]byte, error) {
+	return encodeFrameOffset(f, e, origin, 0, false)
+}
+
+// encodeFrameOffset is encodeFrame with an optional stream offset: kit
+// frames gain "offset", CloudEvents frames the kitoffset extension, both
+// a decimal string. Legacy links pass withOffset false.
+func encodeFrameOffset(f FrameFormat, e Event, origin string, offset uint64, withOffset bool) ([]byte, error) {
 	if f != FrameCloudEvents {
-		return json.Marshal(networkMsg{
+		msg := networkMsg{
 			ID:          e.ID,
 			Topic:       string(e.Topic),
 			Source:      e.Source,
@@ -62,18 +69,27 @@ func encodeFrame(f FrameFormat, e Event, origin string) ([]byte, error) {
 			Payload:     e.Payload,
 			Origin:      origin,
 			WorkspaceID: e.WorkspaceID,
-		})
+		}
+		if withOffset {
+			msg.Offset = formatOffset(offset)
+		}
+		return json.Marshal(msg)
 	}
 	c, err := ToCloudEvent(e)
 	if err != nil {
 		return nil, err
 	}
-	if origin != "" {
-		ext := make(map[string]any, len(c.Extensions)+1)
+	if origin != "" || withOffset {
+		ext := make(map[string]any, len(c.Extensions)+2)
 		for k, v := range c.Extensions {
 			ext[k] = v
 		}
-		ext[OriginExtension] = origin
+		if origin != "" {
+			ext[OriginExtension] = origin
+		}
+		if withOffset {
+			ext[OffsetExtension] = formatOffset(offset)
+		}
 		c.Extensions = ext
 	}
 	return c.MarshalJSON()
@@ -110,7 +126,8 @@ func frameKind(data []byte) (string, map[string]json.RawMessage, error) {
 
 // decodeKitFrame builds an Event from kit-frame members, matching keys
 // exactly (topic, source, timestamp, payload, origin, workspace_id,
-// id); a case variant such as "Topic" is ignored. A null or absent
+// id); a case variant such as "Topic" is ignored. The stream offset is
+// read by decodeEventFrame, never here. A null or absent
 // member leaves its field zero; a member of the wrong JSON type drops
 // the frame.
 func decodeKitFrame(members map[string]json.RawMessage) (Event, string, error) {
@@ -146,31 +163,77 @@ func decodeKitFrame(members map[string]json.RawMessage) (Event, string, error) {
 
 // decodeFrame parses one inbound frame of either format (see
 // frameKind) and returns the event and its wire origin. A CloudEvents
-// frame whose kitorigin is not a string is rejected.
+// frame whose kitorigin is not a string is rejected. Offsets are
+// stripped and not checked, as on a legacy link.
 func decodeFrame(data []byte) (Event, string, error) {
+	e, origin, _, err := decodeEventFrame(data, false)
+	return e, origin, err
+}
+
+// frameOffset is the offset an event frame carried on a stream link.
+type frameOffset struct {
+	value uint64
+	ok    bool
+}
+
+// decodeEventFrame parses an event frame. The offset (kit "offset",
+// CloudEvents kitoffset) is always stripped; on a stream link it must be
+// a valid token, else the error is a protocol error. A frame that is
+// unusable for any other reason is dropped (a plain error), which wins
+// over a bad offset.
+func decodeEventFrame(data []byte, streamLink bool) (Event, string, frameOffset, error) {
 	kind, members, err := frameKind(data)
 	if err != nil {
-		return Event{}, "", err
+		return Event{}, "", frameOffset{}, err
 	}
+	var (
+		e      Event
+		origin string
+		rawOff json.RawMessage
+	)
 	if kind == frameKindKit {
-		return decodeKitFrame(members)
+		e, origin, err = decodeKitFrame(members)
+		rawOff = members["offset"]
+	} else {
+		e, origin, rawOff, err = decodeCloudEventFrame(data)
 	}
+	if err != nil {
+		return Event{}, "", frameOffset{}, err
+	}
+	if !streamLink {
+		return e, origin, frameOffset{}, nil
+	}
+	off, ok := parseOffsetToken(rawOff)
+	if !ok {
+		return Event{}, "", frameOffset{}, protocolErr("event frame without a valid offset")
+	}
+	return e, origin, frameOffset{value: off, ok: true}, nil
+}
+
+// decodeCloudEventFrame strips kitorigin and kitoffset before the event
+// is built, returning the offset re-encoded as raw JSON.
+func decodeCloudEventFrame(data []byte) (Event, string, json.RawMessage, error) {
 	var c CloudEvent
 	if err := c.UnmarshalJSON(data); err != nil {
-		return Event{}, "", err
+		return Event{}, "", nil, err
 	}
 	var origin string
 	if v, ok := c.Extensions[OriginExtension]; ok {
 		s, isStr := v.(string)
 		if !isStr {
-			return Event{}, "", ceErr(OriginExtension, "must be a string")
+			return Event{}, "", nil, ceErr(OriginExtension, "must be a string")
 		}
 		origin = s
 		delete(c.Extensions, OriginExtension)
-		if len(c.Extensions) == 0 {
-			c.Extensions = nil
-		}
+	}
+	var rawOff json.RawMessage
+	if v, ok := c.Extensions[OffsetExtension]; ok {
+		rawOff, _ = json.Marshal(v)
+		delete(c.Extensions, OffsetExtension)
+	}
+	if len(c.Extensions) == 0 {
+		c.Extensions = nil
 	}
 	e, err := FromCloudEvent(c)
-	return e, origin, err
+	return e, origin, rawOff, err
 }

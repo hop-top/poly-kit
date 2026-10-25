@@ -31,6 +31,9 @@ type networkMsg struct {
 	// ID mirrors Event.ID; omitted when empty. Older peers ignore it,
 	// and frames without it decode with an empty ID.
 	ID string `json:"id,omitempty"`
+	// Offset is the sender's stream offset, a decimal string, sent on
+	// stream links only.
+	Offset string `json:"offset,omitempty"`
 }
 
 // wsConn wraps a single peer connection.
