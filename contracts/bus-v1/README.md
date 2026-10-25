@@ -58,7 +58,7 @@ Not in the corpus, because the languages cannot agree by construction: an embedd
 | Go | `go/runtime/bus/conformance_test.go` (`TestConformance*`) |
 | Rust | `sdk/experimental/rs/tests/bus_conformance.rs` (feature `bus`) |
 
-A runner skips a section only for a capability the port lacks. Rust names each one in its `PENDING` constant (file, section), prints a skip line, and fails once the section would pass, so landing the capability forces the entry to be removed and the section asserted. Rust currently lists mode parsing and event timestamp validation. Do not delete the vector.
+A runner skips a section only for a capability the port lacks. Rust names each one in its `PENDING` constant (file, section), prints a skip line, and fails once the section would pass, so landing the capability forces the entry to be removed and the section asserted. Rust currently lists event timestamp validation. Do not delete the vector.
 
 ## See also
 

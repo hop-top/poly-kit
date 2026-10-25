@@ -14,10 +14,8 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::marker::PhantomData;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use hop_top_kit::bus::{
     parse_topic, prefix_topics, prefixed_topic_of, qualifiers_from, validate, validate_topic,
@@ -42,8 +40,6 @@ const FILES: &[&str] = &[
 
 /// (file, section) pairs skipped until the capability is ported.
 const PENDING: &[(&str, &str)] = &[
-    // string parser for Mode
-    ("mode_parse.json", "cases"),
     // timestamp validation on decode
     ("event_json.json", "decode_reject"),
 ];
@@ -245,7 +241,6 @@ fn prefix_topics_vectors() {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-#[allow(dead_code)]
 struct ModeCase {
     name: String,
     input: String,
@@ -269,6 +264,37 @@ fn mode_display_vectors() {
     ] {
         assert_eq!(mode.to_string(), f.display[key]);
     }
+}
+
+#[test]
+fn mode_parse_vectors() {
+    let f: ModeFile = load("mode_parse.json");
+    non_empty(&f.cases, "cases");
+    let mut fails = vec![];
+    for c in &f.cases {
+        let want = match c.mode.as_str() {
+            "off" => Mode::Off,
+            "warn" => Mode::Warn,
+            "strict" => Mode::Strict,
+            other => panic!("{}: unknown mode {other:?}", c.name),
+        };
+        let got = c.input.parse::<Mode>();
+        // Go returns the fallback mode alongside the error.
+        if got.clone().unwrap_or_default() != want {
+            fails.push(format!("{}: mode = {got:?}, want {want}", c.name));
+        }
+        expect_err(
+            &mut fails,
+            &c.name,
+            &Expect {
+                ok: c.ok,
+                error: &c.error,
+                error_contains: &None,
+            },
+            got.err().map(|e| e.to_string()),
+        );
+    }
+    check(fails);
 }
 
 // --- builder and parse_topic -------------------------------------------
@@ -604,26 +630,8 @@ fn event_json_vectors() {
 
 // --- pending sections --------------------------------------------------
 
-/// Autoref probe: true when `T: FromStr`, false otherwise, decided at
-/// compile time. Lets the mode-parse entry flip itself.
-/// Inherent method wins when `T: FromStr`; the trait fallback otherwise.
-struct Probe<T>(PhantomData<T>);
-impl<T: FromStr> Probe<T> {
-    #[allow(dead_code)] // selected only once `Mode: FromStr`
-    fn has_from_str(&self) -> bool {
-        true
-    }
-}
-trait ProbeFallback {
-    fn has_from_str(&self) -> bool {
-        false
-    }
-}
-impl<T> ProbeFallback for Probe<T> {}
-
 fn landed(file: &str, section: &str) -> bool {
     match (file, section) {
-        ("mode_parse.json", "cases") => Probe::<Mode>(PhantomData).has_from_str(),
         ("event_json.json", "decode_reject") => {
             let f: EventFile = load(file);
             f.decode_reject
