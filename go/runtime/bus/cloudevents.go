@@ -190,14 +190,15 @@ func extensionLabel(name string) string {
 }
 
 // eventReservedExtension rejects extension names an Event may not set
-// directly: workspaceid (use WorkspaceID) and kitorigin (owned by the
-// network adapter).
+// directly: workspaceid (use WorkspaceID) and the network adapter's
+// extensions (see networkReservedExtension).
 func eventReservedExtension(name string) error {
 	switch name {
 	case WorkspaceExtension:
 		return ceErr(name, "reserved for the workspace id")
-	case OriginExtension:
-		return ceErr(name, "reserved for the network origin")
+	}
+	if reason, ok := networkReservedExtension(name); ok {
+		return ceErr(name, reason)
 	}
 	return nil
 }
@@ -350,7 +351,7 @@ func FromCloudEvent(c CloudEvent) (Event, error) {
 	}
 	for _, name := range sortedKeys(c.Extensions) {
 		v, _ := extensionValue(name, c.Extensions[name]) // validated above
-		if name == OriginExtension {
+		if _, ok := networkReservedExtension(name); ok {
 			return Event{}, eventReservedExtension(name)
 		}
 		if name == WorkspaceExtension {

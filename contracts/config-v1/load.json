@@ -1,0 +1,876 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/config-v1/load.json",
+  "version": "v1",
+  "description": "`Load` into a fixed struct shape (name string, port int, ratio float, debug bool, tags []string, inner {a string, b int}, labels map[string]string, opt *string, extra any, all keyed by these lower-case names), starting from `start`, merging each YAML in `files` as an extra config file in order, then the `overrides` pairs. Merge rules are yaml.v3 decoding into an existing value: struct fields merge one by one; scalars, lists and each map entry are replaced; a null clears only the pointer, list and map fields and leaves scalars; unknown keys are ignored; `<<` merge keys expand with explicit keys winning. Each file is first decoded on its own as Go does: a duplicate key or a non-scalar key in a mapping the target reads fails, and decoding counts aliases with yaml.v3's budget (more than 100 aliased of more than 1000 decoded nodes, at a share above 0.99 up to 400k decoded, falling linearly to 0.10 at 4M, is `excessive aliasing`). Mappings under keys the target ignores are not decoded. A leading BOM, a tab after `:` and quoted-scalar continuation lines at column 0 read as libyaml reads them. `want` is the struct as JSON. `generate` ({prefix, line, count, suffix?}) adds one more file after `files`: `prefix`, then `line` repeated `count` times with `{i}` replaced by 0..count-1, then `suffix` (large inputs without a large corpus). A failing case gives `error_contains` substrings; `<path>` stands for the failing file's path.",
+  "cases": [
+    {
+      "name": "later file wins per field",
+      "files": [
+        "name: a\nport: 1\n",
+        "name: b\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "b",
+        "port": 1,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "struct fields merge",
+      "files": [
+        "inner:\n  a: x\n  b: 1\n",
+        "inner:\n  b: 2\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "x",
+          "b": 2
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "lists replace",
+      "files": [
+        "tags: [a, b]\n",
+        "tags: [c]\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": [
+          "c"
+        ],
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "map entries replace, others kept",
+      "files": [
+        "labels: {x: '1', y: '2'}\n",
+        "labels: {y: '3'}\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": {
+          "x": "1",
+          "y": "3"
+        },
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "null leaves scalar",
+      "files": [
+        "name: a\n",
+        "name: ~\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "a",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "null clears list map pointer",
+      "files": [
+        "tags: [a]\nlabels: {k: v}\nopt: o\n",
+        "tags: ~\nlabels: ~\nopt: ~\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "start survives",
+      "files": [
+        "port: 2\n"
+      ],
+      "start": {
+        "name": "s",
+        "port": 1,
+        "ratio": 0,
+        "debug": true,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      },
+      "ok": true,
+      "want": {
+        "name": "s",
+        "port": 2,
+        "ratio": 0,
+        "debug": true,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "scalar into string field",
+      "files": [
+        "name: 8080\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "8080",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "float into int truncates",
+      "files": [
+        "port: 1.9\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 1,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "int into float",
+      "files": [
+        "ratio: 3\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 3,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "yaml 1.1 bool into bool",
+      "files": [
+        "debug: yes\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": true,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "unknown keys ignored",
+      "files": [
+        "nope: 1\nname: n\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "n",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "merge keys",
+      "files": [
+        "base: &b {name: m, port: 7}\n<<: *b\nport: 9\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "m",
+        "port": 9,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "empty file is a no-op",
+      "files": [
+        "",
+        "# only a comment\n"
+      ],
+      "start": {
+        "name": "s",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      },
+      "ok": true,
+      "want": {
+        "name": "s",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "overrides win",
+      "files": [
+        "name: file\n"
+      ],
+      "overrides": [
+        "name=cli",
+        "port=5"
+      ],
+      "ok": true,
+      "want": {
+        "name": "cli",
+        "port": 5,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "override nested field",
+      "files": [
+        "inner: {a: x, b: 1}\n"
+      ],
+      "overrides": [
+        "inner.b=2"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "x",
+          "b": 2
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "type error names the file",
+      "files": [
+        "port: abc\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!str `abc` into int"
+      ]
+    },
+    {
+      "name": "syntax error names the file",
+      "files": [
+        "name: [unclosed\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: "
+      ]
+    },
+    {
+      "name": "override type error",
+      "files": [],
+      "overrides": [
+        "port=abc"
+      ],
+      "ok": false,
+      "error_contains": [
+        "apply CLI overrides: apply overrides: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!str `abc` into int"
+      ]
+    },
+    {
+      "name": "utf-8 bom",
+      "files": [
+        "﻿name: x\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "tab after colon",
+      "files": [
+        "name:\tx\ninner:\n  b:\t2\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 2
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "double-quoted continuation at column 0",
+      "files": [
+        "name: \"x\ny\"\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x y",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "single-quoted continuation at column 0",
+      "files": [
+        "name: 'x\n\ny'\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x\ny",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "nested quoted continuation under-indented",
+      "files": [
+        "labels:\n  k: \"x\ny\"\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": {
+          "k": "x y"
+        },
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "duplicate top-level key",
+      "files": [
+        "port: 1\nport: 2\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 2: mapping key \"port\" already defined at line 1"
+      ]
+    },
+    {
+      "name": "duplicate key in a read map",
+      "files": [
+        "labels:\n  a: x\n  a: y\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 3: mapping key \"a\" already defined at line 2"
+      ]
+    },
+    {
+      "name": "duplicate key under an ignored key",
+      "files": [
+        "zz:\n  a: 1\n  a: 2\nname: n\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "n",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "duplicate key in a later file",
+      "files": [
+        "name: a\n",
+        "port: 1\nport: 2\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 2: mapping key \"port\" already defined at line 1"
+      ]
+    },
+    {
+      "name": "sequence key into a struct",
+      "files": [
+        "? [a]\n: 1\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!seq into string"
+      ]
+    },
+    {
+      "name": "sequence key into a string map",
+      "files": [
+        "labels:\n  ? [a]\n  : x\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 2: cannot unmarshal !!seq into string"
+      ]
+    },
+    {
+      "name": "excessive aliasing",
+      "files": [
+        "a0: &a0 [lol, lol, lol, lol, lol, lol, lol, lol, lol]\na1: &a1 [*a0, *a0, *a0, *a0, *a0, *a0, *a0, *a0, *a0]\na2: &a2 [*a1, *a1, *a1, *a1, *a1, *a1, *a1, *a1, *a1]\na3: &a3 [*a2, *a2, *a2, *a2, *a2, *a2, *a2, *a2, *a2]\na4: &a4 [*a3, *a3, *a3, *a3, *a3, *a3, *a3, *a3, *a3]\na5: &a5 [*a4, *a4, *a4, *a4, *a4, *a4, *a4, *a4, *a4]\na6: &a6 [*a5, *a5, *a5, *a5, *a5, *a5, *a5, *a5, *a5]\na7: &a7 [*a6, *a6, *a6, *a6, *a6, *a6, *a6, *a6, *a6]\na8: &a8 [*a7, *a7, *a7, *a7, *a7, *a7, *a7, *a7, *a7]\na9: &a9 [*a8, *a8, *a8, *a8, *a8, *a8, *a8, *a8, *a8]\nextra: *a9\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: document contains excessive aliasing"
+      ]
+    },
+    {
+      "name": "aliases under ignored keys are not expanded",
+      "files": [
+        "a0: &a0 [lol, lol, lol, lol, lol, lol, lol, lol, lol]\na1: &a1 [*a0, *a0, *a0, *a0, *a0, *a0, *a0, *a0, *a0]\na2: &a2 [*a1, *a1, *a1, *a1, *a1, *a1, *a1, *a1, *a1]\na3: &a3 [*a2, *a2, *a2, *a2, *a2, *a2, *a2, *a2, *a2]\na4: &a4 [*a3, *a3, *a3, *a3, *a3, *a3, *a3, *a3, *a3]\na5: &a5 [*a4, *a4, *a4, *a4, *a4, *a4, *a4, *a4, *a4]\na6: &a6 [*a5, *a5, *a5, *a5, *a5, *a5, *a5, *a5, *a5]\na7: &a7 [*a6, *a6, *a6, *a6, *a6, *a6, *a6, *a6, *a6]\na8: &a8 [*a7, *a7, *a7, *a7, *a7, *a7, *a7, *a7, *a7]\na9: &a9 [*a8, *a8, *a8, *a8, *a8, *a8, *a8, *a8, *a8]\nname: n\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "n",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "alias into any",
+      "files": [
+        "a: &x [1, 2]\nextra: *x\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "name": "alias of a map into any",
+      "files": [
+        "a: &x {k: v, n: 1}\nextra: *x\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": {
+          "k": "v",
+          "n": 1
+        }
+      }
+    },
+    {
+      "name": "tab-led quoted continuation",
+      "files": [
+        "name: \"x\n\ty\"\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x y",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "tab after sequence dash is rejected",
+      "files": [
+        "tags:\n  -\tx\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: line 2: found character that cannot start any token"
+      ]
+    },
+    {
+      "name": "space then tab after sequence dash is rejected",
+      "files": [
+        "tags:\n  - \tx\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: line 2: found character that cannot start any token"
+      ]
+    },
+    {
+      "name": "12k tab separators and continuations",
+      "files": [],
+      "generate": {
+        "prefix": "name:\tx\n",
+        "line": "k{i}:\tv\nq{i}: \"a\nb\"\n",
+        "count": 12000
+      },
+      "ok": true,
+      "want": {
+        "name": "x",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "quote after comma in a plain scalar",
+      "files": [
+        "name: Rock, 'n roll\nport:\t8080\ntags: ['x']\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "Rock, 'n roll",
+        "port": 8080,
+        "ratio": 0,
+        "debug": false,
+        "tags": [
+          "x"
+        ],
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "quote after question mark in a plain scalar",
+      "files": [
+        "extra: what? 'tis\nport: 1\nname:\tx\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x",
+        "port": 1,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": "what? 'tis"
+      }
+    },
+    {
+      "name": "quote after dash in a plain scalar",
+      "files": [
+        "extra: a - \"b\nport: 1\nname:\tx\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x",
+        "port": 1,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": "a - \"b"
+      }
+    },
+    {
+      "name": "quoted merge-key text duplicated by a merge key",
+      "files": [
+        "extra:\n  \"<<\": 1\n  <<: {a: 2}\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 3: mapping key \"<<\" already defined at line 2"
+      ]
+    },
+    {
+      "name": "tab after explicit value indicator is rejected",
+      "files": [
+        "? name\n:\tb\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: line 2: found character that cannot start any token"
+      ]
+    },
+    {
+      "name": "plain continuation starting with a quote",
+      "files": [
+        "extra: a\n  'b\nname:\tx\nport: 1\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x",
+        "port": 1,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": "a 'b"
+      }
+    },
+    {
+      "name": "500 KB quoted flow line with one repair",
+      "files": [],
+      "generate": {
+        "prefix": "name:\tx\nzz: ['a'",
+        "line": ", 'a'",
+        "count": 100000,
+        "suffix": "]\n"
+      },
+      "ok": true,
+      "want": {
+        "name": "x",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/config-v1/precedence.json",
+  "version": "v1",
+  "description": "`ResolveString` over a ladder of layers, first hit wins. flag: entries count when `changed` is null or marks the key true; detail `--<key>`. env: `<PREFIX>_<KEY>` upper-cased with . and - as _, unprefixed when the prefix is empty; a set-but-empty variable is a hit; detail is the variable name. yaml: only top-level keys answer, scalars as Go's %v (null is empty), detail is the path. default: detail `built-in`. No hit is an empty value with origin default and empty detail. `env_names` pins the variable name alone.",
+  "env_names": [
+    {
+      "prefix": "APP",
+      "key": "log.level",
+      "env": "APP_LOG_LEVEL"
+    },
+    {
+      "prefix": "app",
+      "key": "log-level",
+      "env": "APP_LOG_LEVEL"
+    },
+    {
+      "prefix": "",
+      "key": "auth.token",
+      "env": "AUTH_TOKEN"
+    },
+    {
+      "prefix": "My_Tool",
+      "key": "Out.Dir",
+      "env": "MY_TOOL_OUT_DIR"
+    }
+  ],
+  "cases": [
+    {
+      "name": "flag wins",
+      "key": "out_dir",
+      "layers": [
+        {
+          "type": "flag",
+          "flags": {
+            "out_dir": "f"
+          },
+          "changed": {
+            "out_dir": true
+          }
+        },
+        {
+          "type": "env",
+          "prefix": "T",
+          "env": {
+            "T_OUT_DIR": "e"
+          }
+        },
+        {
+          "type": "default",
+          "defaults": {
+            "out_dir": "d"
+          }
+        }
+      ],
+      "want": {
+        "value": "f",
+        "origin": "flag",
+        "detail": "--out_dir"
+      }
+    },
+    {
+      "name": "unchanged flag skipped",
+      "key": "k",
+      "layers": [
+        {
+          "type": "flag",
+          "flags": {
+            "k": "f"
+          },
+          "changed": {
+            "k": false
+          }
+        },
+        {
+          "type": "default",
+          "defaults": {
+            "k": "d"
+          }
+        }
+      ],
+      "want": {
+        "value": "d",
+        "origin": "default",
+        "detail": "built-in"
+      }
+    },
+    {
+      "name": "null changed considers all",
+      "key": "k",
+      "layers": [
+        {
+          "type": "flag",
+          "flags": {
+            "k": "f"
+          },
+          "changed": null
+        }
+      ],
+      "want": {
+        "value": "f",
+        "origin": "flag",
+        "detail": "--k"
+      }
+    },
+    {
+      "name": "env when no flag",
+      "key": "out_dir",
+      "layers": [
+        {
+          "type": "flag",
+          "flags": {},
+          "changed": {}
+        },
+        {
+          "type": "env",
+          "prefix": "T",
+          "env": {
+            "T_OUT_DIR": "e"
+          }
+        },
+        {
+          "type": "default",
+          "defaults": {
+            "out_dir": "d"
+          }
+        }
+      ],
+      "want": {
+        "value": "e",
+        "origin": "env",
+        "detail": "T_OUT_DIR"
+      }
+    },
+    {
+      "name": "empty env is a hit",
+      "key": "k",
+      "layers": [
+        {
+          "type": "env",
+          "prefix": "T",
+          "env": {
+            "T_K": ""
+          }
+        },
+        {
+          "type": "default",
+          "defaults": {
+            "k": "d"
+          }
+        }
+      ],
+      "want": {
+        "value": "",
+        "origin": "env",
+        "detail": "T_K"
+      }
+    },
+    {
+      "name": "project over global",
+      "key": "out_dir",
+      "layers": [
+        {
+          "type": "yaml",
+          "origin": "project",
+          "yaml": "out_dir: p\n",
+          "path": "/p.yaml"
+        },
+        {
+          "type": "yaml",
+          "origin": "global",
+          "yaml": "out_dir: g\nlog_level: info\n",
+          "path": "/g.yaml"
+        }
+      ],
+      "want": {
+        "value": "p",
+        "origin": "project",
+        "detail": "/p.yaml"
+      }
+    },
+    {
+      "name": "falls to global",
+      "key": "log_level",
+      "layers": [
+        {
+          "type": "yaml",
+          "origin": "project",
+          "yaml": "out_dir: p\n",
+          "path": "/p.yaml"
+        },
+        {
+          "type": "yaml",
+          "origin": "global",
+          "yaml": "log_level: info\n",
+          "path": "/g.yaml"
+        }
+      ],
+      "want": {
+        "value": "info",
+        "origin": "global",
+        "detail": "/g.yaml"
+      }
+    },
+    {
+      "name": "yaml int",
+      "key": "port",
+      "layers": [
+        {
+          "type": "yaml",
+          "origin": "global",
+          "yaml": "debug: true\nport: 8080\n",
+          "path": "/c.yaml"
+        }
+      ],
+      "want": {
+        "value": "8080",
+        "origin": "global",
+        "detail": "/c.yaml"
+      }
+    },
+    {
+      "name": "yaml bool",
+      "key": "debug",
+      "layers": [
+        {
+          "type": "yaml",
+          "origin": "global",
+          "yaml": "debug: true\nport: 8080\n",
+          "path": "/c.yaml"
+        }
+      ],
+      "want": {
+        "value": "true",
+        "origin": "global",
+        "detail": "/c.yaml"
+      }
+    },
+    {
+      "name": "yaml float",
+      "key": "ratio",
+      "layers": [
+        {
+          "type": "yaml",
+          "origin": "global",
+          "yaml": "ratio: 0.5\n",
+          "path": "/c.yaml"
+        }
+      ],
+      "want": {
+        "value": "0.5",
+        "origin": "global",
+        "detail": "/c.yaml"
+      }
+    },
+    {
+      "name": "yaml null is empty hit",
+      "key": "k",
+      "layers": [
+        {
+          "type": "yaml",
+          "origin": "project",
+          "yaml": "k: ~\n",
+          "path": "/c.yaml"
+        },
+        {
+          "type": "default",
+          "defaults": {
+            "k": "d"
+          }
+        }
+      ],
+      "want": {
+        "value": "",
+        "origin": "project",
+        "detail": "/c.yaml"
+      }
+    },
+    {
+      "name": "yaml nested is not dotted",
+      "key": "a.b",
+      "layers": [
+        {
+          "type": "yaml",
+          "origin": "project",
+          "yaml": "a:\n  b: 1\n",
+          "path": "/c.yaml"
+        },
+        {
+          "type": "default",
+          "defaults": {
+            "a.b": "d"
+          }
+        }
+      ],
+      "want": {
+        "value": "d",
+        "origin": "default",
+        "detail": "built-in"
+      }
+    },
+    {
+      "name": "yaml list renders like %v",
+      "key": "tags",
+      "layers": [
+        {
+          "type": "yaml",
+          "origin": "project",
+          "yaml": "tags: [a, 1]\n",
+          "path": "/c.yaml"
+        }
+      ],
+      "want": {
+        "value": "[a 1]",
+        "origin": "project",
+        "detail": "/c.yaml"
+      }
+    },
+    {
+      "name": "no hit",
+      "key": "missing",
+      "layers": [
+        {
+          "type": "default",
+          "defaults": {}
+        }
+      ],
+      "want": {
+        "value": "",
+        "origin": "default",
+        "detail": ""
+      }
+    },
+    {
+      "name": "full ladder default",
+      "key": "k",
+      "layers": [
+        {
+          "type": "flag",
+          "flags": {
+            "k": "f"
+          },
+          "changed": {
+            "k": false
+          }
+        },
+        {
+          "type": "env",
+          "prefix": "APP",
+          "env": {}
+        },
+        {
+          "type": "default",
+          "defaults": {
+            "k": "from-default"
+          }
+        }
+      ],
+      "want": {
+        "value": "from-default",
+        "origin": "default",
+        "detail": "built-in"
+      }
+    }
+  ]
+}

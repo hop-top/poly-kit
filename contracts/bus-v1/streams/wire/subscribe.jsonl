@@ -1,0 +1,13 @@
+{"version":"v1","description":"Subscribe round trip: a session subscription, then a subscribe frame acknowledged with the writer's cursor; only matching events follow.","setup":{"log_size":8,"publish":[]}}
+{"send":{"auth":"open","caps":{"streams":1,"frames":["kit"]},"origin":"dialer","session":{"subscribe":["acme.billing.#"]}}}
+{"recv":{"type":"auth_ok","caps":{"streams":1,"frames":["kit","cloudevents"]},"origin":"hub","stream":{"id":"stm_wire","oldest":"1","head":"0","heartbeat_ms":15000}}}
+{"publish":{"id":"evt_01jg000000e008000000000001","topic":"acme.crm.deal.created","source":"crm","timestamp":"2026-10-25T12:00:01Z","payload":{"n":1}}}
+{"publish":{"id":"evt_01jg000000e008000000000003","topic":"acme.billing.invoice.paid","source":"billing","timestamp":"2026-10-25T12:00:03Z","payload":{"n":3}}}
+{"recv":{"id":"evt_01jg000000e008000000000003","topic":"acme.billing.invoice.paid","source":"billing","timestamp":"2026-10-25T12:00:03Z","payload":{"n":3},"origin":"hub","offset":"2"}}
+{"send":{"type":"subscribe","id":"s1","patterns":["acme.crm.*.won"]}}
+{"recv":{"type":"ack","id":"s1","at":"2"}}
+{"publish":{"id":"evt_01jg000000e008000000000002","topic":"acme.crm.deal.updated","source":"crm","timestamp":"2026-10-25T12:00:02Z","payload":{"n":2}}}
+{"publish":{"id":"evt_01jg000000e008000000000004","topic":"acme.crm.deal.won","source":"crm","timestamp":"2026-10-25T12:00:04Z","payload":{"n":4}}}
+{"recv":{"id":"evt_01jg000000e008000000000004","topic":"acme.crm.deal.won","source":"crm","timestamp":"2026-10-25T12:00:04Z","payload":{"n":4},"origin":"hub","offset":"4"}}
+{"send":{"type":"subscribe","id":"s2","patterns":["acme.crm.#.x"]}}
+{"recv":{"type":"error","id":"s2","code":"invalid_pattern"}}

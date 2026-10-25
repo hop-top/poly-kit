@@ -7,12 +7,18 @@ description = "Cross-language CLI UX parity toolkit"
 
 [features]
 default = []
-# The netpolicy chokepoint lives beneath `api`: it owns the reqwest client
-# construction path for user traffic, so anything that issues such a
-# request necessarily compiles it in. The telemetry HTTPS sink builds its
-# own client and is deliberately unguarded (logging-class egress).
-# `thiserror` supplies the typed refusal.
-api = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio", "dep:thiserror"]
+# The netpolicy guarded client lives beneath `api`: it owns the reqwest
+# client construction path for user traffic, so anything that issues
+# such a request necessarily compiles it in. The telemetry HTTPS sink
+# builds its own client and is deliberately unguarded (logging-class
+# egress). `thiserror` supplies the client's error type. No direct
+# tokio: nothing here names it, and reqwest brings its own.
+api = ["netpolicy", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:thiserror"]
+# The policy decision alone: `NetPolicy`, loopback classification, the
+# dial check and the typed refusal. No dependencies, wasm-safe, so a
+# client that dials its own sockets (websocket, SMTP, SQL) can enforce
+# `--offline` without compiling reqwest or tokio.
+netpolicy = []
 blob = ["dep:thiserror"]
 uri = ["dep:hop-top-cite"]
 # preserve_order backs serde_json::Map with indexmap instead of BTreeMap, so
@@ -94,6 +100,25 @@ telemetry = [
     "dep:thiserror",
 ]
 
+# Layered YAML configuration, a port of go/core/config. Parsing, merge,
+# scalar resolution, overrides and precedence are pure and wasm-safe;
+# file loading, paths, Set/Unset and reload are compiled off wasm32 only.
+# Builds on `bus` for reload topics and events.
+config = ["bus", "dep:serde", "dep:serde_json", "dep:saphyr-parser"]
+# The pure half of go/core/config/pkl (schema parse, validation,
+# completion) plus `resolve`, which shells out to the `pkl` binary.
+config-pkl = ["config", "dep:regex"]
+# Signal-driven hot reload (`Reloadable::watch_signal`). Unix only;
+# brings tokio's signal driver, which `serve` already uses.
+config-signal = [
+    "config",
+    "dep:tokio",
+    "tokio/rt",
+    "tokio/macros",
+    "tokio/signal",
+    "tokio/sync",
+]
+
 [dependencies]
 hop-top-cite = { version = "0.1.0", optional = true }
 chrono = { version = "0.4", default-features = false, features = [
@@ -104,7 +129,9 @@ interim = { version = "0.2", default-features = false, features = [
     "std",
     "chrono_0_4",
 ], optional = true }
-reqwest = { version = "0.13", features = ["json", "query"], optional = true }
+# Proxies come from the environment only (HTTP_PROXY etc.), as with Go net/http;
+# no system-proxy, which pulls macOS/Windows proxy settings and an old core-foundation.
+reqwest = { version = "0.13", default-features = false, features = ["default-tls", "charset", "http2", "json", "query"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 # No crate-wide features: `output` adds preserve_order for itself.
 serde_json = { version = "1", optional = true }
@@ -131,6 +158,11 @@ crypto_secretbox = { version = "0.1", default-features = false, features = [
     "salsa20",
 ], optional = true }
 getrandom = { version = "0.4", optional = true }
+# YAML event parser with source spans. Spans drive the comment-keeping
+# editor behind `set`/`unset`; scalars resolve through this crate's own
+# yaml.v3-compatible rules, not the parser's. Exact pin: 0.x and the
+# editor depends on span semantics.
+saphyr-parser = { version = "=0.1.0", optional = true }
 dirs = { version = "7", optional = true }
 # No crate-wide features: each feature that uses tokio names the pieces it
 # needs, so `full` (and its socket, process and multi-thread runtime

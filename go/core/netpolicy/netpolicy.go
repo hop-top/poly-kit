@@ -93,6 +93,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // ErrOffline is returned by Guard when a request is attempted on a
@@ -123,16 +124,34 @@ func IsOffline(ctx context.Context) bool {
 // isLoopback reports whether host names a loopback address. Hosts that
 // are not literal IPs (DNS names) are treated as remote: resolving them
 // would itself be network access.
+//
+// host may carry a port. Without one, a URL keeps an IPv6 literal
+// bracketed ("[::1]"); the brackets are dropped only when what they hold
+// is an IPv6 address, so "[127.0.0.1]" and "[localhost]" stay remote.
 func isLoopback(host string) bool {
 	h, _, err := net.SplitHostPort(host)
 	if err != nil {
-		h = host
+		h = unbracketIPv6(host)
 	}
 	if h == "localhost" {
 		return true
 	}
 	ip := net.ParseIP(h)
 	return ip != nil && ip.IsLoopback()
+}
+
+// unbracketIPv6 returns the address inside "[...]" when it is an IPv6
+// literal, and host unchanged otherwise.
+func unbracketIPv6(host string) string {
+	inner, ok := strings.CutPrefix(host, "[")
+	if !ok {
+		return host
+	}
+	inner, ok = strings.CutSuffix(inner, "]")
+	if !ok || !strings.Contains(inner, ":") || net.ParseIP(inner) == nil {
+		return host
+	}
+	return inner
 }
 
 // guard is the RoundTripper returned by Guard.

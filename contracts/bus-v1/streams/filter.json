@@ -1,0 +1,20 @@
+{
+  "version": "v1",
+  "description": "Per-link delivery predicate applied by a writer on replay and live. An event entry is delivered when, in order: its origin differs from the peer's origin (empty peer origin excludes nothing), it matches the subscription (`patterns` null is the implicit `#`), and it passes the scope (absent scope: all; otherwise workspace_id in `workspaces`, or no workspace_id). A gap marker skips every check. The adapter's per-link filter callback runs last and is not in these vectors.",
+  "cases": [
+    {"name": "implicit hash delivers", "subscription": {"patterns": null}, "peer_origin": "p", "entry": {"origin": "o", "topic": "a.b.c.d"}, "deliver": true},
+    {"name": "own origin excluded", "subscription": {"patterns": null}, "peer_origin": "o", "entry": {"origin": "o", "topic": "a.b.c.d"}, "deliver": false},
+    {"name": "empty peer origin excludes nothing", "subscription": {"patterns": null}, "peer_origin": "", "entry": {"origin": "", "topic": "a.b.c.d"}, "deliver": true},
+    {"name": "pattern match", "subscription": {"patterns": ["a.*.c.#"]}, "peer_origin": "p", "entry": {"origin": "o", "topic": "a.b.c.d"}, "deliver": true},
+    {"name": "pattern miss", "subscription": {"patterns": ["x.#"]}, "peer_origin": "p", "entry": {"origin": "o", "topic": "a.b.c.d"}, "deliver": false},
+    {"name": "any pattern of the set", "subscription": {"patterns": ["x.#", "a.b.#"]}, "peer_origin": "p", "entry": {"origin": "o", "topic": "a.b.c.d"}, "deliver": true},
+    {"name": "empty set delivers nothing", "subscription": {"patterns": []}, "peer_origin": "p", "entry": {"origin": "o", "topic": "a.b.c.d"}, "deliver": false},
+    {"name": "scope match", "subscription": {"patterns": null, "scope": {"workspaces": ["w1", "w2"]}}, "peer_origin": "p", "entry": {"origin": "o", "topic": "a.b.c.d", "workspace_id": "w2"}, "deliver": true},
+    {"name": "scope miss", "subscription": {"patterns": null, "scope": {"workspaces": ["w1"]}}, "peer_origin": "p", "entry": {"origin": "o", "topic": "a.b.c.d", "workspace_id": "w9"}, "deliver": false},
+    {"name": "global passes a scope", "subscription": {"patterns": null, "scope": {"workspaces": ["w1"]}}, "peer_origin": "p", "entry": {"origin": "o", "topic": "a.b.c.d"}, "deliver": true},
+    {"name": "empty workspaces passes global only", "subscription": {"patterns": null, "scope": {"workspaces": []}}, "peer_origin": "p", "entry": {"origin": "o", "topic": "a.b.c.d", "workspace_id": "w1"}, "deliver": false},
+    {"name": "empty workspaces passes global", "subscription": {"patterns": null, "scope": {"workspaces": []}}, "peer_origin": "p", "entry": {"origin": "o", "topic": "a.b.c.d"}, "deliver": true},
+    {"name": "marker bypasses patterns", "subscription": {"patterns": ["x.#"]}, "peer_origin": "p", "entry": {"marker": true, "origin": "p"}, "deliver": true},
+    {"name": "marker bypasses empty set and scope", "subscription": {"patterns": [], "scope": {"workspaces": []}}, "peer_origin": "p", "entry": {"marker": true}, "deliver": true}
+  ]
+}

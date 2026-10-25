@@ -1,0 +1,356 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/config-v1/resolve.json",
+  "version": "v1",
+  "description": "Scalar typing on read (`Get`): the YAML text after `v: ` and the value it yields. Only !!int, !!float, !!bool and !!null convert (yaml.v3 resolution: YAML 1.2 core booleans and nulls, 0x/0o/0b/legacy-octal and underscored ints, .inf/.nan); every other tag (!!str, !!timestamp, !!binary, custom) yields the source text, as does an int beyond int64 and an explicitly tagged value that does not convert. Sequences and mappings keep element types. Values are {kind, repr}, {seq: [...]} or {map: {...}}.",
+  "cases": [
+    {
+      "name": "int",
+      "yaml": "8080",
+      "want": {
+        "kind": "int",
+        "repr": "8080"
+      }
+    },
+    {
+      "name": "negative",
+      "yaml": "-3",
+      "want": {
+        "kind": "int",
+        "repr": "-3"
+      }
+    },
+    {
+      "name": "float",
+      "yaml": "0.9",
+      "want": {
+        "kind": "float",
+        "repr": "0.9"
+      }
+    },
+    {
+      "name": "true",
+      "yaml": "true",
+      "want": {
+        "kind": "bool",
+        "repr": "true"
+      }
+    },
+    {
+      "name": "True",
+      "yaml": "True",
+      "want": {
+        "kind": "bool",
+        "repr": "true"
+      }
+    },
+    {
+      "name": "false",
+      "yaml": "FALSE",
+      "want": {
+        "kind": "bool",
+        "repr": "false"
+      }
+    },
+    {
+      "name": "null",
+      "yaml": "null",
+      "want": {
+        "kind": "null",
+        "repr": "<nil>"
+      }
+    },
+    {
+      "name": "empty is null",
+      "yaml": "",
+      "want": {
+        "kind": "null",
+        "repr": "<nil>"
+      }
+    },
+    {
+      "name": "tilde",
+      "yaml": "~",
+      "want": {
+        "kind": "null",
+        "repr": "<nil>"
+      }
+    },
+    {
+      "name": "plain",
+      "yaml": "hello",
+      "want": {
+        "kind": "string",
+        "repr": "hello"
+      }
+    },
+    {
+      "name": "quoted number",
+      "yaml": "\"8080\"",
+      "want": {
+        "kind": "string",
+        "repr": "8080"
+      }
+    },
+    {
+      "name": "single quoted bool",
+      "yaml": "'true'",
+      "want": {
+        "kind": "string",
+        "repr": "true"
+      }
+    },
+    {
+      "name": "yes",
+      "yaml": "yes",
+      "want": {
+        "kind": "string",
+        "repr": "yes"
+      }
+    },
+    {
+      "name": "on",
+      "yaml": "on",
+      "want": {
+        "kind": "string",
+        "repr": "on"
+      }
+    },
+    {
+      "name": "hex",
+      "yaml": "0x1F",
+      "want": {
+        "kind": "int",
+        "repr": "31"
+      }
+    },
+    {
+      "name": "octal 1.2",
+      "yaml": "0o17",
+      "want": {
+        "kind": "int",
+        "repr": "15"
+      }
+    },
+    {
+      "name": "legacy octal",
+      "yaml": "017",
+      "want": {
+        "kind": "int",
+        "repr": "15"
+      }
+    },
+    {
+      "name": "binary",
+      "yaml": "0b101",
+      "want": {
+        "kind": "int",
+        "repr": "5"
+      }
+    },
+    {
+      "name": "underscored",
+      "yaml": "1_000",
+      "want": {
+        "kind": "int",
+        "repr": "1000"
+      }
+    },
+    {
+      "name": "exponent",
+      "yaml": "1e3",
+      "want": {
+        "kind": "float",
+        "repr": "1000"
+      }
+    },
+    {
+      "name": "leading dot",
+      "yaml": ".5",
+      "want": {
+        "kind": "float",
+        "repr": "0.5"
+      }
+    },
+    {
+      "name": "inf",
+      "yaml": ".inf",
+      "want": {
+        "kind": "float",
+        "repr": "+Inf"
+      }
+    },
+    {
+      "name": "neg inf",
+      "yaml": "-.INF",
+      "want": {
+        "kind": "float",
+        "repr": "-Inf"
+      }
+    },
+    {
+      "name": "nan",
+      "yaml": ".nan",
+      "want": {
+        "kind": "float",
+        "repr": "NaN"
+      }
+    },
+    {
+      "name": "timestamp",
+      "yaml": "2024-01-01",
+      "want": {
+        "kind": "string",
+        "repr": "2024-01-01"
+      }
+    },
+    {
+      "name": "datetime",
+      "yaml": "2024-01-01T10:20:30Z",
+      "want": {
+        "kind": "string",
+        "repr": "2024-01-01T10:20:30Z"
+      }
+    },
+    {
+      "name": "explicit timestamp",
+      "yaml": "!!timestamp 2024-01-01",
+      "want": {
+        "kind": "string",
+        "repr": "2024-01-01"
+      }
+    },
+    {
+      "name": "binary tag",
+      "yaml": "!!binary aGk=",
+      "want": {
+        "kind": "string",
+        "repr": "aGk="
+      }
+    },
+    {
+      "name": "custom tag",
+      "yaml": "!mytype foo",
+      "want": {
+        "kind": "string",
+        "repr": "foo"
+      }
+    },
+    {
+      "name": "int overflow",
+      "yaml": "9223372036854775808",
+      "want": {
+        "kind": "string",
+        "repr": "9223372036854775808"
+      }
+    },
+    {
+      "name": "max int64",
+      "yaml": "9223372036854775807",
+      "want": {
+        "kind": "int",
+        "repr": "9223372036854775807"
+      }
+    },
+    {
+      "name": "bad explicit int",
+      "yaml": "!!int notanum",
+      "want": {
+        "kind": "string",
+        "repr": "notanum"
+      }
+    },
+    {
+      "name": "explicit str int",
+      "yaml": "!!str 5",
+      "want": {
+        "kind": "string",
+        "repr": "5"
+      }
+    },
+    {
+      "name": "explicit float from int",
+      "yaml": "!!float 3",
+      "want": {
+        "kind": "float",
+        "repr": "3"
+      }
+    },
+    {
+      "name": "8 is not octal",
+      "yaml": "08",
+      "want": {
+        "kind": "float",
+        "repr": "8"
+      }
+    },
+    {
+      "name": "version string",
+      "yaml": "1.2.3",
+      "want": {
+        "kind": "string",
+        "repr": "1.2.3"
+      }
+    },
+    {
+      "name": "leading plus",
+      "yaml": "+12",
+      "want": {
+        "kind": "int",
+        "repr": "12"
+      }
+    },
+    {
+      "name": "flow sequence",
+      "yaml": "[1, 2.5, three, true, null, \"4\"]",
+      "want": {
+        "seq": [
+          {
+            "kind": "int",
+            "repr": "1"
+          },
+          {
+            "kind": "float",
+            "repr": "2.5"
+          },
+          {
+            "kind": "string",
+            "repr": "three"
+          },
+          {
+            "kind": "bool",
+            "repr": "true"
+          },
+          {
+            "kind": "null",
+            "repr": "<nil>"
+          },
+          {
+            "kind": "string",
+            "repr": "4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "flow mapping",
+      "yaml": "{port: 8080, tls: true, name: x}",
+      "want": {
+        "map": {
+          "port": {
+            "kind": "int",
+            "repr": "8080"
+          },
+          "tls": {
+            "kind": "bool",
+            "repr": "true"
+          },
+          "name": {
+            "kind": "string",
+            "repr": "x"
+          }
+        }
+      }
+    }
+  ]
+}

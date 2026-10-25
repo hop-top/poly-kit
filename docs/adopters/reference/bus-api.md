@@ -440,7 +440,8 @@ from a CloudEvents 1.0 `CloudEvent`; `bus.MarshalCloudEvent` /
 
 Extension names are lowercase ASCII letters and digits; values are
 string, bool or an integer in int32 range. `workspaceid` is reserved
-for `WorkspaceID` and `kitorigin` for the network adapter. kit has no
+for `WorkspaceID`, and `kitorigin` and `kitoffset` for the network
+adapter. kit has no
 alias option for the workspace extension: a consumer that wants another
 name (a tenant id, say) maps `workspaceid` itself. `time` follows RFC
 3339 with years 0000-9999, a `.` fraction of 1-9 digits and no leap
@@ -448,20 +449,151 @@ seconds. Violations return a `*bus.CloudEventError` that matches
 `bus.ErrInvalidCloudEvent`. The full rule set is pinned by the vectors
 in [`contracts/bus-v1/cloudevents`](../../../contracts/bus-v1/cloudevents/).
 
-The network adapter sends kit frames by default, in every SDK, and
-there is no capability negotiation yet: no peer may default to
-CloudEvents frames until peers advertise support. Opt in per adapter
-once every peer runs a kit that decodes CloudEvents frames:
+The network adapter sends kit frames by default, in every SDK. Opt in
+to CloudEvents frames per adapter:
 
 ```go
 bus.WithNetworkOption(bus.WithFrameFormat(bus.FrameCloudEvents))
 ```
 
+On a link with a handshake (an `Authenticator` on both sides) the
+format is negotiated: a peer that does not advertise `cloudevents` gets
+kit frames. Without a handshake the configured format is sent as is, so
+opt in there only once every peer decodes CloudEvents frames.
+
 Inbound frames are accepted in either format whatever the setting: a
 JSON object with a member named exactly `specversion` is a CloudEvents
 frame, anything else a kit frame.
 CloudEvents frames carry the loop-prevention origin in the `kitorigin`
-extension, which the adapter strips before delivery.
+extension and, on stream links, the offset in `kitoffset`; the adapter
+strips both before delivery.
+
+## Network streams
+
+Two adapters that both configure an `Authenticator` negotiate a stream
+link in the auth handshake (use `bus.OpenAuth()` when there is no
+secret). On a stream link:
+
+- every forwarded event carries an offset in the sender's stream,
+  delivered to handlers as metadata: `bus.StreamPositionFrom(ctx)`
+- a dialer subscribes by pattern and workspace scope:
+  `WithSubscribe`, `WithScope`, `(*NetworkAdapter).Subscribe`,
+  `Unsubscribe`, `SetScope`; the acceptor authorizes with
+  `WithSubscribeAuthorizer` and filters per link with `WithLinkFilter`
+- a reconnect resumes after the dialer's position with no gaps and no
+  duplicates; when that is impossible the dialer publishes
+  `kit.runtime.stream.invalidated`: mark live views fed by that peer
+  stale and refetch
+- the acceptor sends heartbeats (`WithHeartbeat`, default 15 s, 1 s to
+  24 h); a
+  dialer closes a link after three silent intervals and reconnects
+- link state: `kit.runtime.link.connected` / `disconnected` events and
+  `(*NetworkAdapter).LinkState(addr)`
+
+```go
+b := bus.New(
+    bus.WithNetwork("wss://hub.example/bus"),
+    bus.WithNetworkOption(
+        bus.WithAuth(bus.OpenAuth()),
+        bus.WithSubscribe("acme.crm.#"),
+        bus.WithScope(bus.Scope{Workspaces: []string{"ws1"}}),
+        bus.WithOutbox(),
+    ),
+)
+b.Subscribe(string(bus.TopicStreamInvalidated), func(ctx context.Context, e bus.Event) error {
+    // mark views stale, refetch
+    return nil
+})
+```
+
+Every adapter keeps a log of what it forwards (`WithStreamLog(n)`,
+default 1024 entries, or `WithLog` for your own `StreamLog`); size a
+hub's log for its clients' reconnect window. `WithOutbox()` keeps
+events published while an outbound peer is down and sends them in
+order on reconnect; overflow drops the oldest and counts them
+(`OutboxDropped`, `WithOutboxDropFunc`). A failed first dial through
+`WithNetwork` or `Dial` keeps retrying.
+
+Ordering holds per sending adapter through sync handlers; async
+handlers stay unordered. A consumer that queues events onward must
+persist the position it applied, from `StreamPositionFrom`, not
+`Position(addr)`. A bus without the ordered publish hook (for example
+the SQLite adapter) still forwards through the log and per-link
+writers, but appends from an async handler, so its order is not
+guaranteed; it advertises no streams and every link it makes is a
+legacy link.
+
+`Subscribe`, `Unsubscribe` and `SetScope` wait for the acceptor's
+reply, which only the link's own reader can deliver. Called with the
+context of a sync handler that link is delivering (`link.connected`,
+`stream.invalidated`, or an event from that peer) they return an error
+wrapping `bus.ErrReentrantRequest` instead of blocking. To react to
+those events with a request, subscribe the handler with
+`SubscribeAsync` (on kit's buses, async handlers run off the
+delivering goroutine without the marker and may pass their own
+context), or start a goroutine with a context not derived from the
+handler's. A sync handler that calls with an unrelated context blocks
+until the link closes, then gets an error. A custom `Bus` that runs
+async handlers with the publish context must drop the marker itself,
+or build their context from `context.Background()`.
+
+Async handlers share the bus's bounded pool (`WithMaxAsync`). If every
+slot holds a handler waiting on a reply from one link, that link's
+reader blocks on the pool when it publishes the next event, so the
+reply never arrives: the stall lasts until the link closes (on a
+stream link, the dialer's watchdog closes it after three heartbeat
+intervals). Keep request-making async handlers well below the pool
+size, or bound their requests with a context deadline.
+
+`Subscribe`, `Unsubscribe` and `SetScope` need a registered address
+(`Connect`, `Dial` or `WithNetwork`); after `Disconnect` they return
+`bus.ErrDisconnected`. Use `WithSubscribe` and `WithScope` for the set a
+first connect asks for.
+
+Subscribe authorizers (`WithSubscribeAuthorizer`) run on the link's
+writer, which keeps the ack's offset an exact fence. They must be fast:
+a slow authorizer delays events and heartbeats on that link, and one
+slower than three heartbeat intervals gets the link closed by the
+dialer.
+
+Handshake failures: a refused session (`*bus.StreamError`) or a
+malformed reply (a protocol error) is final, so the address is not
+retried until the next explicit `Connect`. A rejected token
+(`bus.ErrAuthFailed`, code `auth`) and a missing ack (code `timeout`)
+are retried by a reconnect loop, which `WithNetwork`, `Dial` or a
+dropped link starts; a first `Connect` that fails starts none, so use
+`Dial` to keep trying. Each failure is reported through
+`WithNetworkErrorFunc` and as `kit.runtime.link.disconnected` with
+`final` and `code` (`protocol`, `auth`, `timeout`, or the session error
+code). A `Connect` that loses a race with `Disconnect` returns
+`bus.ErrDisconnected`.
+
+### Behaviour changes
+
+These change how the network adapter behaves for existing adopters:
+
+- Forwarding is ordered per sending adapter: one writer per link reads
+  the adapter's log, instead of one goroutine per event.
+- An outbox link resends a frame whose write failed (a possible
+  duplicate); frames written but lost in transit are not resent.
+- A slow legacy link skips entries the log evicted before its writer
+  reached them, instead of back-pressuring publishers. Skips are
+  counted (`(*NetworkAdapter).Skipped(addr)`, `WithSkipFunc`) and
+  reported through `WithNetworkErrorFunc`.
+- `Disconnect(addr)` forgets the address: no reconnect, and its outbox
+  and position are dropped.
+- A failed first dial through `WithNetwork` (or `Dial`) keeps retrying
+  in the background, unless the failure is final.
+- `FrameCloudEvents` falls back to kit frames on a handshake link whose
+  peer does not advertise CloudEvents.
+- A reconnect that cannot resume publishes
+  `kit.runtime.stream.invalidated` (reason `unsupported` on links
+  without streams), and outbound links publish
+  `kit.runtime.link.connected` / `disconnected`.
+- `kitoffset` is a reserved CloudEvents extension, like `kitorigin`.
+The wire contract is
+[bus network streams](../../contributors/architecture/bus-streams.md),
+pinned by [`contracts/bus-v1/streams`](../../../contracts/bus-v1/streams/README.md).
 
 ## Cross-language parity
 

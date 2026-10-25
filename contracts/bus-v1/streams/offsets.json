@@ -1,0 +1,25 @@
+{
+  "version": "v1",
+  "description": "Offset tokens. `token` is the raw JSON value of an offset member (kit `offset`, CloudEvents `kitoffset`, control-frame offsets). Valid: a JSON string of decimal digits, no sign, no leading zeros, value at most 18446744073709551615. `value` is the parsed offset re-rendered as a decimal string.",
+  "cases": [
+    {"name": "zero", "token": "0", "ok": true, "value": "0"},
+    {"name": "small", "token": "42", "ok": true, "value": "42"},
+    {"name": "max u64", "token": "18446744073709551615", "ok": true, "value": "18446744073709551615"},
+    {"name": "above max u64", "token": "18446744073709551616", "ok": false},
+    {"name": "twenty nines", "token": "99999999999999999999", "ok": false},
+    {"name": "leading zero", "token": "042", "ok": false},
+    {"name": "double zero", "token": "00", "ok": false},
+    {"name": "plus sign", "token": "+1", "ok": false},
+    {"name": "minus sign", "token": "-1", "ok": false},
+    {"name": "empty string", "token": "", "ok": false},
+    {"name": "space", "token": " 1", "ok": false},
+    {"name": "fraction", "token": "1.0", "ok": false},
+    {"name": "exponent", "token": "1e3", "ok": false},
+    {"name": "hex", "token": "0x10", "ok": false},
+    {"name": "full-width digit", "token": "１", "ok": false},
+    {"name": "JSON number", "token": 42, "ok": false},
+    {"name": "JSON null", "token": null, "ok": false},
+    {"name": "JSON bool", "token": true, "ok": false},
+    {"name": "JSON object", "token": {"v": "1"}, "ok": false}
+  ]
+}

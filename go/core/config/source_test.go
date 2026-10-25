@@ -1,8 +1,10 @@
 package config_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -112,4 +114,39 @@ func TestRegistry_LoadInvalidYAML(t *testing.T) {
 
 	_, err := config.LoadRegistry(path)
 	require.Error(t, err)
+}
+
+func TestSaveRegistry_PrivateFileAndDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix permissions")
+	}
+	dir := filepath.Join(t.TempDir(), "sub")
+	path := filepath.Join(dir, "registry.yaml")
+	r := &config.Registry{}
+	r.Add(config.Source{Name: "remote", Type: "ctxt", Token: "secret"})
+	require.NoError(t, config.SaveRegistry(path, r))
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	dinfo, err := os.Stat(dir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), dinfo.Mode().Perm())
+
+	// Overwrite keeps the mode and leaves no temp files behind.
+	require.NoError(t, config.SaveRegistry(path, r))
+	info, err = os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1)
+}
+
+func TestSource_FormatRedactsToken(t *testing.T) {
+	s := config.Source{Name: "remote", Type: "ctxt", Token: "secret"}
+	for _, out := range []string{fmt.Sprint(s), fmt.Sprintf("%v", &s), fmt.Sprintf("%#v", s), fmt.Sprintf("%+v", config.Registry{Sources: []config.Source{s}})} {
+		assert.NotContains(t, out, "secret")
+		assert.Contains(t, out, "remote")
+	}
 }
