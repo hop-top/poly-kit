@@ -280,12 +280,15 @@ struct Tree {
 #[serde(deny_unknown_fields)]
 struct RequestCase {
     name: String,
+    tree: String,
     args: Vec<String>,
     #[serde(default)]
     no_desc: bool,
     #[serde(default)]
     unordered: bool,
     stdout: Vec<String>,
+    #[serde(default)]
+    stderr_contains: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -300,7 +303,7 @@ struct RequestsFile {
     version: String,
     #[allow(dead_code)]
     description: String,
-    tree: Tree,
+    trees: BTreeMap<String, Tree>,
     cases: Vec<RequestCase>,
 }
 
@@ -354,9 +357,16 @@ fn requests() {
     let f: RequestsFile = load("requests.json");
     assert_eq!(f.version, "v1");
     assert!(!f.cases.is_empty(), "cases section is empty");
-    let root = build_root(&f.tree);
+    assert!(!f.trees.is_empty(), "trees section is empty");
+    let roots: BTreeMap<&String, Root> = f.trees.iter().map(|(n, t)| (n, build_root(t))).collect();
+    let mut used = std::collections::BTreeSet::new();
     let mut failures = Vec::new();
     for c in &f.cases {
+        let Some(root) = roots.get(&c.tree) else {
+            failures.push(format!("{}: no tree {:?}", c.name, c.tree));
+            continue;
+        };
+        used.insert(&c.tree);
         let (mut out, mut err) = (Vec::new(), Vec::new());
         root.complete(&c.args, c.no_desc, &mut out, &mut err)
             .unwrap();
@@ -374,6 +384,17 @@ fn requests() {
         }
         if !same(got.clone(), want.clone(), c.unordered) {
             failures.push(format!("{}: completions {got:?}, want {want:?}", c.name));
+        }
+        let err = String::from_utf8(err).unwrap();
+        if let Some(needle) = &c.stderr_contains {
+            if !err.contains(needle.as_str()) {
+                failures.push(format!("{}: stderr {err:?} lacks {needle:?}", c.name));
+            }
+        }
+    }
+    for name in f.trees.keys() {
+        if !used.contains(name) {
+            failures.push(format!("tree {name:?} has no case"));
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));

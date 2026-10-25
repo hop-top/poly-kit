@@ -6,7 +6,10 @@
 //! and flag value enums, and answers the `__complete` requests the
 //! generated scripts make; and [`completion`], the completer API.
 
+mod alias;
 pub mod completion;
+mod enums;
 mod root;
 
-pub use root::{AliasError, Root};
+pub use alias::{AliasError, SHIM_ARGS};
+pub use root::Root;

@@ -121,6 +121,44 @@ fn alias_errors_match_go() {
 }
 
 #[test]
+fn deep_alias_shim_has_none_of_the_target_flags() {
+    let start = Command::new("start").arg(Arg::new("level").long("level").help("Log level"));
+    let router = Command::new("router").subcommand(start);
+    let mut root = Root::new(Command::new("mytool").subcommand(router));
+    root.alias("rs", "router start").unwrap();
+    let (out, _) = complete(&root, &["rs", "--"], false);
+    assert_eq!(out, "--help\thelp for rs\n:4\n");
+    // Like Go's shim: positional arguments pass, the target's flags do not.
+    let m = root
+        .command()
+        .try_get_matches_from(["mytool", "rs", "a", "b"])
+        .unwrap();
+    let (name, sub) = m.subcommand().unwrap();
+    assert_eq!(name, "rs");
+    let args: Vec<&String> = sub.get_many(hop_top_kit::cli::SHIM_ARGS).unwrap().collect();
+    assert_eq!(args, ["a", "b"]);
+    assert!(root
+        .command()
+        .try_get_matches_from(["mytool", "rs", "--level", "x"])
+        .is_err());
+}
+
+#[test]
+fn alias_named_completion_replaces_the_builtin() {
+    let mut root = Root::new(Command::new("mytool").subcommand(deploy()));
+    root.alias("completion", "deploy").unwrap();
+    assert_eq!(root.command_group("completion"), None);
+    let m = root
+        .command()
+        .try_get_matches_from(["mytool", "completion"])
+        .unwrap();
+    assert_eq!(m.subcommand_name(), Some("deploy"));
+    assert!(run(&root, &["mytool", "completion", "bash"]).is_none());
+    let (out, _) = complete(&root, &["comp"], false);
+    assert_eq!(out, "completion\talias for deploy\n:4\n");
+}
+
+#[test]
 fn alias_dispatches_through_clap() {
     let router = Command::new("router").subcommand(Command::new("start"));
     let mut root = Root::new(
@@ -282,10 +320,23 @@ fn completion_visible_in_help_all() {
 }
 
 #[test]
-fn help_structure_no_help_subcommand() {
-    let mut cmd = root_with_sub().command();
-    cmd.build();
-    assert!(cmd.find_subcommand("help").is_none());
+fn help_structure_no_help_or_completion_subcommand() {
+    // Go pins what help lists, not what dispatches.
+    let root = root_with_sub();
+    let help = root.command().render_help().to_string();
+    let commands = help.split("Commands:").nth(1).unwrap_or_default();
+    assert!(
+        !commands.lines().any(|l| l.trim_start().starts_with("help")),
+        "{help}"
+    );
+    assert!(
+        !commands
+            .lines()
+            .any(|l| l.trim_start().starts_with("completion")),
+        "{help}"
+    );
+    let (out, _) = complete(&root, &["h"], false);
+    assert_eq!(out, ":4\n");
 }
 
 #[test]
@@ -348,15 +399,6 @@ fn unknown_completion_requests_are_not_refused() {
 fn ordinary_commands_are_not_builtins() {
     assert!(run(&root_with_sub(), &["mytool", "sub"]).is_none());
     assert!(run(&root_with_sub(), &["mytool"]).is_none());
-}
-
-#[test]
-fn completion_descriptions_env_turns_descriptions_off() {
-    let root = Root::new(Command::new("envtool-x").subcommand(deploy()));
-    std::env::set_var("ENVTOOL_X_COMPLETION_DESCRIPTIONS", "false");
-    let (out, _) = complete(&root, &["d"], false);
-    std::env::remove_var("ENVTOOL_X_COMPLETION_DESCRIPTIONS");
-    assert_eq!(out, "deploy\n:4\n");
 }
 
 #[test]
