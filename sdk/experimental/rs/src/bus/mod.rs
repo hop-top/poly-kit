@@ -43,6 +43,7 @@
 //! ```
 
 pub mod builder;
+pub mod cloudevents;
 pub mod config;
 pub mod context;
 pub mod event;
@@ -54,6 +55,7 @@ pub mod stream;
 pub mod topic;
 
 pub use builder::{parse_topic, prefixed_topic_of, topic_of, TopicBuilder};
+pub use cloudevents::{CloudEvent, CloudEventError, FrameFormat};
 pub use config::{
     mode_from_config, mode_from_config_with, mode_from_env, mode_from_env_with, mode_from_string,
     ConfigGetter, ParseModeError, CONFIG_KEY_ENFORCE, ENV_ENFORCE,

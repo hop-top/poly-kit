@@ -388,6 +388,19 @@
       "error": "cloudevents: kitorigin: reserved for the network origin"
     },
     {
+      "name": "kitoffset set as extension",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "extensions": {
+          "kitoffset": "1"
+        }
+      },
+      "ok": false,
+      "error": "cloudevents: kitoffset: reserved for the stream offset"
+    },
+    {
       "name": "reserved attribute name as extension",
       "event": {
         "id": "evt_01jg000000e008000000000000",
