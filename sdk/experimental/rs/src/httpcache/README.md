@@ -53,7 +53,7 @@ assert_eq!(fetches, 1, "second call served from cache");
 ## Neighbours
 
 - `hop_top_kit::kv` (src/kv.rs): the `TtlStore` this cache writes through; key binding rules live there
-- `hop_top_kit::netpolicy` (src/netpolicy.rs): `GuardedClient`, the client to send from inside `fetch` so `--offline` is enforced
+- `hop_top_kit::netpolicy` (src/netpolicy/): `GuardedClient`, the client to send from inside `fetch` so `--offline` is enforced
 - `hop_top_kit::api` (src/api.rs): `ApiClient`, a JSON client over `GuardedClient`
 
 ## See also
