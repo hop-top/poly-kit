@@ -284,6 +284,31 @@ same reason a modifier joins the Object segment with an underscore
 instead of adding a fifth segment: topics stay flat 4-segment
 strings that hash, log and match exactly as before.
 
+## Topics as CloudEvents `type`
+
+When a kit event leaves as a CloudEvent (`bus.ToCloudEvent`, or a
+network adapter sending CloudEvents frames), the topic becomes the
+CloudEvents `type` attribute verbatim: no reverse-DNS prefix, no case
+change, no segment rewriting.
+
+```
+kit.runtime.entity.created  →  "type": "kit.runtime.entity.created"
+```
+
+- The mapping is the identity in both directions: decoding a
+  CloudEvent sets the topic to `type` unchanged.
+- The CloudEvents layer only requires `type` to be a non-empty string.
+  Topic grammar is checked where it always is, on `Publish`, under the
+  bus enforcement mode. A foreign `type` such as
+  `com.example.order.created.v2` decodes fine and is then handled by
+  that mode like any other topic.
+- The emitter (`Event.Source`) maps to `source`, so subscribers can
+  filter on either attribute.
+- Subscribe patterns (`*`, `#`) never appear in `type`; they stay a
+  subscriber-side concept.
+
+Vectors: [`contracts/bus-v1/cloudevents`](../../contracts/bus-v1/cloudevents/).
+
 ## Cross-references
 
 - [`bus.ValidateTopic` GoDoc](../../go/runtime/bus/topics.go)
