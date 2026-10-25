@@ -19,7 +19,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Barrier, Mutex, OnceLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use hop_top_kit::bus::{BusError, Context, Event, SharedBus, SubscriptionId};
 use serde_json::json;
@@ -87,6 +87,20 @@ fn close_twice_is_ok() {
     bus.close_ctx(&Context::background()).expect("second");
 }
 
+/// Waits until `n` threads are blocked draining `bus`, so a test knows
+/// a close or unsubscribe is waiting before it releases a handler. Spins
+/// on the bus's own state; the deadline is a watchdog only.
+fn until_drain_waiters(bus: &SharedBus, n: usize) {
+    let deadline = Instant::now() + WATCHDOG;
+    while bus.drain_waiters() < n {
+        assert!(
+            Instant::now() < deadline,
+            "{n} drain waiter(s) never blocked"
+        );
+        thread::yield_now();
+    }
+}
+
 /// Closes with `ctx` while a sync handler is blocked in flight, then
 /// releases the handler. Returns close's result and the order in which
 /// the release and close's return happened.
@@ -96,15 +110,15 @@ fn close_during_blocked_handler(ctx: Context) -> (Result<(), BusError>, Vec<&'st
     let publisher = publish_until_entered(&bus, "test.event", &blocked);
 
     let log = Arc::new(Mutex::new(Vec::new()));
-    let (closing_tx, closing) = mpsc::channel();
     let (b, l) = (bus.clone(), Arc::clone(&log));
     let closer = thread::spawn(move || {
-        closing_tx.send(()).unwrap();
         let res = b.close_ctx(&ctx);
         l.lock().unwrap().push("close:returned");
         res
     });
-    closing.recv_timeout(WATCHDOG).expect("closer started");
+    // Close is blocked on the handler before it is released, so the
+    // order below cannot come out right by scheduling luck.
+    until_drain_waiters(&bus, 1);
     log.lock().unwrap().push("handler:released");
     blocked.release.send(()).unwrap();
 
@@ -252,6 +266,68 @@ fn unsubscribe_unknown_returns_false() {
     let id = bus.subscribe("test.event", |_| Ok(()));
     assert!(bus.unsubscribe(id));
     assert!(!bus.unsubscribe(id));
+}
+
+/// Runs `unsubscribe(id)` on a thread and returns it.
+fn unsubscribe_on_thread(
+    bus: &SharedBus,
+    id: SubscriptionId,
+    log: &Arc<Mutex<Vec<&'static str>>>,
+    tag: &'static str,
+) -> thread::JoinHandle<bool> {
+    let (b, l) = (bus.clone(), Arc::clone(log));
+    thread::spawn(move || {
+        let found = b.unsubscribe(id);
+        l.lock().unwrap().push(tag);
+        found
+    })
+}
+
+#[test]
+fn unsubscribe_after_close_took_it_still_waits() {
+    // Go's unsubscribe closure takes mu.Lock() even when the id is gone.
+    let bus = SharedBus::default();
+    let (id, blocked) = subscribe_blocking(&bus, "test.event");
+    let publisher = publish_until_entered(&bus, "test.event", &blocked);
+
+    let b = bus.clone();
+    let closer = thread::spawn(move || b.close());
+    until_drain_waiters(&bus, 1);
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let unsub = unsubscribe_on_thread(&bus, id, &log, "unsubscribe:returned");
+    until_drain_waiters(&bus, 2);
+    log.lock().unwrap().push("handler:released");
+    blocked.release.send(()).unwrap();
+
+    assert!(!within(move || unsub.join().unwrap()), "close took it");
+    within(move || closer.join().unwrap());
+    publisher.join().unwrap().expect("publish");
+    assert_eq!(
+        *log.lock().unwrap(),
+        ["handler:released", "unsubscribe:returned"]
+    );
+}
+
+#[test]
+fn unsubscribe_that_loses_to_another_still_waits() {
+    let bus = SharedBus::default();
+    let (id, blocked) = subscribe_blocking(&bus, "test.event");
+    let publisher = publish_until_entered(&bus, "test.event", &blocked);
+
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let winner = unsubscribe_on_thread(&bus, id, &log, "winner:returned");
+    until_drain_waiters(&bus, 1);
+    let loser = unsubscribe_on_thread(&bus, id, &log, "loser:returned");
+    until_drain_waiters(&bus, 2);
+    log.lock().unwrap().push("handler:released");
+    blocked.release.send(()).unwrap();
+
+    assert!(within(move || winner.join().unwrap()));
+    assert!(!within(move || loser.join().unwrap()));
+    publisher.join().unwrap().expect("publish");
+    let log = log.lock().unwrap();
+    assert_eq!(log[0], "handler:released", "{log:?}");
+    assert_eq!(log.len(), 3);
 }
 
 #[test]

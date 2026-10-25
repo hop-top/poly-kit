@@ -2,7 +2,8 @@
 //! close.
 
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use super::context::{Context, ContextError};
@@ -36,16 +37,21 @@ use super::mem::{check_topic, Bus, BusError, Mode, SharedErrFn, SharedHandler, S
 ///   whole snapshot.
 /// - **Unsubscribe** stops new publishes from matching at once, then
 ///   waits for every in-flight publish that matched the subscription,
-///   so on return its handler is neither running nor about to run. Go
-///   waits for every in-flight sync dispatch, matching or not; this
-///   returns while an unrelated handler may still be running. That is
-///   observable, but promises nothing Go's unsubscribe does not.
+///   so on return its handler is neither running nor about to run. It
+///   waits even when it returns `false` because close or another
+///   unsubscribe removed the subscription first: Go's closure takes the
+///   write lock either way. Go waits for every in-flight sync dispatch,
+///   matching or not; this returns while an unrelated handler may still
+///   be running. That is observable, but promises nothing Go's
+///   unsubscribe does not.
 /// - **Close** marks the bus closed, drops the subscriptions, and waits
 ///   for every in-flight sync publish with no deadline, as Go's
 ///   `mu.Lock()` does: when it returns, no sync handler is running,
 ///   whatever `ctx` says. `ctx` bounds only the async drain that
 ///   follows, as in Go; async dispatch has not landed, so today that
-///   drain is empty and [`SharedBus::close_ctx`] always succeeds.
+///   drain is empty and [`SharedBus::close_ctx`] always succeeds. When
+///   `ctx` is already done and nothing is left to drain, Go's `select`
+///   returns nil or `ctx.Err()` at random; this returns `Ok`.
 ///
 /// # Re-entrancy
 ///
@@ -110,15 +116,18 @@ struct State {
     /// Async handler tasks still running. Always zero until async
     /// dispatch lands; close's `ctx` bounds the wait on it.
     async_in_flight: usize,
+    /// In-flight publishes per subscription in their snapshot. Kept by
+    /// id, not on the subscription, so an unsubscribe that no longer
+    /// finds the subscription can still wait for it.
+    holds: HashMap<SubscriptionId, usize>,
+    /// Threads blocked in an unsubscribe or close drain.
+    drain_waiters: usize,
 }
 
 struct Sub {
     id: SubscriptionId,
     pattern: String,
     handler: SharedHandler,
-    /// In-flight publishes whose snapshot holds this subscription.
-    /// Changed only under the state lock.
-    holds: AtomicUsize,
     /// Set by a re-entrant unsubscribe; snapshots skip it from then on.
     removed: AtomicBool,
 }
@@ -153,7 +162,6 @@ impl SharedBus {
                     id: s.id,
                     pattern: s.pattern,
                     handler: s.handler,
-                    holds: AtomicUsize::new(0),
                     removed: AtomicBool::new(false),
                 })
             })
@@ -168,6 +176,8 @@ impl SharedBus {
                 closed: bus.closed,
                 in_flight: 0,
                 async_in_flight: 0,
+                holds: HashMap::new(),
+                drain_waiters: 0,
             }),
             idle: Condvar::new(),
         }))
@@ -200,7 +210,6 @@ impl SharedBus {
             id,
             pattern,
             handler,
-            holds: AtomicUsize::new(0),
             removed: AtomicBool::new(false),
         }));
         id
@@ -208,27 +217,39 @@ impl SharedBus {
 
     /// Removes a subscription. Returns whether it was found.
     ///
-    /// Waits until no in-flight publish can still call the handler,
-    /// except when called from a handler on this bus; see the
+    /// Whether or not it is found (close may have dropped it, or another
+    /// unsubscribe won), waits until no in-flight publish can still call
+    /// the handler, as Go's closure always takes the write lock. A call
+    /// from a handler on this bus does not wait; see the
     /// [type docs](SharedBus).
     pub fn unsubscribe(&self, id: SubscriptionId) -> bool {
         let inner = &*self.0;
         let reentrant = own_frames(inner.id) > 0;
         let mut st = inner.lock();
-        let Some(i) = st.subs.iter().position(|s| s.id == id) else {
-            return false;
-        };
-        let sub = st.subs.remove(i);
+        let sub = st
+            .subs
+            .iter()
+            .position(|s| s.id == id)
+            .map(|i| st.subs.remove(i));
         if reentrant {
-            sub.removed.store(true, Ordering::Release);
+            if let Some(sub) = &sub {
+                sub.removed.store(true, Ordering::Release);
+            }
         } else {
             let background = Context::background();
-            let drained = |_: &State| sub.holds.load(Ordering::Relaxed) == 0;
+            let drained = |st: &State| !st.holds.contains_key(&id);
             st = inner.wait(st, &background, drained).0;
         }
         drop(st);
-        drop(sub);
-        true
+        sub.is_some()
+    }
+
+    /// Threads currently blocked in an unsubscribe or close drain. For
+    /// tests that must know a drain is under way before releasing a
+    /// handler; not part of the supported API.
+    #[doc(hidden)]
+    pub fn drain_waiters(&self) -> usize {
+        self.0.lock().drain_waiters
     }
 
     /// [`SharedBus::publish_ctx`] with [`Context::background`].
@@ -256,7 +277,7 @@ impl SharedBus {
                 .cloned()
                 .collect();
             for s in &subs {
-                s.holds.fetch_add(1, Ordering::Relaxed);
+                *st.holds.entry(s.id).or_insert(0) += 1;
             }
             st.in_flight += 1;
             subs
@@ -284,8 +305,9 @@ impl SharedBus {
     /// Returns [`BusError::Context`] with Go's `ctx.Err()` text if `ctx`
     /// is done before the async drain finishes; the bus is closed either
     /// way, and no sync handler is running. Async dispatch has not
-    /// landed, so today this always returns `Ok`. Safe to call more than
-    /// once. See the [type docs](SharedBus) for calls from a handler.
+    /// landed, so today this always returns `Ok`. With `ctx` already done
+    /// and nothing to drain it returns `Ok`, where Go's `select` picks at
+    /// random. Safe to call more than once. See the [type docs](SharedBus) for calls from a handler.
     pub fn close_ctx(&self, ctx: &Context) -> Result<(), BusError> {
         let inner = &*self.0;
         let own = own_frames(inner.id);
@@ -339,6 +361,7 @@ impl Inner {
             if let Some(e) = ctx.err() {
                 return (st, Err(e));
             }
+            st.drain_waiters += 1;
             st = match ctx.deadline() {
                 Some(d) => {
                     let left = d.saturating_duration_since(super::context::now());
@@ -347,6 +370,7 @@ impl Inner {
                 }
                 None => self.idle.wait(st).unwrap_or_else(PoisonError::into_inner),
             };
+            st.drain_waiters -= 1;
         }
     }
 
@@ -391,7 +415,12 @@ impl Drop for InFlight<'_> {
         {
             let mut st = self.inner.lock();
             for s in &self.subs {
-                s.holds.fetch_sub(1, Ordering::Relaxed);
+                if let Some(n) = st.holds.get_mut(&s.id) {
+                    *n -= 1;
+                    if *n == 0 {
+                        st.holds.remove(&s.id);
+                    }
+                }
             }
             st.in_flight -= 1;
         }

@@ -76,11 +76,15 @@ released. Unsubscribe and close wait on that count.
   with no deadline, which is Go's `mu.Lock()`. The context bounds only
   the async drain that follows; that drain is empty until async
   dispatch lands. When close returns, no sync handler is running.
+  With the context already done and nothing left to drain, Go's
+  `select` returns nil or `ctx.Err()` at random; Rust returns `Ok`.
 - Unsubscribe waits for the in-flight publishes that matched the
   subscription, not for every in-flight publish as Go's lock does. It
-  gives Go's guarantee: on return, the handler is neither running nor
-  about to run. It can return while an unrelated handler is still
-  running, which Go's cannot.
+  waits even when it returns `false` because close or another
+  unsubscribe removed the subscription first, since Go's closure takes
+  the lock either way. It gives Go's guarantee: on return, the handler
+  is neither running nor about to run. It can return while an
+  unrelated handler is still running, which Go's cannot.
 - Re-entrancy, where Go deadlocks on everything but a nested publish:
   - Waits skip the calling thread's own in-flight publishes.
   - Unsubscribe from a handler does not wait for other threads. It takes

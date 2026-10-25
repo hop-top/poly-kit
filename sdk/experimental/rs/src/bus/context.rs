@@ -19,10 +19,12 @@
 //!   called, or when a waiter's timeout fires. Every observable result
 //!   is the same.
 //! - Go's cancellation is pushed down the tree as it happens; here it is
-//!   worked out on demand. Each cause records when it happened (a
-//!   cancel, the instant of the call; a deadline, the deadline itself)
-//!   and [`Context::err`] reports the earliest along the chain, which is
-//!   the error Go would have propagated first.
+//!   worked out on demand. Each cause records when it happened: a
+//!   cancel, the instant of the call; a deadline, the deadline itself,
+//!   or the instant the context was derived if that is later (Go fires
+//!   a past deadline at derivation, after taking the parent's cause).
+//!   [`Context::err`] reports the earliest along the chain, the ancestor
+//!   on a tie, which is the error Go would have propagated first.
 //!
 //! # wasm32-unknown-unknown
 //!
@@ -77,6 +79,8 @@ enum Kind {
     Cancel {
         state: Arc<CancelState>,
         deadline: Option<Instant>,
+        /// When the node was derived; `None` on wasm (no deadlines).
+        created: Option<Instant>,
     },
     Value(Box<dyn Any + Send + Sync>),
 }
@@ -209,10 +213,16 @@ impl Context {
     fn cause(&self) -> Option<Cause> {
         self.nodes()
             .flat_map(|n| match &n.kind {
-                Kind::Cancel { state, deadline } => {
+                Kind::Cancel {
+                    state,
+                    deadline,
+                    created,
+                } => {
+                    // A deadline already past at derivation fires at
+                    // derivation, after any cause the parent already had.
                     let passed = deadline
                         .filter(|d| deadline_passed(Some(*d)))
-                        .map(|d| (ContextError::DeadlineExceeded, Some(d)));
+                        .map(|d| (ContextError::DeadlineExceeded, Some(d).max(*created)));
                     [state.err(), passed]
                 }
                 Kind::Value(_) => [None, None],
@@ -257,6 +267,7 @@ impl Context {
         let ctx = self.child(Kind::Cancel {
             state: Arc::clone(&state),
             deadline,
+            created: deadline.and_then(|_| stamp_now()),
         });
         let handle = CancelHandle {
             state,

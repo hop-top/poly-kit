@@ -106,6 +106,26 @@ fn parent_cancel_before_child_deadline_reports_canceled() {
 }
 
 #[test]
+fn past_deadline_under_a_canceled_parent_reports_canceled() {
+    // Go's WithDeadline propagates the parent's cancel before it fires a
+    // deadline that is already past, even one earlier than the cancel.
+    let past = Instant::now();
+    let (parent, cancel) = Context::background().with_cancel();
+    cancel.cancel();
+    let (child, _c) = parent.with_deadline(past);
+    assert_eq!(child.err(), Some(ContextError::Canceled));
+}
+
+#[test]
+fn past_deadline_under_a_live_parent_wins_over_a_later_cancel() {
+    let past = Instant::now();
+    let (parent, cancel) = Context::background().with_cancel();
+    let (child, _c) = parent.with_deadline(past);
+    cancel.cancel();
+    assert_eq!(child.err(), Some(ContextError::DeadlineExceeded));
+}
+
+#[test]
 fn deadline_is_the_earliest_in_the_chain() {
     let soon = Instant::now() + Duration::from_secs(60);
     let later = soon + Duration::from_secs(60);
