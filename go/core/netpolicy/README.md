@@ -52,3 +52,4 @@ websocket) are in `example_dialer_test.go`.
 
 - [cli-parity-guide.md](../../../docs/adopters/guides/cli-parity-guide.md), "Global Flags"
 - [architecture.md](../../../docs/contributors/architecture/architecture.md), security surface map
+- [contracts/netpolicy-v1](../../../contracts/netpolicy-v1/README.md): shared loopback, dial and refusal vectors (Go and Rust runners)
