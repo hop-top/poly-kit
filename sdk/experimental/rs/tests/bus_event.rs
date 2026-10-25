@@ -196,16 +196,15 @@ fn qualifiers_from_non_object_returns_none() {
 /// qualifiers; the subscriber extracts them via `qualifiers_from`.
 #[test]
 fn qualifiers_publish_subscribe_round_trip() {
-    use std::cell::RefCell;
-    use std::rc::Rc;
+    use std::sync::{Arc, Mutex};
 
     let mut bus = Bus::builder().enforce(Mode::Strict).build();
     let topic = Topic::from("kit.config.snapshot.failed");
 
-    let got: Rc<RefCell<Option<Qualifiers>>> = Rc::new(RefCell::new(None));
-    let sink = Rc::clone(&got);
+    let got: Arc<Mutex<Option<Qualifiers>>> = Arc::new(Mutex::new(None));
+    let sink = Arc::clone(&got);
     bus.subscribe(topic.as_str(), move |e| {
-        *sink.borrow_mut() = qualifiers_from(&e.payload);
+        *sink.lock().unwrap() = qualifiers_from(&e.payload);
         Ok(())
     });
 
@@ -225,7 +224,8 @@ fn qualifiers_publish_subscribe_round_trip() {
     bus.publish(&event).expect("publish");
 
     let q = got
-        .borrow()
+        .lock()
+        .unwrap()
         .clone()
         .expect("subscriber extracted qualifiers");
     assert_eq!(q.reason, "sighup");

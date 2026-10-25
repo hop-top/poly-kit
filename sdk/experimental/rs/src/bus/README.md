@@ -42,7 +42,8 @@ bus.publish(&event).unwrap();
   be last.
 - `Mode` defaults to `Warn` (validate, report, still deliver); `Strict` rejects; `Off` skips validation.
 - Dispatch is synchronous: handlers run inline in subscription order on the publisher's thread and the
-  first handler error vetoes the publish. `Bus` is `Rc`-backed and `!Send`.
+  first handler error vetoes the publish. `Bus` and `SharedBus` are `Send + Sync`, handlers must be too;
+  a handler may publish, subscribe or unsubscribe on the `SharedBus` dispatching to it.
 - `publish` after `close` is `BusError::Closed`.
 - Parity: [event-topics.md](../../../../../docs/contracts/event-topics.md); the topic grammar is the
   parity obligation, there is no loaded fixture row.

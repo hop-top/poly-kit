@@ -1,6 +1,6 @@
 //! In-memory pub/sub dispatch.
 //!
-//! # Dispatch model: synchronous, single-threaded
+//! # Dispatch model: synchronous, thread-safe
 //!
 //! The Go canonical runtime (`go/runtime/bus/bus.go`) splits subscribers
 //! into two kinds. Sync handlers run inline and may veto the publish;
@@ -12,10 +12,9 @@
 //! networked, multi-threaded Rust consumer needs it. The plan, in
 //! `docs/contributors/architecture/rust-bus-parity.md`, is:
 //!
-//! - a thread-safe bus core and an async dispatch path with a bounded
-//!   pool and a draining close, with tokio behind its own feature so the
-//!   `bus` feature and the `wasm32-unknown-unknown` build stay free of an
-//!   async runtime;
+//! - an async dispatch path with a bounded pool and a draining close,
+//!   with tokio behind its own feature so the `bus` feature and the
+//!   `wasm32-unknown-unknown` build stay free of an async runtime;
 //! - the network adapter and the adapter seam it plugs into behind
 //!   their own features.
 //!
@@ -27,13 +26,31 @@
 //! Consequence to be aware of: a slow handler blocks the publisher, and
 //! [`Bus::publish`] returns only once every matching subscriber has run.
 //!
+//! # Threads and re-entrancy
+//!
+//! [`Bus`] and [`SharedBus`] are `Send + Sync`, and so must handlers and
+//! reporters be. Publishing from several threads at once is allowed, as
+//! in Go.
+//!
+//! A handler may publish on the bus that is dispatching to it. As in Go,
+//! the inner publish delivers to every matching subscriber and returns
+//! before the outer dispatch moves on, and its veto reaches the handler
+//! as an ordinary error. [`SharedBus`] snapshots the matching handlers
+//! under its lock and runs them with the lock released, so a handler may
+//! also subscribe or unsubscribe re-entrantly. Go deadlocks there,
+//! because its sync handlers run under the read lock. The snapshot has a
+//! cost Go does not: [`SharedBus::unsubscribe`] and [`SharedBus::close`]
+//! do not wait for a publish already dispatching on another thread, so a
+//! removed handler may still run after they return. Go's write lock
+//! waits for in-flight sync dispatch; a draining close is planned with
+//! async dispatch.
+//!
 //! Everything else is behaviour-preserving against Go: subscription
 //! identity and removal, first-error veto semantics, publish-after-close
 //! rejection, and the [`Mode`] enforcement ladder.
 
-use std::cell::RefCell;
 use std::fmt;
-use std::rc::Rc;
+use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::event::Event;
 use super::topic::{validate, InvalidTopicError, Topic};
@@ -41,11 +58,16 @@ use super::topic::{validate, InvalidTopicError, Topic};
 /// A synchronous event handler. Returning an error vetoes the publish —
 /// no further handler runs for that event, and the error surfaces to the
 /// publisher.
-pub type Handler = Box<dyn Fn(&Event) -> Result<(), BusError>>;
+pub type Handler = Box<dyn Fn(&Event) -> Result<(), BusError> + Send + Sync>;
 
 /// Receives errors from non-critical operations (e.g. topic-naming
 /// violations in [`Mode::Warn`]).
-pub type ErrFn = Box<dyn Fn(&BusError)>;
+pub type ErrFn = Box<dyn Fn(&BusError) + Send + Sync>;
+
+/// Reference-counted forms of [`Handler`] and [`ErrFn`], so a dispatch
+/// can run them after the bus lock is released.
+type SharedHandler = Arc<dyn Fn(&Event) -> Result<(), BusError> + Send + Sync>;
+type SharedErrFn = Arc<dyn Fn(&BusError) + Send + Sync>;
 
 /// Controls how the bus enforces topic naming on publish.
 ///
@@ -131,18 +153,18 @@ pub struct SubscriptionId(u64);
 struct Subscription {
     id: SubscriptionId,
     pattern: String,
-    handler: Handler,
+    handler: SharedHandler,
 }
 
 /// In-memory publish/subscribe bus.
 ///
-/// See the [module docs](self) for why dispatch is synchronous.
+/// See the [module docs](self) for the dispatch model.
 pub struct Bus {
     subs: Vec<Subscription>,
     next_id: u64,
     closed: bool,
     enforce: Mode,
-    on_invalid: Option<ErrFn>,
+    on_invalid: Option<SharedErrFn>,
 }
 
 impl Default for Bus {
@@ -175,30 +197,35 @@ impl Bus {
     pub fn subscribe(
         &mut self,
         pattern: impl Into<String>,
-        handler: impl Fn(&Event) -> Result<(), BusError> + 'static,
+        handler: impl Fn(&Event) -> Result<(), BusError> + Send + Sync + 'static,
     ) -> SubscriptionId {
         let id = SubscriptionId(self.next_id);
         self.next_id += 1;
         self.subs.push(Subscription {
             id,
             pattern: pattern.into(),
-            handler: Box::new(handler),
+            handler: Arc::new(handler),
         });
         id
     }
 
     /// Removes a subscription. Returns whether it was found.
     pub fn unsubscribe(&mut self, id: SubscriptionId) -> bool {
-        let before = self.subs.len();
-        self.subs.retain(|s| s.id != id);
-        self.subs.len() != before
+        self.take_subscription(id).is_some()
+    }
+
+    /// Removes a subscription and hands it back, so a caller holding a
+    /// lock can drop the handler (and its captures) after releasing it.
+    fn take_subscription(&mut self, id: SubscriptionId) -> Option<Subscription> {
+        let i = self.subs.iter().position(|s| s.id == id)?;
+        Some(self.subs.remove(i))
     }
 
     /// Delivers `event` to every matching subscriber, in subscription
     /// order. The first handler error vetoes the publish: no later
     /// handler runs, and the error is returned.
     pub fn publish(&self, event: &Event) -> Result<(), BusError> {
-        self.check_topic(&event.topic)?;
+        check_topic(self.enforce, self.on_invalid.as_ref(), &event.topic)?;
         if self.closed {
             return Err(BusError::Closed);
         }
@@ -214,12 +241,20 @@ impl Bus {
     /// subscription.
     ///
     /// Go's `Close` also drains in-flight async handlers under a caller
-    /// deadline. With synchronous dispatch there is nothing in flight —
-    /// `publish` has already returned by the time `close` can be called —
-    /// so this takes no context and cannot time out.
+    /// deadline. With synchronous dispatch on a plain `Bus` there is
+    /// nothing in flight — `close` takes `&mut self`, so every `publish`
+    /// has already returned — and this takes no context and cannot time
+    /// out. [`SharedBus::close`] is the exception: a publish on another
+    /// thread may still be running its handlers when it returns.
     pub fn close(&mut self) {
+        drop(self.take_all());
+    }
+
+    /// Closes the bus and hands back the dropped subscriptions; see
+    /// [`Bus::take_subscription`].
+    fn take_all(&mut self) -> Vec<Subscription> {
         self.closed = true;
-        self.subs.clear();
+        std::mem::take(&mut self.subs)
     }
 
     /// Reports whether [`Bus::close`] has been called.
@@ -232,30 +267,74 @@ impl Bus {
         self.enforce
     }
 
-    /// Applies the configured enforcement mode to `t`. The single point
-    /// where publish enforces topic naming.
-    ///
-    /// - [`Mode::Off`]: returns `Ok`; the reporter is not invoked.
-    /// - [`Mode::Warn`]: invokes the reporter on failure, returns `Ok` so
-    ///   the publish proceeds.
-    /// - [`Mode::Strict`]: invokes the reporter on failure and returns
-    ///   the error so the publish is aborted.
-    fn check_topic(&self, t: &Topic) -> Result<(), BusError> {
-        if self.enforce == Mode::Off {
-            return Ok(());
-        }
-        let Err(e) = validate(t) else {
-            return Ok(());
+    /// Captures what a publish of `event` needs, so a caller holding a
+    /// lock around the bus can release it before any handler runs.
+    fn dispatch(&self, event: &Event) -> Dispatch {
+        let handlers = if self.closed {
+            Vec::new()
+        } else {
+            self.subs
+                .iter()
+                .filter(|s| event.topic.matches(&s.pattern))
+                .map(|s| Arc::clone(&s.handler))
+                .collect()
         };
-        let err = BusError::InvalidTopic(e);
-        if let Some(reporter) = &self.on_invalid {
-            reporter(&err);
+        Dispatch {
+            enforce: self.enforce,
+            on_invalid: self.on_invalid.clone(),
+            closed: self.closed,
+            handlers,
         }
-        if self.enforce == Mode::Strict {
-            return Err(err);
+    }
+}
+
+/// One publish captured from a [`Bus`]: its enforcement settings and
+/// the matching handlers, in subscription order.
+struct Dispatch {
+    enforce: Mode,
+    on_invalid: Option<SharedErrFn>,
+    closed: bool,
+    handlers: Vec<SharedHandler>,
+}
+
+impl Dispatch {
+    /// Checks the topic, then the closed flag, then runs the handlers
+    /// until the first veto. Same order as Go's `Publish`.
+    fn run(self, event: &Event) -> Result<(), BusError> {
+        check_topic(self.enforce, self.on_invalid.as_ref(), &event.topic)?;
+        if self.closed {
+            return Err(BusError::Closed);
+        }
+        for h in &self.handlers {
+            h(event)?;
         }
         Ok(())
     }
+}
+
+/// Applies the enforcement mode `enforce` to `t`. The single point where
+/// publish enforces topic naming.
+///
+/// - [`Mode::Off`]: returns `Ok`; the reporter is not invoked.
+/// - [`Mode::Warn`]: invokes the reporter on failure, returns `Ok` so
+///   the publish proceeds.
+/// - [`Mode::Strict`]: invokes the reporter on failure and returns the
+///   error so the publish is aborted.
+fn check_topic(enforce: Mode, on_invalid: Option<&SharedErrFn>, t: &Topic) -> Result<(), BusError> {
+    if enforce == Mode::Off {
+        return Ok(());
+    }
+    let Err(e) = validate(t) else {
+        return Ok(());
+    };
+    let err = BusError::InvalidTopic(e);
+    if let Some(reporter) = on_invalid {
+        reporter(&err);
+    }
+    if enforce == Mode::Strict {
+        return Err(err);
+    }
+    Ok(())
 }
 
 /// Builds a [`Bus`] with non-default options. The analogue of Go's
@@ -263,7 +342,7 @@ impl Bus {
 #[derive(Default)]
 pub struct BusBuilder {
     enforce: Option<Mode>,
-    on_invalid: Option<ErrFn>,
+    on_invalid: Option<SharedErrFn>,
 }
 
 impl BusBuilder {
@@ -278,8 +357,8 @@ impl BusBuilder {
     /// fails validation. In [`Mode::Warn`] the reporter fires and the
     /// event is still delivered; in [`Mode::Strict`] it fires and publish
     /// also returns the error.
-    pub fn invalid_topic_reporter(mut self, f: impl Fn(&BusError) + 'static) -> Self {
-        self.on_invalid = Some(Box::new(f));
+    pub fn invalid_topic_reporter(mut self, f: impl Fn(&BusError) + Send + Sync + 'static) -> Self {
+        self.on_invalid = Some(Arc::new(f));
         self
     }
 
@@ -300,48 +379,75 @@ impl BusBuilder {
 /// Subscribing needs `&mut Bus` while publishing needs `&Bus`, which is
 /// awkward when a handler is registered from one place and events are
 /// published from another. `SharedBus` hands out cheap clones over a
-/// single `RefCell`, keeping the borrow window to a single call.
+/// single `Arc<RwLock<Bus>>`, keeping the lock window to a single call.
 ///
-/// Single-threaded by construction (`Rc`/`RefCell`), matching the
-/// synchronous dispatch model described in the [module docs](self).
+/// `publish` holds the lock only while it snapshots the matching
+/// handlers, and runs them with the lock released, so a handler may
+/// publish, subscribe or unsubscribe on the same `SharedBus`. See the
+/// [module docs](self#threads-and-re-entrancy).
 #[derive(Clone, Default)]
-pub struct SharedBus(Rc<RefCell<Bus>>);
+pub struct SharedBus(Arc<RwLock<Bus>>);
 
 impl SharedBus {
     /// Wraps `bus` for shared access.
     pub fn new(bus: Bus) -> Self {
-        SharedBus(Rc::new(RefCell::new(bus)))
+        SharedBus(Arc::new(RwLock::new(bus)))
     }
 
     /// Registers a handler. See [`Bus::subscribe`].
     pub fn subscribe(
         &self,
         pattern: impl Into<String>,
-        handler: impl Fn(&Event) -> Result<(), BusError> + 'static,
+        handler: impl Fn(&Event) -> Result<(), BusError> + Send + Sync + 'static,
     ) -> SubscriptionId {
-        self.0.borrow_mut().subscribe(pattern, handler)
+        self.write().subscribe(pattern, handler)
     }
 
     /// Removes a subscription. See [`Bus::unsubscribe`].
+    ///
+    /// Unlike Go, this does not wait for a publish already dispatching on
+    /// another thread: that publish took its snapshot first, so the
+    /// handler may still run, or be running, after this returns. The
+    /// handler is dropped once the lock is released.
     pub fn unsubscribe(&self, id: SubscriptionId) -> bool {
-        self.0.borrow_mut().unsubscribe(id)
+        let removed = self.write().take_subscription(id);
+        removed.is_some()
     }
 
     /// Publishes an event. See [`Bus::publish`].
     ///
-    /// The inner borrow is held for the whole dispatch, so a handler must
-    /// not publish re-entrantly on the same `SharedBus`.
+    /// The reporter and handlers run after the lock is released, so they
+    /// may re-enter this `SharedBus`.
     pub fn publish(&self, event: &Event) -> Result<(), BusError> {
-        self.0.borrow().publish(event)
+        let dispatch = self.read().dispatch(event);
+        dispatch.run(event)
     }
 
     /// Closes the bus. See [`Bus::close`].
+    ///
+    /// Later publishes fail with [`BusError::Closed`], but unlike Go this
+    /// does not wait for a publish already dispatching on another thread:
+    /// its handlers may still run after this returns. Handlers are dropped
+    /// once the lock is released.
     pub fn close(&self) {
-        self.0.borrow_mut().close();
+        let removed = self.write().take_all();
+        drop(removed);
     }
 
     /// Reports whether the bus is closed.
     pub fn is_closed(&self) -> bool {
-        self.0.borrow().is_closed()
+        self.read().is_closed()
+    }
+
+    // No handler, reporter or handler drop runs under the lock, and every
+    // update to the guarded `Bus` completes before user code can run, so
+    // a poisoned lock never holds a half-applied change: recover the
+    // guard.
+    fn read(&self) -> RwLockReadGuard<'_, Bus> {
+        self.0.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn write(&self) -> RwLockWriteGuard<'_, Bus> {
+        self.0.write().unwrap_or_else(PoisonError::into_inner)
     }
 }

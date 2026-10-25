@@ -43,12 +43,37 @@ pub struct Event {
 }
 
 impl Event {
-    /// Creates an [`Event`] stamped with the current time.
+    /// Creates an [`Event`] stamped with the current time. The analogue
+    /// of Go's `NewEvent`.
+    ///
+    /// Not available on `wasm32-unknown-unknown`: that target has no
+    /// system clock, and [`SystemTime::now`] panics there at run time.
+    /// Use [`Event::new_at`] with a time from the host (for example
+    /// `Date.now()` in a browser) instead.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    // The one sanctioned clock read in the bus: compiled out on
+    // wasm32-unknown-unknown, where CI denies `SystemTime::now`.
+    #[allow(clippy::disallowed_methods)]
     pub fn new(topic: impl Into<Topic>, source: impl Into<String>, payload: Value) -> Self {
+        Self::new_at(topic, source, payload, SystemTime::now())
+    }
+
+    /// Creates an [`Event`] stamped with `at`.
+    ///
+    /// The clock seam: Go's `NewEvent` reads `time.Now()`, and Go callers
+    /// that need another instant set `Timestamp` on the struct. This is
+    /// the Rust form of that, on every target. Instants before the Unix
+    /// epoch are stamped as the epoch.
+    pub fn new_at(
+        topic: impl Into<Topic>,
+        source: impl Into<String>,
+        payload: Value,
+        at: SystemTime,
+    ) -> Self {
         Event {
             topic: topic.into(),
             source: source.into(),
-            timestamp: now_rfc3339(),
+            timestamp: format_rfc3339(at),
             payload,
             workspace_id: String::new(),
         }
@@ -61,15 +86,13 @@ impl Event {
     }
 }
 
-/// Formats the current instant as `YYYY-MM-DDTHH:MM:SS.sssZ`.
+/// Formats `at` as `YYYY-MM-DDTHH:MM:SS.sssZ`.
 ///
 /// Hand-rolled rather than pulling in `chrono`/`time`: the bus needs one
 /// UTC timestamp format and nothing else from a date library, and the
 /// `bus` feature is meant to stay dependency-light.
-fn now_rfc3339() -> String {
-    let d = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
+fn format_rfc3339(at: SystemTime) -> String {
+    let d = at.duration_since(UNIX_EPOCH).unwrap_or_default();
     format_epoch(d.as_secs(), d.subsec_millis())
 }
 
