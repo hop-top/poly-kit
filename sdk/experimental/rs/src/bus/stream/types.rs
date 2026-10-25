@@ -21,7 +21,12 @@ pub const DEAD_AFTER_HEARTBEATS: u32 = 3;
 pub const CLOSE_PROTOCOL: u16 = 1002;
 /// WebSocket close status for a refused handshake.
 pub const CLOSE_POLICY: u16 = 1008;
-/// WebSocket close status for a dead link.
+/// WebSocket close status for a normal close (disconnect, duplicate).
+pub const CLOSE_NORMAL: u16 = 1000;
+/// Consecutive write failures that close a legacy link without the
+/// outbox; a stream or outbox link closes on the first.
+pub const MAX_WRITE_FAILURES: u32 = 3;
+/// WebSocket close status for a dead link or failed writes.
 pub const CLOSE_GOING_AWAY: u16 = 1001;
 
 /// What a dialer asks of one outbound address.
@@ -172,7 +177,20 @@ pub enum HandshakeError {
     AuthRejected,
     /// No ack before the transport's timeout. Retried.
     AckTimeout,
+    /// The reply belongs to another handshake, or to one already failed:
+    /// nothing changes and nothing is published.
+    Stale,
+    /// A dial or a link is already in progress for this address.
+    Busy,
+    /// The address was forgotten by `disconnect`; it is never dialed
+    /// again.
+    Disconnected(String),
 }
+
+/// Identifies one dial of an address: replies are applied only to the
+/// dial in progress with the same id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct HandshakeId(pub(super) u64);
 
 impl HandshakeError {
     /// The code reported in `link.disconnected`.
@@ -182,6 +200,9 @@ impl HandshakeError {
             HandshakeError::Protocol(_) => "protocol",
             HandshakeError::AuthRejected => "auth",
             HandshakeError::AckTimeout => "timeout",
+            HandshakeError::Stale => "stale",
+            HandshakeError::Busy => "busy",
+            HandshakeError::Disconnected(_) => "disconnected",
         }
     }
 
@@ -189,7 +210,9 @@ impl HandshakeError {
     pub fn is_final(&self) -> bool {
         matches!(
             self,
-            HandshakeError::Session(_) | HandshakeError::Protocol(_)
+            HandshakeError::Session(_)
+                | HandshakeError::Protocol(_)
+                | HandshakeError::Disconnected(_)
         )
     }
 }
@@ -202,6 +225,11 @@ impl fmt::Display for HandshakeError {
             HandshakeError::AuthRejected => f.write_str("bus: network auth failed"),
             HandshakeError::AckTimeout => {
                 f.write_str("bus: network auth failed: no ack before the timeout")
+            }
+            HandshakeError::Stale => f.write_str("bus: stale handshake reply"),
+            HandshakeError::Busy => f.write_str("bus: a dial of this address is in progress"),
+            HandshakeError::Disconnected(addr) => {
+                write!(f, "bus: address disconnected during connect: {addr}")
             }
         }
     }
@@ -320,6 +348,8 @@ pub enum RequestError {
     StreamsUnsupported,
     /// The link closed before the reply.
     LinkClosed,
+    /// The address was forgotten by `disconnect`.
+    Disconnected(String),
 }
 
 impl fmt::Display for RequestError {
@@ -331,6 +361,9 @@ impl fmt::Display for RequestError {
             RequestError::Stream(e) => e.fmt(f),
             RequestError::StreamsUnsupported => f.write_str("bus: peer does not support streams"),
             RequestError::LinkClosed => f.write_str("bus: link closed before the reply"),
+            RequestError::Disconnected(addr) => {
+                write!(f, "bus: address disconnected during connect: {addr}")
+            }
         }
     }
 }

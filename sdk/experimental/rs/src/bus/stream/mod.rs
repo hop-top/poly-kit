@@ -33,6 +33,7 @@ mod ack;
 mod client;
 mod control;
 mod cursor;
+mod dial;
 mod error;
 mod handshake;
 mod log;
@@ -71,9 +72,9 @@ pub use log::{
 pub use subs::{entry_delivers, SubState, Subscription};
 pub use types::{
     ClientConfig, CloseFrame, Delivery, DeliveryMarker, Disconnected, EventFrame, HandshakeError,
-    HandshakeFailure, Inbound, LinkDown, LinkFailure, LinkState, LinkUp, Request, RequestError,
-    StreamPosition, CLOSE_GOING_AWAY, CLOSE_POLICY, CLOSE_PROTOCOL, DEAD_AFTER_HEARTBEATS,
-    DEFAULT_MAX_SUBSCRIPTIONS,
+    HandshakeFailure, HandshakeId, Inbound, LinkDown, LinkFailure, LinkState, LinkUp, Request,
+    RequestError, StreamPosition, CLOSE_GOING_AWAY, CLOSE_NORMAL, CLOSE_POLICY, CLOSE_PROTOCOL,
+    DEAD_AFTER_HEARTBEATS, DEFAULT_MAX_SUBSCRIPTIONS, MAX_WRITE_FAILURES,
 };
 pub use wire::{
     format_offset, parse_offset, parse_offset_token, valid_stream_id, validate_pattern, Members,

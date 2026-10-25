@@ -10,7 +10,7 @@ mod bus_stream_support;
 use bus_stream_support::client::*;
 use hop_top_kit::bus::stream::{
     ClientConfig, Delivery, HandshakeError, Inbound, LinkResume, LogEntry, ProtocolKind, RingLog,
-    StreamLog, StreamPosition, CLOSE_PROTOCOL,
+    StreamClient, StreamLog, StreamPosition, CLOSE_PROTOCOL,
 };
 use serde_json::json;
 
@@ -29,12 +29,14 @@ fn resume_replays_missed_in_order() {
         },
         &log,
     );
+    let (id, f) = auth_frame(&mut c);
     assert_eq!(
-        auth_frame(&mut c)["session"]["resume"],
+        f["session"]["resume"],
         json!({"stream": "S", "after": "41"})
     );
     let up = c
         .on_ack(
+            id,
             &ack(
                 17,
                 57,
@@ -90,6 +92,85 @@ fn resume_out_of_range_sends_reset() {
     assert_eq!(c.position().unwrap().offset, 57);
 }
 
+fn seeded(stream: &str, offset: u64, log: &RingLog, handshake: bool) -> StreamClient {
+    let seed = StreamPosition {
+        peer: ADDR.into(),
+        stream: stream.into(),
+        offset,
+    };
+    let cfg = ClientConfig {
+        resume_from: Some(seed),
+        handshake,
+        ..cfg()
+    };
+    client(cfg, log)
+}
+
+#[test]
+fn resume_ahead_reset_moves_position_to_head() {
+    let log = log();
+    let mut c = seeded("S", 99, &log, true);
+    let reset = json!({"status": "reset", "reason": "ahead", "after": "99", "head": "3"});
+    let up = connect(&mut c, &log, &ack(1, 3, Some(reset)));
+    assert_eq!(up.invalidated.unwrap().reason, "ahead");
+    assert_eq!(c.position().unwrap().offset, 3);
+    let t = "acme.crm.deal.updated";
+    match recv_event(&mut c, &kit_frame(t, "4"), "hub", t) {
+        Delivery::Deliver(Some(p)) => assert_eq!(p.offset, 4),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn resume_stream_restart_sends_reset() {
+    let log = log();
+    let mut c = seeded("stm_gone", 4, &log, true);
+    let reset = json!({"status": "reset", "reason": "stream", "after": "4", "head": "0"});
+    let up = connect(&mut c, &log, &ack(1, 0, Some(reset)));
+    assert_eq!(up.state.resume, Some(LinkResume::Reset));
+    assert_eq!(up.connected_payload(ADDR)["resume"], "reset");
+    let g = up.invalidated.unwrap();
+    assert_eq!((g.reason.as_str(), g.stream.as_str()), ("stream", "S"));
+}
+
+#[test]
+fn resume_first_connect_to_legacy_with_position_invalidates() {
+    let log = log();
+    let mut c = seeded("stm_x", 7, &log, false);
+    let id = c.begin_legacy().unwrap();
+    let up = c.link_up_legacy(id, &log).unwrap();
+    assert_eq!(up.state.resume, Some(LinkResume::Unsupported));
+    let p = up.invalidated.unwrap().payload(ADDR);
+    assert_eq!(
+        (p["reason"].as_str(), p["stream"].as_str()),
+        (Some("unsupported"), Some(""))
+    );
+    assert_eq!(c.position(), None, "a legacy link clears the position");
+}
+
+#[test]
+fn outbox_offline_start_keeps_events() {
+    let mut log = log();
+    let mut c = client(
+        ClientConfig {
+            outbox: true,
+            ..cfg()
+        },
+        &log,
+    );
+    log.append(event("acme.crm.deal.created"));
+    log.append(event("acme.crm.deal.updated"));
+    // The hub refuses the first dials; events wait in the outbox.
+    let id = hs(&mut c);
+    c.on_ack(id, br#"{"type":"auth_no"}"#, &log).unwrap_err();
+    assert_eq!(c.next_batch(&log), None);
+    connect(&mut c, &log, &ack(1, 0, None));
+    assert_eq!(
+        topics(&mut c, &log),
+        ["acme.crm.deal.created", "acme.crm.deal.updated"]
+    );
+}
+
 #[test]
 fn resume_reconnect_to_legacy_invalidates() {
     let log = log();
@@ -106,9 +187,10 @@ fn resume_reconnect_to_legacy_invalidates() {
 fn resume_unrequested_outcome_is_final() {
     let log = log();
     let mut c = client(cfg(), &log);
-    c.begin_handshake("open");
+    let id = hs(&mut c);
     let f = c
         .on_ack(
+            id,
             &ack(
                 1,
                 57,
@@ -132,7 +214,7 @@ fn stream_dead_link_detected_after_three_silent_ticks() {
     assert_eq!(c.heartbeat_tick(), None);
     let close = c.heartbeat_tick().expect("dead after three silent ticks");
     assert_eq!(close.reason, "heartbeat timeout");
-    let down = c.link_down();
+    let down = c.link_down().expect("link was up");
     assert_eq!(
         down.disconnected.payload(),
         json!({"peer": ADDR, "final": false, "code": "timeout"})
@@ -163,7 +245,7 @@ fn stream_missing_offset_is_a_protocol_error() {
     let fail = c.on_event(f.offset_member(), "hub", "a.b.c.d").unwrap_err();
     assert_eq!(fail.error.kind, ProtocolKind::Offset);
     assert_eq!(fail.close.status, CLOSE_PROTOCOL);
-    let down = c.link_down();
+    let down = c.link_down().expect("link was up");
     assert_eq!(down.disconnected.code, "protocol");
     assert!(
         down.reconnect,
@@ -198,8 +280,8 @@ fn stream_disconnect_is_final() {
     let log = log();
     let mut c = client(cfg(), &log);
     connect(&mut c, &log, &ack(1, 0, None));
-    c.mark_final("");
-    let down = c.link_down();
+    c.disconnect();
+    let down = c.link_down().expect("link was up");
     assert!(down.disconnected.is_final && !down.reconnect);
 }
 

@@ -1,6 +1,6 @@
 //! The stream handshake: capabilities, the dialer's auth frame, the
-//! heartbeat bounds and format negotiation (the ack is in `ack.rs`). It rides the auth exchange;
-//! legacy peers ignore every key it adds.
+//! heartbeat bounds and format negotiation (the ack is in `ack.rs`). It
+//! rides the auth exchange; legacy peers ignore every key it adds.
 
 use serde::Serialize;
 use serde_json::Value;

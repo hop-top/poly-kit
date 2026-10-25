@@ -4,16 +4,21 @@
 //! The transport owns the socket, the timers and the local bus; the
 //! client owns every decision. One address, in order:
 //!
-//! 1. [`StreamClient::begin_handshake`] returns the auth frame to send;
-//!    the reply goes to [`StreamClient::on_ack`] (or
-//!    [`StreamClient::handshake_failed`] on a timeout or a 1008 close).
-//!    Without an authenticator, [`StreamClient::link_up_legacy`].
+//! 1. [`StreamClient::begin_handshake`] returns a handshake id and the
+//!    auth frame to send; the reply on that socket goes to
+//!    [`StreamClient::on_ack`] with the id (or
+//!    [`StreamClient::handshake_failed`] on a timeout or a 1008 close). A
+//!    late or stale reply is refused, never applied to a later dial.
+//!    Without an authenticator, [`StreamClient::begin_legacy`] then
+//!    [`StreamClient::link_up_legacy`].
 //! 2. Every received frame goes to [`StreamClient::on_frame`]; a decoded
 //!    event's offset to [`StreamClient::on_event`]. Every heartbeat
 //!    interval, [`StreamClient::heartbeat_tick`].
 //! 3. The writer loops [`StreamClient::next_batch`] over the send log;
-//!    a failed write is [`StreamClient::write_failed`].
-//! 4. When the socket closes, [`StreamClient::link_down`].
+//!    a write is reported by [`StreamClient::write_ok`] or
+//!    [`StreamClient::write_failed`].
+//! 4. When a live link's socket closes, [`StreamClient::link_down`].
+//! 5. [`StreamClient::disconnect`] forgets the address for good.
 //!
 //! It holds no lock and reads no clock; wrap it in the transport's own
 //! synchronisation.
@@ -22,17 +27,17 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use super::ack::{parse_ack, Ack, AuthOk};
+use super::ack::AuthOk;
 use super::control::{dialer_control, CtlRequest, DialerCtl, FrameKind};
 use super::cursor::{DialerCursor, LinkResume};
 use super::error::{ProtocolError, StreamError};
-use super::handshake::{encode_auth_frame, negotiate, ResumeReq, SessionReq};
+use super::handshake::{negotiate, ResumeReq};
 use super::log::{OutboundWriter, StreamLog};
 use super::subs::SubState;
 use super::types::{
     ClientConfig, CloseFrame, Delivery, DeliveryMarker, Disconnected, EventFrame, HandshakeError,
-    HandshakeFailure, Inbound, LinkDown, LinkFailure, LinkState, LinkUp, RequestError,
-    StreamPosition, CLOSE_GOING_AWAY, CLOSE_POLICY, CLOSE_PROTOCOL, DEAD_AFTER_HEARTBEATS,
+    HandshakeFailure, HandshakeId, Inbound, LinkDown, LinkFailure, LinkState, LinkUp, RequestError,
+    StreamPosition, CLOSE_GOING_AWAY, CLOSE_PROTOCOL, DEAD_AFTER_HEARTBEATS,
 };
 use super::{classify_frame, is_reserved_topic};
 use crate::bus::Context;
@@ -48,12 +53,17 @@ pub(super) struct Link {
     seen: u64,
     misses: u32,
     close_code: String,
+    pub(super) closing: bool,
+    pub(super) write_failures: u32,
 }
 
 #[derive(Debug)]
 pub(super) enum Phase {
     Down,
-    Handshaking { sent: Option<ResumeReq> },
+    Handshaking {
+        id: HandshakeId,
+        sent: Option<ResumeReq>,
+    },
     Up(Link),
 }
 
@@ -62,14 +72,16 @@ pub(super) enum Phase {
 #[derive(Debug)]
 pub struct StreamClient {
     pub(super) cfg: ClientConfig,
-    cursor: DialerCursor,
+    pub(super) cursor: DialerCursor,
     pub(super) subs: SubState,
     pub(super) writer: OutboundWriter,
     connected_once: bool,
-    state: LinkState,
+    pub(super) state: LinkState,
     pub(super) phase: Phase,
     pub(super) outbox_dropped: u64,
     pub(super) skipped: u64,
+    pub(super) forgotten: bool,
+    pub(super) next_dial: u64,
 }
 
 impl StreamClient {
@@ -99,6 +111,8 @@ impl StreamClient {
             phase: Phase::Down,
             outbox_dropped: 0,
             skipped: 0,
+            forgotten: false,
+            next_dial: 0,
         }
     }
 
@@ -138,105 +152,25 @@ impl StreamClient {
         self.skipped
     }
 
-    /// Marks the address final with `code` (for example on an explicit
-    /// disconnect, with an empty code): no reconnect follows.
-    pub fn mark_final(&mut self, code: &str) {
-        self.state.is_final = true;
-        if !code.is_empty() {
-            self.state.code = code.to_string();
-        }
-    }
-
     /// A context marked as a delivery from this address's link. Pass it
-    /// to the handlers of every event, invalidation and link event the
-    /// link delivers; a request made with it fails instead of blocking.
+    /// to the handlers the link's reader runs inline (sync handlers and
+    /// observers) for every event, invalidation and `link.connected`: a
+    /// request made with it fails instead of waiting for a reply only the
+    /// caller could read. Handlers that run off the delivering thread
+    /// (async handlers, spawned tasks) must get
+    /// [`StreamClient::clear_delivery`] of it instead, so their requests
+    /// go through.
     pub fn delivery_context(&self, parent: &Context) -> Context {
         parent.with_value(DeliveryMarker(self.cfg.addr.clone()))
     }
 
-    // Handshake.
-
-    /// Starts a handshake: returns the auth frame (caps, origin and the
-    /// session: subscription, scope and resume request).
-    ///
-    /// # Panics
-    ///
-    /// If a handshake or a link is in progress: the transport serialises
-    /// dials of one address.
-    pub fn begin_handshake(&mut self, token: &str) -> Vec<u8> {
-        assert!(
-            matches!(self.phase, Phase::Down),
-            "handshake while a link is in progress"
-        );
-        let sess = SessionReq {
-            subscribe: (!self.subs.implicit).then(|| self.subs.sorted_patterns()),
-            scope: self.subs.scope.clone(),
-            resume: self.cursor.request(),
-        };
-        let frame = encode_auth_frame(token, Some(&self.cfg.caps), &self.cfg.origin, Some(&sess));
-        self.phase = Phase::Handshaking { sent: sess.resume };
-        frame
+    /// `ctx` without the delivery marker: the marker is shadowed by an
+    /// empty one, which matches no address. Use it for async handlers.
+    pub fn clear_delivery(ctx: &Context) -> Context {
+        ctx.with_value(DeliveryMarker(String::new()))
     }
 
-    /// Handles the acceptor's reply to the auth frame.
-    pub fn on_ack(&mut self, data: &[u8], log: &dyn StreamLog) -> Result<LinkUp, HandshakeFailure> {
-        let Phase::Handshaking { sent } = std::mem::replace(&mut self.phase, Phase::Down) else {
-            panic!("ack without a handshake in progress");
-        };
-        let close = |status, reason| Some(CloseFrame { status, reason });
-        match parse_ack(data, self.cfg.caps.streams) {
-            Ok(Ack::AuthOk(a)) => self.link_up(Some(a), sent, log),
-            Ok(Ack::SessionError(e)) => Err(self.fail(
-                HandshakeError::Session(e),
-                close(CLOSE_POLICY, "invalid session"),
-            )),
-            Err(super::AckError::Rejected) => Err(self.fail(
-                HandshakeError::AuthRejected,
-                close(CLOSE_POLICY, "auth rejected"),
-            )),
-            Err(super::AckError::Protocol(p)) => Err(self.fail(
-                HandshakeError::Protocol(p),
-                close(CLOSE_PROTOCOL, "protocol error"),
-            )),
-        }
-    }
-
-    /// Brings up a link without a handshake (no authenticator): a legacy
-    /// link.
-    pub fn link_up_legacy(&mut self, log: &dyn StreamLog) -> Result<LinkUp, HandshakeFailure> {
-        assert!(
-            matches!(self.phase, Phase::Down),
-            "link up while a link is in progress"
-        );
-        self.link_up(None, None, log)
-    }
-
-    /// Records a handshake the transport saw fail: no ack before its
-    /// timeout ([`HandshakeError::AckTimeout`]) or a 1008 close
-    /// ([`HandshakeError::AuthRejected`]).
-    pub fn handshake_failed(&mut self, error: HandshakeError) -> HandshakeFailure {
-        self.phase = Phase::Down;
-        self.fail(error, None)
-    }
-
-    /// Session errors and protocol errors are final; a refused token or
-    /// a missing ack is not. A repeat of the same retrying failure is not
-    /// published again.
-    fn fail(&mut self, error: HandshakeError, close: Option<CloseFrame>) -> HandshakeFailure {
-        let (code, is_final) = (error.code().to_string(), error.is_final());
-        let repeat =
-            !is_final && !self.state.connected && self.state.code == code && !self.state.is_final;
-        self.state.connected = false;
-        self.state.code = code;
-        self.state.is_final = is_final;
-        HandshakeFailure {
-            error,
-            close,
-            publish: !repeat,
-        }
-    }
-
-    fn link_up(
+    pub(super) fn link_up(
         &mut self,
         ack: Option<AuthOk>,
         sent: Option<ResumeReq>,
@@ -289,6 +223,8 @@ impl StreamClient {
             seen: 0,
             misses: 0,
             close_code: String::new(),
+            closing: false,
+            write_failures: 0,
         });
         Ok(LinkUp {
             state: self.state.clone(),
@@ -435,27 +371,29 @@ impl StreamClient {
         })
     }
 
-    /// The socket closed. Fails pending requests and reports whether to
-    /// reconnect.
-    pub fn link_down(&mut self) -> LinkDown {
-        let (failed, code) = match std::mem::replace(&mut self.phase, Phase::Down) {
-            Phase::Up(l) => (l.pending.into_keys().collect(), l.close_code),
-            _ => (Vec::new(), String::new()),
+    /// The socket of a live link closed. Fails pending requests and
+    /// reports whether to reconnect. `None` unless a link was up: a failed
+    /// handshake was already reported by its [`HandshakeFailure`], so
+    /// nothing is published twice.
+    pub fn link_down(&mut self) -> Option<LinkDown> {
+        let Phase::Up(l) = std::mem::replace(&mut self.phase, Phase::Down) else {
+            return None;
         };
+        let code = l.close_code;
         self.state.connected = false;
         if !code.is_empty() {
             self.state.code = code.clone();
         }
         let is_final = self.state.is_final;
-        LinkDown {
-            failed,
+        Some(LinkDown {
+            failed: l.pending.into_keys().collect(),
             disconnected: Disconnected {
                 peer: self.cfg.addr.clone(),
                 is_final,
                 code,
             },
             reconnect: !is_final,
-        }
+        })
     }
 
     /// Whether a link is up.

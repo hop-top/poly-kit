@@ -24,7 +24,7 @@ use serde_json::{json, Value};
 fn handshake_advertises_caps() {
     let log = log();
     let mut c = client(cfg(), &log);
-    let f = auth_frame(&mut c);
+    let (_, f) = auth_frame(&mut c);
     assert_eq!(f["auth"], "open");
     assert_eq!(
         f["caps"],
@@ -44,7 +44,11 @@ fn handshake_no_auth_is_legacy() {
         },
         &log,
     );
-    let up = c.link_up_legacy(&log).unwrap();
+    let up = {
+        let id = c.begin_legacy().unwrap();
+        c.link_up_legacy(id, &log)
+    }
+    .unwrap();
     assert!(!up.state.streams);
     assert_eq!(up.state.resume, Some(LinkResume::Unsupported));
     assert_eq!(up.invalidated, None);
@@ -63,10 +67,35 @@ fn handshake_no_hook_advertises_zero() {
         frames: vec![FrameFormat::Kit, FrameFormat::CloudEvents],
     };
     let mut c = client(ClientConfig { caps, ..cfg() }, &log);
-    assert_eq!(auth_frame(&mut c)["caps"]["streams"], 0);
+    let (id, f) = auth_frame(&mut c);
+    assert_eq!(f["caps"]["streams"], 0);
     // A v1 acceptor's stream info is ignored: the link is legacy.
-    let up = c.on_ack(&ack(1, 0, None), &log).unwrap();
+    let up = c.on_ack(id, &ack(1, 0, None), &log).unwrap();
     assert!(!up.state.streams);
+    assert_eq!(c.position(), None);
+}
+
+#[test]
+fn handshake_no_hook_dialer_connects_to_ordered_hub() {
+    let log = log();
+    let caps = StreamCaps {
+        streams: 0,
+        frames: vec![FrameFormat::Kit, FrameFormat::CloudEvents],
+    };
+    let mut c = client(ClientConfig { caps, ..cfg() }, &log);
+    let up = connect(&mut c, &log, &ack(1, 0, None));
+    assert!(
+        up.state.connected && !up.state.streams,
+        "a connected legacy link"
+    );
+    // The hub sends this legacy link frames without an offset; the event
+    // carries no position.
+    let t = "acme.crm.deal.created";
+    let frame = json!({"topic": t, "origin": "hub"}).to_string();
+    assert_eq!(
+        recv_event(&mut c, frame.as_bytes(), "hub", t),
+        Delivery::Deliver(None)
+    );
     assert_eq!(c.position(), None);
 }
 
@@ -96,9 +125,10 @@ fn frame_format_negotiated_per_peer() {
 fn handshake_protocol_error_is_final_and_surfaced() {
     let log = log();
     let mut c = client(cfg(), &log);
-    c.begin_handshake("open");
+    let id = hs(&mut c);
     let f = c
         .on_ack(
+            id,
             br#"{"type":"auth_ok","caps":{"streams":1,"frames":["kit"]}}"#,
             &log,
         )
@@ -119,9 +149,9 @@ fn handshake_protocol_error_is_final_and_surfaced() {
 fn handshake_huge_heartbeat_is_rejected_not_panicking() {
     let log = log();
     let mut c = client(cfg(), &log);
-    c.begin_handshake("open");
+    let id = hs(&mut c);
     let huge = br#"{"type":"auth_ok","caps":{"streams":1,"frames":["kit"]},"stream":{"id":"s","oldest":"1","head":"0","heartbeat_ms":10000000000000}}"#;
-    let f = c.on_ack(huge, &log).unwrap_err();
+    let f = c.on_ack(id, huge, &log).unwrap_err();
     assert!(matches!(&f.error, HandshakeError::Protocol(p) if p.kind == ProtocolKind::Heartbeat));
     let d = f.disconnected(ADDR).unwrap();
     assert!(d.is_final);
@@ -138,11 +168,11 @@ fn handshake_heartbeat_bounds() {
     ] {
         let log = log();
         let mut c = client(cfg(), &log);
-        c.begin_handshake("open");
+        let id = hs(&mut c);
         let a = format!(
             r#"{{"type":"auth_ok","caps":{{"streams":1,"frames":["kit"]}},"stream":{{"id":"S","oldest":"1","head":"0","heartbeat_ms":{ms}}}}}"#
         );
-        match c.on_ack(a.as_bytes(), &log) {
+        match c.on_ack(id, a.as_bytes(), &log) {
             Ok(up) => assert!(ok && up.heartbeat_ms == Some(ms), "{ms}"),
             Err(f) => assert!(
                 !ok && matches!(f.error, HandshakeError::Protocol(ref p) if p.kind == ProtocolKind::Heartbeat),
@@ -156,8 +186,8 @@ fn handshake_heartbeat_bounds() {
 fn handshake_auth_reject_is_surfaced_once_and_retryable() {
     let log = log();
     let mut c = client(cfg(), &log);
-    c.begin_handshake("open");
-    let first = c.on_ack(br#"{"type":"auth_no"}"#, &log).unwrap_err();
+    let id = hs(&mut c);
+    let first = c.on_ack(id, br#"{"type":"auth_no"}"#, &log).unwrap_err();
     assert_eq!(first.error, HandshakeError::AuthRejected);
     let d = first
         .disconnected(ADDR)
@@ -167,8 +197,8 @@ fn handshake_auth_reject_is_surfaced_once_and_retryable() {
         json!({"peer": ADDR, "final": false, "code": "auth"})
     );
     // The acceptor's 1008 close is the same failure: not published again.
-    c.begin_handshake("open");
-    let again = c.handshake_failed(HandshakeError::AuthRejected);
+    let id = hs(&mut c);
+    let again = c.handshake_failed(id, HandshakeError::AuthRejected);
     assert_eq!(again.disconnected(ADDR), None);
     assert!(!c.link_state().is_final);
     let up = connect(&mut c, &log, &ack(1, 0, None));
@@ -179,9 +209,10 @@ fn handshake_auth_reject_is_surfaced_once_and_retryable() {
 fn handshake_successful_connect_clears_final() {
     let log = log();
     let mut c = client(cfg(), &log);
-    c.begin_handshake("open");
+    let id = hs(&mut c);
     let f = c
         .on_ack(
+            id,
             br#"{"type":"session_error","code":"forbidden","message":"no"}"#,
             &log,
         )
@@ -197,8 +228,8 @@ fn handshake_successful_connect_clears_final() {
 fn handshake_ack_timeout_is_not_an_auth_failure() {
     let log = log();
     let mut c = client(cfg(), &log);
-    c.begin_handshake("open");
-    let f = c.handshake_failed(HandshakeError::AckTimeout);
+    let id = hs(&mut c);
+    let f = c.handshake_failed(id, HandshakeError::AckTimeout);
     let d = f.disconnected(ADDR).unwrap();
     assert_eq!((d.is_final, d.code.as_str()), (false, "timeout"));
     assert!(!HandshakeError::AckTimeout.is_final());
@@ -284,7 +315,7 @@ fn subscribe_while_down_updates_the_next_handshake() {
         Err(RequestError::Stream(e)) => assert_eq!(e.code, "limit"),
         other => panic!("{other:?}"),
     }
-    let f = auth_frame(&mut c);
+    let (_, f) = auth_frame(&mut c);
     assert_eq!(f["session"]["subscribe"], json!(["a.#", "b.#"]));
 }
 
@@ -299,9 +330,9 @@ fn subscribe_resent_on_reconnect() {
     };
     c.on_frame(format!(r#"{{"type":"ack","id":"{id}","at":"0"}}"#).as_bytes())
         .unwrap();
-    let down = c.link_down();
+    let down = c.link_down().expect("link was up");
     assert!(down.reconnect);
-    let f = auth_frame(&mut c);
+    let (_, f) = auth_frame(&mut c);
     assert_eq!(f["session"]["subscribe"], json!(["acme.billing.#"]));
     assert_eq!(f["session"]["resume"], json!({"stream": "S", "after": "0"}));
 }
@@ -373,7 +404,7 @@ fn subscribe_reentrant_with_background_unblocks_on_close() {
     else {
         panic!("link is up");
     };
-    let down = c.link_down();
+    let down = c.link_down().expect("link was up");
     assert_eq!(down.failed, vec![id.clone()]);
     // A late reply for the failed request is ignored.
     assert!(c.subscription().implicit);

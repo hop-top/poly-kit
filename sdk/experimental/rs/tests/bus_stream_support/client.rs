@@ -4,7 +4,7 @@
 use std::time::UNIX_EPOCH;
 
 use hop_top_kit::bus::stream::{
-    ClientConfig, Delivery, Inbound, LinkUp, LogEntry, RingLog, StreamClient,
+    ClientConfig, Delivery, HandshakeId, Inbound, LinkUp, LogEntry, RingLog, StreamClient,
 };
 use hop_top_kit::bus::Event;
 use serde_json::{json, Value};
@@ -38,12 +38,19 @@ pub fn ack(oldest: u64, head: u64, resume: Option<Value>) -> Vec<u8> {
 }
 
 pub fn connect(c: &mut StreamClient, log: &RingLog, ack: &[u8]) -> LinkUp {
-    c.begin_handshake("open");
-    c.on_ack(ack, log).expect("link up")
+    let id = hs(c);
+    c.on_ack(id, ack, log).expect("link up")
 }
 
-pub fn auth_frame(c: &mut StreamClient) -> Value {
-    serde_json::from_slice(&c.begin_handshake("open")).unwrap()
+/// Starts a handshake, returning its id.
+pub fn hs(c: &mut StreamClient) -> HandshakeId {
+    c.begin_handshake("open").expect("dial").0
+}
+
+/// Starts a handshake, returning its id and the decoded auth frame.
+pub fn auth_frame(c: &mut StreamClient) -> (HandshakeId, Value) {
+    let (id, f) = c.begin_handshake("open").expect("dial");
+    (id, serde_json::from_slice(&f).unwrap())
 }
 
 pub fn event(topic: &str) -> LogEntry {

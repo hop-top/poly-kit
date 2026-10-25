@@ -4,7 +4,9 @@ use super::client::{Phase, StreamClient};
 use super::control::{encode_request, CtlRequest, RequestType};
 use super::error::{StreamError, CODE_BAD_REQUEST};
 use super::log::{Batch, StreamLog};
-use super::types::{DeliveryMarker, Request, RequestError};
+use super::types::{
+    CloseFrame, DeliveryMarker, Request, RequestError, CLOSE_GOING_AWAY, MAX_WRITE_FAILURES,
+};
 use super::wire::{validate_pattern, Scope};
 use crate::bus::Context;
 
@@ -38,7 +40,9 @@ impl StreamClient {
     /// Starts a subscription request. With `ctx` marked as a delivery of
     /// this address's link it fails with [`RequestError::Reentrant`]
     /// instead of waiting for a reply only the caller could read. On a
-    /// link that is down it updates the set for the next handshake.
+    /// link that is down it updates the set for the next handshake. After
+    /// [`StreamClient::disconnect`] it fails with
+    /// [`RequestError::Disconnected`].
     pub fn request(
         &mut self,
         ctx: &Context,
@@ -48,7 +52,7 @@ impl StreamClient {
     ) -> Result<Request, RequestError> {
         if ctx
             .value::<DeliveryMarker>()
-            .is_some_and(|m| m.0 == self.cfg.addr)
+            .is_some_and(|m| !m.0.is_empty() && m.0 == self.cfg.addr)
         {
             return Err(RequestError::Reentrant(self.cfg.addr.clone()));
         }
@@ -59,6 +63,11 @@ impl StreamClient {
                 return Err(StreamError::new(CODE_BAD_REQUEST, msg).into());
             }
             ps.iter().try_for_each(|p| validate_pattern(p))?;
+        }
+        if self.forgotten {
+            // Never registered again: a reconnect still pending would
+            // redial it.
+            return Err(RequestError::Disconnected(self.cfg.addr.clone()));
         }
         let mut r = CtlRequest {
             typ,
@@ -93,20 +102,46 @@ impl StreamClient {
     // Writer.
 
     /// The next batch of the send log for this address, or `None` once
-    /// caught up; only while a link is up. Counts outbox drops and skips.
+    /// caught up; only while a link is up and not closing after a failed
+    /// write. Counts outbox drops and skips.
     pub fn next_batch(&mut self, log: &dyn StreamLog) -> Option<Batch> {
         let Phase::Up(l) = &self.phase else {
             return None;
         };
+        if l.closing {
+            return None;
+        }
         let b = self.writer.next_batch(log, &l.peer_origin)?;
         self.outbox_dropped += b.outbox_dropped;
         self.skipped += b.skipped;
         Some(b)
     }
 
-    /// A write of the entry at `offset` failed and the link is closing.
-    /// With the outbox on, the next link sends that entry again.
-    pub fn write_failed(&mut self, offset: u64) {
+    /// A frame was written: the consecutive-failure count resets.
+    pub fn write_ok(&mut self) {
+        if let Some(l) = self.link_mut() {
+            l.write_failures = 0;
+        }
+    }
+
+    /// The write of the entry at `offset` failed. A stream link, a link
+    /// with the outbox on, or a legacy link at its third failure in a row
+    /// closes: the returned close is to send, and the writer stops until
+    /// [`StreamClient::link_down`]. With the outbox on, the next link
+    /// sends that entry again (a possible duplicate, if its bytes reached
+    /// the peer before the error). Otherwise the entry is lost.
+    pub fn write_failed(&mut self, offset: u64) -> Option<CloseFrame> {
+        let outbox = self.cfg.outbox;
+        let l = self.link_mut()?;
+        l.write_failures += 1;
+        if !(l.stream || outbox || l.write_failures >= MAX_WRITE_FAILURES) {
+            return None;
+        }
+        l.closing = true;
         self.writer.write_failed(offset);
+        Some(CloseFrame {
+            status: CLOSE_GOING_AWAY,
+            reason: "write failures",
+        })
     }
 }
