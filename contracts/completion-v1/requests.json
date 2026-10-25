@@ -227,6 +227,35 @@
           }
         }
       ]
+    },
+    "about-controls": {
+      "program": "kitapp",
+      "about": "Kit app",
+      "commands": [
+        {
+          "name": "ctl",
+          "about": "Ctl\u0001 esc\u001b[1mbold\u007f end",
+          "flags": [
+            {
+              "long": "mode",
+              "help": "Mode\u0001 x\u007f",
+              "value": true
+            }
+          ]
+        }
+      ],
+      "aliases": {},
+      "flag_enums": [
+        {
+          "path": "",
+          "flag": "mode",
+          "values": [
+            "a"
+          ]
+        }
+      ],
+      "flag_completers": [],
+      "arg_completers": []
     }
   },
   "cases": [
@@ -679,6 +708,29 @@
         "env:\tenv values",
         ":4"
       ]
+    },
+    {
+      "name": "subcommand about keeps control characters raw",
+      "args": [
+        "ct"
+      ],
+      "stdout": [
+        "ctl\tCtl\u0001 esc\u001b[1mbold\u007f end",
+        ":4"
+      ],
+      "tree": "about-controls"
+    },
+    {
+      "name": "flag usage keeps control characters raw",
+      "args": [
+        "ctl",
+        "--m"
+      ],
+      "stdout": [
+        "--mode\tMode\u0001 x\u007f (one of: a)",
+        ":4"
+      ],
+      "tree": "about-controls"
     }
   ]
 }

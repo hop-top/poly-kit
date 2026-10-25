@@ -129,7 +129,10 @@ fn get_completions(root: &Root, built: &Command, args: &[String]) -> Outcome {
             subs.sort_by(|a, b| a.get_name().cmp(b.get_name()));
             for s in subs {
                 if s.get_name().starts_with(to_complete.as_str()) {
-                    let about = s.get_about().map(|a| a.to_string()).unwrap_or_default();
+                    let about = s
+                        .get_about()
+                        .map(|a| a.ansi().to_string())
+                        .unwrap_or_default();
                     completions.push(format!("{}\t{about}", s.get_name()));
                 }
                 directive = Directive::NO_FILE_COMP;
@@ -294,7 +297,10 @@ fn flag_name_completions(chain: &[&Command], a: &Arg, to_complete: &str) -> Vec<
             format!("help for {}", final_cmd(chain).get_name())
         }
         ArgAction::Version => format!("version for {}", chain[0].get_name()),
-        _ => a.get_help().map(|h| h.to_string()).unwrap_or_default(),
+        _ => a
+            .get_help()
+            .map(|h| h.ansi().to_string())
+            .unwrap_or_default(),
     };
     let mut out = Vec::new();
     if let Some(l) = a.get_long() {
