@@ -1,0 +1,869 @@
+{
+  "version": "v1",
+  "description": "CloudEvents 1.0 structured-mode JSON decoding. `input` is the raw document text. ok cases: `canonical` is the re-encoded CloudEvent (compared as JSON values; `time` therefore compared as an exact string), and `event`, when present, is the kit Event it maps to; `event_error`, when present, is the exact error mapping to an Event returns. Failing cases: `error` is the exact text. JSON null members count as unset. First failure wins: document, then string attributes in the order specversion, id, source, type, subject, time, datacontenttype, dataschema (type, emptiness, time grammar), then data/data_base64, then extensions by ascending name (name, then value), then required/specversion checks. Vectors avoid invalid UTF-8, lone surrogates and duplicate keys, where JSON libraries disagree.",
+  "cases": [
+    {
+      "name": "minimal",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t"
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s"
+      }
+    },
+    {
+      "name": "all attributes",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"ce-1\",\"source\":\"/acme/core\",\"type\":\"acme.core.stream.reset\",\"subject\":\"order-42\",\"time\":\"2026-10-25T08:00:00.5-04:00\",\"datacontenttype\":\"application/json\",\"dataschema\":\"https://example.com/s.json\",\"data\":{\"n\":1},\"tenantid\":\"t1\",\"seqoffset\":42,\"live\":false,\"workspaceid\":\"ws1\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "ce-1",
+        "source": "/acme/core",
+        "type": "acme.core.stream.reset",
+        "subject": "order-42",
+        "time": "2026-10-25T12:00:00.5Z",
+        "datacontenttype": "application/json",
+        "dataschema": "https://example.com/s.json",
+        "live": false,
+        "seqoffset": 42,
+        "tenantid": "t1",
+        "workspaceid": "ws1",
+        "data": {
+          "n": 1
+        }
+      },
+      "event": {
+        "id": "ce-1",
+        "topic": "acme.core.stream.reset",
+        "source": "/acme/core",
+        "timestamp": "2026-10-25T12:00:00.5Z",
+        "subject": "order-42",
+        "datacontenttype": "application/json",
+        "dataschema": "https://example.com/s.json",
+        "payload": {
+          "n": 1
+        },
+        "workspace_id": "ws1",
+        "extensions": {
+          "tenantid": "t1",
+          "seqoffset": 42,
+          "live": false
+        }
+      }
+    },
+    {
+      "name": "null members are unset",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"subject\":null,\"time\":null,\"data\":null,\"gone\":null}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t"
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s"
+      }
+    },
+    {
+      "name": "data_base64 null is unset",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data_base64\":null}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t"
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s"
+      }
+    },
+    {
+      "name": "string \"null\" data survives",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data\":\"null\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "data": "null"
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s",
+        "payload": "null"
+      }
+    },
+    {
+      "name": "data is compacted",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data\": { \"a\" : [ 1 , 2 ] }}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "data": {
+          "a": [
+            1,
+            2
+          ]
+        }
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s",
+        "payload": {
+          "a": [
+            1,
+            2
+          ]
+        }
+      }
+    },
+    {
+      "name": "data_base64 decodes to binary",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data_base64\":\"AQ==\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "data_base64": "AQ=="
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s",
+        "payload_base64": "AQ=="
+      }
+    },
+    {
+      "name": "empty data_base64 is empty binary",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data_base64\":\"\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "data_base64": ""
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s",
+        "payload_base64": ""
+      }
+    },
+    {
+      "name": "non-JSON content type with structured data is accepted on decode",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"datacontenttype\":\"text/plain\",\"data\":{\"a\":1}}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "datacontenttype": "text/plain",
+        "data": {
+          "a": 1
+        }
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s",
+        "datacontenttype": "text/plain",
+        "payload": {
+          "a": 1
+        }
+      }
+    },
+    {
+      "name": "source, dataschema, datacontenttype are not syntax-checked",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"not a uri ::\",\"type\":\"t\",\"dataschema\":\"x\",\"datacontenttype\":\"garbage\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "not a uri ::",
+        "type": "t",
+        "dataschema": "x",
+        "datacontenttype": "garbage"
+      }
+    },
+    {
+      "name": "type is not topic-checked",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"com.example.Thing Happened\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "com.example.Thing Happened"
+      }
+    },
+    {
+      "name": "time: lowercase t and z normalised",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25t12:00:00z\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "time": "2026-10-25T12:00:00Z"
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s",
+        "timestamp": "2026-10-25T12:00:00Z"
+      }
+    },
+    {
+      "name": "time: 9 fraction digits",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00.123456789Z\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "time": "2026-10-25T12:00:00.123456789Z"
+      }
+    },
+    {
+      "name": "time: 1 fraction digit",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00.1Z\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "time": "2026-10-25T12:00:00.1Z"
+      }
+    },
+    {
+      "name": "time: trailing fraction zeros trimmed",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00.500Z\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "time": "2026-10-25T12:00:00.5Z"
+      }
+    },
+    {
+      "name": "time: all-zero fraction dropped",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00.000Z\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "time": "2026-10-25T12:00:00Z"
+      }
+    },
+    {
+      "name": "time: offset converted to UTC",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T23:30:00+05:30\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "time": "2026-10-25T18:00:00Z"
+      }
+    },
+    {
+      "name": "time: -00:00 is UTC",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00-00:00\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "time": "2026-10-25T12:00:00Z"
+      }
+    },
+    {
+      "name": "time: year 0000",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"0000-01-01T00:00:00Z\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "time": "0000-01-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "time: year 9999",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"9999-12-31T23:59:59Z\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "time": "9999-12-31T23:59:59Z"
+      }
+    },
+    {
+      "name": "time: leap day",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2024-02-29T00:00:00Z\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "time": "2024-02-29T00:00:00Z"
+      }
+    },
+    {
+      "name": "extension: name longer than 20 accepted",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"abcdefghijklmnopqrstuvwxyz\":\"ok\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "abcdefghijklmnopqrstuvwxyz": "ok"
+      }
+    },
+    {
+      "name": "extension: digits-only name",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"42\":\"ok\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "42": "ok"
+      }
+    },
+    {
+      "name": "extension: int32 bounds",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"lo\":-2147483648,\"hi\":2147483647}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "lo": -2147483648,
+        "hi": 2147483647
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s",
+        "extensions": {
+          "lo": -2147483648,
+          "hi": 2147483647
+        }
+      }
+    },
+    {
+      "name": "extension: -0 is 0",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"z\":-0}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "z": 0
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s",
+        "extensions": {
+          "z": 0
+        }
+      }
+    },
+    {
+      "name": "extension: bool and string",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"flag\":true,\"label\":\"x\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "flag": true,
+        "label": "x"
+      }
+    },
+    {
+      "name": "extension: empty string value",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"label\":\"\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "label": ""
+      }
+    },
+    {
+      "name": "workspaceid must be a string to map to an event",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"workspaceid\":1}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "workspaceid": 1
+      },
+      "event_error": "cloudevents: workspaceid: must be a string"
+    },
+    {
+      "name": "kitorigin is reserved for the network layer",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"kitorigin\":\"A\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "kitorigin": "A"
+      },
+      "event_error": "cloudevents: kitorigin: reserved for the network origin"
+    },
+    {
+      "name": "document: invalid JSON",
+      "input": "{",
+      "ok": false,
+      "error": "cloudevents: invalid JSON"
+    },
+    {
+      "name": "document: array",
+      "input": "[1]",
+      "ok": false,
+      "error": "cloudevents: not a JSON object"
+    },
+    {
+      "name": "document: null",
+      "input": "null",
+      "ok": false,
+      "error": "cloudevents: not a JSON object"
+    },
+    {
+      "name": "document: string",
+      "input": "\"x\"",
+      "ok": false,
+      "error": "cloudevents: not a JSON object"
+    },
+    {
+      "name": "specversion: missing",
+      "input": "{\"id\":\"x\",\"source\":\"s\",\"type\":\"t\"}",
+      "ok": false,
+      "error": "cloudevents: specversion: required"
+    },
+    {
+      "name": "specversion: empty",
+      "input": "{\"specversion\":\"\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\"}",
+      "ok": false,
+      "error": "cloudevents: specversion: required"
+    },
+    {
+      "name": "specversion: number",
+      "input": "{\"specversion\":1.0,\"id\":\"x\",\"source\":\"s\",\"type\":\"t\"}",
+      "ok": false,
+      "error": "cloudevents: specversion: must be a string"
+    },
+    {
+      "name": "specversion: 0.3",
+      "input": "{\"specversion\":\"0.3\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\"}",
+      "ok": false,
+      "error": "cloudevents: specversion: unsupported value \"0.3\""
+    },
+    {
+      "name": "id: missing",
+      "input": "{\"specversion\":\"1.0\",\"source\":\"s\",\"type\":\"t\"}",
+      "ok": false,
+      "error": "cloudevents: id: required"
+    },
+    {
+      "name": "id: null",
+      "input": "{\"specversion\":\"1.0\",\"id\":null,\"source\":\"s\",\"type\":\"t\"}",
+      "ok": false,
+      "error": "cloudevents: id: required"
+    },
+    {
+      "name": "id: empty",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"\",\"source\":\"s\",\"type\":\"t\"}",
+      "ok": false,
+      "error": "cloudevents: id: required"
+    },
+    {
+      "name": "id: number",
+      "input": "{\"specversion\":\"1.0\",\"id\":7,\"source\":\"s\",\"type\":\"t\"}",
+      "ok": false,
+      "error": "cloudevents: id: must be a string"
+    },
+    {
+      "name": "source: missing",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"type\":\"t\"}",
+      "ok": false,
+      "error": "cloudevents: source: required"
+    },
+    {
+      "name": "source: bool",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":true,\"type\":\"t\"}",
+      "ok": false,
+      "error": "cloudevents: source: must be a string"
+    },
+    {
+      "name": "type: missing",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\"}",
+      "ok": false,
+      "error": "cloudevents: type: required"
+    },
+    {
+      "name": "type: object",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":{}}",
+      "ok": false,
+      "error": "cloudevents: type: must be a string"
+    },
+    {
+      "name": "subject: empty",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"subject\":\"\"}",
+      "ok": false,
+      "error": "cloudevents: subject: must not be empty"
+    },
+    {
+      "name": "datacontenttype: empty",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"datacontenttype\":\"\"}",
+      "ok": false,
+      "error": "cloudevents: datacontenttype: must not be empty"
+    },
+    {
+      "name": "dataschema: empty",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"dataschema\":\"\"}",
+      "ok": false,
+      "error": "cloudevents: dataschema: must not be empty"
+    },
+    {
+      "name": "dataschema: number",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"dataschema\":1}",
+      "ok": false,
+      "error": "cloudevents: dataschema: must be a string"
+    },
+    {
+      "name": "time: empty",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"\"}",
+      "ok": false,
+      "error": "cloudevents: time: must not be empty"
+    },
+    {
+      "name": "time: number",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":0}",
+      "ok": false,
+      "error": "cloudevents: time: must be a string"
+    },
+    {
+      "name": "time: prose",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"yesterday\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: comma fraction separator",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00,5Z\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: 10 fraction digits",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00.1234567890Z\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: empty fraction",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00.Z\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: leap second",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-12-31T23:59:60Z\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: missing offset",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: space separator",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25 12:00:00Z\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: 5-digit year",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"10000-01-01T00:00:00Z\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: month 13",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-13-01T00:00:00Z\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: day 32",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-01-32T00:00:00Z\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: February 30",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-02-30T00:00:00Z\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: February 29 in a common year",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-02-29T00:00:00Z\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: hour 24",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T24:00:00Z\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: minute 60",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:60:00Z\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: offset moves UTC year below 0000",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"0000-01-01T00:00:00+01:00\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: offset moves UTC year past 9999",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"9999-12-31T23:00:00-02:00\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: offset hour 24",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00+24:00\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: offset minute 60",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00+01:60\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: offset without colon",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00+0100\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: zone name instead of offset",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00UTC\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "data: data and data_base64",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data\":1,\"data_base64\":\"AQ==\"}",
+      "ok": false,
+      "error": "cloudevents: data: data and data_base64 are mutually exclusive"
+    },
+    {
+      "name": "data_base64: number",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data_base64\":1}",
+      "ok": false,
+      "error": "cloudevents: data_base64: must be a string"
+    },
+    {
+      "name": "data_base64: bad alphabet",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data_base64\":\"!!!!\"}",
+      "ok": false,
+      "error": "cloudevents: data_base64: invalid base64"
+    },
+    {
+      "name": "data_base64: trailing LF",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data_base64\":\"AQ==\\n\"}",
+      "ok": false,
+      "error": "cloudevents: data_base64: invalid base64"
+    },
+    {
+      "name": "data_base64: embedded LF",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data_base64\":\"A\\nQ==\"}",
+      "ok": false,
+      "error": "cloudevents: data_base64: invalid base64"
+    },
+    {
+      "name": "data_base64: embedded CR",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data_base64\":\"A\\rQ==\"}",
+      "ok": false,
+      "error": "cloudevents: data_base64: invalid base64"
+    },
+    {
+      "name": "data_base64: non-canonical trailing bits",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data_base64\":\"AR==\"}",
+      "ok": false,
+      "error": "cloudevents: data_base64: invalid base64"
+    },
+    {
+      "name": "data_base64: missing padding",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data_base64\":\"AQ\"}",
+      "ok": false,
+      "error": "cloudevents: data_base64: invalid base64"
+    },
+    {
+      "name": "data_base64: URL alphabet",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"data_base64\":\"-_8=\"}",
+      "ok": false,
+      "error": "cloudevents: data_base64: invalid base64"
+    },
+    {
+      "name": "extension: underscore",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"tenant_id\":\"x\"}",
+      "ok": false,
+      "error": "cloudevents: tenant_id: invalid extension name"
+    },
+    {
+      "name": "extension: uppercase",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"Tenant\":\"x\"}",
+      "ok": false,
+      "error": "cloudevents: Tenant: invalid extension name"
+    },
+    {
+      "name": "extension: empty name",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"\":\"x\"}",
+      "ok": false,
+      "error": "cloudevents: \"\": invalid extension name"
+    },
+    {
+      "name": "extension: fraction",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"ratio\":1.5}",
+      "ok": false,
+      "error": "cloudevents: ratio: unsupported extension value type"
+    },
+    {
+      "name": "extension: integral float",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"n\":1.0}",
+      "ok": false,
+      "error": "cloudevents: n: unsupported extension value type"
+    },
+    {
+      "name": "extension: exponent",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"n\":1e3}",
+      "ok": false,
+      "error": "cloudevents: n: unsupported extension value type"
+    },
+    {
+      "name": "extension: array",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"tags\":[\"a\"]}",
+      "ok": false,
+      "error": "cloudevents: tags: unsupported extension value type"
+    },
+    {
+      "name": "extension: object",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"obj\":{}}",
+      "ok": false,
+      "error": "cloudevents: obj: unsupported extension value type"
+    },
+    {
+      "name": "extension: above int32",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"n\":2147483648}",
+      "ok": false,
+      "error": "cloudevents: n: integer out of range"
+    },
+    {
+      "name": "extension: below int32",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"n\":-2147483649}",
+      "ok": false,
+      "error": "cloudevents: n: integer out of range"
+    },
+    {
+      "name": "extension: above int64",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"n\":99999999999999999999}",
+      "ok": false,
+      "error": "cloudevents: n: integer out of range"
+    },
+    {
+      "name": "order: extensions by ascending name",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"b_\":1,\"a_\":1}",
+      "ok": false,
+      "error": "cloudevents: a_: invalid extension name"
+    },
+    {
+      "name": "order: shape pass before validation",
+      "input": "{\"specversion\":\"0.3\",\"id\":7}",
+      "ok": false,
+      "error": "cloudevents: id: must be a string"
+    },
+    {
+      "name": "order: extension shape before specversion value",
+      "input": "{\"specversion\":\"0.3\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"bad_name\":1}",
+      "ok": false,
+      "error": "cloudevents: bad_name: invalid extension name"
+    },
+    {
+      "name": "order: string attributes in fixed order",
+      "input": "{\"time\":\"x\",\"subject\":\"\",\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\"}",
+      "ok": false,
+      "error": "cloudevents: subject: must not be empty"
+    },
+    {
+      "name": "order: data exclusion before extensions",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"a_\":1,\"data\":1,\"data_base64\":\"AQ==\"}",
+      "ok": false,
+      "error": "cloudevents: data: data and data_base64 are mutually exclusive"
+    }
+  ]
+}

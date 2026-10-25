@@ -1,0 +1,244 @@
+{
+  "version": "v1",
+  "description": "Network adapter frames. decode: only JSON objects are frames (null, arrays, scalars and non-JSON are dropped); an object with a member named exactly `specversion` (any value, null included) is a CloudEvents frame (kind cloudevents), any other object a kit frame, whose members are matched by exact key (case variants are ignored; null or absent means zero; a wrong JSON type drops the frame); `origin` is the loop-prevention origin (kit `origin`, CloudEvents `kitorigin` extension, stripped from the event); ok false means the frame is dropped (error text is not contract). encode: `format` kit or cloudevents with the given `origin`; `frame` compared as a JSON value. Kit frames omit `workspace_id` and `id` when empty; `payload` is always present.",
+  "decode": [
+    {
+      "name": "kit frame from an older peer",
+      "frame": "{\"topic\":\"kit.test.frame.sent\",\"source\":\"old\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"payload\":{\"k\":\"v\"},\"origin\":\"old\"}",
+      "ok": true,
+      "kind": "kit",
+      "origin": "old",
+      "event": {
+        "topic": "kit.test.frame.sent",
+        "source": "old",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "payload": {
+          "k": "v"
+        }
+      }
+    },
+    {
+      "name": "kit frame with id and workspace_id",
+      "frame": "{\"topic\":\"kit.test.frame.sent\",\"source\":\"A\",\"timestamp\":\"2026-10-25T12:00:00Z\",\"payload\":{\"k\":\"v\"},\"origin\":\"A\",\"workspace_id\":\"ws1\",\"id\":\"evt_01jg000000e008000000000000\"}",
+      "ok": true,
+      "kind": "kit",
+      "origin": "A",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.frame.sent",
+        "source": "A",
+        "timestamp": "2026-10-25T12:00:00Z",
+        "payload": {
+          "k": "v"
+        },
+        "workspace_id": "ws1"
+      }
+    },
+    {
+      "name": "case-folded specversion key is a kit frame",
+      "frame": "{\"SPECVERSION\":\"1.0\",\"topic\":\"kit.test.frame.sent\",\"source\":\"s\",\"origin\":\"o\"}",
+      "ok": true,
+      "kind": "kit",
+      "origin": "o",
+      "event": {
+        "topic": "kit.test.frame.sent",
+        "source": "s"
+      }
+    },
+    {
+      "name": "cloudevents frame with kitorigin",
+      "frame": "{\"specversion\":\"1.0\",\"id\":\"evt_01jg000000e008000000000000\",\"source\":\"A\",\"type\":\"kit.test.frame.sent\",\"time\":\"2026-10-25T12:00:00Z\",\"datacontenttype\":\"application/json\",\"kitorigin\":\"B\",\"tenantid\":\"t1\",\"workspaceid\":\"ws1\",\"data\":{\"k\":\"v\"}}",
+      "ok": true,
+      "kind": "cloudevents",
+      "origin": "B",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.frame.sent",
+        "source": "A",
+        "timestamp": "2026-10-25T12:00:00Z",
+        "payload": {
+          "k": "v"
+        },
+        "workspace_id": "ws1",
+        "datacontenttype": "application/json",
+        "extensions": {
+          "tenantid": "t1"
+        }
+      }
+    },
+    {
+      "name": "cloudevents frame without kitorigin",
+      "frame": "{\"specversion\":\"1.0\",\"id\":\"ce-1\",\"source\":\"/acme/core\",\"type\":\"acme.core.stream.reset\",\"seqoffset\":42}",
+      "ok": true,
+      "kind": "cloudevents",
+      "origin": "",
+      "event": {
+        "id": "ce-1",
+        "topic": "acme.core.stream.reset",
+        "source": "/acme/core",
+        "extensions": {
+          "seqoffset": 42
+        }
+      }
+    },
+    {
+      "name": "null specversion is a (rejected) cloudevents frame",
+      "frame": "{\"specversion\":null,\"topic\":\"kit.test.frame.sent\",\"source\":\"s\"}",
+      "ok": false
+    },
+    {
+      "name": "non-string kitorigin",
+      "frame": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"kitorigin\":7}",
+      "ok": false
+    },
+    {
+      "name": "invalid cloudevents frame",
+      "frame": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"bad_name\":1}",
+      "ok": false
+    },
+    {
+      "name": "kit frame keys are matched exactly",
+      "frame": "{\"Topic\":\"kit.test.frame.sent\",\"SOURCE\":\"x\",\"source\":\"s\",\"Origin\":\"x\",\"origin\":\"o\",\"Workspace_ID\":\"ws9\"}",
+      "ok": true,
+      "kind": "kit",
+      "origin": "o",
+      "event": {
+        "source": "s"
+      }
+    },
+    {
+      "name": "kit frame null members are zero",
+      "frame": "{\"topic\":\"kit.test.frame.sent\",\"source\":null,\"timestamp\":null,\"payload\":null,\"origin\":null}",
+      "ok": true,
+      "kind": "kit",
+      "origin": "",
+      "event": {
+        "topic": "kit.test.frame.sent"
+      }
+    },
+    {
+      "name": "kit frame member of the wrong type",
+      "frame": "{\"topic\":7,\"source\":\"s\"}",
+      "ok": false
+    },
+    {
+      "name": "null frame",
+      "frame": "null",
+      "ok": false
+    },
+    {
+      "name": "string frame",
+      "frame": "\"x\"",
+      "ok": false
+    },
+    {
+      "name": "number frame",
+      "frame": "1",
+      "ok": false
+    },
+    {
+      "name": "not JSON",
+      "frame": "not json",
+      "ok": false
+    },
+    {
+      "name": "not an object",
+      "frame": "[1]",
+      "ok": false
+    }
+  ],
+  "encode": [
+    {
+      "name": "kit frame",
+      "format": "kit",
+      "origin": "A",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.frame.sent",
+        "source": "A",
+        "timestamp": "2026-10-25T12:00:00Z",
+        "payload": {
+          "k": "v"
+        },
+        "workspace_id": "ws1"
+      },
+      "frame": {
+        "topic": "kit.test.frame.sent",
+        "source": "A",
+        "timestamp": "2026-10-25T12:00:00Z",
+        "payload": {
+          "k": "v"
+        },
+        "origin": "A",
+        "workspace_id": "ws1",
+        "id": "evt_01jg000000e008000000000000"
+      }
+    },
+    {
+      "name": "kit frame, global event without id",
+      "format": "kit",
+      "origin": "A",
+      "event": {
+        "topic": "kit.test.frame.sent",
+        "source": "A",
+        "timestamp": "2026-10-25T12:00:00Z",
+        "payload": null
+      },
+      "frame": {
+        "topic": "kit.test.frame.sent",
+        "source": "A",
+        "timestamp": "2026-10-25T12:00:00Z",
+        "payload": null,
+        "origin": "A"
+      }
+    },
+    {
+      "name": "cloudevents frame",
+      "format": "cloudevents",
+      "origin": "A",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.frame.sent",
+        "source": "A",
+        "timestamp": "2026-10-25T12:00:00Z",
+        "payload": {
+          "k": "v"
+        },
+        "workspace_id": "ws1",
+        "extensions": {
+          "tenantid": "t1"
+        }
+      },
+      "frame": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "A",
+        "type": "kit.test.frame.sent",
+        "time": "2026-10-25T12:00:00Z",
+        "datacontenttype": "application/json",
+        "kitorigin": "A",
+        "tenantid": "t1",
+        "workspaceid": "ws1",
+        "data": {
+          "k": "v"
+        }
+      }
+    },
+    {
+      "name": "cloudevents frame, empty origin",
+      "format": "cloudevents",
+      "origin": "",
+      "event": {
+        "id": "x",
+        "topic": "kit.test.frame.sent",
+        "source": "A"
+      },
+      "frame": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "A",
+        "type": "kit.test.frame.sent"
+      }
+    }
+  ]
+}

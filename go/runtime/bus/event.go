@@ -91,11 +91,42 @@ type Event struct {
 	// WorkspaceID scopes the event to a wsm workspace (ULID).
 	// Empty = global event. Added in envelope v0.2.
 	WorkspaceID string `json:"workspace_id,omitempty"`
+
+	// The fields below complete the CloudEvents 1.0 mapping; see
+	// [ToCloudEvent]. All are optional.
+
+	// ID identifies the event; "evt_" TypeID minted by NewEvent.
+	// Events built as literals get one when converted to a CloudEvent.
+	ID string `json:"id,omitempty"`
+	// Subject is the CloudEvents subject: what, within Source, the
+	// event is about.
+	Subject string `json:"subject,omitempty"`
+	// DataContentType is the media type of Payload. When empty, a
+	// CloudEvent gets application/json for a JSON payload and no
+	// content type for a []byte payload.
+	DataContentType string `json:"datacontenttype,omitempty"`
+	// DataSchema is a URI identifying the schema Payload adheres to.
+	DataSchema string `json:"dataschema,omitempty"`
+	// Extensions holds CloudEvents extension attributes. Names are
+	// lowercase ASCII letters and digits; values are string, bool or an
+	// integer in int32 range. "workspaceid" is reserved (set
+	// WorkspaceID instead), and so is "kitorigin" (owned by the network
+	// adapter).
+	Extensions map[string]any `json:"extensions,omitempty"`
 }
 
-// NewEvent creates an Event with the current timestamp.
+// mintEventID returns a fresh "evt_" TypeID, or "" in the unreachable
+// case that minting fails (the prefix is a valid constant); an empty
+// ID is minted again on CloudEvents conversion.
+func mintEventID() string {
+	s, _ := newEventID()
+	return s
+}
+
+// NewEvent creates an Event with a fresh id and the current timestamp.
 func NewEvent(topic Topic, source string, payload any) Event {
 	return Event{
+		ID:        mintEventID(),
 		Topic:     topic,
 		Source:    source,
 		Timestamp: time.Now(),

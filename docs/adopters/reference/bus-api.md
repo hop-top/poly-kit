@@ -36,6 +36,11 @@ Standard envelope for all bus messages.
 | `Timestamp`   | `time.Time`  | `timestamp`             | creation time (auto-set by `NewEvent`) |
 | `Payload`     | `any`        | `payload`               | event-specific data |
 | `WorkspaceID` | `string`     | `workspace_id,omitempty` | wsm workspace ULID; empty = global event |
+| `ID`          | `string`     | `id,omitempty`          | `evt_` TypeID, minted by `NewEvent` |
+| `Subject`     | `string`     | `subject,omitempty`     | CloudEvents subject |
+| `DataContentType` | `string` | `datacontenttype,omitempty` | media type of `Payload`; when empty, a CloudEvent gets `application/json` for a JSON payload and none for `[]byte` |
+| `DataSchema`  | `string`     | `dataschema,omitempty`  | schema URI for `Payload` |
+| `Extensions`  | `map[string]any` | `extensions,omitempty` | CloudEvents extension attributes |
 
 JSON keys are lowercase. Cross-process subscribers parse the lowercase
 form; capitalized keys break them.
@@ -406,6 +411,57 @@ b := bus.New(
     ),
 )
 ```
+
+Kit-format network frames carry `workspace_id` and `id` when set;
+frames without them (global events, older peers) decode as global with
+an empty id. CloudEvents frames carry the workspace in the
+`workspaceid` extension instead.
+
+## CloudEvents
+
+`bus.ToCloudEvent(e)` / `bus.FromCloudEvent(ce)` map an `Event` to and
+from a CloudEvents 1.0 `CloudEvent`; `bus.MarshalCloudEvent` /
+`bus.UnmarshalCloudEvent` do the same through structured-mode JSON.
+
+| CloudEvents     | Event |
+|-----------------|-------|
+| `specversion`   | always `"1.0"` |
+| `id`            | `ID`; minted (`evt_` TypeID) when empty |
+| `source`        | `Source` |
+| `type`          | `Topic`, verbatim |
+| `subject`       | `Subject` |
+| `time`          | `Timestamp`, UTC RFC 3339; unset when zero |
+| `datacontenttype` | `DataContentType`; `application/json` when data is JSON and none set |
+| `dataschema`    | `DataSchema` |
+| `data`          | `Payload` as JSON; unset when `Payload` is nil. A non-JSON `DataContentType` needs a `string` or `[]byte` payload |
+| `data_base64`   | `Payload` of type `[]byte` |
+| `workspaceid`   | `WorkspaceID` |
+| other extensions | `Extensions` |
+
+Extension names are lowercase ASCII letters and digits; values are
+string, bool or an integer in int32 range. `workspaceid` is reserved
+for `WorkspaceID` and `kitorigin` for the network adapter. kit has no
+alias option for the workspace extension: a consumer that wants another
+name (a tenant id, say) maps `workspaceid` itself. `time` follows RFC
+3339 with years 0000-9999, a `.` fraction of 1-9 digits and no leap
+seconds. Violations return a `*bus.CloudEventError` that matches
+`bus.ErrInvalidCloudEvent`. The full rule set is pinned by the vectors
+in [`contracts/bus-v1/cloudevents`](../../../contracts/bus-v1/cloudevents/).
+
+The network adapter sends kit frames by default, in every SDK, and
+there is no capability negotiation yet: no peer may default to
+CloudEvents frames until peers advertise support. Opt in per adapter
+once every peer runs a kit that decodes CloudEvents frames:
+
+```go
+bus.WithNetworkOption(bus.WithFrameFormat(bus.FrameCloudEvents))
+```
+
+Inbound frames are accepted in either format whatever the setting: a
+JSON object with a member named exactly `specversion` is a CloudEvents
+frame, anything else a kit frame.
+CloudEvents frames carry the loop-prevention origin in the `kitorigin`
+extension, which the adapter strips before delivery.
 
 ## Cross-language parity
 
