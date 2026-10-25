@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "CloudEvents 1.0 structured-mode JSON decoding. `input` is the raw document text. ok cases: `canonical` is the re-encoded CloudEvent (compared as JSON values; `time` therefore compared as an exact string), and `event`, when present, is the kit Event it maps to; `event_error`, when present, is the exact error mapping to an Event returns. Failing cases: `error` is the exact text. JSON null members count as unset. First failure wins: document, then string attributes in the order specversion, id, source, type, subject, time, datacontenttype, dataschema (type, emptiness, time grammar), then data/data_base64, then extensions by ascending name (name, then value), then required/specversion checks. Vectors avoid invalid UTF-8, lone surrogates and duplicate keys, where JSON libraries disagree.",
+  "description": "CloudEvents 1.0 structured-mode JSON decoding. `input` is the raw document text. ok cases: `canonical` is the re-encoded CloudEvent (compared as JSON values; `time` therefore compared as an exact string), and `event`, when present, is the kit Event it maps to; `event_error`, when present, is the exact error mapping to an Event returns. Failing cases: `error` is the exact text. JSON null members count as unset. A `time` at the zero instant (0001-01-01T00:00:00Z) counts as unset. First failure wins: document, then string attributes in the order specversion, id, source, type, subject, time, datacontenttype, dataschema (type, emptiness, time grammar), then data/data_base64, then extensions by ascending name (name, then value), then required/specversion checks. Vectors avoid invalid UTF-8, lone surrogates and duplicate keys, where JSON libraries disagree.",
   "cases": [
     {
       "name": "minimal",
@@ -134,6 +134,24 @@
             2
           ]
         }
+      }
+    },
+    {
+      "name": "member names are matched after unescaping",
+      "input": "{\"spec\\u0076ersion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"\\u0064ata\":1}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t",
+        "data": 1
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s",
+        "payload": 1
       }
     },
     {
@@ -344,6 +362,38 @@
         "source": "s",
         "type": "t",
         "time": "2024-02-29T00:00:00Z"
+      }
+    },
+    {
+      "name": "time: zero instant is unset",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"0001-01-01T00:00:00Z\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t"
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s"
+      }
+    },
+    {
+      "name": "time: zero instant with an offset is unset",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"0001-01-01T01:00:00+01:00\"}",
+      "ok": true,
+      "canonical": {
+        "specversion": "1.0",
+        "id": "x",
+        "source": "s",
+        "type": "t"
+      },
+      "event": {
+        "id": "x",
+        "topic": "t",
+        "source": "s"
       }
     },
     {
