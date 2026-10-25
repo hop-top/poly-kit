@@ -9,8 +9,8 @@ mod bus_stream_support;
 
 use bus_stream_support::client::*;
 use hop_top_kit::bus::stream::{
-    ClientConfig, HandshakeError, LinkResume, Request, RequestError, RingLog, StreamClient,
-    StreamLog, StreamPosition, CLOSE_NORMAL,
+    ClientConfig, Delivery, HandshakeError, Inbound, LinkResume, Request, RequestError, RingLog,
+    StreamClient, StreamLog, StreamPosition, CLOSE_NORMAL,
 };
 use hop_top_kit::bus::Context;
 use serde_json::json;
@@ -224,4 +224,42 @@ fn legacy_link_closes_on_the_third_write_failure() {
     assert_eq!(c.write_failed(1), None);
     assert!(c.write_failed(1).is_some(), "third failure in a row");
     assert_eq!(c.next_batch(&log), None);
+}
+
+#[test]
+fn late_ack_from_a_replaced_client_is_stale() {
+    let log = log();
+    let mut a = client(cfg(), &log);
+    let id_a = hs(&mut a);
+    a.disconnect();
+    // A later explicit connect is a new client for the same address.
+    let mut b = client(
+        ClientConfig {
+            subscribe: Some(vec!["only.b".into()]),
+            ..cfg()
+        },
+        &log,
+    );
+    let id_b = hs(&mut b);
+    assert_ne!(id_a, id_b, "handshake ids are unique across clients");
+    // A transport routing by address hands the old socket's ack to b.
+    let f = b.on_ack(id_a, &ack(1, 0, None), &log).unwrap_err();
+    assert_eq!(f.error, HandshakeError::Stale);
+    assert!(!f.publish && !b.is_up());
+    let up = b.on_ack(id_b, &ack(1, 0, None), &log).unwrap();
+    assert!(up.state.connected);
+}
+
+#[test]
+fn disconnect_stops_the_live_link() {
+    let mut log = log();
+    let mut c = client(cfg(), &log);
+    connect(&mut c, &log, &ack(1, 0, None));
+    c.disconnect().expect("a link is up");
+    log.append(event("e1"));
+    assert_eq!(c.next_batch(&log), None, "nothing more is written");
+    let frame = br#"{"topic":"a.b.c.d","offset":"1"}"#;
+    assert_eq!(c.on_frame(frame).unwrap(), Inbound::Ignored);
+    assert_eq!(c.on_event(None, "hub", "a.b.c.d").unwrap(), Delivery::Drop);
+    assert_eq!(c.position().unwrap().offset, 0, "nothing more is delivered");
 }

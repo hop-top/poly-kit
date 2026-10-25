@@ -1,6 +1,8 @@
 //! The dial lifecycle of a [`StreamClient`]: handshake ids, the ack,
 //! failures and their repeat suppression, and disconnect.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use super::ack::{parse_ack, Ack};
 use super::client::{Phase, StreamClient};
 use super::handshake::{encode_auth_frame, ResumeReq, SessionReq};
@@ -10,16 +12,31 @@ use super::types::{
     CLOSE_PROTOCOL,
 };
 
+/// Handshake ids are unique across every client in the process, so a
+/// late ack from a replaced client's socket never matches its successor's
+/// dial. Starts at 1; a counter, no clock and no randomness.
+static NEXT_DIAL: AtomicU64 = AtomicU64::new(1);
+
 impl StreamClient {
     /// Forgets the address, as Go's `Disconnect`: it is final, and from
-    /// now on requests return [`RequestError::Disconnected`](super::RequestError::Disconnected) and no
-    /// handshake brings it back (a reconnect timer already armed included).
-    /// Returns the close to send when a link or a handshake is in
-    /// progress; the link's [`StreamClient::link_down`] then reports a
+    /// now on requests return
+    /// [`RequestError::Disconnected`](super::RequestError::Disconnected)
+    /// and no handshake brings it back (a reconnect timer already armed
+    /// included). A live link stops at once: nothing more is written or
+    /// delivered. Returns the close to send when a link or a handshake is
+    /// in progress; the link's [`StreamClient::link_down`] then reports a
     /// final disconnect.
+    ///
+    /// To connect to the address again later (Go's next explicit
+    /// `Connect`), build a new `StreamClient`. Its handshake ids never
+    /// match this client's, so a late ack from this client's socket is
+    /// refused as stale.
     pub fn disconnect(&mut self) -> Option<CloseFrame> {
         self.forgotten = true;
         self.state.is_final = true;
+        if let Phase::Up(l) = &mut self.phase {
+            l.closing = true;
+        }
         (!matches!(self.phase, Phase::Down)).then_some(CloseFrame {
             status: CLOSE_NORMAL,
             reason: "disconnect",
@@ -44,8 +61,7 @@ impl StreamClient {
         if !matches!(self.phase, Phase::Down) {
             return Err(HandshakeError::Busy);
         }
-        self.next_dial += 1;
-        let id = HandshakeId(self.next_dial);
+        let id = HandshakeId(NEXT_DIAL.fetch_add(1, Ordering::Relaxed));
         self.phase = Phase::Handshaking { id, sent };
         Ok(id)
     }

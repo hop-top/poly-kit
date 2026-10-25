@@ -18,7 +18,8 @@
 //!    a write is reported by [`StreamClient::write_ok`] or
 //!    [`StreamClient::write_failed`].
 //! 4. When a live link's socket closes, [`StreamClient::link_down`].
-//! 5. [`StreamClient::disconnect`] forgets the address for good.
+//! 5. [`StreamClient::disconnect`] forgets the address for good; a later
+//!    connect to it is a new `StreamClient`.
 //!
 //! It holds no lock and reads no clock; wrap it in the transport's own
 //! synchronisation.
@@ -81,7 +82,6 @@ pub struct StreamClient {
     pub(super) outbox_dropped: u64,
     pub(super) skipped: u64,
     pub(super) forgotten: bool,
-    pub(super) next_dial: u64,
 }
 
 impl StreamClient {
@@ -112,7 +112,6 @@ impl StreamClient {
             outbox_dropped: 0,
             skipped: 0,
             forgotten: false,
-            next_dial: 0,
         }
     }
 
@@ -258,8 +257,10 @@ impl StreamClient {
     /// Handles one frame received on the live link. A protocol error
     /// closes the link; it is not final, so the dialer reconnects and
     /// resumes.
+    /// Once the link is closing (a failed write, or
+    /// [`StreamClient::disconnect`]) every frame is ignored.
     pub fn on_frame(&mut self, data: &[u8]) -> Result<Inbound, LinkFailure> {
-        let Some(l) = self.link_mut() else {
+        let Some(l) = self.link_mut().filter(|l| !l.closing) else {
             return Ok(Inbound::Ignored);
         };
         l.frames += 1;
@@ -317,7 +318,7 @@ impl StreamClient {
         topic: &str,
     ) -> Result<Delivery, LinkFailure> {
         let own = self.cfg.origin.clone();
-        let Some(l) = self.link_mut() else {
+        let Some(l) = self.link_mut().filter(|l| !l.closing) else {
             return Ok(Delivery::Drop);
         };
         let stream = l.stream;
