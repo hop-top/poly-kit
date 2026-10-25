@@ -1,0 +1,12 @@
+{
+  "version": "v1",
+  "description": "Dialer outbox over a ring log of `capacity` entries. Ops: `publish` appends an event (named by its topic), `connect` brings the link up (the writer sends every entry after the address's cursor, in order), `disconnect` takes it down. While connected, a publish is sent at once. With `outbox` true the cursor is kept while disconnected and starts when the address is registered (before the first op); with `outbox` false a connect moves the cursor to the head, so events published while down are not sent and not counted. Entries evicted before the cursor reached them are dropped oldest first and counted in `dropped`. `sent` lists topics in send order.",
+  "cases": [
+    {"name": "flush in order after reconnect", "capacity": 8, "outbox": true, "ops": [{"connect": true}, {"publish": "e1"}, {"disconnect": true}, {"publish": "e2"}, {"publish": "e3"}, {"connect": true}, {"publish": "e4"}], "sent": ["e1", "e2", "e3", "e4"], "dropped": 0},
+    {"name": "offline start keeps events", "capacity": 8, "outbox": true, "ops": [{"publish": "e1"}, {"publish": "e2"}, {"connect": true}], "sent": ["e1", "e2"], "dropped": 0},
+    {"name": "overflow drops oldest and counts", "capacity": 3, "outbox": true, "ops": [{"connect": true}, {"disconnect": true}, {"publish": "e1"}, {"publish": "e2"}, {"publish": "e3"}, {"publish": "e4"}, {"publish": "e5"}, {"connect": true}], "sent": ["e3", "e4", "e5"], "dropped": 2},
+    {"name": "drops accumulate across outages", "capacity": 2, "outbox": true, "ops": [{"publish": "e1"}, {"publish": "e2"}, {"publish": "e3"}, {"connect": true}, {"disconnect": true}, {"publish": "e4"}, {"publish": "e5"}, {"publish": "e6"}, {"publish": "e7"}, {"connect": true}], "sent": ["e2", "e3", "e6", "e7"], "dropped": 3},
+    {"name": "outbox off drops while disconnected", "capacity": 8, "outbox": false, "ops": [{"connect": true}, {"publish": "e1"}, {"disconnect": true}, {"publish": "e2"}, {"connect": true}, {"publish": "e3"}], "sent": ["e1", "e3"], "dropped": 0},
+    {"name": "outbox off ignores an offline start", "capacity": 8, "outbox": false, "ops": [{"publish": "e1"}, {"connect": true}, {"publish": "e2"}], "sent": ["e2"], "dropped": 0}
+  ]
+}

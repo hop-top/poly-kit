@@ -1,0 +1,96 @@
+{
+  "version": "v1",
+  "description": "Subscribe pattern validity. Valid: non-empty, at most 256 bytes, every `.`-separated segment non-empty, `*` and `#` only as whole segments, `#` only as the last segment. An invalid pattern is error code `invalid_pattern`. Matching itself is `Topic.Match` (see ../match.json).",
+  "cases": [
+    {
+      "name": "exact",
+      "pattern": "acme.crm.deal.created",
+      "ok": true
+    },
+    {
+      "name": "hash alone",
+      "pattern": "#",
+      "ok": true
+    },
+    {
+      "name": "star alone",
+      "pattern": "*",
+      "ok": true
+    },
+    {
+      "name": "trailing hash",
+      "pattern": "acme.crm.#",
+      "ok": true
+    },
+    {
+      "name": "star segments",
+      "pattern": "acme.*.*.failed",
+      "ok": true
+    },
+    {
+      "name": "star then hash",
+      "pattern": "*.#",
+      "ok": true
+    },
+    {
+      "name": "uppercase allowed",
+      "pattern": "Acme.CRM",
+      "ok": true
+    },
+    {
+      "name": "256 bytes",
+      "pattern": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ok": true
+    },
+    {
+      "name": "257 bytes",
+      "pattern": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ok": false
+    },
+    {
+      "name": "empty",
+      "pattern": "",
+      "ok": false
+    },
+    {
+      "name": "leading dot",
+      "pattern": ".acme",
+      "ok": false
+    },
+    {
+      "name": "trailing dot",
+      "pattern": "acme.",
+      "ok": false
+    },
+    {
+      "name": "double dot",
+      "pattern": "acme..crm",
+      "ok": false
+    },
+    {
+      "name": "hash not last",
+      "pattern": "acme.#.created",
+      "ok": false
+    },
+    {
+      "name": "two hashes",
+      "pattern": "#.#",
+      "ok": false
+    },
+    {
+      "name": "embedded star",
+      "pattern": "acme.cr*",
+      "ok": false
+    },
+    {
+      "name": "embedded hash",
+      "pattern": "acme.crm#",
+      "ok": false
+    },
+    {
+      "name": "double star",
+      "pattern": "acme.**",
+      "ok": false
+    }
+  ]
+}

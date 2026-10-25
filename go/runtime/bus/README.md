@@ -61,8 +61,10 @@ Verified by `example_test.go` in this directory.
   `workspaceid` = `WorkspaceID`, extensions `[a-z0-9]+` (string, bool,
   int32). Network frames default to the kit format;
   `WithFrameFormat(FrameCloudEvents)` sends CloudEvents (origin in
-  `kitorigin`). Both formats are read, so switch only once every peer
-  decodes CloudEvents.
+  `kitorigin`), kit to peers that do not advertise it. Both are read.
+- Network streams (auth on both sides): ordered per sender, offsets
+  via `StreamPositionFrom`, remote subscribe, resume or
+  `kit.runtime.stream.invalidated`; see [bus network streams](../../../docs/contributors/architecture/bus-streams.md).
 
 ## Neighbours
 

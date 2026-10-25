@@ -114,3 +114,23 @@ func decodeCEBase64(s string) ([]byte, error) {
 	}
 	return base64.StdEncoding.Strict().DecodeString(s)
 }
+
+// OffsetExtension is the CloudEvents extension carrying a stream offset
+// on FrameCloudEvents frames over stream links. Like OriginExtension it
+// is set and stripped by the network adapter and never reaches
+// subscribers.
+const OffsetExtension = "kitoffset"
+
+// networkReservedExtension reports whether name is an extension the
+// network adapter owns, with the reason used in errors. These are exact
+// names: CloudEvents extension names have no separator, so reserving a
+// "kit" prefix would also take ordinary names such as "kitchen".
+func networkReservedExtension(name string) (string, bool) {
+	switch name {
+	case OriginExtension:
+		return "reserved for the network origin", true
+	case OffsetExtension:
+		return "reserved for the stream offset", true
+	}
+	return "", false
+}
