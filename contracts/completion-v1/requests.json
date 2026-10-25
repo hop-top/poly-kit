@@ -560,8 +560,10 @@
       ],
       "stdout": [
         "bash\tGenerate the autocompletion script for bash",
+        "fig\tGenerate a Fig completion spec",
         "fish\tGenerate the autocompletion script for fish",
         "powershell\tGenerate the autocompletion script for powershell",
+        "usage\tGenerate a Usage (usage.jdx.dev) completion spec",
         "zsh\tGenerate the autocompletion script for zsh",
         ":4"
       ],
