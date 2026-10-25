@@ -36,7 +36,7 @@ assert_eq!(String::from_utf8(out).unwrap(), "env:prod\nenv:preview\n:4\n");
 - Prefix matching in the completers is case-insensitive; `prefixed` splits on the first colon. Descriptions join values with a tab; directives are cobra's integers (error 1, no file completion 4, extensions 8, directories 16).
 - `completion bash|zsh|fish|powershell` writes cobra v1.10.2's scripts byte for byte; `__complete` / `__completeNoDesc` answer in cobra's wire format, so a Go and a Rust kit CLI complete alike.
 - Parity: [`contracts/completion-v1`](../../../../../../contracts/completion-v1/README.md), run by `tests/cli_completion_conformance.rs`.
-- The script templates derive from cobra (Apache-2.0); its licence is `scripts/LICENSE-cobra.txt`.
+- The script templates derive from cobra (Apache-2.0, see the crate `NOTICE` and `scripts/LICENSE-cobra.txt`); regenerate them with `make completion-regen`, never by hand.
 
 ## Neighbours
 
