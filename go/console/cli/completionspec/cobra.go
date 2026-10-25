@@ -51,7 +51,7 @@ func FromCobra(root *cobra.Command) Spec {
 		cmd.Flags = append(cmd.Flags, f)
 		sortFlags(cmd.Flags)
 	}
-	return Spec{Root: cmd}
+	return Spec{Root: cmd, Version: root.Version}
 }
 
 func buildCommand(c *cobra.Command) Command {
@@ -114,6 +114,7 @@ func buildFlag(c *cobra.Command, f *pflag.Flag) Flag {
 			Optional: f.NoOptDefVal != "",
 			Complete: flagCompletion(c, f),
 		}
+		out.DefaultMissing = f.NoOptDefVal
 	}
 	return out
 }

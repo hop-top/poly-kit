@@ -44,7 +44,16 @@ Prints a KDL spec with `cmd "deploy"` and `choices strict=#false "prod" "staging
   back like any other.
 - Hidden and deprecated commands, and hidden flags, are kept and marked
   hidden: they still parse. Inside a kit `Root` the management group is
-  hidden as it is in `--help`. The help flag is left out.
+  hidden as it is in `--help`. The help flag is left out; a help command
+  is kept.
+- A flag with an optional value (pflag `NoOptDefVal`) takes it only as
+  `--flag=value`. Fig gets `requiresSeparator`; Usage gets
+  `require_equals` and `default_missing`, but no candidates, because
+  usage's completer still reads the next word as the value.
+- With no candidates, Usage falls back to files and Fig offers nothing;
+  cobra's own default is files for a value, nothing for
+  `NoFileCompletions`. Not mapped: subcommand-required (a kit group
+  prints help), cobra flag groups.
 - Choices are advisory (`strict=#false`): kit enums and `ValidArgs` reject
   nothing.
 - Output is byte-stable and sorted by name.

@@ -23,9 +23,8 @@ go test ./go/console/cli/completionspec/ -run '^TestConformanceCompletionSpec'
 
 ## Contract
 
-Go is canonical; the expected files are the source of truth. The runner is
-strict: unknown fields in `tree.json`, a `version` other than `v1`, and any
-file in this directory without a runner fail the run.
+Go is canonical; the expected files are the truth. Strict runner: unknown
+fields, a `version` other than `v1`, or a file with no runner fail it.
 
 `tree.json` is a cobra-shaped tree. Command: `use` (name, then operands),
 `short`, `version`, `aliases`, `hidden`, `deprecated`, `annotations`
@@ -37,31 +36,38 @@ backquotes included), `persistent`, `hidden`, `deprecated` (also hides),
 `required`, `no_opt_default`, `enum` (kit flag enum), `filename_ext`
 (`MarkFlagFilename`; empty means any file), `dirname`, `completion_function`.
 
-Rules a port must reproduce:
+Cobra-side facts, which a runner in another framework builds into its
+tree rather than reimplementing in its walker: `use` operands (`<x>`,
+`[x]`, bare, `...` variadic, a multi-word bracket joined without spaces;
+`[flags]`, `[command]` and flag syntax skipped), `kit/args` (comma list,
+`?` optional, nothing else), pflag `UnquoteUsage` (the first backquoted
+word names the value; else the type, `stringSlice` as `strings`), and
+`deprecated` meaning hidden.
 
-- Commands and flags sorted by name (byte order); aliases keep their order.
-- Hidden: `hidden`, or `deprecated` on a command or flag. Kept, marked hidden.
-- Flags per command: its own plus its persistent ones; `help` dropped. A
-  root with `version` and no `version` flag gets `--version`, short `v`
-  unless taken, help `version for <root>`.
-- Description and value name follow pflag `UnquoteUsage`: the first
-  backquoted word names the value and loses its quotes; else the type
-  (`stringSlice` is `strings`, `int64` is `int`, `float64` is `float`).
-- No value: `bool`, `count`. Optional value: `no_opt_default` set.
-  Repeatable: `count`, `*Slice`, `*Array`, `stringTo*`.
-- Positionals: none under `no_args`; else `kit/args` (comma list, `?`
-  optional; nothing else is grammar); else `use` operands: `<x>`, `[x]`, bare,
-  `...` variadic, a multi-word bracket joined without spaces,
-  `[flags]`/`[command]`/flag syntax skipped. A command with a positional
-  completer and no positional gets `[arg]`, optional and variadic.
-- Candidates, first wins: `enum`, `valid_args` (description cut at the tab,
-  on every positional), `filename_ext` (leading dots dropped), `dirname`,
-  then a completer as a callback into `__complete`.
-- Strings: JS escapes `\\ \" \n \r \t`, other C0 and DEL as `\u00XX`, and
-  U+2028/U+2029; KDL v2 adds `\b \f` and writes C0, DEL, NEL, U+200E/F,
-  U+202A–E, U+2066–9, U+2028/9 and U+FEFF as `\u{x}`. The binary name in
-  the Usage `run` is a bare shell word when it is `[A-Za-z0-9._+-]+`, else
-  single-quoted.
+Walker and emitter rules:
+
+- Sorted by name (byte order): commands, flags. Aliases keep their order.
+- Per command: its own and persistent flags. The `help` FLAG is dropped;
+  a `help` command is kept. A root with `version` and no version flag gets
+  `--version` (short `v` unless taken, help `version for <root>`), and
+  Usage gets a top-level `version` node.
+- No value: `bool`, `count`. Repeatable: `count`, `*Slice`, `*Array`,
+  `stringTo*`. `no_opt_default`: value optional and only attached: Fig
+  `requiresSeparator: true` with `isOptional`; Usage `<name>`,
+  `default_missing`, `require_equals=#true` and `complete type="none"`.
+- Positionals: none under `no_args`. A positional completer with no
+  positional gets `[arg]`, optional and variadic.
+- Candidates, first wins: `enum`, `valid_args` (cut at the tab, on every
+  positional), `filename_ext` (dots dropped), `dirname`, a completer
+  (a `__complete` callback). None: nothing written; Usage then falls back
+  to files, Fig offers nothing.
+- JS strings: `\\ \" \n \r \t`; other C0 and DEL as `\u00xx`; U+2028/9
+  as `\u2028`/`\u2029`; all else raw UTF-8. KDL v2 strings: the same five,
+  `\b \f`, and `\u{x}` (lowercase, unpadded) for other C0, DEL, NEL,
+  U+200E/F, U+202A–E, U+2066–9, U+2028/9, U+FEFF. Header comments carry
+  the escaped bin without quotes.
+- Usage `run` bin: bare if `[A-Za-z0-9._+-]+`, else single-quoted (`'` as
+  `'\''`), then in `{% raw %}…{% endraw %}` when it holds `{` or `}`.
 
 ## Runners
 

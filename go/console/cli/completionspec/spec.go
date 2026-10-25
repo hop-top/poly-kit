@@ -68,8 +68,11 @@ type Flag struct {
 	// Repeatable flags may be given more than once: counters, and
 	// flags collecting a list.
 	Repeatable bool
-	// Arg is the value the flag takes; nil for a switch.
-	Arg *Arg
+	// Arg is the value the flag takes; nil for a switch. When
+	// Arg.Optional, the value must be attached (`--flag=value`) and a
+	// bare flag means DefaultMissing: pflag's NoOptDefVal.
+	Arg            *Arg
+	DefaultMissing string
 }
 
 // Command is one node of the command tree.
@@ -84,7 +87,9 @@ type Command struct {
 	Commands []Command
 }
 
-// Spec is the whole tree. Root.Name is the binary name.
+// Spec is the whole tree. Root.Name is the binary name; Version is
+// the root's version, empty when it has none.
 type Spec struct {
-	Root Command
+	Root    Command
+	Version string
 }

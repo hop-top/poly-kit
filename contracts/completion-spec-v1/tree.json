@@ -2,7 +2,7 @@
   "version": "v1",
   "description": "Fixture command tree for the completion-spec-v1 corpus. Each port rebuilds this tree in its own CLI framework, exports it as a completion spec, and must produce expected.fig.js and expected.usage.kdl byte for byte. Field meanings are in README.md.",
   "root": {
-    "use": "acme",
+    "use": "ac'me{1}",
     "short": "Acme ships widgets",
     "version": "1.4.0",
     "flags": [
@@ -80,6 +80,15 @@
       { "use": "watch", "short": "Follow widget events", "valid_args_function": true },
       { "use": "ping <host>", "short": "Check the service", "no_args": true, "valid_args_function": true },
       { "use": "explain [topic | command]", "short": "Explain a topic" },
+      {
+        "use": "esc",
+        "short": "c0\u0001 nul\u0000 nl\n cr\r tab\t bs\b ff\f del\u007f nel\u0085 lrm\u200e rlm\u200f lre\u202a rlo\u202e lri\u2066 pdi\u2069 bom\ufeff ls\u2028 ps\u2029 q\" bk\\ ${x} `tick` /* c */ {a}; k=v #true // \u00e9",
+        "aliases": ["e\"sc", "e\u0085sc"],
+        "valid_args": ["a\nb", "c\u2029d\tignored description"],
+        "flags": [
+          { "name": "mode", "type": "string", "usage": "Mode \u0001\u007f\u0085 `tick` ${y} \"q\" \\ \u2029", "enum": ["\u202e", "x\u0000y", "q\"'"] }
+        ]
+      },
       {
         "use": "internal",
         "short": "Maintenance hooks",
