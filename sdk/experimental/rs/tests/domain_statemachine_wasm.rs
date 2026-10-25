@@ -10,7 +10,7 @@
 //! No threads: without a spawner the post-transition event runs inline;
 //! with a `spawn_local` spawner it runs once the test yields.
 
-#![cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#![cfg(all(feature = "domain", target_arch = "wasm32", target_os = "unknown"))]
 
 use std::future::Future;
 use std::pin::Pin;

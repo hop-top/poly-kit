@@ -1,5 +1,6 @@
-//! Go-compatible quoting for error text: the same rules as the bus
-//! module's private copy, which this module cannot reach.
+//! Go-compatible quoting for error text. A copy of the canonical helper
+//! in src/bus/quote.rs, which is private to the bus module; keep the two
+//! in step until it moves somewhere both can reach.
 //!
 //! Go formats the offending input with `%q` (`strconv.Quote`). Rust's
 //! `{:?}` agrees for printable text but spells control and non-printable

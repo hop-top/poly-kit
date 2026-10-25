@@ -104,6 +104,9 @@ func loadSMConf(t *testing.T) smConfFile {
 	if err := dec.Decode(&f); err != nil {
 		t.Fatalf("parse statemachine.json: %v", err)
 	}
+	if dec.More() {
+		t.Fatal("statemachine.json: trailing data after the corpus")
+	}
 	if f.Version != "v1" {
 		t.Fatalf("version = %q, want v1", f.Version)
 	}
@@ -155,6 +158,10 @@ func TestConformanceStateMachineTransitions(t *testing.T) {
 		t.Fatal("transitions section is empty")
 	}
 	for _, c := range f.Transitions {
+		if (c.Error == "") == (c.Payload == "") {
+			t.Errorf("%s: a vector names either an error or a payload", c.Name)
+			continue
+		}
 		rec := make(smConfRecorder, 2)
 		sm := NewStateMachine(f.Rules, rec)
 		err := sm.Transition(context.Background(), c.From, c.To, c.Force)
@@ -246,6 +253,12 @@ func TestConformanceStateMachineTopicPrefixes(t *testing.T) {
 		t.Fatal("topic_prefixes section is empty")
 	}
 	for _, c := range f.Prefixes {
+		hasTopics := c.PreTransitioned != "" && c.PostTransitioned != ""
+		noTopics := c.PreTransitioned == "" && c.PostTransitioned == ""
+		if (c.Panic == "" && !hasTopics) || (c.Panic != "" && !noTopics) {
+			t.Errorf("%s: a vector names either a panic or both topics", c.Name)
+			continue
+		}
 		got, panicked := smConfPrefix(c.Prefix)
 		switch {
 		case c.Panic != "":

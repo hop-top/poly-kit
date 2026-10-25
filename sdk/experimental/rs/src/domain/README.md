@@ -10,7 +10,8 @@ is `hop_top_kit::bus`, or whatever your `EventPublisher` wraps.
 
 - an entity has a lifecycle (`open` → `closed`) → `StateMachine::new(rules, publisher)` then `transition`
 - a policy must be able to block a transition → return an error from the publisher on the pre topic
-- other components react after a transition → subscribe to the post topic; it never blocks the caller
+- other components react after a transition → subscribe to the post topic; it runs off the caller's thread
+  (wasm32: give it a spawner)
 - an adopter rebrands the topics → `with_topic_prefix("myapp.task.state")`, or `with_topics` per phase
 - the post event must run on your executor, or on wasm32 off the caller → `with_spawner(spawn)`
 

@@ -417,3 +417,18 @@ fn the_default_post_event_does_not_block_the_caller() {
     gate_tx.send(()).unwrap();
     rec.await_topic("kit.runtime.state.post_transitioned");
 }
+
+#[test]
+fn a_go_encoded_payload_decodes() {
+    let raw = r#"{"From":"open","To":"closed","Force":true}"#;
+    let want = TransitionPayload {
+        from: "open".into(),
+        to: "closed".into(),
+        force: true,
+    };
+    let p: TransitionPayload = serde_json::from_str(raw).unwrap();
+    assert_eq!(p, want);
+    assert_eq!(p.to_json(), raw, "round trip keeps Go's bytes");
+    let p: Payload = serde_json::from_str(raw).unwrap();
+    assert_eq!(p, Payload::Transition(want));
+}

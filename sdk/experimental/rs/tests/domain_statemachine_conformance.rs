@@ -176,6 +176,11 @@ fn conformance_state_machine_transitions() {
     let c = load();
     assert!(!c.transitions.is_empty(), "transitions section is empty");
     for t in &c.transitions {
+        assert!(
+            t.error.is_empty() != t.payload.is_empty(),
+            "{}: a vector names either an error or a payload",
+            t.name
+        );
         let rec = Recording::new();
         let spawner = Manual::default();
         let sm =
@@ -288,6 +293,17 @@ fn conformance_state_machine_topic_prefixes() {
         "topic_prefixes section is empty"
     );
     for p in &c.topic_prefixes {
+        let topics = !p.pre_transitioned.is_empty() && !p.post_transitioned.is_empty();
+        let no_topics = p.pre_transitioned.is_empty() && p.post_transitioned.is_empty();
+        assert!(
+            if p.panic.is_empty() {
+                topics
+            } else {
+                no_topics
+            },
+            "{}: a vector names either a panic or both topics",
+            p.name
+        );
         let prefix = p.prefix.clone();
         let res = catch_unwind(move || {
             StateMachine::new(Rules::new(), None)
@@ -312,14 +328,22 @@ fn conformance_state_machine_topic_prefixes() {
                 );
             }
             Err(payload) => {
-                let msg = payload
-                    .downcast_ref::<String>()
-                    .cloned()
-                    .unwrap_or_default();
-                assert_eq!(msg, p.panic, "{}", p.name);
+                let msg = panic_text(payload.as_ref());
+                assert!(!p.panic.is_empty(), "{}: unexpected panic {msg:?}", p.name);
+                assert_eq!(msg.as_deref(), Some(p.panic.as_str()), "{}", p.name);
             }
         }
     }
+}
+
+/// A panic's message, whatever `panic!` produced: a `String` when
+/// formatted, a `&'static str` for a literal. `None` for any other
+/// payload, which then never equals a vector's text.
+fn panic_text(payload: &(dyn std::any::Any + Send)) -> Option<String> {
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
 }
 
 #[test]

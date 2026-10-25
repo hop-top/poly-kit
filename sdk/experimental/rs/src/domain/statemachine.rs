@@ -19,7 +19,8 @@
 //!
 //! - Go starts a goroutine for the post-transition publish. Here it runs
 //!   on the [`Spawn`] given to [`StateMachine::with_spawner`]; without
-//!   one, on a thread of its own, except on wasm32-unknown-unknown,
+//!   one, on a new OS thread per event (give a high-rate machine a
+//!   spawner backed by a pool), except on wasm32-unknown-unknown,
 //!   which has no threads: there it runs inline, after the
 //!   pre-transition publish and before `transition` returns. Give that
 //!   target a spawner (e.g. one calling
@@ -184,8 +185,10 @@ pub fn is_invalid_transition(err: &(dyn Error + 'static)) -> bool {
 
 /// The payload of both transition events. Go's `TransitionPayload`,
 /// which has no json tags, so its keys are the Go field names: `From`,
-/// `To`, `Force`, in that order.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+/// `To`, `Force`, in that order. Deserializes from exactly those keys,
+/// which is every payload Go emits; Go's own decoder also takes other
+/// letter cases.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct TransitionPayload {
     /// The state the transition started from.
@@ -231,7 +234,7 @@ fn go_json(value: &impl Serialize) -> String {
 
 /// What an [`EventPublisher`] is handed: Go's `payload any`, as an
 /// enum to match where Go type-asserts. Serializes as the inner payload.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[non_exhaustive]
 pub enum Payload {
@@ -391,6 +394,8 @@ impl StateMachine {
 
 /// Go's `go func() { ... }()`: a thread of its own. If the thread cannot
 /// be started the event is dropped, as a best-effort event may be.
+/// Threads cost more than goroutines: a machine with many transitions
+/// should be given a spawner backed by a pool or an async runtime.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn spawn_default(post: impl FnOnce() + Send + 'static) {
     let _ = std::thread::Builder::new()
