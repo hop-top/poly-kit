@@ -152,8 +152,8 @@ func New(opts ...Option) Bus {
 	if len(o.networkAddrs) > 0 {
 		na := NewNetworkAdapter(b, o.networkOpts...)
 		for _, addr := range o.networkAddrs {
-			// Best-effort connect; failures trigger reconnect loop.
-			_ = na.Connect(context.Background(), addr)
+			// Best-effort connect; a failed first dial keeps retrying.
+			na.dialConfigured(addr)
 		}
 		b = &networkedBus{Bus: b, network: na}
 	}

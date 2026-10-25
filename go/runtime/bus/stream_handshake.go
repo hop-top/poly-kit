@@ -47,7 +47,7 @@ func parseCaps(raw json.RawMessage) *streamCaps {
 		return nil
 	}
 	c := &streamCaps{Frames: []string{}}
-	if s := m["streams"]; len(s) > 0 && bytes.IndexAny(s, ".eE") < 0 {
+	if s := m["streams"]; len(s) > 0 && !bytes.ContainsAny(s, ".eE") {
 		if v, err := strconv.Atoi(string(s)); err == nil && v >= 0 {
 			c.Streams = v
 		}
@@ -90,7 +90,9 @@ type authFrame struct {
 }
 
 // parseAuthFrame decodes the dialer's first frame. An unusable token is
-// codeInvalidAuth; a malformed session carries a control-frame code.
+// codeInvalidAuth; a malformed session carries a control-frame code and
+// still returns the token, caps and origin so the acceptor can verify
+// the token before refusing the session.
 func parseAuthFrame(data []byte) (authFrame, *StreamError) {
 	var m map[string]json.RawMessage
 	if json.Unmarshal(data, &m) != nil || m == nil {
@@ -107,20 +109,20 @@ func parseAuthFrame(data []byte) (authFrame, *StreamError) {
 	}
 	var s map[string]json.RawMessage
 	if json.Unmarshal(m["session"], &s) != nil || s == nil {
-		return authFrame{}, streamErr(CodeBadRequest, "session must be an object")
+		return a, streamErr(CodeBadRequest, "session must be an object")
 	}
 	sess := &sessionReq{}
 	if !isNull(s["subscribe"]) {
 		ps, err := parsePatterns(s["subscribe"], true)
 		if err != nil {
-			return authFrame{}, err
+			return a, err
 		}
 		sess.Subscribe = ps
 	}
 	if !isNull(s["scope"]) {
 		sc, err := parseScope(s["scope"])
 		if err != nil {
-			return authFrame{}, err
+			return a, err
 		}
 		sess.Scope = sc
 	}
@@ -130,7 +132,7 @@ func parseAuthFrame(data []byte) (authFrame, *StreamError) {
 		stream, okS := memberString(r, "stream")
 		after, okA := parseOffsetToken(r["after"])
 		if !okS || !validStreamID(stream) || !okA {
-			return authFrame{}, streamErr(CodeBadRequest, "resume needs a stream id and an after offset")
+			return a, streamErr(CodeBadRequest, "resume needs a stream id and an after offset")
 		}
 		sess.Resume = &resumeReq{Stream: stream, After: after}
 	}

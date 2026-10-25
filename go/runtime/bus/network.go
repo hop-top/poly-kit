@@ -4,13 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
-	"net/http"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/coder/websocket"
 
 	"hop.top/kit/go/core/netpolicy"
 	"hop.top/kit/go/core/util"
@@ -36,20 +33,6 @@ type networkMsg struct {
 	Offset string `json:"offset,omitempty"`
 }
 
-// wsConn wraps a single peer connection.
-type wsConn struct {
-	conn      *websocket.Conn
-	addr      string
-	outbound  bool
-	cancel    context.CancelFunc
-	done      chan struct{}
-	writeFail atomic.Int32
-	// peerOriginID is the remote's originID, learned from the first
-	// inbound networkMsg. Used by relay mode to exclude the origin
-	// peer when re-forwarding network events.
-	peerOriginID atomic.Value // string
-}
-
 // NetworkOption configures NetworkAdapter.
 type NetworkOption func(*NetworkAdapter)
 
@@ -73,6 +56,8 @@ func WithOriginID(id string) NetworkOption {
 }
 
 // WithAuth sets the authenticator for outbound/inbound connections.
+// The auth exchange is also the stream handshake: without an
+// authenticator every link is a legacy link (see [OpenAuth]).
 func WithAuth(a Authenticator) NetworkOption {
 	return func(n *NetworkAdapter) { n.auth = a }
 }
@@ -84,6 +69,13 @@ func WithAuth(a Authenticator) NetworkOption {
 // Use on a hub adapter that bridges multiple peers.
 func WithRelay(enabled bool) NetworkOption {
 	return func(n *NetworkAdapter) { n.relay = enabled }
+}
+
+// WithNetworkErrorFunc receives errors the adapter cannot return to a
+// caller: session errors on reconnect, protocol errors, encode errors
+// and skipped entries.
+func WithNetworkErrorFunc(f ErrFunc) NetworkOption {
+	return func(n *NetworkAdapter) { n.onErr = f }
 }
 
 // Authenticator handles auth handshake on network connections.
@@ -100,9 +92,15 @@ type ctxKey struct{}
 var networkOriginKey = ctxKey{}
 
 // NetworkAdapter bridges a local bus to remote peers over WebSocket.
+//
+// Every adapter keeps a log of the events it forwards; each link has a
+// cursor into it and one writer. See the bus streams design for the
+// wire protocol.
 type NetworkAdapter struct {
 	bus          Bus
-	conns        map[string]*wsConn
+	conns        map[string]*link
+	peers        map[string]*peerState
+	skipped      map[string]*atomic.Uint64
 	reconnecting map[string]bool
 	mu           sync.RWMutex
 	reconnect    util.RetryConfig
@@ -115,41 +113,128 @@ type NetworkAdapter struct {
 	closed       atomic.Bool
 	wg           sync.WaitGroup
 	unsub        Unsubscribe
+	onErr        ErrFunc
+
+	log       StreamLog
+	logSize   int
+	ordered   bool // the bus reports accepted events in order
+	notifyMu  sync.Mutex
+	notify    chan struct{}
+	heartbeat time.Duration
+	newTicker func(time.Duration) (<-chan time.Time, func())
+	testHook  func(event string)
+
+	maxSubs      int
+	initialSubs  []string
+	scope        *Scope
+	seeds        map[string]StreamPosition
+	outbox       bool
+	onOutboxDrop func(addr string, n uint64)
+	onSkip       func(addr string, n uint64)
+	authorize    func(context.Context, Peer, Subscription) error
+	linkFilter   func(Peer, Event) bool
 }
 
 // NewNetworkAdapter creates a network adapter bridging the given bus.
 func NewNetworkAdapter(b Bus, opts ...NetworkOption) *NetworkAdapter {
 	n := &NetworkAdapter{
 		bus:          b,
-		conns:        make(map[string]*wsConn),
+		conns:        make(map[string]*link),
+		peers:        make(map[string]*peerState),
+		skipped:      make(map[string]*atomic.Uint64),
 		reconnecting: make(map[string]bool),
 		reconnect: util.RetryConfig{
 			BaseDelay: 100 * time.Millisecond,
 			MaxDelay:  30 * time.Second,
 			Jitter:    true,
 		},
-		originID: randomID(),
+		originID:  randomID(),
+		notify:    make(chan struct{}),
+		heartbeat: DefaultHeartbeat,
+		maxSubs:   DefaultMaxSubscriptions,
+		seeds:     map[string]StreamPosition{},
+		newTicker: func(d time.Duration) (<-chan time.Time, func()) {
+			t := time.NewTicker(d)
+			return t.C, t.Stop
+		},
 	}
 	for _, o := range opts {
 		o(n)
 	}
+	if n.log == nil {
+		n.log = NewRingLog("", n.logSize)
+	}
 
-	// Subscribe to all local events for outbound forwarding.
-	n.unsub = b.SubscribeAsync("#", func(ctx context.Context, e Event) {
-		// Skip events that arrived from the network unless relay is on.
-		// In relay mode we re-forward to all peers EXCEPT the origin.
-		if origin := ctx.Value(networkOriginKey); origin != nil {
-			if !n.relay {
-				return
-			}
-			originID, _ := origin.(string)
-			n.forwardToRemotes(e, originID)
+	// Log every forwarded event. With the publish hook the log is in
+	// publish order and the adapter speaks streams; without it, an
+	// async subscriber keeps the previous unordered forwarding.
+	if po := publishObserverOf(b); po != nil {
+		n.ordered = true
+		n.unsub = po.ObservePublished(n.observe)
+	} else {
+		n.unsub = b.SubscribeAsync("#", func(ctx context.Context, e Event) { n.observe(ctx, e) })
+	}
+	return n
+}
+
+// observe appends an accepted event to the log when the adapter would
+// forward it: local events, and network events in relay mode.
+func (n *NetworkAdapter) observe(ctx context.Context, e Event) {
+	if n.closed.Load() || isReservedTopic(e.Topic) {
+		return
+	}
+	origin := n.originID
+	if v := ctx.Value(networkOriginKey); v != nil {
+		if !n.relay {
 			return
 		}
-		n.forwardToRemotes(e, "")
-	})
+		origin, _ = v.(string)
+	}
+	if !n.filter.Match(string(e.Topic)) {
+		return
+	}
+	n.log.Append(LogEntry{Event: e, Origin: origin})
+	n.wake()
+}
 
-	return n
+// appendMarker logs a gap marker for downstream stream links.
+func (n *NetworkAdapter) appendMarker() {
+	n.log.Append(LogEntry{Marker: true})
+	n.wake()
+}
+
+// waitCh returns a channel closed by the next append.
+func (n *NetworkAdapter) waitCh() <-chan struct{} {
+	n.notifyMu.Lock()
+	defer n.notifyMu.Unlock()
+	return n.notify
+}
+
+func (n *NetworkAdapter) wake() {
+	n.notifyMu.Lock()
+	close(n.notify)
+	n.notify = make(chan struct{})
+	n.notifyMu.Unlock()
+}
+
+func (n *NetworkAdapter) caps() streamCaps {
+	c := streamCaps{Frames: append([]string(nil), knownFrames...)}
+	if n.ordered {
+		c.Streams = StreamsVersion
+	}
+	return c
+}
+
+func (n *NetworkAdapter) reportErr(err error) {
+	if n.onErr != nil && err != nil {
+		n.onErr(err)
+	}
+}
+
+func (n *NetworkAdapter) hook(event string) {
+	if n.testHook != nil {
+		n.testHook(event)
+	}
 }
 
 // baseCtx returns the root context for adapter-owned goroutines. A
@@ -164,103 +249,22 @@ func (n *NetworkAdapter) baseCtx() context.Context {
 	return context.Background()
 }
 
-// Connect establishes a WebSocket connection to a remote peer.
-func (n *NetworkAdapter) Connect(ctx context.Context, addr string) error {
-	if n.closed.Load() {
-		return ErrBusClosed
-	}
-
-	// Remember the policy for reconnects, which start from their own
-	// context long after this one is gone. Sticky by design: once a run
-	// is offline, a later online Connect must not un-set it for peers
-	// dialed under the offline policy.
-	if netpolicy.IsOffline(ctx) {
-		n.offline.Store(true)
-	}
-
-	// coder/websocket handshakes over an *http.Client, so the policy is
-	// applied through a guarded transport rather than a dialer. Naming
-	// the client here rather than relying on http.DefaultClient keeps
-	// enforcement explicit and independent of netpolicy.Install order.
-	conn, _, err := websocket.Dial(ctx, addr, &websocket.DialOptions{
-		HTTPClient: &http.Client{Transport: netpolicy.Guard(http.DefaultTransport)},
-	})
-	if err != nil {
-		return err
-	}
-
-	// Auth handshake: send token as first message, wait for ack.
-	if n.auth != nil {
-		token, err := n.auth.Token()
-		if err != nil {
-			_ = conn.Close(websocket.StatusInternalError, "auth failed")
-			return err
-		}
-		authMsg, _ := json.Marshal(map[string]string{"auth": token})
-		if err := conn.Write(ctx, websocket.MessageText, authMsg); err != nil {
-			_ = conn.Close(websocket.StatusInternalError, "auth write failed")
-			return err
-		}
-		// Read auth ack from server.
-		ackCtx, ackCancel := context.WithTimeout(ctx, 10*time.Second)
-		_, ackData, err := conn.Read(ackCtx)
-		ackCancel()
-		if err != nil {
-			_ = conn.Close(websocket.StatusPolicyViolation, "auth ack timeout")
-			return ErrAuthFailed
-		}
-		var ack struct {
-			Type string `json:"type"`
-		}
-		if err := json.Unmarshal(ackData, &ack); err != nil || ack.Type != "auth_ok" {
-			_ = conn.Close(websocket.StatusPolicyViolation, "auth rejected")
-			return ErrAuthFailed
-		}
-	}
-
-	connCtx, cancel := context.WithCancel(context.Background())
-	wc := &wsConn{
-		conn:     conn,
-		addr:     addr,
-		outbound: true,
-		cancel:   cancel,
-		done:     make(chan struct{}),
-	}
-
-	n.mu.Lock()
-	if existing, ok := n.conns[addr]; ok {
-		// Already connected (race with reconnect). Close the new conn.
-		n.mu.Unlock()
-		cancel()
-		_ = conn.Close(websocket.StatusNormalClosure, "duplicate")
-		_ = existing
-		return nil
-	}
-	n.conns[addr] = wc
-	n.mu.Unlock()
-
-	n.wg.Add(1)
-	go n.readLoop(connCtx, wc)
-
-	return nil
-}
-
-// Disconnect closes the connection to a specific peer.
+// Disconnect closes the connection to a specific peer and forgets the
+// address: no reconnect, and its outbox and position are dropped.
 func (n *NetworkAdapter) Disconnect(addr string) error {
 	n.mu.Lock()
-	wc, ok := n.conns[addr]
-	if ok {
-		delete(n.conns, addr)
-	}
+	l, ok := n.conns[addr]
+	ps := n.peers[addr]
+	delete(n.peers, addr)
 	n.mu.Unlock()
-
+	if ps != nil {
+		ps.setFinal("")
+	}
 	if !ok {
 		return nil
 	}
-
-	wc.cancel()
-	_ = wc.conn.Close(websocket.StatusNormalClosure, "disconnect")
-	<-wc.done
+	l.close(statusNormal, "disconnect", "")
+	<-l.done
 	return nil
 }
 
@@ -269,196 +273,51 @@ func (n *NetworkAdapter) Close() error {
 	if n.closed.Swap(true) {
 		return nil
 	}
-
 	if n.unsub != nil {
 		n.unsub()
 	}
-
 	n.mu.Lock()
-	for addr, wc := range n.conns {
-		wc.cancel()
-		_ = wc.conn.Close(websocket.StatusGoingAway, "closing")
-		delete(n.conns, addr)
+	links := make([]*link, 0, len(n.conns))
+	for _, l := range n.conns {
+		links = append(links, l)
 	}
 	n.mu.Unlock()
-
+	for _, l := range links {
+		l.close(statusGoingAway, "closing", "")
+	}
 	n.wg.Wait()
 	return nil
 }
 
-// Handler returns an http.Handler that accepts inbound WebSocket peers.
-func (n *NetworkAdapter) Handler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := websocket.Accept(w, r, nil)
-		if err != nil {
-			return
-		}
-
-		ctx := r.Context()
-
-		// Auth handshake: expect token as first message with timeout.
-		if n.auth != nil {
-			authCtx, authCancel := context.WithTimeout(ctx, 10*time.Second)
-			_, msg, err := conn.Read(authCtx)
-			authCancel()
-			if err != nil {
-				_ = conn.Close(websocket.StatusPolicyViolation, "auth required")
-				return
-			}
-			var authMsg struct {
-				Auth string `json:"auth"`
-			}
-			if err := json.Unmarshal(msg, &authMsg); err != nil || authMsg.Auth == "" {
-				_ = conn.Close(websocket.StatusPolicyViolation, "invalid auth")
-				return
-			}
-			if err := n.auth.Verify(authMsg.Auth); err != nil {
-				_ = conn.Close(websocket.StatusPolicyViolation, "auth failed")
-				return
-			}
-			// Send auth ack.
-			ack, _ := json.Marshal(map[string]string{"type": "auth_ok"})
-			if err := conn.Write(ctx, websocket.MessageText, ack); err != nil {
-				_ = conn.Close(websocket.StatusInternalError, "ack write failed")
-				return
-			}
-		}
-
-		addr := r.RemoteAddr
-		connCtx, cancel := context.WithCancel(context.Background())
-		wc := &wsConn{
-			conn:     conn,
-			addr:     addr,
-			outbound: false,
-			cancel:   cancel,
-			done:     make(chan struct{}),
-		}
-
-		n.mu.Lock()
-		n.conns[addr] = wc
-		n.mu.Unlock()
-
-		n.wg.Add(1)
-		go n.readLoop(connCtx, wc)
-	})
+// Dial registers addr as an outbound peer and connects in the
+// background, retrying with backoff until it succeeds, Disconnect, or
+// Close. With [WithOutbox], events published from now on are kept for
+// the peer even before the first connect.
+func (n *NetworkAdapter) Dial(addr string) {
+	n.peerFor(addr)
+	go n.reconnectLoop(addr)
 }
 
-// forwardToRemotes sends a local event to all connected peers.
-//
-// If excludeOriginID is non-empty, peers whose learned peerOriginID
-// equals excludeOriginID are skipped (relay mode origin exclusion).
-// The wire-level Origin field carries the source publisher's
-// originID — preserved across relay so downstream peers can still
-// dedupe via the existing msg.Origin == n.originID loop check.
-func (n *NetworkAdapter) forwardToRemotes(e Event, excludeOriginID string) {
-	if n.closed.Load() {
-		return
-	}
-
-	if !n.filter.Match(string(e.Topic)) {
-		return
-	}
-
-	// Wire Origin: in relay mode preserve the original publisher's
-	// originID so the next hop's loop-prevention check still works.
-	wireOrigin := n.originID
-	if excludeOriginID != "" {
-		wireOrigin = excludeOriginID
-	}
-	data, err := encodeFrame(n.frames, e, wireOrigin)
-	if err != nil {
-		return
-	}
-
-	n.mu.RLock()
-	conns := make([]*wsConn, 0, len(n.conns))
-	for _, wc := range n.conns {
-		if excludeOriginID != "" {
-			if id, _ := wc.peerOriginID.Load().(string); id == excludeOriginID {
-				continue
-			}
-		}
-		conns = append(conns, wc)
-	}
-	n.mu.RUnlock()
-
-	for _, wc := range conns {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		err := wc.conn.Write(ctx, websocket.MessageText, data)
-		cancel()
-		if err != nil {
-			if wc.writeFail.Add(1) >= 3 {
-				// Too many consecutive failures; close and trigger reconnect if outbound.
-				n.mu.Lock()
-				delete(n.conns, wc.addr)
-				n.mu.Unlock()
-				wc.cancel()
-				_ = wc.conn.Close(websocket.StatusGoingAway, "write failures")
-				if wc.outbound {
-					go n.reconnectLoop(wc.addr)
-				}
-			}
-		} else {
-			wc.writeFail.Store(0)
-		}
+// dialConfigured registers addr, tries one connect, and keeps retrying
+// in the background if it fails (unless the session was refused).
+func (n *NetworkAdapter) dialConfigured(addr string) {
+	n.peerFor(addr)
+	err := n.Connect(context.Background(), addr)
+	var se *StreamError
+	if err != nil && !errors.As(err, &se) {
+		go n.reconnectLoop(addr)
 	}
 }
 
-// readLoop reads messages from a peer and injects them into the local bus.
-func (n *NetworkAdapter) readLoop(ctx context.Context, wc *wsConn) {
-	defer func() {
-		close(wc.done)
-		n.wg.Done()
-	}()
-
-	for {
-		_, data, err := wc.conn.Read(ctx)
-		if err != nil {
-			// Connection closed or context canceled.
-			n.mu.Lock()
-			delete(n.conns, wc.addr)
-			n.mu.Unlock()
-
-			// Only reconnect outbound connections, with dedup guard.
-			if wc.outbound && !n.closed.Load() && ctx.Err() == nil {
-				n.mu.Lock()
-				alreadyReconnecting := n.reconnecting[wc.addr]
-				if !alreadyReconnecting {
-					n.reconnecting[wc.addr] = true
-				}
-				n.mu.Unlock()
-				if !alreadyReconnecting {
-					go n.reconnectLoop(wc.addr)
-				}
-			}
-			return
-		}
-
-		event, origin, err := decodeFrame(data)
-		if err != nil {
-			continue
-		}
-
-		// Learn peer originID once (used by relay mode to exclude origin
-		// when re-forwarding). Stored regardless of relay flag — cheap.
-		if id, _ := wc.peerOriginID.Load().(string); id == "" && origin != "" {
-			wc.peerOriginID.Store(origin)
-		}
-
-		// Loop prevention: don't re-inject events we originated.
-		if origin == n.originID {
-			continue
-		}
-
-		// Mark context so outbound forwarder skips this event (or
-		// re-forwards to non-origin peers when relay is on).
-		pubCtx := context.WithValue(ctx, networkOriginKey, origin)
-		_ = n.bus.Publish(pubCtx, event)
-	}
-}
-
-// reconnectLoop attempts to re-establish a dropped connection.
+// reconnectLoop dials addr until connected; a session error stops it.
 func (n *NetworkAdapter) reconnectLoop(addr string) {
+	n.mu.Lock()
+	if n.reconnecting[addr] {
+		n.mu.Unlock()
+		return
+	}
+	n.reconnecting[addr] = true
+	n.mu.Unlock()
 	defer func() {
 		n.mu.Lock()
 		delete(n.reconnecting, addr)
@@ -481,9 +340,18 @@ func (n *NetworkAdapter) reconnectLoop(addr string) {
 	}()
 
 	_ = util.Retry(ctx, n.reconnect, func() error {
+		if !n.isPeer(addr) {
+			return nil // Disconnect forgot it
+		}
 		dialCtx, dialCancel := context.WithTimeout(ctx, 10*time.Second)
 		defer dialCancel()
-		return n.Connect(dialCtx, addr)
+		err := n.Connect(dialCtx, addr)
+		var se *StreamError
+		if errors.As(err, &se) {
+			n.reportErr(err)
+			return nil // permanent: a configuration error
+		}
+		return err
 	})
 }
 
@@ -496,7 +364,8 @@ func WithNetworkOption(opts ...NetworkOption) Option {
 }
 
 // WithNetwork returns a BusOption that attaches a NetworkAdapter
-// and auto-connects to the provided addresses.
+// and auto-connects to the provided addresses. A failed first dial
+// keeps retrying in the background.
 func WithNetwork(addrs ...string) Option {
 	return func(o *busOpts) {
 		o.networkAddrs = addrs
