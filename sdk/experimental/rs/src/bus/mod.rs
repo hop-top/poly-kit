@@ -26,6 +26,10 @@
 //! Publish, handlers and close carry a [`Context`], the Rust form of
 //! Go's `context.Context`.
 //!
+//! [`adapter`] holds the transport seam, [`Adapter`] and
+//! [`MemoryAdapter`]; [`DynBus`] is Go's `New`, composing the adapter,
+//! network and sink layers in Go's order.
+//!
 //! # Example
 //!
 //! ```
@@ -42,9 +46,11 @@
 //! bus.publish(&event).unwrap();
 //! ```
 
+pub mod adapter;
 pub mod async_dispatch;
 pub mod builder;
 pub mod cloudevents;
+mod compose;
 pub mod config;
 pub mod context;
 mod drain;
@@ -56,9 +62,11 @@ mod shared;
 pub mod stream;
 pub mod topic;
 
+pub use adapter::{async_handler, Adapter, AsyncHandler, MemoryAdapter};
 pub use async_dispatch::{MaybeSend, Spawn, Task, DEFAULT_MAX_ASYNC};
 pub use builder::{parse_topic, prefixed_topic_of, topic_of, TopicBuilder};
 pub use cloudevents::{CloudEvent, CloudEventError, FrameFormat};
+pub use compose::{DynBus, DynBusBuilder};
 pub use config::{
     mode_from_config, mode_from_config_with, mode_from_env, mode_from_env_with, mode_from_string,
     ConfigGetter, ParseModeError, CONFIG_KEY_ENFORCE, ENV_ENFORCE,

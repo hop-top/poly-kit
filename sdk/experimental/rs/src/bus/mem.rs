@@ -326,8 +326,8 @@ pub(super) fn check_topic(
 /// variadic `Option` constructor.
 #[derive(Default)]
 pub struct BusBuilder {
-    enforce: Option<Mode>,
-    on_invalid: Option<SharedErrFn>,
+    pub(super) enforce: Option<Mode>,
+    pub(super) on_invalid: Option<SharedErrFn>,
     max_async: usize,
 }
 

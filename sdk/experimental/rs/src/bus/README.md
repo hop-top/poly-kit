@@ -15,6 +15,8 @@ grammar? Service lifecycle events are emitted by `hop_top_kit::serve`; cross-pro
 - an adopter rebrands topics under its own prefix → `prefix_topics(prefix, actions)`, which validates tense
 - a publish must fail on a malformed topic rather than warn → `Bus::builder().enforce(Mode::Strict)`
 - a handler must not hold up the publisher → `SharedBus::subscribe_async` with a `Spawn` for your executor
+- the transport must be swappable → `Bus::builder().with_adapter(a).build()`, a `DynBus` (Go's `New`);
+  `MemoryAdapter` is the in-process `Adapter`
 
 ## Quick start
 
@@ -56,6 +58,8 @@ bus.publish(&event).unwrap();
   always locks, and admits no new async task. `close_ctx(&ctx)` waits for sync publishes with no deadline,
   then for async tasks until `ctx` is done (Go's `ctx.Err()` text; the bus stays closed). On
   `wasm32-unknown-unknown` it returns `BusError::NotDrained` instead of blocking.
+- `DynBus` layers in Go's `New` order: adapter behind topic enforcement (else the in-memory bus), then
+  network (`with_network`, recorded only until that adapter lands), then env sinks. `build()` stays plain.
 - Subscribe after close registers nothing. `publish` after `close` is `BusError::Closed`.
 - Re-entrancy: a handler may publish, subscribe, unsubscribe and close on the `SharedBus` dispatching to
   it; Go deadlocks on all but the nested publish. Two handlers closing at once deadlock, as in Go.
