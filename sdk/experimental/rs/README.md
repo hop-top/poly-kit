@@ -60,7 +60,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `uri` | `hop-top-cite` | 41 |
 | `sqlstore-encrypt` | `sqlstore` + `crypto_secretbox`, `hkdf`, `sha2` | 50 |
 | `serve-cli` | `serve` + `cli` | 50 |
-| `api` | `netpolicy` + `reqwest`, `tokio`, `serde`, `serde_json`, `thiserror` | 113 |
+| `api` | `netpolicy` + `reqwest`, `serde`, `serde_json`, `thiserror` | 113 |
 | `telemetry` | `api` + `serde_yaml`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
 
 Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`.
