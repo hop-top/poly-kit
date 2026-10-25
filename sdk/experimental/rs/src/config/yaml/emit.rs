@@ -30,6 +30,33 @@ pub(crate) fn document(node: &Node, indent: usize) -> String {
     out
 }
 
+/// Renders the text that follows `key:` for `node`, as a value whose
+/// key sits at column `col`: either ` scalar` / ` {flow}` on the same
+/// line, or a newline and an indented block. No trailing newline.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn after_key(node: &Node, col: usize, indent: usize) -> String {
+    let e = Emitter { indent };
+    let mut out = String::new();
+    e.value_after_key(&mut out, node, col);
+    while out.ends_with('\n') {
+        out.pop();
+    }
+    out
+}
+
+/// Renders a single node in flow context (for insertion into a flow
+/// collection).
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn flow(node: &Node) -> String {
+    Emitter { indent: 2 }.inline(node, true)
+}
+
+/// Renders a mapping key.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn key(node: &Node) -> String {
+    Emitter { indent: 2 }.scalar_text(node, Ctx::Key, 0)
+}
+
 /// Whether `node` is written as an indented block (non-empty block
 /// collection) rather than inline.
 pub(crate) fn is_block(node: &Node) -> bool {

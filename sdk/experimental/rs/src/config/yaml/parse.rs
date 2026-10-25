@@ -87,7 +87,7 @@ pub(crate) fn parse(src: &str) -> Result<Option<Node>, ParseError> {
                     ScalarStyle::Folded => Style::Folded,
                 };
                 node.line = line;
-                node.span = Some((start, end));
+                node.span = Some(scalar_span(src, node.style, start, end));
                 set_tag(&mut node, tag.as_deref(), line)?;
                 Some((node, anchor))
             }
@@ -230,6 +230,37 @@ fn close_span(node: &mut Node, first: Option<usize>, last: Option<usize>, end_ev
     node.span = Some((start, last.unwrap_or(start)));
 }
 
+/// The parser's scalar spans run to the line end for quoted scalars
+/// (taking in a trailing comment) and cover only the content of block
+/// scalars. Narrow quoted ones to the closing quote; widen block ones
+/// to their `|`/`>` indicator and drop trailing line breaks.
+fn scalar_span(src: &str, style: Style, start: usize, end: usize) -> (usize, usize) {
+    let b = src.as_bytes();
+    match style {
+        Style::Double | Style::Single
+            if b.get(start).is_some_and(|c| *c == b'"' || *c == b'\'') =>
+        {
+            let mut i = start + 1;
+            while i < b.len() {
+                match (style, b[i]) {
+                    (Style::Double, b'\\') => i += 2,
+                    (Style::Double, b'"') => return (start, i + 1),
+                    (Style::Single, b'\'') if b.get(i + 1) == Some(&b'\'') => i += 2,
+                    (Style::Single, b'\'') => return (start, i + 1),
+                    _ => i += 1,
+                }
+            }
+            (start, end)
+        }
+        Style::Literal | Style::Folded => {
+            let ind = src[..start].rfind(['|', '>']).unwrap_or(start);
+            let body = &src[start.max(ind)..end.max(start)];
+            (ind, start.max(ind) + body.trim_end().len())
+        }
+        _ => (start, end),
+    }
+}
+
 fn tag_text(tag: &Tag) -> String {
     if tag.handle == "tag:yaml.org,2002:" || tag.handle == "!!" {
         return format!("!!{}", tag.suffix);
@@ -305,6 +336,19 @@ mod tests {
         assert!(parse("# only\n").unwrap().is_none());
         let err = parse("a: b: c\n").unwrap_err();
         assert!(err.to_string().starts_with("yaml: line 1: "), "{err}");
+    }
+
+    #[test]
+    fn quoted_and_block_spans() {
+        let src = "a: \"x\\\"y\" # c\nb: 'it''s' # d\nc: |\n  l1\n  l2\nz: 1\n";
+        let root = parse(src).unwrap().unwrap();
+        let text = |k: &str| {
+            let (s, e) = root.get(k).unwrap().span.unwrap();
+            &src[s..e]
+        };
+        assert_eq!(text("a"), "\"x\\\"y\"");
+        assert_eq!(text("b"), "'it''s'");
+        assert_eq!(text("c"), "|\n  l1\n  l2");
     }
 
     #[test]

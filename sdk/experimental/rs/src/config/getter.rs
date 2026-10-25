@@ -40,7 +40,6 @@ impl NodeCache {
         Ok(Some(doc))
     }
 
-    #[cfg(test)]
     pub(crate) fn invalidate(&self, path: &Path) {
         self.nodes
             .lock()

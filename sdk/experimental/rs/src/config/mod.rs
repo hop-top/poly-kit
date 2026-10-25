@@ -2,6 +2,8 @@
 //!
 //! Gated behind the `config` feature.
 
+#[cfg(not(target_arch = "wasm32"))]
+mod edit;
 mod env;
 mod error;
 #[cfg(not(target_arch = "wasm32"))]
@@ -22,6 +24,8 @@ mod precedence;
 mod registry;
 mod resolved;
 mod scope;
+#[cfg(not(target_arch = "wasm32"))]
+mod setter;
 mod value;
 pub(crate) mod yaml;
 
@@ -60,4 +64,6 @@ pub use resolved::{
     format_resolved, format_resolved_table, resolved_as_json, sorted_by_key, Origin, Resolved,
 };
 pub use scope::{scope_path, Scope};
+#[cfg(not(target_arch = "wasm32"))]
+pub use setter::{set, set_value, unset};
 pub use value::{Map, Value};
