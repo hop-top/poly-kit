@@ -2,8 +2,7 @@
 //!
 //! Strict like the Go runner: vector files deserialize into typed structs
 //! that deny unknown fields, `version` must be `v1` with a non-empty
-//! `description`, and the corpus must match [`FILES`] plus [`SKIPPED`]
-//! exactly.
+//! `description`, and the corpus must match [`FILES`] exactly.
 
 #![allow(dead_code)]
 
@@ -21,6 +20,7 @@ use serde_json::Value;
 pub const FILES: &[&str] = &[
     "control.json",
     "cursor.json",
+    "event_frames.json",
     "filter.json",
     "handshake.json",
     "inbound.json",
@@ -29,15 +29,6 @@ pub const FILES: &[&str] = &[
     "patterns.json",
     "resume.json",
 ];
-
-/// Files in the corpus this port does not run yet, with the reason.
-/// `event_frames.json` encodes and decodes whole event frames, which
-/// needs the CloudEvents shaping (`kitoffset`, `kitorigin`, the reserved
-/// extension check) that the stream core leaves to the transport.
-pub const SKIPPED: &[(&str, &str)] = &[(
-    "event_frames.json",
-    "event frame encode/decode needs CloudEvents shaping",
-)];
 
 /// Wire transcripts replay against a live acceptor over a WebSocket: the
 /// network half runs them, not the I/O-free core.
@@ -55,10 +46,7 @@ pub fn dir() -> PathBuf {
 /// Loads `name` strictly: a registered file, `version` v1, a description,
 /// and no unknown fields at any level.
 pub fn load<T: DeserializeOwned>(name: &str) -> T {
-    assert!(
-        FILES.contains(&name) || SKIPPED.iter().any(|(n, _)| *n == name),
-        "{name} is not registered"
-    );
+    assert!(FILES.contains(&name), "{name} is not registered");
     let p = dir().join(name);
     let raw = fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
     let v: Value = serde_json::from_str(&raw).unwrap_or_else(|e| panic!("parse {name}: {e}"));

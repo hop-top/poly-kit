@@ -5,6 +5,8 @@
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::bus::cloudevents::FrameFormat;
+
 use super::error::{StreamError, CODE_BAD_REQUEST, CODE_INVALID_AUTH};
 use super::wire::{
     format_offset, is_null, member_str, parse_offset_token, parse_patterns, parse_scope,
@@ -30,39 +32,25 @@ pub fn clamp_heartbeat_ms(ms: u64) -> Option<u64> {
     (ms > 0).then(|| ms.clamp(MIN_HEARTBEAT_MS, MAX_HEARTBEAT_MS))
 }
 
-/// A frame format a link can send.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum FrameFormat {
-    /// The kit JSON frame.
-    #[default]
-    Kit,
-    /// CloudEvents structured JSON.
-    CloudEvents,
-}
-
-impl FrameFormat {
-    /// The name peers advertise.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            FrameFormat::Kit => "kit",
-            FrameFormat::CloudEvents => "cloudevents",
-        }
-    }
-
-    /// Parses an advertised name; unknown names are `None`.
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "kit" => Some(FrameFormat::Kit),
-            "cloudevents" => Some(FrameFormat::CloudEvents),
-            _ => None,
-        }
+/// The name a peer advertises for `f` in `caps.frames`.
+pub(crate) fn format_name(f: FrameFormat) -> &'static str {
+    match f {
+        FrameFormat::Kit => "kit",
+        FrameFormat::CloudEvents => "cloudevents",
     }
 }
 
-impl Serialize for FrameFormat {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(self.as_str())
+/// Parses an advertised frame format name; unknown names are `None`.
+pub(crate) fn parse_format(s: &str) -> Option<FrameFormat> {
+    match s {
+        "kit" => Some(FrameFormat::Kit),
+        "cloudevents" => Some(FrameFormat::CloudEvents),
+        _ => None,
     }
+}
+
+fn format_names<S: serde::Serializer>(fs: &[FrameFormat], s: S) -> Result<S::Ok, S::Error> {
+    s.collect_seq(fs.iter().map(|f| format_name(*f)))
 }
 
 /// The capability advertisement in the handshake.
@@ -71,6 +59,7 @@ pub struct StreamCaps {
     /// Stream protocol version; 0 when the side cannot do streams.
     pub streams: u64,
     /// Frame formats this side decodes, in its order.
+    #[serde(serialize_with = "format_names")]
     pub frames: Vec<FrameFormat>,
 }
 
@@ -97,7 +86,7 @@ pub fn parse_caps(raw: Option<&Value>) -> Option<StreamCaps> {
         .and_then(Value::as_array)
         .map(|fs| {
             fs.iter()
-                .filter_map(|f| f.as_str().and_then(FrameFormat::parse))
+                .filter_map(|f| f.as_str().and_then(parse_format))
                 .collect()
         })
         .unwrap_or_default();

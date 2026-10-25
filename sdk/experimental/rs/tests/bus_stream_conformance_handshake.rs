@@ -27,7 +27,7 @@ struct VCaps {
 fn vcaps_of(c: &Option<StreamCaps>) -> Option<VCaps> {
     c.as_ref().map(|c| VCaps {
         streams: c.streams,
-        frames: c.frames.iter().map(|f| f.as_str().to_string()).collect(),
+        frames: c.frames.iter().map(|f| f.to_string()).collect(),
     })
 }
 
@@ -39,7 +39,11 @@ fn caps_of(v: &VCaps) -> StreamCaps {
 }
 
 fn format(s: &str) -> FrameFormat {
-    FrameFormat::parse(s).unwrap_or_else(|| panic!("vector frame format {s:?}"))
+    match s {
+        "kit" => FrameFormat::Kit,
+        "cloudevents" => FrameFormat::CloudEvents,
+        other => panic!("vector frame format {other:?}"),
+    }
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -281,13 +285,10 @@ fn stream_conformance_handshake() {
             tc.handshake,
             format(&tc.configured),
         );
-        if v != tc.streams || ff.as_str() != tc.format {
+        if v != tc.streams || ff.to_string() != tc.format {
             fails.push(format!(
                 "negotiate/{}: {v}/{}, want {}/{}",
-                tc.name,
-                ff.as_str(),
-                tc.streams,
-                tc.format
+                tc.name, ff, tc.streams, tc.format
             ));
         }
     }

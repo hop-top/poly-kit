@@ -9,8 +9,9 @@ use serde_json::{json, Value};
 use super::control::FrameKind;
 use super::cursor::{GapInfo, LinkResume};
 use super::error::{ProtocolError, StreamError};
-use super::handshake::{FrameFormat, StreamCaps, STREAMS_VERSION};
+use super::handshake::{format_name, StreamCaps, STREAMS_VERSION};
 use super::wire::{Members, Scope};
+use crate::bus::cloudevents::FrameFormat;
 
 /// Caps the patterns one link may subscribe.
 pub const DEFAULT_MAX_SUBSCRIPTIONS: usize = 1000;
@@ -160,7 +161,7 @@ impl LinkUp {
             "peer": peer,
             "stream": self.state.stream,
             "resume": self.state.resume.map_or("", LinkResume::as_str),
-            "format": self.state.format.as_str(),
+            "format": format_name(self.state.format),
         })
     }
 }
@@ -295,7 +296,9 @@ impl EventFrame {
 pub enum Inbound {
     /// Nothing to do.
     Ignored,
-    /// An event frame: decode it (dropping an unusable one), then call
+    /// An event frame: decode it with
+    /// [`decode_event_frame`](super::decode_event_frame) (dropping an
+    /// unusable one), then call
     /// [`StreamClient::on_event`](super::StreamClient::on_event).
     Event(EventFrame),
     /// The reply to request `id`.

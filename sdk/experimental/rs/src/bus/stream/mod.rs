@@ -22,12 +22,10 @@
 //!   queue ([`decide_resume`], [`DialerCursor`], [`InboundQueue`])
 //! - the send log and the outbox ([`RingLog`], [`SendCursor`],
 //!   [`OutboundWriter`])
+//! - event frames with offsets, on top of the CloudEvents core's codec
+//!   ([`encode_event_frame`], [`decode_event_frame`])
 //! - [`StreamClient`]: a dialer's link state machine over all of the
 //!   above, for one outbound address
-//!
-//! Event frames themselves (kit and CloudEvents encoding, the `offset`
-//! and `kitoffset` members) are the transport's: the core hands it the
-//! classified members and takes back the raw offset member.
 
 mod ack;
 mod client;
@@ -35,6 +33,7 @@ mod control;
 mod cursor;
 mod dial;
 mod error;
+mod frame;
 mod handshake;
 mod log;
 mod requests;
@@ -42,6 +41,9 @@ mod subs;
 mod types;
 mod wire;
 
+/// The frame format type is the CloudEvents core's; re-exported so stream
+/// call sites need one import.
+pub use crate::bus::cloudevents::FrameFormat;
 pub use ack::{
     encode_ack, encode_session_error, parse_ack, Ack, AuthOk, ResumeOutcome, ResumeStatus,
     StreamInfo,
@@ -60,10 +62,11 @@ pub use error::{
     AckError, ProtocolError, ProtocolKind, StreamError, CODE_BAD_REQUEST, CODE_FORBIDDEN,
     CODE_INVALID_AUTH, CODE_INVALID_PATTERN, CODE_INVALID_SCOPE, CODE_LIMIT, CODE_UNKNOWN_TYPE,
 };
+pub use frame::{decode_event_frame, encode_event_frame, EventFrameError, OffsetFrame};
 pub use handshake::{
     clamp_heartbeat_ms, encode_auth_frame, negotiate, parse_auth_frame, parse_caps, AuthFrame,
-    AuthFrameError, FrameFormat, ResumeReq, SessionReq, StreamCaps, DEFAULT_HEARTBEAT_MS,
-    MAX_HEARTBEAT_MS, MIN_HEARTBEAT_MS, STREAMS_VERSION,
+    AuthFrameError, ResumeReq, SessionReq, StreamCaps, DEFAULT_HEARTBEAT_MS, MAX_HEARTBEAT_MS,
+    MIN_HEARTBEAT_MS, STREAMS_VERSION,
 };
 pub use log::{
     Batch, LogEntry, OutboundWriter, RingLog, SendCursor, StreamLog, DEFAULT_STREAM_LOG_SIZE,

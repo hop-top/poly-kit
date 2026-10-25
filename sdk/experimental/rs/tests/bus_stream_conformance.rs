@@ -17,7 +17,7 @@ use std::fs;
 use std::time::UNIX_EPOCH;
 
 use bus_stream_support::{
-    check, dir, load, must_offset, non_empty, stream_file, ConfSub, FILES, SKIPPED, WIRE,
+    check, dir, load, must_offset, non_empty, stream_file, ConfSub, FILES, WIRE,
 };
 use hop_top_kit::bus::stream::{
     decide_resume, entry_delivers, format_offset, parse_offset_token, validate_pattern, LogEntry,
@@ -36,20 +36,14 @@ fn stream_conformance_all_files_consumed() {
         if e.file_type().unwrap().is_dir() || !name.ends_with(".json") {
             continue;
         }
-        assert!(
-            FILES.contains(&name.as_str()) || SKIPPED.iter().any(|(n, _)| *n == name),
-            "{name} has no runner"
-        );
+        assert!(FILES.contains(&name.as_str()), "{name} has no runner");
         seen.push(name);
     }
-    for n in FILES.iter().chain(SKIPPED.iter().map(|(n, _)| n)) {
+    for n in FILES {
         assert!(
             seen.iter().any(|s| s == n),
             "{n} registered but missing from the corpus"
         );
-    }
-    for (n, why) in SKIPPED {
-        println!("skipped {n}: {why}");
     }
     let mut wire = Vec::new();
     for e in fs::read_dir(dir().join("wire")).expect("read wire") {
