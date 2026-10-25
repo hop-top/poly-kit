@@ -4,7 +4,7 @@
 	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	completion-regen test-parity test-parity-bus test-parity-completion test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-taxonomy test-parity-typeid test-py \
+	completion-regen test-parity test-parity-bus test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint
 
@@ -200,7 +200,7 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/experimental/rs && cargo test --all-features --locked
 
-test-parity: test-parity-typeid test-parity-bus test-parity-config test-parity-retry test-parity-completion test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-bus test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -297,6 +297,12 @@ test-parity-bus: ## bus-v1 conformance corpus, CloudEvents and streams included 
 	go test ./go/runtime/bus/ -run '^(TestConformance|TestCloudEventsConformance|TestStreamConformance)' -count=1
 	@echo "==> bus-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --test bus_conformance --test bus_cloudevents_conformance --test 'bus_stream_conformance*' --all-features --locked
+
+# Completion-spec exports (Fig module, Usage KDL) over one fixture tree.
+# Go runner only; a port adds its runner here.
+test-parity-completion-spec: ## completion-spec-v1 corpus: Fig and Usage exports, byte for byte (Go runner)
+	@echo "==> completion-spec-v1 conformance: Go"
+	go test ./go/console/cli/completionspec/ -run '^TestConformanceCompletionSpec' -count=1
 
 # Shared retry-v1 backoff corpus: Go and Rust runners read the same vectors.
 test-parity-config: ## config-v1 conformance corpus (Go and Rust runners)

@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"hop.top/kit/contracts/parity"
+	"hop.top/kit/go/console/cli/completionspec"
 	"hop.top/kit/go/console/cli/idemstore"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/progress"
@@ -1100,11 +1101,13 @@ func (r *Root) prepareTree() {
 	}
 
 	// Eagerly register cobra's completion command and place it in the
-	// management group so it's hidden from default --help.
+	// management group so it's hidden from default --help. The Fig and
+	// Usage spec exports sit under it, next to the shell scripts.
 	r.Cmd.InitDefaultCompletionCmd()
 	for _, c := range r.Cmd.Commands() {
 		if c.Name() == "completion" {
 			c.GroupID = "management"
+			completionspec.Register(c)
 			break
 		}
 	}
