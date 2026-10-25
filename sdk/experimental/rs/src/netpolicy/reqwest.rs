@@ -10,8 +10,16 @@ impl NetPolicy {
     /// Whether a request to `url` is permitted under this policy.
     /// Loopback destinations are always permitted; a URL with no host
     /// is refused while offline.
+    ///
+    /// The host is judged as Go's `URL.Host`: with `:port` when the URL
+    /// names one. The url crate drops a scheme's default port, so
+    /// `http://[::1]:80/` is judged as `[::1]`; both are loopback.
     pub fn allows(&self, url: &reqwest::Url) -> bool {
-        !self.is_offline() || url.host_str().is_some_and(|h| self.allows_host(h))
+        !self.is_offline()
+            || url.host_str().is_some_and(|h| match url.port() {
+                Some(port) => self.allows_host(&format!("{h}:{port}")),
+                None => self.allows_host(h),
+            })
     }
 }
 

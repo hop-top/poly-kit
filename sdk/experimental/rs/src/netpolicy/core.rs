@@ -3,7 +3,7 @@
 //! crate does, wasm32 included.
 
 use std::fmt;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv6Addr};
 
 /// The refusal text, the analogue of Go's `ErrOffline`. Every
 /// [`OfflineError`] ends with it.
@@ -100,20 +100,25 @@ impl std::error::Error for OfflineError {}
 /// `isLoopback`: the exact name `localhost`, the whole 127.0.0.0/8
 /// range, `::1` and IPv4-mapped loopback.
 ///
-/// One deliberate difference: a bracketed IPv6 literal without a port
-/// (`[::1]`, the host of `http://[::1]/`) is loopback here. Go misses
-/// it and refuses the request.
+/// Without a port, a URL keeps an IPv6 literal bracketed (`[::1]`, the
+/// host of `http://[::1]/`). The brackets are dropped only when they
+/// hold an IPv6 address, so `[127.0.0.1]` and `[localhost]` stay remote.
 pub fn is_loopback(host: &str) -> bool {
-    let h = split_host(host).unwrap_or(host);
+    let h = split_host(host).unwrap_or_else(|| unbracket_ipv6(host));
     if h == "localhost" {
         return true;
     }
-    let bare = h
-        .strip_prefix('[')
-        .and_then(|h| h.strip_suffix(']'))
-        .unwrap_or(h);
-    bare.parse::<IpAddr>()
+    h.parse::<IpAddr>()
         .is_ok_and(|ip| ip.to_canonical().is_loopback())
+}
+
+/// The address inside `[...]` when it is an IPv6 literal, `host`
+/// unchanged otherwise.
+fn unbracket_ipv6(host: &str) -> &str {
+    host.strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .filter(|inner| inner.parse::<Ipv6Addr>().is_ok())
+        .unwrap_or(host)
 }
 
 /// The host half of `hostport`, or `None` where Go's `net.SplitHostPort`

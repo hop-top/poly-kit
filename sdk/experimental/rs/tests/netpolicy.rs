@@ -72,6 +72,36 @@ async fn loopback_spellings_are_exempt() {
     }
 }
 
+// `NetPolicy::allows` over URLs, Go's Guard rows: loopback in every
+// spelling stays reachable offline, bracketed hosts without a port
+// included; anything else is refused.
+#[test]
+fn allows_url_table() {
+    let off = NetPolicy::offline();
+    for raw in [
+        "http://127.0.0.1:8080/health",
+        "http://localhost:9000/health",
+        "http://[::1]:9000/health",
+        "http://[::1]/health",
+        "http://[::1]:80/health",
+        "http://[::ffff:127.0.0.1]/health",
+    ] {
+        let url: reqwest::Url = raw.parse().unwrap();
+        assert!(off.allows(&url), "{raw} refused while offline");
+    }
+    for raw in [
+        "https://example.invalid/v1/thing",
+        "http://my-host.internal/health",
+        "http://[2001:db8::1]/health",
+        "http://10.0.0.5:443/",
+        "mailto:alice@example.invalid",
+    ] {
+        let url: reqwest::Url = raw.parse().unwrap();
+        assert!(!off.allows(&url), "{raw} allowed while offline");
+        assert!(NetPolicy::online().allows(&url), "{raw} refused online");
+    }
+}
+
 // A DNS name is remote even if it might resolve to loopback: resolving
 // it is itself network access.
 #[tokio::test]

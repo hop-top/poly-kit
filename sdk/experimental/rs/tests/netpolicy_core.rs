@@ -57,14 +57,32 @@ fn loopback_table() {
     }
 }
 
-// A bracketed IPv6 literal with no port is what a URL host carries for
-// `http://[::1]/`. Go's isLoopback misses it (SplitHostPort fails and
-// ParseIP rejects the brackets), so Go refuses that request; this port
-// keeps it reachable, as loopback is meant to be.
+// A URL host with no port keeps an IPv6 literal bracketed (`[::1]`).
+// It is loopback when the brackets hold a loopback IPv6 address,
+// v4-mapped included; brackets around anything else stay remote. Same
+// rule for a dial address.
 #[test]
-fn bracketed_ipv6_loopback_without_port_is_loopback() {
-    assert!(is_loopback("[::1]"));
-    assert!(!is_loopback("[2001:db8::1]"));
+fn bracketed_host_without_port() {
+    for host in ["[::1]", "[::ffff:127.0.0.1]", "[0:0:0:0:0:0:0:1]"] {
+        assert!(is_loopback(host), "{host:?} should be loopback");
+        assert_eq!(NetPolicy::offline().check_dial("tcp", host), Ok(()));
+    }
+    for host in [
+        "[127.0.0.1]",
+        "[localhost]",
+        "[2001:db8::1]",
+        "[::1%lo0]",
+        "[[::1]]",
+    ] {
+        assert!(!is_loopback(host), "{host:?} should be remote");
+        let err = NetPolicy::offline()
+            .check_dial("tcp", host)
+            .expect_err("bracketed non-loopback dial permitted");
+        assert_eq!(
+            err.to_string(),
+            format!("dial tcp {host}: network disabled by --offline")
+        );
+    }
 }
 
 // The offline table: an offline policy refuses every non-loopback host
