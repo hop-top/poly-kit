@@ -1,0 +1,290 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/bus-v1/builder.json",
+  "version": "v1",
+  "description": "Topic builder (Go `TopicOf`, `PrefixedTopicOf`, `TopicBuilder.Mod`, `TopicBuilder.Action`; Rust `topic_of`, `prefixed_topic_of`, `modifier`, `action`). The builder is constructed from `source`, `category`, `object` and the optional variadic `ctor_modifiers` (last wins), then `mods` are applied in order (last wins, empty clears), then `action` renders. A modifier joins into the Object segment with `_`; it is not a fifth segment. Rendering validates with the construction-time validator and fails on any violation: Go panics, Rust `action` panics and `try_action` returns the error. `error` is the exact panic text (`bus.TopicOf: ` plus the invalid-topic message); `error_contains` is used only for the not-past-tense case, up to the trailing \"see ...\" pointer (see README).",
+  "cases": [
+    {
+      "name": "no modifier",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "action": "reloaded",
+      "ok": true,
+      "topic": "kit.config.snapshot.reloaded"
+    },
+    {
+      "name": "with modifier",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "mods": [
+        "reload"
+      ],
+      "action": "failed",
+      "ok": true,
+      "topic": "kit.config.snapshot_reload.failed"
+    },
+    {
+      "name": "Mod last wins",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "mods": [
+        "reload",
+        "retry"
+      ],
+      "action": "failed",
+      "ok": true,
+      "topic": "kit.config.snapshot_retry.failed"
+    },
+    {
+      "name": "Mod empty clears",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "mods": [
+        "reload",
+        ""
+      ],
+      "action": "reloaded",
+      "ok": true,
+      "topic": "kit.config.snapshot.reloaded"
+    },
+    {
+      "name": "multi-word modifier",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "mods": [
+        "partial_reload"
+      ],
+      "action": "failed",
+      "ok": true,
+      "topic": "kit.config.snapshot_partial_reload.failed"
+    },
+    {
+      "name": "prefixed, no modifier",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "action": "reloaded",
+      "ok": true,
+      "topic": "kit.config.snapshot.reloaded"
+    },
+    {
+      "name": "prefixed, one modifier",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "ctor_modifiers": [
+        "reload"
+      ],
+      "action": "failed",
+      "ok": true,
+      "topic": "kit.config.snapshot_reload.failed"
+    },
+    {
+      "name": "prefixed, last modifier wins",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "ctor_modifiers": [
+        "reload",
+        "retry"
+      ],
+      "action": "failed",
+      "ok": true,
+      "topic": "kit.config.snapshot_retry.failed"
+    },
+    {
+      "name": "prefixed, empty modifier",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "ctor_modifiers": [
+        "reload",
+        ""
+      ],
+      "action": "reloaded",
+      "ok": true,
+      "topic": "kit.config.snapshot.reloaded"
+    },
+    {
+      "name": "prefixed, Mod overrides",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "ctor_modifiers": [
+        "reload"
+      ],
+      "mods": [
+        "retry"
+      ],
+      "action": "failed",
+      "ok": true,
+      "topic": "kit.config.snapshot_retry.failed"
+    },
+    {
+      "name": "prefixed, Mod clears",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "ctor_modifiers": [
+        "reload"
+      ],
+      "mods": [
+        ""
+      ],
+      "action": "reloaded",
+      "ok": true,
+      "topic": "kit.config.snapshot.reloaded"
+    },
+    {
+      "name": "whitelist action",
+      "source": "kit",
+      "category": "breaker",
+      "object": "circuit",
+      "action": "half_opened",
+      "ok": true,
+      "topic": "kit.breaker.circuit.half_opened"
+    },
+    {
+      "name": "leading digit and underscore allowed",
+      "source": "1a",
+      "category": "_b",
+      "object": "c2",
+      "action": "created",
+      "ok": true,
+      "topic": "1a._b.c2.created"
+    },
+    {
+      "name": "empty object with modifier",
+      "source": "kit",
+      "category": "config",
+      "object": "",
+      "mods": [
+        "reload"
+      ],
+      "action": "failed",
+      "ok": true,
+      "topic": "kit.config._reload.failed"
+    },
+    {
+      "name": "uppercase action",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "action": "Reloaded",
+      "ok": false,
+      "error": "bus.TopicOf: bus: invalid topic: \"kit.config.snapshot.Reloaded\" (topic \"kit.config.snapshot.Reloaded\" segment \"Reloaded\" must be lowercase letters, digits, or underscores)"
+    },
+    {
+      "name": "punctuation in modifier",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "mods": [
+        "re-load"
+      ],
+      "action": "failed",
+      "ok": false,
+      "error": "bus.TopicOf: bus: invalid topic: \"kit.config.snapshot_re-load.failed\" (topic \"kit.config.snapshot_re-load.failed\" segment \"snapshot_re-load\" must be lowercase letters, digits, or underscores)"
+    },
+    {
+      "name": "uppercase modifier",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "mods": [
+        "Reload"
+      ],
+      "action": "failed",
+      "ok": false,
+      "error": "bus.TopicOf: bus: invalid topic: \"kit.config.snapshot_Reload.failed\" (topic \"kit.config.snapshot_Reload.failed\" segment \"snapshot_Reload\" must be lowercase letters, digits, or underscores)"
+    },
+    {
+      "name": "present-tense action",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "action": "create",
+      "ok": false,
+      "error_contains": [
+        "bus.TopicOf: bus: invalid topic: \"kit.config.snapshot.create\" (topic \"kit.config.snapshot.create\" action segment \"create\" is not past-tense (e.g. \"started\", \"created\")"
+      ]
+    },
+    {
+      "name": "empty source",
+      "source": "",
+      "category": "config",
+      "object": "snapshot",
+      "action": "reloaded",
+      "ok": false,
+      "error": "bus.TopicOf: bus: invalid topic: \".config.snapshot.reloaded\" (topic \".config.snapshot.reloaded\" has empty segment at position 0)"
+    },
+    {
+      "name": "empty category",
+      "source": "kit",
+      "category": "",
+      "object": "snapshot",
+      "action": "reloaded",
+      "ok": false,
+      "error": "bus.TopicOf: bus: invalid topic: \"kit..snapshot.reloaded\" (topic \"kit..snapshot.reloaded\" has empty segment at position 1)"
+    },
+    {
+      "name": "empty object",
+      "source": "kit",
+      "category": "config",
+      "object": "",
+      "action": "reloaded",
+      "ok": false,
+      "error": "bus.TopicOf: bus: invalid topic: \"kit.config..reloaded\" (topic \"kit.config..reloaded\" has empty segment at position 2)"
+    },
+    {
+      "name": "empty action",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "action": "",
+      "ok": false,
+      "error": "bus.TopicOf: bus: invalid topic: \"kit.config.snapshot.\" (topic \"kit.config.snapshot.\" has empty segment at position 3)"
+    },
+    {
+      "name": "dot in object makes five segments",
+      "source": "kit",
+      "category": "config",
+      "object": "a.b",
+      "action": "reloaded",
+      "ok": false,
+      "error": "bus.TopicOf: bus: invalid topic: \"kit.config.a.b.reloaded\" (topic \"kit.config.a.b.reloaded\" has 5 segments; expected 4 (source.category.object.action))"
+    },
+    {
+      "name": "dot in action makes five segments",
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "action": "re.loaded",
+      "ok": false,
+      "error": "bus.TopicOf: bus: invalid topic: \"kit.config.snapshot.re.loaded\" (topic \"kit.config.snapshot.re.loaded\" has 5 segments; expected 4 (source.category.object.action))"
+    },
+    {
+      "name": "wildcard source",
+      "source": "*",
+      "category": "config",
+      "object": "snapshot",
+      "action": "reloaded",
+      "ok": false,
+      "error": "bus.TopicOf: bus: invalid topic: \"*.config.snapshot.reloaded\" (topic \"*.config.snapshot.reloaded\" segment \"*\" must be lowercase letters, digits, or underscores)"
+    },
+    {
+      "name": "all empty",
+      "source": "",
+      "category": "",
+      "object": "",
+      "action": "",
+      "ok": false,
+      "error": "bus.TopicOf: bus: invalid topic: \"...\" (topic \"...\" has empty segment at position 0)"
+    }
+  ]
+}

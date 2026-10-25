@@ -15,11 +15,13 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::marker::PhantomData;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use hop_top_kit::bus::{
-    prefix_topics, qualifiers_from, validate, validate_topic, Event, Mode, Qualifiers, Topic,
+    parse_topic, prefix_topics, prefixed_topic_of, qualifiers_from, validate, validate_topic,
+    Event, Mode, Qualifiers, Topic,
 };
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -27,9 +29,11 @@ use serde_json::{json, Value};
 
 /// Every vector file this runner consumes.
 const FILES: &[&str] = &[
+    "builder.json",
     "event_json.json",
     "match.json",
     "mode_parse.json",
+    "parse_topic.json",
     "prefix_topics.json",
     "qualifiers.json",
     "validate.json",
@@ -265,6 +269,154 @@ fn mode_display_vectors() {
     ] {
         assert_eq!(mode.to_string(), f.display[key]);
     }
+}
+
+// --- builder and parse_topic -------------------------------------------
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BuildCase {
+    name: String,
+    source: String,
+    category: String,
+    object: String,
+    ctor_modifiers: Option<Vec<String>>,
+    mods: Option<Vec<String>>,
+    action: String,
+    ok: bool,
+    topic: Option<String>,
+    error: Option<String>,
+    error_contains: Option<Vec<String>>,
+}
+file!(BuildFile { cases: Vec<BuildCase> });
+
+/// Runs `f`, returning the text it panics with, if any.
+fn panic_text<T>(f: impl FnOnce() -> T) -> (Option<T>, Option<String>) {
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(v) => (Some(v), None),
+        Err(p) => {
+            let msg = p
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                .expect("panic payload is text");
+            (None, Some(msg))
+        }
+    }
+}
+
+#[test]
+fn builder_vectors() {
+    let f: BuildFile = load("builder.json");
+    non_empty(&f.cases, "cases");
+    let mut fails = vec![];
+    for c in &f.cases {
+        let ctor: Vec<&str> = c
+            .ctor_modifiers
+            .iter()
+            .flatten()
+            .map(String::as_str)
+            .collect();
+        let mut b = prefixed_topic_of(&c.source, &c.category, &c.object, &ctor);
+        for m in c.mods.iter().flatten() {
+            b = b.modifier(m.as_str());
+        }
+        let (got, text) = panic_text(|| b.action(&c.action));
+        expect_err(
+            &mut fails,
+            &c.name,
+            &Expect {
+                ok: c.ok,
+                error: &c.error,
+                error_contains: &c.error_contains,
+            },
+            text,
+        );
+        if let (Some(t), true) = (got, c.ok) {
+            if Some(t.as_str()) != c.topic.as_deref() {
+                fails.push(format!("{}: topic = {t}, want {:?}", c.name, c.topic));
+            }
+        }
+        // try_action agrees with action and never panics.
+        let tried = b.try_action(&c.action);
+        if tried.is_ok() != c.ok {
+            fails.push(format!("{}: try_action = {tried:?}", c.name));
+        }
+    }
+    check(fails);
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ParseCase {
+    name: String,
+    topic: String,
+    ok: bool,
+    source: String,
+    category: String,
+    object: String,
+    modifier: String,
+    action: String,
+    rerender: Option<String>,
+    rerender_error: Option<String>,
+    error: Option<String>,
+    error_contains: Option<Vec<String>>,
+}
+file!(ParseFile { cases: Vec<ParseCase> });
+
+#[test]
+fn parse_topic_vectors() {
+    let f: ParseFile = load("parse_topic.json");
+    non_empty(&f.cases, "cases");
+    let mut fails = vec![];
+    for c in &f.cases {
+        let parsed = parse_topic(&c.topic);
+        expect_err(
+            &mut fails,
+            &c.name,
+            &Expect {
+                ok: c.ok,
+                error: &c.error,
+                error_contains: &c.error_contains,
+            },
+            parsed.as_ref().err().map(|e| e.to_string()),
+        );
+        let Ok((b, action)) = parsed else {
+            if let Err(e) = parse_topic(&c.topic) {
+                if e.topic.as_str() != c.topic {
+                    fails.push(format!("{}: error topic = {}", c.name, e.topic));
+                }
+            }
+            continue;
+        };
+        let got = (
+            b.source_seg(),
+            b.category_seg(),
+            b.object_seg(),
+            b.modifier_seg(),
+            action.as_str(),
+        );
+        let want = (
+            c.source.as_str(),
+            c.category.as_str(),
+            c.object.as_str(),
+            c.modifier.as_str(),
+            c.action.as_str(),
+        );
+        if got != want {
+            fails.push(format!("{}: parsed {got:?}, want {want:?}", c.name));
+        }
+        let (re, text) = panic_text(|| b.action(&action));
+        match (&c.rerender_error, &text, &re, &c.rerender) {
+            (Some(w), Some(t), _, _) if w == t => {}
+            (None, None, Some(r), Some(w)) if r.as_str() == w => {}
+            _ => fails.push(format!(
+                "{}: rerender = {re:?} (panic {text:?}), want {:?} / {:?}",
+                c.name, c.rerender, c.rerender_error
+            )),
+        }
+    }
+    check(fails);
 }
 
 // --- qualifiers --------------------------------------------------------

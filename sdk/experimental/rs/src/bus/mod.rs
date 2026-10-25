@@ -40,11 +40,13 @@
 //! bus.publish(&event).unwrap();
 //! ```
 
+pub mod builder;
 pub mod event;
 pub mod mem;
 pub mod qualifiers;
 pub mod topic;
 
+pub use builder::{parse_topic, prefixed_topic_of, topic_of, TopicBuilder};
 pub use event::Event;
 pub use mem::{Bus, BusBuilder, BusError, ErrFn, Handler, Mode, SharedBus, SubscriptionId};
 pub use qualifiers::{qualifiers_from, Qualifiers};
