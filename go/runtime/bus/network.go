@@ -24,6 +24,10 @@ type networkMsg struct {
 	Timestamp time.Time `json:"timestamp"`
 	Payload   any       `json:"payload"`
 	Origin    string    `json:"origin"` // peer addr that first published
+	// WorkspaceID mirrors Event.WorkspaceID. Omitted when empty, so
+	// global events keep the original frame shape, and frames from
+	// older peers, which never carry the key, decode as global.
+	WorkspaceID string `json:"workspace_id,omitempty"`
 }
 
 // wsConn wraps a single peer connection.
@@ -355,11 +359,12 @@ func (n *NetworkAdapter) forwardToRemotes(e Event, excludeOriginID string) {
 		wireOrigin = excludeOriginID
 	}
 	msg := networkMsg{
-		Topic:     string(e.Topic),
-		Source:    e.Source,
-		Timestamp: e.Timestamp,
-		Payload:   e.Payload,
-		Origin:    wireOrigin,
+		Topic:       string(e.Topic),
+		Source:      e.Source,
+		Timestamp:   e.Timestamp,
+		Payload:     e.Payload,
+		Origin:      wireOrigin,
+		WorkspaceID: e.WorkspaceID,
 	}
 
 	data, err := json.Marshal(msg)
@@ -448,10 +453,11 @@ func (n *NetworkAdapter) readLoop(ctx context.Context, wc *wsConn) {
 		}
 
 		event := Event{
-			Topic:     Topic(msg.Topic),
-			Source:    msg.Source,
-			Timestamp: msg.Timestamp,
-			Payload:   msg.Payload,
+			Topic:       Topic(msg.Topic),
+			Source:      msg.Source,
+			Timestamp:   msg.Timestamp,
+			Payload:     msg.Payload,
+			WorkspaceID: msg.WorkspaceID,
 		}
 
 		// Mark context so outbound forwarder skips this event (or
