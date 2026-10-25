@@ -449,8 +449,9 @@ func TestConformanceEventTimestamp(t *testing.T) {
 			Canonical string `json:"canonical"`
 		} `json:"cases"`
 		Reject []struct {
-			Name      string `json:"name"`
-			Timestamp any    `json:"timestamp"`
+			Name          string `json:"name"`
+			Timestamp     any    `json:"timestamp"`
+			ErrorContains string `json:"error_contains"`
 		} `json:"reject"`
 		Defaults []struct {
 			Name      string         `json:"name"`
@@ -485,8 +486,11 @@ func TestConformanceEventTimestamp(t *testing.T) {
 		}
 	}
 	for _, c := range f.Reject {
-		if _, err := decode(map[string]any{"timestamp": c.Timestamp}); err == nil {
+		_, err := decode(map[string]any{"timestamp": c.Timestamp})
+		if err == nil {
 			t.Errorf("%s: decode succeeded, want error", c.Name)
+		} else if !strings.Contains(err.Error(), c.ErrorContains) {
+			t.Errorf("%s: error %q lacks %q", c.Name, err, c.ErrorContains)
 		}
 	}
 	for _, c := range f.Defaults {

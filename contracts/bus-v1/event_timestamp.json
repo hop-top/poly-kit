@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hop.top/kit/contracts/bus-v1/event_timestamp.json",
   "version": "v1",
-  "description": "Event `timestamp` on decode. `cases`: the string decodes, and the decoded event's timestamp re-encodes as `canonical`, the form Go's time.Time marshals: fraction separator `.` with trailing zeros trimmed and at most 9 digits (a comma separator is accepted and extra digits are truncated), the original offset kept, a zero offset written `Z`. `reject`: the wire value is refused. Grammar: YYYY-MM-DD, `T`, hh:mm:ss, optional fraction, then `Z` or +/-hh:mm, with exactly 4 year digits, valid month and day (leap years honoured), hour 00-23, minute 00-59, seconds 00-59 (no leap second), offset hour 00-23 and offset minute 00-59, all uppercase. A missing or null timestamp is the zero time `0001-01-01T00:00:00Z`. Go's decoder also accepts offsets +24:00 and minutes of 60 in an offset (and then cannot re-encode some of them); ports are free to reject those, so no vector pins them.",
+  "description": "Event `timestamp` on decode. `cases`: the string decodes, and the decoded event's timestamp re-encodes as `canonical`, the form Go's time.Time marshals: fraction separator `.` with trailing zeros trimmed and at most 9 digits (a comma separator is accepted and extra digits are truncated), the original offset kept, a zero offset written `Z`. `reject`: the wire value is refused. Grammar: YYYY-MM-DD, `T`, hh:mm:ss, optional fraction, then `Z` or +/-hh:mm, with exactly 4 year digits, valid month and day (leap years honoured), hour 00-23, minute 00-59, seconds 00-59 (no leap second), offset hour 00-23 and offset minute 00-59, all uppercase. A missing or null timestamp is the zero time `0001-01-01T00:00:00Z`. An offset with hour above 23 or minute above 59 is refused with an error containing `invalid zone offset` (`error_contains`); Go's time.Time decoder alone would accept +24:00 and +23:60 and then fail to encode them, so kit's Event decode rejects them. Other rejections pin no text.",
   "cases": [
     {
       "name": "utc whole second",
@@ -225,6 +225,36 @@
     {
       "name": "object",
       "timestamp": {}
+    },
+    {
+      "name": "offset +24:00",
+      "timestamp": "2024-05-01T12:00:00+24:00",
+      "error_contains": "invalid zone offset"
+    },
+    {
+      "name": "offset -24:00",
+      "timestamp": "2024-05-01T12:00:00-24:00",
+      "error_contains": "invalid zone offset"
+    },
+    {
+      "name": "offset +23:60",
+      "timestamp": "2024-05-01T12:00:00+23:60",
+      "error_contains": "invalid zone offset"
+    },
+    {
+      "name": "offset +24:01",
+      "timestamp": "2024-05-01T12:00:00+24:01",
+      "error_contains": "invalid zone offset"
+    },
+    {
+      "name": "offset minute 60",
+      "timestamp": "2024-05-01T12:00:00+00:60",
+      "error_contains": "invalid zone offset"
+    },
+    {
+      "name": "offset with fraction +24:00",
+      "timestamp": "2024-05-01T12:00:00.5+24:00",
+      "error_contains": "invalid zone offset"
     }
   ],
   "defaults": [
