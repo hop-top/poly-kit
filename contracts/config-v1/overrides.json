@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/config-v1/overrides.json",
+  "version": "v1",
+  "description": "`ParseOverrides`: `key=value` pairs to a nested map. The key is trimmed and split on dots into nested maps (later pairs win; a non-map in the way is an error naming the Go type); the value parses as YAML into `any`, falling back to the raw text when it does not parse, and empty is null. Errors are exact. Values are {kind, repr}, {seq: [...]} or {map: {...}}.",
+  "cases": [
+    {
+      "name": "scalars",
+      "pairs": [
+        "s=hello",
+        "n=3",
+        "b=true",
+        "f=1.5"
+      ],
+      "ok": true,
+      "want": {
+        "map": {
+          "s": {
+            "kind": "string",
+            "repr": "hello"
+          },
+          "n": {
+            "kind": "int",
+            "repr": "3"
+          },
+          "b": {
+            "kind": "bool",
+            "repr": "true"
+          },
+          "f": {
+            "kind": "float",
+            "repr": "1.5"
+          }
+        }
+      }
+    },
+    {
+      "name": "nested",
+      "pairs": [
+        "a.b.c=1",
+        "a.b.d=2",
+        "a.e=hello"
+      ],
+      "ok": true,
+      "want": {
+        "map": {
+          "a": {
+            "map": {
+              "b": {
+                "map": {
+                  "c": {
+                    "kind": "int",
+                    "repr": "1"
+                  },
+                  "d": {
+                    "kind": "int",
+                    "repr": "2"
+                  }
+                }
+              },
+              "e": {
+                "kind": "string",
+                "repr": "hello"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "structured",
+      "pairs": [
+        "tags=[\"a\",\"b\"]",
+        "m={k1: v1, k2: 2}"
+      ],
+      "ok": true,
+      "want": {
+        "map": {
+          "tags": {
+            "seq": [
+              {
+                "kind": "string",
+                "repr": "a"
+              },
+              {
+                "kind": "string",
+                "repr": "b"
+              }
+            ]
+          },
+          "m": {
+            "map": {
+              "k1": {
+                "kind": "string",
+                "repr": "v1"
+              },
+              "k2": {
+                "kind": "int",
+                "repr": "2"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "literal fallback",
+      "pairs": [
+        "x=*not-an-alias"
+      ],
+      "ok": true,
+      "want": {
+        "map": {
+          "x": {
+            "kind": "string",
+            "repr": "*not-an-alias"
+          }
+        }
+      }
+    },
+    {
+      "name": "unparseable falls back",
+      "pairs": [
+        "x=a: b: c"
+      ],
+      "ok": true,
+      "want": {
+        "map": {
+          "x": {
+            "kind": "string",
+            "repr": "a: b: c"
+          }
+        }
+      }
+    },
+    {
+      "name": "empty value is null",
+      "pairs": [
+        "x="
+      ],
+      "ok": true,
+      "want": {
+        "map": {
+          "x": {
+            "kind": "null",
+            "repr": "<nil>"
+          }
+        }
+      }
+    },
+    {
+      "name": "value with equals",
+      "pairs": [
+        "url=a=b"
+      ],
+      "ok": true,
+      "want": {
+        "map": {
+          "url": {
+            "kind": "string",
+            "repr": "a=b"
+          }
+        }
+      }
+    },
+    {
+      "name": "later wins",
+      "pairs": [
+        "k=first",
+        "k=second"
+      ],
+      "ok": true,
+      "want": {
+        "map": {
+          "k": {
+            "kind": "string",
+            "repr": "second"
+          }
+        }
+      }
+    },
+    {
+      "name": "key trimmed",
+      "pairs": [
+        " k =v"
+      ],
+      "ok": true,
+      "want": {
+        "map": {
+          "k": {
+            "kind": "string",
+            "repr": "v"
+          }
+        }
+      }
+    },
+    {
+      "name": "quoted keeps string",
+      "pairs": [
+        "p=\"8080\""
+      ],
+      "ok": true,
+      "want": {
+        "map": {
+          "p": {
+            "kind": "string",
+            "repr": "8080"
+          }
+        }
+      }
+    },
+    {
+      "name": "yaml 1.1 lookalike",
+      "pairs": [
+        "b=yes"
+      ],
+      "ok": true,
+      "want": {
+        "map": {
+          "b": {
+            "kind": "string",
+            "repr": "yes"
+          }
+        }
+      }
+    },
+    {
+      "name": "hex resolves",
+      "pairs": [
+        "h=0x10"
+      ],
+      "ok": true,
+      "want": {
+        "map": {
+          "h": {
+            "kind": "int",
+            "repr": "16"
+          }
+        }
+      }
+    },
+    {
+      "name": "no equals",
+      "pairs": [
+        "no-equals"
+      ],
+      "ok": false,
+      "error": "override \"no-equals\": expected key=value"
+    },
+    {
+      "name": "empty key",
+      "pairs": [
+        "=v"
+      ],
+      "ok": false,
+      "error": "override \"=v\": expected key=value"
+    },
+    {
+      "name": "conflict",
+      "pairs": [
+        "a=1",
+        "a.b=2"
+      ],
+      "ok": false,
+      "error": "override \"a.b=2\": conflict at \"a\": expected map, got int"
+    },
+    {
+      "name": "conflict string",
+      "pairs": [
+        "a=x",
+        "a.b.c=2"
+      ],
+      "ok": false,
+      "error": "override \"a.b.c=2\": conflict at \"a\": expected map, got string"
+    },
+    {
+      "name": "conflict list",
+      "pairs": [
+        "a=[1]",
+        "a.b=2"
+      ],
+      "ok": false,
+      "error": "override \"a.b=2\": conflict at \"a\": expected map, got []interface {}"
+    }
+  ]
+}

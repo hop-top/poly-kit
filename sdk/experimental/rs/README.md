@@ -21,6 +21,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`output/`](src/output/README.md) | `--format` flag family, `Formatter` trait, registry, `CliError` (feature `output`) | a command renders one payload as table, json or yaml |
 | [`output/builtins/`](src/output/builtins/README.md) | the shipped formatters and their `--format-opt` keys | you need a formatter option or a custom formatter |
 | [`bus/`](src/bus/README.md) | in-process event bus with topic grammar (feature `bus`) | components publish or subscribe to named events |
+| [`config/`](src/config/README.md) | layered YAML config: load, get/set/unset keeping comments, hot reload (feature `config`; `config-signal`, `config-pkl`) | a CLI reads or writes its config files |
 | [`mcp/`](src/mcp/README.md) | dual-spec MCP surface over a bridged command tree (feature `mcp`) | MCP clients must call your commands as tools |
 | [`sqlstore/`](src/sqlstore/README.md) | typed JSON store over `sqldb` with backup and encryption (feature `sqlstore`) | a CLI keeps typed records locally |
 | [`httpcache/`](src/httpcache/README.md) | HTTP response cache over a `kv` TTL store (feature `httpcache`) | responses must be reused across runs |
@@ -45,6 +46,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `sqldb` | `rusqlite` (bundled SQLite), `thiserror` | 12 |
 | `kv` | `sqldb` — nothing of its own | 12 |
 | `bus` | `serde`, `serde_json` | 14 |
+| `config` (`config-pkl`, `config-signal`) | `bus` + `saphyr-parser`, `thiserror` (+ `regex`; + `tokio` rt, signal, sync) | 18 (22, 25) |
 | `timeutil` | `chrono`, `interim`, `thiserror` | 19 |
 | `output` | `serde`, `serde_json`, `serde_yaml`, `comfy-table`, `thiserror` | 22 |
 | `sqlstore` | `sqldb` + `serde`, `serde_json` | 22 |
@@ -61,8 +63,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `telemetry` | `api` + `serde_yaml`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
 
 Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`.
-`api` and `telemetry` are heaviest: `reqwest` brings `tokio` and a TLS stack. `rusqlite` uses `bundled`, so
-SQLite builds from source: no system `libsqlite3`, but a C compiler and a slower first build.
+`api` and `telemetry` are heaviest (`reqwest` brings `tokio` and TLS); bundled `rusqlite` builds SQLite from source (needs a C compiler).
 
 ## Contract
 
@@ -74,7 +75,6 @@ SQLite builds from source: no system `libsqlite3`, but a C compiler and a slower
 
 ## See also
 
-- [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md):
-  serve, the URI facade, output rules, the MCP mount, storage and the cross-process gate,
-  the httpcache wire contract, offline enforcement, telemetry, the bus
+- [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md): serve, URI facade,
+  output, MCP mount, storage and the cross-process gate, httpcache, offline, telemetry, bus, config
 - [Serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md), [Serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md)

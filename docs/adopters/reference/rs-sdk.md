@@ -786,4 +786,50 @@ need it, and it lands behind its own features. See
 - Go canonical implementation:
   [`go/runtime/bus/README.md`](../../../go/runtime/bus/README.md).
 
+## Config
+
+Layered YAML configuration, feature-gated. Ports Go `go/core/config`:
+`load` merges defaults, system, user and project files, extra `-c`
+paths, an env override hook and `-c key=value` overrides into a typed
+serde struct with yaml.v3's merge rules; `get`, `list`, `set`,
+`set_value` and `unset` read and write single keys; `Reloadable` hot
+reloads with an immutability veto and bus events.
+
+```toml
+[dependencies]
+hop-top-kit = { version = "0.5.0-alpha.0", features = ["config"] }
+```
+
+| Feature | Adds |
+|---------|------|
+| `config` | the module (builds on `bus`); YAML via `saphyr-parser` |
+| `config-signal` | `Reloadable::watch_signal` on tokio Unix signals |
+| `config-pkl` | PKL schema parsing, validation, completion, `resolve` via the `pkl` binary |
+
+Merge, precedence, scalar typing, overrides and edits are pinned by the
+[`config-v1`](../../../contracts/config-v1/README.md) corpus
+(`make test-parity-config`). The pure parts build on wasm32; files,
+paths, writes and reload do not.
+
+### Differences from Go
+
+- Writes splice only the targeted entry: values, kept comments and key
+  order match Go, bytes do not (Go re-emits the document). An edit that
+  cannot keep every comment and anchor outside the entry is refused
+  with `ErrorKind::EditUnsupported`, file untouched.
+- No viper: `EnvLookup` (`bind_env`, `seed_defaults`, `sync`,
+  `Options::env_lookup`) keeps viper's lookup order and implements the
+  bus's `ConfigGetter`, as does a loaded `Value`.
+- Reload mutability comes from the `ReloadFields` trait, not
+  `reload:"true"` tags; pin each list with `check_reload_fields` in a
+  test. Config structs derive `Default` with `#[serde(default)]`.
+- `watch_signal` is called on an `Arc<Reloadable<T>>` and reloads on
+  tokio's blocking pool.
+- Timestamps stay text; decode errors name Rust types.
+- Not ported yet: the PKL wizard, `RunWizard` and the config command
+  (they need a console wizard and a CLI root), and the rest of
+  `go/core/xdg` beyond home and config home.
+
+The full list is in the `hop_top_kit::config` module docs.
+
 <!-- release: track hop-top-cite 0.1.0 -->
