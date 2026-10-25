@@ -38,6 +38,10 @@ output = [
 cli = ["output", "dep:clap"]
 id = ["dep:mti", "dep:uuid", "dep:serde", "dep:thiserror"]
 bus = ["dep:serde", "dep:serde_json"]
+# Domain primitives over the bus vocabulary: the state machine with its
+# veto-able pre-transition and fire-and-forget post-transition events.
+# Nothing of its own; wasm-safe.
+domain = ["bus"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
 httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
 # Dual-spec MCP surface. `rmcp` supplies the protocol vocabulary (version

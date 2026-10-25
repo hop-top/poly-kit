@@ -21,6 +21,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`output/`](src/output/README.md) | `--format` flag family, `Formatter` trait, registry, `CliError` (feature `output`) | a command renders one payload as table, json or yaml |
 | [`output/builtins/`](src/output/builtins/README.md) | the shipped formatters and their `--format-opt` keys | you need a formatter option or a custom formatter |
 | [`bus/`](src/bus/README.md) | in-process event bus with topic grammar (feature `bus`) | components publish or subscribe to named events |
+| [`domain/`](src/domain/README.md) | state machine with veto-able pre and fire-and-forget post transition events (feature `domain`) | an entity has a lifecycle others react to |
 | [`config/`](src/config/README.md) | layered YAML config: load, get/set/unset keeping comments, hot reload (feature `config`; `config-signal`, `config-pkl`) | a CLI reads or writes its config files |
 | [`mcp/`](src/mcp/README.md) | dual-spec MCP surface over a bridged command tree (feature `mcp`) | MCP clients must call your commands as tools |
 | [`sqlstore/`](src/sqlstore/README.md) | typed JSON store over `sqldb` with backup and encryption (feature `sqlstore`) | a CLI keeps typed records locally |
@@ -46,7 +47,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `blob` | `thiserror` | 6 |
 | `sqldb` | `rusqlite` (bundled SQLite), `thiserror` | 12 |
 | `kv` | `sqldb` — nothing of its own | 12 |
-| `bus` | `serde`, `serde_json` | 14 |
+| `bus` (`domain`) | `serde`, `serde_json` (`domain`: `bus` — nothing of its own, wasm-safe) | 14 (14) |
 | `config` (`config-pkl`, `config-signal`) | `bus` + `saphyr-parser`, `thiserror` (+ `regex`; + `tokio` rt, signal, sync) | 18 (22, 25) |
 | `timeutil` | `chrono`, `interim`, `thiserror` | 19 |
 | `output` | `serde`, `serde_json`, `serde_yaml`, `comfy-table`, `thiserror` | 22 |
@@ -62,8 +63,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `serve-cli` | `serve` + `cli` | 50 |
 | `telemetry` | `api` + `serde_yaml`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
 
-Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`.
-`api` and `telemetry` are heaviest (`reqwest` brings `tokio` and TLS); bundled `rusqlite` builds SQLite from source (needs a C compiler).
+Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`. `api` and `telemetry` are heaviest (`reqwest` brings `tokio` and TLS); bundled `rusqlite` builds SQLite from source (needs a C compiler).
 
 ## Contract
 
