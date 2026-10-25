@@ -101,7 +101,7 @@ telemetry = [
 config = ["bus", "dep:serde", "dep:serde_json", "dep:saphyr-parser"]
 # The pure half of go/core/config/pkl (schema parse, validation,
 # completion) plus `resolve`, which shells out to the `pkl` binary.
-config-pkl = ["config"]
+config-pkl = ["config", "dep:regex"]
 # Signal-driven hot reload (`Reloadable::watch_signal`). Unix only;
 # brings tokio's signal driver, which `serve` already uses.
 config-signal = [

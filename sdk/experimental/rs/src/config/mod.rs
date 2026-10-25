@@ -21,6 +21,8 @@ mod parse_scalar;
 mod partition;
 #[cfg(not(target_arch = "wasm32"))]
 mod paths;
+#[cfg(feature = "config-pkl")]
+pub mod pkl;
 mod precedence;
 mod registry;
 #[cfg(not(target_arch = "wasm32"))]
