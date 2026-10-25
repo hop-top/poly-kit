@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 
 use saphyr_parser::{Event, Parser, ScalarStyle, Span, Tag};
 
@@ -41,9 +42,163 @@ enum Frame {
     },
 }
 
+/// A parse failure with the byte offset the parser reported.
+struct Failure {
+    err: ParseError,
+    at: usize,
+}
+
+/// Retry budget for [`repair`]: one per tab separator or under-indented
+/// quoted line fixed.
+const MAX_REPAIRS: usize = 10_000;
+
 /// Parses the first document of `src`. `Ok(None)` for a stream with no
 /// document (empty or comments only).
+///
+/// Three inputs libyaml (and so Go) reads but saphyr rejects are made
+/// readable first, without changing any value: a leading UTF-8 BOM is
+/// skipped; a tab after a `:` indicator becomes a space; continuation
+/// lines of a quoted scalar indented at or left of the enclosing block
+/// get leading spaces (which folding drops). Spans always point into
+/// `src` as given.
 pub(crate) fn parse(src: &str) -> Result<Option<Node>, ParseError> {
+    let (body, base) = match src.strip_prefix('\u{feff}') {
+        Some(rest) => (rest, src.len() - rest.len()),
+        None => (src, 0),
+    };
+    let mut text = body.to_string();
+    let mut inserts: Vec<(usize, usize)> = Vec::new();
+    for _ in 0..=MAX_REPAIRS {
+        match parse_text(&text) {
+            Ok(mut root) => {
+                if base > 0 || !inserts.is_empty() {
+                    if let Some(r) = root.as_mut() {
+                        remap(r, &|m| to_orig(m, &inserts) + base);
+                    }
+                }
+                return Ok(root);
+            }
+            Err(f) => {
+                if !repair(&mut text, &mut inserts, &f) {
+                    return Err(f.err);
+                }
+            }
+        }
+    }
+    parse_text(&text).map_err(|f| f.err)
+}
+
+/// Offset in the unrepaired text for offset `m` in the repaired one.
+/// `inserts` holds `(original offset, spaces inserted there)`, sorted.
+fn to_orig(m: usize, inserts: &[(usize, usize)]) -> usize {
+    let mut shift = 0;
+    for &(p, n) in inserts {
+        let at = p + shift;
+        if m >= at + n {
+            shift += n;
+        } else if m >= at {
+            return p;
+        } else {
+            break;
+        }
+    }
+    m - shift
+}
+
+/// Spans of the tree (not of alias targets, which nothing edits).
+fn remap(n: &mut Node, f: &dyn Fn(usize) -> usize) {
+    if let Some((s, e)) = n.span {
+        n.span = Some((f(s), f(e)));
+    }
+    match &mut n.kind {
+        Kind::Seq(items) => items.iter_mut().for_each(|i| remap(i, f)),
+        Kind::Map(entries) => entries.iter_mut().for_each(|(k, v)| {
+            remap(k, f);
+            remap(v, f);
+        }),
+        Kind::Scalar(_) | Kind::Alias(_) => {}
+    }
+}
+
+/// Rewrites `text` so the failure `f` does not recur, if it is one of
+/// the libyaml-accepted cases; `false` otherwise.
+fn repair(text: &mut String, inserts: &mut Vec<(usize, usize)>, f: &Failure) -> bool {
+    let b = text.as_bytes();
+    match f.err.msg.as_str() {
+        // The marker sits after the whitespace run that follows `:`.
+        "':' must be followed by a valid YAML whitespace" => {
+            let mut i = f.at.min(b.len());
+            while i > 0 && matches!(b[i - 1], b' ' | b'\t') {
+                i -= 1;
+            }
+            if i == 0 || b[i - 1] != b':' || !b[i..f.at.min(b.len())].contains(&b'\t') {
+                return false;
+            }
+            let end = f.at.min(b.len());
+            let fixed = text[i..end].replace('\t', " ");
+            text.replace_range(i..end, &fixed);
+            true
+        }
+        // The marker is the opening quote.
+        "invalid indentation in quoted scalar" => {
+            let q = f.at;
+            let Some(&quote) = b.get(q) else {
+                return false;
+            };
+            if quote != b'"' && quote != b'\'' {
+                return false;
+            }
+            let close = quoted_end(b, q);
+            let line_start = b[..q]
+                .iter()
+                .rposition(|c| *c == b'\n')
+                .map_or(0, |i| i + 1);
+            let need = q - line_start + 1;
+            let mut at: Vec<(usize, usize)> = Vec::new();
+            for i in q..close {
+                if b[i] != b'\n' {
+                    continue;
+                }
+                let ls = i + 1;
+                let ws = b[ls..].iter().take_while(|c| **c == b' ').count();
+                if ws < need {
+                    at.push((ls, need - ws));
+                }
+            }
+            if at.is_empty() {
+                return false;
+            }
+            for &(ls, n) in at.iter().rev() {
+                let orig = to_orig(ls, inserts);
+                match inserts.binary_search_by_key(&orig, |&(p, _)| p) {
+                    Ok(k) => inserts[k].1 += n,
+                    Err(k) => inserts.insert(k, (orig, n)),
+                }
+                text.insert_str(ls, &" ".repeat(n));
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+/// End (exclusive) of the quoted scalar opening at `q`, or the text end.
+fn quoted_end(b: &[u8], q: usize) -> usize {
+    let quote = b[q];
+    let mut i = q + 1;
+    while i < b.len() {
+        match (quote, b[i]) {
+            (b'"', b'\\') => i += 2,
+            (b'"', b'"') => return i + 1,
+            (b'\'', b'\'') if b.get(i + 1) == Some(&b'\'') => i += 2,
+            (b'\'', b'\'') => return i + 1,
+            _ => i += 1,
+        }
+    }
+    b.len()
+}
+
+fn parse_text(src: &str) -> Result<Option<Node>, Failure> {
     let offsets: Vec<usize> = src
         .char_indices()
         .map(|(b, _)| b)
@@ -51,17 +206,21 @@ pub(crate) fn parse(src: &str) -> Result<Option<Node>, ParseError> {
         .collect();
     let byte = |m: usize| offsets.get(m).copied().unwrap_or(src.len());
     let span_of = |s: &Span| (byte(s.start.index()), byte(s.end.index()));
+    let fail = |err: ParseError| Failure { err, at: 0 };
 
     let mut parser = Parser::new_from_str(src);
     let mut stack: Vec<Frame> = Vec::new();
-    let mut anchors: HashMap<usize, Node> = HashMap::new();
+    let mut anchors: HashMap<usize, Arc<Node>> = HashMap::new();
     let mut root: Option<Node> = None;
     let mut in_doc = false;
 
     while let Some(next) = parser.next_event() {
-        let (event, span) = next.map_err(|e| ParseError {
-            line: e.marker().line(),
-            msg: e.info().to_string(),
+        let (event, span) = next.map_err(|e| Failure {
+            err: ParseError {
+                line: e.marker().line(),
+                msg: e.info().to_string(),
+            },
+            at: byte(e.marker().index()),
         })?;
         let line = span.start.line();
         let (start, end) = span_of(&span);
@@ -88,16 +247,18 @@ pub(crate) fn parse(src: &str) -> Result<Option<Node>, ParseError> {
                 };
                 node.line = line;
                 node.span = Some(scalar_span(src, node.style, start, end));
-                set_tag(&mut node, tag.as_deref(), line)?;
+                set_tag(&mut node, tag.as_deref(), line).map_err(fail)?;
                 Some((node, anchor))
             }
             Event::Alias(id) => {
-                let target = anchors.get(&id).cloned().ok_or_else(|| ParseError {
-                    line,
-                    msg: "unknown anchor referenced".into(),
+                let target = anchors.get(&id).cloned().ok_or_else(|| {
+                    fail(ParseError {
+                        line,
+                        msg: "unknown anchor referenced".into(),
+                    })
                 })?;
                 let tag = target.tag.clone();
-                let mut node = Node::new(Kind::Alias(Box::new(target)), &tag);
+                let mut node = Node::new(Kind::Alias(target), &tag);
                 node.line = line;
                 node.span = Some((start, end));
                 Some((node, 0))
@@ -107,7 +268,7 @@ pub(crate) fn parse(src: &str) -> Result<Option<Node>, ParseError> {
                 node.line = line;
                 node.span = Some((start, start));
                 node.style = flow_style(src, start, b'[');
-                set_tag(&mut node, tag.as_deref(), line)?;
+                set_tag(&mut node, tag.as_deref(), line).map_err(fail)?;
                 stack.push(Frame::Seq {
                     node,
                     anchor,
@@ -120,7 +281,7 @@ pub(crate) fn parse(src: &str) -> Result<Option<Node>, ParseError> {
                 node.line = line;
                 node.span = Some((start, start));
                 node.style = flow_style(src, start, b'{');
-                set_tag(&mut node, tag.as_deref(), line)?;
+                set_tag(&mut node, tag.as_deref(), line).map_err(fail)?;
                 stack.push(Frame::Map {
                     node,
                     anchor,
@@ -137,11 +298,11 @@ pub(crate) fn parse(src: &str) -> Result<Option<Node>, ParseError> {
                 }) => {
                     let last = items.last().and_then(|n| n.span).map(|s| s.1);
                     let first = items.first().and_then(|n| n.span).map(|s| s.0);
-                    close_span(&mut node, first, last, end);
+                    close_span(&mut node, first, last, flow_close(src, start, end));
                     node.kind = Kind::Seq(items);
                     Some((node, anchor))
                 }
-                _ => return Err(internal(line)),
+                _ => return Err(fail(internal(line))),
             },
             Event::MappingEnd => match stack.pop() {
                 Some(Frame::Map {
@@ -152,24 +313,24 @@ pub(crate) fn parse(src: &str) -> Result<Option<Node>, ParseError> {
                 }) => {
                     let last = entries.last().and_then(|(_, v)| v.span).map(|s| s.1);
                     let first = entries.first().and_then(|(k, _)| k.span).map(|s| s.0);
-                    close_span(&mut node, first, last, end);
+                    close_span(&mut node, first, last, flow_close(src, start, end));
                     node.kind = Kind::Map(entries);
                     Some((node, anchor))
                 }
-                _ => return Err(internal(line)),
+                _ => return Err(fail(internal(line))),
             },
             Event::Nothing | Event::StreamStart => None,
         };
         if let Some((node, anchor)) = done {
             if anchor != 0 {
-                anchors.insert(anchor, node.clone());
+                anchors.insert(anchor, Arc::new(node.clone()));
             }
             match stack.last_mut() {
                 None => root = Some(node),
                 Some(Frame::Seq { items, .. }) => items.push(node),
                 Some(Frame::Map { entries, key, .. }) => match key.take() {
                     None => {
-                        reject_implicit_empty_key(src, &node)?;
+                        reject_implicit_empty_key(src, &node).map_err(fail)?;
                         *key = Some(node)
                     }
                     Some(k) => entries.push((k, node)),
@@ -207,6 +368,15 @@ fn internal(line: usize) -> ParseError {
     ParseError {
         line,
         msg: "unbalanced collection events".into(),
+    }
+}
+
+/// A flow collection's end event spans from its bracket to the line
+/// end (taking in a trailing comment); end it after the bracket.
+fn flow_close(src: &str, start: usize, end: usize) -> usize {
+    match src.as_bytes().get(start) {
+        Some(b']' | b'}') => start + 1,
+        _ => end,
     }
 }
 
@@ -357,5 +527,72 @@ mod tests {
         let root = parse(src).unwrap().unwrap();
         let v = root.get("é").unwrap();
         assert_eq!(&src[v.span.unwrap().0..v.span.unwrap().1], "ü");
+    }
+}
+
+#[cfg(test)]
+mod repair_tests {
+    use super::*;
+
+    fn text_of<'a>(src: &'a str, n: &Node) -> &'a str {
+        let (s, e) = n.span.unwrap();
+        &src[s..e]
+    }
+
+    #[test]
+    fn bom_is_skipped_and_spans_stay_in_source() {
+        let src = "\u{feff}name: x\n";
+        let root = parse(src).unwrap().unwrap();
+        let v = root.get("name").unwrap();
+        assert_eq!(v.scalar_value(), Some("x"));
+        assert_eq!(text_of(src, v), "x");
+    }
+
+    #[test]
+    fn tab_after_colon_reads_like_libyaml() {
+        let src = "name:\tx\na:\n  b:\t\ty # c\n";
+        let root = parse(src).unwrap().unwrap();
+        assert_eq!(root.get("name").unwrap().scalar_value(), Some("x"));
+        let y = root.get("a").unwrap().get("b").unwrap();
+        assert_eq!((y.scalar_value(), text_of(src, y)), (Some("y"), "y"));
+        // A tab inside a quoted value is content, not a separator.
+        let root = parse("k: \"a:\tb\"\n").unwrap().unwrap();
+        assert_eq!(root.get("k").unwrap().scalar_value(), Some("a:\tb"));
+    }
+
+    #[test]
+    fn quoted_continuation_at_column_zero() {
+        let src = "name: \"x\ny\"\nz: 'p\n\nq' # c\nn:\n  k: \"u\n v\"\nend: 1\n";
+        let root = parse(src).unwrap().unwrap();
+        let name = root.get("name").unwrap();
+        assert_eq!(name.scalar_value(), Some("x y"));
+        assert_eq!(text_of(src, name), "\"x\ny\"");
+        let z = root.get("z").unwrap();
+        assert_eq!(z.scalar_value(), Some("p\nq"));
+        assert_eq!(text_of(src, z), "'p\n\nq'");
+        let k = root.get("n").unwrap().get("k").unwrap();
+        assert_eq!(k.scalar_value(), Some("u v"));
+        let end = root.get("end").unwrap();
+        assert_eq!(text_of(src, end), "1");
+    }
+
+    #[test]
+    fn flow_span_ends_at_bracket() {
+        let src = "t: [a, b] # c\nm: {a: 1}   # d\n";
+        let root = parse(src).unwrap().unwrap();
+        assert_eq!(text_of(src, root.get("t").unwrap()), "[a, b]");
+        assert_eq!(text_of(src, root.get("m").unwrap()), "{a: 1}");
+    }
+
+    #[test]
+    fn to_orig_maps_inserted_runs() {
+        let ins = [(4, 2), (10, 1)];
+        assert_eq!(to_orig(3, &ins), 3);
+        assert_eq!(to_orig(4, &ins), 4);
+        assert_eq!(to_orig(5, &ins), 4);
+        assert_eq!(to_orig(6, &ins), 4);
+        assert_eq!(to_orig(12, &ins), 10);
+        assert_eq!(to_orig(13, &ins), 10);
+        assert_eq!(to_orig(14, &ins), 11);
     }
 }

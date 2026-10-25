@@ -9,8 +9,8 @@ use std::fmt;
 use serde::de::{self, DeserializeOwned, IntoDeserializer, Visitor};
 
 use super::de_access::{EnumAccess, MapAccess, SeqAccess};
-use super::decode_support::check_unique;
 pub(crate) use super::decode_support::{base64_decode, expand_merges};
+use super::decode_support::{check_unique, visit, with_budget};
 use super::resolve::{resolve, Scalar, BINARY_TAG, MAP_TAG, SEQ_TAG};
 use super::{Kind, Node};
 
@@ -30,15 +30,32 @@ impl de::Error for DeError {
     fn custom<T: fmt::Display>(msg: T) -> Self {
         DeError(msg.to_string())
     }
+    fn missing_field(field: &'static str) -> Self {
+        DeError(format!("{MISSING_FIELD}`{field}`"))
+    }
 }
 
-/// Decodes `node` into `T`.
+/// Prefix of serde's missing-field error.
+pub(crate) const MISSING_FIELD: &str = "missing field ";
+
+#[cfg(not(target_arch = "wasm32"))]
+impl DeError {
+    /// A required field was absent (Go has no such error: it zero-fills).
+    pub(crate) fn is_missing_field(&self) -> bool {
+        self.0.starts_with(MISSING_FIELD)
+    }
+}
+
+/// Decodes `node` into `T`, with yaml.v3's alias budget.
 pub(crate) fn from_node<T: DeserializeOwned>(node: &Node) -> Result<T, DeError> {
-    T::deserialize(De(node))
+    with_budget(|| {
+        let _v = visit(node)?;
+        T::deserialize(De(node))
+    })
 }
 
 /// yaml.v3 `terror`: `line N: cannot unmarshal !!tag `value` into T`.
-fn terror(n: &Node, want: &str) -> DeError {
+pub(crate) fn terror(n: &Node, want: &str) -> DeError {
     let tag = if n.tag.is_empty() { "" } else { &n.tag };
     let mut value = String::new();
     if tag != SEQ_TAG && tag != MAP_TAG {

@@ -3,8 +3,9 @@
 
 use serde::de::{self, Visitor};
 
-use super::de::{De, DeError};
-use super::Node;
+use super::de::{terror, De, DeError};
+use super::decode_support::visit;
+use super::{Kind, Node};
 
 pub(super) struct SeqAccess<'a> {
     pub(super) items: std::slice::Iter<'a, Node>,
@@ -17,7 +18,10 @@ impl<'de> de::SeqAccess<'de> for SeqAccess<'_> {
         seed: T,
     ) -> Result<Option<T::Value>, DeError> {
         match self.items.next() {
-            Some(n) => seed.deserialize(De(n)).map(Some),
+            Some(n) => {
+                let _v = visit(n)?;
+                seed.deserialize(De(n)).map(Some)
+            }
             None => Ok(None),
         }
     }
@@ -40,6 +44,7 @@ impl<'de> de::MapAccess<'de> for MapAccess<'_> {
         match self.entries.next() {
             Some((k, v)) => {
                 self.value = Some(v);
+                let _v = visit(k)?;
                 seed.deserialize(KeyDe(k)).map(Some)
             }
             None => Ok(None),
@@ -53,6 +58,7 @@ impl<'de> de::MapAccess<'de> for MapAccess<'_> {
             .value
             .take()
             .ok_or_else(|| DeError("map value without key".into()))?;
+        let _v = visit(v)?;
         seed.deserialize(De(v))
     }
 }
@@ -68,13 +74,12 @@ impl<'de> de::Deserializer<'de> for KeyDe<'_> {
         De(self.0).deserialize_any(visitor)
     }
     fn deserialize_string<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, DeError> {
-        visitor.visit_string(
-            self.0
-                .target()
-                .scalar_value()
-                .unwrap_or_default()
-                .to_string(),
-        )
+        let n = self.0.target();
+        match &n.kind {
+            Kind::Scalar(v) => visitor.visit_string(v.clone()),
+            // `? [a]` / `? {k: v}` keys into a string key.
+            _ => Err(terror(n, "string")),
+        }
     }
     fn deserialize_str<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, DeError> {
         self.deserialize_string(visitor)
@@ -114,6 +119,7 @@ impl<'de> de::VariantAccess<'de> for EnumAccess<'_> {
         self,
         seed: T,
     ) -> Result<T::Value, DeError> {
+        let _v = visit(self.value)?;
         seed.deserialize(De(self.value))
     }
     fn tuple_variant<V: Visitor<'de>>(self, _len: usize, visitor: V) -> Result<V::Value, DeError> {

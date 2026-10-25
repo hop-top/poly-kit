@@ -57,8 +57,9 @@ pub(crate) enum Kind {
     Scalar(String),
     Seq(Vec<Node>),
     Map(Vec<(Node, Node)>),
-    /// An alias, holding a copy of the anchored node.
-    Alias(Box<Node>),
+    /// An alias, sharing the anchored node (aliases stay references, so
+    /// a document's size in memory is linear in its text).
+    Alias(std::sync::Arc<Node>),
 }
 
 /// One node. `tag` is the short tag: explicit when `tagged`, otherwise

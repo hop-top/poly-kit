@@ -69,9 +69,18 @@ where
     Ok(())
 }
 
-/// Merges one layer and checks it decodes, so a type error is reported
+/// Merges one layer and checks it decodes, so an error is reported
 /// against the layer that caused it.
+///
+/// The layer is first decoded on its own, as Go's `yaml.Unmarshal` of
+/// that file does: duplicate keys, non-scalar keys and excessive
+/// aliasing in the parts `T` reads fail here, before merging folds
+/// them away. A required field the layer lacks is not its error.
 fn apply_layer<T: DeserializeOwned>(tree: &mut Node, layer: &Node) -> Result<(), Error> {
+    match from_node::<T>(layer) {
+        Err(e) if !e.is_missing_field() => return Err(e.into()),
+        _ => {}
+    }
     merge(tree, layer)?;
     from_node::<T>(tree)?;
     Ok(())
