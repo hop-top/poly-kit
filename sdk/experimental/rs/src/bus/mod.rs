@@ -50,6 +50,7 @@ pub mod mem;
 pub mod qualifiers;
 mod quote;
 mod shared;
+pub mod stream;
 pub mod topic;
 
 pub use builder::{parse_topic, prefixed_topic_of, topic_of, TopicBuilder};
