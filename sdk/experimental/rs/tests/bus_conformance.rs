@@ -6,9 +6,9 @@
 //! that deny unknown fields, `version` must be `v1`, and the corpus
 //! directory must match [`FILES`] exactly.
 //!
-//! Sections the port cannot satisfy yet are listed in [`PENDING`]. Each is
-//! skipped with a printed line; when the capability lands its probe flips
-//! and the test fails until the entry is removed and the section asserted.
+//! Nothing is skipped. A section the port cannot satisfy yet is listed in a
+//! `PENDING` constant of (file, section) pairs, skipped with a printed
+//! line, and guarded by a probe that fails once the section passes.
 
 #![cfg(feature = "bus")]
 
@@ -28,7 +28,10 @@ use serde_json::{json, Value};
 /// Every vector file this runner consumes.
 const FILES: &[&str] = &[
     "builder.json",
+    "event_extensions.json",
+    "event_id.json",
     "event_json.json",
+    "event_timestamp.json",
     "match.json",
     "mode_parse.json",
     "parse_topic.json",
@@ -36,12 +39,6 @@ const FILES: &[&str] = &[
     "qualifiers.json",
     "validate.json",
     "validate_topic.json",
-];
-
-/// (file, section) pairs skipped until the capability is ported.
-const PENDING: &[(&str, &str)] = &[
-    // timestamp validation on decode
-    ("event_json.json", "decode_reject"),
 ];
 
 fn dir() -> PathBuf {
@@ -548,16 +545,6 @@ fn qualifiers_vectors() {
 
 // --- event envelope ----------------------------------------------------
 
-#[derive(Deserialize, Clone)]
-#[serde(deny_unknown_fields)]
-struct WireEvent {
-    topic: String,
-    source: String,
-    timestamp: String,
-    payload: Value,
-    workspace_id: Option<String>,
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum EventMode {
@@ -570,13 +557,13 @@ enum EventMode {
 struct EventCase {
     name: String,
     mode: EventMode,
-    event: WireEvent,
+    event: serde_json::Map<String, Value>,
     wire_extra: Option<serde_json::Map<String, Value>>,
+    text: Option<String>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-#[allow(dead_code)]
 struct RejectCase {
     name: String,
     event: Value,
@@ -590,76 +577,216 @@ file!(EventFile {
 fn event_json_vectors() {
     let f: EventFile = load("event_json.json");
     non_empty(&f.cases, "cases");
+    non_empty(&f.decode_reject, "decode_reject");
+    const KNOWN: &[&str] = &[
+        "topic",
+        "source",
+        "timestamp",
+        "payload",
+        "workspace_id",
+        "id",
+        "subject",
+        "datacontenttype",
+        "dataschema",
+        "extensions",
+    ];
     let mut fails = vec![];
     for c in &f.cases {
-        let want = &c.event;
-        let mut wire = serde_json::to_value(json!({
-            "topic": want.topic, "source": want.source,
-            "timestamp": want.timestamp, "payload": want.payload,
-        }))
-        .unwrap();
-        if let Some(ws) = &want.workspace_id {
-            wire["workspace_id"] = json!(ws);
+        if let Some(k) = c.event.keys().find(|k| !KNOWN.contains(&k.as_str())) {
+            fails.push(format!("{}: unknown event key {k:?}", c.name));
+            continue;
         }
-        let expected = wire.clone();
+        let expected = Value::Object(c.event.clone());
+        let mut wire = c.event.clone();
         for (k, v) in c.wire_extra.iter().flatten() {
-            wire[k] = v.clone();
+            wire.insert(k.clone(), v.clone());
         }
-        let dec: Event = match serde_json::from_value(wire) {
+        let dec: Event = match serde_json::from_value(Value::Object(wire)) {
             Ok(e) => e,
             Err(e) => {
                 fails.push(format!("{}: decode: {e}", c.name));
                 continue;
             }
         };
-        if dec.topic.as_str() != want.topic
-            || dec.source != want.source
-            || dec.timestamp != want.timestamp
-            || dec.payload != want.payload
-            || dec.workspace_id != want.workspace_id.clone().unwrap_or_default()
-        {
-            fails.push(format!("{}: decoded {dec:?}", c.name));
+        let enc = serde_json::to_value(&dec).unwrap();
+        if enc != expected {
+            fails.push(format!("{}: encoded {enc}, want {expected}", c.name));
+        }
+        if let Some(text) = &c.text {
+            let got = serde_json::to_string(&dec).unwrap();
+            if &got != text {
+                fails.push(format!("{}: text\n   got  {got}\n   want {text}", c.name));
+            }
         }
         if let EventMode::Roundtrip = c.mode {
-            let enc = serde_json::to_value(&dec).unwrap();
-            if enc != expected {
-                fails.push(format!("{}: encoded {enc}, want {expected}", c.name));
+            if c.wire_extra.is_some() {
+                fails.push(format!("{}: wire_extra needs mode decode", c.name));
             }
+        }
+    }
+    for c in &f.decode_reject {
+        if serde_json::from_value::<Event>(c.event.clone()).is_ok() {
+            fails.push(format!("{}: decode succeeded, want error", c.name));
         }
     }
     check(fails);
 }
 
-// --- pending sections --------------------------------------------------
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TsCase {
+    name: String,
+    timestamp: String,
+    canonical: String,
+}
 
-fn landed(file: &str, section: &str) -> bool {
-    match (file, section) {
-        ("event_json.json", "decode_reject") => {
-            let f: EventFile = load(file);
-            f.decode_reject
-                .iter()
-                .all(|c| serde_json::from_value::<Event>(c.event.clone()).is_err())
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TsReject {
+    name: String,
+    timestamp: Value,
+    error_contains: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TsDefault {
+    name: String,
+    event: Value,
+    timestamp: String,
+}
+file!(TimestampFile {
+    cases: Vec<TsCase>,
+    reject: Vec<TsReject>,
+    defaults: Vec<TsDefault>
+});
+
+#[test]
+fn event_timestamp_vectors() {
+    let f: TimestampFile = load("event_timestamp.json");
+    non_empty(&f.cases, "cases");
+    non_empty(&f.reject, "reject");
+    non_empty(&f.defaults, "defaults");
+    let mut fails = vec![];
+    for c in &f.cases {
+        match serde_json::from_value::<Event>(json!({ "timestamp": c.timestamp })) {
+            Ok(e) if e.timestamp == c.canonical => {}
+            Ok(e) => fails.push(format!(
+                "{}: re-encoded {:?}, want {:?}",
+                c.name, e.timestamp, c.canonical
+            )),
+            Err(e) => fails.push(format!("{}: decode: {e}", c.name)),
         }
-        _ => panic!("no probe for pending {file}:{section}"),
+    }
+    for c in &f.reject {
+        match serde_json::from_value::<Event>(json!({ "timestamp": c.timestamp })) {
+            Ok(_) => fails.push(format!("{}: decode succeeded, want error", c.name)),
+            Err(e) => {
+                let want = c.error_contains.as_deref().unwrap_or("");
+                if !e.to_string().contains(want) {
+                    fails.push(format!("{}: error {e} lacks {want:?}", c.name));
+                }
+            }
+        }
+    }
+    for c in &f.defaults {
+        match serde_json::from_value::<Event>(c.event.clone()) {
+            Ok(e) if e.timestamp == c.timestamp => {}
+            Ok(e) => fails.push(format!(
+                "{}: timestamp {:?}, want {:?}",
+                c.name, e.timestamp, c.timestamp
+            )),
+            Err(e) => fails.push(format!("{}: decode: {e}", c.name)),
+        }
+    }
+    check(fails);
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExtCase {
+    name: String,
+    workspace_id: Option<String>,
+    extensions: serde_json::Map<String, Value>,
+    error: Option<String>,
+}
+file!(ExtFile {
+    cases: Vec<ExtCase>
+});
+
+#[test]
+fn event_extension_vectors() {
+    let f: ExtFile = load("event_extensions.json");
+    non_empty(&f.cases, "cases");
+    let mut fails = vec![];
+    for c in &f.cases {
+        let mut e = Event::new_at("a.b.c.d", "s", json!(null), std::time::UNIX_EPOCH);
+        e.workspace_id = c.workspace_id.clone().unwrap_or_default();
+        e.extensions = c.extensions.clone().into_iter().collect();
+        let got = e.validate_extensions().err().map(|e| e.to_string());
+        match (&c.error, got) {
+            (None, None) => {}
+            (None, Some(g)) => fails.push(format!("{}: unexpected error {g:?}", c.name)),
+            (Some(w), None) => fails.push(format!("{}: want error {w:?}, got none", c.name)),
+            (Some(w), Some(g)) if *w != g => {
+                fails.push(format!("{}:\n   got  {g:?}\n   want {w:?}", c.name))
+            }
+            _ => {}
+        }
+    }
+    check(fails);
+}
+
+file!(IdFile {
+    prefix: String,
+    suffix_length: usize,
+    alphabet: String,
+    first_char_max: String,
+    uuid_version: u8,
+    distinct: usize
+});
+
+/// Decodes a 26-char TypeID suffix into its 16 UUID bytes.
+fn suffix_bytes(suffix: &str, alphabet: &str) -> [u8; 16] {
+    let mut acc: u128 = 0;
+    for ch in suffix.chars() {
+        acc = (acc << 5) | alphabet.find(ch).unwrap() as u128;
+    }
+    acc.to_be_bytes()
+}
+
+fn check_event_id(f: &IdFile, label: &str, s: &str, fails: &mut Vec<String>) {
+    let Some(suffix) = s.strip_prefix(f.prefix.as_str()) else {
+        fails.push(format!("{label}: {s:?} lacks prefix {:?}", f.prefix));
+        return;
+    };
+    if suffix.chars().count() != f.suffix_length
+        || suffix.chars().any(|c| !f.alphabet.contains(c))
+        || suffix.as_bytes()[0] > f.first_char_max.as_bytes()[0]
+    {
+        fails.push(format!("{label}: {s:?} is not a valid suffix"));
+        return;
+    }
+    let b = suffix_bytes(suffix, &f.alphabet);
+    if b[6] >> 4 != f.uuid_version || b[8] >> 6 != 0b10 {
+        fails.push(format!("{label}: {s:?} uuid version/variant {b:02x?}"));
     }
 }
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[test]
-fn pending_sections() {
-    for (file, section) in PENDING {
-        assert!(FILES.contains(file), "pending file {file} unknown");
-        let raw = fs::read_to_string(dir().join(file)).unwrap();
-        let v: Value = serde_json::from_str(&raw).unwrap();
-        let sec = v[*section]
-            .as_array()
-            .unwrap_or_else(|| panic!("pending {file}:{section} no longer exists"));
-        assert!(!sec.is_empty(), "pending {file}:{section} is empty");
-        assert!(
-            !landed(file, section),
-            "{file}:{section} now passes; remove it from PENDING and assert it"
-        );
-        println!("SKIP {file}:{section} ({} cases) pending", sec.len());
+fn event_id_vectors() {
+    let f: IdFile = load("event_id.json");
+    let mut fails = vec![];
+    let mut seen = std::collections::BTreeSet::new();
+    for _ in 0..f.distinct {
+        let e = Event::new("a.b.c.d", "s", json!(null));
+        check_event_id(&f, "Event::new", &e.id, &mut fails);
+        if !seen.insert(e.id.clone()) {
+            fails.push(format!("duplicate id {:?}", e.id));
+        }
     }
+    check(fails);
 }
 
 #[test]

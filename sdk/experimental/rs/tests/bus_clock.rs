@@ -23,17 +23,25 @@ fn new_at_stamps_the_given_instant() {
 }
 
 #[test]
-fn new_at_truncates_to_milliseconds() {
+fn new_at_keeps_nanoseconds_and_trims_trailing_zeros() {
     let at = UNIX_EPOCH + Duration::new(86_400, 999_999_999);
     let e = Event::new_at("a.b.c.created", "s", json!(null), at);
-    assert_eq!(e.timestamp, "1970-01-02T00:00:00.999Z");
+    assert_eq!(e.timestamp, "1970-01-02T00:00:00.999999999Z");
+
+    let at = UNIX_EPOCH + Duration::new(86_400, 500_000_000);
+    let e = Event::new_at("a.b.c.created", "s", json!(null), at);
+    assert_eq!(e.timestamp, "1970-01-02T00:00:00.5Z");
+
+    let at = UNIX_EPOCH + Duration::new(86_400, 0);
+    let e = Event::new_at("a.b.c.created", "s", json!(null), at);
+    assert_eq!(e.timestamp, "1970-01-02T00:00:00Z");
 }
 
 #[test]
 fn new_at_clamps_pre_epoch_instants_to_the_epoch() {
     let at = UNIX_EPOCH - Duration::from_secs(1);
     let e = Event::new_at("a.b.c.created", "s", json!(null), at);
-    assert_eq!(e.timestamp, "1970-01-01T00:00:00.000Z");
+    assert_eq!(e.timestamp, "1970-01-01T00:00:00Z");
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -52,6 +60,8 @@ fn new_matches_new_at_with_the_current_time() {
         json!(null),
         std::time::SystemTime::now(),
     );
-    // Same fixed-width format, so string order is time order.
-    assert!(before.timestamp <= e.timestamp && e.timestamp <= after.timestamp);
+    // The fraction has no fixed width, so compare at whole seconds, where
+    // string order is time order.
+    let secs = |ev: &Event| ev.timestamp[..19].to_string();
+    assert!(secs(&before) <= secs(&e) && secs(&e) <= secs(&after));
 }

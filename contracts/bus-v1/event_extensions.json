@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/bus-v1/event_extensions.json",
+  "version": "v1",
+  "description": "Rules for `Event.extensions`, checked when an event is shaped as a CloudEvent (Go: ToCloudEvent). `extensions` is the wire object; `workspace_id` is the event's workspace id when present. A case without `error` must pass. Name: one or more of [a-z0-9] (length is not limited). Reserved attribute names (specversion id source type subject time datacontenttype dataschema data) fail with `reserved attribute name`; `workspaceid` and `kitorigin` are event-level reserved and are checked before the name rule for the same key. Value: string, bool, or an integer literal in [-2147483648, 2147483647]; 1.0, 1e3, null, arrays and objects are `unsupported extension value type`; an integer beyond that range is `integer out of range`. Entries are checked by ascending byte order of name and the first failure wins. `error` is the exact text. Decoding an event never applies these rules.",
+  "cases": [
+    {
+      "name": "string bool and int values",
+      "extensions": {
+        "tenantid": "t1",
+        "replay": true,
+        "seq": 7,
+        "neg": -5
+      }
+    },
+    {
+      "name": "int32 bounds",
+      "extensions": {
+        "min": -2147483648,
+        "max": 2147483647
+      }
+    },
+    {
+      "name": "digits only name",
+      "extensions": {
+        "123": "x"
+      }
+    },
+    {
+      "name": "name longer than 20 chars is accepted",
+      "extensions": {
+        "abcdefghijklmnopqrstuvwxyz0123456789": "x"
+      }
+    },
+    {
+      "name": "empty extensions",
+      "extensions": {}
+    },
+    {
+      "name": "empty string value",
+      "extensions": {
+        "note": ""
+      }
+    },
+    {
+      "name": "empty name",
+      "extensions": {
+        "": "x"
+      },
+      "error": "cloudevents: \"\": invalid extension name"
+    },
+    {
+      "name": "uppercase name",
+      "extensions": {
+        "Tenant": "x"
+      },
+      "error": "cloudevents: Tenant: invalid extension name"
+    },
+    {
+      "name": "underscore name",
+      "extensions": {
+        "a_b": "x"
+      },
+      "error": "cloudevents: a_b: invalid extension name"
+    },
+    {
+      "name": "dash name",
+      "extensions": {
+        "a-b": "x"
+      },
+      "error": "cloudevents: a-b: invalid extension name"
+    },
+    {
+      "name": "non-ascii name",
+      "extensions": {
+        "café": "x"
+      },
+      "error": "cloudevents: café: invalid extension name"
+    },
+    {
+      "name": "data_base64 fails the name rule",
+      "extensions": {
+        "data_base64": "x"
+      },
+      "error": "cloudevents: data_base64: invalid extension name"
+    },
+    {
+      "name": "reserved attribute specversion",
+      "extensions": {
+        "specversion": "x"
+      },
+      "error": "cloudevents: specversion: reserved attribute name"
+    },
+    {
+      "name": "reserved attribute id",
+      "extensions": {
+        "id": "x"
+      },
+      "error": "cloudevents: id: reserved attribute name"
+    },
+    {
+      "name": "reserved attribute source",
+      "extensions": {
+        "source": "x"
+      },
+      "error": "cloudevents: source: reserved attribute name"
+    },
+    {
+      "name": "reserved attribute type",
+      "extensions": {
+        "type": "x"
+      },
+      "error": "cloudevents: type: reserved attribute name"
+    },
+    {
+      "name": "reserved attribute subject",
+      "extensions": {
+        "subject": "x"
+      },
+      "error": "cloudevents: subject: reserved attribute name"
+    },
+    {
+      "name": "reserved attribute time",
+      "extensions": {
+        "time": "x"
+      },
+      "error": "cloudevents: time: reserved attribute name"
+    },
+    {
+      "name": "reserved attribute datacontenttype",
+      "extensions": {
+        "datacontenttype": "x"
+      },
+      "error": "cloudevents: datacontenttype: reserved attribute name"
+    },
+    {
+      "name": "reserved attribute dataschema",
+      "extensions": {
+        "dataschema": "x"
+      },
+      "error": "cloudevents: dataschema: reserved attribute name"
+    },
+    {
+      "name": "reserved attribute data",
+      "extensions": {
+        "data": "x"
+      },
+      "error": "cloudevents: data: reserved attribute name"
+    },
+    {
+      "name": "workspaceid is reserved",
+      "extensions": {
+        "workspaceid": "ws1"
+      },
+      "error": "cloudevents: workspaceid: reserved for the workspace id"
+    },
+    {
+      "name": "workspaceid is reserved even with workspace_id set",
+      "workspace_id": "ws2",
+      "extensions": {
+        "workspaceid": "ws1"
+      },
+      "error": "cloudevents: workspaceid: reserved for the workspace id"
+    },
+    {
+      "name": "kitorigin is reserved",
+      "extensions": {
+        "kitorigin": "A"
+      },
+      "error": "cloudevents: kitorigin: reserved for the network origin"
+    },
+    {
+      "name": "reserved check precedes the value check",
+      "extensions": {
+        "kitorigin": [
+          1
+        ]
+      },
+      "error": "cloudevents: kitorigin: reserved for the network origin"
+    },
+    {
+      "name": "float value",
+      "extensions": {
+        "a": 1.5
+      },
+      "error": "cloudevents: a: unsupported extension value type"
+    },
+    {
+      "name": "float with zero fraction",
+      "extensions": {
+        "a": 1.0
+      },
+      "error": "cloudevents: a: unsupported extension value type"
+    },
+    {
+      "name": "exponent literal",
+      "extensions": {
+        "a": 1e3
+      },
+      "error": "cloudevents: a: unsupported extension value type"
+    },
+    {
+      "name": "null value",
+      "extensions": {
+        "a": null
+      },
+      "error": "cloudevents: a: unsupported extension value type"
+    },
+    {
+      "name": "array value",
+      "extensions": {
+        "a": [
+          1
+        ]
+      },
+      "error": "cloudevents: a: unsupported extension value type"
+    },
+    {
+      "name": "object value",
+      "extensions": {
+        "a": {}
+      },
+      "error": "cloudevents: a: unsupported extension value type"
+    },
+    {
+      "name": "int32 max plus one",
+      "extensions": {
+        "a": 2147483648
+      },
+      "error": "cloudevents: a: integer out of range"
+    },
+    {
+      "name": "int32 min minus one",
+      "extensions": {
+        "a": -2147483649
+      },
+      "error": "cloudevents: a: integer out of range"
+    },
+    {
+      "name": "beyond int64 positive",
+      "extensions": {
+        "a": 9223372036854775808
+      },
+      "error": "cloudevents: a: integer out of range"
+    },
+    {
+      "name": "first failure wins, by ascending name",
+      "extensions": {
+        "b": 1.5,
+        "a": [
+          1
+        ]
+      },
+      "error": "cloudevents: a: unsupported extension value type"
+    },
+    {
+      "name": "uppercase name sorts before lowercase",
+      "extensions": {
+        "workspaceid": "ws1",
+        "Bad": "x"
+      },
+      "error": "cloudevents: Bad: invalid extension name"
+    },
+    {
+      "name": "name rule precedes reserved and value rules",
+      "extensions": {
+        "Data": 1.5
+      },
+      "error": "cloudevents: Data: invalid extension name"
+    }
+  ]
+}

@@ -25,9 +25,13 @@ fn event_json_round_trip() {
 #[test]
 fn new_event_sets_timestamp() {
     let e = Event::new("test.topic", "src", json!(null));
-    // YYYY-MM-DDTHH:MM:SS.sssZ
-    assert_eq!(e.timestamp.len(), 24, "timestamp = {}", e.timestamp);
+    // YYYY-MM-DDTHH:MM:SS[.fraction]Z, nanosecond precision.
     assert!(e.timestamp.ends_with('Z'), "timestamp = {}", e.timestamp);
+    assert!(
+        hop_top_kit::bus::event::canonical_timestamp(&e.timestamp).is_ok(),
+        "timestamp = {}",
+        e.timestamp
+    );
     assert!(e.timestamp.starts_with("20"), "timestamp = {}", e.timestamp);
 }
 

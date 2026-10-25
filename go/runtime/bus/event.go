@@ -1,6 +1,8 @@
 package bus
 
 import (
+	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 )
@@ -132,4 +134,45 @@ func NewEvent(topic Topic, source string, payload any) Event {
 		Timestamp: time.Now(),
 		Payload:   payload,
 	}
+}
+
+// errTimestampOffset is returned when a decoded timestamp carries a zone
+// offset time.Time cannot encode again: hours above 23 or minutes above
+// 59 (time.Time.UnmarshalJSON accepts +24:00 and +23:60, then fails to
+// marshal them).
+var errTimestampOffset = errors.New("bus: event timestamp: invalid zone offset")
+
+// UnmarshalJSON decodes an Event like encoding/json does for the plain
+// struct, then rejects a timestamp whose offset is not hh:mm with hh
+// 00-23 and mm 00-59.
+func (e *Event) UnmarshalJSON(data []byte) error {
+	type plain Event
+	if err := json.Unmarshal(data, (*plain)(e)); err != nil {
+		return err
+	}
+	var ts struct {
+		Timestamp *string `json:"timestamp"`
+	}
+	if err := json.Unmarshal(data, &ts); err != nil || ts.Timestamp == nil {
+		return nil
+	}
+	if !validTimestampOffset(*ts.Timestamp) {
+		return errTimestampOffset
+	}
+	return nil
+}
+
+// validTimestampOffset checks the trailing +hh:mm or -hh:mm of a
+// timestamp time.Time already parsed. A trailing Z has no offset.
+func validTimestampOffset(s string) bool {
+	if len(s) < 6 {
+		return true
+	}
+	z := s[len(s)-6:]
+	if (z[0] != '+' && z[0] != '-') || z[3] != ':' {
+		return true
+	}
+	h := int(z[1]-'0')*10 + int(z[2]-'0')
+	m := int(z[4]-'0')*10 + int(z[5]-'0')
+	return h <= 23 && m <= 59
 }

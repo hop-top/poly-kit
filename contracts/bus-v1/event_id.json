@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/bus-v1/event_id.json",
+  "version": "v1",
+  "description": "The id an event mints for itself: `prefix` followed by `suffix_length` characters of `alphabet` (lowercase Crockford base32), i.e. a TypeID over a fresh UUIDv7. The first suffix character is at most `first_char_max` (the suffix encodes 128 bits), the UUID's version nibble is `uuid_version`, and its variant bits are 10. Ids are random, so no vector pins a value; `distinct` ids minted in a row must all differ. A decoded id is kept verbatim, whatever it holds (see event_json.json).",
+  "prefix": "evt_",
+  "suffix_length": 26,
+  "alphabet": "0123456789abcdefghjkmnpqrstvwxyz",
+  "first_char_max": "7",
+  "uuid_version": 7,
+  "distinct": 64
+}

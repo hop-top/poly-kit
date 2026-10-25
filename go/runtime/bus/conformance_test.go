@@ -10,7 +10,10 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/google/uuid"
+
+	"hop.top/kit/go/core/id"
 )
 
 // Runs the shared corpus in contracts/bus-v1. The vectors are the
@@ -20,15 +23,18 @@ import (
 // confFiles is every vector file this runner consumes. The corpus
 // directory must match it exactly, so a new file cannot go unrun.
 var confFiles = map[string]bool{
-	"builder.json":        true,
-	"parse_topic.json":    true,
-	"match.json":          true,
-	"validate.json":       true,
-	"validate_topic.json": true,
-	"prefix_topics.json":  true,
-	"qualifiers.json":     true,
-	"mode_parse.json":     true,
-	"event_json.json":     true,
+	"builder.json":          true,
+	"parse_topic.json":      true,
+	"match.json":            true,
+	"validate.json":         true,
+	"validate_topic.json":   true,
+	"prefix_topics.json":    true,
+	"qualifiers.json":       true,
+	"mode_parse.json":       true,
+	"event_json.json":       true,
+	"event_timestamp.json":  true,
+	"event_extensions.json": true,
+	"event_id.json":         true,
 }
 
 const confDir = "../../../contracts/bus-v1"
@@ -357,14 +363,6 @@ func TestConformanceQualifiers(t *testing.T) {
 	}
 }
 
-type confWire struct {
-	Topic       string `json:"topic"`
-	Source      string `json:"source"`
-	Timestamp   string `json:"timestamp"`
-	Payload     any    `json:"payload"`
-	WorkspaceID string `json:"workspace_id"`
-}
-
 func TestConformanceEventJSON(t *testing.T) {
 	var f struct {
 		confHeader
@@ -373,6 +371,7 @@ func TestConformanceEventJSON(t *testing.T) {
 			Mode      string         `json:"mode"`
 			Event     map[string]any `json:"event"`
 			WireExtra map[string]any `json:"wire_extra"`
+			Text      string         `json:"text"`
 		} `json:"cases"`
 		Reject []struct {
 			Name  string         `json:"name"`
@@ -383,28 +382,23 @@ func TestConformanceEventJSON(t *testing.T) {
 	if len(f.Cases) == 0 || len(f.Reject) == 0 {
 		t.Fatal("no cases")
 	}
+	known := map[string]bool{
+		"topic": true, "source": true, "timestamp": true, "payload": true,
+		"workspace_id": true, "id": true, "subject": true,
+		"datacontenttype": true, "dataschema": true, "extensions": true,
+	}
 	for _, c := range f.Cases {
 		for k := range c.Event {
-			switch k {
-			case "topic", "source", "timestamp", "payload", "workspace_id":
-			default:
+			if !known[k] {
 				t.Fatalf("%s: unknown event key %q", c.Name, k)
 			}
 		}
 		if c.Mode != "roundtrip" && c.Mode != "decode" {
 			t.Fatalf("%s: unknown mode %q", c.Name, c.Mode)
 		}
-		var w confWire
-		raw, _ := json.Marshal(c.Event)
-		if err := json.Unmarshal(raw, &w); err != nil {
-			t.Fatalf("%s: %v", c.Name, err)
+		if c.Mode == "roundtrip" && c.WireExtra != nil {
+			t.Fatalf("%s: wire_extra needs mode decode", c.Name)
 		}
-		ts, err := time.Parse(time.RFC3339Nano, w.Timestamp)
-		if err != nil {
-			t.Fatalf("%s: bad vector timestamp: %v", c.Name, err)
-		}
-		want := Event{Topic: Topic(w.Topic), Source: w.Source, Timestamp: ts, Payload: w.Payload, WorkspaceID: w.WorkspaceID}
-
 		wire := map[string]any{}
 		for k, v := range c.Event {
 			wire[k] = v
@@ -418,14 +412,7 @@ func TestConformanceEventJSON(t *testing.T) {
 			t.Errorf("%s: decode: %v", c.Name, err)
 			continue
 		}
-		if dec.Topic != want.Topic || dec.Source != want.Source || dec.WorkspaceID != want.WorkspaceID ||
-			!dec.Timestamp.Equal(ts) || !reflect.DeepEqual(dec.Payload, want.Payload) {
-			t.Errorf("%s: decoded %+v, want %+v", c.Name, dec, want)
-		}
-		if c.Mode != "roundtrip" {
-			continue
-		}
-		enc, err := json.Marshal(want)
+		enc, err := json.Marshal(dec)
 		if err != nil {
 			t.Errorf("%s: encode: %v", c.Name, err)
 			continue
@@ -434,6 +421,9 @@ func TestConformanceEventJSON(t *testing.T) {
 		_ = json.Unmarshal(enc, &got)
 		if !reflect.DeepEqual(got, c.Event) {
 			t.Errorf("%s: encoded %s, want %v", c.Name, enc, c.Event)
+		}
+		if c.Text != "" && string(enc) != c.Text {
+			t.Errorf("%s: encoded text\n got  %s\n want %s", c.Name, enc, c.Text)
 		}
 		for k := range got {
 			if k != strings.ToLower(k) {
@@ -448,6 +438,158 @@ func TestConformanceEventJSON(t *testing.T) {
 			t.Errorf("%s: decode succeeded, want error", c.Name)
 		}
 	}
+}
+
+func TestConformanceEventTimestamp(t *testing.T) {
+	var f struct {
+		confHeader
+		Cases []struct {
+			Name      string `json:"name"`
+			Timestamp string `json:"timestamp"`
+			Canonical string `json:"canonical"`
+		} `json:"cases"`
+		Reject []struct {
+			Name          string `json:"name"`
+			Timestamp     any    `json:"timestamp"`
+			ErrorContains string `json:"error_contains"`
+		} `json:"reject"`
+		Defaults []struct {
+			Name      string         `json:"name"`
+			Event     map[string]any `json:"event"`
+			Timestamp string         `json:"timestamp"`
+		} `json:"defaults"`
+	}
+	confLoad(t, "event_timestamp.json", &f)
+	if len(f.Cases) == 0 || len(f.Reject) == 0 || len(f.Defaults) == 0 {
+		t.Fatal("no cases")
+	}
+	decode := func(wire map[string]any) (Event, error) {
+		raw, _ := json.Marshal(wire)
+		var e Event
+		return e, json.Unmarshal(raw, &e)
+	}
+	stamp := func(e Event) string {
+		b, err := json.Marshal(e.Timestamp)
+		if err != nil {
+			return "marshal: " + err.Error()
+		}
+		return strings.Trim(string(b), `"`)
+	}
+	for _, c := range f.Cases {
+		e, err := decode(map[string]any{"timestamp": c.Timestamp})
+		if err != nil {
+			t.Errorf("%s: decode: %v", c.Name, err)
+			continue
+		}
+		if got := stamp(e); got != c.Canonical {
+			t.Errorf("%s: re-encoded %q, want %q", c.Name, got, c.Canonical)
+		}
+	}
+	for _, c := range f.Reject {
+		_, err := decode(map[string]any{"timestamp": c.Timestamp})
+		if err == nil {
+			t.Errorf("%s: decode succeeded, want error", c.Name)
+		} else if !strings.Contains(err.Error(), c.ErrorContains) {
+			t.Errorf("%s: error %q lacks %q", c.Name, err, c.ErrorContains)
+		}
+	}
+	for _, c := range f.Defaults {
+		e, err := decode(c.Event)
+		if err != nil {
+			t.Errorf("%s: decode: %v", c.Name, err)
+			continue
+		}
+		if got := stamp(e); got != c.Timestamp {
+			t.Errorf("%s: timestamp %q, want %q", c.Name, got, c.Timestamp)
+		}
+	}
+}
+
+func TestConformanceEventExtensions(t *testing.T) {
+	var f struct {
+		confHeader
+		Cases []struct {
+			Name        string          `json:"name"`
+			WorkspaceID string          `json:"workspace_id"`
+			Extensions  json.RawMessage `json:"extensions"`
+			Error       string          `json:"error"`
+		} `json:"cases"`
+	}
+	confLoad(t, "event_extensions.json", &f)
+	if len(f.Cases) == 0 {
+		t.Fatal("no cases")
+	}
+	for _, c := range f.Cases {
+		// json.Number keeps integer literals exact, as the network layer does.
+		dec := json.NewDecoder(bytes.NewReader(c.Extensions))
+		dec.UseNumber()
+		var ext map[string]any
+		if err := dec.Decode(&ext); err != nil {
+			t.Fatalf("%s: extensions: %v", c.Name, err)
+		}
+		_, err := ToCloudEvent(Event{
+			Topic: "a.b.c.d", Source: "s", WorkspaceID: c.WorkspaceID, Extensions: ext,
+		})
+		switch {
+		case c.Error == "" && err != nil:
+			t.Errorf("%s: unexpected error %q", c.Name, err)
+		case c.Error != "" && err == nil:
+			t.Errorf("%s: want error %q, got none", c.Name, c.Error)
+		case c.Error != "" && err.Error() != c.Error:
+			t.Errorf("%s:\n got  %q\n want %q", c.Name, err.Error(), c.Error)
+		}
+	}
+}
+
+func TestConformanceEventID(t *testing.T) {
+	var f struct {
+		confHeader
+		Prefix       string `json:"prefix"`
+		SuffixLength int    `json:"suffix_length"`
+		Alphabet     string `json:"alphabet"`
+		FirstCharMax string `json:"first_char_max"`
+		UUIDVersion  int    `json:"uuid_version"`
+		Distinct     int    `json:"distinct"`
+	}
+	confLoad(t, "event_id.json", &f)
+	check := func(label, s string) {
+		if !strings.HasPrefix(s, f.Prefix) || len(s) != len(f.Prefix)+f.SuffixLength {
+			t.Errorf("%s: %q is not %s + %d chars", label, s, f.Prefix, f.SuffixLength)
+			return
+		}
+		suffix := s[len(f.Prefix):]
+		for _, r := range suffix {
+			if !strings.ContainsRune(f.Alphabet, r) {
+				t.Errorf("%s: %q has %q outside the alphabet", label, s, r)
+				return
+			}
+		}
+		if suffix[:1] > f.FirstCharMax {
+			t.Errorf("%s: %q first char above %q", label, s, f.FirstCharMax)
+		}
+		p, err := id.Parse(s)
+		if err != nil {
+			t.Errorf("%s: %q does not parse: %v", label, s, err)
+			return
+		}
+		if int(p.UUID.Version()) != f.UUIDVersion || p.UUID.Variant() != uuid.RFC4122 {
+			t.Errorf("%s: %q uuid version %d variant %v", label, s, p.UUID.Version(), p.UUID.Variant())
+		}
+	}
+	seen := map[string]bool{}
+	for i := 0; i < f.Distinct; i++ {
+		e := NewEvent("a.b.c.d", "s", nil)
+		check("NewEvent", e.ID)
+		if seen[e.ID] {
+			t.Errorf("duplicate id %q", e.ID)
+		}
+		seen[e.ID] = true
+	}
+	c, err := ToCloudEvent(Event{Topic: "a.b.c.d", Source: "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("ToCloudEvent", c.ID)
 }
 
 // confPanicText runs f and returns the text of the error it panics
