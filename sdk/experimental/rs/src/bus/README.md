@@ -14,6 +14,7 @@ grammar? Service lifecycle events are emitted by `hop_top_kit::serve`; cross-pro
 - handlers register in one place and publishers live elsewhere → wrap in `SharedBus`, clone it
 - an adopter rebrands topics under its own prefix → `prefix_topics(prefix, actions)`, which validates tense
 - a publish must fail on a malformed topic rather than warn → `Bus::builder().enforce(Mode::Strict)`
+- a handler must not hold up the publisher → `SharedBus::subscribe_async` with a `Spawn` for your executor
 
 ## Quick start
 
@@ -41,23 +42,23 @@ bus.publish(&event).unwrap();
 - Subscribe patterns: `*` matches exactly one segment, `#` matches zero or more trailing segments and must
   be last.
 - `Mode` defaults to `Warn` (validate, report, still deliver); `Strict` rejects; `Off` skips validation.
-- Dispatch is synchronous: handlers run inline in subscription order on the publisher's thread and the
-  first handler error vetoes the publish. `Bus` and `SharedBus` are `Send + Sync`, handlers must be too.
-- `Context` is the Rust form of Go's `context.Context`: cancellation, a deadline, typed values, and Go's
-  error texts (`context canceled`, `context deadline exceeded`). `publish_ctx` hands it to `subscribe_ctx`
-  handlers without reading it, as Go does; `publish` and `subscribe` are the background-context forms.
-  On `wasm32-unknown-unknown` a context has no deadline (no clock).
-- `SharedBus::unsubscribe` waits until no in-flight publish can still call that handler, even when it
-  returns `false` because close or another unsubscribe removed it first, as Go's closure always locks.
-  `SharedBus::close_ctx(&ctx)` marks the bus closed, then waits for in-flight sync publishes with no
-  deadline, as Go's lock does; `ctx` bounds only the async drain, which arrives with async dispatch.
-  `close()` is `close_ctx` with the background context. With `ctx` already done and nothing left to drain
-  it returns `Ok`; Go's `select` picks nil or `ctx.Err()` at random.
+- Sync dispatch: handlers run inline in subscription order on the publisher's thread and the first
+  handler error vetoes the publish. `Bus` and `SharedBus` are `Send + Sync`, handlers must be too.
+- Async (`SharedBus::subscribe_async`, Go's `SubscribeAsync`): launched in subscription order after every
+  sync handler succeeded, never failing a publish. No runtime is pulled in: a `Spawn` puts each task on your
+  executor, e.g. `handle.spawn(t)` on a captured `tokio::runtime::Handle` (bare `tokio::spawn` panics off
+  the runtime) or `wasm_bindgen_futures::spawn_local`. At most `max_async` run at once (Go's
+  `WithMaxAsync`, default 256); a publish blocks while the pool is full. Details, wasm32 included, are in
+  the `async_dispatch` module docs.
+- `Context` is the Rust form of Go's `context.Context`: cancellation, a deadline, typed values and Go's
+  error texts. Handlers get it unread, as in Go. No deadline on `wasm32-unknown-unknown` (no clock).
+- `SharedBus::unsubscribe` waits until no in-flight publish can still call that handler, as Go's closure
+  always locks, and admits no new async task. `close_ctx(&ctx)` waits for sync publishes with no deadline,
+  then for async tasks until `ctx` is done (Go's `ctx.Err()` text; the bus stays closed). On
+  `wasm32-unknown-unknown` it returns `BusError::NotDrained` instead of blocking.
+- Subscribe after close registers nothing. `publish` after `close` is `BusError::Closed`.
 - Re-entrancy: a handler may publish, subscribe, unsubscribe and close on the `SharedBus` dispatching to
-  it; Go deadlocks on all but the nested publish. Waits skip the calling thread's own publishes.
-  Unsubscribe from a handler does not wait for other threads and takes effect at once. Close from a
-  handler waits for other threads' publishes, so two handlers closing at once deadlock, as in Go.
-- `publish` after `close` is `BusError::Closed`.
+  it; Go deadlocks on all but the nested publish. Two handlers closing at once deadlock, as in Go.
 - Parity: [event-topics.md](../../../../../docs/contracts/event-topics.md); the topic grammar is the
   parity obligation, there is no loaded fixture row.
 

@@ -74,10 +74,14 @@ released. Unsubscribe and close wait on that count.
   never reads its `Context`; handlers receive it, as in Go.
 - Close marks the bus closed, then waits for in-flight sync publishes
   with no deadline, which is Go's `mu.Lock()`. The context bounds only
-  the async drain that follows; that drain is empty until async
-  dispatch lands. When close returns, no sync handler is running.
-  With the context already done and nothing left to drain, Go's
-  `select` returns nil or `ctx.Err()` at random; Rust returns `Ok`.
+  the async drain that follows: on expiry close returns Go's
+  `ctx.Err()` text and the bus stays closed. When close returns, no
+  sync handler is running. With the context already done and nothing
+  left to drain, Go's `select` returns nil or `ctx.Err()` at random;
+  Rust returns `Ok`.
+- Subscribe after close registers nothing and drops the handler; Go
+  appends it to the closed bus. A handler holding a clone of the bus
+  would otherwise keep it alive through a cycle.
 - Unsubscribe waits for the in-flight publishes that matched the
   subscription, not for every in-flight publish as Go's lock does. It
   waits even when it returns `false` because close or another
@@ -96,6 +100,34 @@ released. Unsubscribe and close wait on that count.
     handlers closing the bus at once deadlock, as in Go.
 - On `wasm32-unknown-unknown` there is one thread, so these waits never
   block, and a `Context` has no deadline because there is no clock.
+
+Async dispatch (`SharedBus::subscribe_async`, Go's `SubscribeAsync`)
+is runtime-free: the caller passes a `Spawn`, which puts each handler
+task on its own executor. A tokio adapter can follow behind a feature.
+
+- Async handlers are launched after every sync handler of the publish
+  succeeded, in subscription order, with the publish context. They
+  return nothing, so they never veto or fail a publish, as in Go.
+- The pool is a counter under the bus mutex, sized by `max_async`
+  (Go's `WithMaxAsync`, default 256, zero meaning the default). A
+  publish takes slots after its sync phase has left the drain count,
+  so close never waits on a publisher stuck on a full pool, which is
+  Go's fix for priority inversion. While the pool is full the
+  publisher blocks, as in Go.
+- With a slot taken the publish re-checks closed and, on a closed bus,
+  launches nothing more and returns `Ok`. Only then is the task
+  counted, which is Go's `wg.Add` after the slot. A task stays counted
+  until it finishes or the executor drops it.
+- Deviations: a publisher blocked on a full pool returns as soon as
+  close starts, not when a slot frees; once unsubscribe returns no new
+  task is admitted for that subscription, where Go may still launch
+  one; close from an async handler does not wait for that handler.
+- On `wasm32-unknown-unknown` the pool is uncapped, and close cannot
+  block for tasks that run only once the caller yields: with tasks
+  still running and a live context it returns `BusError::NotDrained`.
+  The target only selects this single-threaded policy, so native unit
+  tests run it; `make test-rs-wasm` runs a smoke test on wasm32 under
+  Node with `wasm-bindgen-test`.
 
 ## Go-first rule
 

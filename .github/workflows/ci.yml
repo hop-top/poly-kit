@@ -300,8 +300,8 @@ jobs:
   # Holds it to what they build: wasm32-unknown-unknown with no default
   # features, and no serde_json/preserve_order leaking out of `output`
   # (Cargo unifies features, so the leak would reorder every Map in the
-  # consumer's tree). Bus tests run natively: wasm32-unknown-unknown has
-  # no test runner without wasm-bindgen-test.
+  # consumer's tree). Bus tests run natively, plus one smoke test on
+  # wasm32 itself under Node (tests/bus_wasm.rs, `make test-rs-wasm`).
   rs-wasm:
     needs: [rs-lint]
     runs-on: ubuntu-latest
@@ -361,6 +361,15 @@ jobs:
             exit 1
           fi
       - run: cargo test --locked --no-default-features --features bus
+      # wasm-bindgen-test-runner must be the wasm-bindgen version in
+      # Cargo.lock, so the version is read from there, not pinned twice.
+      - name: wasm-bindgen-cli matching Cargo.lock
+        run: |
+          v=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print }' Cargo.lock)
+          cargo install wasm-bindgen-cli --version "$v" --locked
+      - name: wasm32 smoke test (Node)
+        run: make test-rs-wasm
+        working-directory: .
 
   # The bus feature also ships in mobile apps. A check is enough: the
   # bus is pure Rust, so neither target needs a linker or an NDK.

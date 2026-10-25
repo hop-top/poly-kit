@@ -1,12 +1,14 @@
-//! [`SharedBus`]: the thread-safe bus, with draining unsubscribe and
-//! close.
+//! [`SharedBus`]: the thread-safe bus, with async subscriptions and
+//! draining unsubscribe and close.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
-use super::context::{Context, ContextError};
+use super::async_dispatch::{own_tasks, AsyncHandler, Spawn, DEFAULT_MAX_ASYNC};
+use super::context::Context;
+use super::drain::{Threading, Undrained};
 use super::event::Event;
 use super::mem::{check_topic, Bus, BusError, Mode, SharedErrFn, SharedHandler, SubscriptionId};
 
@@ -48,10 +50,13 @@ use super::mem::{check_topic, Bus, BusError, Mode, SharedErrFn, SharedHandler, S
 ///   for every in-flight sync publish with no deadline, as Go's
 ///   `mu.Lock()` does: when it returns, no sync handler is running,
 ///   whatever `ctx` says. `ctx` bounds only the async drain that
-///   follows, as in Go; async dispatch has not landed, so today that
-///   drain is empty and [`SharedBus::close_ctx`] always succeeds. When
+///   follows, as in Go: see [Async dispatch](#async-dispatch). When
 ///   `ctx` is already done and nothing is left to drain, Go's `select`
 ///   returns nil or `ctx.Err()` at random; this returns `Ok`.
+/// - **Subscribe after close** registers nothing: the handler is dropped
+///   at once and the returned id is unknown to [`SharedBus::unsubscribe`].
+///   Go appends it to a bus that will never call it; here a handler that
+///   holds a clone of the bus cannot keep it alive through that cycle.
 ///
 /// # Re-entrancy
 ///
@@ -85,51 +90,68 @@ use super::mem::{check_topic, Bus, BusError, Mode, SharedErrFn, SharedHandler, S
 /// # wasm32-unknown-unknown
 ///
 /// That target is single-threaded, so every in-flight publish belongs
-/// to the caller and the waits above never block: close and unsubscribe
-/// return at once. No clock is read there.
+/// to the caller and the sync waits above never block: unsubscribe
+/// returns at once. No clock is read there. Close cannot block for async
+/// tasks either, since they run only when the caller yields: with tasks
+/// still running and `ctx` live it returns [`BusError::NotDrained`]
+/// instead of waiting. Call it again once the executor has run them.
 ///
 /// # Async dispatch
 ///
-/// `async_in_flight` is the drain point async dispatch joins: an async
-/// handler task will count itself in after it acquires a pool slot,
-/// and close waits for it under `ctx` after the sync drain.
+/// [`SharedBus::subscribe_async`] is Go's `SubscribeAsync`. The pool,
+/// the launch order and close's async drain, and where they differ from
+/// Go, are set out in the [`async_dispatch`](super::async_dispatch)
+/// module.
 #[derive(Clone)]
-pub struct SharedBus(Arc<Inner>);
+pub struct SharedBus(pub(super) Arc<Inner>);
 
-struct Inner {
-    /// Tells this bus's frames apart in [`DISPATCHING`].
-    id: u64,
+pub(super) struct Inner {
+    /// Tells this bus's frames apart in [`DISPATCHING`] and in async
+    /// task frames.
+    pub(super) id: u64,
     enforce: Mode,
     on_invalid: Option<SharedErrFn>,
+    /// Pool size: async tasks counted at once, at most.
+    pub(super) max_async: usize,
+    /// Whether waits may block; set by the target.
+    pub(super) threading: Threading,
     state: Mutex<State>,
-    /// Signalled when an in-flight publish finishes, or when a context
-    /// a waiter watches is canceled.
-    idle: Condvar,
+    /// Signalled when an in-flight publish or async task finishes, when
+    /// the bus closes, or when a context a waiter watches is canceled.
+    pub(super) idle: Condvar,
 }
 
-struct State {
+pub(super) struct State {
     subs: Vec<Arc<Sub>>,
     next_id: u64,
-    closed: bool,
+    pub(super) closed: bool,
     /// Admitted publishes whose handlers have not all returned.
     in_flight: usize,
-    /// Async handler tasks still running. Always zero until async
-    /// dispatch lands; close's `ctx` bounds the wait on it.
-    async_in_flight: usize,
+    /// Async tasks holding a pool slot: launched, not yet finished or
+    /// dropped. Close's `ctx` bounds the wait on it.
+    pub(super) async_in_flight: usize,
     /// In-flight publishes per subscription in their snapshot. Kept by
     /// id, not on the subscription, so an unsubscribe that no longer
     /// finds the subscription can still wait for it.
     holds: HashMap<SubscriptionId, usize>,
     /// Threads blocked in an unsubscribe or close drain.
     drain_waiters: usize,
+    /// Publishers blocked on a full pool.
+    pub(super) slot_waiters: usize,
 }
 
-struct Sub {
+pub(super) struct Sub {
     id: SubscriptionId,
     pattern: String,
-    handler: SharedHandler,
-    /// Set by a re-entrant unsubscribe; snapshots skip it from then on.
-    removed: AtomicBool,
+    pub(super) kind: Kind,
+    /// Set by a re-entrant unsubscribe, and by any unsubscribe of an
+    /// async subscription; snapshots and launches skip it from then on.
+    pub(super) removed: AtomicBool,
+}
+
+pub(super) enum Kind {
+    Sync(SharedHandler),
+    Async(Arc<dyn Spawn>, AsyncHandler),
 }
 
 static NEXT_BUS: AtomicU64 = AtomicU64::new(0);
@@ -161,7 +183,7 @@ impl SharedBus {
                 Arc::new(Sub {
                     id: s.id,
                     pattern: s.pattern,
-                    handler: s.handler,
+                    kind: Kind::Sync(s.handler),
                     removed: AtomicBool::new(false),
                 })
             })
@@ -170,6 +192,11 @@ impl SharedBus {
             id: NEXT_BUS.fetch_add(1, Ordering::Relaxed),
             enforce: bus.enforce,
             on_invalid: bus.on_invalid,
+            max_async: match bus.max_async {
+                0 => DEFAULT_MAX_ASYNC,
+                n => n,
+            },
+            threading: Threading::TARGET,
             state: Mutex::new(State {
                 subs,
                 next_id: bus.next_id,
@@ -178,6 +205,7 @@ impl SharedBus {
                 async_in_flight: 0,
                 holds: HashMap::new(),
                 drain_waiters: 0,
+                slot_waiters: 0,
             }),
             idle: Condvar::new(),
         }))
@@ -201,15 +229,23 @@ impl SharedBus {
         handler: impl Fn(&Context, &Event) -> Result<(), BusError> + Send + Sync + 'static,
     ) -> SubscriptionId {
         // `into` is caller code: run it before taking the lock.
-        let pattern = pattern.into();
-        let handler: SharedHandler = Arc::new(handler);
+        self.add(pattern.into(), Kind::Sync(Arc::new(handler)))
+    }
+
+    pub(super) fn add(&self, pattern: String, kind: Kind) -> SubscriptionId {
         let mut st = self.0.lock();
         let id = SubscriptionId(st.next_id);
         st.next_id += 1;
+        if st.closed {
+            // Dropped after the lock: a handler drop is caller code.
+            drop(st);
+            drop(kind);
+            return id;
+        }
         st.subs.push(Arc::new(Sub {
             id,
             pattern,
-            handler,
+            kind,
             removed: AtomicBool::new(false),
         }));
         id
@@ -231,14 +267,16 @@ impl SharedBus {
             .iter()
             .position(|s| s.id == id)
             .map(|i| st.subs.remove(i));
-        if reentrant {
-            if let Some(sub) = &sub {
+        if let Some(sub) = &sub {
+            // Under the lock, so no launch admits it from now on.
+            if reentrant || matches!(sub.kind, Kind::Async(..)) {
                 sub.removed.store(true, Ordering::Release);
             }
-        } else {
+        }
+        if !reentrant {
             let background = Context::background();
             let drained = |st: &State| !st.holds.contains_key(&id);
-            st = inner.wait(st, &background, drained).0;
+            st = inner.wait(st, &background, drained, drain_waiters).0;
         }
         drop(st);
         sub.is_some()
@@ -252,6 +290,20 @@ impl SharedBus {
         self.0.lock().drain_waiters
     }
 
+    /// Publishers blocked on a full pool. For tests; not part of the
+    /// supported API.
+    #[doc(hidden)]
+    pub fn slot_waiters(&self) -> usize {
+        self.0.lock().slot_waiters
+    }
+
+    /// Async tasks holding a pool slot. For tests; not part of the
+    /// supported API.
+    #[doc(hidden)]
+    pub fn async_in_flight(&self) -> usize {
+        self.0.lock().async_in_flight
+    }
+
     /// [`SharedBus::publish_ctx`] with [`Context::background`].
     pub fn publish(&self, event: &Event) -> Result<(), BusError> {
         self.publish_ctx(&Context::background(), event)
@@ -261,7 +313,8 @@ impl SharedBus {
     /// See [`Bus::publish_ctx`] for the checks and veto rule.
     ///
     /// The reporter and handlers run with no lock held, so they may
-    /// re-enter this bus.
+    /// re-enter this bus. Matching async handlers are launched after the
+    /// sync ones succeed; see [Async dispatch](#async-dispatch).
     pub fn publish_ctx(&self, ctx: &Context, event: &Event) -> Result<(), BusError> {
         let inner = &*self.0;
         check_topic(inner.enforce, inner.on_invalid.as_ref(), &event.topic)?;
@@ -284,17 +337,31 @@ impl SharedBus {
         };
         let dispatch = InFlight::enter(inner, subs);
         for s in &dispatch.subs {
-            if !s.removed.load(Ordering::Acquire) {
-                (s.handler)(ctx, event)?;
+            if let Kind::Sync(h) = &s.kind {
+                if !s.removed.load(Ordering::Acquire) {
+                    h(ctx, event)?;
+                }
             }
         }
+        let asyncs: Vec<_> = dispatch
+            .subs
+            .iter()
+            .filter(|s| matches!(s.kind, Kind::Async(..)))
+            .cloned()
+            .collect();
+        // The sync phase ends here, as Go's RUnlock does: close and
+        // unsubscribe stop waiting for this publish while it waits for
+        // pool slots.
+        drop(dispatch);
+        self.launch(ctx, event, asyncs);
         Ok(())
     }
 
     /// [`SharedBus::close_ctx`] with [`Context::background`]. Go's
     /// `Close(context.Background())`, which cannot fail either.
     pub fn close(&self) {
-        // A background context is never done, so the drain cannot fail.
+        // A background context is never done, so natively the drain
+        // cannot fail; on wasm32-unknown-unknown it may be NotDrained.
         let _ = self.close_ctx(&Context::background());
     }
 
@@ -304,13 +371,18 @@ impl SharedBus {
     ///
     /// Returns [`BusError::Context`] with Go's `ctx.Err()` text if `ctx`
     /// is done before the async drain finishes; the bus is closed either
-    /// way, and no sync handler is running. Async dispatch has not
-    /// landed, so today this always returns `Ok`. With `ctx` already done
-    /// and nothing to drain it returns `Ok`, where Go's `select` picks at
-    /// random. Safe to call more than once. See the [type docs](SharedBus) for calls from a handler.
+    /// way, no sync handler is running, and async handlers already
+    /// launched run on. With `ctx` already done and nothing to drain it
+    /// returns `Ok`, where Go's `select` picks at random. On
+    /// wasm32-unknown-unknown it returns [`BusError::NotDrained`] rather
+    /// than block. Safe to call more than once; a later call waits for
+    /// what an earlier one left. A call from an async handler does not
+    /// wait for that handler. See the [type docs](SharedBus) for calls
+    /// from a sync handler.
     pub fn close_ctx(&self, ctx: &Context) -> Result<(), BusError> {
         let inner = &*self.0;
         let own = own_frames(inner.id);
+        let own_async = own_tasks(inner.id);
         // Registered before the lock: a cancel between our check and our
         // wait then blocks on the lock until we wait, and wakes us.
         let weak = Arc::downgrade(&self.0);
@@ -323,13 +395,23 @@ impl SharedBus {
         let mut st = inner.lock();
         st.closed = true;
         let subs = std::mem::take(&mut st.subs);
+        // Publishers blocked on a full pool see `closed` and bail.
+        inner.idle.notify_all();
         // Go holds `mu.Lock()` here: the sync drain ignores `ctx`.
         let background = Context::background();
-        let st = inner.wait(st, &background, |st| st.in_flight <= own).0;
-        let (st, drained) = inner.wait(st, ctx, |st| st.async_in_flight == 0);
+        let (st, res) = inner.wait(st, &background, |st| st.in_flight <= own, drain_waiters);
+        // A close from an async handler does not wait for its own task.
+        let (st, res) = match res {
+            Ok(()) => inner.wait(st, ctx, |st| st.async_in_flight <= own_async, drain_waiters),
+            Err(e) => (st, Err(e)),
+        };
+        let left = st.async_in_flight.saturating_sub(own_async);
         drop(st);
         drop(subs);
-        drained.map_err(BusError::from)
+        res.map_err(|e| match e {
+            Undrained::Ctx(e) => BusError::Context(e),
+            Undrained::WouldBlock => BusError::NotDrained(left),
+        })
     }
 
     /// Reports whether the bus is closed.
@@ -342,55 +424,19 @@ impl Inner {
     // No user code runs under the lock and every update completes before
     // it is released, so a poisoned lock never holds a half-applied
     // change: recover the guard.
-    fn lock(&self) -> MutexGuard<'_, State> {
+    pub(super) fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Blocks until `done` holds or `ctx` is done.
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-    fn wait<'a>(
-        &'a self,
-        mut st: MutexGuard<'a, State>,
-        ctx: &Context,
-        done: impl Fn(&State) -> bool,
-    ) -> (MutexGuard<'a, State>, Result<(), ContextError>) {
-        loop {
-            if done(&st) {
-                return (st, Ok(()));
-            }
-            if let Some(e) = ctx.err() {
-                return (st, Err(e));
-            }
-            st.drain_waiters += 1;
-            st = match ctx.deadline() {
-                Some(d) => {
-                    let left = d.saturating_duration_since(super::context::now());
-                    let woke = self.idle.wait_timeout(st, left);
-                    woke.unwrap_or_else(PoisonError::into_inner).0
-                }
-                None => self.idle.wait(st).unwrap_or_else(PoisonError::into_inner),
-            };
-            st.drain_waiters -= 1;
-        }
+    /// Gives back an async task's pool slot and wakes waiters.
+    pub(super) fn finish_async(&self) {
+        self.lock().async_in_flight -= 1;
+        self.idle.notify_all();
     }
+}
 
-    /// One thread: every in-flight publish is the caller's own, which
-    /// `done` already discounts, so there is never anything to wait for
-    /// and blocking would hang the only thread.
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-    fn wait<'a>(
-        &'a self,
-        st: MutexGuard<'a, State>,
-        ctx: &Context,
-        done: impl Fn(&State) -> bool,
-    ) -> (MutexGuard<'a, State>, Result<(), ContextError>) {
-        if done(&st) {
-            return (st, Ok(()));
-        }
-        debug_assert!(ctx.err().is_some(), "bus: wait would block the only thread");
-        let res = ctx.err().map_or(Ok(()), Err);
-        (st, res)
-    }
+pub(super) fn drain_waiters(st: &mut State) -> &mut usize {
+    &mut st.drain_waiters
 }
 
 /// One admitted publish. Leaving it (on return, veto or panic) releases

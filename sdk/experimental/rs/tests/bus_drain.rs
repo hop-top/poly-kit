@@ -8,8 +8,8 @@
 //! short, and pins the re-entrant cases Go deadlocks on.
 //!
 //! `TestClose_RespectsDeadline` and `TestClose_WaitsForAsync` exercise
-//! the async drain, which is the only part `ctx` bounds; they are ported
-//! with async dispatch.
+//! the async drain, which is the only part `ctx` bounds; they live in
+//! `bus_async_close.rs`.
 //!
 //! Synchronisation is by channels and barriers. `recv_timeout` serves
 //! only as a watchdog, so a deadlock fails instead of hanging.
