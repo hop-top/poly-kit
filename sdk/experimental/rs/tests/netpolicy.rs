@@ -237,7 +237,9 @@ async fn api_client_default_is_online() {
 // The sink builds a plain `reqwest::Client`, never a `GuardedClient`, so
 // there is no policy knob a CLI could thread through to mute it. This
 // pins the construction path: an Https sink must build without any
-// network policy being supplied.
+// network policy being supplied. Gated on `telemetry`, which `api` alone
+// does not enable.
+#[cfg(feature = "telemetry")]
 #[tokio::test]
 async fn telemetry_https_sink_builds_without_a_net_policy() {
     use hop_top_kit::telemetry::{Client, ClientOptions, SinkKind};
