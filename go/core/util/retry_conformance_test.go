@@ -92,6 +92,9 @@ func loadRetryConf(t *testing.T) retryConfFile {
 
 func TestConformanceRetryDefaults(t *testing.T) {
 	f := loadRetryConf(t)
+	if f.Defaults.BaseNS == 0 || f.Defaults.MaxNS == 0 {
+		t.Fatal("defaults section is empty")
+	}
 	c := RetryConfig{}
 	if got := int64(c.baseDelay()); got != f.Defaults.BaseNS {
 		t.Errorf("base = %d, want %d", got, f.Defaults.BaseNS)
@@ -102,7 +105,11 @@ func TestConformanceRetryDefaults(t *testing.T) {
 }
 
 func TestConformanceRetryBackoff(t *testing.T) {
-	for _, c := range loadRetryConf(t).Backoff {
+	cases := loadRetryConf(t).Backoff
+	if len(cases) == 0 {
+		t.Fatal("backoff section is empty")
+	}
+	for _, c := range cases {
 		if got := int64(c.Config.config(false).Backoff(c.Attempt)); got != c.DelayNS {
 			t.Errorf("%s: %d, want %d", c.Name, got, c.DelayNS)
 		}
@@ -110,15 +117,27 @@ func TestConformanceRetryBackoff(t *testing.T) {
 }
 
 func TestConformanceRetryJitterBounds(t *testing.T) {
-	for _, c := range loadRetryConf(t).JitterBounds {
+	cases := loadRetryConf(t).JitterBounds
+	if len(cases) == 0 {
+		t.Fatal("jitter_bounds section is empty")
+	}
+	for _, c := range cases {
 		cfg := c.Config.config(true)
 		if got := int64(unjittered(cfg).Backoff(c.Attempt)); got != c.MaxNS {
 			t.Errorf("%s: unjittered %d, want %d", c.Name, got, c.MaxNS)
 		}
-		for i := 0; i < 2000; i++ {
-			if d := int64(cfg.Backoff(c.Attempt)); d < 0 || d > c.MaxNS {
+		var sawZero, sawCeil bool
+		for i := 0; i < 50000; i++ {
+			d := int64(cfg.Backoff(c.Attempt))
+			if d < 0 || d > c.MaxNS {
 				t.Fatalf("%s: %d outside [0, %d]", c.Name, d, c.MaxNS)
 			}
+			sawZero = sawZero || d == 0
+			sawCeil = sawCeil || d == c.MaxNS
+		}
+		// Both ends are reachable; only small ranges can show it in a bounded draw.
+		if c.MaxNS <= 1000 && (!sawZero || !sawCeil) {
+			t.Errorf("%s: zero drawn=%v, ceiling drawn=%v", c.Name, sawZero, sawCeil)
 		}
 	}
 }
@@ -126,7 +145,11 @@ func TestConformanceRetryJitterBounds(t *testing.T) {
 // TestConformanceRetryMaxAttempts mirrors the stop rule inside Retry:
 // attempt+1 >= MaxAttempts, with 0 unlimited. Driven through Retry itself.
 func TestConformanceRetryMaxAttempts(t *testing.T) {
-	for _, c := range loadRetryConf(t).MaxAttempts {
+	cases := loadRetryConf(t).MaxAttempts
+	if len(cases) == 0 {
+		t.Fatal("max_attempts section is empty")
+	}
+	for _, c := range cases {
 		if c.Attempt > 10 {
 			continue // Retry would loop; the unlimited case is covered by the Rust runner and TestRetry_*
 		}

@@ -29,6 +29,8 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 | `jitter_bounds[]` `{config, attempt, max_ns}` | with jitter on, every delay lies in `[0, max_ns]`; `max_ns` is the unjittered delay |
 | `max_attempts[]` `{max_attempts, attempt, stop}` | 0 is unlimited, otherwise a failure of 0-indexed `attempt` stops when `attempt + 1 >= max_attempts` |
 
+Go accepts a negative `MaxAttempts` as unlimited; Rust's `u32` cannot represent it, so use 0.
+
 Runners are strict: unknown fields, a `version` other than `v1` and a corpus file no runner consumes all fail the run. Jitter is checked as a range property, never as exact draws, so ports may use any RNG.
 
 ## Runners

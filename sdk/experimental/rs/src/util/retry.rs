@@ -26,11 +26,8 @@
 //! injectable through [`Rng`]; [`RetryConfig::backoff`] seeds a
 //! [`SplitMix64`] from std's per-process hash keys. That source is not
 //! cryptographic and is fixed on wasm32-unknown-unknown, so wasm callers
-//! wanting real jitter should pass their own [`Rng`].
-//!
-//! On wasm32-unknown-unknown the default seed is fixed: callers that need
-//! real jitter (e.g. a browser transport reconnecting many clients) must
-//! pass their own [`Rng`] seeded from a real entropy source.
+//! wanting real jitter (e.g. a browser transport reconnecting many
+//! clients) must pass their own [`Rng`] seeded from a real entropy source.
 
 use std::collections::hash_map::RandomState;
 use std::fmt;
@@ -171,7 +168,8 @@ fn clamp_ns(d: Duration) -> i64 {
 pub enum RetryError<E> {
     /// Attempts exhausted; carries the last error.
     Failed(E),
-    /// `sleep` reported cancellation while waiting.
+    /// `sleep` reported cancellation while waiting; displays as Go's
+    /// `context.Canceled` text.
     Cancelled,
 }
 
@@ -179,7 +177,7 @@ impl<E: fmt::Display> fmt::Display for RetryError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Failed(e) => e.fmt(f),
-            Self::Cancelled => f.write_str("retry cancelled"),
+            Self::Cancelled => f.write_str("context canceled"),
         }
     }
 }

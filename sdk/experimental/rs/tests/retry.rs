@@ -269,3 +269,12 @@ fn async_retry_succeeds_and_cancels() {
     ));
     assert_eq!(r, Err(RetryError::Failed("fail")));
 }
+
+#[test]
+fn cancelled_displays_go_context_text() {
+    assert_eq!(
+        RetryError::<String>::Cancelled.to_string(),
+        "context canceled"
+    );
+    assert_eq!(RetryError::Failed("boom".to_string()).to_string(), "boom");
+}
