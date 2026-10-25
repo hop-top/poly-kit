@@ -4,6 +4,8 @@
 
 mod env;
 mod error;
+#[cfg(not(target_arch = "wasm32"))]
+mod getter;
 mod goquote;
 #[cfg(not(target_arch = "wasm32"))]
 mod loader;
@@ -17,6 +19,7 @@ mod parse_scalar;
 #[cfg(not(target_arch = "wasm32"))]
 mod paths;
 mod precedence;
+mod registry;
 mod resolved;
 mod scope;
 mod value;
@@ -24,6 +27,8 @@ pub(crate) mod yaml;
 
 pub use env::{bind_env, EnvBind, EnvLookup};
 pub use error::{Error, ErrorKind, SchemaError};
+#[cfg(not(target_arch = "wasm32"))]
+pub use getter::{get, list, Entry};
 #[cfg(not(target_arch = "wasm32"))]
 pub use loader::load;
 #[cfg(not(target_arch = "wasm32"))]
@@ -48,6 +53,9 @@ pub use precedence::load_yaml_layer;
 pub use precedence::{
     resolve_string, yaml_layer_from_str, DefaultLayer, EnvFn, EnvLayer, FlagLayer, Layer, YamlLayer,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use registry::{load_registry, save_registry};
+pub use registry::{Registry, Source};
 pub use resolved::{
     format_resolved, format_resolved_table, resolved_as_json, sorted_by_key, Origin, Resolved,
 };

@@ -168,13 +168,39 @@ pub(crate) fn parse(src: &str) -> Result<Option<Node>, ParseError> {
                 None => root = Some(node),
                 Some(Frame::Seq { items, .. }) => items.push(node),
                 Some(Frame::Map { entries, key, .. }) => match key.take() {
-                    None => *key = Some(node),
+                    None => {
+                        reject_implicit_empty_key(src, &node)?;
+                        *key = Some(node)
+                    }
                     Some(k) => entries.push((k, node)),
                 },
             }
         }
     }
     Ok(root)
+}
+
+/// libyaml has no implicit empty keys (`: v` at the start of an entry);
+/// YAML 1.2 parsers accept them. Reject like yaml.v3 does. An explicit
+/// `? ` key stays valid.
+fn reject_implicit_empty_key(src: &str, key: &Node) -> Result<(), ParseError> {
+    let Some((start, end)) = key.span else {
+        return Ok(());
+    };
+    let empty_plain = key.style == Style::Plain && key.scalar_value() == Some("");
+    if !empty_plain || start != end || src.as_bytes().get(start) != Some(&b':') {
+        return Ok(());
+    }
+    let explicit = src[..start]
+        .trim_end_matches([' ', '\t', '\r', '\n'])
+        .ends_with('?');
+    if explicit {
+        return Ok(());
+    }
+    Err(ParseError {
+        line: 0,
+        msg: "did not find expected key".into(),
+    })
 }
 
 fn internal(line: usize) -> ParseError {
@@ -262,6 +288,15 @@ mod tests {
         let b = root.get("b").unwrap();
         assert!(matches!(b.kind, Kind::Alias(_)));
         assert_eq!(b.target().get("k").unwrap().scalar_value(), Some("v"));
+    }
+
+    #[test]
+    fn implicit_empty_key_rejected_like_libyaml() {
+        assert_eq!(
+            parse(":\n  - oops").unwrap_err().to_string(),
+            "yaml: did not find expected key"
+        );
+        assert!(parse("? \n: v\n").is_ok());
     }
 
     #[test]
