@@ -35,7 +35,7 @@ func decideResume(id string, oldest, head uint64, r *resumeReq) (*resumeOutcome,
 		return reset(ReasonStream)
 	case r.After > head:
 		return reset(ReasonAhead)
-	case r.After+1 < oldest:
+	case r.After < oldest-1: // oldest >= 1, so no underflow
 		return reset(ReasonEvicted)
 	}
 	return &resumeOutcome{Status: ResumeReplaying, After: r.After, Head: head}, r.After
@@ -90,6 +90,8 @@ func (c *dialerCursor) linkUp(a *ackFrame, reconnect bool) (string, *gapInfo) {
 		return ResumeUnsupported, nil
 	}
 	s := a.Stream
+	asked, askedStream := c.Offset, c.Stream
+	held := c.Held
 	c.Stream, c.Held = s.ID, true
 	switch {
 	case a.Resume == nil:
@@ -101,6 +103,10 @@ func (c *dialerCursor) linkUp(a *ackFrame, reconnect bool) (string, *gapInfo) {
 	case a.Resume.Status == ResumeReset:
 		c.Offset = a.Resume.Head
 		return ResumeReset, &gapInfo{Reason: a.Resume.Reason, Stream: s.ID, After: a.Resume.After, Head: a.Resume.Head}
+	case held && askedStream != s.ID:
+		// A replay of a stream we did not ask for: treat it as a reset.
+		c.Offset = s.Head
+		return ResumeReset, &gapInfo{Reason: ReasonStream, Stream: s.ID, After: asked, Head: s.Head}
 	default:
 		c.Offset = a.Resume.After
 		return ResumeReplaying, nil
@@ -129,6 +135,11 @@ func (c *dialerCursor) advance(off uint64) bool {
 func (c *dialerCursor) onReset(r resetInfo) (*gapInfo, error) {
 	if r.Stream != c.Stream {
 		return nil, protocolErr("reset for stream %q on a link to %q", r.Stream, c.Stream)
+	}
+	if r.Head < c.Offset {
+		// Offsets only grow: a reset to below the position would make
+		// the dialer re-deliver or drop events.
+		return nil, protocolErr("reset head %d below position %d", r.Head, c.Offset)
 	}
 	c.Offset = r.Head
 	return &gapInfo{Reason: r.Reason, Stream: r.Stream, After: r.After, Head: r.Head}, nil

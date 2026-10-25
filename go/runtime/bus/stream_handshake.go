@@ -164,6 +164,10 @@ func encodeAuthFrame(token string, caps *streamCaps, origin string, s *sessionRe
 	return b
 }
 
+// maxHeartbeatMs bounds a peer-advertised heartbeat to one day, so the
+// interval can never overflow a time.Duration.
+const maxHeartbeatMs = 86_400_000
+
 type streamInfo struct {
 	ID           string
 	Oldest, Head uint64
@@ -195,9 +199,11 @@ func (a *ackFrame) streams() int {
 
 var errAckRejected = errors.New("bus: auth rejected")
 
-// parseAck decodes the acceptor's reply. With caps.streams >= 1 the
-// stream info and any resume outcome must be well formed.
-func parseAck(data []byte) (ackFrame, error) {
+// parseAck decodes the acceptor's reply. mine is the dialer's own
+// streams version: only when the negotiated version, min(mine,
+// caps.streams), is at least 1 must the stream info and any resume
+// outcome be well formed; below that they are ignored.
+func parseAck(data []byte, mine int) (ackFrame, error) {
 	var m map[string]json.RawMessage
 	if json.Unmarshal(data, &m) != nil || m == nil {
 		return ackFrame{}, errAckRejected
@@ -214,7 +220,7 @@ func parseAck(data []byte) (ackFrame, error) {
 	}
 	a := ackFrame{Kind: typ, Caps: parseCaps(m["caps"])}
 	a.Origin, _ = memberString(m, "origin")
-	if a.streams() < 1 {
+	if min(mine, a.streams()) < 1 {
 		return a, nil
 	}
 	var st map[string]json.RawMessage
@@ -225,7 +231,8 @@ func parseAck(data []byte) (ackFrame, error) {
 	si.Oldest, okO = parseOffsetToken(st["oldest"])
 	si.Head, okH = parseOffsetToken(st["head"])
 	hb, err := strconv.ParseInt(string(st["heartbeat_ms"]), 10, 64)
-	if !okID || !validStreamID(si.ID) || !okO || !okH || err != nil || hb < 1 {
+	if !okID || !validStreamID(si.ID) || !okO || !okH || (si.Oldest > si.Head && si.Oldest-si.Head > 1) ||
+		err != nil || hb < 1 || hb > maxHeartbeatMs {
 		return ackFrame{}, protocolErr("ack: malformed stream info")
 	}
 	si.HeartbeatMs = hb

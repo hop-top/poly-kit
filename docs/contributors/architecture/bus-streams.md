@@ -202,7 +202,7 @@ then a close with 1008 (`invalid session`):
 | `origin` | the sender's loop-prevention origin id, known before the first event |
 | `stream.id` | acceptor's stream id, see 3.1 |
 | `stream.oldest`, `stream.head` | offsets as in 1.2, decimal strings |
-| `stream.heartbeat_ms` | acceptor's heartbeat interval, see 4.1 |
+| `stream.heartbeat_ms` | acceptor's heartbeat interval in 1..86 400 000 (one day), see 4.1 |
 | `session` | dialer's initial subscription, scope and resume request, applied atomically before the link is registered, so no event slips between ack and replay |
 | `session.resume` (ack) | outcome, see 3.3; absent when the dialer asked for no resume |
 
@@ -213,7 +213,12 @@ Forward compatibility:
 - `session` is sent before the version is known, so an acceptor ignores
   `session` keys it does not know
 - a dialer relies on a vN feature only once the negotiated
-  `caps.streams >= N`
+  `caps.streams >= N`; in particular it requires `stream` in the ack
+  only when min(own, acceptor's) `caps.streams >= 1`, so a dialer that
+  advertises 0 connects to a v1 acceptor as a legacy link
+- every number a peer sends is bounded: offsets are at most 2^64-1,
+  `heartbeat_ms` 1..86 400 000, `oldest <= head + 1`; a reply outside
+  these bounds is a protocol error
 
 ### 2.3 Auth is the handshake
 
@@ -316,7 +321,9 @@ These rules are normative, and `cursor.json` pins them.
 1. The position is `(stream, offset)`, plus whether one is held. Each
    outbound address has one position, and it survives reconnects.
 2. On an ack with `stream.id = S`:
-   - `replaying`: position := `(S, after)`
+   - `replaying`: position := `(S, after)`. If the held position names
+     a stream other than `S`, the ack is treated as a reset with reason
+     `stream`: position := `(S, stream.head)`
    - `reset`: position := `(S, head)`, and the dialer publishes
      `invalidated` with the ack's reason
    - no resume outcome: position := `(S, stream.head)`
@@ -330,6 +337,8 @@ These rules are normative, and `cursor.json` pins them.
 4. On a `reset` frame naming `S`: position := `(S, head)`, and the dialer
    publishes `invalidated`.
 5. On a `position` frame naming `S`: position.offset := `max(position.offset, offset)`.
+   A `reset` frame whose `head` is below position.offset is a protocol
+   error: offsets only grow.
 6. A `reset` or `position` frame naming a stream other than `S` is a
    protocol error.
 7. A protocol error closes the link with 1002 (`protocol error`), which
@@ -706,7 +715,7 @@ ack/error shape, but the two may converge later and do not share code.
 | new peers, auth, nothing configured | stream link with implicit `#`: the same events as before, plus `offset`, heartbeats and link events |
 | CloudEvents frames vectors | unchanged: control-frame classification applies only on stream links; `offset`/`kitoffset` stripping never rejects |
 
-Behaviour changes for existing adopters (CHANGELOG "Behaviour changes"):
+Behaviour changes for existing adopters (listed in the bus API reference and in the commit bodies):
 
 - forwarding is ordered per sender, through per-link writers instead of
   one goroutine per event
@@ -755,7 +764,20 @@ func (n *NetworkAdapter) Skipped(addr string) uint64
 `Subscribe`, `Unsubscribe` and `SetScope` return the ack's `at`. They
 update the set that the adapter sends in `session` on every reconnect.
 On a disconnected address they only update that set. On a legacy link
-they return `ErrStreamsUnsupported`.
+they return `ErrStreamsUnsupported`. Called with the context of a
+handler that the same link is delivering (`link.connected`,
+`stream.invalidated`, an event from that peer) they return an error
+wrapping `ErrReentrantRequest`: only that delivering goroutine could
+read the reply.
+
+Handshake failures are classified: a session error and a protocol error
+are final (no retry until the next explicit `Connect`); a rejected
+token is retried. Each is reported through `WithNetworkErrorFunc` and
+published as `link.disconnected` with its `final` and `code`, once per
+change of code.
+
+Authorizers run on the link's writer so the ack's `at` stays an exact
+fence; they must be fast.
 
 ## Tests
 

@@ -74,7 +74,7 @@ func TestStreamConformanceCursor(t *testing.T) {
 					frame["session"] = map[string]json.RawMessage{"resume": r}
 				}
 				raw, _ := json.Marshal(frame)
-				a, err := parseAck(raw)
+				a, err := parseAck(raw, StreamsVersion)
 				if err != nil {
 					t.Fatalf("ack: %v", err)
 				}

@@ -1,115 +1,723 @@
 {
   "version": "v1",
-  "description": "Dialer cursor rules. Input: an optional seeded or recorded position (`seed`), whether this connect is a reconnect, the link kind (`stream` with its ack's `stream` info and optional `resume` outcome, or `legacy`: a plain ack or no handshake), then a sequence of frames: `event` (the raw JSON offset token of an event frame, null for a missing one), `reset` and `position` control frames. Output: the link-up result (`resume` as reported in link.connected, and the invalidation published before anything else, if any), one result per frame (`deliver`, `drop` for a duplicate, `ok` for a position, an `invalidated` object, or `protocol_error`, after which the link is closed and no frames follow), and the final position (null when none is held). A resume is wanted when a position is held or the connect is a reconnect; a link that comes up without `replaying` while a resume is wanted invalidates. Reset (ack or frame) sets the position to (stream, head); position frames apply max; duplicates are offsets <= the position; reset or position naming another stream is a protocol error; a legacy link clears the position. Invalidation payload offsets are decimal strings, empty for `unsupported`.",
+  "description": "Dialer cursor rules. Input: an optional seeded or recorded position (`seed`), whether this connect is a reconnect, the link kind (`stream` with its ack's `stream` info and optional `resume` outcome, or `legacy`: a plain ack or no handshake), then a sequence of frames: `event` (the raw JSON offset token of an event frame, null for a missing one), `reset` and `position` control frames. Output: the link-up result (`resume` as reported in link.connected, and the invalidation published before anything else, if any), one result per frame (`deliver`, `drop` for a duplicate, `ok` for a position, an `invalidated` object, or `protocol_error`, after which the link is closed and no frames follow), and the final position (null when none is held). A resume is wanted when a position is held or the connect is a reconnect; a link that comes up without `replaying` while a resume is wanted invalidates. Reset (ack or frame) sets the position to (stream, head); position frames apply max; duplicates are offsets <= the position; reset or position naming another stream is a protocol error; a legacy link clears the position. Invalidation payload offsets are decimal strings, empty for `unsupported`. A `replaying` ack for a stream other than the held position's is treated as a reset with reason `stream`. A reset frame whose head is below the position is a protocol error (offsets only grow).",
   "cases": [
     {
       "name": "fresh stream connect starts at the head",
-      "seed": null, "reconnect": false, "link": "stream",
-      "ack": {"stream": {"id": "S", "oldest": "1", "head": "10"}},
-      "frames": [{"event": "11"}, {"event": "12"}],
-      "expect": {"link_up": {"resume": "none", "invalidated": null}, "frames": ["deliver", "deliver"], "position": {"stream": "S", "offset": "12"}}
+      "seed": null,
+      "reconnect": false,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "S",
+          "oldest": "1",
+          "head": "10"
+        }
+      },
+      "frames": [
+        {
+          "event": "11"
+        },
+        {
+          "event": "12"
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "none",
+          "invalidated": null
+        },
+        "frames": [
+          "deliver",
+          "deliver"
+        ],
+        "position": {
+          "stream": "S",
+          "offset": "12"
+        }
+      }
     },
     {
       "name": "replay drops duplicates and accepts filtered holes",
-      "seed": {"stream": "S", "offset": "41"}, "reconnect": true, "link": "stream",
-      "ack": {"stream": {"id": "S", "oldest": "17", "head": "57"}, "resume": {"status": "replaying", "after": "41", "head": "57"}},
-      "frames": [{"event": "42"}, {"event": "41"}, {"event": "42"}, {"event": "50"}, {"position": {"stream": "S", "offset": "57"}}, {"event": "56"}, {"event": "58"}],
-      "expect": {"link_up": {"resume": "replaying", "invalidated": null}, "frames": ["deliver", "drop", "drop", "deliver", "ok", "drop", "deliver"], "position": {"stream": "S", "offset": "58"}}
+      "seed": {
+        "stream": "S",
+        "offset": "41"
+      },
+      "reconnect": true,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "S",
+          "oldest": "17",
+          "head": "57"
+        },
+        "resume": {
+          "status": "replaying",
+          "after": "41",
+          "head": "57"
+        }
+      },
+      "frames": [
+        {
+          "event": "42"
+        },
+        {
+          "event": "41"
+        },
+        {
+          "event": "42"
+        },
+        {
+          "event": "50"
+        },
+        {
+          "position": {
+            "stream": "S",
+            "offset": "57"
+          }
+        },
+        {
+          "event": "56"
+        },
+        {
+          "event": "58"
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "replaying",
+          "invalidated": null
+        },
+        "frames": [
+          "deliver",
+          "drop",
+          "drop",
+          "deliver",
+          "ok",
+          "drop",
+          "deliver"
+        ],
+        "position": {
+          "stream": "S",
+          "offset": "58"
+        }
+      }
     },
     {
       "name": "evicted reset in the ack",
-      "seed": {"stream": "S", "offset": "5"}, "reconnect": true, "link": "stream",
-      "ack": {"stream": {"id": "S", "oldest": "17", "head": "57"}, "resume": {"status": "reset", "reason": "evicted", "after": "5", "head": "57"}},
-      "frames": [{"event": "57"}, {"event": "58"}],
-      "expect": {"link_up": {"resume": "reset", "invalidated": {"reason": "evicted", "stream": "S", "after": "5", "head": "57"}}, "frames": ["drop", "deliver"], "position": {"stream": "S", "offset": "58"}}
+      "seed": {
+        "stream": "S",
+        "offset": "5"
+      },
+      "reconnect": true,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "S",
+          "oldest": "17",
+          "head": "57"
+        },
+        "resume": {
+          "status": "reset",
+          "reason": "evicted",
+          "after": "5",
+          "head": "57"
+        }
+      },
+      "frames": [
+        {
+          "event": "57"
+        },
+        {
+          "event": "58"
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "reset",
+          "invalidated": {
+            "reason": "evicted",
+            "stream": "S",
+            "after": "5",
+            "head": "57"
+          }
+        },
+        "frames": [
+          "drop",
+          "deliver"
+        ],
+        "position": {
+          "stream": "S",
+          "offset": "58"
+        }
+      }
     },
     {
       "name": "ahead reset moves the position back to the head",
-      "seed": {"stream": "S", "offset": "99"}, "reconnect": true, "link": "stream",
-      "ack": {"stream": {"id": "S", "oldest": "17", "head": "57"}, "resume": {"status": "reset", "reason": "ahead", "after": "99", "head": "57"}},
-      "frames": [{"event": "58"}, {"event": "59"}],
-      "expect": {"link_up": {"resume": "reset", "invalidated": {"reason": "ahead", "stream": "S", "after": "99", "head": "57"}}, "frames": ["deliver", "deliver"], "position": {"stream": "S", "offset": "59"}}
+      "seed": {
+        "stream": "S",
+        "offset": "99"
+      },
+      "reconnect": true,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "S",
+          "oldest": "17",
+          "head": "57"
+        },
+        "resume": {
+          "status": "reset",
+          "reason": "ahead",
+          "after": "99",
+          "head": "57"
+        }
+      },
+      "frames": [
+        {
+          "event": "58"
+        },
+        {
+          "event": "59"
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "reset",
+          "invalidated": {
+            "reason": "ahead",
+            "stream": "S",
+            "after": "99",
+            "head": "57"
+          }
+        },
+        "frames": [
+          "deliver",
+          "deliver"
+        ],
+        "position": {
+          "stream": "S",
+          "offset": "59"
+        }
+      }
     },
     {
       "name": "acceptor restart resets onto the new stream",
-      "seed": {"stream": "S", "offset": "41"}, "reconnect": true, "link": "stream",
-      "ack": {"stream": {"id": "T", "oldest": "1", "head": "3"}, "resume": {"status": "reset", "reason": "stream", "after": "41", "head": "3"}},
-      "frames": [{"event": "4"}],
-      "expect": {"link_up": {"resume": "reset", "invalidated": {"reason": "stream", "stream": "T", "after": "41", "head": "3"}}, "frames": ["deliver"], "position": {"stream": "T", "offset": "4"}}
+      "seed": {
+        "stream": "S",
+        "offset": "41"
+      },
+      "reconnect": true,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "T",
+          "oldest": "1",
+          "head": "3"
+        },
+        "resume": {
+          "status": "reset",
+          "reason": "stream",
+          "after": "41",
+          "head": "3"
+        }
+      },
+      "frames": [
+        {
+          "event": "4"
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "reset",
+          "invalidated": {
+            "reason": "stream",
+            "stream": "T",
+            "after": "41",
+            "head": "3"
+          }
+        },
+        "frames": [
+          "deliver"
+        ],
+        "position": {
+          "stream": "T",
+          "offset": "4"
+        }
+      }
     },
     {
       "name": "lagged reset in band",
-      "seed": null, "reconnect": false, "link": "stream",
-      "ack": {"stream": {"id": "S", "oldest": "1", "head": "10"}},
-      "frames": [{"event": "11"}, {"reset": {"stream": "S", "reason": "lagged", "after": "11", "head": "300"}}, {"event": "200"}, {"event": "301"}],
-      "expect": {"link_up": {"resume": "none", "invalidated": null}, "frames": ["deliver", {"invalidated": {"reason": "lagged", "stream": "S", "after": "11", "head": "300"}}, "drop", "deliver"], "position": {"stream": "S", "offset": "301"}}
+      "seed": null,
+      "reconnect": false,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "S",
+          "oldest": "1",
+          "head": "10"
+        }
+      },
+      "frames": [
+        {
+          "event": "11"
+        },
+        {
+          "reset": {
+            "stream": "S",
+            "reason": "lagged",
+            "after": "11",
+            "head": "300"
+          }
+        },
+        {
+          "event": "200"
+        },
+        {
+          "event": "301"
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "none",
+          "invalidated": null
+        },
+        "frames": [
+          "deliver",
+          {
+            "invalidated": {
+              "reason": "lagged",
+              "stream": "S",
+              "after": "11",
+              "head": "300"
+            }
+          },
+          "drop",
+          "deliver"
+        ],
+        "position": {
+          "stream": "S",
+          "offset": "301"
+        }
+      }
     },
     {
       "name": "upstream marker",
-      "seed": null, "reconnect": false, "link": "stream",
-      "ack": {"stream": {"id": "S", "oldest": "1", "head": "13"}},
-      "frames": [{"event": "14"}, {"reset": {"stream": "S", "reason": "upstream", "after": "14", "head": "15"}}, {"event": "16"}],
-      "expect": {"link_up": {"resume": "none", "invalidated": null}, "frames": ["deliver", {"invalidated": {"reason": "upstream", "stream": "S", "after": "14", "head": "15"}}, "deliver"], "position": {"stream": "S", "offset": "16"}}
+      "seed": null,
+      "reconnect": false,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "S",
+          "oldest": "1",
+          "head": "13"
+        }
+      },
+      "frames": [
+        {
+          "event": "14"
+        },
+        {
+          "reset": {
+            "stream": "S",
+            "reason": "upstream",
+            "after": "14",
+            "head": "15"
+          }
+        },
+        {
+          "event": "16"
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "none",
+          "invalidated": null
+        },
+        "frames": [
+          "deliver",
+          {
+            "invalidated": {
+              "reason": "upstream",
+              "stream": "S",
+              "after": "14",
+              "head": "15"
+            }
+          },
+          "deliver"
+        ],
+        "position": {
+          "stream": "S",
+          "offset": "16"
+        }
+      }
     },
     {
       "name": "reset naming another stream",
-      "seed": null, "reconnect": false, "link": "stream",
-      "ack": {"stream": {"id": "S", "oldest": "1", "head": "10"}},
-      "frames": [{"reset": {"stream": "T", "reason": "lagged", "after": "10", "head": "20"}}],
-      "expect": {"link_up": {"resume": "none", "invalidated": null}, "frames": ["protocol_error"], "position": {"stream": "S", "offset": "10"}}
+      "seed": null,
+      "reconnect": false,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "S",
+          "oldest": "1",
+          "head": "10"
+        }
+      },
+      "frames": [
+        {
+          "reset": {
+            "stream": "T",
+            "reason": "lagged",
+            "after": "10",
+            "head": "20"
+          }
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "none",
+          "invalidated": null
+        },
+        "frames": [
+          "protocol_error"
+        ],
+        "position": {
+          "stream": "S",
+          "offset": "10"
+        }
+      }
     },
     {
       "name": "position naming another stream",
-      "seed": null, "reconnect": false, "link": "stream",
-      "ack": {"stream": {"id": "S", "oldest": "1", "head": "10"}},
-      "frames": [{"position": {"stream": "T", "offset": "20"}}],
-      "expect": {"link_up": {"resume": "none", "invalidated": null}, "frames": ["protocol_error"], "position": {"stream": "S", "offset": "10"}}
+      "seed": null,
+      "reconnect": false,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "S",
+          "oldest": "1",
+          "head": "10"
+        }
+      },
+      "frames": [
+        {
+          "position": {
+            "stream": "T",
+            "offset": "20"
+          }
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "none",
+          "invalidated": null
+        },
+        "frames": [
+          "protocol_error"
+        ],
+        "position": {
+          "stream": "S",
+          "offset": "10"
+        }
+      }
     },
     {
       "name": "position applies max",
-      "seed": null, "reconnect": false, "link": "stream",
-      "ack": {"stream": {"id": "S", "oldest": "1", "head": "10"}},
-      "frames": [{"position": {"stream": "S", "offset": "5"}}, {"position": {"stream": "S", "offset": "20"}}, {"event": "20"}, {"event": "21"}],
-      "expect": {"link_up": {"resume": "none", "invalidated": null}, "frames": ["ok", "ok", "drop", "deliver"], "position": {"stream": "S", "offset": "21"}}
+      "seed": null,
+      "reconnect": false,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "S",
+          "oldest": "1",
+          "head": "10"
+        }
+      },
+      "frames": [
+        {
+          "position": {
+            "stream": "S",
+            "offset": "5"
+          }
+        },
+        {
+          "position": {
+            "stream": "S",
+            "offset": "20"
+          }
+        },
+        {
+          "event": "20"
+        },
+        {
+          "event": "21"
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "none",
+          "invalidated": null
+        },
+        "frames": [
+          "ok",
+          "ok",
+          "drop",
+          "deliver"
+        ],
+        "position": {
+          "stream": "S",
+          "offset": "21"
+        }
+      }
     },
     {
       "name": "missing offset is a protocol error",
-      "seed": null, "reconnect": false, "link": "stream",
-      "ack": {"stream": {"id": "S", "oldest": "1", "head": "10"}},
-      "frames": [{"event": "11"}, {"event": null}],
-      "expect": {"link_up": {"resume": "none", "invalidated": null}, "frames": ["deliver", "protocol_error"], "position": {"stream": "S", "offset": "11"}}
+      "seed": null,
+      "reconnect": false,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "S",
+          "oldest": "1",
+          "head": "10"
+        }
+      },
+      "frames": [
+        {
+          "event": "11"
+        },
+        {
+          "event": null
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "none",
+          "invalidated": null
+        },
+        "frames": [
+          "deliver",
+          "protocol_error"
+        ],
+        "position": {
+          "stream": "S",
+          "offset": "11"
+        }
+      }
     },
     {
       "name": "numeric offset is a protocol error",
-      "seed": null, "reconnect": false, "link": "stream",
-      "ack": {"stream": {"id": "S", "oldest": "1", "head": "10"}},
-      "frames": [{"event": 11}],
-      "expect": {"link_up": {"resume": "none", "invalidated": null}, "frames": ["protocol_error"], "position": {"stream": "S", "offset": "10"}}
+      "seed": null,
+      "reconnect": false,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "S",
+          "oldest": "1",
+          "head": "10"
+        }
+      },
+      "frames": [
+        {
+          "event": 11
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "none",
+          "invalidated": null
+        },
+        "frames": [
+          "protocol_error"
+        ],
+        "position": {
+          "stream": "S",
+          "offset": "10"
+        }
+      }
     },
     {
       "name": "legacy first connect without a position",
-      "seed": null, "reconnect": false, "link": "legacy",
+      "seed": null,
+      "reconnect": false,
+      "link": "legacy",
       "frames": [],
-      "expect": {"link_up": {"resume": "unsupported", "invalidated": null}, "frames": [], "position": null}
+      "expect": {
+        "link_up": {
+          "resume": "unsupported",
+          "invalidated": null
+        },
+        "frames": [],
+        "position": null
+      }
     },
     {
       "name": "legacy first connect with a seeded position invalidates",
-      "seed": {"stream": "S", "offset": "41"}, "reconnect": false, "link": "legacy",
+      "seed": {
+        "stream": "S",
+        "offset": "41"
+      },
+      "reconnect": false,
+      "link": "legacy",
       "frames": [],
-      "expect": {"link_up": {"resume": "unsupported", "invalidated": {"reason": "unsupported", "stream": "", "after": "", "head": ""}}, "frames": [], "position": null}
+      "expect": {
+        "link_up": {
+          "resume": "unsupported",
+          "invalidated": {
+            "reason": "unsupported",
+            "stream": "",
+            "after": "",
+            "head": ""
+          }
+        },
+        "frames": [],
+        "position": null
+      }
     },
     {
       "name": "legacy reconnect invalidates",
-      "seed": null, "reconnect": true, "link": "legacy",
+      "seed": null,
+      "reconnect": true,
+      "link": "legacy",
       "frames": [],
-      "expect": {"link_up": {"resume": "unsupported", "invalidated": {"reason": "unsupported", "stream": "", "after": "", "head": ""}}, "frames": [], "position": null}
+      "expect": {
+        "link_up": {
+          "resume": "unsupported",
+          "invalidated": {
+            "reason": "unsupported",
+            "stream": "",
+            "after": "",
+            "head": ""
+          }
+        },
+        "frames": [],
+        "position": null
+      }
     },
     {
       "name": "stream reconnect with no resume outcome invalidates",
-      "seed": null, "reconnect": true, "link": "stream",
-      "ack": {"stream": {"id": "S", "oldest": "1", "head": "10"}},
-      "frames": [{"event": "11"}],
-      "expect": {"link_up": {"resume": "none", "invalidated": {"reason": "unsupported", "stream": "", "after": "", "head": ""}}, "frames": ["deliver"], "position": {"stream": "S", "offset": "11"}}
+      "seed": null,
+      "reconnect": true,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "S",
+          "oldest": "1",
+          "head": "10"
+        }
+      },
+      "frames": [
+        {
+          "event": "11"
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "none",
+          "invalidated": {
+            "reason": "unsupported",
+            "stream": "",
+            "after": "",
+            "head": ""
+          }
+        },
+        "frames": [
+          "deliver"
+        ],
+        "position": {
+          "stream": "S",
+          "offset": "11"
+        }
+      }
+    },
+    {
+      "name": "replaying ack for another stream is a reset",
+      "seed": {
+        "stream": "S",
+        "offset": "41"
+      },
+      "reconnect": true,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "T",
+          "oldest": "1",
+          "head": "57"
+        },
+        "resume": {
+          "status": "replaying",
+          "after": "41",
+          "head": "57"
+        }
+      },
+      "frames": [
+        {
+          "event": "57"
+        },
+        {
+          "event": "58"
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "reset",
+          "invalidated": {
+            "reason": "stream",
+            "stream": "T",
+            "after": "41",
+            "head": "57"
+          }
+        },
+        "frames": [
+          "drop",
+          "deliver"
+        ],
+        "position": {
+          "stream": "T",
+          "offset": "58"
+        }
+      }
+    },
+    {
+      "name": "reset below the position",
+      "seed": null,
+      "reconnect": false,
+      "link": "stream",
+      "ack": {
+        "stream": {
+          "id": "S",
+          "oldest": "1",
+          "head": "10"
+        }
+      },
+      "frames": [
+        {
+          "event": "11"
+        },
+        {
+          "reset": {
+            "stream": "S",
+            "reason": "lagged",
+            "after": "3",
+            "head": "5"
+          }
+        }
+      ],
+      "expect": {
+        "link_up": {
+          "resume": "none",
+          "invalidated": null
+        },
+        "frames": [
+          "deliver",
+          "protocol_error"
+        ],
+        "position": {
+          "stream": "S",
+          "offset": "11"
+        }
+      }
     }
   ]
 }

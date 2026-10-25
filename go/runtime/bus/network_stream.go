@@ -29,10 +29,17 @@ func WithLog(l StreamLog) NetworkOption {
 }
 
 // WithHeartbeat sets the interval at which an acceptor proves a quiet
-// stream link alive. It is advertised to dialers in the ack.
+// stream link alive. It is advertised to dialers in the ack, and is
+// clamped to 1 ms - 24 h.
 func WithHeartbeat(d time.Duration) NetworkOption {
 	return func(n *NetworkAdapter) {
-		if d > 0 {
+		switch {
+		case d <= 0:
+		case d < time.Millisecond:
+			n.heartbeat = time.Millisecond
+		case d > maxHeartbeatMs*time.Millisecond:
+			n.heartbeat = maxHeartbeatMs * time.Millisecond
+		default:
 			n.heartbeat = d
 		}
 	}
@@ -88,6 +95,12 @@ func WithSkipFunc(f func(addr string, n uint64)) NetworkOption {
 // inbound link: at the handshake (including the implicit "#"), at
 // accept time for legacy links, and on each subscribe request. An
 // error refuses it with code forbidden.
+//
+// It must be fast and must not block: subscribe requests are
+// authorized on the link's writer, which also sends events and
+// heartbeats. That keeps the ack's offset an exact fence; a slow
+// authorizer delays the link, and one slower than three heartbeat
+// intervals gets the link closed by the dialer.
 func WithSubscribeAuthorizer(f func(ctx context.Context, p Peer, s Subscription) error) NetworkOption {
 	return func(n *NetworkAdapter) { n.authorize = f }
 }
@@ -174,13 +187,6 @@ func (n *NetworkAdapter) peerFor(addr string) *peerState {
 	}
 	n.peers[addr] = ps
 	return ps
-}
-
-func (n *NetworkAdapter) isPeer(addr string) bool {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	_, ok := n.peers[addr]
-	return ok
 }
 
 func (n *NetworkAdapter) peer(addr string) *peerState {

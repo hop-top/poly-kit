@@ -29,17 +29,26 @@ func isReservedTopic(t Topic) bool {
 	return strings.HasPrefix(s, "kit.runtime.stream.") || strings.HasPrefix(s, "kit.runtime.link.")
 }
 
+// deliveryKey marks a context as a delivery from the outbound link to
+// an address: a request to that address from such a handler would wait
+// for a reply only the delivering goroutine can read.
+type deliveryKey struct{}
+
 // publishLocal publishes an adapter event on the local bus, marked as
-// network-originated so it is never forwarded.
-func (n *NetworkAdapter) publishLocal(t Topic, payload map[string]any) {
+// network-originated so it is never forwarded. A non-empty from marks
+// it as delivered by the link to that address.
+func (n *NetworkAdapter) publishLocal(t Topic, payload map[string]any, from string) {
 	ctx := context.WithValue(context.Background(), networkOriginKey, n.originID)
+	if from != "" {
+		ctx = context.WithValue(ctx, deliveryKey{}, from)
+	}
 	_ = n.bus.Publish(ctx, NewEvent(t, NetworkEventSource, payload))
 }
 
 // invalidate publishes the gap signal for addr; a relay also logs a gap
 // marker so its own stream links learn of the hole.
 func (n *NetworkAdapter) invalidate(addr string, g *gapInfo) {
-	n.publishLocal(TopicStreamInvalidated, g.payload(addr))
+	n.publishLocal(TopicStreamInvalidated, g.payload(addr), addr)
 	if n.relay {
 		n.appendMarker()
 	}
@@ -48,7 +57,7 @@ func (n *NetworkAdapter) invalidate(addr string, g *gapInfo) {
 func (n *NetworkAdapter) publishConnected(addr string, st LinkState) {
 	n.publishLocal(TopicLinkConnected, map[string]any{
 		"peer": addr, "stream": st.Stream, "resume": st.Resume, "format": st.Format.String(),
-	})
+	}, addr)
 }
 
 func (n *NetworkAdapter) publishDisconnected(addr string, final bool, code string) {
@@ -56,5 +65,5 @@ func (n *NetworkAdapter) publishDisconnected(addr string, final bool, code strin
 	if code != "" {
 		p["code"] = code
 	}
-	n.publishLocal(TopicLinkDisconnected, p)
+	n.publishLocal(TopicLinkDisconnected, p, "")
 }

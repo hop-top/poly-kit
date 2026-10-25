@@ -3,6 +3,7 @@ package bus
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -16,8 +17,17 @@ const handshakeTimeout = 10 * time.Second
 // Connect establishes a WebSocket connection to a remote peer and
 // registers addr as an outbound peer. With an authenticator the auth
 // exchange doubles as the stream handshake. A refused session returns a
-// *StreamError.
+// *StreamError and a malformed handshake reply a protocol error; both
+// are final, so the address is not retried until the next explicit
+// Connect. A rejected token (ErrAuthFailed) is retried, since the
+// authenticator may hand out a fresh one.
 func (n *NetworkAdapter) Connect(ctx context.Context, addr string) error {
+	return n.connect(ctx, addr, false)
+}
+
+// connect dials addr. fromLoop marks a reconnect, which never
+// re-registers an address that Disconnect forgot.
+func (n *NetworkAdapter) connect(ctx context.Context, addr string, fromLoop bool) error {
 	if n.closed.Load() {
 		return ErrBusClosed
 	}
@@ -30,6 +40,12 @@ func (n *NetworkAdapter) Connect(ctx context.Context, addr string) error {
 		n.offline.Store(true)
 	}
 
+	var ps *peerState
+	if fromLoop {
+		if ps = n.peer(addr); ps == nil {
+			return nil
+		}
+	}
 	n.mu.RLock()
 	_, dup := n.conns[addr]
 	n.mu.RUnlock()
@@ -47,18 +63,15 @@ func (n *NetworkAdapter) Connect(ctx context.Context, addr string) error {
 	if err != nil {
 		return err
 	}
-	ps := n.peerFor(addr)
+	if ps == nil {
+		ps = n.peerFor(addr)
+	}
 
 	var ack *ackFrame
 	if n.auth != nil {
 		a, err := n.dialHandshake(ctx, conn, ps)
 		if err != nil {
-			var se *StreamError
-			if errors.As(err, &se) {
-				ps.setFinal(se.Code)
-				n.publishDisconnected(addr, true, se.Code)
-			}
-			return err
+			return n.handshakeFailed(addr, ps, err)
 		}
 		ack = &a
 	}
@@ -78,20 +91,34 @@ func (n *NetworkAdapter) Connect(ctx context.Context, addr string) error {
 		l.heartbeatD = time.Duration(ack.Stream.HeartbeatMs) * time.Millisecond
 	}
 
+	// Register in one critical section with the checks that decide
+	// whether the link may exist at all.
 	n.mu.Lock()
-	if _, ok := n.conns[addr]; ok {
+	switch {
+	case n.closed.Load():
+		n.mu.Unlock()
+		_ = conn.Close(statusGoingAway, "closing")
+		return ErrBusClosed
+	case n.peers[addr] != ps:
+		// Disconnect forgot the address while we dialed.
+		n.mu.Unlock()
+		_ = conn.Close(statusNormal, "disconnect")
+		return nil
+	case n.conns[addr] != nil:
 		// Lost a race with a reconnect.
 		n.mu.Unlock()
 		_ = conn.Close(statusNormal, "duplicate")
 		return nil
 	}
 	n.conns[addr] = l
+	n.wg.Add(1)
 	n.mu.Unlock()
 
 	ps.mu.Lock()
 	resume, gap := ps.cursor.linkUp(ack, ps.connected)
 	ps.connected = true
 	ps.send.linkUp(n.log)
+	// A fresh state also clears Final from an earlier refused session.
 	ps.state = LinkState{Connected: true, Streams: l.stream, Format: format, Resume: resume}
 	if l.stream {
 		ps.state.Stream = ack.Stream.ID
@@ -105,6 +132,47 @@ func (n *NetworkAdapter) Connect(ctx context.Context, addr string) error {
 	}
 	l.start()
 	return nil
+}
+
+// handshakeFailed reports a failed handshake and records it on the
+// address. Session errors and protocol errors are final; a rejected
+// token is not. link.disconnected is published once per change of
+// code, so a retrying address does not flood the bus.
+func (n *NetworkAdapter) handshakeFailed(addr string, ps *peerState, err error) error {
+	n.reportErr(fmt.Errorf("bus: handshake with %s: %w", addr, err))
+	var (
+		se    *StreamError
+		code  string
+		final bool
+	)
+	switch {
+	case errors.As(err, &se):
+		code, final = se.Code, true
+	case isProtocolError(err):
+		code, final = "protocol", true
+	case errors.Is(err, ErrAuthFailed):
+		code = "auth"
+	default:
+		return err
+	}
+	ps.mu.Lock()
+	repeat := !final && !ps.state.Connected && ps.state.Code == code
+	ps.state.Connected = false
+	ps.state.Code = code
+	if final {
+		ps.state.Final = true
+	}
+	ps.mu.Unlock()
+	if !repeat {
+		n.publishDisconnected(addr, final, code)
+	}
+	return err
+}
+
+// isFinalConnectErr reports whether a connect error stops retrying.
+func isFinalConnectErr(err error) bool {
+	var se *StreamError
+	return errors.As(err, &se) || isProtocolError(err)
 }
 
 // dialHandshake sends the auth frame (caps, origin, session) and reads
@@ -133,7 +201,7 @@ func (n *NetworkAdapter) dialHandshake(ctx context.Context, conn *websocket.Conn
 		_ = conn.Close(statusPolicy, "auth ack timeout")
 		return ackFrame{}, ErrAuthFailed
 	}
-	a, err := parseAck(data)
+	a, err := parseAck(data, n.caps().Streams)
 	switch {
 	case isProtocolError(err):
 		_ = conn.Close(statusProtocol, "protocol error")
@@ -228,7 +296,13 @@ func (n *NetworkAdapter) Handler() http.Handler {
 			}
 		}
 		n.mu.Lock()
+		if n.closed.Load() {
+			n.mu.Unlock()
+			_ = conn.Close(statusGoingAway, "closing")
+			return
+		}
 		n.conns[peer.Addr] = l
+		n.wg.Add(1)
 		n.mu.Unlock()
 		l.start()
 		n.hook("accepted")

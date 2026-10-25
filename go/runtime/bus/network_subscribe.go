@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 
 	"github.com/coder/websocket"
@@ -12,11 +13,22 @@ import (
 // errLinkClosed reports a request whose link closed before the reply.
 var errLinkClosed = errors.New("bus: link closed before the reply")
 
+// ErrReentrantRequest is returned (wrapped) by Subscribe, Unsubscribe
+// and SetScope when called with the context of a handler that the link
+// to the same address is delivering: link.connected, stream.invalidated
+// or an event from that peer. The reply could only be read by the
+// goroutine that is running the handler, so the call would block
+// forever. Issue the request from another goroutine instead.
+var ErrReentrantRequest = errors.New("bus: request from a delivery of the same link")
+
 // Subscribe adds patterns to what the acceptor at addr sends this
 // dialer. The first explicit subscription replaces the implicit "#".
 // It returns the ack's offset: every event after it is filtered by the
 // new set. On a disconnected address it only updates the set sent in
-// the next handshake and returns 0.
+// the next handshake and returns 0.//
+// Pass the handler's context when calling from a bus handler: a call
+// made while the link to addr is delivering returns ErrReentrantRequest
+// instead of blocking.
 func (n *NetworkAdapter) Subscribe(ctx context.Context, addr string, patterns ...string) (uint64, error) {
 	return n.request(ctx, addr, ctlRequest{Type: "subscribe", Patterns: patterns})
 }
@@ -36,6 +48,9 @@ func (n *NetworkAdapter) SetScope(ctx context.Context, addr string, s Scope) (ui
 }
 
 func (n *NetworkAdapter) request(ctx context.Context, addr string, r ctlRequest) (uint64, error) {
+	if from, _ := ctx.Value(deliveryKey{}).(string); from == addr {
+		return 0, fmt.Errorf("%w: %s", ErrReentrantRequest, addr)
+	}
 	if r.Patterns != nil || r.Type == "unsubscribe" {
 		if len(r.Patterns) == 0 {
 			return 0, streamErr(CodeBadRequest, "%s needs patterns", r.Type)

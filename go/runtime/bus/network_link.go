@@ -99,19 +99,29 @@ func (l *link) close(status websocket.StatusCode, reason, code string) {
 // start runs the link's goroutines. Tickers are created here, before
 // start returns, so a link is fully armed once Connect or the accept
 // handler is done.
+// The caller registered the link and added it to the adapter's
+// WaitGroup under n.mu, so Close cannot miss it.
 func (l *link) start() {
-	l.n.wg.Add(1)
 	var tick <-chan time.Time
 	stopTick := func() {}
 	if l.stream && !l.outbound {
-		tick, stopTick = l.n.newTicker(l.n.heartbeat)
+		tick, stopTick = l.n.newTicker(positiveDuration(l.n.heartbeat))
 	}
 	go l.writeLoop(tick, stopTick)
 	go l.readLoop()
 	if l.outbound && l.stream {
-		c, stop := l.n.newTicker(l.heartbeatD)
+		c, stop := l.n.newTicker(positiveDuration(l.heartbeatD))
 		go l.watchdog(c, stop)
 	}
+}
+
+// positiveDuration guards ticker creation: time.NewTicker panics on a
+// non-positive interval.
+func positiveDuration(d time.Duration) time.Duration {
+	if d <= 0 {
+		return DefaultHeartbeat
+	}
+	return d
 }
 
 func (l *link) write(data []byte) bool {
@@ -120,7 +130,9 @@ func (l *link) write(data []byte) bool {
 	cancel()
 	if err != nil {
 		l.writeFail++
-		if l.writeFail >= maxWriteFailures || l.ctx.Err() != nil {
+		// A stream link closes on the first failure: its cursor has
+		// already passed the frame, and resume must not skip it.
+		if l.stream || l.writeFail >= maxWriteFailures || l.ctx.Err() != nil {
 			l.close(statusGoingAway, "write failures", "")
 			return false
 		}
@@ -302,6 +314,10 @@ func (l *link) readLoop() {
 		if n.conns[l.addr] == l {
 			delete(n.conns, l.addr)
 		}
+		if !l.outbound {
+			// Inbound addresses are ephemeral ports: drop their counter.
+			delete(n.skipped, l.addr)
+		}
 		n.mu.Unlock()
 		l.failPending()
 		if l.outbound {
@@ -394,6 +410,9 @@ func (l *link) onEvent(data []byte) bool {
 		return true
 	}
 	ctx := context.WithValue(l.ctx, networkOriginKey, origin)
+	if l.outbound {
+		ctx = context.WithValue(ctx, deliveryKey{}, l.addr)
+	}
 	if l.stream && l.outbound {
 		l.ps.mu.Lock()
 		deliver := l.ps.cursor.advance(off.value)
@@ -440,7 +459,7 @@ func (l *link) linkDown() {
 		return
 	}
 	n.publishDisconnected(l.addr, final, code)
-	if !final && n.isPeer(l.addr) {
-		go n.reconnectLoop(l.addr)
+	if !final {
+		n.goReconnect(l.addr)
 	}
 }

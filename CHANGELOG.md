@@ -1,18 +1,5 @@
 # Changelog
 
-## Unreleased
-
-Ships together with CloudEvents framing for the bus, so every peer that decodes CloudEvents frames can also advertise it.
-
-### Behaviour changes
-
-* **bus:** network forwarding is ordered per sender, through one writer per link instead of one goroutine per event.
-* **bus:** a slow legacy link skips log entries evicted before its writer reached them instead of back-pressuring publishers; skips are counted (`Skipped`, `WithSkipFunc`, `WithNetworkErrorFunc`).
-* **bus:** `FrameCloudEvents` falls back to kit frames on a handshake link whose peer does not advertise CloudEvents; links without a handshake keep the configured format.
-* **bus:** `kitoffset` is a reserved CloudEvents extension, like `kitorigin`.
-* **bus:** a failed first dial through `WithNetwork` keeps retrying in the background.
-* **bus:** a reconnect over a link without stream support publishes `kit.runtime.stream.invalidated` (reason `unsupported`); outbound links publish `kit.runtime.link.connected` / `disconnected`.
-
 ## [0.5.0-alpha.26](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.25...kit/v0.5.0-alpha.26) (2026-10-17)
 
 The hop-top team is happy to announce Kit 0.5.0-alpha.26. This release includes maintenance release with bug fixes.

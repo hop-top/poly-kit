@@ -517,7 +517,52 @@ Ordering holds per sending adapter through sync handlers; async
 handlers stay unordered. A consumer that queues events onward must
 persist the position it applied, from `StreamPositionFrom`, not
 `Position(addr)`. A bus without the ordered publish hook (for example
-the SQLite adapter) forwards as before and does not negotiate streams.
+the SQLite adapter) still forwards through the log and per-link
+writers, but appends from an async handler, so its order is not
+guaranteed; it advertises no streams and every link it makes is a
+legacy link.
+
+`Subscribe`, `Unsubscribe` and `SetScope` wait for the acceptor's
+reply, which only the link's own reader can deliver. Called with the
+context of a handler that link is delivering (`link.connected`,
+`stream.invalidated`, or an event from that peer) they return an error
+wrapping `bus.ErrReentrantRequest` instead of blocking; pass the
+handler's context, and issue the request from another goroutine.
+
+Subscribe authorizers (`WithSubscribeAuthorizer`) run on the link's
+writer, which keeps the ack's offset an exact fence. They must be fast:
+a slow authorizer delays events and heartbeats on that link, and one
+slower than three heartbeat intervals gets the link closed by the
+dialer.
+
+Handshake failures: a refused session (`*bus.StreamError`) or a
+malformed reply (a protocol error) is final, so the address is not
+retried until the next explicit `Connect`; a rejected token
+(`bus.ErrAuthFailed`) is retried. Each is reported through
+`WithNetworkErrorFunc` and as `kit.runtime.link.disconnected` with
+`final` and `code` (`protocol`, `auth`, or the session error code).
+
+### Behaviour changes
+
+These change how the network adapter behaves for existing adopters:
+
+- Forwarding is ordered per sending adapter: one writer per link reads
+  the adapter's log, instead of one goroutine per event.
+- A slow legacy link skips entries the log evicted before its writer
+  reached them, instead of back-pressuring publishers. Skips are
+  counted (`(*NetworkAdapter).Skipped(addr)`, `WithSkipFunc`) and
+  reported through `WithNetworkErrorFunc`.
+- `Disconnect(addr)` forgets the address: no reconnect, and its outbox
+  and position are dropped.
+- A failed first dial through `WithNetwork` (or `Dial`) keeps retrying
+  in the background, unless the failure is final.
+- `FrameCloudEvents` falls back to kit frames on a handshake link whose
+  peer does not advertise CloudEvents.
+- A reconnect that cannot resume publishes
+  `kit.runtime.stream.invalidated` (reason `unsupported` on links
+  without streams), and outbound links publish
+  `kit.runtime.link.connected` / `disconnected`.
+- `kitoffset` is a reserved CloudEvents extension, like `kitorigin`.
 The wire contract is
 [bus network streams](../../contributors/architecture/bus-streams.md),
 pinned by [`contracts/bus-v1/streams`](../../../contracts/bus-v1/streams/README.md).

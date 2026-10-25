@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -295,29 +294,35 @@ func (n *NetworkAdapter) Close() error {
 // the peer even before the first connect.
 func (n *NetworkAdapter) Dial(addr string) {
 	n.peerFor(addr)
-	go n.reconnectLoop(addr)
+	n.goReconnect(addr)
 }
 
 // dialConfigured registers addr, tries one connect, and keeps retrying
-// in the background if it fails (unless the session was refused).
+// in the background unless the failure is final.
 func (n *NetworkAdapter) dialConfigured(addr string) {
 	n.peerFor(addr)
-	err := n.Connect(context.Background(), addr)
-	var se *StreamError
-	if err != nil && !errors.As(err, &se) {
-		go n.reconnectLoop(addr)
+	if err := n.connect(context.Background(), addr, true); err != nil && !isFinalConnectErr(err) {
+		n.goReconnect(addr)
 	}
 }
 
-// reconnectLoop dials addr until connected; a session error stops it.
-func (n *NetworkAdapter) reconnectLoop(addr string) {
+// goReconnect starts a reconnect loop for addr, tracked by the adapter's
+// WaitGroup so Close waits for it.
+func (n *NetworkAdapter) goReconnect(addr string) {
 	n.mu.Lock()
-	if n.reconnecting[addr] {
-		n.mu.Unlock()
+	defer n.mu.Unlock()
+	if n.closed.Load() || n.reconnecting[addr] || n.peers[addr] == nil {
 		return
 	}
 	n.reconnecting[addr] = true
-	n.mu.Unlock()
+	n.wg.Add(1)
+	go n.reconnectLoop(addr)
+}
+
+// reconnectLoop dials addr until connected, Disconnect, Close, or a
+// final failure. Start it through goReconnect.
+func (n *NetworkAdapter) reconnectLoop(addr string) {
+	defer n.wg.Done()
 	defer func() {
 		n.mu.Lock()
 		delete(n.reconnecting, addr)
@@ -340,18 +345,12 @@ func (n *NetworkAdapter) reconnectLoop(addr string) {
 	}()
 
 	_ = util.Retry(ctx, n.reconnect, func() error {
-		if !n.isPeer(addr) {
-			return nil // Disconnect forgot it
-		}
 		dialCtx, dialCancel := context.WithTimeout(ctx, 10*time.Second)
 		defer dialCancel()
-		err := n.Connect(dialCtx, addr)
-		var se *StreamError
-		if errors.As(err, &se) {
-			n.reportErr(err)
-			return nil // permanent: a configuration error
+		if err := n.connect(dialCtx, addr, true); err != nil && !isFinalConnectErr(err) {
+			return err
 		}
-		return err
+		return nil
 	})
 }
 
