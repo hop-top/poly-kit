@@ -12,7 +12,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use hop_top_kit::bus::{Bus, BusError, ErrFn, Event, Handler, Mode, SharedBus};
+use hop_top_kit::bus::{Bus, BusError, ErrFn, Event, Handler, Mode, SharedBus, SubscriptionId};
 use serde_json::json;
 
 fn ev(topic: &str) -> Event {
@@ -135,6 +135,13 @@ fn nested_publish_does_not_deadlock_behind_a_waiting_writer() {
     // Holding the lock across dispatch would make the inner publish a
     // recursive read; with a subscriber queued for the write lock in
     // between, a writer-preferring lock never grants it.
+    //
+    // The sleep gives the writer time to queue. std's RwLock exposes no
+    // way to observe a queued writer, so there is nothing to sync on
+    // deterministically. If the writer has not queued yet, the inner
+    // publish succeeds and the test passes vacuously; it cannot fail
+    // against a correct bus, because no lock is held while a handler
+    // runs, so the writer and the inner publish never wait on each other.
     let bus = SharedBus::default();
     let (b, writer_done) = (bus.clone(), Arc::new(AtomicUsize::new(0)));
     let w = Arc::clone(&writer_done);
@@ -218,4 +225,96 @@ fn reporter_can_publish_reentrantly() {
     assert_eq!(seen.load(Ordering::SeqCst), 1);
     // Break the bus -> reporter -> bus cycle so the test does not leak.
     slot.lock().unwrap().take();
+}
+
+/// Calls back into the bus when dropped, as a handler capture might.
+struct TouchesBusOnDrop(SharedBus);
+
+impl Drop for TouchesBusOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.is_closed();
+    }
+}
+
+/// Runs `f` on another thread and fails the test if it has not returned
+/// within a few seconds.
+fn finishes(f: impl FnOnce() + Send + 'static) {
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        f();
+        let _ = tx.send(());
+    });
+    rx.recv_timeout(Duration::from_secs(5))
+        .expect("call deadlocked");
+}
+
+#[test]
+fn unsubscribe_drops_the_handler_outside_the_lock() {
+    let bus = SharedBus::default();
+    let capture = TouchesBusOnDrop(bus.clone());
+    let id = bus.subscribe("test.bus.drop.ran", move |_| {
+        let _ = &capture;
+        Ok(())
+    });
+    finishes(move || assert!(bus.unsubscribe(id)));
+}
+
+#[test]
+fn close_drops_handlers_outside_the_lock() {
+    let bus = SharedBus::default();
+    let capture = TouchesBusOnDrop(bus.clone());
+    bus.subscribe("test.bus.drop.ran", move |_| {
+        let _ = &capture;
+        Ok(())
+    });
+    finishes(move || bus.close());
+}
+
+/// Starts a publish on another thread whose handler blocks until
+/// released. Returns once the handler is running.
+fn publish_with_blocked_handler(
+    bus: &SharedBus,
+) -> (SubscriptionId, mpsc::Sender<()>, thread::JoinHandle<()>) {
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel::<()>();
+    let release_rx = Mutex::new(release_rx);
+    let id = bus.subscribe("test.bus.slow.ran", move |_| {
+        entered_tx.send(()).unwrap();
+        release_rx.lock().unwrap().recv().unwrap();
+        Ok(())
+    });
+    let publisher = bus.clone();
+    let t = thread::spawn(move || {
+        publisher
+            .publish(&ev("test.bus.slow.ran"))
+            .expect("publish");
+    });
+    entered_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("handler entered");
+    (id, release_tx, t)
+}
+
+// Pins current behaviour, which differs from Go: Go's unsubscribe and
+// Close take the write lock and so wait for an in-flight sync dispatch.
+// Here they return while the handler is still running.
+#[test]
+fn unsubscribe_returns_while_its_handler_is_in_flight() {
+    let bus = SharedBus::default();
+    let (id, release, publisher) = publish_with_blocked_handler(&bus);
+    let b = bus.clone();
+    finishes(move || assert!(b.unsubscribe(id)));
+    release.send(()).unwrap();
+    publisher.join().expect("publisher");
+}
+
+#[test]
+fn close_returns_while_a_handler_is_in_flight() {
+    let bus = SharedBus::default();
+    let (_, release, publisher) = publish_with_blocked_handler(&bus);
+    let b = bus.clone();
+    finishes(move || b.close());
+    assert!(bus.is_closed());
+    release.send(()).unwrap();
+    publisher.join().expect("publisher");
 }
