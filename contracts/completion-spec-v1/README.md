@@ -2,10 +2,9 @@
 
 ## What it answers
 
-What a kit CLI's exported completion specs look like, byte for byte: the
-Fig module (`<tool> completion fig`) and the Usage KDL (`<tool> completion
-usage`) for one fixture command tree. Wrong place for shell completion
-scripts or completer behaviour; those are each framework's own.
+A kit CLI's completion specs, byte for byte: the Fig module (`<tool>
+completion fig`) and Usage KDL (`<tool> completion usage`) of one fixture
+tree. Not for shell scripts or completers; those are each framework's own.
 
 ## Use it when
 
@@ -74,6 +73,7 @@ Walker and emitter rules:
 | Port | Runner |
 |------|--------|
 | Go | `go/console/cli/completionspec/conformance_test.go` |
+| Rust | `sdk/experimental/rs/tests/cli_completion_spec_conformance.rs` |
 
 ## See also
 

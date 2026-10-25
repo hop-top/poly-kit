@@ -302,7 +302,10 @@ fn completion_in_management_group() {
         .find_subcommand("completion")
         .expect("completion subcommand must exist");
     let shells: Vec<&str> = comp.get_subcommands().map(|c| c.get_name()).collect();
-    assert_eq!(shells, ["bash", "zsh", "fish", "powershell"]);
+    assert_eq!(
+        shells,
+        ["bash", "zsh", "fish", "powershell", "fig", "usage"]
+    );
     assert_eq!(root.command_group("completion"), Some("management"));
 }
 

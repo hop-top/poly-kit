@@ -4,10 +4,12 @@
 //! needs: [`Root`], a wrapper over a finished clap command tree that adds
 //! the hidden `completion bash|zsh|fish|powershell` command, root aliases
 //! and flag value enums, and answers the `__complete` requests the
-//! generated scripts make; and [`completion`], the completer API.
+//! generated scripts make; [`completion`], the completer API; and
+//! [`completion_spec`], the `completion fig|usage` spec exports.
 
 mod alias;
 pub mod completion;
+pub mod completion_spec;
 mod enums;
 mod root;
 
