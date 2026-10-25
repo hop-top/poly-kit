@@ -290,18 +290,20 @@ test-parity-taxonomy: ## exit-code taxonomy across Go + 4 SDKs
 		echo "==> exit-taxonomy parity: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
 
+# Shared bus conformance corpus: the Go and Rust runners read the same
+# vectors under contracts/bus-v1.
+test-parity-bus: ## bus-v1 conformance corpus (Go and Rust runners)
+	@echo "==> bus-v1 conformance: Go"
+	go test ./go/runtime/bus/ -run '^TestConformance' -count=1
+	@echo "==> bus-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --test bus_conformance --all-features --locked
+
 # Cross-process kv storage-binding gate over contracts/kv-v1/keys.json.
 # The Go test drives the Rust half as a `cargo test` subprocess, so this
 # target needs BOTH toolchains — hence its home in test-parity rather
 # than test-go. KV_CROSSLANG gates the cross-process cases so a plain
 # `go test ./...` stays Rust-free; setting it here is what makes the
 # gate live in CI.
-test-parity-bus: ## bus-v1 conformance corpus (Go and Rust runners)
-	@echo "==> bus-v1 conformance: Go"
-	go test ./go/runtime/bus/ -run '^TestConformance' -count=1
-	@echo "==> bus-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --test bus_conformance --all-features
-
 test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
 	@echo "==> kv-v1 parity: Go <-> Rust cross-process"
 	KV_CROSSLANG=1 go test ./go/storage/kv/sqlite/... -run '^TestCrossLang' -count=1 -timeout 300s -v

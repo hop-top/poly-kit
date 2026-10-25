@@ -2,40 +2,59 @@
 //! source of truth: a failure means this port drifted from the contract
 //! (Go is canonical), not that a vector should be edited to fit.
 //!
-//! pending (capability not ported yet; flip each to a real assertion when
-//! it lands):
-//! - mode parsing: `mode_parse.json` `cases` (string parser, error text)
-//! - event timestamp validation: `event_json.json` `decode_reject`
+//! Strict by construction: vector files deserialize into typed structs
+//! that deny unknown fields, `version` must be `v1`, and the corpus
+//! directory must match [`FILES`] exactly.
+//!
+//! Sections the port cannot satisfy yet are listed in [`PENDING`]. Each is
+//! skipped with a printed line; when the capability lands its probe flips
+//! and the test fails until the entry is removed and the section asserted.
 
 #![cfg(feature = "bus")]
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::marker::PhantomData;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use hop_top_kit::bus::{
     prefix_topics, qualifiers_from, validate, validate_topic, Event, Mode, Qualifiers, Topic,
 };
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use serde_json::{json, Value};
 
-fn load(name: &str) -> Value {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../contracts/bus-v1")
-        .join(name);
+/// Every vector file this runner consumes.
+const FILES: &[&str] = &[
+    "event_json.json",
+    "match.json",
+    "mode_parse.json",
+    "prefix_topics.json",
+    "qualifiers.json",
+    "validate.json",
+    "validate_topic.json",
+];
+
+/// (file, section) pairs skipped until the capability is ported.
+const PENDING: &[(&str, &str)] = &[
+    // string parser for Mode
+    ("mode_parse.json", "cases"),
+    // timestamp validation on decode
+    ("event_json.json", "decode_reject"),
+];
+
+fn dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/bus-v1")
+}
+
+fn load<T: DeserializeOwned>(name: &str) -> T {
+    assert!(FILES.contains(&name), "{name} is not registered in FILES");
+    let p = dir().join(name);
     let raw = fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
-    serde_json::from_str(&raw).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
-}
-
-fn arr<'a>(v: &'a Value, key: &str) -> &'a Vec<Value> {
-    let a = v[key].as_array().unwrap_or_else(|| panic!("{key} missing"));
-    assert!(!a.is_empty(), "{key} is empty");
-    a
-}
-
-fn s<'a>(v: &'a Value, key: &str) -> &'a str {
-    v[key]
-        .as_str()
-        .unwrap_or_else(|| panic!("{key} not a string"))
+    let v: Value = serde_json::from_str(&raw).unwrap_or_else(|e| panic!("parse {name}: {e}"));
+    assert_eq!(v["version"], "v1", "{name}: version");
+    serde_json::from_value(v).unwrap_or_else(|e| panic!("{name}: {e}"))
 }
 
 /// Collects every mismatch so a run reports all divergences at once.
@@ -48,203 +67,448 @@ fn check(fails: Vec<String>) {
     );
 }
 
-/// Asserts an error against a case: exact text when the vector has `error`,
-/// else every `error_contains` substring (the language-neutral core).
-fn expect_err(fails: &mut Vec<String>, name: &str, case: &Value, got: Option<String>) {
-    let ok = case["ok"].as_bool().unwrap();
+fn non_empty<T>(v: &[T], what: &str) {
+    assert!(!v.is_empty(), "{what} is empty");
+}
+
+/// Error expectation shared by the validator vectors: exact `error`, else
+/// every `error_contains` substring (the language-neutral core).
+struct Expect<'a> {
+    ok: bool,
+    error: &'a Option<String>,
+    error_contains: &'a Option<Vec<String>>,
+}
+
+fn expect_err(fails: &mut Vec<String>, name: &str, want: &Expect<'_>, got: Option<String>) {
     let Some(e) = got else {
-        if !ok {
+        if !want.ok {
             fails.push(format!("{name}: want an error, got none"));
         }
         return;
     };
-    if ok {
+    if want.ok {
         fails.push(format!("{name}: unexpected error {e:?}"));
-    } else if let Some(want) = case["error"].as_str() {
-        if e != want {
-            fails.push(format!("{name}:\n   got  {e:?}\n   want {want:?}"));
+    } else if let Some(exact) = &want.error {
+        if &e != exact {
+            fails.push(format!("{name}:\n   got  {e:?}\n   want {exact:?}"));
         }
-    } else {
-        for sub in arr(case, "error_contains") {
-            if !e.contains(sub.as_str().unwrap()) {
-                fails.push(format!("{name}: error {e:?} lacks {sub}"));
+    } else if let Some(subs) = want.error_contains.as_deref().filter(|s| !s.is_empty()) {
+        for sub in subs {
+            if !e.contains(sub.as_str()) {
+                fails.push(format!("{name}: error {e:?} lacks {sub:?}"));
             }
         }
+    } else {
+        fails.push(format!(
+            "{name}: failing case has neither error nor error_contains"
+        ));
     }
 }
 
+macro_rules! file {
+    ($name:ident { $($body:tt)* }) => {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        #[allow(dead_code)]
+        struct $name {
+            #[serde(rename = "$schema")]
+            schema: String,
+            #[serde(rename = "$id")]
+            id: String,
+            version: String,
+            description: String,
+            $($body)*
+        }
+    };
+}
+
+// --- match -------------------------------------------------------------
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MatchCase {
+    name: String,
+    pattern: String,
+    topic: String,
+    #[serde(rename = "match")]
+    matches: bool,
+}
+file!(MatchFile { cases: Vec<MatchCase> });
+
 #[test]
 fn match_vectors() {
-    let f = load("match.json");
+    let f: MatchFile = load("match.json");
+    non_empty(&f.cases, "cases");
     let mut fails = vec![];
-    for c in arr(&f, "cases") {
-        let got = Topic::from(s(c, "topic")).matches(s(c, "pattern"));
-        if got != c["match"].as_bool().unwrap() {
-            fails.push(format!("{}: matches = {got}", s(c, "name")));
+    for c in &f.cases {
+        let got = Topic::from(c.topic.as_str()).matches(&c.pattern);
+        if got != c.matches {
+            fails.push(format!("{}: matches = {got}", c.name));
         }
+    }
+    check(fails);
+}
+
+// --- validators --------------------------------------------------------
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ValidateCase {
+    name: String,
+    topic: String,
+    ok: bool,
+    error: Option<String>,
+    error_contains: Option<Vec<String>>,
+}
+file!(ValidateFile { cases: Vec<ValidateCase> });
+
+fn run_validate(file: &str, f: impl Fn(&Topic) -> Option<String>) {
+    let v: ValidateFile = load(file);
+    non_empty(&v.cases, "cases");
+    let mut fails = vec![];
+    for c in &v.cases {
+        expect_err(
+            &mut fails,
+            &c.name,
+            &Expect {
+                ok: c.ok,
+                error: &c.error,
+                error_contains: &c.error_contains,
+            },
+            f(&Topic::from(c.topic.as_str())),
+        );
     }
     check(fails);
 }
 
 #[test]
 fn validate_vectors() {
-    let f = load("validate.json");
-    let mut fails = vec![];
-    for c in arr(&f, "cases") {
-        let got = validate(&Topic::from(s(c, "topic")))
-            .err()
-            .map(|e| e.to_string());
-        expect_err(&mut fails, s(c, "name"), c, got);
-    }
-    check(fails);
+    run_validate("validate.json", |t| {
+        validate(t).err().map(|e| e.to_string())
+    });
 }
 
 #[test]
 fn validate_topic_vectors() {
-    let f = load("validate_topic.json");
-    let mut fails = vec![];
-    for c in arr(&f, "cases") {
-        let got = validate_topic(&Topic::from(s(c, "topic"))).err();
-        expect_err(&mut fails, s(c, "name"), c, got);
-    }
-    check(fails);
+    run_validate("validate_topic.json", |t| validate_topic(t).err());
 }
+
+// --- prefix_topics -----------------------------------------------------
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PrefixCase {
+    name: String,
+    prefix: String,
+    actions: Vec<String>,
+    topics: BTreeMap<String, String>,
+    ok: bool,
+    error: Option<String>,
+    error_contains: Option<Vec<String>>,
+}
+file!(PrefixFile { cases: Vec<PrefixCase> });
 
 #[test]
 fn prefix_topics_vectors() {
-    let f = load("prefix_topics.json");
+    let f: PrefixFile = load("prefix_topics.json");
+    non_empty(&f.cases, "cases");
     let mut fails = vec![];
-    for c in arr(&f, "cases") {
-        let actions: Vec<&str> = c["actions"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|a| a.as_str().unwrap())
-            .collect();
-        let (map, err) = prefix_topics(s(c, "prefix"), &actions);
-        let name = s(c, "name");
-        expect_err(&mut fails, name, c, err);
-        let want: BTreeMap<String, String> = c["topics"]
-            .as_object()
-            .unwrap()
-            .iter()
-            .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
-            .collect();
+    for c in &f.cases {
+        let actions: Vec<&str> = c.actions.iter().map(String::as_str).collect();
+        let (map, err) = prefix_topics(&c.prefix, &actions);
+        expect_err(
+            &mut fails,
+            &c.name,
+            &Expect {
+                ok: c.ok,
+                error: &c.error,
+                error_contains: &c.error_contains,
+            },
+            err,
+        );
         let got: BTreeMap<String, String> = map
             .into_iter()
             .map(|(k, v)| (k, v.as_str().to_string()))
             .collect();
-        if got != want {
-            fails.push(format!("{name}: map = {got:?}, want {want:?}"));
+        if got != c.topics {
+            fails.push(format!("{}: map = {got:?}, want {:?}", c.name, c.topics));
         }
     }
     check(fails);
 }
 
+// --- mode --------------------------------------------------------------
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct ModeCase {
+    name: String,
+    input: String,
+    mode: String,
+    ok: bool,
+    error: Option<String>,
+}
+file!(ModeFile {
+    display: BTreeMap<String, String>,
+    cases: Vec<ModeCase>
+});
+
 #[test]
 fn mode_display_vectors() {
-    let f = load("mode_parse.json");
+    let f: ModeFile = load("mode_parse.json");
+    assert_eq!(f.display.len(), 3);
     for (key, mode) in [
         ("off", Mode::Off),
         ("warn", Mode::Warn),
         ("strict", Mode::Strict),
     ] {
-        assert_eq!(mode.to_string(), s(&f["display"], key));
+        assert_eq!(mode.to_string(), f.display[key]);
     }
-    assert!(!arr(&f, "cases").is_empty());
-    // pending: mode parsing (`cases` need a string parser)
 }
 
-fn quals(v: &Value) -> Qualifiers {
-    let g = |k: &str| v[k].as_str().unwrap_or("").to_string();
-    Qualifiers {
-        reason: g("reason"),
-        mechanism: g("mechanism"),
-        property: g("property"),
-        circumstance: g("circumstance"),
+// --- qualifiers --------------------------------------------------------
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct Quals {
+    reason: Option<String>,
+    mechanism: Option<String>,
+    property: Option<String>,
+    circumstance: Option<String>,
+}
+
+impl Quals {
+    fn build(&self) -> Qualifiers {
+        let g = |o: &Option<String>| o.clone().unwrap_or_default();
+        Qualifiers {
+            reason: g(&self.reason),
+            mechanism: g(&self.mechanism),
+            property: g(&self.property),
+            circumstance: g(&self.circumstance),
+        }
     }
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SerializeCase {
+    name: String,
+    qualifiers: Quals,
+    json: Value,
+    is_zero: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Shape {
+    Embedded,
+    PointerEmbedded,
+    Named,
+    None,
+    Nil,
+    Scalar,
+    Array,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExtractCase {
+    name: String,
+    shape: Shape,
+    qualifiers: Quals,
+    found: bool,
+}
+file!(QualFile {
+    serialize: Vec<SerializeCase>,
+    extract: Vec<ExtractCase>
+});
 
 #[test]
 fn qualifiers_vectors() {
-    let f = load("qualifiers.json");
+    let f: QualFile = load("qualifiers.json");
+    non_empty(&f.serialize, "serialize");
+    non_empty(&f.extract, "extract");
     let mut fails = vec![];
-    for c in arr(&f, "serialize") {
-        let name = s(c, "name");
-        let q = quals(&c["qualifiers"]);
-        if serde_json::to_value(&q).unwrap() != c["json"] {
-            fails.push(format!(
-                "{name}: json = {}",
-                serde_json::to_value(&q).unwrap()
-            ));
+    for c in &f.serialize {
+        let q = c.qualifiers.build();
+        let got = serde_json::to_value(&q).unwrap();
+        if got != c.json {
+            fails.push(format!("{}: json = {got}", c.name));
         }
-        if q.is_zero() != c["is_zero"].as_bool().unwrap() {
-            fails.push(format!("{name}: is_zero = {}", q.is_zero()));
+        if q.is_zero() != c.is_zero {
+            fails.push(format!("{}: is_zero = {}", c.name, q.is_zero()));
         }
     }
-    for c in arr(&f, "extract") {
-        let name = s(c, "name");
-        let q = quals(&c["qualifiers"]);
+    for c in &f.extract {
+        let q = c.qualifiers.build();
         let qv = serde_json::to_value(&q).unwrap();
-        let mut payload = match s(c, "shape") {
-            "embedded" | "pointer_embedded" => qv.clone(),
-            "named" => json!({ "qualifiers": qv }),
-            "none" => json!({}),
-            "nil" => Value::Null,
-            "scalar" => json!("x"),
-            "array" => json!([]),
-            other => panic!("{name}: unknown shape {other}"),
+        let mut payload = match c.shape {
+            Shape::Embedded | Shape::PointerEmbedded => qv.clone(),
+            Shape::Named => json!({ "qualifiers": qv }),
+            Shape::None => json!({}),
+            Shape::Nil => Value::Null,
+            Shape::Scalar => json!("x"),
+            Shape::Array => json!([]),
         };
         if let Some(o) = payload.as_object_mut() {
             o.insert("snapshot_id".into(), json!(""));
         }
-        let got = qualifiers_from(&payload);
-        let found = c["found"].as_bool().unwrap();
-        match (found, got) {
+        match (c.found, qualifiers_from(&payload)) {
             (true, Some(g)) if g == q => {}
             (false, None) => {}
-            (_, g) => fails.push(format!("{name}: got {g:?}, want found={found} {q:?}")),
+            (_, g) => fails.push(format!(
+                "{}: got {g:?}, want found={} {q:?}",
+                c.name, c.found
+            )),
         }
     }
     check(fails);
 }
 
+// --- event envelope ----------------------------------------------------
+
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct WireEvent {
+    topic: String,
+    source: String,
+    timestamp: String,
+    payload: Value,
+    workspace_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum EventMode {
+    Roundtrip,
+    Decode,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EventCase {
+    name: String,
+    mode: EventMode,
+    event: WireEvent,
+    wire_extra: Option<serde_json::Map<String, Value>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct RejectCase {
+    name: String,
+    event: Value,
+}
+file!(EventFile {
+    cases: Vec<EventCase>,
+    decode_reject: Vec<RejectCase>
+});
+
 #[test]
 fn event_json_vectors() {
-    let f = load("event_json.json");
+    let f: EventFile = load("event_json.json");
+    non_empty(&f.cases, "cases");
     let mut fails = vec![];
-    for c in arr(&f, "cases") {
-        let name = s(c, "name");
-        let want = &c["event"];
-        let mut wire = want.clone();
-        if let Some(extra) = c["wire_extra"].as_object() {
-            for (k, v) in extra {
-                wire[k] = v.clone();
-            }
+    for c in &f.cases {
+        let want = &c.event;
+        let mut wire = serde_json::to_value(json!({
+            "topic": want.topic, "source": want.source,
+            "timestamp": want.timestamp, "payload": want.payload,
+        }))
+        .unwrap();
+        if let Some(ws) = &want.workspace_id {
+            wire["workspace_id"] = json!(ws);
+        }
+        let expected = wire.clone();
+        for (k, v) in c.wire_extra.iter().flatten() {
+            wire[k] = v.clone();
         }
         let dec: Event = match serde_json::from_value(wire) {
             Ok(e) => e,
             Err(e) => {
-                fails.push(format!("{name}: decode: {e}"));
+                fails.push(format!("{}: decode: {e}", c.name));
                 continue;
             }
         };
-        if dec.topic.as_str() != s(want, "topic")
-            || dec.source != s(want, "source")
-            || dec.timestamp != s(want, "timestamp")
-            || dec.payload != want["payload"]
-            || dec.workspace_id != want["workspace_id"].as_str().unwrap_or("")
+        if dec.topic.as_str() != want.topic
+            || dec.source != want.source
+            || dec.timestamp != want.timestamp
+            || dec.payload != want.payload
+            || dec.workspace_id != want.workspace_id.clone().unwrap_or_default()
         {
-            fails.push(format!("{name}: decoded {dec:?}"));
+            fails.push(format!("{}: decoded {dec:?}", c.name));
         }
-        if s(c, "mode") == "roundtrip" {
+        if let EventMode::Roundtrip = c.mode {
             let enc = serde_json::to_value(&dec).unwrap();
-            if &enc != want {
-                fails.push(format!("{name}: encoded {enc}, want {want}"));
+            if enc != expected {
+                fails.push(format!("{}: encoded {enc}, want {expected}", c.name));
             }
         }
     }
-    assert!(!arr(&f, "decode_reject").is_empty());
-    // pending: event timestamp validation (`decode_reject`)
     check(fails);
+}
+
+// --- pending sections --------------------------------------------------
+
+/// Autoref probe: true when `T: FromStr`, false otherwise, decided at
+/// compile time. Lets the mode-parse entry flip itself.
+/// Inherent method wins when `T: FromStr`; the trait fallback otherwise.
+struct Probe<T>(PhantomData<T>);
+impl<T: FromStr> Probe<T> {
+    #[allow(dead_code)] // selected only once `Mode: FromStr`
+    fn has_from_str(&self) -> bool {
+        true
+    }
+}
+trait ProbeFallback {
+    fn has_from_str(&self) -> bool {
+        false
+    }
+}
+impl<T> ProbeFallback for Probe<T> {}
+
+fn landed(file: &str, section: &str) -> bool {
+    match (file, section) {
+        ("mode_parse.json", "cases") => Probe::<Mode>(PhantomData).has_from_str(),
+        ("event_json.json", "decode_reject") => {
+            let f: EventFile = load(file);
+            f.decode_reject
+                .iter()
+                .all(|c| serde_json::from_value::<Event>(c.event.clone()).is_err())
+        }
+        _ => panic!("no probe for pending {file}:{section}"),
+    }
+}
+
+#[test]
+fn pending_sections() {
+    for (file, section) in PENDING {
+        assert!(FILES.contains(file), "pending file {file} unknown");
+        let raw = fs::read_to_string(dir().join(file)).unwrap();
+        let v: Value = serde_json::from_str(&raw).unwrap();
+        let sec = v[*section]
+            .as_array()
+            .unwrap_or_else(|| panic!("pending {file}:{section} no longer exists"));
+        assert!(!sec.is_empty(), "pending {file}:{section} is empty");
+        assert!(
+            !landed(file, section),
+            "{file}:{section} now passes; remove it from PENDING and assert it"
+        );
+        println!("SKIP {file}:{section} ({} cases) pending", sec.len());
+    }
+}
+
+#[test]
+fn corpus_files_all_consumed() {
+    let mut on_disk: Vec<String> = fs::read_dir(dir())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".json"))
+        .collect();
+    on_disk.sort();
+    let mut want: Vec<&str> = FILES.to_vec();
+    want.sort();
+    assert_eq!(on_disk, want, "corpus files and FILES differ");
 }

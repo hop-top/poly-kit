@@ -25,16 +25,17 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 | File | Cases | Pins |
 |------|-------|------|
 | `match.json` | `cases[]` `{pattern, topic, match}` | `*` one segment, trailing-only `#`, exact and case-sensitive; split on `.` so `""` is one empty segment |
-| `validate.json` | `cases[]` `{topic, ok, error}` | published-topic validator: 4 segments, `^[a-z][a-z0-9_]*$`, <= 128 bytes, no wildcards, no tense rule; `error` is the full message including the `bus: invalid topic: "<topic>" (<reason>)` wrapper |
-| `validate_topic.json` | `cases[]` `{topic, ok, error}` | construction-time validator: leading digit or underscore allowed, no length cap, past-tense action (`ed` suffix or whitelist, all 28 entries covered); 0-based positions |
-| `prefix_topics.json` | `cases[]` `{prefix, actions, topics, ok, error}` | 3-segment prefix plus actions; `topics` is the expected map, which is partial when a later action fails; error wraps as `PrefixTopics(<prefix %q>, [<actions space-separated>]): <inner>` |
+| `validate.json` | `cases[]` `{topic, ok, error | error_contains}` | published-topic validator: 4 segments, `^[a-z][a-z0-9_]*$`, <= 128 bytes, no wildcards, no tense rule; `error` is the exact full message including the `bus: invalid topic: "<topic>" (<reason>)` wrapper |
+| `validate_topic.json` | `cases[]` `{topic, ok, error | error_contains}` | construction-time validator: leading digit or underscore allowed, no length cap, past-tense action (`ed` suffix or whitelist, all 28 entries covered); 0-based positions; exact `error`, except the not-past-tense cases, which use `error_contains` (the reason before the trailing "see ..." pointer) |
+| `prefix_topics.json` | `cases[]` `{prefix, actions, topics, ok, error | error_contains}` | 3-segment prefix plus actions; `topics` is the expected map, which is partial when a later action fails; exact `error` for prefix errors, `error_contains` (quoted prefix argument plus the inner validator message) for action errors |
 | `qualifiers.json` | `serialize[]`, `extract[]` | lowercase omitempty keys, `IsZero`; which payload shapes yield qualifiers |
 | `mode_parse.json` | `display{}`, `cases[]` `{input, mode, ok, error}` | `ModeFromString`: trim, case-insensitive, empty is warn; failure returns warn plus an error quoting the untrimmed input |
 | `event_json.json` | `cases[]`, `decode_reject[]` | envelope keys `topic`, `source`, `timestamp`, `payload`, `workspace_id` (omitted when empty); RFC 3339 timestamps with offset and nanoseconds; unknown wire keys ignored; malformed timestamps rejected |
 
 Conventions:
 
-- Expected values are literals. Error strings are compared exactly.
+- Expected values are literals. Error text is compared exactly (`error`) by default; only the cases listed in the error-text section below use `error_contains`.
+- Runners are strict: unknown fields, a `version` other than `v1`, an unknown event `mode`, a failing case with neither `error` nor `error_contains`, and a corpus file no runner consumes all fail the run.
 - JSON documents are compared as values, not text, so key order and payload escaping do not matter.
 - Timestamps are fixed strings in the canonical form Go re-encodes unchanged (fractional seconds with trailing zeros trimmed, original zone offset). No runner reads the clock.
 - Error-text quoting follows Go `%q` for printable text. Vectors avoid non-printable characters other than `\n`, whose escaping the languages share.
@@ -43,8 +44,8 @@ Conventions:
 
 The contract is the language-neutral core of an error, not its exact bytes. Source paths (`go/runtime/bus/topics.go`), symbol names (`pastTenseWhitelist`, `bus::PAST_TENSE_WHITELIST`), wrapper function names (`PrefixTopics`, `prefix_topics`) and list formatting of the action set are not contract.
 
-- A case with `error` pins the whole text; both runners compare it exactly. Used wherever the texts are already identical.
-- A case with `error_contains` lists substrings the text must contain: for `validate_topic`, the reason up to the trailing "see ..." pointer; for `prefix_topics`, the quoted prefix argument plus the inner validator message.
+- A case with `error` pins the whole text; both runners compare it exactly. This is the default.
+- `error_contains` is used only for the not-past-tense cases in `validate_topic.json` and the action-error cases in `prefix_topics.json`. It lists substrings the text must contain: for `validate_topic`, the reason up to the trailing "see ..." pointer; for `prefix_topics`, the quoted prefix argument plus the inner validator message.
 
 Not in the corpus, because the languages cannot agree by construction: an embedded `Qualifiers` whose fields are all empty (Go reports found, Rust cannot tell it from none) and a plain map payload that happens to use the qualifier keys (Go: not a struct, Rust: found).
 
@@ -55,7 +56,7 @@ Not in the corpus, because the languages cannot agree by construction: an embedd
 | Go | `go/runtime/bus/conformance_test.go` (`TestConformance*`) |
 | Rust | `sdk/experimental/rs/tests/bus_conformance.rs` (feature `bus`) |
 
-A runner skips a file only for a capability the port lacks, and says so in a `// pending:` list at the top of the test. Rust currently lists mode parsing and event timestamp validation. Flip each to a real assertion when the capability lands; do not delete the vector.
+A runner skips a section only for a capability the port lacks. Rust names each one in its `PENDING` constant (file, section), prints a skip line, and fails once the section would pass, so landing the capability forces the entry to be removed and the section asserted. Rust currently lists mode parsing and event timestamp validation. Do not delete the vector.
 
 ## See also
 

@@ -1,8 +1,10 @@
 package bus
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,20 +17,84 @@ import (
 // source of truth: a failure here means this implementation drifted
 // from the contract, not that the vector should be edited to fit.
 
-func confLoad(t *testing.T, name string, v any) {
+// confFiles is every vector file this runner consumes. The corpus
+// directory must match it exactly, so a new file cannot go unrun.
+var confFiles = map[string]bool{
+	"match.json":          true,
+	"validate.json":       true,
+	"validate_topic.json": true,
+	"prefix_topics.json":  true,
+	"qualifiers.json":     true,
+	"mode_parse.json":     true,
+	"event_json.json":     true,
+}
+
+const confDir = "../../../contracts/bus-v1"
+
+// confHeader holds the fields every vector file carries.
+type confHeader struct {
+	Schema      string `json:"$schema"`
+	ID          string `json:"$id"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+}
+
+func (h confHeader) check() error {
+	if h.Version != "v1" {
+		return fmt.Errorf("version = %q, want v1", h.Version)
+	}
+	return nil
+}
+
+type confChecker interface{ check() error }
+
+// confLoad decodes a vector file strictly: unknown fields, an
+// unregistered file or a version other than v1 fail the test.
+func confLoad(t *testing.T, name string, v confChecker) {
 	t.Helper()
-	p := filepath.Join("..", "..", "..", "contracts", "bus-v1", name)
+	if !confFiles[name] {
+		t.Fatalf("%s is not registered in confFiles", name)
+	}
+	p := filepath.Join(filepath.FromSlash(confDir), name)
 	raw, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatalf("read %s: %v", p, err)
 	}
-	if err := json.Unmarshal(raw, v); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
 		t.Fatalf("parse %s: %v", p, err)
+	}
+	if err := v.check(); err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+}
+
+func TestConformanceAllFilesConsumed(t *testing.T) {
+	entries, err := os.ReadDir(filepath.FromSlash(confDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		seen[e.Name()] = true
+		if !confFiles[e.Name()] {
+			t.Errorf("%s has no runner", e.Name())
+		}
+	}
+	for n := range confFiles {
+		if !seen[n] {
+			t.Errorf("%s registered but missing from the corpus", n)
+		}
 	}
 }
 
 func TestConformanceMatch(t *testing.T) {
 	var f struct {
+		confHeader
 		Cases []struct {
 			Name    string `json:"name"`
 			Pattern string `json:"pattern"`
@@ -68,6 +134,8 @@ func confCheckErr(t *testing.T, name string, ok bool, want string, contains []st
 		t.Errorf("%s: want error %q %v, got nil", name, want, contains)
 	case !ok && want != "" && err.Error() != want:
 		t.Errorf("%s:\n got  %q\n want %q", name, err.Error(), want)
+	case !ok && want == "" && len(contains) == 0:
+		t.Errorf("%s: failing case has neither error nor error_contains", name)
 	case !ok && want == "":
 		for _, sub := range contains {
 			if !strings.Contains(err.Error(), sub) {
@@ -80,6 +148,7 @@ func confCheckErr(t *testing.T, name string, ok bool, want string, contains []st
 func confRunValidate(t *testing.T, file string, fn func(Topic) error) {
 	t.Helper()
 	var f struct {
+		confHeader
 		Cases []confValidateCase `json:"cases"`
 	}
 	confLoad(t, file, &f)
@@ -97,6 +166,7 @@ func TestConformanceValidate(t *testing.T) {
 
 func TestConformanceValidateIsInvalidTopic(t *testing.T) {
 	var f struct {
+		confHeader
 		Cases []confValidateCase `json:"cases"`
 	}
 	confLoad(t, "validate.json", &f)
@@ -118,6 +188,7 @@ func TestConformanceValidateTopic(t *testing.T) {
 
 func TestConformancePrefixTopics(t *testing.T) {
 	var f struct {
+		confHeader
 		Cases []struct {
 			Name    string            `json:"name"`
 			Prefix  string            `json:"prefix"`
@@ -148,6 +219,7 @@ func TestConformancePrefixTopics(t *testing.T) {
 
 func TestConformanceModeParse(t *testing.T) {
 	var f struct {
+		confHeader
 		Display map[string]string `json:"display"`
 		Cases   []struct {
 			Name  string `json:"name"`
@@ -201,12 +273,21 @@ type confNone struct {
 	SnapshotID string `json:"snapshot_id"`
 }
 
-func confQ(m map[string]string) Qualifiers {
+func confQ(t *testing.T, m map[string]string) Qualifiers {
+	t.Helper()
+	for k := range m {
+		switch k {
+		case "reason", "mechanism", "property", "circumstance":
+		default:
+			t.Fatalf("unknown qualifier key %q", k)
+		}
+	}
 	return Qualifiers{m["reason"], m["mechanism"], m["property"], m["circumstance"]}
 }
 
 func TestConformanceQualifiers(t *testing.T) {
 	var f struct {
+		confHeader
 		Serialize []struct {
 			Name       string            `json:"name"`
 			Qualifiers map[string]string `json:"qualifiers"`
@@ -225,7 +306,7 @@ func TestConformanceQualifiers(t *testing.T) {
 		t.Fatal("no cases")
 	}
 	for _, c := range f.Serialize {
-		q := confQ(c.Qualifiers)
+		q := confQ(t, c.Qualifiers)
 		raw, err := json.Marshal(q)
 		if err != nil {
 			t.Fatal(err)
@@ -240,7 +321,7 @@ func TestConformanceQualifiers(t *testing.T) {
 		}
 	}
 	for _, c := range f.Extract {
-		q := confQ(c.Qualifiers)
+		q := confQ(t, c.Qualifiers)
 		var payload any
 		switch c.Shape {
 		case "embedded":
@@ -284,6 +365,7 @@ type confWire struct {
 
 func TestConformanceEventJSON(t *testing.T) {
 	var f struct {
+		confHeader
 		Cases []struct {
 			Name      string         `json:"name"`
 			Mode      string         `json:"mode"`
@@ -300,6 +382,16 @@ func TestConformanceEventJSON(t *testing.T) {
 		t.Fatal("no cases")
 	}
 	for _, c := range f.Cases {
+		for k := range c.Event {
+			switch k {
+			case "topic", "source", "timestamp", "payload", "workspace_id":
+			default:
+				t.Fatalf("%s: unknown event key %q", c.Name, k)
+			}
+		}
+		if c.Mode != "roundtrip" && c.Mode != "decode" {
+			t.Fatalf("%s: unknown mode %q", c.Name, c.Mode)
+		}
 		var w confWire
 		raw, _ := json.Marshal(c.Event)
 		if err := json.Unmarshal(raw, &w); err != nil {
