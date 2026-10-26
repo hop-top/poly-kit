@@ -128,7 +128,10 @@ impl Walker<'_> {
             ..Flag::default()
         };
         if action.takes_values() {
-            let optional = a.get_num_args().is_some_and(|r| r.min_values() == 0);
+            // Attached-only, as pflag's NoOptDefVal: without require_equals
+            // clap binds the next word, so the value is a plain one.
+            let optional =
+                a.is_require_equals_set() && a.get_num_args().is_some_and(|r| r.min_values() == 0);
             if optional {
                 out.default_missing = default_missing(c, a);
             }
@@ -225,22 +228,30 @@ fn possible_values(a: &ClapArg) -> Vec<String> {
         .collect()
 }
 
-/// The first value name, else the id, as clap's help names the value.
+/// The first value name, else the id, as clap's help names the value;
+/// an empty one is cobra's `value`.
 fn value_name(a: &ClapArg) -> String {
-    a.get_value_names()
+    let name = a
+        .get_value_names()
         .and_then(|n| n.first())
         .map(|n| n.to_string())
-        .unwrap_or_else(|| a.get_id().to_string())
+        .unwrap_or_else(|| a.get_id().to_string());
+    if name.is_empty() {
+        return "value".into();
+    }
+    name
 }
 
 /// What a bare optional-value flag stands for. clap keeps
 /// `default_missing_value` private, so the flag is parsed alone on a
 /// copy of its command, errors (missing required arguments) ignored.
-fn default_missing(c: &ClapCommand, a: &ClapArg) -> String {
+/// That runs the flag's value parser once; `None` when it rejects the
+/// value.
+fn default_missing(c: &ClapCommand, a: &ClapArg) -> Option<String> {
     let word = match (a.get_long(), a.get_short()) {
         (Some(l), _) => format!("--{l}"),
         (None, Some(s)) => format!("-{s}"),
-        (None, None) => return String::new(),
+        (None, None) => return None,
     };
     let probe = c.clone().ignore_errors(true);
     probe
@@ -251,7 +262,6 @@ fn default_missing(c: &ClapCommand, a: &ClapArg) -> String {
                 .and_then(|mut v| v.next())
                 .map(|v| v.to_string_lossy().into_owned())
         })
-        .unwrap_or_default()
 }
 
 /// Writes the export of `root` that `leaf` (`fig` or `usage`) names.

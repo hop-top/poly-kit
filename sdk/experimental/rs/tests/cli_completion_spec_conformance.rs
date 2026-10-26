@@ -19,7 +19,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use clap::builder::PossibleValuesParser;
+use clap::builder::{PossibleValue, PossibleValuesParser};
 use clap::{Arg, ArgAction, Command};
 use hop_top_kit::cli::completion::{bind_args, bind_flag, dir, file, func, Item};
 use hop_top_kit::cli::completion_spec::{render_fig, render_usage, Spec};
@@ -134,7 +134,8 @@ fn build(tree: &ConfCmd) -> Root {
 
 fn build_cmd(c: &ConfCmd, parent: &str, is_root: bool, bindings: &mut Vec<Binding>) -> Command {
     let words = use_words(&c.use_);
-    let name = words.first().cloned().unwrap_or_default();
+    // cobra `Name()`: the Use line up to the first ASCII space.
+    let name = c.use_.split(' ').next().unwrap_or_default().to_string();
     let path = match (is_root, parent.is_empty()) {
         (true, _) => String::new(),
         (false, true) => name.clone(),
@@ -188,7 +189,8 @@ fn build_cmd(c: &ConfCmd, parent: &str, is_root: bool, bindings: &mut Vec<Bindin
     for f in &c.flags {
         cmd = add_flag(cmd, f, &path, bindings);
     }
-    if is_root && !c.version.is_empty() {
+    // cobra adds its version flag only when the root declares none.
+    if is_root && !c.version.is_empty() && !c.flags.iter().any(|f| f.name == "version") {
         // cobra's version flag: `-v` unless the root already uses it.
         let taken = c.flags.iter().any(|f| f.short == "v");
         let mut v = Arg::new("version")
@@ -241,7 +243,12 @@ fn add_flag(mut cmd: Command, f: &ConfFlag, path: &str, bindings: &mut Vec<Bindi
             .default_missing_value(f.no_opt_default.clone());
     }
     if let Some(vals) = &f.enum_ {
-        a = a.value_parser(PossibleValuesParser::new(vals.clone()));
+        // A kit enum is advisory: the bare value stays accepted, hidden.
+        let mut pv: Vec<PossibleValue> = vals.iter().map(PossibleValue::new).collect();
+        if !f.no_opt_default.is_empty() && !vals.contains(&f.no_opt_default) {
+            pv.push(PossibleValue::new(f.no_opt_default.clone()).hide(true));
+        }
+        a = a.value_parser(PossibleValuesParser::new(pv));
     }
     let key = |b| Binding::Flag(path.to_string(), f.name.clone(), b);
     if let Some(exts) = &f.filename_ext {

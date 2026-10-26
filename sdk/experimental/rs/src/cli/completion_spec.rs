@@ -46,9 +46,14 @@
 //!
 //! - The walker reads clap, not cobra: `about` is the description, a
 //!   `global` flag is persistent, `Count` and `Append` actions repeat, and
-//!   a value flag whose `num_args` admits zero values takes an optional,
-//!   attached value. Its `default_missing_value` is read by parsing the
-//!   bare flag, since clap has no getter for it.
+//!   a value flag with `require_equals` whose `num_args` admits zero
+//!   values takes an optional, attached-only value (pflag's
+//!   `NoOptDefVal`). Without `require_equals` clap binds the next word,
+//!   so such a flag is a plain value flag. The `default_missing_value` is
+//!   read by parsing the bare flag, since clap has no getter for it; that
+//!   runs the flag's value parser once, and a value it rejects is left
+//!   out.
+//! - An empty value name is `value`, as in cobra.
 //! - Version and help flags are clap's own (`-V`, not cobra's `-v`); the
 //!   version flag's text is cobra's, as `__complete` prints it.
 //! - Candidates are per positional: its possible values, else the
@@ -125,8 +130,9 @@ pub struct Flag {
     /// `Arg::optional`, the value must be attached (`--flag=value`) and
     /// a bare flag means `default_missing`.
     pub arg: Option<Arg>,
-    /// The value of a bare optional-value flag.
-    pub default_missing: String,
+    /// The value of a bare optional-value flag; `None` when it cannot
+    /// be read (the flag's own parser rejects it).
+    pub default_missing: Option<String>,
 }
 
 /// One node of the command tree.

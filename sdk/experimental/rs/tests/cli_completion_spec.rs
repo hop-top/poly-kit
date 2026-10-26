@@ -6,7 +6,7 @@
 
 use clap::{Arg, ArgAction, Command};
 use hop_top_kit::cli::completion::{bind_args, bind_flag, dir, file, func, static_values, Item};
-use hop_top_kit::cli::completion_spec::{render_usage, Completion, Spec};
+use hop_top_kit::cli::completion_spec::{render_fig, render_usage, Completion, Spec};
 use hop_top_kit::cli::Root;
 
 /// A root with one leaf carrying a scoped enum flag (static) and a
@@ -247,4 +247,97 @@ fn root_aliases_call_back() {
     assert_eq!(spec.root.args[0].complete, Completion::Dynamic);
     let shim = spec.root.commands.iter().find(|c| c.name == "ab").unwrap();
     assert!(shim.hidden && shim.args.is_empty(), "{shim:?}");
+}
+
+/// A clap flag whose value may be left out but is not attached-only
+/// (no `require_equals`, as the output flags' `--format-help`) binds
+/// the next word: a normal value flag, candidates kept.
+#[test]
+fn optional_value_without_require_equals_is_a_normal_value() {
+    let cmd = Command::new("tool")
+        .arg(
+            Arg::new("format-help")
+                .long("format-help")
+                .help("Show available formats and their options")
+                .num_args(0..=1)
+                .require_equals(false)
+                .global(true)
+                .hide(true),
+        )
+        .arg(
+            Arg::new("many")
+                .long("many")
+                .num_args(0..)
+                .value_parser(["a", "b"]),
+        );
+    let m = cmd
+        .clone()
+        .try_get_matches_from(["tool", "--format-help", "json"])
+        .unwrap();
+    assert_eq!(
+        m.get_one::<String>("format-help").map(String::as_str),
+        Some("json")
+    );
+    let mut root = Root::new(cmd);
+    root.disable_completion_command();
+    let spec = Spec::from_root(&root);
+
+    let usage = render_usage(&spec);
+    assert!(
+        usage.contains(
+            "\nflag \"--format-help <format-help>\" help=\"Show available formats and their options\" global=#true hide=#true\n"
+        ),
+        "{usage}"
+    );
+    assert!(
+        usage.contains("\nflag \"--many <many>\" {\n    choices strict=#false \"a\" \"b\"\n}\n"),
+        "{usage}"
+    );
+    assert!(!usage.contains("require_equals"), "{usage}");
+    assert!(!usage.contains("default_missing"), "{usage}");
+
+    let fig = render_fig(&spec);
+    assert!(
+        fig.contains(
+            "    {\n      name: \"--format-help\",\n      description: \"Show available formats and their options\",\n      hidden: true,\n      isPersistent: true,\n      args: {\n        name: \"format-help\",\n      },\n    },\n"
+        ),
+        "{fig}"
+    );
+    assert!(
+        fig.contains("      args: {\n        name: \"many\",\n        suggestions: [\"a\", \"b\"],\n      },\n"),
+        "{fig}"
+    );
+    assert!(!fig.contains("requiresSeparator"), "{fig}");
+}
+
+/// A default-missing value the flag's own parser rejects is unknown,
+/// so it is left out rather than written as "".
+#[test]
+fn rejected_default_missing_is_left_out() {
+    let cmd = Command::new("tool").arg(
+        Arg::new("typed")
+            .long("typed")
+            .num_args(0..=1)
+            .require_equals(true)
+            .default_missing_value("auto")
+            .value_parser(clap::value_parser!(u64)),
+    );
+    let mut root = Root::new(cmd);
+    root.disable_completion_command();
+    let usage = render_usage(&Spec::from_root(&root));
+    assert!(
+        usage.contains("\nflag \"--typed <typed>\" require_equals=#true {\n"),
+        "{usage}"
+    );
+    assert!(!usage.contains("default_missing"), "{usage}");
+}
+
+/// An empty value name is cobra's `value`.
+#[test]
+fn empty_value_name_is_value() {
+    let cmd = Command::new("tool").arg(Arg::new("bt").long("bt").value_name(""));
+    let mut root = Root::new(cmd);
+    root.disable_completion_command();
+    let usage = render_usage(&Spec::from_root(&root));
+    assert!(usage.contains("\nflag \"--bt <value>\"\n"), "{usage}");
 }

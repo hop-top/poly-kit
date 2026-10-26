@@ -125,11 +125,10 @@ fn flag(b: &mut String, f: &Flag, depth: usize, run: &str) {
         // value, where the program reads a positional, so no candidates
         // are offered for it.
         Some(a) if a.optional => {
-            let _ = write!(
-                b,
-                " default_missing={} require_equals=#true",
-                kdl_string(&f.default_missing)
-            );
+            if let Some(d) = &f.default_missing {
+                let _ = write!(b, " default_missing={}", kdl_string(d));
+            }
+            b.push_str(" require_equals=#true");
             complete(b, Value::NoValue, depth, run);
         }
         Some(a) => complete(b, Value::Spec(&a.complete), depth, run),
