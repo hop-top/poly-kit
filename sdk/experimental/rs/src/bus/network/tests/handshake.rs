@@ -163,3 +163,29 @@ fn dialer_times_out_a_silent_acceptor() {
     );
     close(&b);
 }
+
+/// A TCP client that never sends the upgrade is dropped once the
+/// handshake bound passes.
+#[test]
+fn listen_drops_a_stalled_upgrade() {
+    use std::io::Read;
+
+    let hub = NetworkAdapter::new(DynBus::new(), NetworkOptions::new());
+    *hub.0
+        .handshake_timeout
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner) = Duration::from_millis(200);
+    let h = hub.clone();
+    let addr = within(move || h.listen("127.0.0.1:0")).unwrap();
+    let elapsed = within(move || {
+        let mut s = std::net::TcpStream::connect(addr).unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let started = Instant::now();
+        let mut buf = [0u8; 16];
+        let n = s.read(&mut buf).unwrap_or(usize::MAX);
+        (n, started.elapsed())
+    });
+    assert_eq!(elapsed.0, 0, "the server closes the stalled connection");
+    assert!(elapsed.1 < Duration::from_secs(3), "{:?}", elapsed.1);
+    close(&hub);
+}

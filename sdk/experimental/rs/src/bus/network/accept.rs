@@ -1,6 +1,7 @@
 //! The acceptor: Go's `Handler` after the upgrade, plus a bare TCP
 //! listener and the framework-agnostic entry point.
 
+use std::collections::hash_map::Entry;
 use std::io;
 use std::net::{SocketAddr, TcpListener as StdListener};
 use std::sync::atomic::Ordering;
@@ -17,7 +18,7 @@ use tokio_tungstenite::{accept_hdr_async_with_config, WebSocketStream};
 use super::adapter::{Inner, NetworkAdapter};
 use super::conn::{
     close_raw, read_next, split, ws_config, Link, Read, STATUS_GOING_AWAY, STATUS_INTERNAL,
-    STATUS_POLICY,
+    STATUS_NORMAL, STATUS_POLICY,
 };
 use super::runtime;
 use super::upgrade::check_upgrade;
@@ -86,8 +87,10 @@ impl Inner {
     }
 
     async fn accept_tcp(self: &Arc<Self>, tcp: TcpStream, peer: SocketAddr) {
-        if let Ok(ws) = accept_hdr_async_with_config(tcp, upgrade_callback, Some(ws_config())).await
-        {
+        // Bound the HTTP upgrade as the auth read is: a client that never
+        // finishes it is dropped.
+        let upgrade = accept_hdr_async_with_config(tcp, upgrade_callback, Some(ws_config()));
+        if let Ok(Ok(ws)) = tokio::time::timeout(self.handshake_timeout(), upgrade).await {
             self.serve_ws(ws, peer.to_string()).await;
         }
     }
@@ -126,21 +129,29 @@ impl Inner {
         let mut sink = Some(sink);
         let link = {
             let mut st = self.state();
-            if self.closed.load(Ordering::SeqCst) {
-                None
-            } else {
-                let sink = sink.take().expect("sink is taken once");
-                let link = Link::new(addr.clone(), false, sink, origin);
-                st.conns.insert(addr, Arc::clone(&link));
-                self.tasks.add();
-                Some(link)
+            match st.conns.entry(addr) {
+                _ if self.closed.load(Ordering::SeqCst) => Err((STATUS_GOING_AWAY, "closing")),
+                // Another link holds this address (a caller-supplied or
+                // rewritten one): refuse, as a duplicate outbound link is,
+                // so no link escapes close.
+                Entry::Occupied(_) => Err((STATUS_NORMAL, "duplicate")),
+                Entry::Vacant(slot) => {
+                    let sink = sink.take().expect("sink is taken once");
+                    let link = Link::new(slot.key().clone(), false, sink, origin);
+                    slot.insert(Arc::clone(&link));
+                    self.tasks.add();
+                    Ok(link)
+                }
             }
         };
-        let Some(link) = link else {
-            if let Some(sink) = sink {
-                close_raw(sink, source, STATUS_GOING_AWAY, "closing").await;
+        let link = match link {
+            Ok(link) => link,
+            Err((code, reason)) => {
+                if let Some(sink) = sink {
+                    close_raw(sink, source, code, reason).await;
+                }
+                return;
             }
-            return;
         };
         runtime::handle().spawn(Arc::clone(self).read_loop(link, source));
     }

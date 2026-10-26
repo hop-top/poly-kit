@@ -8,7 +8,7 @@
 //! handshake like coder/websocket's.
 
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -117,6 +117,9 @@ pub(crate) fn too_big_reason() -> String {
 
 /// One live connection to a peer.
 pub(crate) struct Link {
+    /// Unique per link: a relay never sends an event back on the link
+    /// it arrived on.
+    pub(crate) id: u64,
     pub(crate) addr: String,
     pub(crate) outbound: bool,
     sink: tokio::sync::Mutex<WsSink>,
@@ -139,7 +142,9 @@ pub(crate) struct Link {
 impl Link {
     pub(crate) fn new(addr: String, outbound: bool, sink: WsSink, origin: String) -> Arc<Link> {
         let (ctx, ctx_cancel) = Context::background().with_cancel();
+        static NEXT: AtomicU64 = AtomicU64::new(1);
         Arc::new(Link {
+            id: NEXT.fetch_add(1, Ordering::Relaxed),
             addr,
             outbound,
             sink: tokio::sync::Mutex::new(sink),

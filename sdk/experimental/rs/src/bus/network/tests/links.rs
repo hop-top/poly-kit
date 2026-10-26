@@ -155,3 +155,68 @@ fn close_waits_for_the_readers() {
     );
     assert_eq!(b.0.tasks.count(), 0, "no reconnect loop survives close");
 }
+
+/// Two inbound links under one address: the second is refused with 1000
+/// `duplicate`, and close ends every reader. Go's
+/// `TestNetworkAdapter_Handler_DuplicateAddrRefused`.
+#[test]
+fn a_duplicate_inbound_address_is_refused() {
+    use futures_util::StreamExt;
+    use tokio_tungstenite::tungstenite::Message;
+
+    let hub = NetworkAdapter::new(DynBus::new(), NetworkOptions::new().origin_id("hub"));
+    let h = hub.clone();
+    let closes = within(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async move {
+            let mut peers = Vec::new();
+            for _ in 0..2 {
+                let (client, server) = tokio::io::duplex(1 << 16);
+                h.accept_upgraded(server, "10.0.0.1:1");
+                let ws = tokio_tungstenite::WebSocketStream::from_raw_socket(
+                    client,
+                    tokio_tungstenite::tungstenite::protocol::Role::Client,
+                    None,
+                )
+                .await;
+                peers.push(ws);
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            let mut out = Vec::new();
+            let closer = h.clone();
+            let close = tokio::task::spawn_blocking(move || closer.close());
+            for mut ws in peers {
+                let read = async {
+                    while let Some(Ok(m)) = ws.next().await {
+                        if let Message::Close(f) = m {
+                            return f.map(|f| (u16::from(f.code), f.reason.to_string()));
+                        }
+                    }
+                    None
+                };
+                out.push(
+                    tokio::time::timeout(Duration::from_secs(5), read)
+                        .await
+                        .unwrap_or(None),
+                );
+            }
+            tokio::time::timeout(Duration::from_secs(10), close)
+                .await
+                .expect("close ends every reader")
+                .unwrap()
+                .unwrap();
+            out
+        })
+    });
+    assert_eq!(
+        closes,
+        vec![
+            Some((1001, "closing".to_string())),
+            Some((1000, "duplicate".to_string()))
+        ]
+    );
+    assert_eq!(hub.0.tasks.count(), 0);
+}

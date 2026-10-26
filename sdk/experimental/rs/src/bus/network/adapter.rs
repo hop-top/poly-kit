@@ -85,9 +85,13 @@ impl fmt::Debug for NetworkOptions {
 }
 
 /// The context value marking an event the adapter injected from the
-/// network, carrying its wire origin: Go's `networkOriginKey`.
+/// network: its origin (Go's `networkOriginKey`) and the link it arrived
+/// on (Go's `viaKey`), which a relay never sends it back to.
 #[derive(Clone, Debug)]
-pub(crate) struct NetworkOrigin(pub(crate) String);
+pub(crate) struct NetworkOrigin {
+    pub(crate) origin: String,
+    pub(crate) via: u64,
+}
 
 /// The state the adapter's lock guards.
 #[derive(Default)]

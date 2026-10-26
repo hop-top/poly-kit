@@ -25,10 +25,10 @@ impl Inner {
         if self.closed.load(Ordering::SeqCst) || is_reserved_topic(e.topic.as_str()) {
             return;
         }
-        let origin = match ctx.value::<NetworkOrigin>() {
-            Some(NetworkOrigin(o)) if self.relay => o.clone(),
+        let (origin, via) = match ctx.value::<NetworkOrigin>() {
+            Some(n) if self.relay => (n.origin.clone(), Some(n.via)),
             Some(_) => return,
-            None => self.origin_id.clone(),
+            None => (self.origin_id.clone(), None),
         };
         if !self.filter.matches(e.topic.as_str()) {
             return;
@@ -40,7 +40,7 @@ impl Inner {
             .values()
             .filter(|l| {
                 let peer = l.peer_origin();
-                peer.is_empty() || peer != origin
+                Some(l.id) != via && (peer.is_empty() || peer != origin)
             })
             .cloned()
             .collect();
@@ -123,8 +123,9 @@ impl Inner {
     }
 
     /// Injects one inbound frame: learns the peer's origin, drops frames
-    /// this adapter originated and the adapter's reserved topics, and
-    /// publishes the rest marked as network-originated. The publish runs
+    /// this adapter originated and the adapter's reserved topics, stamps
+    /// an empty origin, and publishes the rest marked as
+    /// network-originated, with the link it arrived on. The publish runs
     /// on the blocking pool: it runs bus handlers, which may block.
     async fn on_frame(&self, link: &Link, data: &[u8]) {
         let Some((event, origin)) = decode_event(data) else {
@@ -136,7 +137,20 @@ impl Inner {
         if origin == self.origin_id || is_reserved_topic(event.topic.as_str()) {
             return;
         }
-        let ctx = link.ctx.with_value(NetworkOrigin(origin));
+        // A frame without an origin (a CloudEvents frame without
+        // kitorigin, say) would slip past every loop check: stamp it with
+        // the link's origin, else this adapter's own, as Go does.
+        let origin = if origin.is_empty() {
+            Some(link.peer_origin())
+                .filter(|o| !o.is_empty())
+                .unwrap_or_else(|| self.origin_id.clone())
+        } else {
+            origin
+        };
+        let ctx = link.ctx.with_value(NetworkOrigin {
+            origin,
+            via: link.id,
+        });
         let bus = Arc::clone(&self.bus);
         let _ = tokio::task::spawn_blocking(move || {
             let _ = bus.publish(&ctx, &event);

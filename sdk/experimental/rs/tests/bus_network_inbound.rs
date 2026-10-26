@@ -84,9 +84,10 @@ fn inbound_events_are_not_forwarded_without_relay() {
     assert_eq!(got.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 
-/// A relaying hub never sends an event back to the peer it came from:
-/// the raw peer here would accept its own frame, so only the hub's
-/// exclusion keeps it away.
+/// A relaying hub never sends an event back to the link it arrived on,
+/// whatever origin the frame claims: Go's
+/// `TestNetworkAdapter_Relay_NoEchoToArrivalLink`. The raw peer would
+/// accept its own frame, so only the hub's exclusion keeps it away.
 #[test]
 fn a_relay_hub_excludes_the_origin_peer() {
     use futures_util::StreamExt;
@@ -103,8 +104,15 @@ fn a_relay_hub_excludes_the_origin_peer() {
             .unwrap();
         rt.block_on(async move {
             let (mut ws, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+            // The hub learns this link's origin, raw-A, from the first
+            // frame; the second claims another origin.
             ws.send(Message::text(
-                r#"{"topic":"relay.test.event.sent","source":"raw","origin":"raw-A"}"#,
+                r#"{"topic":"warmup.test.event.sent","source":"raw","origin":"raw-A"}"#,
+            ))
+            .await
+            .unwrap();
+            ws.send(Message::text(
+                r#"{"topic":"relay.test.event.sent","source":"raw","origin":"spoofed"}"#,
             ))
             .await
             .unwrap();
@@ -124,4 +132,41 @@ fn a_relay_hub_excludes_the_origin_peer() {
     assert!(eventually(DELIVERY, || b_got
         .load(std::sync::atomic::Ordering::SeqCst)
         == 1));
+}
+
+/// A frame without an origin must not loop around a ring of relay hubs:
+/// Go's `TestNetworkAdapter_Relay_EmptyOriginNoLoop`. Three hubs each
+/// dial the next; the counts must settle at 1 or 2 per hub (a mesh may
+/// deliver twice, a loop never stops).
+#[test]
+fn relay_empty_origin_no_loop() {
+    use hop_top_kit::bus::Context;
+    use std::sync::atomic::Ordering;
+
+    let hubs: Vec<Hub> = (0..3)
+        .map(|i| Hub::start(NetworkOptions::new().origin_id(format!("h{i}")).relay(true)))
+        .collect();
+    let counts: Vec<_> = hubs
+        .iter()
+        .map(|h| count_on(&h.bus, "loop.test.event.sent"))
+        .collect();
+    for i in 0..3 {
+        let (n, u) = (hubs[i].net.clone(), hubs[(i + 1) % 3].url.clone());
+        within(move || n.connect(&Context::background(), &u)).expect("ring link");
+    }
+    send_raw(
+        hubs[0].url.clone(),
+        vec![r#"{"topic":"loop.test.event.sent","source":"raw","origin":""}"#],
+    );
+    sleep_ms(200);
+    let before: Vec<usize> = counts.iter().map(|c| c.load(Ordering::SeqCst)).collect();
+    sleep_ms(300);
+    for (i, c) in counts.iter().enumerate() {
+        let got = c.load(Ordering::SeqCst);
+        assert!(
+            (1..=2).contains(&got) && got == before[i],
+            "hub {i}: {got} deliveries ({} 300 ms earlier), want 1 or 2 and settled",
+            before[i]
+        );
+    }
 }
