@@ -36,6 +36,13 @@ var errAckTimeout = fmt.Errorf("%w: no ack before the timeout", ErrAuthFailed)
 // first Connect that fails starts none, so use Dial to keep trying.
 // A Connect that loses a race with Disconnect returns ErrDisconnected.
 func (n *NetworkAdapter) Connect(ctx context.Context, addr string) error {
+	// A loop backing off for addr dials now too; its dial finds this
+	// link, if this one wins, and ends.
+	n.mu.Lock()
+	if n.reconnecting[addr] && n.peers[addr] != nil && !n.closed.Load() {
+		n.markLocked(addr, false)
+	}
+	n.mu.Unlock()
 	return n.connect(ctx, addr, false)
 }
 

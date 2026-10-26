@@ -112,18 +112,21 @@ type NetworkAdapter struct {
 	// has yet to serve; the value is whether that run waits the backoff
 	// first. See requestRedial.
 	pendingRedial map[string]bool
-	mu            sync.RWMutex
-	reconnect     util.RetryConfig
-	filter        TopicFilter
-	originID      string
-	auth          Authenticator
-	relay         bool // star-topology relay (re-forward inbound to non-origin peers)
-	frames        FrameFormat
-	offline       atomic.Bool
-	closed        atomic.Bool
-	wg            sync.WaitGroup
-	unsub         Unsubscribe
-	onErr         ErrFunc
+	// wakes holds each running loop's wake signal: a user request (Dial,
+	// Connect) or Disconnect ends the loop's backoff wait at once.
+	wakes     map[string]chan struct{}
+	mu        sync.RWMutex
+	reconnect util.RetryConfig
+	filter    TopicFilter
+	originID  string
+	auth      Authenticator
+	relay     bool // star-topology relay (re-forward inbound to non-origin peers)
+	frames    FrameFormat
+	offline   atomic.Bool
+	closed    atomic.Bool
+	wg        sync.WaitGroup
+	unsub     Unsubscribe
+	onErr     ErrFunc
 
 	log       StreamLog
 	logSize   int
@@ -133,9 +136,11 @@ type NetworkAdapter struct {
 	heartbeat time.Duration
 	newTicker func(time.Duration) (<-chan time.Time, func())
 	testHook  func(event string)
-	// backoffWait is a test seam: it replaces a reconnect loop's wait of
-	// d for attempt and reports whether to go on.
+	// backoffWait is a test seam for a reconnect loop's backoff timer:
+	// true lets the wait of d for attempt elapse at once, false holds it
+	// until it is woken or canceled.
 	backoffWait func(ctx context.Context, attempt int, d time.Duration) bool
+	wakesSent   atomic.Int64            // test seam: wakes sent to backoff waits
 	writeFault  func(data []byte) error // test seam: fail a write
 	ackTimeout  time.Duration
 
@@ -159,6 +164,7 @@ func NewNetworkAdapter(b Bus, opts ...NetworkOption) *NetworkAdapter {
 		skipped:       make(map[string]*atomic.Uint64),
 		reconnecting:  make(map[string]bool),
 		pendingRedial: make(map[string]bool),
+		wakes:         make(map[string]chan struct{}),
 		reconnect: util.RetryConfig{
 			BaseDelay: 100 * time.Millisecond,
 			MaxDelay:  30 * time.Second,
@@ -275,6 +281,7 @@ func (n *NetworkAdapter) Disconnect(addr string) error {
 	ps := n.peers[addr]
 	delete(n.peers, addr)
 	delete(n.pendingRedial, addr)
+	n.wakeLocked(addr)
 	n.mu.Unlock()
 	if ps != nil {
 		ps.setFinal("")
@@ -351,13 +358,18 @@ func (n *NetworkAdapter) goReconnectAfterDrop(addr string) {
 //
 //	state            event                        next
 //	idle / up        request                      running (loop started; waits if wait)
-//	running          request                      running + mark (wait = AND of the requests)
+//	running          request                      running + mark (wait = AND of the requests);
+//	                                              a dial request (wait false) also wakes the wait
+//	backoff-wait     wake (Dial, Connect,         wait ends; exit check (mark: dial now,
+//	                 Disconnect)                  attempts from 0; forgotten: loop gone)
+//	backoff-wait     request(wait) (a drop)       no wake: the full backoff stands
 //	running          dial fails                   running (attempt+1, waits)
 //	running          dial succeeds / gives up     exit check
 //	exit check       mark, address kept, open     running (mark consumed; waits as marked)
 //	exit check       no mark (or forgotten/closed) idle / up (loop gone)
 //	up               link drops                   request(wait), flaps+1 or reset (stableAfter)
-//	any              Disconnect                   address forgotten, mark cleared; the loop exits at its check
+//	any              Disconnect                   address forgotten, mark cleared, wait woken; the loop exits at its check
+//	any              Connect                      dials inline; a running loop gets mark(now) and a wake
 //	any              Close                        closed, marks cleared; loops stop, nothing dials
 //
 // Explicit Connect dials inline and owns no loop: a link it makes joins
@@ -373,15 +385,39 @@ func (n *NetworkAdapter) requestRedial(addr string, wait bool) {
 		return
 	}
 	if n.reconnecting[addr] {
-		if prev, ok := n.pendingRedial[addr]; ok {
-			wait = wait && prev
-		}
-		n.pendingRedial[addr] = wait
+		n.markLocked(addr, wait)
 		return
 	}
 	n.reconnecting[addr] = true
+	n.wakes[addr] = make(chan struct{}, 1)
 	n.wg.Add(1)
 	go n.reconnectLoop(addr, wait)
+}
+
+// markLocked hands a request to addr's running loop: the mark (wait is
+// the AND of the pending requests) and, for a user request, a wake that
+// ends the loop's backoff wait. A drop (wait) never wakes: it honors
+// the full backoff. Call with n.mu held and a loop running.
+func (n *NetworkAdapter) markLocked(addr string, wait bool) {
+	if prev, ok := n.pendingRedial[addr]; ok {
+		wait = wait && prev
+	}
+	n.pendingRedial[addr] = wait
+	if !wait {
+		n.wakeLocked(addr)
+	}
+}
+
+// wakeLocked ends addr's loop's backoff wait, if a loop runs. Call with
+// n.mu held.
+func (n *NetworkAdapter) wakeLocked(addr string) {
+	if ch := n.wakes[addr]; ch != nil {
+		select {
+		case ch <- struct{}{}:
+		default: // a wake is already pending
+		}
+		n.wakesSent.Add(1)
+	}
 }
 
 // stableAfter is the stability window: a link that stayed up this long
@@ -426,12 +462,17 @@ func (n *NetworkAdapter) reconnectLoop(addr string, wait bool) {
 		n.mu.Lock()
 		if marked, ok := n.pendingRedial[addr]; ok && n.peers[addr] != nil && !n.closed.Load() && ctx.Err() == nil {
 			delete(n.pendingRedial, addr)
+			select { // the mark carried any wake: drop it with the mark
+			case <-n.wakes[addr]:
+			default:
+			}
 			n.mu.Unlock()
 			wait = marked
 			continue
 		}
 		delete(n.pendingRedial, addr)
 		delete(n.reconnecting, addr)
+		delete(n.wakes, addr)
 		n.mu.Unlock()
 		return
 	}
@@ -449,7 +490,7 @@ func (n *NetworkAdapter) redial(ctx context.Context, addr string, wait bool) {
 		}
 	}
 	for tries := 1; ; tries++ {
-		if wait && !n.waitBackoff(ctx, attempt) {
+		if wait && !n.waitBackoff(ctx, addr, attempt) {
 			return
 		}
 		wait = true
@@ -467,15 +508,27 @@ func (n *NetworkAdapter) redial(ctx context.Context, addr string, wait bool) {
 }
 
 // waitBackoff waits the backoff for attempt; false once ctx is done.
-func (n *NetworkAdapter) waitBackoff(ctx context.Context, attempt int) bool {
+// waitBackoff waits the backoff for attempt. It returns false, ending
+// the run, when ctx is done (Close) or the loop is woken (Dial, Connect,
+// Disconnect); the exit check then serves the mark or sees the address
+// gone.
+func (n *NetworkAdapter) waitBackoff(ctx context.Context, addr string, attempt int) bool {
 	d := n.reconnect.Backoff(attempt)
-	if n.backoffWait != nil {
-		return n.backoffWait(ctx, attempt, d)
+	n.mu.RLock()
+	wake := n.wakes[addr]
+	n.mu.RUnlock()
+	var timer <-chan time.Time
+	if n.backoffWait == nil {
+		timer = time.After(d)
+	} else if n.backoffWait(ctx, attempt, d) {
+		return ctx.Err() == nil
 	}
 	select {
 	case <-ctx.Done():
 		return false
-	case <-time.After(d):
+	case <-wake:
+		return false
+	case <-timer:
 		return true
 	}
 }
