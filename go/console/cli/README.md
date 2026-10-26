@@ -45,15 +45,7 @@ See [flag-enums.md](../../../docs/adopters/reference/flag-enums.md).
 
 `<tool> service start` supervises services; kit ships four, each projecting the
 command tree through the same gates (policy, `service.WithPermission`,
-`service.WithAuditSinks`, `service.WithRootFactory`), none serving kit's
-management commands — the socket keeps `help`, `spec`, `status`, `version` —
-or trees marked `kit/reserved` (`cmdmeta`). The serve plane lives in
-[`service/`](service/), so a CLI that serves nothing links none of it:
-`cli` never imports it, and it attaches to a Root through the extension slot
-(`cli.Extend`, with the `OptionsHook`, `InitHook`, `PrepareHook` and
-`PolicyExemption` hooks). See
-[migrate-to-cli-service.md](../../../docs/adopters/guides/migrate-to-cli-service.md)
-for the move from `cli`.
+`service.WithAuditSinks`, `service.WithRootFactory`), none serving `kit/reserved`:
 
 | Option | Service | Reached by |
 |--------|---------|------------|
@@ -63,13 +55,11 @@ for the move from `cli`.
 | `rpcserve.With(rpcserve.Config{})` | `rpc` | `cmdsurface.v1.Commands` over Connect, gRPC and gRPC-Web, h2c on `127.0.0.1:8082` |
 
 `mcp` lives in [`mcpserve/`](mcpserve/) and `rpc` in [`rpcserve/`](rpcserve/),
-so only a CLI that serves them links the MCP SDK or `go/transport/rpc`;
-[`celpermission.With()`](celpermission/) likewise links CEL for `--policy` rules.
+so only a CLI that serves them links the MCP SDK or `go/transport/rpc`; [`celpermission.With()`](celpermission/) likewise links CEL for `--policy` rules.
 `mcp` over stdio admits `kit/auth-required` leaves on the spawn's trust and
 keeps stdout for the protocol; `kit/requires-confirmation` leaves need an
 accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text:
-[the mcp service](../../../docs/contracts/serve-lifecycle.md#the-mcp-service),
-[the rpc service](../../../docs/contracts/serve-lifecycle.md#the-rpc-service).
+[the mcp service](../../../docs/contracts/serve-lifecycle.md#the-mcp-service), [the rpc service](../../../docs/contracts/serve-lifecycle.md#the-rpc-service).
 
 ## Sub-packages
 
@@ -82,8 +72,9 @@ accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text:
 | [`config/`](config/README.md) | `config path` and `config paths` subcommands: which file loads and the precedence chain |
 | [`conformance/`](conformance/README.md) | the `kit conformance` command tree and its exit codes |
 | [`idemstore/`](idemstore/README.md) | storage backend for `--idempotency-key` recorded results |
+| [`peers/`](peers/README.md) | peer discovery on a Root: `peers.With`, the mesh, registry and trust via `peers.Of`, the `peer` commands |
 | [`policy/`](policy/README.md) | delegation-safety policy YAML enforced per agent-driven invocation |
 | [`router/`](router/README.md) | `kit llm router` subtree: start, stop, list, inspect RouteLLM instances |
 | [`scope/`](scope/README.md) | `kit scope show`, `check`, `test`: would the path policy allow this path |
-| [`service/`](service/) | the serve plane: `service` group, the api and socket services, auth, TLS, the HTTP plane, audit, quota, rate limit, observability |
+| [`service/`](service/README.md) | the serve plane (`service` group, api and socket services, auth, audit, quota); `cli` never imports it ([migrating](../../../docs/adopters/guides/migrate-to-cli-service.md)) |
 | [`svcconfig/`](svcconfig/README.md) | which value a served service's middleware key resolves to, and whether the `services` block is valid |

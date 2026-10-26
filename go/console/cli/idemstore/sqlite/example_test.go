@@ -1,14 +1,15 @@
-package idemstore_test
+package sqlite_test
 
 import (
 	"context"
 	"fmt"
 
 	"hop.top/kit/go/console/cli/idemstore"
+	"hop.top/kit/go/console/cli/idemstore/sqlite"
 )
 
-func ExampleOpenSQLite() {
-	store, err := idemstore.OpenSQLite(":memory:", idemstore.DefaultTTL)
+func ExampleOpen() {
+	store, err := sqlite.Open(":memory:", idemstore.DefaultTTL)
 	if err != nil {
 		fmt.Println("open:", err)
 		return

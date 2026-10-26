@@ -399,8 +399,25 @@ Shipped adapters, selected with `bus.WithAdapter` or `bus.WithNetwork`:
 | Adapter          | Constructor                        | Transport |
 |------------------|------------------------------------|-----------|
 | `MemoryAdapter`  | `bus.NewMemoryAdapter()`           | in-process (default) |
-| `SQLiteAdapter`  | `bus.NewSQLiteAdapter(path, ...)`  | SQLite-backed queue |
+| `sqlite.Adapter` | `sqlite.NewAdapter(path, ...)`     | SQLite-backed queue |
 | `NetworkAdapter` | `bus.WithNetwork(addrs...)`        | WebSocket peers |
+
+The SQLite adapter lives in its own package,
+`hop.top/kit/go/runtime/bus/sqlite`, so a program that never uses it
+links no SQLite:
+
+```go
+import (
+    "hop.top/kit/go/runtime/bus"
+    "hop.top/kit/go/runtime/bus/sqlite"
+)
+
+a, err := sqlite.NewAdapter(path, sqlite.WithPollInterval(time.Second))
+if err != nil {
+    return err
+}
+b := bus.New(bus.WithAdapter(a))
+```
 
 ```go
 b := bus.New(

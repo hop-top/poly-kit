@@ -1,4 +1,4 @@
-package idemstore_test
+package sqlite_test
 
 import (
 	"context"
@@ -12,27 +12,28 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/console/cli/idemstore"
+	"hop.top/kit/go/console/cli/idemstore/sqlite"
 )
 
 func rows(t *testing.T, s idemstore.Store) int {
 	t.Helper()
-	n, err := idemstore.Rows(s)
+	n, err := sqlite.Rows(s)
 	require.NoError(t, err)
 	return n
 }
 
-func TestIdemstore_Sqlite_PurgesExpiredRowsOnOpen(t *testing.T) {
+func TestOpen_PurgesExpiredRowsOnOpen(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "idem.db")
 	ctx := context.Background()
 	now := time.Now().UTC()
 
-	s, err := idemstore.OpenSQLite(dbPath, time.Hour)
+	s, err := sqlite.Open(dbPath, time.Hour)
 	require.NoError(t, err)
 	require.NoError(t, s.Record(ctx, "old", idemstore.Result{Output: []byte("o"), Recorded: now.Add(-2 * time.Hour)}))
 	require.NoError(t, s.Record(ctx, "fresh", idemstore.Result{Output: []byte("f"), Recorded: now}))
 	require.NoError(t, s.Close())
 
-	s, err = idemstore.OpenSQLite(dbPath, time.Hour)
+	s, err = sqlite.Open(dbPath, time.Hour)
 	require.NoError(t, err)
 	defer s.Close()
 	assert.Equal(t, 1, rows(t, s), "open must delete the expired rows")
@@ -41,13 +42,13 @@ func TestIdemstore_Sqlite_PurgesExpiredRowsOnOpen(t *testing.T) {
 	assert.True(t, hit, "open must keep the rows within the TTL")
 }
 
-func TestIdemstore_Sqlite_PurgesExpiredRowsPeriodically(t *testing.T) {
+func TestOpen_PurgesExpiredRowsPeriodically(t *testing.T) {
 	ctx := context.Background()
-	s, err := idemstore.OpenSQLite(filepath.Join(t.TempDir(), "idem.db"), time.Hour)
+	s, err := sqlite.Open(filepath.Join(t.TempDir(), "idem.db"), time.Hour)
 	require.NoError(t, err)
 	defer s.Close()
 	current := time.Now().UTC()
-	idemstore.SetNow(s, func() time.Time { return current })
+	sqlite.SetNow(s, func() time.Time { return current })
 
 	require.NoError(t, s.Record(ctx, "old", idemstore.Result{Output: []byte("o"), Recorded: current.Add(-2 * time.Hour)}))
 	assert.Equal(t, 1, rows(t, s), "no purge runs twice within its interval")
@@ -63,14 +64,14 @@ func TestIdemstore_Sqlite_PurgesExpiredRowsPeriodically(t *testing.T) {
 // RFC3339Nano drops a zero fraction, so a row recorded on a whole
 // second sorts as text after a cutoff half a second later in the same
 // second. The purge compares instants.
-func TestIdemstore_Sqlite_PurgeComparesInstantsNotText(t *testing.T) {
+func TestOpen_PurgeComparesInstantsNotText(t *testing.T) {
 	ctx := context.Background()
-	s, err := idemstore.OpenSQLite(filepath.Join(t.TempDir(), "idem.db"), time.Hour)
+	s, err := sqlite.Open(filepath.Join(t.TempDir(), "idem.db"), time.Hour)
 	require.NoError(t, err)
 	defer s.Close()
 	recorded := time.Now().UTC().Truncate(time.Second).Add(time.Second)
 	current := recorded.Add(time.Hour + 500*time.Millisecond)
-	idemstore.SetNow(s, func() time.Time { return current })
+	sqlite.SetNow(s, func() time.Time { return current })
 
 	require.NoError(t, s.Record(ctx, "edge", idemstore.Result{Output: []byte("e"), Recorded: recorded}))
 	assert.Equal(t, 0, rows(t, s), "a row expired by half a second must be purged")
@@ -78,14 +79,14 @@ func TestIdemstore_Sqlite_PurgeComparesInstantsNotText(t *testing.T) {
 
 // A periodic purge deletes a bounded batch; a backlog larger than the
 // batch drains over the following writes rather than in one.
-func TestIdemstore_Sqlite_PeriodicPurgeIsBounded(t *testing.T) {
+func TestOpen_PeriodicPurgeIsBounded(t *testing.T) {
 	ctx := context.Background()
-	s, err := idemstore.OpenSQLite(filepath.Join(t.TempDir(), "idem.db"), time.Hour)
+	s, err := sqlite.Open(filepath.Join(t.TempDir(), "idem.db"), time.Hour)
 	require.NoError(t, err)
 	defer s.Close()
 	current := time.Now().UTC()
-	idemstore.SetNow(s, func() time.Time { return current })
-	idemstore.SetPurgeBatch(s, 2)
+	sqlite.SetNow(s, func() time.Time { return current })
+	sqlite.SetPurgeBatch(s, 2)
 
 	for i := range 5 {
 		require.NoError(t, s.Record(ctx, fmt.Sprintf("old-%d", i),
@@ -101,19 +102,19 @@ func TestIdemstore_Sqlite_PeriodicPurgeIsBounded(t *testing.T) {
 	assert.Equal(t, 0+3, rows(t, s), "the backlog drains")
 }
 
-func TestIdemstore_Sqlite_UnboundedTTLPurgesNothing(t *testing.T) {
+func TestOpen_UnboundedTTLPurgesNothing(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "idem.db")
 	ctx := context.Background()
 	ttl := time.Duration(math.MaxInt64)
 
-	s, err := idemstore.OpenSQLite(dbPath, ttl)
+	s, err := sqlite.Open(dbPath, ttl)
 	require.NoError(t, err)
 	require.NoError(t, s.Record(ctx, "ancient", idemstore.Result{
 		Output: []byte("a"), Recorded: time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
 	}))
 	require.NoError(t, s.Close())
 
-	s, err = idemstore.OpenSQLite(dbPath, ttl)
+	s, err = sqlite.Open(dbPath, ttl)
 	require.NoError(t, err)
 	defer s.Close()
 	assert.Equal(t, 1, rows(t, s))

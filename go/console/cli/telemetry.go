@@ -64,7 +64,7 @@ type TelemetryConfig struct {
 }
 
 // WithTelemetry stashes the adopter's telemetry kit-options on the
-// CLI root. Mirrors the WithIdentity / WithPeers / WithStatus pattern:
+// CLI root. Mirrors the WithIdentity / WithStatus pattern:
 // the config struct holds the policy; consumers read it from the
 // Root (via Telemetry()) at the call sites that need it.
 //

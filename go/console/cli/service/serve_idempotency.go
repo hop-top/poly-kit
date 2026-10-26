@@ -12,6 +12,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/idemstore"
+	idemsqlite "hop.top/kit/go/console/cli/idemstore/sqlite"
 	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/core/xdg"
 	"hop.top/kit/go/transport/cmdsurface"
@@ -148,7 +149,7 @@ func serveIdempotencyLedger(r *cli.Root) *cmdsurface.IdempotencyLedger {
 		}
 		// Each service applies its own ttl when it reads a record; the
 		// store keeps, and purges past, the longest of them.
-		return idemstore.OpenSQLite(path, serveIdempotencyStoreTTL(r))
+		return idemsqlite.Open(path, serveIdempotencyStoreTTL(r))
 	})
 	st.owned = true
 	return st.ledger

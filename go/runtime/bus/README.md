@@ -5,9 +5,9 @@
 How does one package tell the rest of the process that something
 happened, without knowing who listens? In-process publish/subscribe
 with MQTT-style wildcards (`*` one segment, `#` zero or more trailing
-segments); optional adapters fan events out to SQLite or to peer
-processes. Wrong package for request/response (call the function) and
-for durable cross-process queueing (`go/runtime/job`).
+segments); optional adapters fan events out to SQLite (`go/runtime/bus/sqlite`,
+`sqlite.NewAdapter` via `WithAdapter`) or to peer processes. Wrong package for
+request/response (call the function) or durable cross-process queueing (`go/runtime/job`).
 
 ## Use it when
 

@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/ai/toolspec"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/peers"
 	"hop.top/kit/go/runtime/peer"
 	"hop.top/kit/go/transport/api"
 )
@@ -37,7 +38,7 @@ func main() {
 		Short:   "Service discovery registry for kit apps",
 	},
 		cli.WithIdentity(cli.IdentityConfig{}),
-		cli.WithPeers(cli.PeerConfig{
+		peers.With(peers.Config{
 			Service:   mdnsService,
 			Discovery: peer.NewMDNSDiscoverer(mdnsService),
 		}),
@@ -190,10 +191,11 @@ func watchCmd(r *cli.Root) *cobra.Command {
 		Use:   "watch",
 		Short: "Stream peer discovery events",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			r.Mesh.OnConnect(func(p peer.PeerInfo) {
+			mesh := peers.Of(r).Mesh
+			mesh.OnConnect(func(p peer.PeerInfo) {
 				fmt.Printf("[+] %s %s (%s)\n", p.ID, p.Name, strings.Join(p.Addrs, ","))
 			})
-			r.Mesh.OnDisconnect(func(p peer.PeerInfo) {
+			mesh.OnDisconnect(func(p peer.PeerInfo) {
 				fmt.Printf("[-] %s %s\n", p.ID, p.Name)
 			})
 
@@ -201,7 +203,7 @@ func watchCmd(r *cli.Root) *cobra.Command {
 			defer stop()
 
 			fmt.Fprintln(os.Stderr, "watching for peer events...")
-			return r.Mesh.Start(ctx)
+			return mesh.Start(ctx)
 		},
 	}
 }
