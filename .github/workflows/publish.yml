@@ -87,4 +87,4 @@ jobs:
       RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
       RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
     with:
-      go-version: '1.26.9'
+      go-version: '1.26.10'

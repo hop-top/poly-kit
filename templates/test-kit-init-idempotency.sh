@@ -251,8 +251,8 @@ test_check_drift_exit_codes() {
   # block to a fake version. The emitter will rewrite back to
   # the manifest value, so --check must detect the divergence.
   if [ -f "$td/mise.toml" ]; then
-    if ! grep -q 'go = "1.26.9"' "$td/mise.toml"; then
-      echo "      mise.toml lacks expected 'go = \"1.26.9\"' line"
+    if ! grep -q 'go = "1.26.10"' "$td/mise.toml"; then
+      echo "      mise.toml lacks expected 'go = \"1.26.10\"' line"
       return 1
     fi
     # macOS sed needs -i '' but the awk-replace below is portable.

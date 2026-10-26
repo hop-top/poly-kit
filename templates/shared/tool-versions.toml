@@ -6,7 +6,7 @@
 # `make check-toolchain-parity` fails when the two disagree.
 
 [runtimes]
-go     = "1.26.9"  # Go toolchain (exact; matches kit's go.mod and CI)
+go     = "1.26.10"  # Go toolchain (exact; matches kit's go.mod and CI)
 node   = "22"    # Node.js runtime
 pnpm   = "11"    # Node package manager
 python = "3.13"  # CPython
