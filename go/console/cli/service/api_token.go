@@ -25,8 +25,8 @@ const tokenCommandName = "token"
 // already mounted: claims, decode and verify always, create when the
 // tool has an identity keypair to sign with (cli.WithIdentity), and
 // key create|list|revoke when it issues API keys (service.WithAPIKeys).
-// It is idempotent, so WithAPI and New can both call it whichever
-// order the options ran in.
+// It is idempotent, so WithAPI and OptionsApplied can both call it
+// whichever order the options ran in.
 func mountTokenCmd(r *cli.Root) {
 	var cmd *cobra.Command
 	for _, c := range r.Cmd.Commands() {

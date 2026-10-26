@@ -2260,8 +2260,10 @@ its name under `services.<svc>.auth` or `services.all.auth`:
   every key in `public_key_files`; with neither it is refused. A
   token's `kid` selects the key; a key left in `public_key_files` after
   rotation keeps verifying what it signed.
-- `token create` (mounted with `WithIdentity`, whether or not the tool
-  has `WithAPI`) signs a token `jwt` accepts: EdDSA, the keypair's `kid` in the header, `sub`,
+- `token create` (mounted with `WithIdentity` plus any serve option,
+  whether or not the tool has `WithAPI`; `token` itself mounts with
+  `WithIdentity`, API keys or API auth plus any serve option) signs a
+  token `jwt` accepts: EdDSA, the keypair's `kid` in the header, `sub`,
   `exp`, and optionally `tenant`, `aud`, `iss` and the scopes, written
   as `scope` (space-delimited) and `scopes` (a list). `token verify
   <token>` checks one as `--service` (default `api`) would: exit `0`
@@ -3250,11 +3252,12 @@ changing a line:
    method returns true. Every service is required, and every run exits
    as before, unless one of those says otherwise.
 12. **A key source mounts `token` on its own, and no surface serves
-   it.** `cli.WithAPIKeys` or `cli.WithIdentity` now mounts the
-   kit-reserved `token` command without `WithAPI`, so a tool that
-   serves only `mcp` or `rpc` can issue the keys and tokens its
-   service accepts; such a tool with a `token` command of its own
-   renames it, as a `WithAPI` tool already had to.
+   it.** `cli.WithAPIKeys` or `cli.WithIdentity`, with any serve
+   option, now mounts the kit-reserved `token` command without
+   `WithAPI` (an identity on a tool that serves nothing mounts none),
+   so a tool that serves only `mcp`, `rpc` or the socket can issue the
+   keys and tokens its service accepts; a tool with a `token` command
+   of its own gets the kit's leaves grafted into it.
 13. **The socket serves only kit's introspection verbs.** It used to
    run every kit-reserved command, through its bridge's admission of
    reserved verbs — `token` (minting keys), `quota show` and `quota
