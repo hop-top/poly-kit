@@ -23,6 +23,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/internal/testhome"
+	"hop.top/kit/go/console/cli/peers"
 	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/core/identity"
@@ -165,8 +166,8 @@ func adopterToken(r *cli.Root) {
 
 // TestTokenCommandMounting pins where token and its leaves appear. The
 // signing leaves (create, decode, claims) mount with an identity
-// keypair alone, cli-side; verify joins them once a serve option puts
-// the Root in front of others; key with API keys. Every
+// keypair alone, cli-side; verify joins them once a serve option or the
+// peer mesh puts the Root in front of others; key with API keys. Every
 // combination is one token command, and an adopter's own token command
 // gets the kit's leaves grafted into it, still one command, reserved.
 func TestTokenCommandMounting(t *testing.T) {
@@ -204,6 +205,9 @@ func TestTokenCommandMounting(t *testing.T) {
 		{"bare identity: the signing leaves", func(t *testing.T) []func(*cli.Root) {
 			return []func(*cli.Root){identityOpt(t)}
 		}, set("claims", "decode", "create")},
+		{"peers with identity: the serve-side leaves", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){peers.With(peers.Config{DataDir: t.TempDir()}), identityOpt(t)}
+		}, set("claims", "decode", "verify", "create")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -230,8 +234,9 @@ func TestTokenCommandMounting(t *testing.T) {
 	}
 
 	for name, opts := range map[string][]func(*cli.Root){
-		"WithAPI alone":     {service.WithAPI(service.APIConfig{})},
-		"a service, no key": {mcp},
+		"WithAPI alone":      {service.WithAPI(service.APIConfig{})},
+		"a service, no key":  {mcp},
+		"peers, no identity": {peers.With(peers.Config{DataDir: t.TempDir()})},
 	} {
 		t.Run("no token: "+name, func(t *testing.T) {
 			testhome.Isolate(t)

@@ -11,13 +11,17 @@ import (
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/internal/serving"
 	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/transport/authn"
 )
 
-// mountTokenIfKeyed mounts the token command when a serve option
-// touched the Root and it has something to issue: an identity keypair (cli.WithIdentity),
+func init() { serving.Mount = mountTokenIfKeyed }
+
+// mountTokenIfKeyed mounts the token command when the Root serves —
+// any serve option, or an option that marked it serving (peers.With) —
+// and has something to issue: an identity keypair (cli.WithIdentity),
 // API keys (WithAPIKeys) or API auth. A key source mounts it with or
 // without WithAPI: a tool that serves only mcp or rpc under auth.mode
 // apikey or jwt must be able to issue what its service accepts without
@@ -26,10 +30,11 @@ import (
 // kit-reserved and no served surface lists or runs it.
 func mountTokenIfKeyed(r *cli.Root) {
 	s, served := lookup(r)
-	if !served {
+	if !served && !serving.Marked(r) {
 		return
 	}
-	keyed := cli.IdentityConfigured(r) || s.apiKeysCfg != nil || (s.apiCfg != nil && s.apiCfg.Auth != nil)
+	keyed := cli.IdentityConfigured(r) ||
+		(served && (s.apiKeysCfg != nil || (s.apiCfg != nil && s.apiCfg.Auth != nil)))
 	if keyed {
 		mountTokenCmd(r)
 	}
