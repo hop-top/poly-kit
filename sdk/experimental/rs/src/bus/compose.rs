@@ -257,12 +257,11 @@ fn network_layer(bus: Arc<dyn Adapter>, addrs: &[String]) -> Arc<dyn Adapter> {
     bus
 }
 
-/// Step 3. Seam for the env-driven sinks (`KIT_BUS_SINK`,
-/// `KIT_BUS_SINK_PATH`): with sinks configured it will wrap `bus` in a
-/// tee reporting sink errors to `reporter`. Until then it returns `bus`.
+/// Step 3. The env-driven sinks (`KIT_BUS_SINK`, `KIT_BUS_SINK_PATH`):
+/// with sinks configured, `bus` behind a `TeeBus` reporting sink errors
+/// to `reporter`; otherwise, and always on wasm32, `bus`.
 fn env_sink_layer(bus: Arc<dyn Adapter>, reporter: Option<&SharedErrFn>) -> Arc<dyn Adapter> {
-    let _ = reporter;
-    bus
+    super::sink::env_layer(bus, reporter)
 }
 
 /// An adapter behind topic enforcement: Go's `adapterBus`.
