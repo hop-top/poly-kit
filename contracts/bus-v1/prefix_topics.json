@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/bus-v1/prefix_topics.json",
+  "version": "v1",
+  "description": "PrefixTopics(prefix, actions): prefix must be exactly 3 valid non-empty segments with no trailing '.', each action is composed as `<prefix>.<action>` and checked with the construction-time validator. On an action error the already-built entries are returned alongside the error; on a prefix error the map is empty. `topics` is the expected map (action -> topic). On an action error the text must contain the quoted prefix argument and the inner validator message (`error_contains`); the wrapper function name and action-list formatting are not contract.",
+  "cases": [
+    {
+      "name": "'wsm.runtime.workspace' ['created', 'updated']",
+      "prefix": "wsm.runtime.workspace",
+      "actions": [
+        "created",
+        "updated"
+      ],
+      "topics": {
+        "created": "wsm.runtime.workspace.created",
+        "updated": "wsm.runtime.workspace.updated"
+      },
+      "ok": true
+    },
+    {
+      "name": "no actions",
+      "prefix": "a.b.c",
+      "actions": [],
+      "topics": {},
+      "ok": true
+    },
+    {
+      "name": "duplicate action",
+      "prefix": "a.b.c",
+      "actions": [
+        "created",
+        "created"
+      ],
+      "topics": {
+        "created": "a.b.c.created"
+      },
+      "ok": true
+    },
+    {
+      "name": "'a.b.c' ['half_opened', 'sent']",
+      "prefix": "a.b.c",
+      "actions": [
+        "half_opened",
+        "sent"
+      ],
+      "topics": {
+        "half_opened": "a.b.c.half_opened",
+        "sent": "a.b.c.sent"
+      },
+      "ok": true
+    },
+    {
+      "name": "empty prefix",
+      "prefix": "",
+      "actions": [],
+      "topics": {},
+      "ok": false,
+      "error": "prefix is empty"
+    },
+    {
+      "name": "'a.b.c.' ['created']",
+      "prefix": "a.b.c.",
+      "actions": [
+        "created"
+      ],
+      "topics": {},
+      "ok": false,
+      "error": "prefix \"a.b.c.\" must not end with '.'"
+    },
+    {
+      "name": "'.' ['created']",
+      "prefix": ".",
+      "actions": [
+        "created"
+      ],
+      "topics": {},
+      "ok": false,
+      "error": "prefix \".\" must not end with '.'"
+    },
+    {
+      "name": "'a' ['created']",
+      "prefix": "a",
+      "actions": [
+        "created"
+      ],
+      "topics": {},
+      "ok": false,
+      "error": "prefix \"a\" has 1 segments; expected 3 (source.category.object)"
+    },
+    {
+      "name": "'a.b' ['created']",
+      "prefix": "a.b",
+      "actions": [
+        "created"
+      ],
+      "topics": {},
+      "ok": false,
+      "error": "prefix \"a.b\" has 2 segments; expected 3 (source.category.object)"
+    },
+    {
+      "name": "'a.b.c.d' ['created']",
+      "prefix": "a.b.c.d",
+      "actions": [
+        "created"
+      ],
+      "topics": {},
+      "ok": false,
+      "error": "prefix \"a.b.c.d\" has 4 segments; expected 3 (source.category.object)"
+    },
+    {
+      "name": "'a..c' ['created']",
+      "prefix": "a..c",
+      "actions": [
+        "created"
+      ],
+      "topics": {},
+      "ok": false,
+      "error": "prefix \"a..c\" has empty segment at position 1"
+    },
+    {
+      "name": "'.b.c' ['created']",
+      "prefix": ".b.c",
+      "actions": [
+        "created"
+      ],
+      "topics": {},
+      "ok": false,
+      "error": "prefix \".b.c\" has empty segment at position 0"
+    },
+    {
+      "name": "'a.B.c' ['created']",
+      "prefix": "a.B.c",
+      "actions": [
+        "created"
+      ],
+      "topics": {},
+      "ok": false,
+      "error": "prefix \"a.B.c\" segment \"B\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "'a.*.c' ['created']",
+      "prefix": "a.*.c",
+      "actions": [
+        "created"
+      ],
+      "topics": {},
+      "ok": false,
+      "error": "prefix \"a.*.c\" segment \"*\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "partial map on action error",
+      "prefix": "a.b.c",
+      "actions": [
+        "created",
+        "bogus"
+      ],
+      "topics": {
+        "created": "a.b.c.created"
+      },
+      "ok": false,
+      "error_contains": [
+        "\"a.b.c\"",
+        "topic \"a.b.c.bogus\" action segment \"bogus\" is not past-tense (e.g. \"started\", \"created\")"
+      ]
+    },
+    {
+      "name": "first action invalid",
+      "prefix": "a.b.c",
+      "actions": [
+        "bogus",
+        "created"
+      ],
+      "topics": {},
+      "ok": false,
+      "error_contains": [
+        "\"a.b.c\"",
+        "topic \"a.b.c.bogus\" action segment \"bogus\" is not past-tense (e.g. \"started\", \"created\")"
+      ]
+    },
+    {
+      "name": "empty action",
+      "prefix": "a.b.c",
+      "actions": [
+        ""
+      ],
+      "topics": {},
+      "ok": false,
+      "error_contains": [
+        "\"a.b.c\"",
+        "topic \"a.b.c.\" has empty segment at position 3"
+      ]
+    },
+    {
+      "name": "dotted action",
+      "prefix": "a.b.c",
+      "actions": [
+        "x.y"
+      ],
+      "topics": {},
+      "ok": false,
+      "error_contains": [
+        "\"a.b.c\"",
+        "topic \"a.b.c.x.y\" has 5 segments; expected 4 (source.category.object.action)"
+      ]
+    },
+    {
+      "name": "uppercase action",
+      "prefix": "a.b.c",
+      "actions": [
+        "Created"
+      ],
+      "topics": {},
+      "ok": false,
+      "error_contains": [
+        "\"a.b.c\"",
+        "topic \"a.b.c.Created\" segment \"Created\" must be lowercase letters, digits, or underscores"
+      ]
+    }
+  ]
+}

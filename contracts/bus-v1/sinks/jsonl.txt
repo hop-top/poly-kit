@@ -1,0 +1,26 @@
+{"topic":"llm.request","source":"llm.client","timestamp":"2025-03-15T10:30:45Z","payload":"hello world"}
+{"topic":"test.nil","source":"src","timestamp":"2025-03-15T10:30:45Z"}
+{"topic":"test.absent","source":"src","timestamp":"2025-03-15T10:30:45Z"}
+{"topic":"test.empty","source":"","timestamp":"2025-03-15T10:30:45Z","payload":42}
+{"topic":"num.neg","source":"n","timestamp":"2025-03-15T10:30:45Z","payload":-7}
+{"topic":"num.big","source":"n","timestamp":"2025-03-15T10:30:45Z","payload":18446744073709551615}
+{"topic":"num.float","source":"n","timestamp":"2025-03-15T10:30:45Z","payload":1.5}
+{"topic":"num.whole","source":"n","timestamp":"2025-03-15T10:30:45Z","payload":123456}
+{"topic":"num.million","source":"n","timestamp":"2025-03-15T10:30:45Z","payload":1000000}
+{"topic":"num.e21","source":"n","timestamp":"2025-03-15T10:30:45Z","payload":1e+21}
+{"topic":"num.e20","source":"n","timestamp":"2025-03-15T10:30:45Z","payload":100000000000000000000}
+{"topic":"num.tiny","source":"n","timestamp":"2025-03-15T10:30:45Z","payload":1e-7}
+{"topic":"num.micro","source":"n","timestamp":"2025-03-15T10:30:45Z","payload":0.000001}
+{"topic":"num.milli","source":"n","timestamp":"2025-03-15T10:30:45Z","payload":0.0001}
+{"topic":"num.negzero","source":"n","timestamp":"2025-03-15T10:30:45Z","payload":-0}
+{"topic":"num.frac","source":"n","timestamp":"2025-03-15T10:30:45Z","payload":12345678.9}
+{"topic":"bool.t","source":"b","timestamp":"2025-03-15T10:30:45Z","payload":true}
+{"topic":"str.escape","source":"s","timestamp":"2025-03-15T10:30:45Z","payload":"\u003ca\u003e\u0026b \u2028\u2029 \"q\" \\ \t \u0001  é 🙂"}
+{"topic":"big.payload","source":"test","timestamp":"2025-03-15T10:30:45Z","payload":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+{"topic":"big.runes","source":"test","timestamp":"2025-03-15T10:30:45Z","payload":"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"}
+{"topic":"map.nested","source":"m","timestamp":"2025-03-15T10:30:45Z","payload":{"a":["x",null,true,{}],"b":1,"c":{"z":1.5}}}
+{"topic":"map.empty","source":"m","timestamp":"2025-03-15T10:30:45Z","payload":{}}
+{"topic":"list.empty","source":"m","timestamp":"2025-03-15T10:30:45Z","payload":[]}
+{"topic":"ts.offset","source":"t","timestamp":"2025-03-15T10:30:45.123456789+02:00","payload":"z"}
+{"topic":"ts.trailing","source":"t","timestamp":"2025-03-15T10:30:45.12Z","payload":"z"}
+{"topic":"ts.zero","source":"t","timestamp":"0001-01-01T00:00:00Z","payload":"z"}

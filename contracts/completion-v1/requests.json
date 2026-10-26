@@ -1,0 +1,736 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/completion-v1/requests.json",
+  "version": "v1",
+  "description": "The hidden completion entry point a shell script calls: `<program> __complete <words...> <to-complete>` (or `__completeNoDesc`, which drops descriptions). Each case runs `args` against the named tree of `trees` and pins stdout: one completion per line (value, then a tab and the description when there is one), then the directive line `:<n>` (0 default, 1 error, 4 no file completion, 8 filter by extension, 16 directories only). A tree is a kit root named `program` with `commands` (each with `about`, `flags` and optional child `commands`), root `aliases` (alias name to target command path), `flag_enums` (an empty `path` is tree-wide), `flag_completers` and `arg_completers`; completer specs are those of completers.json. Flags with `value: false` are booleans. `stderr_contains`, when given, must appear in stderr (cobra prints the directive's name there). `unordered: true` compares the completion lines as a set; the directive line is always last.",
+  "trees": {
+    "main": {
+      "program": "kitapp",
+      "about": "Kit app",
+      "commands": [
+        {
+          "name": "deploy",
+          "about": "Deploy a target",
+          "flags": [
+            {
+              "long": "env",
+              "short": "e",
+              "help": "Target env",
+              "value": true
+            },
+            {
+              "long": "status",
+              "help": "Status",
+              "value": true
+            },
+            {
+              "long": "stage",
+              "help": "Stage name",
+              "value": true
+            },
+            {
+              "long": "mode",
+              "help": "Mode",
+              "value": true
+            },
+            {
+              "long": "config",
+              "help": "Config file",
+              "value": true
+            },
+            {
+              "long": "out",
+              "help": "Output directory",
+              "value": true
+            },
+            {
+              "long": "any",
+              "help": "Any file",
+              "value": true
+            },
+            {
+              "long": "fail",
+              "help": "Failing lookup",
+              "value": true
+            },
+            {
+              "long": "force",
+              "help": "Skip checks",
+              "value": false
+            },
+            {
+              "long": "level",
+              "help": "Log level",
+              "value": true
+            }
+          ]
+        },
+        {
+          "name": "router",
+          "about": "Router ops",
+          "commands": [
+            {
+              "name": "start",
+              "about": "Start router",
+              "flags": [
+                {
+                  "long": "level",
+                  "help": "Log level",
+                  "value": true
+                }
+              ]
+            }
+          ],
+          "flags": [
+            {
+              "long": "dry",
+              "help": "Dry run",
+              "value": false
+            }
+          ]
+        }
+      ],
+      "aliases": {
+        "d": "deploy",
+        "rs": "router start"
+      },
+      "flag_enums": [
+        {
+          "path": "",
+          "flag": "status",
+          "values": [
+            "TODO",
+            "DONE"
+          ]
+        },
+        {
+          "path": "",
+          "flag": "mode",
+          "values": [
+            "fast",
+            "slow"
+          ]
+        },
+        {
+          "path": "",
+          "flag": "level",
+          "values": [
+            "warn"
+          ]
+        },
+        {
+          "path": "router start",
+          "flag": "level",
+          "values": [
+            "debug",
+            "info"
+          ]
+        }
+      ],
+      "flag_completers": [
+        {
+          "path": "deploy",
+          "flag": "env",
+          "completer": {
+            "static_values": [
+              "prod",
+              "preview"
+            ]
+          }
+        },
+        {
+          "path": "deploy",
+          "flag": "mode",
+          "completer": {
+            "static_values": [
+              "adopter"
+            ]
+          }
+        },
+        {
+          "path": "deploy",
+          "flag": "config",
+          "completer": {
+            "file": [
+              ".yaml"
+            ]
+          }
+        },
+        {
+          "path": "deploy",
+          "flag": "out",
+          "completer": {
+            "dir": {}
+          }
+        },
+        {
+          "path": "deploy",
+          "flag": "any",
+          "completer": {
+            "file": []
+          }
+        },
+        {
+          "path": "deploy",
+          "flag": "fail",
+          "completer": {
+            "func": {
+              "error": "backend down"
+            }
+          }
+        }
+      ],
+      "arg_completers": [
+        {
+          "path": "deploy",
+          "completer": {
+            "prefixed": {
+              "dimension": "env",
+              "values": {
+                "static_values": [
+                  "prod",
+                  "preview"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "completion-alias": {
+      "program": "kitapp",
+      "about": "Kit app",
+      "commands": [
+        {
+          "name": "deploy",
+          "about": "Deploy a target"
+        }
+      ],
+      "aliases": {
+        "completion": "deploy"
+      },
+      "flag_enums": [],
+      "flag_completers": [],
+      "arg_completers": [
+        {
+          "path": "deploy",
+          "completer": {
+            "prefixed": {
+              "dimension": "env",
+              "values": {
+                "static_values": [
+                  "prod",
+                  "preview"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "about-controls": {
+      "program": "kitapp",
+      "about": "Kit app",
+      "commands": [
+        {
+          "name": "ctl",
+          "about": "Ctl\u0001 esc\u001b[1mbold\u007f end",
+          "flags": [
+            {
+              "long": "mode",
+              "help": "Mode\u0001 x\u007f",
+              "value": true
+            }
+          ]
+        }
+      ],
+      "aliases": {},
+      "flag_enums": [
+        {
+          "path": "",
+          "flag": "mode",
+          "values": [
+            "a"
+          ]
+        }
+      ],
+      "flag_completers": [],
+      "arg_completers": []
+    }
+  },
+  "cases": [
+    {
+      "name": "root lists matching subcommands then aliases",
+      "args": [
+        "d"
+      ],
+      "stdout": [
+        "deploy\tDeploy a target",
+        "d\talias for deploy",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "no-desc request drops descriptions",
+      "args": [
+        "r"
+      ],
+      "no_desc": true,
+      "stdout": [
+        "router",
+        "rs",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "unknown word at root offers aliases only",
+      "args": [
+        "nosuch",
+        ""
+      ],
+      "unordered": true,
+      "stdout": [
+        "d\talias for deploy",
+        "rs\talias for router start",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "alias of a direct child resolves to its target",
+      "args": [
+        "d",
+        ""
+      ],
+      "stdout": [
+        "env:\tenv values",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "deep alias completes nothing of its own",
+      "args": [
+        "rs",
+        ""
+      ],
+      "stdout": [
+        ":0"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "bound args suggest the dimension",
+      "args": [
+        "deploy",
+        ""
+      ],
+      "stdout": [
+        "env:\tenv values",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "bound args complete prefixed values",
+      "args": [
+        "deploy",
+        "env:pr"
+      ],
+      "stdout": [
+        "env:prod",
+        "env:preview",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "args already given do not stop arg completion",
+      "args": [
+        "deploy",
+        "env:prod",
+        ""
+      ],
+      "stdout": [
+        "env:\tenv values",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "bound flag value",
+      "args": [
+        "deploy",
+        "--env",
+        ""
+      ],
+      "stdout": [
+        "prod",
+        "preview",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "bound flag value after shorthand",
+      "args": [
+        "deploy",
+        "-e",
+        "pre"
+      ],
+      "stdout": [
+        "preview",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "bound flag value in equals form",
+      "args": [
+        "deploy",
+        "--env=p"
+      ],
+      "stdout": [
+        "prod",
+        "preview",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "enum flag offers its values",
+      "args": [
+        "deploy",
+        "--status",
+        ""
+      ],
+      "stdout": [
+        "TODO",
+        "DONE",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "enum flag value is case-insensitive",
+      "args": [
+        "deploy",
+        "--status",
+        "t"
+      ],
+      "stdout": [
+        "TODO",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "flag names are sorted and show the enum",
+      "args": [
+        "deploy",
+        "--st"
+      ],
+      "stdout": [
+        "--stage\tStage name",
+        "--status\tStatus (one of: TODO, DONE)",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "adopter completer wins over the enum",
+      "args": [
+        "deploy",
+        "--mode",
+        ""
+      ],
+      "stdout": [
+        "adopter",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "command-scoped enum",
+      "args": [
+        "router",
+        "start",
+        "--level",
+        ""
+      ],
+      "stdout": [
+        "debug",
+        "info",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "file completer filters by extension",
+      "args": [
+        "deploy",
+        "--config",
+        ""
+      ],
+      "stdout": [
+        ".yaml",
+        ":8"
+      ],
+      "tree": "main",
+      "stderr_contains": "Completion ended with directive: ShellCompDirectiveFilterFileExt"
+    },
+    {
+      "name": "dir completer completes directories",
+      "args": [
+        "deploy",
+        "--out",
+        ""
+      ],
+      "stdout": [
+        ":16"
+      ],
+      "tree": "main",
+      "stderr_contains": "Completion ended with directive: ShellCompDirectiveFilterDirs"
+    },
+    {
+      "name": "file completer without extensions is default",
+      "args": [
+        "deploy",
+        "--any",
+        ""
+      ],
+      "stdout": [
+        ":0"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "completer error is the error directive",
+      "args": [
+        "deploy",
+        "--fail",
+        ""
+      ],
+      "stdout": [
+        ":1"
+      ],
+      "tree": "main",
+      "stderr_contains": "Completion ended with directive: ShellCompDirectiveError"
+    },
+    {
+      "name": "unknown flag is default with no completions",
+      "args": [
+        "deploy",
+        "--nosuch",
+        ""
+      ],
+      "stdout": [
+        ":0"
+      ],
+      "tree": "main",
+      "stderr_contains": "Completion ended with directive: ShellCompDirectiveDefault"
+    },
+    {
+      "name": "boolean flag does not take the next word",
+      "args": [
+        "deploy",
+        "--force",
+        ""
+      ],
+      "stdout": [
+        "env:\tenv values",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "double dash turns a dash word into an argument",
+      "args": [
+        "deploy",
+        "--",
+        "--e"
+      ],
+      "stdout": [
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "help flag stops completion",
+      "args": [
+        "deploy",
+        "--help",
+        ""
+      ],
+      "stdout": [
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "nested subcommands",
+      "args": [
+        "router",
+        ""
+      ],
+      "stdout": [
+        "start\tStart router",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "completion command lists its shells",
+      "args": [
+        "completion",
+        ""
+      ],
+      "stdout": [
+        "bash\tGenerate the autocompletion script for bash",
+        "fig\tGenerate a Fig completion spec",
+        "fish\tGenerate the autocompletion script for fish",
+        "powershell\tGenerate the autocompletion script for powershell",
+        "usage\tGenerate a Usage (usage.jdx.dev) completion spec",
+        "zsh\tGenerate the autocompletion script for zsh",
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "completion shell leaf completes no files",
+      "args": [
+        "completion",
+        "bash",
+        ""
+      ],
+      "stdout": [
+        ":4"
+      ],
+      "tree": "main"
+    },
+    {
+      "name": "deep alias shim offers none of the target's flags",
+      "tree": "main",
+      "args": [
+        "rs",
+        "--l"
+      ],
+      "stdout": [
+        ":4"
+      ]
+    },
+    {
+      "name": "deep alias shim offers its own help flag",
+      "tree": "main",
+      "args": [
+        "rs",
+        "--h"
+      ],
+      "stdout": [
+        "--help\thelp for rs",
+        ":4"
+      ],
+      "stderr_contains": "Completion ended with directive: ShellCompDirectiveNoFileComp"
+    },
+    {
+      "name": "a local flag stops subcommand listing",
+      "tree": "main",
+      "args": [
+        "router",
+        "--dry",
+        ""
+      ],
+      "stdout": [
+        ":0"
+      ]
+    },
+    {
+      "name": "tree-wide enum where no command-scoped one applies",
+      "tree": "main",
+      "args": [
+        "deploy",
+        "--level",
+        ""
+      ],
+      "stdout": [
+        "warn",
+        ":4"
+      ]
+    },
+    {
+      "name": "enum through a direct alias",
+      "tree": "main",
+      "args": [
+        "d",
+        "--status",
+        ""
+      ],
+      "stdout": [
+        "TODO",
+        "DONE",
+        ":4"
+      ]
+    },
+    {
+      "name": "a flag already given is not offered again",
+      "tree": "main",
+      "args": [
+        "deploy",
+        "--env",
+        "x",
+        "--e"
+      ],
+      "stdout": [
+        ":4"
+      ]
+    },
+    {
+      "name": "an alias named completion replaces the built-in command",
+      "tree": "completion-alias",
+      "args": [
+        "comp"
+      ],
+      "stdout": [
+        "completion\talias for deploy",
+        ":4"
+      ]
+    },
+    {
+      "name": "an alias named completion dispatches to its target",
+      "tree": "completion-alias",
+      "args": [
+        "completion",
+        ""
+      ],
+      "stdout": [
+        "env:\tenv values",
+        ":4"
+      ]
+    },
+    {
+      "name": "subcommand about keeps control characters raw",
+      "args": [
+        "ct"
+      ],
+      "stdout": [
+        "ctl\tCtl\u0001 esc\u001b[1mbold\u007f end",
+        ":4"
+      ],
+      "tree": "about-controls"
+    },
+    {
+      "name": "flag usage keeps control characters raw",
+      "args": [
+        "ctl",
+        "--m"
+      ],
+      "stdout": [
+        "--mode\tMode\u0001 x\u007f (one of: a)",
+        ":4"
+      ],
+      "tree": "about-controls"
+    }
+  ]
+}

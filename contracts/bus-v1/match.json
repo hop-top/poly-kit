@@ -1,0 +1,242 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/bus-v1/match.json",
+  "version": "v1",
+  "description": "Topic.Match(pattern): `*` matches exactly one segment (an empty segment counts), `#` matches zero or more trailing segments and only when it is the last pattern segment, everything else is exact and case-sensitive. Split is on '.', so the empty string is one empty segment.",
+  "cases": [
+    {
+      "name": "'llm.request' vs 'llm.request'",
+      "pattern": "llm.request",
+      "topic": "llm.request",
+      "match": true
+    },
+    {
+      "name": "'llm.request' vs 'llm.response'",
+      "pattern": "llm.request",
+      "topic": "llm.response",
+      "match": false
+    },
+    {
+      "name": "'llm.*' vs 'llm.request'",
+      "pattern": "llm.*",
+      "topic": "llm.request",
+      "match": true
+    },
+    {
+      "name": "'llm.*' vs 'llm.request.start'",
+      "pattern": "llm.*",
+      "topic": "llm.request.start",
+      "match": false
+    },
+    {
+      "name": "'*.request' vs 'llm.request'",
+      "pattern": "*.request",
+      "topic": "llm.request",
+      "match": true
+    },
+    {
+      "name": "'*' vs 'llm'",
+      "pattern": "*",
+      "topic": "llm",
+      "match": true
+    },
+    {
+      "name": "'*' vs 'llm.request'",
+      "pattern": "*",
+      "topic": "llm.request",
+      "match": false
+    },
+    {
+      "name": "'*.*' vs 'llm'",
+      "pattern": "*.*",
+      "topic": "llm",
+      "match": false
+    },
+    {
+      "name": "'llm.#' vs 'llm'",
+      "pattern": "llm.#",
+      "topic": "llm",
+      "match": true
+    },
+    {
+      "name": "'llm.#' vs 'llm.request'",
+      "pattern": "llm.#",
+      "topic": "llm.request",
+      "match": true
+    },
+    {
+      "name": "'llm.#' vs 'llm.request.start'",
+      "pattern": "llm.#",
+      "topic": "llm.request.start",
+      "match": true
+    },
+    {
+      "name": "'llm.#' vs 'other.request'",
+      "pattern": "llm.#",
+      "topic": "other.request",
+      "match": false
+    },
+    {
+      "name": "'#' vs 'llm'",
+      "pattern": "#",
+      "topic": "llm",
+      "match": true
+    },
+    {
+      "name": "'#' vs 'a.b.c.d'",
+      "pattern": "#",
+      "topic": "a.b.c.d",
+      "match": true
+    },
+    {
+      "name": "'#' vs ''",
+      "pattern": "#",
+      "topic": "",
+      "match": true
+    },
+    {
+      "name": "'#.llm' vs 'llm'",
+      "pattern": "#.llm",
+      "topic": "llm",
+      "match": false
+    },
+    {
+      "name": "'llm.#.x' vs 'llm.a.x'",
+      "pattern": "llm.#.x",
+      "topic": "llm.a.x",
+      "match": false
+    },
+    {
+      "name": "'llm.#.x' vs 'llm'",
+      "pattern": "llm.#.x",
+      "topic": "llm",
+      "match": false
+    },
+    {
+      "name": "'#.#' vs 'a'",
+      "pattern": "#.#",
+      "topic": "a",
+      "match": false
+    },
+    {
+      "name": "'*.#' vs 'a.b.c'",
+      "pattern": "*.#",
+      "topic": "a.b.c",
+      "match": true
+    },
+    {
+      "name": "'*.#' vs 'a'",
+      "pattern": "*.#",
+      "topic": "a",
+      "match": true
+    },
+    {
+      "name": "'a.*.c' vs 'a.b.c'",
+      "pattern": "a.*.c",
+      "topic": "a.b.c",
+      "match": true
+    },
+    {
+      "name": "'a.*.c' vs 'a.c'",
+      "pattern": "a.*.c",
+      "topic": "a.c",
+      "match": false
+    },
+    {
+      "name": "'a.*.c' vs 'a.b.c.d'",
+      "pattern": "a.*.c",
+      "topic": "a.b.c.d",
+      "match": false
+    },
+    {
+      "name": "'a.b' vs 'a.b.c'",
+      "pattern": "a.b",
+      "topic": "a.b.c",
+      "match": false
+    },
+    {
+      "name": "'a.b.c' vs 'a.b'",
+      "pattern": "a.b.c",
+      "topic": "a.b",
+      "match": false
+    },
+    {
+      "name": "'a.*.#' vs 'a'",
+      "pattern": "a.*.#",
+      "topic": "a",
+      "match": false
+    },
+    {
+      "name": "'a.*.#' vs 'a.b'",
+      "pattern": "a.*.#",
+      "topic": "a.b",
+      "match": true
+    },
+    {
+      "name": "'LLM.request' vs 'llm.request'",
+      "pattern": "LLM.request",
+      "topic": "llm.request",
+      "match": false
+    },
+    {
+      "name": "'a.*' vs 'a.*'",
+      "pattern": "a.*",
+      "topic": "a.*",
+      "match": true
+    },
+    {
+      "name": "'a.b' vs 'a.*'",
+      "pattern": "a.b",
+      "topic": "a.*",
+      "match": false
+    },
+    {
+      "name": "'' vs ''",
+      "pattern": "",
+      "topic": "",
+      "match": true
+    },
+    {
+      "name": "'' vs 'a'",
+      "pattern": "",
+      "topic": "a",
+      "match": false
+    },
+    {
+      "name": "'a' vs ''",
+      "pattern": "a",
+      "topic": "",
+      "match": false
+    },
+    {
+      "name": "'a.*' vs 'a.'",
+      "pattern": "a.*",
+      "topic": "a.",
+      "match": true
+    },
+    {
+      "name": "'a.' vs 'a.'",
+      "pattern": "a.",
+      "topic": "a.",
+      "match": true
+    },
+    {
+      "name": "'a.' vs 'a'",
+      "pattern": "a.",
+      "topic": "a",
+      "match": false
+    },
+    {
+      "name": "'llm..request' vs 'llm..request'",
+      "pattern": "llm..request",
+      "topic": "llm..request",
+      "match": true
+    },
+    {
+      "name": "'*' vs ''",
+      "pattern": "*",
+      "topic": "",
+      "match": true
+    }
+  ]
+}

@@ -1,0 +1,513 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/bus-v1/event_json.json",
+  "version": "v1",
+  "description": "Event envelope wire shape: lowercase keys topic, source, timestamp and payload (always emitted) then, each omitted when empty, workspace_id, id, subject, datacontenttype, dataschema and extensions, in that order. `timestamp` is RFC 3339 with optional fractional seconds (trailing zeros trimmed) and the original zone offset, exactly as Go's time.Time marshals it; the full timestamp grammar and normalisation live in event_timestamp.json. `extensions` is an object keyed by name; the name rule, value types and error texts are pinned by event_extensions.json. mode `roundtrip`: decoding `event` yields the same fields and encoding them yields `event` again (compared as JSON values, not text). mode `decode`: only decoding is asserted (the decoded event re-encodes to `event`); `wire_extra` keys are added to the wire object and must be ignored or, for the optional members, treated as unset when null or empty. `text`, when present, is the exact encoded bytes (ASCII only, payload keys already sorted): it pins member order and extension ordering. Absent optional members decode as empty. `decode_reject` lists wire objects every decoder must refuse.",
+  "cases": [
+    {
+      "name": "utc whole second",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "crm.sales.deal.created",
+        "source": "crm.client",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "id": 42,
+          "name": "acme"
+        }
+      }
+    },
+    {
+      "name": "nanosecond precision, positive offset",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "crm.sales.deal.created",
+        "source": "crm.client",
+        "timestamp": "2024-05-01T12:00:00.123456789+02:00",
+        "payload": {
+          "id": 1
+        }
+      }
+    },
+    {
+      "name": "millisecond, negative offset",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00.5-07:00",
+        "payload": {
+          "k": "v"
+        }
+      }
+    },
+    {
+      "name": "utc fractional",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-12-31T23:59:59.999999999Z",
+        "payload": {}
+      }
+    },
+    {
+      "name": "half-hour offset",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00+05:30",
+        "payload": {}
+      }
+    },
+    {
+      "name": "leap day",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-02-29T00:00:00Z",
+        "payload": {}
+      }
+    },
+    {
+      "name": "workspace scoped",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "workspace_id": "01HZX3Q8E5K7R0M9T2V4W6Y8ZA"
+      }
+    },
+    {
+      "name": "null payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": null
+      }
+    },
+    {
+      "name": "string payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": "hello"
+      }
+    },
+    {
+      "name": "number payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": 42
+      }
+    },
+    {
+      "name": "array payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": [
+          1,
+          "two",
+          null,
+          true
+        ]
+      }
+    },
+    {
+      "name": "nested payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "a": {
+            "b": [
+              {
+                "c": 1.5
+              }
+            ]
+          },
+          "flag": false
+        }
+      }
+    },
+    {
+      "name": "empty source and topic still emitted",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "",
+        "source": "",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {}
+      }
+    },
+    {
+      "name": "unicode payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "msg": "héllo 世界"
+        }
+      }
+    },
+    {
+      "name": "qualifiers in payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.failed",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "reason": "timeout",
+          "snapshot_id": "s1"
+        }
+      }
+    },
+    {
+      "name": "decode ignores unknown wire keys",
+      "mode": "decode",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        }
+      },
+      "wire_extra": {
+        "origin": "abc123"
+      }
+    },
+    {
+      "name": "all envelope members",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "crm.sales.deal.created",
+        "source": "crm.client",
+        "timestamp": "2024-05-01T12:00:00.5Z",
+        "payload": {
+          "id": 1
+        },
+        "workspace_id": "01HZX3Q8E5K7R0M9T2V4W6Y8ZA",
+        "id": "evt_01j9z0p6t2e8c9k3m4n5q6r7s8",
+        "subject": "deal/42",
+        "datacontenttype": "application/json",
+        "dataschema": "https://example.com/schemas/deal.json",
+        "extensions": {
+          "replay": true,
+          "seq": 7,
+          "tenantid": "t1"
+        }
+      },
+      "text": "{\"topic\":\"crm.sales.deal.created\",\"source\":\"crm.client\",\"timestamp\":\"2024-05-01T12:00:00.5Z\",\"payload\":{\"id\":1},\"workspace_id\":\"01HZX3Q8E5K7R0M9T2V4W6Y8ZA\",\"id\":\"evt_01j9z0p6t2e8c9k3m4n5q6r7s8\",\"subject\":\"deal/42\",\"datacontenttype\":\"application/json\",\"dataschema\":\"https://example.com/schemas/deal.json\",\"extensions\":{\"replay\":true,\"seq\":7,\"tenantid\":\"t1\"}}"
+    },
+    {
+      "name": "id only",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "id": "evt_01j9z0p6t2e8c9k3m4n5q6r7s8"
+      },
+      "text": "{\"topic\":\"a.b.c.d\",\"source\":\"src\",\"timestamp\":\"2024-05-01T12:00:00Z\",\"payload\":{\"x\":1},\"id\":\"evt_01j9z0p6t2e8c9k3m4n5q6r7s8\"}"
+    },
+    {
+      "name": "id is kept verbatim, any string",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "id": "not-a-typeid"
+      }
+    },
+    {
+      "name": "subject and content type only",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "subject": "s",
+        "datacontenttype": "text/plain"
+      }
+    },
+    {
+      "name": "extension value types",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "extensions": {
+          "a1": "x",
+          "b2": false,
+          "c3": -2147483648,
+          "d4": 2147483647,
+          "e5": 0
+        }
+      }
+    },
+    {
+      "name": "extension order is by name",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "extensions": {
+          "zz": "z",
+          "aa": "a",
+          "m1": "m"
+        }
+      },
+      "text": "{\"topic\":\"a.b.c.d\",\"source\":\"src\",\"timestamp\":\"2024-05-01T12:00:00Z\",\"payload\":{\"x\":1},\"extensions\":{\"aa\":\"a\",\"m1\":\"m\",\"zz\":\"z\"}}"
+    },
+    {
+      "name": "null optional members decode as unset",
+      "mode": "decode",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        }
+      },
+      "wire_extra": {
+        "workspace_id": null,
+        "id": null,
+        "subject": null,
+        "datacontenttype": null,
+        "dataschema": null,
+        "extensions": null
+      }
+    },
+    {
+      "name": "empty extensions object is unset",
+      "mode": "decode",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        }
+      },
+      "wire_extra": {
+        "extensions": {}
+      }
+    },
+    {
+      "name": "empty strings are omitted on encode",
+      "mode": "decode",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        }
+      },
+      "wire_extra": {
+        "workspace_id": "",
+        "id": "",
+        "subject": "",
+        "datacontenttype": "",
+        "dataschema": ""
+      }
+    },
+    {
+      "name": "unvalidated extensions still decode",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "extensions": {
+          "Bad Name": 1.5,
+          "list": [
+            1
+          ],
+          "nothing": null
+        }
+      }
+    }
+  ],
+  "decode_reject": [
+    {
+      "name": "timestamp not a time",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "s",
+        "timestamp": "not-a-time",
+        "payload": {}
+      }
+    },
+    {
+      "name": "timestamp without zone",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "s",
+        "timestamp": "2024-05-01T12:00:00",
+        "payload": {}
+      }
+    },
+    {
+      "name": "timestamp wrong type",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "s",
+        "timestamp": 12345,
+        "payload": {}
+      }
+    },
+    {
+      "name": "id wrong type",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "id": 5
+      }
+    },
+    {
+      "name": "subject wrong type",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "subject": true
+      }
+    },
+    {
+      "name": "datacontenttype wrong type",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "datacontenttype": []
+      }
+    },
+    {
+      "name": "dataschema wrong type",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "dataschema": {}
+      }
+    },
+    {
+      "name": "extensions wrong type",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "extensions": "x"
+      }
+    },
+    {
+      "name": "extensions array",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "extensions": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "workspace_id wrong type",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "workspace_id": 1
+      }
+    },
+    {
+      "name": "topic wrong type",
+      "event": {
+        "topic": 1,
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        }
+      }
+    },
+    {
+      "name": "timestamp empty string",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "",
+        "payload": {
+          "x": 1
+        }
+      }
+    }
+  ]
+}

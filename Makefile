@@ -4,8 +4,8 @@
 	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules release-as \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	test-parity test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-typeid test-py \
-	test-release test-rs test-templates test-ts \
+	completion-regen test-parity test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-py \
+	test-release test-rs test-rs-wasm test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint
 
 # Tool versions — the mise config (mise.toml, plus .config/mise.toml for
@@ -200,7 +200,24 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/experimental/rs && cargo test --all-features --locked
 
-test-parity: test-parity-typeid test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
+# The bus on wasm32-unknown-unknown, run under Node: one thread, so the
+# async pool is uncapped and close reports NotDrained instead of
+# blocking. wasm-bindgen-test-runner comes from wasm-bindgen-cli, whose
+# version must equal the wasm-bindgen in Cargo.lock.
+test-rs-wasm: ## Rust: bus and domain wasm32 smoke tests under Node (needs the matching wasm-bindgen-cli)
+	@want=$$(awk '/^name = "wasm-bindgen"$$/ { getline; gsub(/version = |"/, ""); print }' sdk/experimental/rs/Cargo.lock); \
+	have=$$(wasm-bindgen --version 2>/dev/null | awk '{ print $$2 }'); \
+	if [ "$$want" != "$$have" ]; then \
+		echo "wasm-bindgen-cli '$$have' does not match Cargo.lock wasm-bindgen $$want:"; \
+		echo "  cargo install wasm-bindgen-cli --version $$want --locked"; \
+		exit 1; \
+	fi
+	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features bus --test bus_wasm
+	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features domain --test domain_statemachine_wasm
+
+test-parity: test-parity-typeid test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -289,6 +306,70 @@ test-parity-taxonomy: ## exit-code taxonomy across Go + 4 SDKs
 	else \
 		echo "==> exit-taxonomy parity: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
+
+# Shared bus conformance corpus: the Go and Rust runners read the same
+# vectors under contracts/bus-v1.
+test-parity-bus: ## bus-v1 conformance corpus, CloudEvents, streams and sinks included (Go and Rust runners)
+	@echo "==> bus-v1 conformance: Go"
+	go test ./go/runtime/bus/ -run '^(TestConformance|TestCloudEventsConformance|TestStreamConformance|TestSinkConformance)' -count=1
+	@echo "==> bus-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --test bus_conformance --test bus_cloudevents_conformance --test 'bus_stream_conformance*' --test bus_sinks_conformance --all-features --locked
+
+# Bus network across languages: Go hub <-> Rust client, Rust hub <-> Go
+# client and mixed three-node relays, with and without auth. The Go peer
+# is sdk/tests/cross-lang/bus-network/gonode; BUS_NETWORK_CROSSLANG gates
+# the cases so a plain `cargo test` needs no Go toolchain.
+test-parity-bus-network: ## bus network cross-language e2e (Go <-> Rust hubs, clients, mixed relay)
+	@echo "==> bus network: Go <-> Rust over WebSocket"
+	cd sdk/experimental/rs && BUS_NETWORK_CROSSLANG=1 cargo test --locked --features bus-network --test bus_network_crosslang -- --test-threads=1
+
+# Completion-spec exports (Fig module, Usage KDL) over one fixture tree.
+# Go runner only; a port adds its runner here.
+test-parity-completion-spec: ## completion-spec-v1 corpus: Fig and Usage exports, byte for byte (Go and Rust runners)
+	@echo "==> completion-spec-v1 conformance: Go"
+	go test ./go/console/cli/completionspec/ -run '^TestConformanceCompletionSpec' -count=1
+	@echo "==> completion-spec-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features cli --test cli_completion_spec_conformance --locked
+
+# Shared retry-v1 backoff corpus: Go and Rust runners read the same vectors.
+test-parity-config: ## config-v1 conformance corpus (Go and Rust runners)
+	@echo "==> config-v1 conformance: Go"
+	go test ./go/core/config/ -run '^TestConformance' -count=1
+	@echo "==> config-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features config --test config_conformance --locked
+
+test-parity-retry: ## retry-v1 conformance corpus (Go and Rust runners)
+	@echo "==> retry-v1 conformance: Go"
+	go test ./go/core/util/ -run '^TestConformanceRetry' -count=1
+	@echo "==> retry-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --test retry_conformance --locked
+
+# Domain state machine corpus: transitions, error texts, the veto wrap,
+# payload JSON bytes and topic options. Go's post-transition event runs
+# on a goroutine, hence -race.
+test-parity-statemachine: ## statemachine-v1 conformance corpus (Go and Rust runners)
+	@echo "==> statemachine-v1 conformance: Go"
+	go test -race ./go/runtime/domain/ -run '^TestConformanceStateMachine' -count=1
+	@echo "==> statemachine-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features domain --test domain_statemachine_conformance --locked
+
+# After a cobra bump: rewrite the completion-v1 script goldens and the
+# Rust script templates from the cobra version in go.mod, then run
+# test-parity-completion. Review the diff; both runners pin the result.
+completion-regen: ## Regenerate completion-v1 script goldens and the Rust completion templates from cobra
+	go test ./go/console/cli/completion/ -run '^(TestConformanceCompletionScripts|TestCompletionTemplatesInSync)$$' -count=1 -update
+
+test-parity-completion: ## completion-v1 conformance corpus (Go and Rust runners)
+	@echo "==> completion-v1 conformance: Go"
+	go test -race ./go/console/cli/completion/ -run '^TestConformanceCompletion' -count=1
+	@echo "==> completion-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features cli,config --test cli_completion_conformance --locked
+
+test-parity-netpolicy: ## netpolicy-v1 conformance corpus (Go and Rust runners)
+	@echo "==> netpolicy-v1 conformance: Go"
+	go test ./go/core/netpolicy/ -run '^TestConformanceNetpolicy' -count=1
+	@echo "==> netpolicy-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features api --test netpolicy_conformance --locked
 
 # Cross-process kv storage-binding gate over contracts/kv-v1/keys.json.
 # The Go test drives the Rust half as a `cargo test` subprocess, so this

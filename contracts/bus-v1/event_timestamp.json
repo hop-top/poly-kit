@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/bus-v1/event_timestamp.json",
+  "version": "v1",
+  "description": "Event `timestamp` on decode. `cases`: the string decodes, and the decoded event's timestamp re-encodes as `canonical`, the form Go's time.Time marshals: fraction separator `.` with trailing zeros trimmed and at most 9 digits (a comma separator is accepted and extra digits are truncated), the original offset kept, a zero offset written `Z`. `reject`: the wire value is refused. Grammar: YYYY-MM-DD, `T`, hh:mm:ss, optional fraction, then `Z` or +/-hh:mm, with exactly 4 year digits, valid month and day (leap years honoured), hour 00-23, minute 00-59, seconds 00-59 (no leap second), offset hour 00-23 and offset minute 00-59, all uppercase. A missing or null timestamp is the zero time `0001-01-01T00:00:00Z`. An offset with hour above 23 or minute above 59 is refused with an error containing `invalid zone offset` (`error_contains`); Go's time.Time decoder alone would accept +24:00 and +23:60 and then fail to encode them, so kit's Event decode rejects them. Other rejections pin no text.",
+  "cases": [
+    {
+      "name": "utc whole second",
+      "timestamp": "2024-05-01T12:00:00Z",
+      "canonical": "2024-05-01T12:00:00Z"
+    },
+    {
+      "name": "utc fraction kept",
+      "timestamp": "2024-05-01T12:00:00.123456789Z",
+      "canonical": "2024-05-01T12:00:00.123456789Z"
+    },
+    {
+      "name": "trailing fraction zeros trimmed",
+      "timestamp": "2024-05-01T12:00:00.500Z",
+      "canonical": "2024-05-01T12:00:00.5Z"
+    },
+    {
+      "name": "all-zero fraction dropped",
+      "timestamp": "2024-05-01T12:00:00.000Z",
+      "canonical": "2024-05-01T12:00:00Z"
+    },
+    {
+      "name": "single fraction digit",
+      "timestamp": "2024-05-01T12:00:00.1Z",
+      "canonical": "2024-05-01T12:00:00.1Z"
+    },
+    {
+      "name": "comma fraction separator",
+      "timestamp": "2024-05-01T12:00:00,5Z",
+      "canonical": "2024-05-01T12:00:00.5Z"
+    },
+    {
+      "name": "more than 9 fraction digits truncated",
+      "timestamp": "2024-05-01T12:00:00.1234567891Z",
+      "canonical": "2024-05-01T12:00:00.123456789Z"
+    },
+    {
+      "name": "12 fraction digits truncated",
+      "timestamp": "2024-05-01T12:00:00.123456789012Z",
+      "canonical": "2024-05-01T12:00:00.123456789Z"
+    },
+    {
+      "name": "positive offset kept",
+      "timestamp": "2024-05-01T12:00:00+02:00",
+      "canonical": "2024-05-01T12:00:00+02:00"
+    },
+    {
+      "name": "negative offset kept",
+      "timestamp": "2024-05-01T12:00:00.5-07:00",
+      "canonical": "2024-05-01T12:00:00.5-07:00"
+    },
+    {
+      "name": "half-hour offset kept",
+      "timestamp": "2024-05-01T12:00:00+05:30",
+      "canonical": "2024-05-01T12:00:00+05:30"
+    },
+    {
+      "name": "max offset kept",
+      "timestamp": "2024-05-01T12:00:00+23:59",
+      "canonical": "2024-05-01T12:00:00+23:59"
+    },
+    {
+      "name": "-00:00 is UTC",
+      "timestamp": "2024-05-01T12:00:00-00:00",
+      "canonical": "2024-05-01T12:00:00Z"
+    },
+    {
+      "name": "+00:00 is UTC",
+      "timestamp": "2024-05-01T12:00:00+00:00",
+      "canonical": "2024-05-01T12:00:00Z"
+    },
+    {
+      "name": "fraction with zero offset",
+      "timestamp": "2024-05-01T12:00:00.250+00:00",
+      "canonical": "2024-05-01T12:00:00.25Z"
+    },
+    {
+      "name": "year zero with offset",
+      "timestamp": "0000-01-01T00:00:00+01:00",
+      "canonical": "0000-01-01T00:00:00+01:00"
+    },
+    {
+      "name": "year 9999 with offset",
+      "timestamp": "9999-12-31T23:00:00-02:00",
+      "canonical": "9999-12-31T23:00:00-02:00"
+    },
+    {
+      "name": "zero time",
+      "timestamp": "0001-01-01T00:00:00Z",
+      "canonical": "0001-01-01T00:00:00Z"
+    },
+    {
+      "name": "leap day",
+      "timestamp": "2024-02-29T23:59:59Z",
+      "canonical": "2024-02-29T23:59:59Z"
+    },
+    {
+      "name": "last second of the day",
+      "timestamp": "2024-12-31T23:59:59.999999999Z",
+      "canonical": "2024-12-31T23:59:59.999999999Z"
+    }
+  ],
+  "reject": [
+    {
+      "name": "empty string",
+      "timestamp": ""
+    },
+    {
+      "name": "lowercase t",
+      "timestamp": "2024-05-01t12:00:00Z"
+    },
+    {
+      "name": "lowercase z",
+      "timestamp": "2024-05-01T12:00:00z"
+    },
+    {
+      "name": "space separator",
+      "timestamp": "2024-05-01 12:00:00Z"
+    },
+    {
+      "name": "fraction separator without digits",
+      "timestamp": "2024-05-01T12:00:00.Z"
+    },
+    {
+      "name": "leap second",
+      "timestamp": "2024-05-01T12:00:60Z"
+    },
+    {
+      "name": "hour 24",
+      "timestamp": "2024-05-01T24:00:00Z"
+    },
+    {
+      "name": "minute 60",
+      "timestamp": "2024-05-01T12:60:00Z"
+    },
+    {
+      "name": "month 13",
+      "timestamp": "2024-13-01T00:00:00Z"
+    },
+    {
+      "name": "month 00",
+      "timestamp": "2024-00-10T00:00:00Z"
+    },
+    {
+      "name": "day 00",
+      "timestamp": "2024-05-00T00:00:00Z"
+    },
+    {
+      "name": "february 30",
+      "timestamp": "2024-02-30T00:00:00Z"
+    },
+    {
+      "name": "february 29 in a common year",
+      "timestamp": "2023-02-29T00:00:00Z"
+    },
+    {
+      "name": "day 31 in a 30-day month",
+      "timestamp": "2024-04-31T00:00:00Z"
+    },
+    {
+      "name": "offset without colon",
+      "timestamp": "2024-05-01T12:00:00+0100"
+    },
+    {
+      "name": "offset hours only",
+      "timestamp": "2024-05-01T12:00:00+01"
+    },
+    {
+      "name": "offset hour out of range",
+      "timestamp": "2024-05-01T12:00:00+99:99"
+    },
+    {
+      "name": "no zone",
+      "timestamp": "2024-05-01T12:00:00"
+    },
+    {
+      "name": "no seconds",
+      "timestamp": "2024-05-01T12:00Z"
+    },
+    {
+      "name": "date only",
+      "timestamp": "2024-05-01"
+    },
+    {
+      "name": "five digit year",
+      "timestamp": "10000-01-01T00:00:00Z"
+    },
+    {
+      "name": "signed year",
+      "timestamp": "+2024-05-01T12:00:00Z"
+    },
+    {
+      "name": "unpadded month and day",
+      "timestamp": "2024-5-1T12:00:00Z"
+    },
+    {
+      "name": "leading space",
+      "timestamp": " 2024-05-01T12:00:00Z"
+    },
+    {
+      "name": "trailing space",
+      "timestamp": "2024-05-01T12:00:00Z "
+    },
+    {
+      "name": "not a time",
+      "timestamp": "not-a-time"
+    },
+    {
+      "name": "number",
+      "timestamp": 12345
+    },
+    {
+      "name": "boolean",
+      "timestamp": true
+    },
+    {
+      "name": "array",
+      "timestamp": []
+    },
+    {
+      "name": "object",
+      "timestamp": {}
+    },
+    {
+      "name": "offset +24:00",
+      "timestamp": "2024-05-01T12:00:00+24:00",
+      "error_contains": "invalid zone offset"
+    },
+    {
+      "name": "offset -24:00",
+      "timestamp": "2024-05-01T12:00:00-24:00",
+      "error_contains": "invalid zone offset"
+    },
+    {
+      "name": "offset +23:60",
+      "timestamp": "2024-05-01T12:00:00+23:60",
+      "error_contains": "invalid zone offset"
+    },
+    {
+      "name": "offset +24:01",
+      "timestamp": "2024-05-01T12:00:00+24:01",
+      "error_contains": "invalid zone offset"
+    },
+    {
+      "name": "offset minute 60",
+      "timestamp": "2024-05-01T12:00:00+00:60",
+      "error_contains": "invalid zone offset"
+    },
+    {
+      "name": "offset with fraction +24:00",
+      "timestamp": "2024-05-01T12:00:00.5+24:00",
+      "error_contains": "invalid zone offset"
+    }
+  ],
+  "defaults": [
+    {
+      "name": "absent timestamp is the zero time",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "s",
+        "payload": null
+      },
+      "timestamp": "0001-01-01T00:00:00Z"
+    },
+    {
+      "name": "null timestamp is the zero time",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "s",
+        "timestamp": null,
+        "payload": null
+      },
+      "timestamp": "0001-01-01T00:00:00Z"
+    },
+    {
+      "name": "empty object decodes",
+      "event": {},
+      "timestamp": "0001-01-01T00:00:00Z"
+    }
+  ]
+}

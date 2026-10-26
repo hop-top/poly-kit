@@ -54,10 +54,10 @@
 //!
 //! Rust *does* have an event bus ([`crate::bus`]), so the six
 //! transitions publish under exactly the contract topic strings. The
-//! bus is `Rc`-backed and therefore `!Send`, while the supervisor's
-//! futures may move between tokio worker threads, so the supervisor
-//! takes a narrow [`Publisher`] trait rather than a [`crate::bus::Bus`]
-//! directly. There is no structured logger in this port, so the log
+//! supervisor takes a narrow [`Publisher`] trait rather than a
+//! [`crate::bus::Bus`] directly: `serve` does not depend on the `bus`
+//! feature, and an adopter can route lifecycle events to the kit bus or
+//! to any sink of their own. There is no structured logger in this port, so the log
 //! sink is [`StderrLogger`] — `key=value` pairs, per the contract's
 //! floor for a port with neither.
 //!

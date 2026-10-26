@@ -1,10 +1,11 @@
-// Mirrors go/core/netpolicy's suite. Cargo compiles every file under
-// tests/ unconditionally, so the whole body is gated on the `api`
-// feature — the module lives beneath it and the unresolved imports
-// would otherwise break `cargo test` under default features.
+// Mirrors go/core/netpolicy's suite for the reqwest client. Cargo
+// compiles every file under tests/ unconditionally, so the whole body is
+// gated on the `api` feature — the client lives beneath it and the
+// unresolved imports would otherwise break `cargo test` under default
+// features. The policy core's tables are in tests/netpolicy_core.rs.
 #![cfg(feature = "api")]
 
-use hop_top_kit::netpolicy::{is_loopback, GuardedClient, NetError, NetPolicy, OfflineError};
+use hop_top_kit::netpolicy::{GuardedClient, NetError, NetPolicy, OfflineError};
 
 // A policy-marked client must stop an external request before it opens
 // a socket. The destination is deliberately unroutable: loopback is
@@ -68,6 +69,36 @@ async fn loopback_spellings_are_exempt() {
                 "{target}: loopback was refused by the offline guard"
             );
         }
+    }
+}
+
+// `NetPolicy::allows` over URLs, Go's Guard rows: loopback in every
+// spelling stays reachable offline, bracketed hosts without a port
+// included; anything else is refused.
+#[test]
+fn allows_url_table() {
+    let off = NetPolicy::offline();
+    for raw in [
+        "http://127.0.0.1:8080/health",
+        "http://localhost:9000/health",
+        "http://[::1]:9000/health",
+        "http://[::1]/health",
+        "http://[::1]:80/health",
+        "http://[::ffff:127.0.0.1]/health",
+    ] {
+        let url: reqwest::Url = raw.parse().unwrap();
+        assert!(off.allows(&url), "{raw} refused while offline");
+    }
+    for raw in [
+        "https://example.invalid/v1/thing",
+        "http://my-host.internal/health",
+        "http://[2001:db8::1]/health",
+        "http://10.0.0.5:443/",
+        "mailto:alice@example.invalid",
+    ] {
+        let url: reqwest::Url = raw.parse().unwrap();
+        assert!(!off.allows(&url), "{raw} allowed while offline");
+        assert!(NetPolicy::online().allows(&url), "{raw} refused online");
     }
 }
 
@@ -163,34 +194,6 @@ async fn naive_caller_is_refused() {
     );
 }
 
-// Host classification, matching Go's isLoopback table.
-#[test]
-fn loopback_classification() {
-    for host in ["127.0.0.1", "localhost", "::1", "127.1.2.3"] {
-        assert!(is_loopback(host), "{host} should be loopback");
-    }
-    for host in [
-        "example.com",
-        "my-host.internal",
-        "8.8.8.8",
-        "localhost.evil.com",
-    ] {
-        assert!(!is_loopback(host), "{host} should be remote");
-    }
-}
-
-// The default policy is online: a port that never wires the flag must
-// behave exactly as it does today.
-#[test]
-fn default_policy_is_online() {
-    assert!(!NetPolicy::default().is_offline());
-    assert!(NetPolicy::offline().is_offline());
-    assert!(!NetPolicy::online().is_offline());
-    // The bool constructor mirrors Go's WithOffline(ctx, bool).
-    assert!(NetPolicy::new(true).is_offline());
-    assert!(!NetPolicy::new(false).is_offline());
-}
-
 // ApiClient is the port's public HTTP surface: constructing it under an
 // offline policy must refuse external calls, and callers must be able
 // to tell a refusal apart from an ordinary transport failure.
@@ -237,7 +240,9 @@ async fn api_client_default_is_online() {
 // The sink builds a plain `reqwest::Client`, never a `GuardedClient`, so
 // there is no policy knob a CLI could thread through to mute it. This
 // pins the construction path: an Https sink must build without any
-// network policy being supplied.
+// network policy being supplied. Gated on `telemetry`, which `api` alone
+// does not enable.
+#[cfg(feature = "telemetry")]
 #[tokio::test]
 async fn telemetry_https_sink_builds_without_a_net_policy() {
     use hop_top_kit::telemetry::{Client, ClientOptions, SinkKind};

@@ -217,7 +217,7 @@ Protobuf definitions for cross-language CRUD (`v1`) and RouteL2M
 | `hop_top_kit.config` | `core/config` |
 | `hop_top_kit.telemetry` | `runtime/telemetry` |
 | `hop_top_kit::telemetry` *(experimental)* | `runtime/telemetry` |
-| `hop_top_kit::bus` *(experimental)* | `runtime/bus` (core only; sync dispatch) |
+| `hop_top_kit::bus` *(experimental)* | `runtime/bus` (parity in progress; see [rust-bus-parity.md](rust-bus-parity.md); SQLite adapter not ported) |
 | `hop_top_kit::sqldb` *(experimental)* | `storage/sqldb` |
 | `hop_top_kit::kv` *(experimental)* | `storage/kv` (SQLite backend only) |
 | `hop_top_kit::blob` *(experimental)* | `storage/blob` (local backend only) |

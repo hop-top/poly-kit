@@ -5,14 +5,13 @@
 //! The Go async-handler tests (`TestPublish_AsyncHandler`,
 //! `TestPublish_AsyncDoesNotBlockPublisher`, `TestClose_WaitsForAsync`,
 //! `TestClose_RespectsDeadline`, `TestAsyncPool_BoundedGoroutines`,
-//! `TestWithMaxAsync_*`) have no analogue here: dispatch is synchronous,
-//! so there is no goroutine pool to bound and nothing in flight for
-//! close to drain. See the `bus::mem` module docs for that decision.
+//! `TestWithMaxAsync_*`) wait for async dispatch, which has not been
+//! ported yet. Close draining in-flight sync dispatch is covered in
+//! `bus_drain.rs` and `bus_concurrency.rs`.
 
 #![cfg(feature = "bus")]
 
-use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use hop_top_kit::bus::{Bus, BusError, Event, Mode, SharedBus};
 use serde_json::json;
@@ -24,17 +23,17 @@ fn ev(topic: &str) -> Event {
 #[test]
 fn publish_sync_handler() {
     let mut bus = Bus::new();
-    let got: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
-    let sink = Rc::clone(&got);
+    let got: Arc<Mutex<Option<Event>>> = Arc::new(Mutex::new(None));
+    let sink = Arc::clone(&got);
     bus.subscribe("test.event", move |e| {
-        *sink.borrow_mut() = Some(e.clone());
+        *sink.lock().unwrap() = Some(e.clone());
         Ok(())
     });
 
     let e = Event::new("test.event", "src", json!("hello"));
     bus.publish(&e).expect("publish");
 
-    let got = got.borrow();
+    let got = got.lock().unwrap();
     let got = got.as_ref().expect("handler ran");
     assert_eq!(got.source, "src");
     assert_eq!(got.payload, json!("hello"));
@@ -45,8 +44,8 @@ fn publish_sync_veto() {
     let mut bus = Bus::new();
     bus.subscribe("test.event", |_| Err(BusError::handler("nope")));
 
-    let second_called = Rc::new(Cell::new(false));
-    let flag = Rc::clone(&second_called);
+    let second_called = Arc::new(Slot::new(false));
+    let flag = Arc::clone(&second_called);
     bus.subscribe("test.event", move |_| {
         flag.set(true);
         Ok(())
@@ -66,8 +65,8 @@ fn publish_sync_veto() {
 #[test]
 fn unsubscribe() {
     let mut bus = Bus::new();
-    let count = Rc::new(Cell::new(0));
-    let c = Rc::clone(&count);
+    let count = Arc::new(Slot::new(0));
+    let c = Arc::clone(&count);
     let id = bus.subscribe("test.event", move |_| {
         c.set(c.get() + 1);
         Ok(())
@@ -86,10 +85,10 @@ fn unsubscribe() {
 #[test]
 fn publish_wildcard_subscribe() {
     let mut bus = Bus::new();
-    let got: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
-    let sink = Rc::clone(&got);
+    let got: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&got);
     bus.subscribe("llm.*", move |e| {
-        sink.borrow_mut().push(e.topic.to_string());
+        sink.lock().unwrap().push(e.topic.to_string());
         Ok(())
     });
 
@@ -97,16 +96,16 @@ fn publish_wildcard_subscribe() {
         bus.publish(&ev(t)).expect("publish");
     }
 
-    assert_eq!(*got.borrow(), vec!["llm.request", "llm.response"]);
+    assert_eq!(*got.lock().unwrap(), vec!["llm.request", "llm.response"]);
 }
 
 #[test]
 fn publish_hash_wildcard() {
     let mut bus = Bus::new();
-    let got: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
-    let sink = Rc::clone(&got);
+    let got: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&got);
     bus.subscribe("llm.#", move |e| {
-        sink.borrow_mut().push(e.topic.to_string());
+        sink.lock().unwrap().push(e.topic.to_string());
         Ok(())
     });
 
@@ -115,7 +114,7 @@ fn publish_hash_wildcard() {
     }
 
     assert_eq!(
-        *got.borrow(),
+        *got.lock().unwrap(),
         vec!["llm.request", "llm.request.start", "llm"]
     );
 }
@@ -123,8 +122,8 @@ fn publish_hash_wildcard() {
 #[test]
 fn publish_exact_does_not_match_other() {
     let mut bus = Bus::new();
-    let called = Rc::new(Cell::new(false));
-    let flag = Rc::clone(&called);
+    let called = Arc::new(Slot::new(false));
+    let flag = Arc::clone(&called);
     bus.subscribe("llm.request", move |_| {
         flag.set(true);
         Ok(())
@@ -140,16 +139,16 @@ fn publish_exact_does_not_match_other() {
 #[test]
 fn publish_delivers_in_subscription_order() {
     let mut bus = Bus::new();
-    let order: Rc<RefCell<Vec<u8>>> = Rc::new(RefCell::new(Vec::new()));
+    let order: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     for i in 0..3u8 {
-        let sink = Rc::clone(&order);
+        let sink = Arc::clone(&order);
         bus.subscribe("test.event", move |_| {
-            sink.borrow_mut().push(i);
+            sink.lock().unwrap().push(i);
             Ok(())
         });
     }
     bus.publish(&ev("test.event")).expect("publish");
-    assert_eq!(*order.borrow(), vec![0, 1, 2]);
+    assert_eq!(*order.lock().unwrap(), vec![0, 1, 2]);
 }
 
 #[test]
@@ -164,8 +163,8 @@ fn close_rejects_publish() {
 #[test]
 fn close_drops_subscriptions() {
     let mut bus = Bus::new();
-    let called = Rc::new(Cell::new(false));
-    let flag = Rc::clone(&called);
+    let called = Arc::new(Slot::new(false));
+    let flag = Arc::clone(&called);
     bus.subscribe("test.event", move |_| {
         flag.set(true);
         Ok(())
@@ -187,15 +186,15 @@ fn mode_display() {
 
 #[test]
 fn publish_mode_off_allows_invalid_topics() {
-    let reported = Rc::new(Cell::new(0u32));
-    let r = Rc::clone(&reported);
+    let reported = Arc::new(Slot::new(0u32));
+    let r = Arc::clone(&reported);
     let mut bus = Bus::builder()
         .enforce(Mode::Off)
         .invalid_topic_reporter(move |_| r.set(r.get() + 1))
         .build();
 
-    let got = Rc::new(Cell::new(0u32));
-    let g = Rc::clone(&got);
+    let got = Arc::new(Slot::new(0u32));
+    let g = Arc::clone(&got);
     bus.subscribe("bad.topic", move |_| {
         g.set(g.get() + 1);
         Ok(())
@@ -208,10 +207,10 @@ fn publish_mode_off_allows_invalid_topics() {
 
 #[test]
 fn publish_mode_warn_delivers_and_reports() {
-    let reported = Rc::new(Cell::new(0u32));
-    let was_invalid_topic = Rc::new(Cell::new(false));
-    let r = Rc::clone(&reported);
-    let w = Rc::clone(&was_invalid_topic);
+    let reported = Arc::new(Slot::new(0u32));
+    let was_invalid_topic = Arc::new(Slot::new(false));
+    let r = Arc::clone(&reported);
+    let w = Arc::clone(&was_invalid_topic);
     let mut bus = Bus::builder()
         .enforce(Mode::Warn)
         .invalid_topic_reporter(move |err| {
@@ -220,8 +219,8 @@ fn publish_mode_warn_delivers_and_reports() {
         })
         .build();
 
-    let got = Rc::new(Cell::new(0u32));
-    let g = Rc::clone(&got);
+    let got = Arc::new(Slot::new(0u32));
+    let g = Arc::clone(&got);
     bus.subscribe("bad.topic", move |_| {
         g.set(g.get() + 1);
         Ok(())
@@ -240,15 +239,15 @@ fn publish_mode_warn_delivers_and_reports() {
 
 #[test]
 fn publish_mode_strict_rejects_invalid() {
-    let reported = Rc::new(Cell::new(0u32));
-    let r = Rc::clone(&reported);
+    let reported = Arc::new(Slot::new(0u32));
+    let r = Arc::clone(&reported);
     let mut bus = Bus::builder()
         .enforce(Mode::Strict)
         .invalid_topic_reporter(move |_| r.set(r.get() + 1))
         .build();
 
-    let got = Rc::new(Cell::new(0u32));
-    let g = Rc::clone(&got);
+    let got = Arc::new(Slot::new(0u32));
+    let g = Arc::clone(&got);
     bus.subscribe("bad.topic", move |_| {
         g.set(g.get() + 1);
         Ok(())
@@ -262,7 +261,7 @@ fn publish_mode_strict_rejects_invalid() {
     assert_eq!(reported.get(), 1);
 
     // Valid topic — must succeed.
-    let g = Rc::clone(&got);
+    let g = Arc::clone(&got);
     bus.subscribe("a.b.c.d", move |_| {
         g.set(g.get() + 1);
         Ok(())
@@ -278,8 +277,8 @@ fn publish_default_mode_is_warn() {
     let mut bus = Bus::new();
     assert_eq!(bus.enforce_mode(), Mode::Warn);
 
-    let got = Rc::new(Cell::new(0u32));
-    let g = Rc::clone(&got);
+    let got = Arc::new(Slot::new(0u32));
+    let g = Arc::clone(&got);
     bus.subscribe("bad.topic", move |_| {
         g.set(g.get() + 1);
         Ok(())
@@ -303,8 +302,8 @@ fn strict_without_reporter_still_rejects() {
 fn shared_bus_subscribe_publish_unsubscribe() {
     let bus = SharedBus::new(Bus::builder().enforce(Mode::Strict).build());
 
-    let count = Rc::new(Cell::new(0u32));
-    let c = Rc::clone(&count);
+    let count = Arc::new(Slot::new(0u32));
+    let c = Arc::clone(&count);
     let id = bus.subscribe("crm.sales.deal.*", move |_| {
         c.set(c.get() + 1);
         Ok(())
@@ -326,4 +325,22 @@ fn shared_bus_subscribe_publish_unsubscribe() {
     bus.close();
     assert!(publisher.is_closed());
     assert!(publisher.publish(&ev("crm.sales.deal.created")).is_err());
+}
+
+/// A `Copy` value shared with a handler. Handlers are `Send + Sync`, so
+/// `std::cell::Cell` cannot cross into them.
+struct Slot<T>(Mutex<T>);
+
+impl<T: Copy> Slot<T> {
+    fn new(v: T) -> Self {
+        Slot(Mutex::new(v))
+    }
+
+    fn get(&self) -> T {
+        *self.0.lock().unwrap()
+    }
+
+    fn set(&self, v: T) {
+        *self.0.lock().unwrap() = v;
+    }
 }

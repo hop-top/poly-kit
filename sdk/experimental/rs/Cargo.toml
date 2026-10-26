@@ -2,23 +2,73 @@
 name = "hop-top-kit"
 version = "0.5.0-alpha.2"
 edition = "2021"
-license = "MIT"
+license = "MIT AND Apache-2.0"
 description = "Cross-language CLI UX parity toolkit"
 
 [features]
 default = []
-# The netpolicy chokepoint lives beneath `api`: it owns the reqwest client
-# construction path for user traffic, so anything that issues such a
-# request necessarily compiles it in. The telemetry HTTPS sink builds its
-# own client and is deliberately unguarded (logging-class egress).
-# `thiserror` supplies the typed refusal.
-api = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio", "dep:thiserror"]
+# The netpolicy guarded client lives beneath `api`: it owns the reqwest
+# client construction path for user traffic, so anything that issues
+# such a request necessarily compiles it in. The telemetry HTTPS sink
+# builds its own client and is deliberately unguarded (logging-class
+# egress). `thiserror` supplies the client's error type. No direct
+# tokio: nothing here names it, and reqwest brings its own.
+api = ["netpolicy", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:thiserror"]
+# The policy decision alone: `NetPolicy`, loopback classification, the
+# dial check and the typed refusal. No dependencies, wasm-safe, so a
+# client that dials its own sockets (websocket, SMTP, SQL) can enforce
+# `--offline` without compiling reqwest or tokio.
+netpolicy = []
 blob = ["dep:thiserror"]
 uri = ["dep:hop-top-cite"]
-output = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:thiserror", "dep:comfy-table"]
+# preserve_order backs serde_json::Map with indexmap instead of BTreeMap, so
+# object key order survives round-trips and projection at every nesting depth.
+# Required for --format=json/yaml to emit columns in ColumnSpec / --cols order
+# rather than alphabetically. indexmap is already in the tree via serde_yaml.
+# Scoped to `output`: Cargo unifies features, so enabling it from the base
+# dependency would flip Map ordering for every crate in a consumer's build.
+output = [
+    "dep:serde",
+    "dep:serde_json",
+    "serde_json/preserve_order",
+    "dep:serde_yaml",
+    "dep:thiserror",
+    "dep:comfy-table",
+]
 cli = ["output", "dep:clap"]
 id = ["dep:mti", "dep:uuid", "dep:serde", "dep:thiserror"]
 bus = ["dep:serde", "dep:serde_json"]
+# The bus network adapter: Go's NetworkAdapter over a native WebSocket
+# (tokio-tungstenite), TLS through rustls on the ring provider with the
+# platform's roots. Native only; the wasm32 core (`bus`, `netpolicy`)
+# compiles none of it. tokio carries only what the transport uses: a
+# current-thread runtime, sockets, timers, sync primitives and select!.
+bus-network = [
+    "bus",
+    "netpolicy",
+    "dep:tokio",
+    "tokio/rt",
+    "tokio/net",
+    "tokio/time",
+    "tokio/sync",
+    "tokio/macros",
+    "dep:tokio-tungstenite",
+    "dep:futures-util",
+    "dep:getrandom",
+    "dep:rustls",
+    "dep:rustls-native-certs",
+]
+# Mounts the adapter's accept handler on an axum router. Opt-in so a
+# consumer on another framework (or a bare listener) compiles no axum.
+bus-network-axum = ["bus-network", "dep:axum", "dep:hyper", "dep:hyper-util"]
+# Adds Mozilla's root store (webpki-roots, data under CDLA-Permissive-2.0)
+# to the default TLS roots, for platforms without a store rustls can read
+# (Android). Opt-in: by default only the platform's roots are trusted.
+bus-network-webpki-roots = ["bus-network", "dep:webpki-roots"]
+# Domain primitives over the bus vocabulary: the state machine with its
+# veto-able pre-transition and fire-and-forget post-transition events.
+# Nothing of its own; wasm-safe.
+domain = ["bus"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
 httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
 # Dual-spec MCP surface. `rmcp` supplies the protocol vocabulary (version
@@ -43,7 +93,20 @@ timeutil = ["dep:chrono", "dep:interim", "dep:thiserror"]
 # `serve` is by definition a long-running concurrent surface, so there
 # is no non-async shape for it. Consumers who ship no services compile
 # none of it.
-serve = ["output", "dep:tokio", "dep:serde_json"]
+#
+# tokio carries only the pieces the supervisor uses (spawn, select!,
+# channels and Notify, timers, signals); the consumer picks the runtime
+# flavour.
+serve = [
+    "output",
+    "dep:tokio",
+    "tokio/rt",
+    "tokio/macros",
+    "tokio/sync",
+    "tokio/time",
+    "tokio/signal",
+    "dep:serde_json",
+]
 # The `serve` command: mounts `serve [SERVICE]` with its flags on any
 # clap root. Opt-in on top of `serve`, following `sqlstore-blob`, so a
 # consumer wiring the lifecycle into its own parser does not compile
@@ -52,6 +115,11 @@ serve-cli = ["serve", "cli"]
 telemetry = [
     "api",
     "dep:tokio",
+    "tokio/rt",
+    "tokio/sync",
+    "tokio/time",
+    "tokio/fs",
+    "tokio/io-util",
     "dep:reqwest",
     "dep:serde",
     "dep:serde_json",
@@ -61,6 +129,25 @@ telemetry = [
     "dep:dirs",
     "dep:regex",
     "dep:thiserror",
+]
+
+# Layered YAML configuration, a port of go/core/config. Parsing, merge,
+# scalar resolution, overrides and precedence are pure and wasm-safe;
+# file loading, paths, Set/Unset and reload are compiled off wasm32 only.
+# Builds on `bus` for reload topics and events.
+config = ["bus", "dep:serde", "dep:serde_json", "dep:saphyr-parser"]
+# The pure half of go/core/config/pkl (schema parse, validation,
+# completion) plus `resolve`, which shells out to the `pkl` binary.
+config-pkl = ["config", "dep:regex"]
+# Signal-driven hot reload (`Reloadable::watch_signal`). Unix only;
+# brings tokio's signal driver, which `serve` already uses.
+config-signal = [
+    "config",
+    "dep:tokio",
+    "tokio/rt",
+    "tokio/macros",
+    "tokio/signal",
+    "tokio/sync",
 ]
 
 [dependencies]
@@ -73,13 +160,12 @@ interim = { version = "0.2", default-features = false, features = [
     "std",
     "chrono_0_4",
 ], optional = true }
-reqwest = { version = "0.13", features = ["json", "query"], optional = true }
+# Proxies come from the environment only (HTTP_PROXY etc.), as with Go net/http;
+# no system-proxy, which pulls macOS/Windows proxy settings and an old core-foundation.
+reqwest = { version = "0.13", default-features = false, features = ["default-tls", "charset", "http2", "json", "query"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
-# preserve_order backs serde_json::Map with indexmap instead of BTreeMap, so
-# object key order survives round-trips and projection at every nesting depth.
-# Required for --format=json/yaml to emit columns in ColumnSpec / --cols order
-# rather than alphabetically. indexmap is already in the tree via serde_yaml.
-serde_json = { version = "1", features = ["preserve_order"], optional = true }
+# No crate-wide features: `output` adds preserve_order for itself.
+serde_json = { version = "1", optional = true }
 serde_yaml = { version = "0.9", optional = true }
 sha2 = { version = "0.11", optional = true }
 # `default-features = false` drops the std/simd defaults: the envelope
@@ -103,8 +189,16 @@ crypto_secretbox = { version = "0.1", default-features = false, features = [
     "salsa20",
 ], optional = true }
 getrandom = { version = "0.4", optional = true }
+# YAML event parser with source spans. Spans drive the comment-keeping
+# editor behind `set`/`unset`; scalars resolve through this crate's own
+# yaml.v3-compatible rules, not the parser's. Exact pin: 0.x and the
+# editor depends on span semantics.
+saphyr-parser = { version = "=0.1.0", optional = true }
 dirs = { version = "7", optional = true }
-tokio = { version = "1", features = ["full"], optional = true }
+# No crate-wide features: each feature that uses tokio names the pieces it
+# needs, so `full` (and its socket, process and multi-thread runtime
+# stack) never reaches a consumer through this crate.
+tokio = { version = "1", optional = true }
 regex = { version = "1", optional = true }
 thiserror = { version = "2", optional = true }
 rmcp = { version = "3.1.4", default-features = false, optional = true }
@@ -120,17 +214,64 @@ uuid = { version = "1", features = ["v7", "serde"], optional = true }
 rusqlite = { version = "0.40", default-features = false, features = [
     "bundled",
 ], optional = true }
+# bus-network. Exact pins: the transport depends on their close, timeout
+# and capacity semantics. Default features off: `connect` dials over
+# tokio, `handshake` brings the HTTP upgrade, `rustls-tls-native-roots`
+# the rustls connector (handed our own ring-backed config).
+tokio-tungstenite = { version = "=0.30.0", default-features = false, features = [
+    "connect",
+    "handshake",
+    "rustls-tls-native-roots",
+], optional = true }
+futures-util = { version = "=0.3.34", default-features = false, features = [
+    "sink",
+    "std",
+], optional = true }
+# The ring provider only; no aws-lc-rs C build. Selected explicitly when
+# the client config is built, so another feature enabling aws-lc-rs in
+# the same graph does not make the provider ambiguous.
+rustls = { version = "=0.23.43", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+], optional = true }
+rustls-native-certs = { version = "=0.8.4", optional = true }
+webpki-roots = { version = "=1.0.9", optional = true }
+# bus-network-axum: the router adapter and hyper's upgrade. axum's
+# `tokio` feature supplies `ConnectInfo`, the peer address a link is
+# keyed by; its deps are already in the bus-network tree.
+axum = { version = "=0.8.9", default-features = false, features = [
+    "tokio",
+], optional = true }
+hyper = { version = "=1.12.0", default-features = false, features = [
+    "http1",
+    "server",
+], optional = true }
+hyper-util = { version = "=0.1.21", default-features = false, features = [
+    "tokio",
+], optional = true }
 
 [dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+# No extra features: dev-dependency features unify into the test build, so
+# preserve_order here would hide a feature set the shipped crate does not
+# have. Tests that need ordering get it from `output`.
+serde_json = "1"
+
+# Native-only: none of these builds for wasm32-unknown-unknown, and the
+# wasm test build (tests/bus_wasm.rs) compiles every dev-dependency.
+[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 mockito = "1"
-serde = { version = "1", features = ["derive"] }
-# Must match the lib dependency's feature set, or the test build and the
-# shipped crate disagree about Map's backing store and the suite would
-# validate ordering the released crate does not have.
-serde_json = { version = "1", features = ["preserve_order"] }
 tempfile = "3"
 uuid = { version = "1", features = ["v7", "serde"] }
+
+# The wasm32 smoke test (tests/bus_wasm.rs, `make test-rs-wasm`), run
+# under Node by wasm-bindgen-test-runner. Exact pins: each must match the
+# wasm-bindgen in Cargo.lock, and so must the wasm-bindgen-cli CI installs.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
+wasm-bindgen-test = "=0.3.71"
+wasm-bindgen-futures = "=0.4.71"
 
 # A real process serving a real listener, driven by the smoke test in
 # tests/serve_command.rs. Cargo sets no CARGO_BIN_EXE_* for examples,

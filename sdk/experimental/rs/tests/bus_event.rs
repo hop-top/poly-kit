@@ -25,9 +25,13 @@ fn event_json_round_trip() {
 #[test]
 fn new_event_sets_timestamp() {
     let e = Event::new("test.topic", "src", json!(null));
-    // YYYY-MM-DDTHH:MM:SS.sssZ
-    assert_eq!(e.timestamp.len(), 24, "timestamp = {}", e.timestamp);
+    // YYYY-MM-DDTHH:MM:SS[.fraction]Z, nanosecond precision.
     assert!(e.timestamp.ends_with('Z'), "timestamp = {}", e.timestamp);
+    assert!(
+        hop_top_kit::bus::event::canonical_timestamp(&e.timestamp).is_ok(),
+        "timestamp = {}",
+        e.timestamp
+    );
     assert!(e.timestamp.starts_with("20"), "timestamp = {}", e.timestamp);
 }
 
@@ -196,16 +200,15 @@ fn qualifiers_from_non_object_returns_none() {
 /// qualifiers; the subscriber extracts them via `qualifiers_from`.
 #[test]
 fn qualifiers_publish_subscribe_round_trip() {
-    use std::cell::RefCell;
-    use std::rc::Rc;
+    use std::sync::{Arc, Mutex};
 
     let mut bus = Bus::builder().enforce(Mode::Strict).build();
     let topic = Topic::from("kit.config.snapshot.failed");
 
-    let got: Rc<RefCell<Option<Qualifiers>>> = Rc::new(RefCell::new(None));
-    let sink = Rc::clone(&got);
+    let got: Arc<Mutex<Option<Qualifiers>>> = Arc::new(Mutex::new(None));
+    let sink = Arc::clone(&got);
     bus.subscribe(topic.as_str(), move |e| {
-        *sink.borrow_mut() = qualifiers_from(&e.payload);
+        *sink.lock().unwrap() = qualifiers_from(&e.payload);
         Ok(())
     });
 
@@ -225,7 +228,8 @@ fn qualifiers_publish_subscribe_round_trip() {
     bus.publish(&event).expect("publish");
 
     let q = got
-        .borrow()
+        .lock()
+        .unwrap()
         .clone()
         .expect("subscriber extracted qualifiers");
     assert_eq!(q.reason, "sighup");

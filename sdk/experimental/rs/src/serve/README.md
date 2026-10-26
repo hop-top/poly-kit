@@ -62,7 +62,8 @@ assert_eq!(res.exit_code, 0);
 - Exit codes come from `LifecycleOutcome::exit_code`: clean stop 0, start failure or crash or shutdown
   timeout 1, usage or config 2, unknown service 3, policy denied 5.
 - Defaults: `ready_timeout` 30s, `stop_timeout` 30s, `shutdown_timeout` 60s, `failure_policy` fail-fast.
-- Lifecycle events publish under `kit.serve.*` through the narrow `Publisher` trait: `bus::Bus` is `!Send`.
+- Lifecycle events publish under `kit.serve.*` through the narrow `Publisher` trait, so `serve` does not
+  depend on the `bus` feature; adopters wire a `bus::SharedBus` or their own sink behind it.
 - Parity: [contracts/parity/serve.json](../../../../../contracts/parity/serve.json), row `ports.rs`, pinned by
   `tests/serve_parity.rs`.
 

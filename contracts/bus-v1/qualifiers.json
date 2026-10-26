@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/bus-v1/qualifiers.json",
+  "version": "v1",
+  "description": "Qualifiers. `serialize`: the four fields marshal under lowercase keys and empty fields are omitted. `extract`: the payload shapes below (SnapshotReloadFailed-style, plus a `snapshot_id` field) either yield the qualifiers or do not. Shapes: embedded = qualifier fields at the top level of the payload object; pointer_embedded = same, payload passed by pointer; named = a `qualifiers` field holding the qualifier object; none = payload object with no qualifier field; nil = absent payload; scalar = a string; array = a JSON array. Not in the corpus because the languages cannot agree by construction: an embedded Qualifiers with every field empty (Go: found; Rust cannot tell it from `none`), and a map/object payload that happens to use the qualifier keys (Go: not a struct; Rust: found).",
+  "serialize": [
+    {
+      "name": "empty",
+      "qualifiers": {},
+      "json": {},
+      "is_zero": true
+    },
+    {
+      "name": "reason only",
+      "qualifiers": {
+        "reason": "timeout"
+      },
+      "json": {
+        "reason": "timeout"
+      },
+      "is_zero": false
+    },
+    {
+      "name": "all four",
+      "qualifiers": {
+        "reason": "timeout",
+        "mechanism": "retry",
+        "property": "status",
+        "circumstance": "offline"
+      },
+      "json": {
+        "reason": "timeout",
+        "mechanism": "retry",
+        "property": "status",
+        "circumstance": "offline"
+      },
+      "is_zero": false
+    },
+    {
+      "name": "circumstance only",
+      "qualifiers": {
+        "circumstance": "offline"
+      },
+      "json": {
+        "circumstance": "offline"
+      },
+      "is_zero": false
+    },
+    {
+      "name": "empty strings omitted",
+      "qualifiers": {
+        "reason": "",
+        "mechanism": "x"
+      },
+      "json": {
+        "mechanism": "x"
+      },
+      "is_zero": false
+    }
+  ],
+  "extract": [
+    {
+      "name": "embedded all",
+      "shape": "embedded",
+      "qualifiers": {
+        "reason": "timeout",
+        "mechanism": "retry",
+        "property": "status",
+        "circumstance": "offline"
+      },
+      "found": true
+    },
+    {
+      "name": "embedded partial",
+      "shape": "embedded",
+      "qualifiers": {
+        "reason": "r"
+      },
+      "found": true
+    },
+    {
+      "name": "pointer to embedded",
+      "shape": "pointer_embedded",
+      "qualifiers": {
+        "reason": "timeout",
+        "mechanism": "retry",
+        "property": "status",
+        "circumstance": "offline"
+      },
+      "found": true
+    },
+    {
+      "name": "named all",
+      "shape": "named",
+      "qualifiers": {
+        "reason": "timeout",
+        "mechanism": "retry",
+        "property": "status",
+        "circumstance": "offline"
+      },
+      "found": true
+    },
+    {
+      "name": "named partial",
+      "shape": "named",
+      "qualifiers": {
+        "property": "p"
+      },
+      "found": true
+    },
+    {
+      "name": "named empty",
+      "shape": "named",
+      "qualifiers": {},
+      "found": true
+    },
+    {
+      "name": "struct without qualifiers",
+      "shape": "none",
+      "qualifiers": {},
+      "found": false
+    },
+    {
+      "name": "nil payload",
+      "shape": "nil",
+      "qualifiers": {},
+      "found": false
+    },
+    {
+      "name": "string payload",
+      "shape": "scalar",
+      "qualifiers": {},
+      "found": false
+    },
+    {
+      "name": "array payload",
+      "shape": "array",
+      "qualifiers": {},
+      "found": false
+    }
+  ]
+}

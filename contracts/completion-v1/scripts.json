@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/completion-v1/scripts.json",
+  "version": "v1",
+  "description": "`<program> completion <shell> [--no-descriptions]` writes the golden file byte for byte. The scripts call back into `<program> __complete` (`__completeNoDesc` without descriptions) and read the protocol pinned by requests.json. Function and variable names derive from the program name; `-` and `:` become `_` where a shell needs an identifier, and the active-help variable is the upper-cased name with every character outside [A-Z0-9_] replaced by `_`.",
+  "cases": [
+    {
+      "name": "kitapp bash",
+      "program": "kitapp",
+      "shell": "bash",
+      "no_descriptions": false,
+      "golden": "scripts/kitapp.bash"
+    },
+    {
+      "name": "kitapp bash --no-descriptions",
+      "program": "kitapp",
+      "shell": "bash",
+      "no_descriptions": true,
+      "golden": "scripts/kitapp.nodesc.bash"
+    },
+    {
+      "name": "kitapp zsh",
+      "program": "kitapp",
+      "shell": "zsh",
+      "no_descriptions": false,
+      "golden": "scripts/kitapp.zsh"
+    },
+    {
+      "name": "kitapp zsh --no-descriptions",
+      "program": "kitapp",
+      "shell": "zsh",
+      "no_descriptions": true,
+      "golden": "scripts/kitapp.nodesc.zsh"
+    },
+    {
+      "name": "kitapp fish",
+      "program": "kitapp",
+      "shell": "fish",
+      "no_descriptions": false,
+      "golden": "scripts/kitapp.fish"
+    },
+    {
+      "name": "kitapp fish --no-descriptions",
+      "program": "kitapp",
+      "shell": "fish",
+      "no_descriptions": true,
+      "golden": "scripts/kitapp.nodesc.fish"
+    },
+    {
+      "name": "kitapp powershell",
+      "program": "kitapp",
+      "shell": "powershell",
+      "no_descriptions": false,
+      "golden": "scripts/kitapp.ps1"
+    },
+    {
+      "name": "kitapp powershell --no-descriptions",
+      "program": "kitapp",
+      "shell": "powershell",
+      "no_descriptions": true,
+      "golden": "scripts/kitapp.nodesc.ps1"
+    },
+    {
+      "name": "kit-app bash",
+      "program": "kit-app",
+      "shell": "bash",
+      "no_descriptions": false,
+      "golden": "scripts/kit-app.bash"
+    },
+    {
+      "name": "kit-app zsh",
+      "program": "kit-app",
+      "shell": "zsh",
+      "no_descriptions": false,
+      "golden": "scripts/kit-app.zsh"
+    },
+    {
+      "name": "kit-app fish",
+      "program": "kit-app",
+      "shell": "fish",
+      "no_descriptions": false,
+      "golden": "scripts/kit-app.fish"
+    },
+    {
+      "name": "kit-app powershell",
+      "program": "kit-app",
+      "shell": "powershell",
+      "no_descriptions": false,
+      "golden": "scripts/kit-app.ps1"
+    }
+  ]
+}
