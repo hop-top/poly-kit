@@ -42,6 +42,10 @@ pub(crate) struct State {
     pub(crate) peers: HashMap<String, Peer>,
     /// Addresses with a reconnect loop running.
     pub(crate) reconnecting: std::collections::HashSet<String>,
+    /// Addresses whose link dropped while their reconnect loop was still
+    /// running; the loop consumes the mark before it exits, so no drop is
+    /// lost. Go's `pendingRedial`.
+    pub(crate) pending_redial: std::collections::HashSet<String>,
 }
 
 /// What the adapter keeps for an outbound address across reconnects: Go's
@@ -80,6 +84,10 @@ pub(crate) struct Inner {
     pub(crate) write_fault: Mutex<Option<WriteFault>>,
     /// Go's `handshakeTimeout`; a test seam shortens it.
     pub(crate) handshake_timeout: Mutex<Duration>,
+    /// Test seam: holds a reconnect loop at its exit, once.
+    pub(crate) exit_gate: Mutex<Option<super::reconnect::ExitGate>>,
+    /// Test seam: replaces a reconnect loop's backoff sleep.
+    pub(crate) backoff_wait: Mutex<Option<super::reconnect::BackoffWait>>,
 }
 
 impl Inner {
@@ -222,6 +230,8 @@ impl NetworkAdapter {
             tasks: WaitGroup::default(),
             write_fault: Mutex::new(None),
             handshake_timeout: Mutex::new(super::session::HANDSHAKE_TIMEOUT),
+            exit_gate: Mutex::new(None),
+            backoff_wait: Mutex::new(None),
         });
         let weak = Arc::downgrade(&inner);
         let id = inner.bus.subscribe_async(

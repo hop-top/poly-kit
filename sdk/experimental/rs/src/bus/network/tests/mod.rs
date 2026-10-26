@@ -13,6 +13,7 @@ mod events;
 mod handshake;
 mod links;
 mod policy;
+mod redial;
 
 pub(super) fn within<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
     let (tx, rx) = mpsc::channel();

@@ -218,21 +218,49 @@ fn flapping_acceptor(hold: Duration) -> (String, std::sync::Arc<std::sync::atomi
     (url, accepts)
 }
 
-/// Go's `TestNetworkAdapter_ReconnectBacksOffAgainstAFlappingAcceptor`:
-/// a link that drops right after it comes up is redialed after the
-/// backoff, which keeps growing across short-lived links. With the
-/// default 100 ms base, 2 s holds a handful of attempts; an immediate
-/// redial makes thousands.
+/// Subscribes a channel to `kit.runtime.link.*` on `bus`, as (topic).
+fn link_events(bus: &DynBus) -> std::sync::mpsc::Receiver<String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let tx = std::sync::Mutex::new(tx);
+    bus.subscribe("kit.runtime.link.#", move |e| {
+        let _ = tx.lock().unwrap().send(e.topic.as_str().to_string());
+        Ok(())
+    });
+    rx
+}
+
+/// Go's `TestNetworkAdapter_RedialNeverLostUnderManyFlappingPeers`: 40
+/// adapters flapping against one acceptor all keep redialing; no drop is
+/// lost to a loop on its way out. Each adapter must link three times
+/// (waited on through its own link events) and closes once it has.
 #[test]
-fn reconnect_backs_off_against_a_flapping_acceptor() {
-    let (url, accepts) = flapping_acceptor(Duration::ZERO);
-    let n = NetworkAdapter::new(DynBus::new(), NetworkOptions::new());
-    n.dial(&url);
-    sleep_ms(2000);
-    within(move || n.close()).unwrap();
-    let got = accepts.load(Ordering::SeqCst);
-    assert!(
-        (2..=15).contains(&got),
-        "{got} connections in 2 s, want 2..15 (backoff from 100 ms, growing)"
-    );
+fn redial_never_lost_under_many_flapping_peers() {
+    let (url, _) = flapping_acceptor(Duration::ZERO);
+    let workers: Vec<_> = (0..40)
+        .map(|i| {
+            let bus = DynBus::new();
+            let n = NetworkAdapter::new(
+                bus.clone(),
+                NetworkOptions::new().backoff(Duration::from_millis(5), Duration::from_millis(20)),
+            );
+            let events = link_events(&bus);
+            n.dial(&url);
+            std::thread::spawn(move || {
+                let mut ups = 0;
+                while ups < 3 {
+                    match events.recv_timeout(Duration::from_secs(10)) {
+                        Ok(t) if t == "kit.runtime.link.connected" => ups += 1,
+                        Ok(_) => {}
+                        Err(_) => break,
+                    }
+                }
+                let _ = n.close();
+                (i, ups)
+            })
+        })
+        .collect();
+    for w in workers {
+        let (i, ups) = within(move || w.join().unwrap());
+        assert_eq!(ups, 3, "adapter {i} stopped redialing after {ups} links");
+    }
 }

@@ -9,6 +9,16 @@ use super::adapter::Inner;
 use super::runtime;
 use crate::util::retry::SplitMix64;
 
+/// Test seam: holds a reconnect loop at its exit until released.
+pub(crate) struct ExitGate {
+    pub(crate) entered: std::sync::mpsc::Sender<()>,
+    pub(crate) release: Arc<tokio::sync::Semaphore>,
+}
+
+/// Test seam: called with each backoff wait's attempt in place of the
+/// sleep.
+pub(crate) type BackoffWait = Arc<dyn Fn(u32) + Send + Sync>;
+
 /// The bound on one reconnect dial and handshake.
 const DIAL_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -39,10 +49,17 @@ impl Inner {
     fn start_reconnect(self: &Arc<Self>, addr: &str, wait: bool) {
         let first = {
             let mut st = self.state();
-            if self.closed.load(Ordering::SeqCst)
-                || st.reconnecting.contains(addr)
-                || !st.peers.contains_key(addr)
-            {
+            if self.closed.load(Ordering::SeqCst) || !st.peers.contains_key(addr) {
+                return;
+            }
+            if st.reconnecting.contains(addr) {
+                // A loop is running and may already be past the dial that
+                // made the link that dropped: leave it a mark instead of
+                // losing the request. It checks the mark under this lock
+                // before it exits.
+                if wait {
+                    st.pending_redial.insert(addr.to_string());
+                }
                 return;
             }
             st.reconnecting.insert(addr.to_string());
@@ -52,8 +69,25 @@ impl Inner {
         let inner = Arc::clone(self);
         let addr = addr.to_string();
         runtime::handle().spawn(async move {
-            inner.reconnect_loop(&addr, first).await;
-            inner.state().reconnecting.remove(&addr);
+            let mut from = first;
+            loop {
+                inner.reconnect_loop(&addr, from).await;
+                inner.hold_at_exit().await;
+                // Under the lock start_reconnect takes: a drop either left
+                // its mark before this point or starts a loop of its own
+                // after it.
+                let mut st = inner.state();
+                let pending = st.pending_redial.remove(&addr);
+                match st.peers.get(&addr) {
+                    Some(p) if pending && !inner.closed.load(Ordering::SeqCst) => {
+                        from = Some(p.flaps);
+                    }
+                    _ => {
+                        st.reconnecting.remove(&addr);
+                        break;
+                    }
+                }
+            }
             inner.tasks.done();
         });
     }
@@ -70,12 +104,8 @@ impl Inner {
         let mut wait = wait_from.is_some();
         let mut attempt = wait_from.unwrap_or(0);
         for tries in 1u32.. {
-            if wait {
-                let delay = self.reconnect.backoff_with(attempt, &mut rng);
-                tokio::select! {
-                    () = tokio::time::sleep(delay) => {}
-                    () = self.closing.wait() => return,
-                }
+            if wait && !self.wait_backoff(attempt, &mut rng).await {
+                return;
             }
             wait = true;
             if self.closed.load(Ordering::SeqCst) {
@@ -91,6 +121,38 @@ impl Inner {
                 return;
             }
             attempt = attempt.saturating_add(1);
+        }
+    }
+
+    /// Waits the backoff for `attempt`; false once the adapter closes.
+    async fn wait_backoff(&self, attempt: u32, rng: &mut SplitMix64) -> bool {
+        let seam = self
+            .backoff_wait
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Some(f) = seam {
+            f(attempt);
+            tokio::task::yield_now().await;
+            return !self.closed.load(Ordering::SeqCst);
+        }
+        let delay = self.reconnect.backoff_with(attempt, rng);
+        tokio::select! {
+            () = tokio::time::sleep(delay) => true,
+            () = self.closing.wait() => false,
+        }
+    }
+
+    /// The exit-gate seam: a no-op unless a test armed it.
+    async fn hold_at_exit(&self) {
+        let gate = self
+            .exit_gate
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(g) = gate {
+            let _ = g.entered.send(());
+            let _ = g.release.acquire().await;
         }
     }
 }
