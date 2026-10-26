@@ -77,6 +77,7 @@ fn reconnect_backs_off_against_a_flapping_acceptor() {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .send(attempt);
+        true
     };
     *n.0.backoff_wait
         .lock()
@@ -117,7 +118,10 @@ fn redial_pending_during_loop_exit() {
     let bus = DynBus::new();
     let n = NetworkAdapter::new(
         bus.clone(),
-        NetworkOptions::new().backoff(Duration::from_millis(1), Duration::from_millis(4)),
+        // A cap (and so a stability window) of an hour: the first link
+        // counts as short however slow the machine; the wait seam keeps
+        // the test fast.
+        NetworkOptions::new().backoff(Duration::from_millis(1), Duration::from_secs(3600)),
     );
     let (down_tx, down) = mpsc::channel();
     let down_tx = std::sync::Mutex::new(down_tx);
@@ -142,6 +146,7 @@ fn redial_pending_during_loop_exit() {
         a.lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(attempt);
+        true
     }));
     n.dial(&url);
     accepted
@@ -230,6 +235,7 @@ fn redial_after_drop_waits_first() {
         .lock()
         .unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(move |_| {
         w.fetch_add(1, Ordering::SeqCst);
+        true
     }));
     n.dial(&url);
     accepted

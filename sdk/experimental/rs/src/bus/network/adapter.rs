@@ -46,6 +46,9 @@ pub(crate) struct State {
     /// running; the loop consumes the mark before it exits, so no drop is
     /// lost. Go's `pendingRedial`.
     pub(crate) pending_redial: HashMap<String, bool>,
+    /// Each running loop's wake signal: a user request (dial, connect)
+    /// or disconnect ends the loop's backoff wait at once.
+    pub(crate) wakes: HashMap<String, Arc<tokio::sync::Notify>>,
 }
 
 /// What the adapter keeps for an outbound address across reconnects: Go's
@@ -88,6 +91,9 @@ pub(crate) struct Inner {
     #[cfg(test)]
     pub(crate) exit_gate: Mutex<Option<super::reconnect::ExitGate>>,
     /// Test seam: replaces a reconnect loop's backoff sleep.
+    /// Test seam: wakes sent to backoff waits.
+    #[cfg(test)]
+    pub(crate) wakes_sent: std::sync::atomic::AtomicUsize,
     #[cfg(test)]
     pub(crate) backoff_wait: Mutex<Option<super::reconnect::BackoffWait>>,
 }
@@ -236,6 +242,8 @@ impl NetworkAdapter {
             exit_gate: Mutex::new(None),
             #[cfg(test)]
             backoff_wait: Mutex::new(None),
+            #[cfg(test)]
+            wakes_sent: std::sync::atomic::AtomicUsize::new(0),
         });
         let weak = Arc::downgrade(&inner);
         let id = inner.bus.subscribe_async(
@@ -289,6 +297,7 @@ impl NetworkAdapter {
     /// When called on the network runtime; use
     /// [`connect_async`](Self::connect_async) there.
     pub fn connect(&self, ctx: &Context, addr: &str) -> Result<(), NetworkError> {
+        self.0.preempt_backoff(addr);
         let inner = Arc::clone(&self.0);
         let (ctx, addr) = (ctx.clone(), addr.to_string());
         runtime::block_on(
@@ -299,6 +308,7 @@ impl NetworkAdapter {
 
     /// [`connect`](Self::connect) from async code, on any executor.
     pub async fn connect_async(&self, ctx: &Context, addr: &str) -> Result<(), NetworkError> {
+        self.0.preempt_backoff(addr);
         let inner = Arc::clone(&self.0);
         let (ctx, addr) = (ctx.clone(), addr.to_string());
         runtime::run(async move { inner.connect(ctx, addr, false).await }).await
@@ -395,6 +405,7 @@ impl Inner {
             let mut st = self.state();
             st.peers.remove(addr);
             st.pending_redial.remove(addr);
+            self.wake_locked(&st, addr);
             st.conns.get(addr).cloned()
         }?;
         link.close(STATUS_NORMAL, "disconnect");

@@ -108,6 +108,7 @@ fn watch_waits(n: &NetworkAdapter) -> Arc<AtomicBool> {
         {
             w.store(true, Ordering::SeqCst);
         }
+        true
     }));
     waited
 }

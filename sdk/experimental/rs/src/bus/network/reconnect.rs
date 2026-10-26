@@ -5,7 +5,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::adapter::Inner;
+use super::adapter::{Inner, State};
 use super::runtime;
 use crate::util::retry::SplitMix64;
 
@@ -16,10 +16,11 @@ pub(crate) struct ExitGate {
     pub(crate) release: Arc<tokio::sync::Semaphore>,
 }
 
-/// Test seam: called with each backoff wait's attempt in place of the
-/// sleep.
+/// Test seam for the backoff timer, called with each wait's attempt:
+/// `true` lets the wait elapse at once, `false` holds it until it is
+/// woken or the adapter closes.
 #[cfg(test)]
-pub(crate) type BackoffWait = Arc<dyn Fn(u32) + Send + Sync>;
+pub(crate) type BackoffWait = Arc<dyn Fn(u32) -> bool + Send + Sync>;
 
 /// The bound on one reconnect dial and handshake.
 const DIAL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -57,13 +58,16 @@ impl Inner {
     /// | state | event | next |
     /// |---|---|---|
     /// | idle / up | request | running (loop started; waits if `wait`) |
-    /// | running | request | running + mark (`wait` = AND of the requests) |
+    /// | running | request | running + mark (`wait` = AND of the requests); a dial request (`wait` false) also wakes the wait |
+    /// | backoff-wait | wake (dial, connect, disconnect) | wait ends; exit check (mark: dial now, attempts from 0; forgotten: loop gone) |
+    /// | backoff-wait | request(wait) (a drop) | no wake: the full backoff stands |
     /// | running | dial fails | running (attempt + 1, waits) |
     /// | running | dial succeeds / gives up | exit check |
     /// | exit check | mark, address kept, open | running (mark consumed; waits as marked) |
     /// | exit check | no mark, or forgotten / closed | idle / up (loop gone) |
     /// | up | link drops | request(wait); `flaps` + 1, or reset after [`stable_after`](Self::stable_after) |
-    /// | any | disconnect | address forgotten, mark cleared; the loop exits at its check |
+    /// | any | disconnect | address forgotten, mark cleared, wait woken; the loop exits at its check |
+    /// | any | connect | dials inline; a running loop gets mark(now) and a wake |
     /// | any | close | closed, marks cleared; loops stop, nothing dials |
     ///
     /// An explicit connect dials inline and owns no loop: a link it makes
@@ -79,11 +83,12 @@ impl Inner {
                 return;
             }
             if st.reconnecting.contains(addr) {
-                let marked = st.pending_redial.get(addr).copied().unwrap_or(true);
-                st.pending_redial.insert(addr.to_string(), wait && marked);
+                self.mark_locked(&mut st, addr, wait);
                 return;
             }
             st.reconnecting.insert(addr.to_string());
+            st.wakes
+                .insert(addr.to_string(), Arc::new(tokio::sync::Notify::new()));
             self.tasks.add();
             wait.then(|| st.peers.get(addr).map_or(0, |p| p.flaps))
         };
@@ -102,15 +107,53 @@ impl Inner {
                 match (mark, st.peers.get(&addr)) {
                     (Some(wait), Some(p)) if !inner.closed.load(Ordering::SeqCst) => {
                         from = wait.then_some(p.flaps);
+                        // The mark carried any wake: a fresh signal drops it.
+                        st.wakes
+                            .insert(addr.clone(), Arc::new(tokio::sync::Notify::new()));
                     }
                     _ => {
                         st.reconnecting.remove(&addr);
+                        st.wakes.remove(&addr);
                         break;
                     }
                 }
             }
             inner.tasks.done();
         });
+    }
+
+    /// Hands a request to `addr`'s running loop: the mark (`wait` is the
+    /// AND of the pending requests) and, for a user request, a wake that
+    /// ends the loop's backoff wait. A drop (`wait`) never wakes: it
+    /// honors the full backoff. Go's `markLocked`.
+    fn mark_locked(&self, st: &mut State, addr: &str, wait: bool) {
+        let wait = wait && st.pending_redial.get(addr).copied().unwrap_or(true);
+        st.pending_redial.insert(addr.to_string(), wait);
+        if !wait {
+            self.wake_locked(st, addr);
+        }
+    }
+
+    /// Ends `addr`'s loop's backoff wait, if a loop runs. Go's
+    /// `wakeLocked`.
+    pub(crate) fn wake_locked(&self, st: &State, addr: &str) {
+        if let Some(w) = st.wakes.get(addr) {
+            w.notify_one();
+            #[cfg(test)]
+            self.wakes_sent.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    /// An explicit connect: a loop backing off for `addr` dials now too,
+    /// and its dial finds this link if this one wins.
+    pub(crate) fn preempt_backoff(&self, addr: &str) {
+        let mut st = self.state();
+        if st.reconnecting.contains(addr)
+            && st.peers.contains_key(addr)
+            && !self.closed.load(Ordering::SeqCst)
+        {
+            self.mark_locked(&mut st, addr, false);
+        }
     }
 
     /// Dials `addr` until connected, forgotten, closed, or out of
@@ -125,7 +168,7 @@ impl Inner {
         let mut wait = wait_from.is_some();
         let mut attempt = wait_from.unwrap_or(0);
         for tries in 1u32.. {
-            if wait && !self.wait_backoff(attempt, &mut rng).await {
+            if wait && !self.wait_backoff(addr, attempt, &mut rng).await {
                 return;
             }
             wait = true;
@@ -146,7 +189,18 @@ impl Inner {
     }
 
     /// Waits the backoff for `attempt`; false once the adapter closes.
-    async fn wait_backoff(&self, attempt: u32, rng: &mut SplitMix64) -> bool {
+    /// Waits the backoff for `attempt`. Returns false, ending the run,
+    /// when the adapter closes or the loop is woken (dial, connect,
+    /// disconnect); the exit check then serves the mark or sees the
+    /// address gone.
+    async fn wait_backoff(&self, addr: &str, attempt: u32, rng: &mut SplitMix64) -> bool {
+        let wake = self.state().wakes.get(addr).cloned();
+        let woken = async {
+            match wake {
+                Some(w) => w.notified().await,
+                None => std::future::pending().await,
+            }
+        };
         #[cfg(test)]
         {
             let seam = self
@@ -155,15 +209,23 @@ impl Inner {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .clone();
             if let Some(f) = seam {
-                f(attempt);
-                tokio::task::yield_now().await;
-                return !self.closed.load(Ordering::SeqCst);
+                if f(attempt) {
+                    tokio::task::yield_now().await;
+                    return !self.closed.load(Ordering::SeqCst);
+                }
+                // Held until woken or closed.
+                tokio::select! {
+                    () = woken => {}
+                    () = self.closing.wait() => {}
+                }
+                return false;
             }
         }
         let delay = self.reconnect.backoff_with(attempt, rng);
         tokio::select! {
             () = tokio::time::sleep(delay) => true,
             () = self.closing.wait() => false,
+            () = woken => false,
         }
     }
 
