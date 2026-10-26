@@ -1,0 +1,12 @@
+{
+  "version": "v1",
+  "description": "Second fixture tree for the completion-spec-v1 corpus: a root whose name carries Tera delimiters, including a raw-block terminator and a payload that would leave the shell quote if Tera evaluated it. Each port must produce expected-tera.fig.js and expected-tera.usage.kdl byte for byte.",
+  "root": {
+    "use": "x{%endraw%}{{\"';touch${IFS}PWNED;'\"}}{%raw%}{%-endraw-%}{%}{{}}{#c#}% <target>",
+    "short": "Tera delimiters in the binary name",
+    "valid_args_function": true,
+    "flags": [
+      { "name": "zone", "type": "string", "usage": "Zone to use", "completion_function": true }
+    ]
+  }
+}
