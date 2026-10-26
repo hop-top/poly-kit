@@ -232,6 +232,9 @@ func (l *link) drain() bool {
 
 func (l *link) send(e LogEntry) bool {
 	n := l.n
+	if e.via == l {
+		return true
+	}
 	if !entryDelivers(l.subs, l.peerOrigin(), e) {
 		return true
 	}
@@ -420,7 +423,16 @@ func (l *link) onEvent(data []byte) bool {
 	if origin == n.originID || isReservedTopic(e.Topic) {
 		return true
 	}
+	if origin == "" {
+		// A frame without an origin (a CloudEvents frame without
+		// kitorigin, say) would slip past every loop check. Stamp it
+		// with the link's origin, else this adapter's own.
+		if origin = l.peerOrigin(); origin == "" {
+			origin = n.originID
+		}
+	}
 	ctx := context.WithValue(l.ctx, networkOriginKey, origin)
+	ctx = context.WithValue(ctx, viaKey{}, l)
 	if l.outbound {
 		ctx = context.WithValue(ctx, deliveryKey{}, l.addr)
 	}

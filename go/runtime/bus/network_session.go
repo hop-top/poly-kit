@@ -349,6 +349,14 @@ func (n *NetworkAdapter) Handler() http.Handler {
 			_ = conn.Close(statusGoingAway, "closing")
 			return
 		}
+		if n.conns[peer.Addr] != nil {
+			// Another link holds this address (a handler that rewrites
+			// RemoteAddr): refuse, as a duplicate outbound link is, so no
+			// link escapes Close.
+			n.mu.Unlock()
+			_ = conn.Close(statusNormal, "duplicate")
+			return
+		}
 		n.conns[peer.Addr] = l
 		n.wg.Add(1)
 		n.mu.Unlock()

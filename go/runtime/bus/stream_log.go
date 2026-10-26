@@ -18,6 +18,9 @@ type LogEntry struct {
 	Event  Event
 	Origin string
 	Marker bool
+
+	// via is the link an inbound event arrived on: never sent back on it.
+	via *link
 }
 
 // StreamLog stores the recent part of an adapter's stream. Offsets are

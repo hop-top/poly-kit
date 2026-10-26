@@ -90,6 +90,10 @@ type ctxKey struct{}
 // networkOriginKey marks events injected from the network to prevent re-forwarding.
 var networkOriginKey = ctxKey{}
 
+// viaKey carries the link an inbound event arrived on, so a relay never
+// sends it back there, whatever origin the frame claimed.
+type viaKey struct{}
+
 // NetworkAdapter bridges a local bus to remote peers over WebSocket.
 //
 // Every adapter keeps a log of the events it forwards; each link has a
@@ -195,7 +199,8 @@ func (n *NetworkAdapter) observe(ctx context.Context, e Event) {
 	if !n.filter.Match(string(e.Topic)) {
 		return
 	}
-	n.log.Append(LogEntry{Event: e, Origin: origin})
+	via, _ := ctx.Value(viaKey{}).(*link)
+	n.log.Append(LogEntry{Event: e, Origin: origin, via: via})
 	n.wake()
 }
 
