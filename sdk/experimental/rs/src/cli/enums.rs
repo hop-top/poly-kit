@@ -109,7 +109,7 @@ pub(super) fn apply_enum_help(
                 .get(&(path.to_string(), name.clone()))
                 .or_else(|| enums.get(&(String::new(), name)))?;
             let suffix = format!("(one of: {})", values.join(", "));
-            let help = match a.get_help().map(|h| h.to_string()) {
+            let help = match a.get_help().map(|h| h.ansi().to_string()) {
                 Some(h) if !h.is_empty() => format!("{h} {suffix}"),
                 _ => suffix,
             };

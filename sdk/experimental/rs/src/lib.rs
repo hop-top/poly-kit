@@ -29,6 +29,9 @@ pub mod id;
 #[cfg(feature = "bus")]
 pub mod bus;
 
+#[cfg(feature = "domain")]
+pub mod domain;
+
 #[cfg(feature = "config")]
 pub mod config;
 

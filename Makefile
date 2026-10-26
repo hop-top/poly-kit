@@ -4,7 +4,7 @@
 	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	completion-regen test-parity test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-taxonomy test-parity-typeid test-py \
+	completion-regen test-parity test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-rs-wasm test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint
 
@@ -204,7 +204,7 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 # async pool is uncapped and close reports NotDrained instead of
 # blocking. wasm-bindgen-test-runner comes from wasm-bindgen-cli, whose
 # version must equal the wasm-bindgen in Cargo.lock.
-test-rs-wasm: ## Rust: bus wasm32 smoke test under Node (needs the matching wasm-bindgen-cli)
+test-rs-wasm: ## Rust: bus and domain wasm32 smoke tests under Node (needs the matching wasm-bindgen-cli)
 	@want=$$(awk '/^name = "wasm-bindgen"$$/ { getline; gsub(/version = |"/, ""); print }' sdk/experimental/rs/Cargo.lock); \
 	have=$$(wasm-bindgen --version 2>/dev/null | awk '{ print $$2 }'); \
 	if [ "$$want" != "$$have" ]; then \
@@ -214,8 +214,10 @@ test-rs-wasm: ## Rust: bus wasm32 smoke test under Node (needs the matching wasm
 	fi
 	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features bus --test bus_wasm
+	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features domain --test domain_statemachine_wasm
 
-test-parity: test-parity-typeid test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -307,11 +309,11 @@ test-parity-taxonomy: ## exit-code taxonomy across Go + 4 SDKs
 
 # Shared bus conformance corpus: the Go and Rust runners read the same
 # vectors under contracts/bus-v1.
-test-parity-bus: ## bus-v1 conformance corpus, CloudEvents and streams included (Go and Rust runners)
+test-parity-bus: ## bus-v1 conformance corpus, CloudEvents, streams and sinks included (Go and Rust runners)
 	@echo "==> bus-v1 conformance: Go"
-	go test ./go/runtime/bus/ -run '^(TestConformance|TestCloudEventsConformance|TestStreamConformance)' -count=1
+	go test ./go/runtime/bus/ -run '^(TestConformance|TestCloudEventsConformance|TestStreamConformance|TestSinkConformance)' -count=1
 	@echo "==> bus-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --test bus_conformance --test bus_cloudevents_conformance --test 'bus_stream_conformance*' --all-features --locked
+	cd sdk/experimental/rs && cargo test --test bus_conformance --test bus_cloudevents_conformance --test 'bus_stream_conformance*' --test bus_sinks_conformance --all-features --locked
 
 # Bus network across languages: Go hub <-> Rust client, Rust hub <-> Go
 # client and mixed three-node relays, with and without auth. The Go peer
@@ -323,9 +325,11 @@ test-parity-bus-network: ## bus network cross-language e2e (Go <-> Rust hubs, cl
 
 # Completion-spec exports (Fig module, Usage KDL) over one fixture tree.
 # Go runner only; a port adds its runner here.
-test-parity-completion-spec: ## completion-spec-v1 corpus: Fig and Usage exports, byte for byte (Go runner)
+test-parity-completion-spec: ## completion-spec-v1 corpus: Fig and Usage exports, byte for byte (Go and Rust runners)
 	@echo "==> completion-spec-v1 conformance: Go"
 	go test ./go/console/cli/completionspec/ -run '^TestConformanceCompletionSpec' -count=1
+	@echo "==> completion-spec-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features cli --test cli_completion_spec_conformance --locked
 
 # Shared retry-v1 backoff corpus: Go and Rust runners read the same vectors.
 test-parity-config: ## config-v1 conformance corpus (Go and Rust runners)
@@ -339,6 +343,15 @@ test-parity-retry: ## retry-v1 conformance corpus (Go and Rust runners)
 	go test ./go/core/util/ -run '^TestConformanceRetry' -count=1
 	@echo "==> retry-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --test retry_conformance --locked
+
+# Domain state machine corpus: transitions, error texts, the veto wrap,
+# payload JSON bytes and topic options. Go's post-transition event runs
+# on a goroutine, hence -race.
+test-parity-statemachine: ## statemachine-v1 conformance corpus (Go and Rust runners)
+	@echo "==> statemachine-v1 conformance: Go"
+	go test -race ./go/runtime/domain/ -run '^TestConformanceStateMachine' -count=1
+	@echo "==> statemachine-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features domain --test domain_statemachine_conformance --locked
 
 # After a cobra bump: rewrite the completion-v1 script goldens and the
 # Rust script templates from the cobra version in go.mod, then run

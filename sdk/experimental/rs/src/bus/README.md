@@ -17,6 +17,7 @@ WebSocket through `network/` (feature `bus-network`); the SQLite adapter is out 
 - the transport must be swappable → `DynBus::builder().with_adapter(a)`; `MemoryAdapter` is in-process
 - processes (Go or Rust) must share events → `DynBus::builder().with_network(addrs)` or `NetworkAdapter`
 - you need only the in-memory core, no layers → `Bus`, or `SharedBus` to share it
+- events must also reach a log → `TeeBus` with `JsonlSink` or `StdoutSink`; env: `KIT_BUS_SINK=jsonl`
 
 ## Quick start
 
@@ -60,17 +61,16 @@ bus.publish(&event).unwrap();
   `wasm32-unknown-unknown` it returns `BusError::NotDrained` instead of blocking.
 - `DynBus` layers in Go's `New` order: adapter behind topic enforcement (else the in-memory `SharedBus`),
   then network (`bus-network`; without it `with_network` panics on any address), then env sinks.
-- Subscribe after close registers nothing. `publish` after `close` is `BusError::Closed`.
+- Sinks drain after a successful publish; errors go to the reporter. Output byte-equal to Go's (`contracts/bus-v1/sinks`);
+  bad `KIT_BUS_SINK` → `set_env_sink_err_reporter`, skipped; none on wasm32. After close: subscribe no-ops, publish is `BusError::Closed`.
 - Re-entrancy: a handler may publish, subscribe, unsubscribe and close on the `SharedBus` dispatching to
   it; Go deadlocks on all but the nested publish. Two handlers closing at once deadlock, as in Go.
-- Parity: [event-topics.md](../../../../../docs/contracts/event-topics.md); the topic grammar is the
-  parity obligation, there is no loaded fixture row.
+- Parity: [event-topics.md](../../../../../docs/contracts/event-topics.md) (topic grammar).
 
 ## Neighbours
 
 - `hop_top_kit::serve`: publishes the six `kit.serve.*` transitions through its own `Publisher` trait
-- `hop_top_kit::bus::qualifiers`: `reason`, `mechanism`, `property`, `circumstance` lifted from a payload by
-  `qualifiers_from`
+- `hop_top_kit::bus::qualifiers`: `reason`, `mechanism`, `property`, `circumstance` from a payload
 
 ## See also
 

@@ -1,6 +1,7 @@
 package completionspec
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -66,6 +67,44 @@ func TestUsageBin(t *testing.T) {
 	assert.Equal(t, "acme", usageBin("acme"))
 	assert.Equal(t, `{% raw %}'a{{b}}'{% endraw %}`, usageBin("a{{b}}"))
 	assert.Equal(t, `{% raw %}'x'\''y{1}'{% endraw %}`, usageBin("x'y{1}"))
+}
+
+// TestUsageBinRawCannotBeClosed: no binary name can end a raw block
+// early. Read as Tera does (a raw block ends at its first endraw tag,
+// whitespace control included), the run bin gives back the shell word
+// unchanged.
+func TestUsageBinRawCannotBeClosed(t *testing.T) {
+	assert.Equal(t, `{% raw %}'a{{% endraw %}{% raw %}%b'{% endraw %}`, usageBin("a{%b"))
+	for _, name := range []string{
+		`x{%endraw%}{{"';touch${IFS}PWNED;'"}}{%raw%}`,
+		`{%- endraw -%}`, "{%\tendraw\n%}", `{%%}`, `{{%`, `{%{%`, `%}{#c#}{{}}`, `{`, `}`,
+	} {
+		assert.Equal(t, shellWord(name), teraRawText(t, usageBin(name)), name)
+	}
+}
+
+var teraRawTag = regexp.MustCompile(`^\{%-?[ \t\r\n]*raw[ \t\r\n]*-?%\}`)
+var teraEndrawTag = regexp.MustCompile(`\{%-?[ \t\r\n]*endraw[ \t\r\n]*-?%\}`)
+
+// teraRawText reads s as a run of Tera raw blocks and returns the text
+// they render; any text outside a raw block fails the test.
+func teraRawText(t *testing.T, s string) string {
+	t.Helper()
+	var b strings.Builder
+	for s != "" {
+		open := teraRawTag.FindString(s)
+		if open == "" {
+			t.Fatalf("text outside a raw block: %q", s)
+		}
+		s = s[len(open):]
+		end := teraEndrawTag.FindStringIndex(s)
+		if end == nil {
+			t.Fatalf("unterminated raw block: %q", s)
+		}
+		b.WriteString(s[:end[0]])
+		s = s[end[1]:]
+	}
+	return b.String()
 }
 
 // TestHeaderCannotEndTheComment: the binary name in the `//` header is

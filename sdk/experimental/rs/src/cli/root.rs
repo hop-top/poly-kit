@@ -15,6 +15,7 @@ use super::completion::{
     self, completion_command, func, resolve, Completer, Context, Directive, Shell, COMPLETION,
     NO_DESC_FLAG, NO_DESC_REQUEST_CMD, REQUEST_CMD,
 };
+use super::completion_spec::{write_export, FIG, USAGE};
 use super::enums::apply_enum_help;
 
 const MANAGEMENT: &str = "management";
@@ -47,6 +48,7 @@ pub struct Root {
     pub(super) enums: HashMap<(String, String), Vec<String>>,
     flag_completers: HashMap<(String, String), Arc<dyn Completer>>,
     args_completers: HashMap<String, Arc<dyn Completer>>,
+    completion_disabled: bool,
 }
 
 impl fmt::Debug for Root {
@@ -67,17 +69,33 @@ impl Root {
             enums: HashMap::new(),
             flag_completers: HashMap::new(),
             args_completers: HashMap::new(),
+            completion_disabled: false,
         }
+    }
+
+    /// Drops the built-in `completion` command, its spec exports
+    /// included: cobra's `CompletionOptions.DisableDefaultCmd`.
+    /// `__complete` requests are still answered.
+    pub fn disable_completion_command(&mut self) -> &mut Root {
+        self.completion_disabled = true;
+        self
     }
 
     /// Whether the built-in `completion` command applies: like cobra, it
     /// is added only when no command or alias already answers to
     /// `completion`, so an adopter's own (or an alias) wins.
     fn has_builtin_completion(&self) -> bool {
-        !self
-            .cmd
-            .get_subcommands()
-            .any(|c| c.get_name() == COMPLETION || c.get_all_aliases().any(|a| a == COMPLETION))
+        !self.completion_disabled
+            && !self
+                .cmd
+                .get_subcommands()
+                .any(|c| c.get_name() == COMPLETION || c.get_all_aliases().any(|a| a == COMPLETION))
+    }
+
+    /// Whether `path` is the built-in `completion` command or one of its
+    /// leaves, which complete no arguments.
+    pub(crate) fn is_builtin_completion_path(&self, path: &str) -> bool {
+        self.has_builtin_completion() && is_builtin_completion_path(path)
     }
 
     /// The command tree to parse with: the adopter's tree, alias
@@ -135,7 +153,7 @@ impl Root {
         to_complete: &str,
     ) -> Option<(Vec<String>, Directive)> {
         let path = normalize(path);
-        let builtin = self.has_builtin_completion() && is_builtin_completion_path(&path);
+        let builtin = self.is_builtin_completion_path(&path);
         // cobra's NoFileCompletions on the command and each shell leaf.
         let none: Arc<dyn Completer> = Arc::new(func(|_: &Context, _: &str| Ok(Vec::new())));
         let bound = if builtin {
@@ -223,6 +241,7 @@ impl Root {
         let matches = cmd.try_get_matches_from_mut(&argv).ok()?;
         let (_, sub) = matches.subcommand()?;
         Some(match sub.subcommand() {
+            Some((leaf, _)) if leaf == FIG || leaf == USAGE => write_export(self, leaf, out),
             Some((shell, m)) => match shell.parse::<Shell>() {
                 Ok(sh) => self.write_script(sh, !m.get_flag(NO_DESC_FLAG), out),
                 Err(e) => Err(io::Error::new(io::ErrorKind::InvalidInput, e)),
@@ -276,15 +295,30 @@ impl Root {
         ctx: &Context,
         to_complete: &str,
     ) -> Option<(Vec<String>, Directive)> {
+        match self.flag_completer(words, arg) {
+            Some(c) => Some(resolve(ctx, c.as_ref(), to_complete)),
+            None => self.enum_completion(words, arg, to_complete),
+        }
+    }
+
+    /// The completer bound to `arg` on the command at `words`, or on the
+    /// ancestor declaring it when it is global.
+    pub(crate) fn flag_completer(
+        &self,
+        words: &[String],
+        arg: &Arg,
+    ) -> Option<&Arc<dyn Completer>> {
         let name = flag_name(arg);
         let depth = if arg.is_global_set() { 0 } else { words.len() };
-        for end in (depth..=words.len()).rev() {
-            let key = (words[..end].join(" "), name.clone());
-            if let Some(c) = self.flag_completers.get(&key) {
-                return Some(resolve(ctx, c.as_ref(), to_complete));
-            }
-        }
-        self.enum_completion(words, arg, to_complete)
+        (depth..=words.len()).rev().find_map(|end| {
+            self.flag_completers
+                .get(&(words[..end].join(" "), name.clone()))
+        })
+    }
+
+    /// The completer bound to the positionals of the command at `path`.
+    pub(crate) fn args_completer(&self, path: &str) -> Option<&Arc<dyn Completer>> {
+        self.args_completers.get(path)
     }
 }
 
@@ -293,7 +327,10 @@ fn is_builtin_completion_path(path: &str) -> bool {
     words.next() == Some(COMPLETION)
         && match words.next() {
             None => true,
-            Some(sh) => sh.parse::<Shell>().is_ok() && words.next().is_none(),
+            Some(leaf) => {
+                (leaf.parse::<Shell>().is_ok() || leaf == FIG || leaf == USAGE)
+                    && words.next().is_none()
+            }
         }
 }
 

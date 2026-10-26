@@ -28,7 +28,8 @@
 //!
 //! [`DynBus`] is the bus to use: Go's `New`, composing the adapter,
 //! network and sink layers in Go's order. [`adapter`] holds the
-//! transport seam, [`Adapter`] and [`MemoryAdapter`]. [`Bus`] and
+//! transport seam, [`Adapter`] and [`MemoryAdapter`]; [`sink`] the
+//! [`TeeBus`], its sinks and the `KIT_BUS_SINK` switch. [`Bus`] and
 //! [`SharedBus`] are the in-memory building block under it, with no
 //! adapter, network or env sinks.
 //!
@@ -63,6 +64,7 @@ pub mod network;
 pub mod qualifiers;
 mod quote;
 mod shared;
+pub mod sink;
 pub mod stream;
 pub mod topic;
 
@@ -79,6 +81,11 @@ pub use context::{CancelHandle, Context, ContextError};
 pub use event::Event;
 pub use mem::{Bus, BusBuilder, BusError, ErrFn, Handler, Mode, SharedBus, SubscriptionId};
 pub use qualifiers::{qualifiers_from, Qualifiers};
+#[cfg(not(target_arch = "wasm32"))]
+pub use sink::{
+    reset_env_sink_err_reporter, set_env_sink_err_reporter, ENV_SINK_KIND, ENV_SINK_PATH,
+};
+pub use sink::{JsonlSink, Sink, StdoutSink, TeeBus};
 pub use topic::{
     prefix_topics, validate, validate_topic, InvalidTopicError, Topic, TopicMap,
     PAST_TENSE_WHITELIST,

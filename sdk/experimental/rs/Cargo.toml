@@ -65,6 +65,10 @@ bus-network-axum = ["bus-network", "dep:axum", "dep:hyper", "dep:hyper-util"]
 # to the default TLS roots, for platforms without a store rustls can read
 # (Android). Opt-in: by default only the platform's roots are trusted.
 bus-network-webpki-roots = ["bus-network", "dep:webpki-roots"]
+# Domain primitives over the bus vocabulary: the state machine with its
+# veto-able pre-transition and fire-and-forget post-transition events.
+# Nothing of its own; wasm-safe.
+domain = ["bus"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
 httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
 # Dual-spec MCP surface. `rmcp` supplies the protocol vocabulary (version

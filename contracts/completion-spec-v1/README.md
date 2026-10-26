@@ -2,15 +2,14 @@
 
 ## What it answers
 
-What a kit CLI's exported completion specs look like, byte for byte: the
-Fig module (`<tool> completion fig`) and the Usage KDL (`<tool> completion
-usage`) for one fixture command tree. Wrong place for shell completion
-scripts or completer behaviour; those are each framework's own.
+A kit CLI's completion specs, byte for byte: the Fig module (`<tool>
+completion fig`) and Usage KDL (`<tool> completion usage`) of each tree:
+`tree.json`, and `tree-tera.json` (a bin with Tera delimiters).
 
 ## Use it when
 
-- you port the exporter to another SDK: rebuild `tree.json` in that
-  framework, export, compare against both expected files
+- you port the exporter to another SDK: rebuild each tree in that
+  framework, export, compare against its two expected files
 - you change an emitter in Go: edit the expected file first, then the code
 
 ## Quick start
@@ -26,7 +25,7 @@ go test ./go/console/cli/completionspec/ -run '^TestConformanceCompletionSpec'
 Go is canonical; the expected files are the truth. Strict runner: unknown
 fields, a `version` other than `v1`, or a file with no runner fail it.
 
-`tree.json` is a cobra-shaped tree. Command: `use` (name, then operands),
+Each tree is cobra-shaped. Command: `use` (name, then operands),
 `short`, `version`, `aliases`, `hidden`, `deprecated`, `annotations`
 (`kit/args`), `valid_args` (`value\tdescription` allowed),
 `valid_args_function` (a dynamic positional completer), `no_args`
@@ -67,13 +66,14 @@ Walker and emitter rules:
   U+200E/F, U+202A–E, U+2066–9, U+2028/9, U+FEFF. Header comments carry
   the escaped bin without quotes.
 - Usage `run` bin: bare if `[A-Za-z0-9._+-]+`, else single-quoted (`'` as
-  `'\''`), then in `{% raw %}…{% endraw %}` when it holds `{` or `}`.
+  `'\''`); with a brace, `{% raw %}…{% endraw %}` per piece, cut in each `{%`.
 
 ## Runners
 
 | Port | Runner |
 |------|--------|
 | Go | `go/console/cli/completionspec/conformance_test.go` |
+| Rust | `sdk/experimental/rs/tests/cli_completion_spec_conformance.rs` |
 
 ## See also
 

@@ -13,9 +13,9 @@
 //!    accepted (Go's `TeeBus`).
 //!
 //! [`compose`] runs them in that order. Step 2 needs the `bus-network`
-//! feature; step 3 is a seam that returns the bus unchanged until its
-//! layer is ported. Every layer is an [`Adapter`], so a new one wraps
-//! the bus without changing this module's public API.
+//! feature (without it, non-empty addresses panic); step 3 applies the
+//! env sinks. Every layer is an [`Adapter`], so a new one wraps the bus
+//! without changing this module's public API.
 //!
 //! [`DynBus`] is the front door, the analogue of Go's `New`. [`Bus`] and
 //! [`SharedBus`] are the in-memory building block with none of these
@@ -329,12 +329,11 @@ impl Adapter for NetworkedBus {
     }
 }
 
-/// Step 3. Seam for the env-driven sinks (`KIT_BUS_SINK`,
-/// `KIT_BUS_SINK_PATH`): with sinks configured it will wrap `bus` in a
-/// tee reporting sink errors to `reporter`. Until then it returns `bus`.
+/// Step 3. The env-driven sinks (`KIT_BUS_SINK`, `KIT_BUS_SINK_PATH`):
+/// with sinks configured, `bus` behind a `TeeBus` reporting sink errors
+/// to `reporter`; otherwise, and always on wasm32, `bus`.
 fn env_sink_layer(bus: Arc<dyn Adapter>, reporter: Option<&SharedErrFn>) -> Arc<dyn Adapter> {
-    let _ = reporter;
-    bus
+    super::sink::env_layer(bus, reporter)
 }
 
 /// An adapter behind topic enforcement: Go's `adapterBus`.

@@ -300,8 +300,9 @@ jobs:
   # Holds it to what they build: wasm32-unknown-unknown with no default
   # features, and no serde_json/preserve_order leaking out of `output`
   # (Cargo unifies features, so the leak would reorder every Map in the
-  # consumer's tree). Bus tests run natively, plus one smoke test on
-  # wasm32 itself under Node (tests/bus_wasm.rs, `make test-rs-wasm`).
+  # consumer's tree). Bus tests run natively, plus smoke tests on
+  # wasm32 itself under Node (tests/bus_wasm.rs and
+  # tests/domain_statemachine_wasm.rs, `make test-rs-wasm`).
   rs-wasm:
     needs: [rs-lint]
     runs-on: ubuntu-latest
@@ -342,6 +343,13 @@ jobs:
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features bus,netpolicy
       - name: clippy (wasm32, bus and netpolicy)
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features bus,netpolicy --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
+      # The domain state machine builds on the bus alone; with no
+      # spawner its post-transition event runs inline on this target.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features bus,netpolicy,domain
+      - name: clippy (wasm32, bus, netpolicy and domain)
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features bus,netpolicy,domain --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       - name: netpolicy pulls no reqwest or tokio
