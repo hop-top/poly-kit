@@ -18,7 +18,7 @@ use tokio_tungstenite::{accept_hdr_async_with_config, WebSocketStream};
 use super::adapter::{Inner, NetworkAdapter};
 use super::conn::{
     close_raw, read_next, split, ws_config, Link, Read, STATUS_GOING_AWAY, STATUS_INTERNAL,
-    STATUS_NORMAL, STATUS_POLICY,
+    STATUS_NORMAL, STATUS_POLICY, WRITE_TIMEOUT,
 };
 use super::runtime;
 use super::upgrade::check_upgrade;
@@ -31,6 +31,18 @@ impl NetworkAdapter {
     /// [`check_upgrade`] are refused, and so is an upgrade not done within
     /// the 10 s handshake bound. Links are keyed by the peer's socket
     /// address. The listener stops on [`close`](Self::close).
+    ///
+    /// The Origin check and the later checks answer with
+    /// coder/websocket's status and text. A request tungstenite itself
+    /// rejects first (not `GET`, a missing upgrade header, a version
+    /// other than 13, a missing key) gets no HTTP response: the
+    /// connection is dropped. Serve through [`check_upgrade`] and
+    /// [`accept_upgraded`](Self::accept_upgraded), or the axum handler,
+    /// when those clients need the exact response.
+    ///
+    /// # Panics
+    ///
+    /// When called on the network runtime.
     pub fn listen(&self, addr: &str) -> io::Result<SocketAddr> {
         let std = StdListener::bind(addr)?;
         std.set_nonblocking(true)?;
@@ -67,7 +79,7 @@ impl NetworkAdapter {
     {
         let inner = Arc::clone(&self.0);
         let addr = remote_addr.into();
-        runtime::handle().spawn(async move {
+        self.0.spawn_tracked(async move {
             let ws = WebSocketStream::from_raw_socket(io, Role::Server, Some(ws_config())).await;
             inner.serve_ws(ws, addr).await;
         });
@@ -75,6 +87,32 @@ impl NetworkAdapter {
 }
 
 impl Inner {
+    /// Runs one accept-side session (upgrade, auth, registration) as an
+    /// adapter task: close stops it at its next await and waits for it,
+    /// so no handshake, verify or ack happens after close returns. Not
+    /// started once the adapter is closed. The link it registers has its
+    /// own task.
+    pub(crate) fn spawn_tracked<F>(self: &Arc<Self>, session: F)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        {
+            let _st = self.state();
+            if self.closed.load(Ordering::SeqCst) {
+                return;
+            }
+            self.tasks.add();
+        }
+        let inner = Arc::clone(self);
+        runtime::handle().spawn(async move {
+            tokio::select! {
+                () = session => {}
+                () = inner.closing.wait() => {}
+            }
+            inner.tasks.done();
+        });
+    }
+
     async fn accept_loop(self: &Arc<Self>, listener: TcpListener) {
         loop {
             let accepted = tokio::select! {
@@ -85,12 +123,7 @@ impl Inner {
                 continue;
             };
             let inner = Arc::clone(self);
-            runtime::handle().spawn(async move {
-                tokio::select! {
-                    () = inner.accept_tcp(tcp, peer) => {}
-                    () = inner.closing.wait() => {}
-                }
-            });
+            self.spawn_tracked(async move { inner.accept_tcp(tcp, peer).await });
         }
     }
 
@@ -135,7 +168,8 @@ impl Inner {
                 return;
             }
             origin = hello.origin;
-            if sink.send(Message::text(AUTH_OK)).await.is_err() {
+            let ack = tokio::time::timeout(WRITE_TIMEOUT, sink.send(Message::text(AUTH_OK)));
+            if !matches!(ack.await, Ok(Ok(()))) {
                 close_raw(sink, source, STATUS_INTERNAL, "ack write failed").await;
                 return;
             }

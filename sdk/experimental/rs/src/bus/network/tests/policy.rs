@@ -114,3 +114,73 @@ fn the_bundled_roots_join_the_default_store() {
         "the platform's roots plus Mozilla's"
     );
 }
+
+/// Go's `TestNetworkAdapter_ReconnectBackoffResetsAfterAStableLink`: a
+/// link that stayed up for the stability window (the maximum backoff)
+/// resets its address's backoff; a flapping one keeps growing it.
+#[test]
+fn reconnect_backoff_resets_after_a_stable_link() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    use futures_util::SinkExt;
+    use tokio_tungstenite::tungstenite::Message;
+
+    fn acceptor(hold: Duration) -> (String, Arc<AtomicUsize>) {
+        let ln = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("ws://{}/", ln.local_addr().unwrap());
+        let accepts = Arc::new(AtomicUsize::new(0));
+        let n = Arc::clone(&accepts);
+        thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async move {
+                ln.set_nonblocking(true).unwrap();
+                let ln = tokio::net::TcpListener::from_std(ln).unwrap();
+                while let Ok((tcp, _)) = ln.accept().await {
+                    let n = Arc::clone(&n);
+                    tokio::spawn(async move {
+                        if let Ok(mut ws) = tokio_tungstenite::accept_async(tcp).await {
+                            n.fetch_add(1, Ordering::SeqCst);
+                            tokio::time::sleep(hold).await;
+                            let _ = ws.send(Message::Close(None)).await;
+                        }
+                    });
+                }
+            });
+        });
+        (url, accepts)
+    }
+
+    let (short, _) = acceptor(Duration::ZERO);
+    let (long, long_accepts) = acceptor(Duration::from_millis(150));
+    let n = NetworkAdapter::new(
+        DynBus::new(),
+        NetworkOptions::new().backoff(Duration::from_millis(10), Duration::from_millis(100)),
+    );
+    n.dial(&short);
+    n.dial(&long);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while long_accepts.load(Ordering::SeqCst) < 3 {
+        assert!(
+            Instant::now() < deadline,
+            "the stable peer stopped reconnecting"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+    let flaps = |addr: &str| n.0.state().peers.get(addr).map(|p| p.flaps);
+    assert_eq!(
+        flaps(&long),
+        Some(0),
+        "a link up 150 ms (window 100 ms) resets"
+    );
+    assert!(
+        flaps(&short).is_some_and(|f| f >= 2),
+        "a flapping link keeps growing: {:?}",
+        flaps(&short)
+    );
+    close(&n);
+}

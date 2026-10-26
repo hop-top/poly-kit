@@ -16,7 +16,10 @@ pub trait Authenticator: Send + Sync {
 }
 
 /// A shared secret: Go's `StaticTokenAuth`.
-#[derive(Clone, PartialEq, Eq)]
+///
+/// No `PartialEq`: comparing secrets goes through
+/// [`verify`](Authenticator::verify), in constant time.
+#[derive(Clone)]
 pub struct StaticTokenAuth {
     /// The secret sent and expected. Go's `Token_`.
     pub token: String,

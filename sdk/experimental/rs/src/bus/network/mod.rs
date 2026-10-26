@@ -31,7 +31,10 @@
 //!   and an outbound one reconnects.
 //! - A dropped outbound link reconnects with jittered backoff (100 ms to
 //!   30 s), each attempt bounded by 10 s, one loop per address, until it
-//!   connects, the address is disconnected, or the adapter closes.
+//!   connects, the address is disconnected, or the adapter closes. The
+//!   redial waits the backoff first, and links that drop within the
+//!   stability window (the maximum backoff) keep growing it, so a peer
+//!   that closes every link at once is not hammered.
 //! - Close sends 1001 to every peer and waits for the readers.
 //! - The adapter publishes its own events on the local bus, never
 //!   forwarded: `kit.runtime.link.connected` (`peer`, `stream` empty,
@@ -73,6 +76,7 @@ mod conn;
 mod ctx;
 mod error;
 mod filter;
+mod options;
 mod reconnect;
 mod relay;
 mod runtime;

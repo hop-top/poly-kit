@@ -45,7 +45,7 @@ impl NetworkAdapter {
             .map_or_else(placeholder_addr, |ci| ci.0.to_string());
         let on_upgrade = hyper::upgrade::on(&mut req);
         let net = self.clone();
-        super::runtime::handle().spawn(async move {
+        self.0.spawn_tracked(async move {
             if let Ok(io) = on_upgrade.await {
                 net.accept_upgraded(TokioIo::new(io), addr);
             }

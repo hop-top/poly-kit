@@ -160,7 +160,7 @@ fn close_waits_for_the_readers() {
 /// `duplicate`, and close ends every reader. Go's
 /// `TestNetworkAdapter_Handler_DuplicateAddrRefused`.
 #[test]
-fn a_duplicate_inbound_address_is_refused() {
+fn handler_duplicate_addr_refused() {
     use futures_util::StreamExt;
     use tokio_tungstenite::tungstenite::Message;
 

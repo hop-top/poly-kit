@@ -176,3 +176,63 @@ fn a_failed_connect_starts_no_reconnect_loop() {
     );
     within(move || net2.close()).unwrap();
 }
+
+/// An acceptor that upgrades every connection and closes it with 1000
+/// `duplicate` after `hold`, as one does to a second client keyed under
+/// a linked address. Returns its URL and an upgrade counter.
+fn flapping_acceptor(hold: Duration) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use futures_util::SinkExt;
+    use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+    use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+    use tokio_tungstenite::tungstenite::Message;
+
+    let ln = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("ws://{}/", ln.local_addr().unwrap());
+    let accepts = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let n = std::sync::Arc::clone(&accepts);
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async move {
+            ln.set_nonblocking(true).unwrap();
+            let ln = tokio::net::TcpListener::from_std(ln).unwrap();
+            while let Ok((tcp, _)) = ln.accept().await {
+                let n = std::sync::Arc::clone(&n);
+                tokio::spawn(async move {
+                    if let Ok(mut ws) = tokio_tungstenite::accept_async(tcp).await {
+                        n.fetch_add(1, Ordering::SeqCst);
+                        tokio::time::sleep(hold).await;
+                        let _ = ws
+                            .send(Message::Close(Some(CloseFrame {
+                                code: CloseCode::Normal,
+                                reason: "duplicate".into(),
+                            })))
+                            .await;
+                    }
+                });
+            }
+        });
+    });
+    (url, accepts)
+}
+
+/// Go's `TestNetworkAdapter_ReconnectBacksOffAgainstAFlappingAcceptor`:
+/// a link that drops right after it comes up is redialed after the
+/// backoff, which keeps growing across short-lived links. With the
+/// default 100 ms base, 2 s holds a handful of attempts; an immediate
+/// redial makes thousands.
+#[test]
+fn reconnect_backs_off_against_a_flapping_acceptor() {
+    let (url, accepts) = flapping_acceptor(Duration::ZERO);
+    let n = NetworkAdapter::new(DynBus::new(), NetworkOptions::new());
+    n.dial(&url);
+    sleep_ms(2000);
+    within(move || n.close()).unwrap();
+    let got = accepts.load(Ordering::SeqCst);
+    assert!(
+        (2..=15).contains(&got),
+        "{got} connections in 2 s, want 2..15 (backoff from 100 ms, growing)"
+    );
+}

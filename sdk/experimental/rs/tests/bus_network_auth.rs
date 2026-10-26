@@ -120,3 +120,14 @@ fn a_token_error_is_returned_unchanged() {
     assert_eq!(err.to_string(), "vault sealed");
     assert!(!err.is_auth_failed());
 }
+
+/// Only the exact secret verifies: a token that merely starts with it, or
+/// that it starts with, is refused.
+#[test]
+fn static_token_auth_refuses_longer_and_shorter_tokens() {
+    let auth = StaticTokenAuth::new("s3cret");
+    for bad in ["s3cret-and-more", "s3cre", "", "S3CRET", "s3cret\0"] {
+        assert!(auth.verify(bad).is_err(), "{bad:?} must be refused");
+    }
+    assert!(auth.verify("s3cret").is_ok());
+}

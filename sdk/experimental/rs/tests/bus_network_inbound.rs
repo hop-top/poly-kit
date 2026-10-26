@@ -89,7 +89,7 @@ fn inbound_events_are_not_forwarded_without_relay() {
 /// `TestNetworkAdapter_Relay_NoEchoToArrivalLink`. The raw peer would
 /// accept its own frame, so only the hub's exclusion keeps it away.
 #[test]
-fn a_relay_hub_excludes_the_origin_peer() {
+fn relay_no_echo_to_arrival_link() {
     use futures_util::StreamExt;
 
     let hub = Hub::start(NetworkOptions::new().origin_id("hub").relay(true));
@@ -169,4 +169,43 @@ fn relay_empty_origin_no_loop() {
             before[i]
         );
     }
+}
+
+/// Go's `TestNetworkAdapter_Relay_FilterAppliesToRelayedEvents`: a hub
+/// that denies a topic never relays it, even though it came from a peer.
+#[test]
+fn relay_filter_applies_to_relayed_events() {
+    use std::sync::atomic::Ordering;
+
+    let hub = Hub::start(
+        NetworkOptions::new()
+            .origin_id("hub")
+            .relay(true)
+            .filter(TopicFilter::deny(["secret.#"])),
+    );
+    let a = Peer::new(NetworkOptions::new().origin_id("A"));
+    a.connect(&hub.url).expect("A");
+    let b = Peer::new(NetworkOptions::new().origin_id("B"));
+    b.connect(&hub.url).expect("B");
+    let secret = count_on(&b.bus, "secret.#");
+    let public = count_on(&b.bus, "public.#");
+    sleep_ms(50);
+    publish(
+        &a.bus,
+        ev("secret.test.event.sent", "A", serde_json::Value::Null),
+    );
+    publish(
+        &a.bus,
+        ev("public.test.event.sent", "A", serde_json::Value::Null),
+    );
+    assert!(
+        eventually(DELIVERY, || public.load(Ordering::SeqCst) == 1),
+        "the allowed topic was not relayed"
+    );
+    sleep_ms(200);
+    assert_eq!(
+        secret.load(Ordering::SeqCst),
+        0,
+        "a denied topic was relayed"
+    );
 }

@@ -388,3 +388,70 @@ where
         });
     }
 }
+
+/// Close stops a session still in its handshake and waits for it: no
+/// verify and no ack after close returns.
+#[test]
+fn accept_upgraded_session_does_not_outlive_close() {
+    use hop_top_kit::bus::network::{AuthError, Authenticator, NetworkAdapter};
+    use hop_top_kit::bus::DynBus;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use tokio_tungstenite::tungstenite::protocol::Role;
+
+    struct Spy(Arc<AtomicBool>);
+    impl Authenticator for Spy {
+        fn token(&self) -> Result<String, AuthError> {
+            Ok("t".into())
+        }
+        fn verify(&self, _: &str) -> Result<(), AuthError> {
+            self.0.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+    let verified = Arc::new(AtomicBool::new(false));
+    let hub = NetworkAdapter::new(
+        DynBus::new(),
+        NetworkOptions::new().auth(Spy(Arc::clone(&verified))),
+    );
+    let h = hub.clone();
+    let reply = within(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async move {
+            let (client, server) = tokio::io::duplex(1 << 16);
+            h.accept_upgraded(server, "10.0.0.9:1");
+            let closer = h.clone();
+            let started = std::time::Instant::now();
+            tokio::task::spawn_blocking(move || closer.close())
+                .await
+                .unwrap()
+                .unwrap();
+            // Close stops the session at once, not after the 10 s auth bound.
+            assert!(
+                started.elapsed() < Duration::from_secs(2),
+                "{:?}",
+                started.elapsed()
+            );
+            let mut ws =
+                tokio_tungstenite::WebSocketStream::from_raw_socket(client, Role::Client, None)
+                    .await;
+            let _ = ws.send(Message::text(r#"{"auth":"t"}"#)).await;
+            let read = async {
+                while let Some(Ok(m)) = ws.next().await {
+                    if let Message::Text(t) = m {
+                        return Some(t.to_string());
+                    }
+                }
+                None
+            };
+            tokio::time::timeout(Duration::from_secs(2), read)
+                .await
+                .unwrap_or(None)
+        })
+    });
+    assert_eq!(reply, None, "no ack after close");
+    assert!(!verified.load(Ordering::SeqCst), "verify ran after close");
+}

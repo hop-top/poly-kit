@@ -87,6 +87,7 @@ impl Inner {
                 // earlier refused handshake.
                 let peer = st.peers.entry(addr).or_default();
                 let reconnect = std::mem::replace(&mut peer.connected_once, true);
+                peer.up_at = Some(std::time::Instant::now());
                 peer.state = LinkState {
                     connected: true,
                     resume: Some(LinkResume::Unsupported),
@@ -195,7 +196,7 @@ impl Inner {
     /// retrying address does not flood the bus.
     async fn handshake_failed(&self, addr: &str, err: NetworkError) -> NetworkError {
         self.report_err(NetworkError::Handshake {
-            addr: addr.to_string(),
+            addr: redact_addr(addr),
             source: Box::new(err.clone()),
         })
         .await;
@@ -326,4 +327,37 @@ pub(crate) fn default_roots() -> rustls::RootCertStore {
     #[cfg(feature = "bus-network-webpki-roots")]
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     roots
+}
+
+/// Drops the userinfo, query and fragment of a dial address, so
+/// credentials in a URL never reach the error callback or a log: Go's
+/// `redactAddr`.
+pub(crate) fn redact_addr(addr: &str) -> String {
+    let s = &addr[..addr.find(['?', '#']).unwrap_or(addr.len())];
+    let Some(i) = s.find("://") else {
+        return s.to_string();
+    };
+    let rest = &s[i + 3..];
+    let end = rest.find('/').unwrap_or(rest.len());
+    let host = rest[..end]
+        .rsplit_once('@')
+        .map_or(&rest[..end], |(_, h)| h);
+    format!("{}://{host}{}", &s[..i], &rest[end..])
+}
+
+#[cfg(test)]
+mod redact_tests {
+    use super::redact_addr;
+
+    #[test]
+    fn redact_addr_follows_go() {
+        for (addr, want) in [
+            ("ws://user:pw@host:1/bus?token=a#f", "ws://host:1/bus"),
+            ("wss://host/x", "wss://host/x"),
+            ("ws://host:9?x", "ws://host:9"),
+            ("ws://u@[::1]:9/p", "ws://[::1]:9/p"),
+        ] {
+            assert_eq!(redact_addr(addr), want, "{addr}");
+        }
+    }
 }

@@ -110,9 +110,17 @@ impl Inner {
             {
                 st.conns.remove(&link.addr);
             }
+            let window = self.stable_after();
             match st.peers.get_mut(&link.addr) {
                 Some(p) if link.outbound => {
                     p.state.connected = false;
+                    // A link shorter than the stability window counts as
+                    // a failed attempt: the redial backs off further.
+                    if p.up_at.is_some_and(|t| t.elapsed() < window) {
+                        p.flaps = p.flaps.saturating_add(1);
+                    } else {
+                        p.flaps = 0;
+                    }
                     p.state.is_final
                 }
                 _ => true,
@@ -121,7 +129,7 @@ impl Inner {
         if link.outbound && !self.closed.load(Ordering::SeqCst) {
             self.publish_disconnected(&link.addr, is_final, "").await;
             if !is_final {
-                self.go_reconnect(&link.addr);
+                self.go_reconnect_after_drop(&link.addr);
             }
         }
         link.done.fire();

@@ -42,7 +42,8 @@ bus_a.publish(&Event::new("crm.sales.deal.created", "crm", json!({"id": 1})))?; 
 - Auth ack within 10 s; refusals close 1008, internal failures 1011. Writes time out after 5 s; three
   failures in a row evict a link. Reads are limited to 32768 bytes (1009). Close sends 1001.
 - A dropped outbound link reconnects (100 ms to 30 s jittered, 10 s per attempt, one loop per address)
-  until connected, `disconnect`, or `close`. A failed `connect` starts no loop; `dial` does.
+  until connected, `disconnect`, or `close`, after the backoff; links shorter than the max backoff keep
+  growing it. A failed `connect` starts no loop; `dial` does.
 - Blocking methods panic on the network thread; use the `_async` twins from async code.
 - Local events as Go: `kit.runtime.link.connected`/`disconnected`, `kit.runtime.stream.invalidated` on a
   reconnect; never forwarded. Failed handshakes go to `error_func`.

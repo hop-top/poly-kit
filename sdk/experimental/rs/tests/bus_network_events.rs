@@ -261,3 +261,38 @@ fn link_events_never_leave_the_process() {
         "an acceptor publishes none, receives none"
     );
 }
+
+/// Go's `TestNetworkAdapter_HandshakeErrorRedactsCredentials`: the error
+/// callback never sees the dial address's userinfo, query or fragment.
+#[test]
+fn handshake_error_redacts_credentials() {
+    let auth = Arc::new(GateAuth::default());
+    auth.reject.store(true, Ordering::SeqCst);
+    let hub = Hub::start(
+        NetworkOptions::new()
+            .origin_id("hub")
+            .auth(Gate(Arc::clone(&auth))),
+    );
+    let errs = Arc::new(Mutex::new(Vec::new()));
+    let e = Arc::clone(&errs);
+    let cl = Peer::new(
+        NetworkOptions::new()
+            .auth(OpenAuth)
+            .error_func(move |err: &NetworkError| e.lock().unwrap().push(err.to_string())),
+    );
+    let host = hub
+        .url
+        .trim_start_matches("ws://")
+        .trim_end_matches('/')
+        .to_string();
+    let err = cl
+        .connect(&format!("ws://user:hunter2@{host}/bus?token=abc#frag"))
+        .expect_err("refused");
+    assert!(err.is_auth_failed(), "{err}");
+    assert_eq!(
+        *errs.lock().unwrap(),
+        vec![format!(
+            "bus: handshake with ws://{host}/bus: bus: network auth failed"
+        )]
+    );
+}

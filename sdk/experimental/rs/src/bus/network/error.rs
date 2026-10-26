@@ -45,8 +45,8 @@ pub enum NetworkError {
     /// The caller's context was done during the handshake.
     Context(ContextError),
     /// A failed handshake as the error callback reports it: Go's
-    /// `bus: handshake with <addr>: <err>`. The predicates look through
-    /// it.
+    /// `bus: handshake with <addr>: <err>`, the address without its
+    /// userinfo, query and fragment. The predicates look through it.
     Handshake {
         /// The dialed address.
         addr: String,
