@@ -230,7 +230,7 @@ futures-util = { version = "=0.3.34", default-features = false, features = [
 # The ring provider only; no aws-lc-rs C build. Selected explicitly when
 # the client config is built, so another feature enabling aws-lc-rs in
 # the same graph does not make the provider ambiguous.
-rustls = { version = "=0.23.43", default-features = false, features = [
+rustls = { version = "=0.23.46", default-features = false, features = [
     "ring",
     "std",
     "tls12",
