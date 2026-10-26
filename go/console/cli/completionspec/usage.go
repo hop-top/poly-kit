@@ -205,13 +205,28 @@ func kdlEscaped(r rune) bool {
 }
 
 // usageBin is the binary name as it starts the run string: a shell
-// word, kept out of Tera's reach in a raw block when it holds a brace.
+// word, kept out of Tera's reach in raw blocks when it holds a brace.
+//
+// Tera has no escape inside a raw block, which ends at the first
+// endraw tag, and every tag opens with "{%". So the word is split
+// between the "{" and "%" of each "{%", one raw block per piece: no
+// piece holds "{%", and the blocks render back to the word unchanged.
 func usageBin(name string) string {
 	w := shellWord(name)
-	if strings.ContainsAny(w, "{}") {
-		return "{% raw %}" + w + "{% endraw %}"
+	if !strings.ContainsAny(w, "{}") {
+		return w
 	}
-	return w
+	var b strings.Builder
+	for {
+		i := strings.Index(w, "{%")
+		if i < 0 {
+			break
+		}
+		b.WriteString("{% raw %}" + w[:i+1] + "{% endraw %}")
+		w = w[i+1:]
+	}
+	b.WriteString("{% raw %}" + w + "{% endraw %}")
+	return b.String()
 }
 
 var plainShellWord = regexp.MustCompile(`^[A-Za-z0-9._+-]+$`)

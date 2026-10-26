@@ -22,10 +22,19 @@ const specConfDir = "../../../../contracts/completion-spec-v1"
 // specConfFiles is every file this runner consumes; the corpus
 // directory must match it exactly, README aside.
 var specConfFiles = map[string]bool{
-	"README.md":          true,
-	"tree.json":          true,
-	"expected.fig.js":    true,
-	"expected.usage.kdl": true,
+	"README.md":               true,
+	"tree.json":               true,
+	"expected.fig.js":         true,
+	"expected.usage.kdl":      true,
+	"tree-tera.json":          true,
+	"expected-tera.fig.js":    true,
+	"expected-tera.usage.kdl": true,
+}
+
+// specConfCases pairs each fixture tree with its expected files.
+var specConfCases = []struct{ tree, fig, usage string }{
+	{"tree.json", "expected.fig.js", "expected.usage.kdl"},
+	{"tree-tera.json", "expected-tera.fig.js", "expected-tera.usage.kdl"},
 }
 
 type confTree struct {
@@ -67,6 +76,11 @@ type confFlag struct {
 
 func loadSpecConf(t *testing.T) confTree {
 	t.Helper()
+	return loadSpecConfFile(t, "tree.json")
+}
+
+func loadSpecConfFile(t *testing.T, name string) confTree {
+	t.Helper()
 	dir := filepath.FromSlash(specConfDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -77,7 +91,7 @@ func loadSpecConf(t *testing.T) confTree {
 			t.Errorf("%s has no runner", e.Name())
 		}
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "tree.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,10 +99,10 @@ func loadSpecConf(t *testing.T) confTree {
 	dec.DisallowUnknownFields()
 	var tree confTree
 	if err := dec.Decode(&tree); err != nil {
-		t.Fatalf("tree.json: %v", err)
+		t.Fatalf("%s: %v", name, err)
 	}
 	if tree.Version != "v1" {
-		t.Fatalf("tree.json: version %q, want v1", tree.Version)
+		t.Fatalf("%s: version %q, want v1", name, tree.Version)
 	}
 	return tree
 }
@@ -193,27 +207,27 @@ func orDefault(v, def string) string {
 }
 
 func TestConformanceCompletionSpec(t *testing.T) {
-	tree := loadSpecConf(t)
-	spec := completionspec.FromCobra(buildConfCmd(t, tree.Root))
-
-	cases := []struct {
-		file   string
-		render func(completionspec.Spec) string
-	}{
-		{"expected.fig.js", completionspec.RenderFig},
-		{"expected.usage.kdl", completionspec.RenderUsage},
-	}
-	for _, tc := range cases {
-		t.Run(tc.file, func(t *testing.T) {
-			want, err := os.ReadFile(filepath.Join(filepath.FromSlash(specConfDir), tc.file))
-			if err != nil {
-				t.Fatal(err)
-			}
-			got := tc.render(spec)
-			if got != string(want) {
-				t.Errorf("%s drifted:\n%s", tc.file, lineDiff(string(want), got))
-			}
-		})
+	for _, c := range specConfCases {
+		tree := loadSpecConfFile(t, c.tree)
+		spec := completionspec.FromCobra(buildConfCmd(t, tree.Root))
+		for _, tc := range []struct {
+			file   string
+			render func(completionspec.Spec) string
+		}{
+			{c.fig, completionspec.RenderFig},
+			{c.usage, completionspec.RenderUsage},
+		} {
+			t.Run(tc.file, func(t *testing.T) {
+				want, err := os.ReadFile(filepath.Join(filepath.FromSlash(specConfDir), tc.file))
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := tc.render(spec)
+				if got != string(want) {
+					t.Errorf("%s drifted:\n%s", tc.file, lineDiff(string(want), got))
+				}
+			})
+		}
 	}
 }
 
