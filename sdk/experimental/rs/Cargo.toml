@@ -38,6 +38,29 @@ output = [
 cli = ["output", "dep:clap"]
 id = ["dep:mti", "dep:uuid", "dep:serde", "dep:thiserror"]
 bus = ["dep:serde", "dep:serde_json"]
+# The bus network adapter: Go's NetworkAdapter over a native WebSocket
+# (tokio-tungstenite), TLS through rustls on the ring provider with the
+# platform's roots. Native only; the wasm32 core (`bus`, `netpolicy`)
+# compiles none of it. tokio carries only what the transport uses: a
+# current-thread runtime, sockets, timers, sync primitives and select!.
+bus-network = [
+    "bus",
+    "netpolicy",
+    "dep:tokio",
+    "tokio/rt",
+    "tokio/net",
+    "tokio/time",
+    "tokio/sync",
+    "tokio/macros",
+    "dep:tokio-tungstenite",
+    "dep:futures-util",
+    "dep:getrandom",
+    "dep:rustls",
+    "dep:rustls-native-certs",
+]
+# Mounts the adapter's accept handler on an axum router. Opt-in so a
+# consumer on another framework (or a bare listener) compiles no axum.
+bus-network-axum = ["bus-network", "dep:axum", "dep:hyper", "dep:hyper-util"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
 httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
 # Dual-spec MCP surface. `rmcp` supplies the protocol vocabulary (version
@@ -182,6 +205,37 @@ uuid = { version = "1", features = ["v7", "serde"], optional = true }
 # and the wasm ffi shim.
 rusqlite = { version = "0.40", default-features = false, features = [
     "bundled",
+], optional = true }
+# bus-network. Exact pins: the transport depends on their close, timeout
+# and capacity semantics. Default features off: `connect` dials over
+# tokio, `handshake` brings the HTTP upgrade, `rustls-tls-native-roots`
+# the rustls connector (handed our own ring-backed config).
+tokio-tungstenite = { version = "=0.30.0", default-features = false, features = [
+    "connect",
+    "handshake",
+    "rustls-tls-native-roots",
+], optional = true }
+futures-util = { version = "=0.3.34", default-features = false, features = [
+    "sink",
+    "std",
+], optional = true }
+# The ring provider only; no aws-lc-rs C build. Selected explicitly when
+# the client config is built, so another feature enabling aws-lc-rs in
+# the same graph does not make the provider ambiguous.
+rustls = { version = "=0.23.43", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+], optional = true }
+rustls-native-certs = { version = "=0.8.4", optional = true }
+# bus-network-axum: the router adapter and hyper's upgrade, nothing else.
+axum = { version = "=0.8.9", default-features = false, optional = true }
+hyper = { version = "=1.12.0", default-features = false, features = [
+    "http1",
+    "server",
+], optional = true }
+hyper-util = { version = "=0.1.21", default-features = false, features = [
+    "tokio",
 ], optional = true }
 
 [dev-dependencies]
