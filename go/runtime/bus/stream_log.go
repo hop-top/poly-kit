@@ -18,6 +18,11 @@ type LogEntry struct {
 	Event  Event
 	Origin string
 	Marker bool
+
+	// via is the id of the link an inbound event arrived on (0 for
+	// local events): never sent back on it. An id, not the link, so the
+	// log does not keep closed links reachable.
+	via uint64
 }
 
 // StreamLog stores the recent part of an adapter's stream. Offsets are

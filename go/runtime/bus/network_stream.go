@@ -159,6 +159,8 @@ type peerState struct {
 	subs      subState
 	connected bool // has connected at least once
 	state     LinkState
+	upAt      time.Time // when the current or last link came up
+	flaps     int       // consecutive links shorter than the stability window
 }
 
 func (ps *peerState) setFinal(code string) {

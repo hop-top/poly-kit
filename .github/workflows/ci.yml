@@ -379,8 +379,10 @@ jobs:
         run: make test-rs-wasm
         working-directory: .
 
-  # The bus feature also ships in mobile apps. A check is enough: the
-  # bus is pure Rust, so neither target needs a linker or an NDK.
+  # The bus feature also ships in mobile apps. A check is enough for the
+  # bus: it is pure Rust. bus-network adds ring (rustls), whose build
+  # script compiles C for the target: Xcode's iOS SDK on the macOS
+  # runner, the NDK preinstalled on the Ubuntu runner.
   rs-mobile:
     needs: [rs-lint]
     strategy:
@@ -417,6 +419,16 @@ jobs:
           workspaces: sdk/experimental/rs
           key: ${{ matrix.target }}
       - run: cargo check --locked --target "$TARGET" --no-default-features --features bus
+        env:
+          TARGET: ${{ matrix.target }}
+      - name: check bus-network
+        run: |
+          if [ "$TARGET" = aarch64-linux-android ]; then
+            bin="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+            export CC_aarch64_linux_android="$bin/aarch64-linux-android24-clang"
+            export AR_aarch64_linux_android="$bin/llvm-ar"
+          fi
+          cargo check --locked --target "$TARGET" --no-default-features --features bus-network
         env:
           TARGET: ${{ matrix.target }}
 

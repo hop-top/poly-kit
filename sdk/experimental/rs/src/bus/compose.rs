@@ -12,10 +12,10 @@
 //!    names, applied last so the sinks see every event publish
 //!    accepted (Go's `TeeBus`).
 //!
-//! [`compose`] runs them in that order. Step 2 is still a seam: it
-//! panics on non-empty addresses until the network layer is ported.
-//! Every layer is an [`Adapter`], so a new one wraps the bus without
-//! changing this module's public API.
+//! [`compose`] runs them in that order. Step 2 needs the `bus-network`
+//! feature (without it, non-empty addresses panic); step 3 applies the
+//! env sinks. Every layer is an [`Adapter`], so a new one wraps the bus
+//! without changing this module's public API.
 //!
 //! [`DynBus`] is the front door, the analogue of Go's `New`. [`Bus`] and
 //! [`SharedBus`] are the in-memory building block with none of these
@@ -170,6 +170,8 @@ pub struct DynBusBuilder {
     base: BusBuilder,
     adapter: Option<Arc<dyn Adapter>>,
     network_addrs: Vec<String>,
+    #[cfg(feature = "bus-network")]
+    network_opts: super::network::NetworkOptions,
 }
 
 impl DynBusBuilder {
@@ -205,17 +207,32 @@ impl DynBusBuilder {
     /// Attaches a network layer that connects to `addrs`: Go's
     /// `WithNetwork`. The last call wins; an empty list attaches none.
     ///
+    /// [`build`](Self::build) then tries one connect per address, in
+    /// order, and keeps retrying a failed one in the background; the
+    /// layer closes the network adapter before the bus. Options come
+    /// from `network_options` (feature `bus-network`).
+    ///
     /// # Panics
     ///
-    /// With any address, until the network adapter is ported: a bus
-    /// that silently stayed local would pass for a networked one.
+    /// With any address when the crate is built without the
+    /// `bus-network` feature: a bus that silently stayed local would pass
+    /// for a networked one.
     pub fn with_network<I, S>(mut self, addrs: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
         self.network_addrs = addrs.into_iter().map(Into::into).collect();
+        #[cfg(not(feature = "bus-network"))]
         assert!(self.network_addrs.is_empty(), "{NETWORK_UNAVAILABLE}");
+        self
+    }
+
+    /// Options for the adapter [`with_network`](Self::with_network)
+    /// attaches: Go's `WithNetworkOption`. The last call wins.
+    #[cfg(feature = "bus-network")]
+    pub fn network_options(mut self, opts: super::network::NetworkOptions) -> Self {
+        self.network_opts = opts;
         self
     }
 
@@ -238,23 +255,78 @@ fn compose(b: DynBusBuilder) -> Arc<dyn Adapter> {
         }),
         None => Arc::new(SharedBus::new(b.base.build())),
     };
+    #[cfg(feature = "bus-network")]
+    let bus = network_layer(bus, &b.network_addrs, b.network_opts);
+    #[cfg(not(feature = "bus-network"))]
     let bus = network_layer(bus, &b.network_addrs);
     env_sink_layer(bus, reporter.as_ref())
 }
 
-/// Panic text of [`DynBusBuilder::with_network`] until the network
-/// adapter is ported.
+/// Panic text of [`DynBusBuilder::with_network`] without the
+/// `bus-network` feature.
+#[cfg(not(feature = "bus-network"))]
 const NETWORK_UNAVAILABLE: &str =
-    "bus: with_network: network adapter not yet available in kit-rs; build without addresses";
+    "bus: with_network: the network adapter needs the bus-network feature; build without addresses";
 
-/// Step 2. Seam for the network adapter: with `addrs` non-empty it will
-/// attach a network adapter to `bus`, dial each address (a failed first
-/// dial keeps retrying) and return a layer that closes the network
-/// before `bus`. Until then `with_network` refuses addresses, so `addrs`
-/// is empty here and this returns `bus`.
+/// Step 2: with `addrs`, a network adapter over `bus` that has dialed
+/// each address (Go's `networkedBus`); without, `bus` itself.
+#[cfg(feature = "bus-network")]
+fn network_layer(
+    bus: Arc<dyn Adapter>,
+    addrs: &[String],
+    opts: super::network::NetworkOptions,
+) -> Arc<dyn Adapter> {
+    if addrs.is_empty() {
+        return bus;
+    }
+    let network = super::network::NetworkAdapter::over(Arc::clone(&bus), opts);
+    for addr in addrs {
+        // Best effort; a failed first dial keeps retrying.
+        network.dial_configured(addr);
+    }
+    Arc::new(NetworkedBus { bus, network })
+}
+
+/// Step 2 without the `bus-network` feature: `with_network` refuses
+/// addresses, so there is no layer to add.
+#[cfg(not(feature = "bus-network"))]
 fn network_layer(bus: Arc<dyn Adapter>, addrs: &[String]) -> Arc<dyn Adapter> {
     let _ = addrs;
     bus
+}
+
+/// A bus with a network adapter attached: Go's `networkedBus`. Close
+/// stops the network first, then the bus.
+#[cfg(feature = "bus-network")]
+struct NetworkedBus {
+    bus: Arc<dyn Adapter>,
+    network: super::network::NetworkAdapter,
+}
+
+#[cfg(feature = "bus-network")]
+impl Adapter for NetworkedBus {
+    fn publish(&self, ctx: &Context, event: &Event) -> Result<(), BusError> {
+        self.bus.publish(ctx, event)
+    }
+    fn subscribe(&self, pattern: &str, handler: Handler) -> SubscriptionId {
+        self.bus.subscribe(pattern, handler)
+    }
+    fn subscribe_async(
+        &self,
+        pattern: &str,
+        spawner: Arc<dyn Spawn>,
+        handler: AsyncHandler,
+    ) -> SubscriptionId {
+        self.bus.subscribe_async(pattern, spawner, handler)
+    }
+    fn unsubscribe(&self, id: SubscriptionId) -> bool {
+        self.bus.unsubscribe(id)
+    }
+    fn close(&self, ctx: &Context) -> Result<(), BusError> {
+        // Go ignores the network's close error; this one never fails.
+        let _ = self.network.close();
+        self.bus.close(ctx)
+    }
 }
 
 /// Step 3. The env-driven sinks (`KIT_BUS_SINK`, `KIT_BUS_SINK_PATH`):

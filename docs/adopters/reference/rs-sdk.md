@@ -780,9 +780,11 @@ topic enforcement (or, with none, the in-memory bus), then the network
 layer, then the env sinks. With an adapter, `max_async` does not apply,
 as in Go.
 
-`with_network(addrs)` is Go's `WithNetwork`. Until the network adapter
-is ported it panics on any address, so a bus can't silently stay
-local; an empty list is a no-op.
+`with_network(addrs)` is Go's `WithNetwork` (feature `bus-network`):
+`build()` dials each address once and keeps retrying a failed one in
+the background; `network_options(...)` is Go's `WithNetworkOption`.
+Without the feature it panics on any address, so a bus can't silently
+stay local; an empty list is a no-op.
 
 ### Dispatch
 
@@ -794,13 +796,56 @@ by `max_async` (default 256). `close_ctx` drains them until its context
 is done. No async runtime is pulled in; see
 [rust-bus-parity.md](../../contributors/architecture/rust-bus-parity.md).
 
+### Network
+
+`bus::network::NetworkAdapter` is Go's `NetworkAdapter` over a native
+WebSocket: local events go to linked peers, peer events are published
+locally, and origin ids stop loops. Go and Rust peers mix in either
+role.
+
+| Feature | Adds |
+|---------|------|
+| `bus-network` | the adapter: `bus` + `netpolicy`, `tokio` (rt, net, time, sync, macros), `tokio-tungstenite`, `futures-util`, `getrandom`, `rustls` (ring provider), `rustls-native-certs` |
+| `bus-network-axum` | `NetworkAdapter::axum_handler()`: `axum`, `hyper`, `hyper-util` |
+| `bus-network-webpki-roots` | Mozilla's roots (`webpki-roots`) added to the default TLS roots |
+
+```rust
+use hop_top_kit::bus::network::{NetworkAdapter, NetworkOptions};
+use hop_top_kit::bus::{Context, DynBus};
+
+let bus = DynBus::new();
+let net = NetworkAdapter::new(bus.clone(), NetworkOptions::new().relay(true));
+let addr = net.listen("127.0.0.1:0")?;              // serve peers
+net.connect(&Context::background(), "ws://hub:8080/bus")?; // or dial one
+```
+
+- **Runtime.** The adapter's I/O runs on one shared current-thread tokio
+  runtime, on its own `kit-bus-network` thread; callers need no runtime.
+  `connect`, `disconnect`, `close` and `listen` block the calling thread
+  and panic when called on that runtime; from async code use
+  `connect_async`, `disconnect_async` and `close_async`. Bus handlers
+  run for inbound events on tokio's blocking pool. `TokioSpawn` is a
+  `Spawn` for `subscribe_async` on your own tokio runtime.
+- **TLS.** `wss://` uses rustls on the ring provider with the
+  platform's roots, as Go's default transport does. Android has no root
+  store rustls can read: pass `NetworkOptions::tls_config(config)` with
+  an `Arc<rustls::ClientConfig>` (from `rustls-platform-verifier`, or
+  your CA in a `RootCertStore`), or enable `bus-network-webpki-roots`.
+  `ring` compiles C for the target (Xcode for iOS, the NDK for Android).
+- **Events.** `kit.runtime.link.connected`, `kit.runtime.link.disconnected`
+  and `kit.runtime.stream.invalidated` are published locally as Go
+  publishes them; `NetworkOptions::error_func` gets failed handshakes.
+- Accepting: `listen`, `accept_upgraded` after `check_upgrade`, or the
+  axum handler. A second inbound link under an address already linked
+  is refused with 1000 `duplicate`; behind a proxy, key links by the
+  client's own address.
+- Not yet ported: stream semantics (remote subscribe, resume, outbox),
+  CloudEvents outbound frames, and the browser transport.
+
 ### Not ported
 
 The Go package's SQLite bus adapter is deliberately absent, as are kv's
-etcd/TiDB backends and blob's S3 backend. The bus `NetworkAdapter`
-(WebSocket peer relay, reconnect and backoff, star topology, auth
-handshake) is not yet ported but is in scope: networked Rust consumers
-need it, and it lands behind its own features. See
+etcd/TiDB backends and blob's S3 backend. See
 [rust-bus-parity.md](../../contributors/architecture/rust-bus-parity.md).
 
 ### Cross-references

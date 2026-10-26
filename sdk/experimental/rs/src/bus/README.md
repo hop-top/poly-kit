@@ -3,8 +3,8 @@
 ## What it answers
 
 How do in-process components publish and subscribe to named events under a validated four-segment topic
-grammar? Service lifecycle events are emitted by `hop_top_kit::serve`; cross-process transport (the Go
-`NetworkAdapter`) is not yet ported and the SQLite adapter is out of scope; see
+grammar? Service lifecycle events are emitted by `hop_top_kit::serve`; peers across processes link over
+WebSocket through `network/` (feature `bus-network`); the SQLite adapter is out of scope; see
 [rust-bus-parity.md](../../../../../docs/contributors/architecture/rust-bus-parity.md).
 
 ## Use it when
@@ -15,6 +15,7 @@ grammar? Service lifecycle events are emitted by `hop_top_kit::serve`; cross-pro
 - a publish must fail on a malformed topic rather than warn → `DynBus::builder().enforce(Mode::Strict)`
 - a handler must not hold up the publisher → `DynBus::subscribe_async` with a `Spawn` for your executor
 - the transport must be swappable → `DynBus::builder().with_adapter(a)`; `MemoryAdapter` is in-process
+- processes (Go or Rust) must share events → `DynBus::builder().with_network(addrs)` or `NetworkAdapter`
 - you need only the in-memory core, no layers → `Bus`, or `SharedBus` to share it
 - events must also reach a log → `TeeBus` with `JsonlSink` or `StdoutSink`; env: `KIT_BUS_SINK=jsonl`
 
@@ -59,10 +60,9 @@ bus.publish(&event).unwrap();
   then for async tasks until `ctx` is done (Go's `ctx.Err()` text; the bus stays closed). On
   `wasm32-unknown-unknown` it returns `BusError::NotDrained` instead of blocking.
 - `DynBus` layers in Go's `New` order: adapter behind topic enforcement (else the in-memory `SharedBus`),
-  then network (`with_network` panics on any address until that adapter lands), then env sinks.
-- Sinks drain after a publish succeeds; errors go to the reporter, never the publisher. Output is byte-equal
-  to Go's (`contracts/bus-v1/sinks`). Bad `KIT_BUS_SINK` config → `set_env_sink_err_reporter`, skipped;
-  none on wasm32. Subscribe after close registers nothing; `publish` after `close` is `BusError::Closed`.
+  then network (`bus-network`; without it `with_network` panics on any address), then env sinks.
+- Sinks drain after a successful publish; errors go to the reporter. Output byte-equal to Go's (`contracts/bus-v1/sinks`);
+  bad `KIT_BUS_SINK` → `set_env_sink_err_reporter`, skipped; none on wasm32. After close: subscribe no-ops, publish is `BusError::Closed`.
 - Re-entrancy: a handler may publish, subscribe, unsubscribe and close on the `SharedBus` dispatching to
   it; Go deadlocks on all but the nested publish. Two handlers closing at once deadlock, as in Go.
 - Parity: [event-topics.md](../../../../../docs/contracts/event-topics.md) (topic grammar).
