@@ -132,3 +132,38 @@ pub(super) fn env_layer(bus: Arc<dyn Adapter>, reporter: Option<&SharedErrFn>) -
     let _ = reporter;
     bus
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use super::{env, Sink};
+    use crate::bus::{BusError, Context, DynBus, Event};
+
+    struct FailSink;
+
+    impl Sink for FailSink {
+        fn drain(&self, _: &Context, _: &Event) -> Result<(), BusError> {
+            Err(BusError::handler("sink failed"))
+        }
+        fn close(&self) -> Result<(), BusError> {
+            Ok(())
+        }
+    }
+
+    // Go's New passes its reporter to the env tee:
+    // NewTeeBus(b, sinks, reporter).
+    #[test]
+    fn env_tee_reports_sink_errors_to_the_builder_reporter() {
+        let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+        let s = Arc::clone(&seen);
+        env::inject_sinks(vec![Box::new(FailSink)]);
+        let bus = DynBus::builder()
+            .invalid_topic_reporter(move |e| s.lock().unwrap().push(e.to_string()))
+            .build();
+        let e = Event::new("kit.test.thing.recorded", "test", serde_json::Value::Null);
+        assert!(bus.publish(&e).is_ok(), "a sink error never fails publish");
+        assert!(bus.close().is_ok());
+        assert_eq!(*seen.lock().unwrap(), vec!["sink failed".to_string()]);
+    }
+}

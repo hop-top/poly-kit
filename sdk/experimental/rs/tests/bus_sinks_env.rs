@@ -13,6 +13,7 @@
 #[path = "bus_async/exec.rs"]
 mod exec;
 
+use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -34,6 +35,10 @@ struct EnvScope {
 
 impl EnvScope {
     fn new(kind: Option<&str>, path: Option<&Path>) -> Self {
+        Self::new_os(kind.map(OsStr::new), path.map(Path::as_os_str))
+    }
+
+    fn new_os(kind: Option<&OsStr>, path: Option<&OsStr>) -> Self {
         let guard = ENV.lock().unwrap_or_else(|p| p.into_inner());
         match kind {
             Some(k) => std::env::set_var(ENV_SINK_KIND, k),
@@ -199,5 +204,44 @@ fn env_bus_sink_wraps_every_other_layer() {
         bus.close().unwrap();
         assert_eq!(seen.lock().unwrap().len(), 1, "{:?}", seen.lock().unwrap());
         assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 1);
+    });
+}
+
+// Go's strings are bytes: a non-UTF-8 kind prints as `\xNN` under %q,
+// and a non-UTF-8 path names that exact file, not a U+FFFD lookalike.
+#[cfg(unix)]
+#[test]
+fn env_bus_sink_values_are_bytes() {
+    use std::os::unix::ffi::{OsStrExt, OsStringExt};
+    within(|| {
+        let env = EnvScope::new_os(Some(OsStr::from_bytes(b"a\xff")), None);
+        DynBus::new().close().unwrap();
+        assert_eq!(
+            env.reported(),
+            vec![r#"bus: unknown KIT_BUS_SINK="a\xff" (want "jsonl"); skipping env sink"#]
+        );
+        drop(env);
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut path = dir.path().as_os_str().as_bytes().to_vec();
+        path.extend_from_slice(b"/ev\xff.jsonl");
+        let path = std::ffi::OsString::from_vec(path);
+        let env = EnvScope::new_os(Some(OsStr::new("jsonl")), Some(&path));
+        publish_and_close(&DynBus::new());
+        let names: Vec<Vec<u8>> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_vec())
+            .collect();
+        match env.reported().as_slice() {
+            // Created: under the raw name.
+            [] => assert_eq!(names, vec![b"ev\xff.jsonl".to_vec()]),
+            // Refused by the filesystem (APFS wants UTF-8): quoted as Go
+            // quotes the bytes, and nothing created.
+            [r] => {
+                assert!(r.contains(r"ev\xff.jsonl"), "{r}");
+                assert!(names.is_empty(), "{names:?}");
+            }
+            more => panic!("{more:?}"),
+        }
     });
 }

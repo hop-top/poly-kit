@@ -26,6 +26,10 @@ pub struct JsonlSink {
 impl JsonlSink {
     /// Writes to `w`: Go's `NewJSONLSink`. Close flushes, then drops
     /// `w`, which for a borrowed handle such as stdout closes nothing.
+    ///
+    /// Unlike Go, the sink owns `w`: an owned `File` passed here is
+    /// closed when the sink closes. Pass a `&File` or a clone handle to
+    /// keep yours open.
     pub fn new(w: impl Write + Send + 'static) -> Self {
         let w: Box<dyn Write + Send> = Box::new(w);
         JsonlSink {
@@ -77,7 +81,8 @@ impl Sink for JsonlSink {
     }
 
     /// Flushes and releases the writer. Idempotent: a second close is
-    /// `Ok`.
+    /// `Ok`. Returns the flush error; the file itself closes on drop,
+    /// where std reports no error (Go returns `File.Close`'s).
     fn close(&self) -> Result<(), BusError> {
         let mut w = self.w.lock().unwrap_or_else(|p| p.into_inner());
         match w.take() {

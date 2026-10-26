@@ -1,9 +1,9 @@
 //! Runs the shared sink corpus in `contracts/bus-v1/sinks`: the bytes
 //! [`StdoutSink`] and [`JsonlSink`] write for `events.json`, and the
 //! env-sink reporter lines for `env_cases.json`, each byte-equal to the
-//! golden the Go runner checks. Env vars are process-wide, so this is
-//! the only test in its binary. The body runs under the `within`
-//! watchdog.
+//! golden the Go runner checks. Env vars and the working directory are
+//! process-wide, so this is the only test in its binary. The body runs
+//! under the `within` watchdog.
 
 #![cfg(all(feature = "bus", not(target_arch = "wasm32")))]
 
@@ -110,14 +110,22 @@ fn sink_conformance() {
         let reports = Arc::new(Mutex::new(Vec::<String>::new()));
         let r = Arc::clone(&reports);
         set_env_sink_err_reporter(move |e| r.lock().unwrap().push(e.to_string()));
+        // Case paths are relative: run them in an empty temp dir, which
+        // must stay empty, as Go's runner fails on any attached sink.
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(tmp.path()).unwrap();
         for c in &cases.cases {
             std::env::set_var(ENV_SINK_KIND, &c.kind);
             std::env::set_var(ENV_SINK_PATH, &c.path);
             DynBus::new().close().unwrap();
         }
+        std::env::set_current_dir(cwd).unwrap();
         reset_env_sink_err_reporter();
         std::env::remove_var(ENV_SINK_KIND);
         std::env::remove_var(ENV_SINK_PATH);
+        let made: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().collect();
+        assert!(made.is_empty(), "a case attached a sink: {made:?}");
         let got = reports.lock().unwrap().join("\n") + "\n";
         assert_eq!(got, read("env_reports.txt"), "env_reports.txt drifted");
     });

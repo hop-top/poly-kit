@@ -5,7 +5,8 @@
 //! `TestJSONLSinkFileMode` from `regression_test.go`
 //! (`TestTruncateBehavior` is a unit test beside the private helper).
 //! Each body runs under the `within` watchdog, so a deadlock fails the
-//! test instead of hanging it.
+//! test instead of hanging it. The tee wraps a bare in-memory bus, so
+//! the environment cannot attach a sink of its own.
 
 #![cfg(feature = "bus")]
 
@@ -18,7 +19,7 @@ use std::sync::{Arc, Mutex};
 
 use exec::within;
 use hop_top_kit::bus::{
-    Adapter, BusError, Context, DynBus, Event, JsonlSink, Sink, StdoutSink, TeeBus,
+    Adapter, Bus, BusError, Context, Event, JsonlSink, SharedBus, Sink, StdoutSink, TeeBus,
 };
 use serde_json::{json, Value};
 
@@ -81,6 +82,12 @@ fn at(topic: &str, source: &str, ts: &str, payload: Value) -> Event {
     e
 }
 
+/// The wrapped bus: the bare in-memory bus, not `DynBus::new`, so a
+/// `KIT_BUS_SINK` exported in the developer's shell adds no env sink.
+fn inner() -> SharedBus {
+    SharedBus::new(Bus::new())
+}
+
 fn boxed(s: &SpySink) -> Box<dyn Sink> {
     Box::new(s.clone())
 }
@@ -91,7 +98,7 @@ fn boxed(s: &SpySink) -> Box<dyn Sink> {
 fn tee_bus_delivers_to_handlers_and_sinks() {
     within(|| {
         let sink = SpySink::default();
-        let tb = TeeBus::new(DynBus::new(), vec![boxed(&sink)]);
+        let tb = TeeBus::new(inner(), vec![boxed(&sink)]);
         let got = Arc::new(Mutex::new(None::<String>));
         let g = Arc::clone(&got);
         tb.subscribe(
@@ -119,7 +126,7 @@ fn tee_bus_sink_error_does_not_block_handler() {
         };
         let errs = Arc::new(Mutex::new(Vec::<String>::new()));
         let e2 = Arc::clone(&errs);
-        let tb = TeeBus::new(DynBus::new(), vec![boxed(&bad)])
+        let tb = TeeBus::new(inner(), vec![boxed(&bad)])
             .on_error(move |e| e2.lock().unwrap().push(e.to_string()));
         let handled = Arc::new(AtomicUsize::new(0));
         let h = Arc::clone(&handled);
@@ -141,7 +148,7 @@ fn tee_bus_sink_error_does_not_block_handler() {
 fn tee_bus_multiple_sinks_all_receive() {
     within(|| {
         let sinks = [SpySink::default(), SpySink::default(), SpySink::default()];
-        let tb = TeeBus::new(DynBus::new(), sinks.iter().map(boxed).collect());
+        let tb = TeeBus::new(inner(), sinks.iter().map(boxed).collect());
         tb.publish(&bg(), &Event::new("multi.test", "test", json!("payload")))
             .unwrap();
         for (i, s) in sinks.iter().enumerate() {
@@ -156,7 +163,7 @@ fn tee_bus_multiple_sinks_all_receive() {
 fn tee_bus_close_closes_bus_and_all_sinks() {
     within(|| {
         let (s1, s2) = (SpySink::default(), SpySink::default());
-        let tb = TeeBus::new(DynBus::new(), vec![boxed(&s1), boxed(&s2)]);
+        let tb = TeeBus::new(inner(), vec![boxed(&s1), boxed(&s2)]);
         tb.close(&bg()).unwrap();
         let err = tb
             .publish(&bg(), &Event::new("after.close", "test", json!(null)))
@@ -171,7 +178,7 @@ fn tee_bus_close_closes_bus_and_all_sinks() {
 fn tee_bus_sink_receives_wildcard_topic_events() {
     within(|| {
         let sink = SpySink::default();
-        let tb = TeeBus::new(DynBus::new(), vec![boxed(&sink)]);
+        let tb = TeeBus::new(inner(), vec![boxed(&sink)]);
         let count = Arc::new(AtomicUsize::new(0));
         let c = Arc::clone(&count);
         tb.subscribe(
@@ -196,7 +203,7 @@ fn tee_bus_sink_receives_wildcard_topic_events() {
 fn tee_bus_does_not_drain_a_vetoed_publish() {
     within(|| {
         let sink = SpySink::default();
-        let tb = TeeBus::new(DynBus::new(), vec![boxed(&sink)]);
+        let tb = TeeBus::new(inner(), vec![boxed(&sink)]);
         tb.subscribe("a.b", Box::new(|_, _| Err(BusError::handler("veto"))));
         let err = tb
             .publish(&bg(), &Event::new("a.b", "test", json!(null)))
@@ -218,7 +225,7 @@ fn tee_bus_close_bus_error_wins_else_first_sink_error() {
             close_err: Some("second"),
             ..SpySink::default()
         };
-        let tb = TeeBus::new(DynBus::new(), vec![boxed(&ok), boxed(&e1), boxed(&e2)]);
+        let tb = TeeBus::new(inner(), vec![boxed(&ok), boxed(&e1), boxed(&e2)]);
         assert_eq!(tb.close(&bg()).unwrap_err().to_string(), "first");
         assert!(
             ok.closed() && e1.closed() && e2.closed(),
@@ -228,7 +235,7 @@ fn tee_bus_close_bus_error_wins_else_first_sink_error() {
         // A bus whose close fails: its error wins over the sinks'.
         let ctx = Context::background();
         let (ctx, cancel) = ctx.with_cancel();
-        let inner = DynBus::new();
+        let inner = inner();
         let slow = Arc::new(Mutex::new(()));
         let held = slow.lock().unwrap();
         let s2 = Arc::clone(&slow);
@@ -255,7 +262,7 @@ fn tee_bus_without_reporter_drops_sink_errors() {
             fail: Some("x"),
             ..SpySink::default()
         };
-        let tb = TeeBus::new(DynBus::new(), vec![boxed(&bad)]);
+        let tb = TeeBus::new(inner(), vec![boxed(&bad)]);
         tb.publish(&bg(), &Event::new("a.b", "t", json!(null)))
             .unwrap();
         assert_eq!(bad.events().len(), 1);
