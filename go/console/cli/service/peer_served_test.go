@@ -1,4 +1,4 @@
-package cli_test
+package service_test
 
 import (
 	"encoding/json"
@@ -17,6 +17,7 @@ import (
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/cli/internal/testhome"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/core/identity"
 	"hop.top/kit/go/runtime/peer"
 	"hop.top/kit/go/transport/api"
@@ -72,7 +73,7 @@ func TestPeerIsReserved(t *testing.T) {
 // blocks or revokes a peer: the trust step stays a person's.
 func TestPeerIsNeverServedOverREST(t *testing.T) {
 	testhome.Isolate(t)
-	r := newServeRoot(t, append(peerSources(t), cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}))...)
+	r := newServeRoot(t, append(peerSources(t), service.WithAPI(service.APIConfig{Addr: "127.0.0.1:0"}))...)
 	id := seedPendingPeer(t, r)
 	base, stop := serveAPIInBackground(t, r, []string{"serve", "api"})
 	defer stop()
@@ -108,7 +109,7 @@ func TestPeerIsNeverServedOverREST(t *testing.T) {
 func TestPeerIsNeverServedOverTheSocket(t *testing.T) {
 	testhome.Isolate(t)
 	path := shortSocketPath(t)
-	r := newServeRoot(t, append(peerSources(t), cli.WithSocket(cli.SocketConfig{Path: path}))...)
+	r := newServeRoot(t, append(peerSources(t), service.WithSocket(service.SocketConfig{Path: path}))...)
 	id := seedPendingPeer(t, r)
 	stop := serveInBackground(t, r, []string{"serve", "socket"}, path)
 	defer stop()
@@ -132,7 +133,7 @@ func TestAliasCommandIsReservedAndWithheld(t *testing.T) {
 			testhome.Isolate(t)
 			path := shortSocketPath(t)
 			file := filepath.Join(t.TempDir(), "aliases.yaml")
-			r := newServeRoot(t, cli.WithSocket(cli.SocketConfig{Path: path}))
+			r := newServeRoot(t, service.WithSocket(service.SocketConfig{Path: path}))
 			aliasCmd := r.AliasCmd(alias.NewStore(file))
 			prefix := []string{}
 			if parent != "" {

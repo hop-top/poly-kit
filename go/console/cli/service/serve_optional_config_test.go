@@ -1,4 +1,4 @@
-package cli
+package service
 
 import (
 	"testing"
@@ -15,10 +15,10 @@ func TestServiceConfigSourcesMarkAServiceOptionalFromTheEnvironment(t *testing.T
 	t.Setenv("TOOL_SERVICES_SOCKET_ENABLED", "true")
 	t.Setenv("TOOL_SERVICES_SOCKET_OPTIONAL", "true")
 	r := authRoot(t, WithSocket(SocketConfig{Path: tmpSocket(t)}))
-	require.NoError(t, r.loadServiceConfig())
+	require.NoError(t, loadServiceConfig(r))
 
-	configs := serveConfigs(r.Viper, r.serveReg.Names(), nil, nil)
-	require.NoError(t, applyServiceOptional(r.Viper, r.serveReg, configs, r.serveReg.Names()))
+	configs := serveConfigs(r.Viper, stateOf(r).serveReg.Names(), nil, nil)
+	require.NoError(t, applyServiceOptional(r.Viper, stateOf(r).serveReg, configs, stateOf(r).serveReg.Names()))
 	assert.True(t, configs[SocketServiceName].Optional)
 }
 
@@ -29,9 +29,9 @@ func TestServiceOptionalDefaultsToRequired(t *testing.T) {
 	isolateHome(t)
 	t.Setenv("TOOL_SERVICES_SOCKET_ENABLED", "true")
 	r := authRoot(t, WithSocket(SocketConfig{Path: tmpSocket(t)}))
-	require.NoError(t, r.loadServiceConfig())
+	require.NoError(t, loadServiceConfig(r))
 
-	configs := serveConfigs(r.Viper, r.serveReg.Names(), nil, nil)
-	require.NoError(t, applyServiceOptional(r.Viper, r.serveReg, configs, r.serveReg.Names()))
+	configs := serveConfigs(r.Viper, stateOf(r).serveReg.Names(), nil, nil)
+	require.NoError(t, applyServiceOptional(r.Viper, stateOf(r).serveReg, configs, stateOf(r).serveReg.Names()))
 	assert.False(t, configs[SocketServiceName].Optional)
 }

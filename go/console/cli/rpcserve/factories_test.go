@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/console/cli/rpcserve"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/core/upgrade"
 	"hop.top/kit/go/runtime/bus"
@@ -32,7 +32,7 @@ func TestMigrateCommandIsNeverServedOverRPC(t *testing.T) {
 		}
 		return nil
 	})
-	r := newServeRoot(t, rpcserve.With(rpcserve.Config{}), cli.WithServiceBus(b))
+	r := newServeRoot(t, rpcserve.With(rpcserve.Config{}), service.WithServiceBus(b))
 	r.Cmd.AddCommand(upgrade.MigrateCommand(upgrade.NewMigrator("test", "1.0.0"), r.Viper))
 
 	ctx, cancel := context.WithCancel(context.Background())

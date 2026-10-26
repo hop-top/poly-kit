@@ -1,4 +1,4 @@
-package cli_test
+package service_test
 
 import (
 	"encoding/json"
@@ -12,6 +12,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/internal/testhome"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/core/upgrade"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/socket"
@@ -34,7 +35,7 @@ func mountMigrate(r *cli.Root) {
 // database, is refused before it runs.
 func TestMigrateCommandIsNeverServedOverREST(t *testing.T) {
 	testhome.Isolate(t)
-	r := newServeRoot(t, cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}))
+	r := newServeRoot(t, service.WithAPI(service.APIConfig{Addr: "127.0.0.1:0"}))
 	mountMigrate(r)
 	base, stop := serveAPIInBackground(t, r, []string{"serve", "api"})
 	defer stop()
@@ -74,7 +75,7 @@ func TestMigrateCommandIsNeverServedOverREST(t *testing.T) {
 func TestMigrateCommandIsNeverServedOverTheSocket(t *testing.T) {
 	testhome.Isolate(t)
 	path := shortSocketPath(t)
-	r := newServeRoot(t, cli.WithSocket(cli.SocketConfig{Path: path}))
+	r := newServeRoot(t, service.WithSocket(service.SocketConfig{Path: path}))
 	mountMigrate(r)
 	stop := serveInBackground(t, r, []string{"serve", "socket"}, path)
 	defer stop()

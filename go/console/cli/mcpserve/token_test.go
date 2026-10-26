@@ -16,6 +16,7 @@ import (
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/console/cli/mcpserve"
+	"hop.top/kit/go/console/cli/service"
 	_ "hop.top/kit/go/storage/kv/sqlite"
 )
 
@@ -72,11 +73,11 @@ func connectWith(t *testing.T, endpoint, token string) (*mcp.ClientSession, erro
 func TestMCPOnlyRootIssuesAPIKeys(t *testing.T) {
 	testhome.Isolate(t)
 	path := filepath.Join(t.TempDir(), "keys", "apikeys.db")
-	keys := cli.WithAPIKeys(cli.APIKeysConfig{Path: path})
-	apikeyMode := func(r *cli.Root) { r.Viper.Set("services.mcp.auth.mode", cli.AuthModeAPIKey) }
+	keys := service.WithAPIKeys(service.APIKeysConfig{Path: path})
+	apikeyMode := func(r *cli.Root) { r.Viper.Set("services.mcp.auth.mode", service.AuthModeAPIKey) }
 
 	issuer := newServeRoot(t, mcpserve.With(mcpserve.Config{}), keys)
-	require.Equal(t, []string{mcpserve.ServiceName}, issuer.ServeRegistry().Names(), "mcp is the only service")
+	require.Equal(t, []string{mcpserve.ServiceName}, service.ServeRegistry(issuer).Names(), "mcp is the only service")
 	leaves := tokenLeaves(issuer)
 	for _, want := range []string{"key create", "key list", "key revoke"} {
 		assert.Contains(t, leaves, want)
@@ -138,7 +139,7 @@ func TestTokenIsNeverAnMCPTool(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "keys", "apikeys.db")
 	run, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
 		cli.WithIdentity(cli.IdentityConfig{Dir: dir}),
-		cli.WithAPIKeys(cli.APIKeysConfig{Path: path}))
+		service.WithAPIKeys(service.APIKeysConfig{Path: path}))
 	require.Contains(t, tokenLeaves(run.root), "key create", "the leaves exist on the CLI")
 	require.Contains(t, tokenLeaves(run.root), "create")
 

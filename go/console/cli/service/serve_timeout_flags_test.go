@@ -1,4 +1,4 @@
-package cli_test
+package service_test
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/internal/testhome"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/output"
 )
 
@@ -48,7 +48,7 @@ func (s *stuckStopService) Stop(context.Context) error {
 // when it has no services.<name> block.
 func TestServe_SelectorReadyTimeoutFlagReachesAnUnconfiguredService(t *testing.T) {
 	testhome.Isolate(t)
-	r := newServeRoot(t, cli.WithService(&silentService{name: "slow"}))
+	r := newServeRoot(t, service.WithService(&silentService{name: "slow"}))
 
 	var oe *output.Error
 	require.ErrorAs(t, runServeArgs(t, r, []string{"serve", "slow", "--ready-timeout", "50ms"}, 5*time.Second), &oe,
@@ -63,7 +63,7 @@ func TestServe_SelectorStopTimeoutFlagReachesAnUnconfiguredService(t *testing.T)
 	testhome.Isolate(t)
 	stuck := &stuckStopService{name: "hang", release: make(chan struct{})}
 	t.Cleanup(func() { close(stuck.release) })
-	r := newServeRoot(t, cli.WithService(stuck))
+	r := newServeRoot(t, service.WithService(stuck))
 
 	var oe *output.Error
 	require.ErrorAs(t, runServeArgs(t, r,

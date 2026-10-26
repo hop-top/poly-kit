@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 )

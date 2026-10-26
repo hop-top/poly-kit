@@ -1,4 +1,4 @@
-package cli_test
+package service_test
 
 import (
 	"encoding/json"
@@ -16,6 +16,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/internal/testhome"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/go/transport/socket"
@@ -28,7 +29,7 @@ func keySources(t *testing.T) []func(*cli.Root) {
 	dir := t.TempDir()
 	return []func(*cli.Root){
 		cli.WithIdentity(cli.IdentityConfig{Dir: filepath.Join(dir, "identity")}),
-		cli.WithAPIKeys(cli.APIKeysConfig{Path: filepath.Join(dir, "keys", "apikeys.db")}),
+		service.WithAPIKeys(service.APIKeysConfig{Path: filepath.Join(dir, "keys", "apikeys.db")}),
 	}
 }
 
@@ -43,7 +44,7 @@ var tokenPaths = [][]string{
 // described as not invocable, and a call to one mints nothing.
 func TestTokenIsNeverServedOverREST(t *testing.T) {
 	testhome.Isolate(t)
-	r := newServeRoot(t, append(keySources(t), cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}))...)
+	r := newServeRoot(t, append(keySources(t), service.WithAPI(service.APIConfig{Addr: "127.0.0.1:0"}))...)
 	base, stop := serveAPIInBackground(t, r, []string{"serve", "api"})
 	defer stop()
 
@@ -78,7 +79,7 @@ func TestTokenIsNeverServedOverREST(t *testing.T) {
 func TestTokenIsNeverServedOverTheSocket(t *testing.T) {
 	testhome.Isolate(t)
 	path := shortSocketPath(t)
-	r := newServeRoot(t, append(keySources(t), cli.WithSocket(cli.SocketConfig{Path: path}))...)
+	r := newServeRoot(t, append(keySources(t), service.WithSocket(service.SocketConfig{Path: path}))...)
 	stop := serveInBackground(t, r, []string{"serve", "socket"}, path)
 	defer stop()
 
@@ -98,7 +99,7 @@ func TestTokenIsNeverServedOverTheSocket(t *testing.T) {
 func TestAdoptersOwnTokenCommandIsStillServedOverTheSocket(t *testing.T) {
 	testhome.Isolate(t)
 	path := shortSocketPath(t)
-	r := newServeRoot(t, cli.WithSocket(cli.SocketConfig{Path: path}))
+	r := newServeRoot(t, service.WithSocket(service.SocketConfig{Path: path}))
 	require.False(t, r.IsReserved("token"), "no key source, no kit token command")
 	own := &cobra.Command{Use: "token", Short: "the adopter's own"}
 	own.AddCommand(&cobra.Command{
@@ -122,8 +123,8 @@ func managedSocketRoot(t *testing.T, opts ...func(*cli.Root)) (*cli.Root, string
 	testhome.Isolate(t)
 	path := shortSocketPath(t)
 	all := append(keySources(t),
-		cli.WithSocket(cli.SocketConfig{Path: path}),
-		cli.WithAuditCommand(), cli.WithQuotaCommand(), cli.WithStatus(cli.StatusConfig{}))
+		service.WithSocket(service.SocketConfig{Path: path}),
+		service.WithAuditCommand(), service.WithQuotaCommand(), cli.WithStatus(cli.StatusConfig{}))
 	r := newServeRoot(t, append(all, opts...)...)
 	r.Cmd.AddCommand(&cobra.Command{
 		Use:  "ping",
@@ -187,7 +188,7 @@ func TestSocketServesOnlyIntrospectionFromTheReservedSet(t *testing.T) {
 	stop := serveInBackground(t, r, []string{"serve", "socket"}, path)
 	defer stop()
 
-	svc, ok := r.ServeRegistry().Lookup(cli.SocketServiceName)
+	svc, ok := service.ServeRegistry(r).Lookup(service.SocketServiceName)
 	require.True(t, ok)
 	bridged, ok := svc.(interface{ Bridge() *cmdsurface.Bridge })
 	require.True(t, ok)

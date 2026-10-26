@@ -1,4 +1,4 @@
-package cli_test
+package service_test
 
 import (
 	"bytes"
@@ -14,6 +14,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/internal/testhome"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/runtime/bus"
@@ -70,7 +71,7 @@ func coreAndAux(t *testing.T, aux serve.Service) (*cli.Root, *stubService) {
 	t.Helper()
 	testhome.Isolate(t)
 	core := &stubService{name: "core"}
-	r := newServeRoot(t, cli.WithServices(core, aux))
+	r := newServeRoot(t, service.WithServices(core, aux))
 	r.Viper.Set("services.core.enabled", true)
 	r.Viper.Set("services.aux.enabled", true)
 	return r, core
@@ -156,8 +157,8 @@ func TestServe_SelectorFormAppliesTheRegistrationDefault(t *testing.T) {
 	testhome.Isolate(t)
 	log := &eventLog{}
 	r := newServeRoot(t,
-		cli.WithService(declaringUnbindable{&unbindable{name: "aux", optional: true}}),
-		cli.WithServiceBus(log))
+		service.WithService(declaringUnbindable{&unbindable{name: "aux", optional: true}}),
+		service.WithServiceBus(log))
 
 	var oe *output.Error
 	require.ErrorAs(t, runServeArgs(t, r, []string{"serve", "aux"}, 2*time.Second), &oe)

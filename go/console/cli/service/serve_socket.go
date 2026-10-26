@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/core/xdg"
 	"hop.top/kit/go/transport/cmdsurface"
