@@ -173,10 +173,13 @@ func resolvePaths(cwd string, paths []string, supported func(string) bool, allow
 // were about to look at is already gone" is a scan-time race worth
 // tolerating.
 func expandDir(root string, supported func(string) bool, allowMissing bool) ([]string, error) {
-	// Dot-directories are pruned below the root; the root itself is
-	// exempt so an explicitly passed dot-directory still scans.
+	// Dot-directories and dependency trees (node_modules/, vendor/)
+	// are pruned below the root; the root itself is exempt so an
+	// explicitly passed dot-directory or dependency tree still scans.
+	// prunedDirNames is shared with walkPaths so the two walkers can't
+	// drift on which names are excluded.
 	prune := func(p, name string) bool {
-		return p != root && strings.HasPrefix(name, ".")
+		return p != root && (strings.HasPrefix(name, ".") || prunedDirNames[name])
 	}
 	var out []string
 	if err := walkDirEntries(root, root, supported, allowMissing, prune, &out); err != nil {
@@ -336,11 +339,24 @@ func splitPaths(out, cwd string) []string {
 // walkDirEntries keeps both on the same path-prefix convention.
 func walkPaths(cwd string) ([]string, error) {
 	prune := func(_, name string) bool {
-		return name == ".git" || name == "node_modules"
+		return name == ".git" || prunedDirNames[name]
 	}
 	var out []string
 	if err := walkDirEntries(cwd, cwd, nil, false, prune, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// prunedDirNames lists directory names that walkPaths and expandDir
+// both exclude by exact name match, regardless of nesting depth —
+// dependency/package trees that are never the leak or story-scan
+// channel we care about and are wasteful (or, for verify-stories,
+// outright broken) to walk. Shared by both walkers so they can't
+// drift on which names are excluded, the way walkPaths (node_modules
+// only) and expandDir (no exclusion at all) had before this map
+// existed.
+var prunedDirNames = map[string]bool{
+	"node_modules": true,
+	"vendor":       true,
 }

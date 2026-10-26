@@ -116,3 +116,27 @@ func TestVerifyStoriesCLIForbiddenMetadataKey(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, stdout.String(), "forbidden-metadata-key")
 }
+
+// A --paths=. default (12fcc's post-PR#186 CI gate template) must not
+// walk into node_modules/ or vendor/: unrelated YAML sitting there
+// (e.g. pnpm's own metadata files, vendored deps) is not a story and
+// must never surface as a parse-failed finding. walkYAMLs is the
+// walker actually reachable via --paths=.; before the fix it pruned
+// only dot-directories, so both trees below were walked and choked on
+// invalid YAML that has nothing to do with kit stories.
+func TestVerifyStoriesCLIPrunesNodeModulesAndVendor(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "ok.yaml", goodCLIStory)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "node_modules", "some-pkg"), 0o755))
+	writeFile(t, dir, filepath.Join("node_modules", "some-pkg", "bad.yaml"), "not: valid: yaml: [\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "vendor", "some-go-dep"), 0o755))
+	writeFile(t, dir, filepath.Join("vendor", "some-go-dep", "bad.yaml"), "broken: [yaml\n")
+
+	stdout, _, err := runVerifyStories(t, "--paths", dir, "--format=json")
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
+	assert.EqualValues(t, 1, got["scanned_files"], "node_modules/ and vendor/ must be pruned entirely, not walked-and-tolerated")
+	findings, _ := got["findings"].([]any)
+	assert.Empty(t, findings, "expected no findings; got %v", findings)
+}
