@@ -151,7 +151,10 @@ func TestNetworkAdapter_RedialPendingDuringLoopExit(t *testing.T) {
 	t.Cleanup(srv.Close)
 	url := "ws" + srv.URL[4:]
 	b := New()
-	n := NewNetworkAdapter(b, WithBackoff(time.Millisecond, 4*time.Millisecond))
+	// A cap (and so a stability window) of an hour: the first link
+	// counts as short however slow the machine; the wait seam keeps the
+	// test fast.
+	n := NewNetworkAdapter(b, WithBackoff(time.Millisecond, time.Hour))
 	atExit := make(chan struct{}, 4)
 	var held atomic.Bool
 	n.testHook = func(event string) {
