@@ -267,9 +267,10 @@ fn async_subscribe_through_the_builder() {
     assert!(called.load(Ordering::SeqCst));
 }
 
+#[cfg(not(feature = "bus-network"))]
 #[test]
-#[should_panic(expected = "network adapter not yet available in kit-rs")]
-fn with_network_panics_until_the_network_adapter_lands() {
+#[should_panic(expected = "the network adapter needs the bus-network feature")]
+fn with_network_panics_without_the_network_feature() {
     // A bus that silently stayed local would pass for a networked one.
     let _ = DynBus::builder().with_network(["ws://127.0.0.1:1/bus"]);
 }

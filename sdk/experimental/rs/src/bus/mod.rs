@@ -12,12 +12,12 @@
 //! `billing.finance.invoice.paid`. See [`topic`] for the two validators
 //! and how they differ.
 //!
-//! # What is not ported
+//! # Network and what is not ported
 //!
-//! The Go package also ships a `NetworkAdapter` (WebSocket peer relay,
-//! reconnect/backoff, star topology, auth handshake) and a SQLite-backed
-//! adapter. The network adapter is not yet ported but is in scope, behind
-//! its own feature; the SQLite adapter stays out. The plan and feature
+//! The Go package's `NetworkAdapter` (WebSocket peer relay,
+//! reconnect/backoff, star topology, auth handshake) is `network`,
+//! behind the `bus-network` feature; its stream semantics are not yet
+//! ported. The SQLite-backed adapter stays out. The plan and feature
 //! layout live in `docs/contributors/architecture/rust-bus-parity.md`.
 //!
 //! See [`mem`] for sync dispatch, [`SharedBus`] for threads, draining
@@ -58,6 +58,8 @@ pub mod context;
 mod drain;
 pub mod event;
 pub mod mem;
+#[cfg(feature = "bus-network")]
+pub mod network;
 pub mod qualifiers;
 mod quote;
 mod shared;
