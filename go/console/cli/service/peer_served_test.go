@@ -17,6 +17,7 @@ import (
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/cli/internal/testhome"
+	"hop.top/kit/go/console/cli/peers"
 	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/core/identity"
 	"hop.top/kit/go/runtime/peer"
@@ -31,7 +32,7 @@ func peerSources(t *testing.T) []func(*cli.Root) {
 	dir := t.TempDir()
 	return []func(*cli.Root){
 		cli.WithIdentity(cli.IdentityConfig{Dir: filepath.Join(dir, "identity")}),
-		cli.WithPeers(cli.PeerConfig{DataDir: filepath.Join(dir, "peers")}),
+		peers.With(peers.Config{DataDir: filepath.Join(dir, "peers")}),
 	}
 }
 
@@ -44,14 +45,14 @@ func seedPendingPeer(t *testing.T, r *cli.Root) string {
 	pub, err := stranger.MarshalPublicKey()
 	require.NoError(t, err)
 	info := peer.PeerInfo{ID: stranger.PublicKeyID(), Name: "evil", Addrs: []string{"127.0.0.1:1"}, PublicKey: pub}
-	require.NoError(t, r.PeerTrust.AcceptTOFU(info))
+	require.NoError(t, peers.Of(r).Trust.AcceptTOFU(info))
 	requirePending(t, r, info.ID)
 	return info.ID
 }
 
 func requirePending(t *testing.T, r *cli.Root, id string) {
 	t.Helper()
-	rec, err := r.PeerRegistry.Get(id)
+	rec, err := peers.Of(r).Registry.Get(id)
 	require.NoError(t, err)
 	require.NotNil(t, rec)
 	assert.Equal(t, peer.PendingTOFU, rec.Trust, "the peer is still waiting on a person")
