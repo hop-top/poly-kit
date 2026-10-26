@@ -61,7 +61,7 @@ fn acceptor_times_out_a_silent_dialer() {
 
 /// A raw acceptor that upgrades, reads the auth frame, sends `reply`
 /// (if any) and records every frame and the close it gets.
-fn scripted_acceptor(
+pub(super) fn scripted_acceptor(
     reply: Option<&'static str>,
 ) -> (std::net::SocketAddr, mpsc::Receiver<Vec<String>>) {
     use futures_util::{SinkExt, StreamExt};

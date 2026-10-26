@@ -19,8 +19,11 @@ use super::error::NetworkError;
 use super::runtime;
 use super::wire::{auth_frame, is_auth_ok};
 use crate::bus::context::Context;
-use crate::bus::stream::LinkState;
+use crate::bus::stream::{
+    LinkResume, LinkState, REASON_UNSUPPORTED, TOPIC_LINK_CONNECTED, TOPIC_STREAM_INVALIDATED,
+};
 use crate::netpolicy::OfflineError;
+use serde_json::json;
 
 /// How long the handshake waits for the peer's first frame: Go's
 /// `handshakeTimeout`, on both sides.
@@ -49,13 +52,13 @@ impl Inner {
             }
         }
 
-        let (sink, source) = dial(&ctx, &addr).await?;
+        let (sink, source) = dial(&ctx, &addr, self.tls.clone()).await?;
         if !from_loop {
             self.register(&addr);
         }
         let (sink, source) = match self.handshake(&ctx, sink, source).await {
             Ok(halves) => halves,
-            Err(e) => return Err(self.handshake_failed(&addr, e)),
+            Err(e) => return Err(self.handshake_failed(&addr, e).await),
         };
 
         // Register in one critical section with the checks that decide
@@ -80,19 +83,21 @@ impl Inner {
                 let sink = sink.take().expect("sink is taken once");
                 let link = Link::new(addr.clone(), true, sink, String::new());
                 st.conns.insert(addr.clone(), Arc::clone(&link));
-                st.peers.insert(
-                    addr,
-                    LinkState {
-                        connected: true,
-                        ..LinkState::default()
-                    },
-                );
+                // A fresh state also clears Final and the code of an
+                // earlier refused handshake.
+                let peer = st.peers.entry(addr).or_default();
+                let reconnect = std::mem::replace(&mut peer.connected_once, true);
+                peer.state = LinkState {
+                    connected: true,
+                    resume: Some(LinkResume::Unsupported),
+                    ..LinkState::default()
+                };
                 self.tasks.add();
-                Ok(link)
+                Ok((link, reconnect))
             }
         };
-        let link = match registered {
-            Ok(link) => link,
+        let (link, reconnect) = match registered {
+            Ok(registered) => registered,
             Err((code, reason, result)) => {
                 if let Some(sink) = sink {
                     close_raw(sink, source, code, reason).await;
@@ -100,7 +105,33 @@ impl Inner {
                 return result;
             }
         };
-        runtime::handle().spawn(Arc::clone(self).read_loop(link, source));
+        // Go's publishConnected, then the gap a link without positions
+        // always leaves on a reconnect, then the reader. A task of its
+        // own: the link is registered and counted, so this must run to
+        // the end even if the caller's future is dropped (a reconnect
+        // interrupted by close). Connect returns once the events are out.
+        let inner = Arc::clone(self);
+        let (published_tx, published) = tokio::sync::oneshot::channel();
+        runtime::handle().spawn(async move {
+            let addr = link.addr.clone();
+            inner
+                .publish_local(
+                    TOPIC_LINK_CONNECTED,
+                    json!({"peer": addr, "stream": "", "resume": LinkResume::Unsupported.as_str(), "format": "kit"}),
+                )
+                .await;
+            if reconnect {
+                inner
+                    .publish_local(
+                        TOPIC_STREAM_INVALIDATED,
+                        json!({"peer": addr, "reason": REASON_UNSUPPORTED, "stream": "", "after": "", "head": ""}),
+                    )
+                    .await;
+            }
+            let _ = published_tx.send(());
+            inner.read_loop(link, source).await;
+        });
+        let _ = published.await;
         Ok(())
     }
 
@@ -115,11 +146,17 @@ impl Inner {
         let Some(auth) = &self.auth else {
             return Ok((sink, source));
         };
-        let token = match auth.token() {
+        // The authenticator is caller code and may block: keep it off the
+        // network thread.
+        let a = Arc::clone(auth);
+        let token = tokio::task::spawn_blocking(move || a.token())
+            .await
+            .unwrap_or_else(|_| Err("bus: network: authenticator panicked".into()));
+        let token = match token {
             Ok(t) => t,
             Err(e) => {
                 close_raw(sink, source, STATUS_INTERNAL, "auth failed").await;
-                return Err(NetworkError::Token(e));
+                return Err(NetworkError::Token(Arc::from(e)));
             }
         };
         let sent = tokio::select! {
@@ -151,17 +188,39 @@ impl Inner {
         }
     }
 
-    /// Records a refused handshake on the address and passes the error
-    /// through: Go's `handshakeFailed`, without the link events.
-    fn handshake_failed(&self, addr: &str, err: NetworkError) -> NetworkError {
+    /// Reports a failed handshake, records it on the address and passes
+    /// the error through: Go's `handshakeFailed`. A refused token is
+    /// `auth`, a missing ack `timeout`; neither is final on these links.
+    /// `link.disconnected` goes out once per change of code, so a
+    /// retrying address does not flood the bus.
+    async fn handshake_failed(&self, addr: &str, err: NetworkError) -> NetworkError {
+        self.report_err(NetworkError::Handshake {
+            addr: addr.to_string(),
+            source: Box::new(err.clone()),
+        })
+        .await;
         let code = match err {
             NetworkError::AckTimeout => "timeout",
             NetworkError::AuthFailed => "auth",
             _ => return err,
         };
-        if let Some(ps) = self.state().peers.get_mut(addr) {
-            ps.connected = false;
-            ps.code = code.to_string();
+        let publish = {
+            let mut st = self.state();
+            // A peer disconnect forgot meanwhile still gets its event, as
+            // Go's handshake keeps its peer state.
+            match st.peers.get_mut(addr) {
+                None => true,
+                Some(p) => {
+                    let repeat = !p.state.connected && p.state.code == code && !p.state.is_final;
+                    p.state.connected = false;
+                    p.state.code = code.to_string();
+                    p.state.is_final = false;
+                    !repeat
+                }
+            }
+        };
+        if publish {
+            self.publish_disconnected(addr, false, code).await;
         }
         err
     }
@@ -169,7 +228,11 @@ impl Inner {
 
 /// Dials `addr` and completes the WebSocket upgrade, bounded by `ctx`.
 /// The policy check runs first, on the address alone.
-async fn dial(ctx: &Context, addr: &str) -> Result<(WsSink, WsSource), NetworkError> {
+async fn dial(
+    ctx: &Context,
+    addr: &str,
+    tls: Option<Arc<rustls::ClientConfig>>,
+) -> Result<(WsSink, WsSource), NetworkError> {
     let url = ws_url(addr);
     let req = url
         .as_str()
@@ -203,7 +266,10 @@ async fn dial(ctx: &Context, addr: &str) -> Result<(WsSink, WsSource), NetworkEr
             .await
             .map_err(|e| NetworkError::Dial(e.to_string()))?;
         let connector = if secure {
-            Connector::Rustls(tls_config()?)
+            Connector::Rustls(match tls {
+                Some(c) => c,
+                None => tls_config()?,
+            })
         } else {
             Connector::Plain
         };
@@ -230,21 +296,34 @@ fn ws_url(addr: &str) -> String {
 }
 
 /// The TLS client config: rustls on the ring provider, trusting the
-/// platform's roots (Go's default transport does the same).
+/// platform's roots (Go's default transport does the same), plus
+/// Mozilla's with feature `bus-network-webpki-roots`.
 fn tls_config() -> Result<Arc<rustls::ClientConfig>, NetworkError> {
     static CONFIG: OnceLock<Result<Arc<rustls::ClientConfig>, String>> = OnceLock::new();
     CONFIG
         .get_or_init(|| {
-            let mut roots = rustls::RootCertStore::empty();
-            for cert in rustls_native_certs::load_native_certs().certs {
-                let _ = roots.add(cert);
-            }
             let provider = Arc::new(rustls::crypto::ring::default_provider());
             rustls::ClientConfig::builder_with_provider(provider)
                 .with_safe_default_protocol_versions()
-                .map(|b| Arc::new(b.with_root_certificates(roots).with_no_client_auth()))
+                .map(|b| {
+                    Arc::new(
+                        b.with_root_certificates(default_roots())
+                            .with_no_client_auth(),
+                    )
+                })
                 .map_err(|e| e.to_string())
         })
         .clone()
         .map_err(NetworkError::Dial)
+}
+
+/// The default root store.
+pub(crate) fn default_roots() -> rustls::RootCertStore {
+    let mut roots = rustls::RootCertStore::empty();
+    for cert in rustls_native_certs::load_native_certs().certs {
+        let _ = roots.add(cert);
+    }
+    #[cfg(feature = "bus-network-webpki-roots")]
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    roots
 }

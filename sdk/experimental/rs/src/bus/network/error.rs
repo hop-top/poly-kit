@@ -2,6 +2,7 @@
 
 use std::error::Error;
 use std::fmt;
+use std::sync::Arc;
 
 use crate::bus::context::ContextError;
 use crate::netpolicy::OfflineError;
@@ -11,7 +12,9 @@ use crate::netpolicy::OfflineError;
 pub type AuthError = Box<dyn Error + Send + Sync>;
 
 /// Errors from the network adapter. Texts are Go's where Go has one.
-#[derive(Debug)]
+/// Cheap to clone: the error callback gets a copy of what connect
+/// returns.
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum NetworkError {
     /// The adapter is closed: Go's `ErrBusClosed`.
@@ -36,29 +39,49 @@ pub enum NetworkError {
     /// [`is_auth_failed`]: NetworkError::is_auth_failed
     AckTimeout,
     /// The authenticator failed to produce a token.
-    Token(AuthError),
+    Token(Arc<dyn Error + Send + Sync>),
     /// Writing the auth frame failed.
     Write(String),
     /// The caller's context was done during the handshake.
     Context(ContextError),
+    /// A failed handshake as the error callback reports it: Go's
+    /// `bus: handshake with <addr>: <err>`. The predicates look through
+    /// it.
+    Handshake {
+        /// The dialed address.
+        addr: String,
+        /// What failed.
+        source: Box<NetworkError>,
+    },
 }
 
 impl NetworkError {
     /// Whether this is [`NetworkError::Closed`]: Go's
     /// `err == ErrBusClosed`.
     pub fn is_closed(&self) -> bool {
-        matches!(self, NetworkError::Closed)
+        matches!(self.inner(), NetworkError::Closed)
+    }
+
+    /// The error under any [`NetworkError::Handshake`] wrapping.
+    fn inner(&self) -> &NetworkError {
+        match self {
+            NetworkError::Handshake { source, .. } => source.inner(),
+            e => e,
+        }
     }
 
     /// Whether authentication failed: Go's
     /// `errors.Is(err, ErrAuthFailed)`, a missing ack included.
     pub fn is_auth_failed(&self) -> bool {
-        matches!(self, NetworkError::AuthFailed | NetworkError::AckTimeout)
+        matches!(
+            self.inner(),
+            NetworkError::AuthFailed | NetworkError::AckTimeout
+        )
     }
 
     /// The policy refusal, if the dial was refused as offline.
     pub fn as_offline(&self) -> Option<&OfflineError> {
-        match self {
+        match self.inner() {
             NetworkError::Offline(e) => Some(e),
             _ => None,
         }
@@ -77,6 +100,9 @@ impl fmt::Display for NetworkError {
             NetworkError::Token(e) => write!(f, "{e}"),
             NetworkError::Write(m) => write!(f, "failed to write auth frame: {m}"),
             NetworkError::Context(e) => write!(f, "{e}"),
+            NetworkError::Handshake { addr, source } => {
+                write!(f, "bus: handshake with {addr}: {source}")
+            }
         }
     }
 }
@@ -87,6 +113,7 @@ impl Error for NetworkError {
             NetworkError::Offline(e) => Some(e),
             NetworkError::Token(e) => Some(e.as_ref()),
             NetworkError::Context(e) => Some(e),
+            NetworkError::Handshake { source, .. } => Some(source.as_ref()),
             _ => None,
         }
     }

@@ -61,6 +61,10 @@ bus-network = [
 # Mounts the adapter's accept handler on an axum router. Opt-in so a
 # consumer on another framework (or a bare listener) compiles no axum.
 bus-network-axum = ["bus-network", "dep:axum", "dep:hyper", "dep:hyper-util"]
+# Adds Mozilla's root store (webpki-roots, data under CDLA-Permissive-2.0)
+# to the default TLS roots, for platforms without a store rustls can read
+# (Android). Opt-in: by default only the platform's roots are trusted.
+bus-network-webpki-roots = ["bus-network", "dep:webpki-roots"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
 httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
 # Dual-spec MCP surface. `rmcp` supplies the protocol vocabulary (version
@@ -228,6 +232,7 @@ rustls = { version = "=0.23.43", default-features = false, features = [
     "tls12",
 ], optional = true }
 rustls-native-certs = { version = "=0.8.4", optional = true }
+webpki-roots = { version = "=1.0.9", optional = true }
 # bus-network-axum: the router adapter and hyper's upgrade. axum's
 # `tokio` feature supplies `ConnectInfo`, the peer address a link is
 # keyed by; its deps are already in the bus-network tree.

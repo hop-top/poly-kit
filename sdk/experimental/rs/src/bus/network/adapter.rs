@@ -15,8 +15,9 @@ use super::runtime::{self, TokioSpawn};
 use super::sync::{Signal, WaitGroup};
 use crate::bus::adapter::{async_handler, Adapter};
 use crate::bus::context::Context;
+use crate::bus::event::Event;
 use crate::bus::mem::SubscriptionId;
-use crate::bus::stream::LinkState;
+use crate::bus::stream::{LinkState, NETWORK_EVENT_SOURCE, TOPIC_LINK_DISCONNECTED};
 use crate::netpolicy::NetPolicy;
 use crate::util::retry::RetryConfig;
 
@@ -29,7 +30,12 @@ pub struct NetworkOptions {
     pub(crate) origin_id: Option<String>,
     pub(crate) auth: Option<Arc<dyn Authenticator>>,
     pub(crate) relay: bool,
+    pub(crate) on_error: Option<ErrorFunc>,
+    pub(crate) tls: Option<Arc<rustls::ClientConfig>>,
 }
+
+/// Receives errors the adapter cannot return to a caller.
+pub(crate) type ErrorFunc = Arc<dyn Fn(&NetworkError) + Send + Sync>;
 
 impl NetworkOptions {
     /// The defaults: forward everything, 100 ms to 30 s jittered
@@ -70,6 +76,28 @@ impl NetworkOptions {
         self.relay = enabled;
         self
     }
+
+    /// Receives errors the adapter cannot return to a caller: Go's
+    /// `WithNetworkErrorFunc`. On these links that is every failed
+    /// handshake, including those of reconnect attempts, as
+    /// [`NetworkError::Handshake`]. Runs on the blocking pool.
+    pub fn error_func(mut self, f: impl Fn(&NetworkError) + Send + Sync + 'static) -> Self {
+        self.on_error = Some(Arc::new(f));
+        self
+    }
+
+    /// The TLS client config for `wss://` peers. Go has no such option:
+    /// its dialer uses the platform's roots. By default this adapter does
+    /// the same, through rustls on the ring provider with the platform's
+    /// roots (plus the bundled Mozilla roots with feature
+    /// `bus-network-webpki-roots`). Android has no platform store rustls
+    /// can read: pass a config there, for example one built from
+    /// `rustls-platform-verifier` or your own CA. The config's own crypto
+    /// provider is used.
+    pub fn tls_config(mut self, config: Arc<rustls::ClientConfig>) -> Self {
+        self.tls = Some(config);
+        self
+    }
 }
 
 impl fmt::Debug for NetworkOptions {
@@ -80,6 +108,8 @@ impl fmt::Debug for NetworkOptions {
             .field("origin_id", &self.origin_id)
             .field("auth", &self.auth.is_some())
             .field("relay", &self.relay)
+            .field("error_func", &self.on_error.is_some())
+            .field("tls_config", &self.tls.is_some())
             .finish()
     }
 }
@@ -100,9 +130,18 @@ pub(crate) struct State {
     pub(crate) conns: HashMap<String, Arc<Link>>,
     /// Registered outbound addresses: Go's `peers`. Disconnect forgets
     /// one; a reconnect never re-registers it.
-    pub(crate) peers: HashMap<String, LinkState>,
+    pub(crate) peers: HashMap<String, Peer>,
     /// Addresses with a reconnect loop running.
     pub(crate) reconnecting: std::collections::HashSet<String>,
+}
+
+/// What the adapter keeps for an outbound address across reconnects: Go's
+/// `peerState`, without the stream cursors.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Peer {
+    pub(crate) state: LinkState,
+    /// Has connected at least once: a later link up is a reconnect.
+    pub(crate) connected_once: bool,
 }
 
 /// A test seam: fails a forward write when it returns `true`.
@@ -115,6 +154,8 @@ pub(crate) struct Inner {
     pub(crate) reconnect: RetryConfig,
     pub(crate) auth: Option<Arc<dyn Authenticator>>,
     pub(crate) relay: bool,
+    pub(crate) on_error: Option<ErrorFunc>,
+    pub(crate) tls: Option<Arc<rustls::ClientConfig>>,
     state: Mutex<State>,
     pub(crate) closed: AtomicBool,
     /// Fired by close: stops listeners and reconnect loops.
@@ -138,6 +179,38 @@ impl Inner {
             .handshake_timeout
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Publishes one of the adapter's own events on the local bus, marked
+    /// as network-originated (never forwarded): Go's `publishLocal`. Runs
+    /// on the blocking pool, as bus handlers may block.
+    pub(crate) async fn publish_local(&self, topic: &str, payload: serde_json::Value) {
+        let event = Event::new(topic, NETWORK_EVENT_SOURCE, payload);
+        let ctx = Context::background().with_value(NetworkOrigin {
+            origin: self.origin_id.clone(),
+            via: 0,
+        });
+        let bus = Arc::clone(&self.bus);
+        let _ = tokio::task::spawn_blocking(move || {
+            let _ = bus.publish(&ctx, &event);
+        })
+        .await;
+    }
+
+    /// `kit.runtime.link.disconnected`: Go's `publishDisconnected`.
+    pub(crate) async fn publish_disconnected(&self, addr: &str, is_final: bool, code: &str) {
+        let mut p = serde_json::json!({"peer": addr, "final": is_final});
+        if !code.is_empty() {
+            p["code"] = code.into();
+        }
+        self.publish_local(TOPIC_LINK_DISCONNECTED, p).await;
+    }
+
+    /// Hands `err` to the error callback, if any: Go's `reportErr`.
+    pub(crate) async fn report_err(&self, err: NetworkError) {
+        if let Some(f) = self.on_error.clone() {
+            let _ = tokio::task::spawn_blocking(move || f(&err)).await;
+        }
     }
 
     /// Records a policy seen on a connect. Sticky: once a run is
@@ -225,6 +298,8 @@ impl NetworkAdapter {
             reconnect,
             auth: opts.auth,
             relay: opts.relay,
+            on_error: opts.on_error,
+            tls: opts.tls,
             state: Mutex::new(State::default()),
             closed: AtomicBool::new(false),
             closing: Signal::default(),
@@ -262,7 +337,7 @@ impl NetworkAdapter {
     /// Only `connected` and, after a refused handshake, `code` (`auth`
     /// or `timeout`) are set on these links.
     pub fn link_state(&self, addr: &str) -> Option<LinkState> {
-        self.0.state().peers.get(addr).cloned()
+        self.0.state().peers.get(addr).map(|p| p.state.clone())
     }
 
     /// Dials `addr` and registers it as an outbound peer: Go's `Connect`.

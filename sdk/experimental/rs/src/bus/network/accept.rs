@@ -28,8 +28,9 @@ impl NetworkAdapter {
     /// Accepts peers on `addr` (`host:port`; port 0 picks one) and
     /// returns the bound address. Any request path upgrades, as Go's
     /// handler does wherever it is mounted; requests failing
-    /// [`check_upgrade`] are refused. The listener stops on
-    /// [`close`](Self::close).
+    /// [`check_upgrade`] are refused, and so is an upgrade not done within
+    /// the 10 s handshake bound. Links are keyed by the peer's socket
+    /// address. The listener stops on [`close`](Self::close).
     pub fn listen(&self, addr: &str) -> io::Result<SocketAddr> {
         let std = StdListener::bind(addr)?;
         std.set_nonblocking(true)?;
@@ -53,6 +54,13 @@ impl NetworkAdapter {
     /// `remote_addr` keys the link, as Go's `r.RemoteAddr` does. Runs the
     /// auth handshake and the reader on the network runtime; returns at
     /// once.
+    ///
+    /// A connection whose `remote_addr` is already linked is refused with
+    /// 1000 `duplicate`, as a duplicate outbound link is, so every link
+    /// stays reachable by close. Behind a proxy that reports one address
+    /// for many clients (a rewritten `RemoteAddr`, a missing
+    /// `ConnectInfo`), pass the client's own address and port, or only the
+    /// first client from that address links.
     pub fn accept_upgraded<S>(&self, io: S, remote_addr: impl Into<String>)
     where
         S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -116,7 +124,13 @@ impl Inner {
                 close_raw(sink, source, STATUS_POLICY, "invalid auth").await;
                 return;
             };
-            if auth.verify(&hello.token).is_err() {
+            // The authenticator is caller code and may block: keep it off
+            // the network thread.
+            let (a, token) = (Arc::clone(auth), hello.token.clone());
+            let verified = tokio::task::spawn_blocking(move || a.verify(&token).is_ok())
+                .await
+                .unwrap_or(false);
+            if !verified {
                 close_raw(sink, source, STATUS_POLICY, "auth failed").await;
                 return;
             }

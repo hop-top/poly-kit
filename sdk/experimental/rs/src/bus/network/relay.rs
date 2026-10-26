@@ -100,7 +100,8 @@ impl Inner {
         link.mark_down();
         drop(source);
         link.release().await;
-        {
+        // Go's linkDown: an address disconnect forgot is final.
+        let is_final = {
             let mut st = self.state();
             if st
                 .conns
@@ -109,16 +110,21 @@ impl Inner {
             {
                 st.conns.remove(&link.addr);
             }
-            if link.outbound {
-                if let Some(ps) = st.peers.get_mut(&link.addr) {
-                    ps.connected = false;
+            match st.peers.get_mut(&link.addr) {
+                Some(p) if link.outbound => {
+                    p.state.connected = false;
+                    p.state.is_final
                 }
+                _ => true,
+            }
+        };
+        if link.outbound && !self.closed.load(Ordering::SeqCst) {
+            self.publish_disconnected(&link.addr, is_final, "").await;
+            if !is_final {
+                self.go_reconnect(&link.addr);
             }
         }
         link.done.fire();
-        if link.outbound && !self.closed.load(Ordering::SeqCst) {
-            self.go_reconnect(&link.addr);
-        }
         self.tasks.done();
     }
 

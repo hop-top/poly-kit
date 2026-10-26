@@ -98,3 +98,19 @@ fn reconnect_loops_are_deduplicated() {
     close(&n);
     assert_eq!(n.0.tasks.count(), 0, "close waits for the loop");
 }
+
+/// With `bus-network-webpki-roots`, Mozilla's roots join the platform's.
+#[cfg(feature = "bus-network-webpki-roots")]
+#[test]
+fn the_bundled_roots_join_the_default_store() {
+    let mut native = rustls::RootCertStore::empty();
+    for cert in rustls_native_certs::load_native_certs().certs {
+        let _ = native.add(cert);
+    }
+    let roots = crate::bus::network::session::default_roots();
+    assert_eq!(
+        roots.len(),
+        native.len() + webpki_roots::TLS_SERVER_ROOTS.len(),
+        "the platform's roots plus Mozilla's"
+    );
+}

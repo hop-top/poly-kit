@@ -222,7 +222,10 @@ fn plain_ack_transcript_dialer_side() {
     let got = Arc::new(Mutex::new(Vec::new()));
     let g = Arc::clone(&got);
     b.bus.subscribe("#", move |e| {
-        g.lock().unwrap().push(e.clone());
+        // The adapter's own link events are local, not from the wire.
+        if !e.topic.as_str().starts_with("kit.runtime.") {
+            g.lock().unwrap().push(e.clone());
+        }
         Ok(())
     });
     b.connect(&format!("ws://{addr}/"))
