@@ -31,6 +31,19 @@ const FILES: &[&str] = &[
     "tree.json",
     "expected.fig.js",
     "expected.usage.kdl",
+    "tree-tera.json",
+    "expected-tera.fig.js",
+    "expected-tera.usage.kdl",
+];
+
+/// Each fixture tree with its expected Fig and Usage files.
+const CASES: &[(&str, &str, &str)] = &[
+    ("tree.json", "expected.fig.js", "expected.usage.kdl"),
+    (
+        "tree-tera.json",
+        "expected-tera.fig.js",
+        "expected-tera.usage.kdl",
+    ),
 ];
 
 fn corpus() -> PathBuf {
@@ -85,14 +98,18 @@ struct ConfFlag {
 }
 
 fn load() -> ConfTree {
+    load_file("tree.json")
+}
+
+fn load_file(name: &str) -> ConfTree {
     let dir = corpus();
     for e in fs::read_dir(&dir).unwrap() {
         let n = e.unwrap().file_name().into_string().unwrap();
         assert!(FILES.contains(&n.as_str()), "{n} has no runner");
     }
-    let raw = fs::read_to_string(dir.join("tree.json")).unwrap();
-    let tree: ConfTree = serde_json::from_str(&raw).unwrap_or_else(|e| panic!("tree.json: {e}"));
-    assert_eq!(tree.version, "v1", "tree.json version");
+    let raw = fs::read_to_string(dir.join(name)).unwrap();
+    let tree: ConfTree = serde_json::from_str(&raw).unwrap_or_else(|e| panic!("{name}: {e}"));
+    assert_eq!(tree.version, "v1", "{name} version");
     tree
 }
 
@@ -383,16 +400,14 @@ type Render = fn(&Spec) -> String;
 
 #[test]
 fn completion_spec_conformance() {
-    let tree = load();
-    let spec = Spec::from_root(&build(&tree.root));
-    let cases: [(&str, Render); 2] = [
-        ("expected.fig.js", render_fig),
-        ("expected.usage.kdl", render_usage),
-    ];
-    for (name, render) in cases {
-        let want = fs::read_to_string(corpus().join(name)).unwrap();
-        let got = render(&spec);
-        assert!(got == want, "{name} drifted:\n{}", line_diff(&want, &got));
+    for &(tree, fig, usage) in CASES {
+        let spec = Spec::from_root(&build(&load_file(tree).root));
+        let cases: [(&str, Render); 2] = [(fig, render_fig), (usage, render_usage)];
+        for (name, render) in cases {
+            let want = fs::read_to_string(corpus().join(name)).unwrap();
+            let got = render(&spec);
+            assert!(got == want, "{name} drifted:\n{}", line_diff(&want, &got));
+        }
     }
 }
 

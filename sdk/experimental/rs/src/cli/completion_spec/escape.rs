@@ -90,13 +90,25 @@ pub(super) fn shell_word(name: &str) -> String {
 }
 
 /// The binary name as it starts a Usage `run` string: a shell word,
-/// kept out of Tera's reach in a raw block when it holds a brace.
+/// kept out of Tera's reach in raw blocks when it holds a brace.
+///
+/// Tera has no escape inside a raw block, which ends at the first
+/// endraw tag, and every tag opens with `{%`. So the word is split
+/// between the `{` and `%` of each `{%`, one raw block per piece: no
+/// piece holds `{%`, and the blocks render back to the word unchanged.
 pub(super) fn usage_bin(name: &str) -> String {
     let w = shell_word(name);
-    if w.contains(['{', '}']) {
-        return format!("{{% raw %}}{w}{{% endraw %}}");
+    if !w.contains(['{', '}']) {
+        return w;
     }
-    w
+    let mut b = String::with_capacity(w.len() + 21);
+    let mut rest = w.as_str();
+    while let Some(i) = rest.find("{%") {
+        let _ = write!(b, "{{% raw %}}{}{{% endraw %}}", &rest[..=i]);
+        rest = &rest[i + 1..];
+    }
+    let _ = write!(b, "{{% raw %}}{rest}{{% endraw %}}");
+    b
 }
 
 #[cfg(test)]
@@ -168,6 +180,65 @@ mod tests {
         assert_eq!(usage_bin("acme"), "acme");
         assert_eq!(usage_bin("a{{b}}"), r"{% raw %}'a{{b}}'{% endraw %}");
         assert_eq!(usage_bin("x'y{1}"), r"{% raw %}'x'\''y{1}'{% endraw %}");
+    }
+
+    /// No binary name can end a raw block early. Read as Tera does (a
+    /// raw block ends at its first endraw tag, whitespace control
+    /// included), the run bin gives back the shell word unchanged.
+    #[test]
+    fn usage_bin_raw_cannot_be_closed() {
+        assert_eq!(
+            usage_bin("a{%b"),
+            r"{% raw %}'a{{% endraw %}{% raw %}%b'{% endraw %}"
+        );
+        for name in [
+            r#"x{%endraw%}{{"';touch${IFS}PWNED;'"}}{%raw%}"#,
+            "{%- endraw -%}",
+            "{%\tendraw\n%}",
+            "{%%}",
+            "{{%",
+            "{%{%",
+            "%}{#c#}{{}}",
+            "{",
+            "}",
+        ] {
+            assert_eq!(
+                tera_raw_text(&usage_bin(name)),
+                shell_word(name),
+                "{name:?}"
+            );
+        }
+    }
+
+    /// The length of a Tera tag `{%[-] word [-]%}` at the start of `s`,
+    /// whitespace as Tera reads it.
+    fn tera_tag(s: &str, word: &str) -> Option<usize> {
+        let ws = |s: &str| s.len() - s.trim_start_matches([' ', '\t', '\r', '\n']).len();
+        s.starts_with("{%").then_some(())?;
+        let mut i = 2;
+        i += usize::from(s[i..].starts_with('-'));
+        i += ws(&s[i..]);
+        i += s[i..].strip_prefix(word).map(|_| word.len())?;
+        i += ws(&s[i..]);
+        i += usize::from(s[i..].starts_with("-%}"));
+        s[i..].starts_with("%}").then_some(i + 2)
+    }
+
+    /// `s` read as a run of Tera raw blocks: the text they render. Any
+    /// text outside a raw block fails the test.
+    fn tera_raw_text(mut s: &str) -> String {
+        let mut out = String::new();
+        while !s.is_empty() {
+            let open = tera_tag(s, "raw").unwrap_or_else(|| panic!("outside a raw block: {s:?}"));
+            s = &s[open..];
+            let end = (0..s.len())
+                .filter(|&i| s.is_char_boundary(i))
+                .find_map(|i| tera_tag(&s[i..], "endraw").map(|n| (i, n)))
+                .unwrap_or_else(|| panic!("unterminated raw block: {s:?}"));
+            out.push_str(&s[..end.0]);
+            s = &s[end.0 + end.1..];
+        }
+        out
     }
 
     /// The binary name in the `//` header is escaped, so a line
