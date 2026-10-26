@@ -6,7 +6,8 @@
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
 	completion-regen test-parity test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-rs-wasm test-templates test-ts \
-	test-affected test-workflow tools tools-golangci-lint
+	test-affected test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
+	vuln vuln-go vuln-go-binary vuln-osv
 
 # Tool versions — the mise config (mise.toml, plus .config/mise.toml for
 # tools only this repo's CI uses) is the single source of truth for local
@@ -52,6 +53,20 @@ GO_VERSION_PIN_MINOR := $(shell echo '$(GO_VERSION_PIN)' | awk -F. '{ print $$1"
 LOCAL_BIN := $(CURDIR)/bin
 GOLANGCI_LINT := $(LOCAL_BIN)/golangci-lint
 
+# Vulnerability scanners. Their pins live in the `env:` block of
+# .github/workflows/vulnerability-scan.yml (govulncheck has no mise registry
+# name; that workflow's header says why they stay out of mise.toml) and are
+# read from there, so a bump in the workflow is a bump here too.
+VULN_WORKFLOW := $(CURDIR)/.github/workflows/vulnerability-scan.yml
+ifndef GOVULNCHECK_VERSION
+GOVULNCHECK_VERSION := $(shell sed -n 's/^  GOVULNCHECK_VERSION: *//p' $(VULN_WORKFLOW))
+endif
+ifndef OSV_SCANNER_VERSION
+OSV_SCANNER_VERSION := $(shell sed -n 's/^  OSV_SCANNER_VERSION: *//p' $(VULN_WORKFLOW))
+endif
+GOVULNCHECK := $(LOCAL_BIN)/govulncheck
+OSV_SCANNER := $(LOCAL_BIN)/osv-scanner
+
 preflight: ## Verify host toolchain matches the repo's declared minimum reqs
 	@scripts/preflight.sh
 
@@ -84,7 +99,7 @@ check-go-version: ## Fail fast when the active Go minor differs from mise.toml's
 	fi; \
 	echo "==> go $$have matches pin $(GO_VERSION_PIN_MINOR) (mise.toml and CI: $(GO_VERSION_PIN))"
 
-tools: tools-golangci-lint ## Install pinned dev tools into bin/
+tools: tools-golangci-lint tools-govulncheck tools-osv-scanner ## Install pinned dev tools into bin/
 
 tools-golangci-lint: check-go-version ## Install the pinned golangci-lint version into bin/
 	@mkdir -p $(LOCAL_BIN)
@@ -93,6 +108,30 @@ tools-golangci-lint: check-go-version ## Install the pinned golangci-lint versio
 		GOBIN=$(LOCAL_BIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
 	else \
 		echo "==> golangci-lint $(GOLANGCI_LINT_VERSION) already installed"; \
+	fi
+
+# govulncheck and osv-scanner print no module version, so a stamp file next
+# to each binary records the pin it was built from; a changed pin reinstalls.
+tools-govulncheck: ## Install the pinned govulncheck version into bin/
+	@mkdir -p $(LOCAL_BIN)
+	@if [ -z "$(GOVULNCHECK_VERSION)" ]; then echo "ERROR: no GOVULNCHECK_VERSION in $(VULN_WORKFLOW)" >&2; exit 1; fi
+	@if [ ! -x $(GOVULNCHECK) ] || [ "$$(cat $(GOVULNCHECK).version 2>/dev/null)" != "$(GOVULNCHECK_VERSION)" ]; then \
+		echo "==> Installing govulncheck $(GOVULNCHECK_VERSION) into $(LOCAL_BIN)"; \
+		GOBIN=$(LOCAL_BIN) go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) \
+			&& echo "$(GOVULNCHECK_VERSION)" > $(GOVULNCHECK).version; \
+	else \
+		echo "==> govulncheck $(GOVULNCHECK_VERSION) already installed"; \
+	fi
+
+tools-osv-scanner: ## Install the pinned osv-scanner version into bin/
+	@mkdir -p $(LOCAL_BIN)
+	@if [ -z "$(OSV_SCANNER_VERSION)" ]; then echo "ERROR: no OSV_SCANNER_VERSION in $(VULN_WORKFLOW)" >&2; exit 1; fi
+	@if [ ! -x $(OSV_SCANNER) ] || [ "$$(cat $(OSV_SCANNER).version 2>/dev/null)" != "$(OSV_SCANNER_VERSION)" ]; then \
+		echo "==> Installing osv-scanner $(OSV_SCANNER_VERSION) into $(LOCAL_BIN)"; \
+		GOBIN=$(LOCAL_BIN) go install github.com/google/osv-scanner/v2/cmd/osv-scanner@$(OSV_SCANNER_VERSION) \
+			&& echo "$(OSV_SCANNER_VERSION)" > $(OSV_SCANNER).version; \
+	else \
+		echo "==> osv-scanner $(OSV_SCANNER_VERSION) already installed"; \
 	fi
 
 setup: preflight ## Initialize all sub-projects and dependencies
@@ -418,6 +457,54 @@ lint-lock-php: ## PHP: composer.lock consistent with composer.json
 audit-php: ## PHP: composer.lock free of medium+ security advisories
 	cd sdk/experimental/php && composer audit --locked --no-dev \
 		--ignore-severity=low --abandoned=report --ignore-unreachable
+
+# Local mirror of .github/workflows/vulnerability-scan.yml: same scanners,
+# same pins, same scope, same verdicts; text output instead of the
+# workflow's JSON/SARIF/Markdown artifacts. Every scan queries osv.dev or
+# vuln.go.dev, and an advisory can land without a code change, so `vuln` is
+# kept out of `check` and `lint`; CI gates it on every pull request and
+# weekly. `make -k` runs every scan before `vuln` fails, like the workflow's
+# independent jobs and fail-fast: false matrix.
+vuln: ## Run every vulnerability scan CI runs (needs network)
+	@$(MAKE) --no-print-directory -k vuln-osv vuln-go vuln-go-binary
+
+# Lockfiles outside examples/ gate (exit 1 = findings); examples/ is
+# report-only and fails only when the scanner itself fails (exit > 1).
+# Ignores: osv-scanner.toml.
+vuln-osv: tools-osv-scanner ## osv-scanner over every lockfile (examples/ report-only)
+	@lock_rc=0; ex_rc=0; \
+	echo "==> osv-scanner: lockfiles outside examples/ (gating)"; \
+	$(OSV_SCANNER) scan source --config osv-scanner.toml --no-call-analysis go \
+		-r --experimental-exclude examples . || lock_rc=$$?; \
+	if [ -d examples ]; then \
+		echo "==> osv-scanner: examples/ (report only)"; \
+		$(OSV_SCANNER) scan source --config osv-scanner.toml --no-call-analysis go \
+			--allow-no-lockfiles -r examples || ex_rc=$$?; \
+	fi; \
+	if [ "$$lock_rc" -eq 1 ]; then echo "ERROR: osv-scanner: advisories in lockfiles outside examples/" >&2; \
+	elif [ "$$lock_rc" -ne 0 ]; then echo "ERROR: osv-scanner failed on lockfiles (exit $$lock_rc)" >&2; fi; \
+	if [ "$$ex_rc" -gt 1 ]; then echo "ERROR: osv-scanner failed on examples/ (exit $$ex_rc)" >&2; fi; \
+	[ "$$lock_rc" -eq 0 ] && [ "$$ex_rc" -le 1 ]
+
+# Every tracked go.mod outside testdata/, as the workflow's go-modules job
+# finds them. Fails (exit 3) only on a vulnerability the code calls.
+vuln-go: check-go-version tools-govulncheck ## govulncheck source scan of every tracked Go module
+	@rc=0; \
+	for mod in $$(git ls-files -- 'go.mod' ':(glob)**/go.mod' | grep -v '/testdata/'); do \
+		dir=$$(dirname "$$mod"); \
+		echo "==> govulncheck source: $$dir/go.mod"; \
+		$(GOVULNCHECK) -C "$$dir" -show verbose ./... || rc=1; \
+	done; \
+	if [ "$$rc" -ne 0 ]; then echo "ERROR: govulncheck: a module calls vulnerable code" >&2; fi; \
+	exit $$rc
+
+# A bare cli.Root built with the active toolchain (check-go-version keeps it
+# on the repo pin, as setup-go does in CI) and scanned in binary mode.
+vuln-go-binary: check-go-version tools-govulncheck ## govulncheck binary scan of a bare cli.Root (rootprobe)
+	@tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+	go build -buildvcs=false -o "$$tmp/rootprobe" ./go/console/cli/testdata/rootprobe && \
+	echo "==> govulncheck binary: bare cli.Root ($$(go version))" && \
+	$(GOVULNCHECK) -mode binary -show verbose "$$tmp/rootprobe"
 
 # Two passes: src/ at level 5, tests/ at 2 (see phpstan.neon for why they
 # differ). Both run via `composer analyse`, so this target and a bare

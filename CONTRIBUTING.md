@@ -103,6 +103,19 @@ about three minutes from a cold cache. One package, `go/core/projects`,
 is excluded because it races today for a reason of its own; the Makefile
 target carries the detail and the condition for dropping the exclusion.
 
+## Vulnerability scans
+
+`.github/workflows/vulnerability-scan.yml` runs on every pull request and
+weekly. The same scans, at the same pinned versions, run locally (network
+needed; not part of `make check`):
+
+| Target | Covers |
+| --- | --- |
+| `make vuln` | All three scans below; runs each before failing. |
+| `make vuln-osv` | osv-scanner over every lockfile; outside `examples/` gates, `examples/` reports only. Ignores: `osv-scanner.toml`. |
+| `make vuln-go` | govulncheck source scan of every tracked Go module; fails on called vulnerable code. |
+| `make vuln-go-binary` | govulncheck binary scan of a bare `cli.Root` (`rootprobe`). |
+
 ## Commit messages
 
 Conventional Commits, per the
