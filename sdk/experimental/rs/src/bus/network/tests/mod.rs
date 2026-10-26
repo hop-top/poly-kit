@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use super::NetworkAdapter;
 use crate::bus::context::Context;
 
+mod handshake;
 mod links;
 
 pub(super) fn within<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
