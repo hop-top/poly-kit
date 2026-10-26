@@ -4,8 +4,7 @@ shared schemas and cross-language constants.
 
 ## Contents
 
-Corpora are contracts of record for every port, Go included; detail lives
-in each corpus's own README.
+Corpora bind every port, Go included; detail lives in each corpus README.
 
 - [httpcache-v1/](httpcache-v1/README.md): kit/storage/httpcache wire
   contract: cache keying, on-store envelope, storage gate.
@@ -19,9 +18,10 @@ in each corpus's own README.
   typing, overrides, precedence, layered load, set/unset. Go and Rust.
 - [netpolicy-v1/](netpolicy-v1/README.md): kit/core/netpolicy `--offline`:
   loopback, dial decision, URL guard, refusal texts. Go and Rust.
-- [completion-spec-v1/](completion-spec-v1/README.md): kit/console/cli
-  Fig module and Usage KDL of one fixture tree, byte for byte. Go and
-  Rust runners.
+- [completion-spec-v1/](completion-spec-v1/README.md): kit/console/cli Fig
+  and Usage specs of one fixture tree, byte for byte. Go and Rust runners.
+- [statemachine-v1/](statemachine-v1/README.md): kit/runtime/domain state
+  machine transitions, error texts, veto wrap, payload JSON. Go and Rust.
 - [retry-v1/](retry-v1/README.md): kit/core/util retry backoff corpus:
   delay table, full-jitter bounds, stop rule. Go and Rust runners.
 - [kv-v1/](kv-v1/README.md): kit/storage/kv keys bind to SQLite as TEXT,
