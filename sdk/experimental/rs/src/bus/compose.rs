@@ -12,10 +12,10 @@
 //!    names, applied last so the sinks see every event publish
 //!    accepted (Go's `TeeBus`).
 //!
-//! [`compose`] runs them in that order. Steps 2 and 3 are seams here:
-//! each takes the bus built so far and returns it unchanged until its
-//! layer is ported. Every layer is an [`Adapter`], so a new one wraps
-//! the bus without changing this module's public API.
+//! [`compose`] runs them in that order. Step 2 is still a seam: it
+//! panics on non-empty addresses until the network layer is ported.
+//! Every layer is an [`Adapter`], so a new one wraps the bus without
+//! changing this module's public API.
 //!
 //! [`DynBus`] is the front door, the analogue of Go's `New`. [`Bus`] and
 //! [`SharedBus`] are the in-memory building block with none of these
