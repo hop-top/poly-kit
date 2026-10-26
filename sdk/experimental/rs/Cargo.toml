@@ -24,14 +24,14 @@ uri = ["dep:hop-top-cite"]
 # preserve_order backs serde_json::Map with indexmap instead of BTreeMap, so
 # object key order survives round-trips and projection at every nesting depth.
 # Required for --format=json/yaml to emit columns in ColumnSpec / --cols order
-# rather than alphabetically. indexmap is already in the tree via serde_yaml.
+# rather than alphabetically. indexmap is already in the tree via serde_norway.
 # Scoped to `output`: Cargo unifies features, so enabling it from the base
 # dependency would flip Map ordering for every crate in a consumer's build.
 output = [
     "dep:serde",
     "dep:serde_json",
     "serde_json/preserve_order",
-    "dep:serde_yaml",
+    "dep:serde_norway",
     "dep:thiserror",
     "dep:comfy-table",
 ]
@@ -123,7 +123,7 @@ telemetry = [
     "dep:reqwest",
     "dep:serde",
     "dep:serde_json",
-    "dep:serde_yaml",
+    "dep:serde_norway",
     "dep:sha2",
     "dep:getrandom",
     "dep:dirs",
@@ -166,7 +166,7 @@ reqwest = { version = "0.13", default-features = false, features = ["default-tls
 serde = { version = "1", features = ["derive"], optional = true }
 # No crate-wide features: `output` adds preserve_order for itself.
 serde_json = { version = "1", optional = true }
-serde_yaml = { version = "0.9", optional = true }
+serde_norway = { version = "0.9", optional = true }
 sha2 = { version = "0.11", optional = true }
 # `default-features = false` drops the std/simd defaults: the envelope
 # codec needs only the standard alphabet, and `alloc` is what supplies

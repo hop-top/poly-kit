@@ -359,7 +359,7 @@ pub fn render_error(out: &mut dyn Write, format: &str, err: &CliError) -> std::i
             out.write_all(b"\n")
         }
         "yaml" => {
-            let s = serde_yaml::to_string(err)
+            let s = serde_norway::to_string(err)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
             out.write_all(s.as_bytes())
         }

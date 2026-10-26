@@ -38,7 +38,7 @@ client.shutdown(Duration::from_millis(200)).await.unwrap();
 
 ## Contract
 
-- Feature `telemetry` pulls in `api` plus `tokio`, `reqwest`, `serde`, `serde_json`, `serde_yaml`,
+- Feature `telemetry` pulls in `api` plus `tokio`, `reqwest`, `serde`, `serde_json`, `serde_norway`,
   `sha2`, `getrandom`, `dirs`, `regex`, `thiserror`. Authority: the crate
   [feature table](../../README.md#features).
 - A tokio runtime must be live at `Client::new`; construction spawns the drain task.
