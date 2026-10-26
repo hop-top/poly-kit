@@ -133,12 +133,13 @@ func TestWith_BeforeWithIdentity(t *testing.T) {
 	assert.NotNil(t, peers.Of(root).Mesh)
 }
 
-// The peer group is mounted after New's reserved snapshot, so it stays
-// unreserved, as it was when cli mounted it.
-func TestWith_PeerGroupIsNotReserved(t *testing.T) {
+// The peer group is mounted after New's reserved snapshot, so With
+// reserves it by name: management-only, no served surface lists,
+// trusts, blocks or revokes a peer.
+func TestWith_PeerGroupIsReserved(t *testing.T) {
 	dir := t.TempDir()
 	root := cli.New(cli.Config{Name: "test", Version: "0.1.0", Short: "t", DisableValidate: true},
 		cli.WithIdentity(cli.IdentityConfig{Dir: dir}),
 		peers.With(peers.Config{DataDir: dir}))
-	assert.False(t, root.IsReserved("peer"))
+	assert.True(t, root.IsReserved("peer"))
 }
