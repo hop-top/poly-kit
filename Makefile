@@ -309,11 +309,11 @@ test-parity-taxonomy: ## exit-code taxonomy across Go + 4 SDKs
 
 # Shared bus conformance corpus: the Go and Rust runners read the same
 # vectors under contracts/bus-v1.
-test-parity-bus: ## bus-v1 conformance corpus, CloudEvents and streams included (Go and Rust runners)
+test-parity-bus: ## bus-v1 conformance corpus, CloudEvents, streams and sinks included (Go and Rust runners)
 	@echo "==> bus-v1 conformance: Go"
-	go test ./go/runtime/bus/ -run '^(TestConformance|TestCloudEventsConformance|TestStreamConformance)' -count=1
+	go test ./go/runtime/bus/ -run '^(TestConformance|TestCloudEventsConformance|TestStreamConformance|TestSinkConformance)' -count=1
 	@echo "==> bus-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --test bus_conformance --test bus_cloudevents_conformance --test 'bus_stream_conformance*' --all-features --locked
+	cd sdk/experimental/rs && cargo test --test bus_conformance --test bus_cloudevents_conformance --test 'bus_stream_conformance*' --test bus_sinks_conformance --all-features --locked
 
 # Completion-spec exports (Fig module, Usage KDL) over one fixture tree.
 # Go runner only; a port adds its runner here.

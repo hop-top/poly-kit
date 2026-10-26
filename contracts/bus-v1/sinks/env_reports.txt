@@ -1,0 +1,5 @@
+bus: KIT_BUS_SINK=jsonl but KIT_BUS_SINK_PATH is empty; skipping env sink
+bus: KIT_BUS_SINK=jsonl but KIT_BUS_SINK_PATH is empty; skipping env sink
+bus: unknown KIT_BUS_SINK="parquet" (want "jsonl"); skipping env sink
+bus: unknown KIT_BUS_SINK=" Csv " (want "jsonl"); skipping env sink
+bus: unknown KIT_BUS_SINK="\"q\"\x01é" (want "jsonl"); skipping env sink
