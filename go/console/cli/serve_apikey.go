@@ -50,8 +50,10 @@ type APIKeysConfig struct {
 }
 
 // WithAPIKeys gives the tool kit-issued API keys: it mounts
-// `token key create|list|revoke` on the token command, and sets the
-// store's code default. A service serves them under auth.mode: apikey.
+// `token key create|list|revoke` on the token command, with or without
+// WithAPI, and sets the store's code default. A service serves them
+// under auth.mode: apikey, so a tool serving only mcp or rpc issues
+// its own keys.
 // The store's kv driver must be imported by the tool, sqlite by default:
 //
 //	import _ "hop.top/kit/go/storage/kv/sqlite"

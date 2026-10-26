@@ -720,9 +720,14 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	// The deprecated `serve` shares the flags the options put on
 	// `service start`; Prepare repeats this for later registrations.
 	r.syncServeAlias()
-	// The token command, once every option has run: WithAPI and
-	// WithIdentity may come in either order.
-	if r.apiCfg != nil && (r.apiCfg.Auth != nil || r.identityCfg != nil || r.apiKeysCfg != nil) {
+	// The token command, once every option has run, so the options may
+	// come in any order. A key source mounts it on its own: a tool that
+	// serves only mcp or rpc under auth.mode apikey or jwt must be able
+	// to issue what its service accepts without registering a REST api
+	// that exposes the whole tree. Mounted here, before the reserved
+	// snapshot, it stays kit-reserved, so no served surface lists or
+	// runs it.
+	if r.identityCfg != nil || r.apiKeysCfg != nil || (r.apiCfg != nil && r.apiCfg.Auth != nil) {
 		r.mountTokenCmd()
 	}
 	// Snapshot kit-shipped subcommands now, BEFORE adopters mount

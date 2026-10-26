@@ -412,14 +412,14 @@ func TestWithAPI_ListReadsTheSupervisorsResolution(t *testing.T) {
 
 	r := newServeRoot(t, cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}))
 	fields := strings.Fields(apiLine(r))
-	require.Len(t, fields, 4, "SERVICE CONFIGURED ENABLED READY")
+	require.Len(t, fields, 5, "SERVICE CONFIGURED ENABLED READY OPTIONAL")
 	assert.Equal(t, "true", fields[1], "the compat default makes the api configured")
 	assert.Equal(t, "true", fields[2], "the listing must say what a bare serve does: start it")
 
 	off := newServeRoot(t, cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}))
 	off.Viper.Set("services.api.enabled", false)
 	fields = strings.Fields(apiLine(off))
-	require.Len(t, fields, 4)
+	require.Len(t, fields, 5)
 	assert.Equal(t, "false", fields[2], "an explicit services.api.enabled: false wins")
 }
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/alias"
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/output"
 )
 
@@ -76,6 +77,11 @@ func (r *Root) AliasCmd(store *alias.Store) *cobra.Command {
 	SetTopLevelVerb(cmd)
 	// The group node runs `alias list`, so it renders the same shape.
 	setAliasListSchema(cmd)
+	// Kit's own command, mounted by the adopter after cli.New took its
+	// snapshot, so the tree reserves itself, wherever it is mounted:
+	// alias add and remove rewrite the tool's alias file, and no
+	// served surface may.
+	cmdmeta.SetReserved(cmd)
 
 	cmd.AddCommand(r.aliasListCmd(store))
 	cmd.AddCommand(r.aliasAddCmd(store))

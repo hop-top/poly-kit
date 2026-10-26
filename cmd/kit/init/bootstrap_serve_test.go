@@ -335,10 +335,11 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		require.Equal(t, 0, code, stderr)
 		// The README prints this table; only api is enabled out of the
 		// box, and nothing is ready when asked from the shell.
-		assert.Regexp(t, `(?m)^api\s+true\s+true\s+false\s*$`, stdout)
-		assert.Regexp(t, `(?m)^socket\s+false\s+false\s+false\s*$`, stdout)
-		assert.Regexp(t, `(?m)^mcp\s+false\s+false\s+false\s*$`, stdout)
-		assert.Regexp(t, `(?m)^rpc\s+false\s+false\s+false\s*$`, stdout)
+		assert.Regexp(t, `(?m)^SERVICE\s+CONFIGURED\s+ENABLED\s+READY\s+OPTIONAL\s*$`, stdout)
+		assert.Regexp(t, `(?m)^api\s+true\s+true\s+false\s+false\s*$`, stdout)
+		assert.Regexp(t, `(?m)^socket\s+false\s+false\s+false\s+false\s*$`, stdout)
+		assert.Regexp(t, `(?m)^mcp\s+false\s+false\s+false\s+false\s*$`, stdout)
+		assert.Regexp(t, `(?m)^rpc\s+false\s+false\s+false\s+false\s*$`, stdout)
 		assert.Less(t, strings.Index(stdout, "api"), strings.Index(stdout, "socket"),
 			"registration order: the template registers api before socket")
 		assert.Less(t, strings.Index(stdout, "socket"), strings.Index(stdout, "mcp"),

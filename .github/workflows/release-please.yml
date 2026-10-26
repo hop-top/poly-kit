@@ -7,11 +7,13 @@ name: release-please
 #
 # Every package carries the prerelease triple (prerelease: true,
 # prerelease-type, versioning: prerelease), so on either branch a plain merge
-# advances the counter (alpha.N → alpha.N+1). To cut stable, land a
-# conventional commit on main carrying a `Release-As: x.y.z` footer — that is
-# the only thing that moves a version already on a prerelease track back to
-# stable. Keeping the config byte-identical on both branches is what keeps
-# next → main promotion merges conflict-free. See RELEASING.md.
+# advances the counter (alpha.N → alpha.N+1). To cut stable, pin the version
+# on main with scripts/release-as.sh (a release-as pin), the only thing besides
+# a Release-As footer that moves a version off a prerelease track. Keeping the
+# config byte-identical on both branches is what keeps next → main promotion
+# merges conflict-free. The one exception is temporary: a pending pin (and a
+# linked release's plugin entry) lives only on the branch that cuts it, until
+# that release PR drops it. See RELEASING.md, "Pins and the main/next window".
 
 on:
   push:

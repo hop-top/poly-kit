@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "separate-pull-requests": true,
   "pull-request-title-pattern": "chore(release): ${component} ${version}",
+  "group-pull-request-title-pattern": "chore${scope}: release ${component} libraries",
   "component-no-space": true,
   "include-component-in-tag": true,
   "tag-separator": "/",
@@ -51,19 +52,22 @@
       "hidden": true
     }
   ],
-  "linked-versions": [
+  "x-linked-groups": [
     {
       "group": "kit",
       "components": ["kit", "kit-php", "kit-py", "kit-rs", "kit-ts"]
     }
   ],
+  "plugins": [{"type": "linked-versions", "groupName": "kit", "components": ["kit", "kit-php", "kit-py", "kit-rs", "kit-ts"]}],
   "packages": {
     ".": {
       "release-type": "go",
       "component": "kit",
+      "release-as": "0.6.0-alpha.0",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "exclude-paths": [
+        "extensions/mcp-tasks",
         "incubator",
         "sdk/experimental",
         "sdk/py",
@@ -105,6 +109,7 @@
     "extensions/mcp-tasks": {
       "release-type": "go",
       "component": "mcp-tasks",
+      "release-as": "0.2.0-alpha.0",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "prerelease": true,
@@ -115,6 +120,7 @@
     "incubator/qmochi": {
       "release-type": "go",
       "component": "qmochi",
+      "release-as": "0.3.0-alpha.0",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "prerelease": true,
@@ -125,6 +131,7 @@
     "sdk/experimental/php": {
       "release-type": "php",
       "component": "kit-php",
+      "release-as": "0.6.0-alpha.0",
       "package-name": "hop-top/kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
@@ -143,6 +150,7 @@
     "sdk/experimental/rs": {
       "release-type": "rust",
       "component": "kit-rs",
+      "release-as": "0.6.0-alpha.0",
       "package-name": "hop-top-kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
@@ -154,6 +162,7 @@
     "sdk/py": {
       "release-type": "python",
       "component": "kit-py",
+      "release-as": "0.6.0-alpha.0",
       "package-name": "hop-top-kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
@@ -165,6 +174,7 @@
     "sdk/ts": {
       "release-type": "node",
       "component": "kit-ts",
+      "release-as": "0.6.0-alpha.0",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "extra-files": [

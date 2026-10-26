@@ -24,8 +24,9 @@ type Service interface {
 	// Start begins serving and blocks until ctx is canceled or the
 	// service fails. Returning nil after cancellation is a clean
 	// stop; returning a non-nil error is a failure, and under the
-	// default failure policy brings the whole supervisor down
-	// (serve-lifecycle.md §"One service fails while others run").
+	// default failure policy brings the whole supervisor down unless
+	// the service is optional (serve-lifecycle.md §"One service fails
+	// while others run", §"Optional services").
 	//
 	// Start must report readiness through ready exactly once, after
 	// every acquisition that can fail deterministically has
@@ -88,6 +89,20 @@ type Classified interface {
 	Class() (sideEffect, network string)
 }
 
+// Optional is the optional declaration a [Service] may implement to
+// be optional by default: the run does not depend on it, so its
+// failure — to start, at runtime, or to stop — is reported but neither
+// ends the run nor counts toward the exit code
+// (serve-lifecycle.md §"Optional services").
+//
+// It is a default, not a decision: services.<name>.optional, when any
+// source sets it, wins over it in either direction. A service that
+// does not implement Optional is required unless configuration says
+// otherwise.
+type Optional interface {
+	Optional() bool
+}
+
 // Default lifecycle budgets. These mirror the existing HTTP defaults
 // in hop.top/kit/go/transport/api so a service built on
 // api.ListenAndServe inherits the same numbers it already had
@@ -125,6 +140,14 @@ type Config struct {
 	// StopTimeout is services.<name>.stop_timeout. Zero means
 	// DefaultStopTimeout.
 	StopTimeout time.Duration
+
+	// Optional is services.<name>.optional, defaulting to the
+	// service's own [Optional] declaration. An optional service that
+	// fails is marked failed and reported on the same events as any
+	// other failure, and the rest of the run carries on without it,
+	// whatever the failure policy says. Defaults to false: a service
+	// is required unless something says otherwise.
+	Optional bool
 }
 
 // nameRE is the identifier grammar from serve-lifecycle.md §"Naming rules":

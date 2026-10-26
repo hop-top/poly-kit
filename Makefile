@@ -2,7 +2,7 @@
 	clients-php clients-rs clients-test clients-ts job-integration-hatchet job-integration-restate \
 	job-integration-temporal job-test lint lint-config lint-docs lint-go lint-links lint-lock-php \
 	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
-	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules \
+	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules release-as \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
 	test-parity test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-templates test-ts \
@@ -573,6 +573,7 @@ job-integration-temporal:
 
 test-release: ## Run e2e tests for release scripts
 	bash scripts/test-release-e2e.sh
+	bats .github/tests/release-lib.bats .github/tests/release-as.bats .github/tests/release-bump.bats
 
 promote: ## Interactive release promotion
 	@./scripts/promote-release.sh
@@ -588,6 +589,11 @@ promote-rc: ## Promote beta to rc
 
 promote-release: ## Promote rc to stable release
 	./scripts/promote-release.sh release
+
+release-as: ## Pin the next release of one component (COMPONENT=qmochi VERSION=0.3.0-alpha.0)
+	@if [ -z "$(COMPONENT)" ] || [ -z "$(VERSION)" ]; then \
+		echo "usage: make release-as COMPONENT=<component> VERSION=<x.y.z[-pre]>" >&2; exit 2; fi
+	./scripts/release-as.sh "$(COMPONENT)" "$(VERSION)"
 
 refresh-secret-rules: ## Re-vendor gitleaks rules from latest tagged release
 	@echo "Fetching latest gitleaks release tag..."

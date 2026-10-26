@@ -38,6 +38,11 @@ type EventPayload struct {
 	// useful thing an operator reads out of a startup trace, and for
 	// a wildcard port (":0") it is not knowable from configuration.
 	Address string `json:"address,omitempty"`
+
+	// Optional is true on every event about an optional service, so a
+	// subscriber reading a failed event can tell a failure the run
+	// carries on without from one that ends it.
+	Optional bool `json:"optional,omitempty"`
 }
 
 // Publisher is the narrow slice of hop.top/kit/go/runtime/bus.Bus the
@@ -73,12 +78,19 @@ type emitter struct {
 	log    Logger
 	source string
 	onErr  func(error)
+
+	// optional names the run's optional services; every event about
+	// one carries Optional. Fixed before the run starts.
+	optional map[string]bool
 }
 
 // emit publishes the "<object>.<action>" topic with payload, and logs
 // the same transition. A failed action logs at ERROR; everything else
 // logs at INFO (serve-lifecycle.md §"Surfaced events").
 func (e *emitter) emit(ctx context.Context, object, action string, payload EventPayload) {
+	if payload.Service != "" && e.optional[payload.Service] {
+		payload.Optional = true
+	}
 	e.logEvent(object, action, payload)
 
 	if e.pub == nil {
@@ -106,6 +118,9 @@ func (e *emitter) logEvent(object, action string, payload EventPayload) {
 	}
 	if payload.Reason != "" {
 		kv = append(kv, "reason", payload.Reason)
+	}
+	if payload.Optional {
+		kv = append(kv, "optional", true)
 	}
 	if action == ActionFailed {
 		if payload.Error != "" {

@@ -242,8 +242,9 @@ A registration MUST provide, at minimum:
 | `Stop`     | drains and releases resources; bounded by the stop timeout          |
 
 A registration MAY additionally declare a config `Validate` hook, a
-side-effect/network class for the policy gate, per-service flags, and
-a `DependsOn` list.
+side-effect/network class for the policy gate, per-service flags, a
+`DependsOn` list, and that it is optional by default (see [Optional
+services](#optional-services)).
 
 ### Naming rules
 
@@ -351,7 +352,9 @@ service may still be idle, and it may later fail.
 
 - A service MUST report ready at most once per start.
 - The aggregate is ready when **every started service** is ready. A
-  skipped (disabled) service does not participate.
+  skipped (disabled) service does not participate, and neither does an
+  [optional](#optional-services) service that failed before reporting
+  ready.
 - A service that has not reported ready within its readiness timeout
   (default 30s, `services.<name>.ready_timeout`) is treated as a
   start failure — see [Exit behavior](#exit-behavior).
@@ -464,7 +467,11 @@ The supervisor installs a `signal.NotifyContext` for `SIGINT` and
 
 The supervisor's total shutdown budget is
 `services.shutdown_timeout` (default `60s`), an upper bound across all
-services. Exceeding it exits with the crash code.
+services, applied once: one deadline, set when the shutdown begins,
+bounds the ordered stop and the wait for the services' goroutines
+together, so whatever the stops use is gone from the wait. A required
+service's goroutine still running at the deadline exits with the crash
+code.
 
 ### One service fails while others run
 
@@ -486,6 +493,113 @@ than it was asked to run.
 
 Both policies apply identically to the selector form, where they are
 indistinguishable: one service failing is the only service failing.
+
+Both policies govern the services the run depends on. A service marked
+optional is outside them, as the next section says.
+
+### Optional services
+
+A service is **optional** when the run does not depend on it: a daemon
+whose core service must keep serving when an auxiliary one, such as an
+MCP listener whose port is taken, cannot start. A service is optional
+when `services.<name>.optional` is true, or when that key is unset and
+the registration declares the service optional by default. The key
+wins over the registration in either direction, so an adopter can ship
+an auxiliary service optional and an operator can make it required
+again. A service is required unless something says otherwise. The
+registration's default holds under the selector form too, for a
+service with no `services.<name>` block at all. A value that is not a
+boolean — `true` or `false`, or a string such as an environment
+variable carries — is a configuration failure at exit `2` naming the
+key, rather than a silent "required".
+
+An optional service's failure is reported exactly as any other
+failure is — the `kit.serve.service.failed` event and its `ERROR` log
+line, with the same `reason` and `error` — and every event about an
+optional service also carries `optional: true`. What changes is that
+the failure is not an outcome of the run:
+
+- **Before ready.** A bind error, a missed `ready_timeout`, or `Start`
+  returning before it reported ready marks the service `failed`, and
+  the supervisor goes on to start the next service. A service that
+  missed its readiness budget is stopped there and then, so that it
+  cannot begin serving later while reported failed. That `Stop` runs
+  alongside the rest of the run and is bounded by the service's
+  `stop_timeout`. A signal, or another service's failure that ends the
+  run under `fail-fast`, ends the start sequence at once — nothing
+  further starts — and shutdown begins while the release finishes. The
+  signal does not cut that `Stop` short: the service never served, so
+  there is nothing to drain, but it may hold what it bound — a
+  listener, a socket file — and its `Stop` keeps its budget to let go
+  of them. That budget is its `stop_timeout` or what remains of the
+  shutdown deadline, whichever ends first: a release still running at
+  the shutdown deadline has its `Stop`'s context canceled there and is
+  left behind, and the run returns at the deadline, possibly with what
+  the service bound still held until the process exits. A release that
+  finishes within the deadline has let go of everything before the run
+  returns. A `Stop` that overruns its own `stop_timeout` is written off
+  (below). The ordered stop does not stop the service a
+  second time, and neither the exit its `Start` makes once stopped nor
+  a `Stop` that overran is a further failure: its record stays the
+  failure that put it there. A service whose `Start` already returned
+  is stopped in the ordered stop, like every started service.
+- **After ready.** A crash marks the service `failed`, and the other
+  services keep running whatever `services.failure_policy` says.
+  Under `fail-fast` a *required* service's failure still brings every
+  service down, optional ones included; under `isolate` it is isolated
+  as before.
+- **In stop.** A `Stop` that returns an error or exceeds the service's
+  own `stop_timeout` is reported and does not raise the exit code.
+  Exhausting `services.shutdown_timeout`, or a second signal, is the
+  run's failure whichever service it lands on.
+
+An optional service whose `Stop` overran is **written off**: its
+`Start` goroutine may never return, so the run stops counting it —
+the run ends when every other service has returned — and shutdown
+does not wait for it. Shutdown waits for every other optional
+service's goroutine, and for every release, until the shutdown deadline
+as it waits for the required ones, but only a *required* goroutine
+still running at the deadline is the run's shutdown timeout; an
+optional one, or a release cut at the deadline, is left behind.
+
+Readiness and exit follow from that:
+
+- `kit.serve.supervisor.ready_reported` is emitted once every started
+  service is ready, except an optional service that failed before
+  reporting ready, which does not participate, as a skipped one does
+  not.
+- A run whose only failures are optional ones exits as if those
+  services had not been asked for: `0` after a signal, non-zero only
+  for a required failure. A rolling restart that finds the auxiliary
+  port taken stays a clean restart.
+- A run with nothing serving is down, not degraded. When every started
+  service fails to start, optional or not, the run is a start failure
+  at exit `1` — which is also what the selector form naming a single
+  optional service amounts to. A run that ends on its own, without a
+  signal, after every service it started failed, exits `1` too.
+- The refusal message names every failed service and marks an optional
+  one `(optional)`, so an operator reads which failure the exit is
+  about.
+
+There is **no retry**. The supervisor restarts no service, optional or
+not, and has no backoff: an optional service that failed stays failed
+for the rest of the run, and bringing it back means starting a new run.
+
+Ordering is unchanged. An optional service takes its place in the
+`DependsOn` order, and a service depending on an optional one that
+failed still starts; it is the dependent's job to cope. The api
+service's `/readyz` answers `503` for as long as such a dependency is
+failed, so an api that must report ready without its optional
+dependency should not declare it in `DependsOn`.
+
+The supervisor's record of the run carries the optional service as
+`failed` with its reason and error text, under the same keys the event
+payload uses: `service`, `state`, `optional`, `reason`, `error`,
+`elapsed_ms`. In Go that record is `Result.Services` when the run ends
+and `RunStatus.Services()` on the run view every `Start` receives while
+it runs, so a status surface a tool serves reads what the supervisor
+saw. Go's `service list` also shows each registered service's resolved
+optional value, in an `OPTIONAL` column after `READY`.
 
 ### Re-execution
 
@@ -528,10 +642,17 @@ Notes:
   message and the `failed` event, not in a second numeric code.
 - Under `isolate`, the exit code reflects the worst outcome observed
   across the whole run, not the last one.
+- "One service" in the table means a required one, and so does the
+  shutdown budget's: a required service's goroutine still running when
+  it runs out. An [optional](#optional-services) service's failure is
+  not an outcome — a stop overrun or a goroutine left behind included
+  — and raises the exit code only when every started service failed.
 - Failures are classified `TransiencePermanent` unless the underlying
   error is already a kit transient error, in which case exit `6`
   (`TRANSIENT`) is propagated unchanged so agents and retry wrappers
-  keep their existing branch.
+  keep their existing branch. Only the failures the exit is about are
+  consulted: an optional service's transient error does not turn a
+  required failure into exit `6`.
 - A refusal raised by the argument parser before the command runs — a
   positional count the command does not accept, an unknown or
   malformed flag, a flag missing its value or its required companion,
@@ -592,8 +713,14 @@ configuration. The `service start` flags (`--addr`, `--socket`, `--enable`,
 | `services.<name>.enabled`          | bool       | `false` | supervisor starts this service              |
 | `services.<name>.ready_timeout`    | duration   | `30s`   | budget from `Start` to ready                |
 | `services.<name>.stop_timeout`     | duration   | `30s`   | budget for one `Stop`                       |
+| `services.<name>.optional`         | bool       | the registration's, else `false` | the run does not depend on this service ([Optional services](#optional-services)) |
 | `services.failure_policy`          | enum       | `fail-fast` | `fail-fast` or `isolate`                |
 | `services.shutdown_timeout`        | duration   | `60s`   | total shutdown budget across all services   |
+
+Like the other lifecycle keys, `optional` has no `services.all`
+default: whether the run depends on a service is a decision about
+that service, and a blanket `services.all.optional` is refused at
+exit `2`.
 
 Service-specific keys live under the same block and are owned by the
 service: `services.api.addr`, `services.socket.path`, and so on. Kit
@@ -1087,7 +1214,10 @@ service runs over HTTP.
 
 `mcpserve.Config` carries the code defaults under the same names; the
 precedence is flag, then config, then `mcpserve.Config`, then the
-default.
+default. `mcpserve.Config.Optional` is likewise the default for the
+lifecycle key `services.mcp.optional`: a tool that runs `mcp` beside a
+core service sets it so a taken MCP port does not take the core down
+([Optional services](#optional-services)).
 
 Flags, registered on `service start` like `--socket` and inert unless `mcp` is
 the service running:
@@ -2126,13 +2256,14 @@ its name under `services.<svc>.auth` or `services.all.auth`:
   every key in `public_key_files`; with neither it is refused. A
   token's `kid` selects the key; a key left in `public_key_files` after
   rotation keeps verifying what it signed.
-- `token create` (mounted with `WithAPI` and `WithIdentity`) signs a
-  token `jwt` accepts: EdDSA, the keypair's `kid` in the header, `sub`,
+- `token create` (mounted with `WithIdentity`, whether or not the tool
+  has `WithAPI`) signs a token `jwt` accepts: EdDSA, the keypair's `kid` in the header, `sub`,
   `exp`, and optionally `tenant`, `aud`, `iss` and the scopes, written
   as `scope` (space-delimited) and `scopes` (a list). `token verify
   <token>` checks one as `--service` (default `api`) would: exit `0`
   valid, `5` refused, `6` key set unreachable, `2` nothing to verify
-  with. The `token` command is kit-reserved and never served.
+  with. The `token` command is kit-reserved and never served: no
+  transport — api, mcp, rpc, socket — lists or runs any of its leaves.
 - `jwks` and `oidc` fetch nothing at start. The key set is fetched on
   the first request that needs it, again once older than `refresh`,
   and again — at most once a minute — when a token names a `kid` the
@@ -2220,8 +2351,12 @@ kit HTTP listeners, sent as `X-API-Key: <key>` or
   secret cannot be guessed, and a KDF would only cost every request.
 - `cli.WithAPIKeys` mounts `token key create --sub [--tenant]
   [--scopes] [--expires]`, `token key list` and `token key revoke
-  <id>` (exit `3` for an unknown id); each opens the store of
-  `--service` (default `api`). Revocation is immediate: the service
+  <id>` (exit `3` for an unknown id), whether or not the tool has
+  `WithAPI`: a tool serving only `mcp` or `rpc` under `auth.mode:
+  apikey` issues its own keys without registering a REST api. Each
+  verb opens the store of `--service` (default `api`; such a tool
+  names its service, `--service mcp`, when that service's
+  `auth.apikey` names a store of its own). Revocation is immediate: the service
   reads the store on every request. A revoked key stays listed.
 - The key's principal, tenant and scopes are the call's `Caller`,
   `Tenant` and `Meta.Extra["scopes"]`; `Established` is `verified`.
@@ -2832,7 +2967,7 @@ transport surfaces them unchanged.
 |--------------|-------------------|-----------------------------------------------------------------------------|---------------|
 | interactive  | `interactive`     | `kit/side-effect: interactive` — a shell, a TUI, anything needing a terminal | the CLI only  |
 | self-hosting | `self-hosting`    | `service start` and everything under it; `kit/network: ingress`; `kit/self-hosting: true` | nothing       |
-| management   | `management-only` | kit's reserved verbs (`spec`, `status`, …) and their children               | `AllowReserved` |
+| management   | `management-only` | kit's reserved verbs (`spec`, `status`, …) and their children; any tree marked `kit/reserved`, and its children | `AllowReserved` |
 
 Rules:
 
@@ -2861,7 +2996,42 @@ Rules:
   tool's own introspection surface and is withheld from projection by
   default; a consumer that has a use for it reflects with
   `AllowReserved`, as the socket service's bridge does, and the policy
-  gate decides from there.
+  gate decides from there. The socket uses that only for the tool
+  describing itself: of the reserved verbs it serves `help`, `spec`,
+  `status` and `version`, and withholds every other one — `token`,
+  which mints and inspects the credentials the served surfaces accept;
+  `quota`, whose `reset` would let a caller clear its own limit;
+  `audit`; `peer`; `alias`; `uri`; the `service` group; and any
+  reserved verb kit adds later unless it joins that list — answering
+  `NOT_ENABLED`, audited, as for any command not exposed on it. No
+  surface serves a reserved verb, or a reserved tree, that manages the
+  tool's state.
+- A command is reserved in one of two ways. By name: every command
+  `cli.New` mounts, plus the ones kit mounts on the root later and
+  names itself (`peer` once the mesh is up, `spec` from its
+  registrar); the name covers its depth-one word only. By identity:
+  a tree kit builds for the adopter to mount, which marks its own root
+  `kit/reserved` and so is reserved wherever it is mounted, nested
+  under a group of the adopter's or not, and on the socket as on every
+  other surface. The trees that do: `Root.AliasCmd` (`alias`, which
+  rewrites the alias file), `upgrade.MigrateCommand` (`migrate`, whose
+  `rollback` restores a backup over the live database), `stage.New`
+  (`stage`, whose `set` changes what a scope may do), `uri.Command`
+  (`uri`, whose `handler generate` writes the desktop integration; the
+  same tree `cli.WithURI` reserves by name), `router.Cmd` (`router`,
+  which starts and kills server processes) and `pkl.NewConfigCommand`
+  (`init`, the configuration wizard, which writes the tool's config
+  file). Each of their leaves declares its side effect too, so the
+  destructive ceiling holds for them even under `AllowReserved`.
+- Kit factories that stay servable, because they change nothing the
+  served surfaces depend on: `ps.Command` (lists work, `read`),
+  `cli.AuthStatusCmd` (`read`), `config.Command`, `PathCommand` and
+  `PathsCommand` (`read`), and `Root.AliasesCmd` (hidden, so never
+  projected). The command groups kit's own binary mounts (`scope`,
+  `breaker`, `conformance`, `uxp`, `telemetry`, `toolspec`) are kit's
+  own surface, which `kit service start` projects on purpose, behind
+  its gates. Any other command an adopter mounts after `cli.New` is
+  not reserved and is served like any other, whatever its name.
 - Kit's own `service start` is both reserved and self-hosting. It reports
   `self-hosting`, the answer that says why calling it through a
   transport can never work rather than merely who owns the word.
@@ -3061,6 +3231,62 @@ changing a line:
    used to pass. A policy that meant to allow them names them
    (`write-shared: ["*"]`). The `service start` command itself is not gated by
    the `--policy` it carries.
+11. **`optional` is a lifecycle key, and `service list` shows it.**
+   `services.<name>.optional` now decides whether the run depends on
+   the service ([Optional services](#optional-services)); a service
+   that read a flat key of that name for a meaning of its own sees the
+   supervisor read it too. `service list` prints a fifth column,
+   `OPTIONAL`, after `READY`; the first four keep their positions. A
+   service whose type already had an `Optional() bool` method for
+   another purpose now declares itself optional by default when that
+   method returns true. Every service is required, and every run exits
+   as before, unless one of those says otherwise.
+12. **A key source mounts `token` on its own, and no surface serves
+   it.** `cli.WithAPIKeys` or `cli.WithIdentity` now mounts the
+   kit-reserved `token` command without `WithAPI`, so a tool that
+   serves only `mcp` or `rpc` can issue the keys and tokens its
+   service accepts; such a tool with a `token` command of its own
+   renames it, as a `WithAPI` tool already had to.
+13. **The socket serves only kit's introspection verbs.** It used to
+   run every kit-reserved command, through its bridge's admission of
+   reserved verbs — `token` (minting keys), `quota show` and `quota
+   reset` (clearing the caller's own limit), `audit verify` and the
+   rest. It now serves `help`, `spec`, `status` and `version` of them,
+   and answers `NOT_ENABLED` for every other one, as the api, mcp and
+   rpc surfaces already withheld them. Run those on the command line.
+   A command mounted through an option passed to `cli.New` is reserved
+   too, and so is now withheld from the socket as it already was from
+   the other surfaces; mount it after `cli.New` to serve it.
+14. **`peer` and `alias` are reserved, and no surface serves them.**
+   `peer`, mounted once `cli.WithPeers` brings the mesh up, and the
+   `alias` group `Root.AliasCmd` builds were both mounted after kit
+   took its snapshot of the commands it owns, so neither was reserved
+   and every surface served them: an unauthenticated REST, rpc or
+   socket caller could trust a pending LAN announcer, skipping the
+   person's trust-on-first-use step, or block and revoke legitimate
+   peers, and MCP listed `peer.*` as tools; `alias add` and `delete`
+   rewrote the tool's alias file. Both are now reserved — `peer` by
+   name, `alias` by identity (item 15): REST does not mount them and discovery
+   marks them `management-only`, rpc answers `not_found`, MCP lists no
+   such tool, and the socket answers `NOT_ENABLED`. Trust, block and
+   revoke peers, and manage aliases, on the command line. A tool's own
+   routes that call the trust manager deliberately, behind their own
+   auth, are unaffected.
+15. **Kit's management trees reserve themselves.**
+   `upgrade.MigrateCommand`, `stage.New`, `uri.Command`, `router.Cmd`
+   and `pkl.NewConfigCommand`, which adopters mount after `cli.New`,
+   were not reserved, so every surface served what their side effects
+   and the policy allowed: `migrate run`, `stage set` and the config
+   wizard could run over REST, `router start` could spawn a server
+   process, and a policy admitting destructive commands let `migrate
+   rollback` restore a backup over the live database. Each now marks its root
+   `kit/reserved`, as `Root.AliasCmd` does, so the tree is
+   management-only wherever it is mounted — nested under an adopter's
+   group too — and `router start` is self-hosting besides. Their
+   leaves keep the side effects they declare. `ps.Command` declares
+   `read` and stays servable. Run migrations, stage changes, URI
+   handler generation, the router and the config wizard on the command
+   line.
 
 Migrating from a hand-written leaf `service start` command, or from a tree
 mounted on REST and MCP through `cmdsurface` by hand, is a mechanical
@@ -3318,6 +3544,20 @@ resolving dotted keys satisfies this section by reading the same key
 precedence engine first. The environment-variable spelling
 (`<TOOL>_SERVICES_API_ENABLED`) is contract only for a port that has
 env resolution at all.
+
+`services.<name>.optional` is not in this table yet. Go ships it with
+the behavior in [Optional services](#optional-services); the
+TypeScript, Python, Rust and PHP ports do not, and
+`contracts/parity/serve.json` does not record it. It belongs in the
+contract for the same reason `failure_policy` does — it decides
+whether a process survives, and a health check reads the difference —
+and joins this table, with a `behaviors` row in the fixture, once the
+ports implement it. Until then a port treats every service as
+required, which is what every port did before the key existed: a
+fleet sharing one YAML file gets the stricter behavior from a port
+that has not caught up, never a laxer one. Go's `OPTIONAL` column in
+`service list` is not part of it either: the listing's columns are not
+contract, and the TypeScript and Rust ports print four.
 
 #### The `--enable` / `--disable` and timeout flags
 

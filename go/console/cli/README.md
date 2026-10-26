@@ -44,8 +44,9 @@ See [flag-enums.md](../../../docs/adopters/reference/flag-enums.md).
 ## Served commands
 
 `<tool> service start` supervises services; kit ships four, each projecting the
-command tree through the same gates (policy, `WithPermission`,
-`WithAuditSinks`, `WithRootFactory`):
+command tree through the same gates (policy, `WithPermission`, `WithAuditSinks`,
+`WithRootFactory`), none serving kit's management commands — the socket keeps
+`help`, `spec`, `status`, `version` — or trees marked `kit/reserved` (`cmdmeta`):
 
 | Option | Service | Reached by |
 |--------|---------|------------|

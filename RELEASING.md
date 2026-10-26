@@ -72,14 +72,21 @@ release-please machinery pointed at different branches.
    release-please **for that branch**.
 2. release-please opens a release PR per component with bumped versions and
    changelog entries. On either branch a plain merge advances the prerelease
-   counter (`*-alpha.N` → `*-alpha.N+1`; `beta`/`rc` via the promote gate).
-   Stable `x.y.z` is cut deliberately with a `Release-As:` footer — see
+   counter (`*-alpha.N` → `*-alpha.N+1`; `beta`/`rc` via the promote gate),
+   unless a breaking change landed since the component's last release: that
+   starts a new minor line, see
+   [Breaking changes start a new minor line](#breaking-changes-start-a-new-minor-line),
+   and a new minor line of a kit group member moves the whole group, see
+   [Linked releases](#linked-releases). Stable `x.y.z` is cut deliberately with
+   a `release-as` pin — see
    [Branch-aware release-please](#branch-aware-release-please).
 3. On every release PR, `.github/workflows/changelog-rewrite.yml` post-processes
-   the bot's branch: it rewrites changelog prose, then regenerates `uv.lock` and
+   the bot's branch: it rewrites changelog prose (dropping the line of a
+   `release-as` pin commit), then regenerates `uv.lock` and
    `composer.lock` when release-please bumped `pyproject.toml` or
    `composer.json` (the lock checks would otherwise fail on the release PR and
-   on every PR cut after it merges). Both commits are pushed with the
+   on every PR cut after it merges), then drops the `release-as` pins the
+   release cuts. The commits are pushed with the
    release-bot app token so CI runs on the new head; runs started by a
    `GITHUB_TOKEN` push wait for maintainer approval instead. `Cargo.lock` needs
    nothing: release-please rewrites it itself.
@@ -110,49 +117,81 @@ package carries `prerelease: true`, `versioning: prerelease`,
 Keeping one config on both branches is what makes `next → main` promotion
 merges conflict-free, and it means a plain merge on **either** branch produces
 the next prerelease counter — `main` and `next` propose the same versions until
-a stable cut lands.
+a stable cut lands. A pending `release-as` pin is the one exception, see
+[Pins and the main/next window](#pins-and-the-mainnext-window).
 
-**Cutting stable.** A version already on a prerelease track only leaves it via
-an explicit footer. Land a conventional commit on `main` carrying
-`Release-As: x.y.z` (no suffix) — a squash-merged `chore(release): cut x.y.z`
-PR is the usual vehicle — and release-please's next run on `main` proposes
-`x.y.z` instead of `-alpha.N+1`. Do **not** flip `prerelease: false` in the
-committed config: that diverges the file across branches and turns every later
-promotion merge into a config conflict.
+**Cutting stable.** A version already on a prerelease track only leaves it by
+an explicit pin. On `main`, pin each component you cut to `x.y.z` (no suffix)
+with `scripts/release-as.sh <component> x.y.z`, or the whole kit group with
+`scripts/release-as.sh --group kit x.y.z` (members without commits since their
+`rc` included), and release-please's next run on `main` proposes `x.y.z`
+instead of `-rc.N+1`. Do **not** flip `prerelease: false` in the committed
+config: that diverges the file across branches and turns every later promotion
+merge into a config conflict.
 
-Two `Release-As:` facts to check before merging that commit:
+**Pins and footers.** release-please takes a forced version from two places:
 
-- In manifest mode the footer applies to every package that sees the commit.
-  The root package sees every commit and the linked kit family follows it; an
-  empty commit (the usual `chore(release)` vehicle) reaches every package,
-  `incubator/qmochi` included, which does not share the kit family's version
-  line. A commit that touches files reaches only the packages whose paths it
-  touches.
-- Only the first `Release-As:` line in a commit body is honoured.
+- A pin: `packages["<path>"]["release-as"]` in the config, for that package
+  and no other. `scripts/release-as.sh` writes these. Never set the top-level
+  `release-as`: it pins every package.
+- A `Release-As:` footer: for every package that sees the commit, which depends
+  only on the files it touches. The root package `kit` sees every commit except
+  one whose files all sit under its `exclude-paths`; any other package sees a
+  commit that touches a file under its path. An empty commit touches no file,
+  so it reaches every package without `exclude-paths` and misses `kit`. Only
+  the first `Release-As:` line in a commit body is honoured, and a pin wins
+  over a footer.
 
-Dry-run first and read the proposed titles:
+Neither opens a release PR by itself: release-please skips a package whose
+commits since its release are none, or only hidden types (`chore`, `ci`,
+`build`, …), before it reads either. So when `scripts/release-as.sh` pins the
+root package, its commit, which touches only the config and so reaches the
+root package alone, also carries a `Release-As:` footer with the pinned
+version: a footer makes even a `chore` commit count. For the kit group, the
+plugin then adds the members without commits (see
+[Linked releases](#linked-releases)). A pin on any other package without
+commits waits for that package's next commit of a visible type; the script
+says so.
+
+Dry-run first and read the proposed titles. The dry-run reads the target
+branch from GitHub, so it sees a pin only once it is pushed: point
+`--target-branch` at the pushed PR branch, not at its base. 17 is the
+release-please major `mise.toml` pins; `googleapis/release-please-action@v5`
+bundles 17.6.0.
 
 ```sh
-npx release-please@latest release-pr --dry-run \
+npx release-please@17 release-pr --dry-run \
   --token "$(gh auth token)" --repo-url hop-top/poly-kit \
   --config-file .github/release-please-config.json \
   --manifest-file .github/.release-please-manifest.json \
-  --target-branch main | grep '^title:'
+  --target-branch <pushed-branch> | grep '^title:'
 ```
 
-**Release brake.** Release PRs on either branch are blocked until a member of
-`@hop-top/release` approves them. The `production-branch-guardrail` ruleset on
-`main` and `next` requires code-owner review with zero required approvals, and
-`.github/CODEOWNERS` covers exactly the managed `CHANGELOG.md` files, which
-release-please rewrites on every release PR. The config and manifest are
-deliberately not owned: promotions and counter reseeds are human edits to
-those files and merge review-free, like everything else.
-The nightly auto-cut (`.github/workflows/nightly-release.yml`) merges with
-`--auto`, so it only times a merge that is already approved; it cannot cut a
-release nobody approved, on either branch. Approve the PR you intend to ship
-and leave the sibling branch's PR alone. Approvals are dismissed on push and
-release-please rebuilds the PR on every push to its base, so approve after the
-last change you want in.
+**Release brake.** Release PRs on `next` are blocked until a member of
+`@hop-top/release` approves them. The `production-branch-guardrail` ruleset
+targets `refs/heads/next` and the default branch, which is `next` too, and
+requires code-owner review with zero required approvals; `.github/CODEOWNERS`
+covers exactly the managed `CHANGELOG.md` files, which release-please rewrites
+on every release PR. The config and manifest are deliberately not owned:
+promotions and counter reseeds are human edits to those files and merge
+review-free, like everything else. The nightly auto-cut
+(`.github/workflows/nightly-release.yml`) merges with `--auto`, so on `next`
+it only times a merge that is already approved. Approve the PR you intend to
+ship and leave the sibling branch's PR alone. Approvals are dismissed on push
+and release-please rebuilds the PR on every push to its base, so approve after
+the last change you want in.
+
+Not yet in place:
+
+- The ruleset does not cover `main`. Nothing requires an approval there, so
+  the brake, the nightly auto-cut's included, does not hold a release PR on
+  `main` until the owner adds `main` to the ruleset.
+- The ruleset requires no status check. Once this tooling is merged, the
+  `breaking-bump` check (see
+  [Breaking changes start a new minor line](#breaking-changes-start-a-new-minor-line))
+  becomes a required check on `next`, and on `main` once `main` is in the
+  ruleset. It passes, skipped, on every PR that is not a release PR, so
+  requiring it holds nothing else up. Until then it only reports.
 
 Channel transitions on `next` (`alpha → beta → rc`) are committed by
 `scripts/promote-release.sh <stage>` (`make promote-<stage>`), which rewrites
@@ -168,15 +207,19 @@ release-please reads `prerelease-type` only when the version it bumps has no
 prerelease suffix, i.e. at the first bump after a stable version. While the
 manifest carries a suffix, every merged release PR bumps that counter whatever
 the config says: `0.5.0-alpha.3` becomes `0.5.0-alpha.4` under
-`prerelease-type: beta.0`. So each stage means:
+`prerelease-type: beta.0`. It does so whatever the commits say too, breaking
+changes included; those take a pin, see
+[Breaking changes start a new minor line](#breaking-changes-start-a-new-minor-line).
+So each stage means:
 
 - `alpha` seeds the next line. Once the stable cut is merged back into
   `next`, the first `feat:` proposes `x.y+1.0-alpha.0` (a `fix:` alone,
   `x.y.z+1-alpha.0`).
 - `beta` and `rc` declare the channel for the gate. To move
-  `0.5.0-alpha.N` to `0.5.0-beta.0`, land a commit on `next` carrying
-  `Release-As: 0.5.0-beta.0` — dry-run first, as for a stable cut — after
-  which merges count `beta.1`, `beta.2`, …
+  `0.5.0-alpha.N` to `0.5.0-beta.0`, pin each component on `next`
+  (`scripts/release-as.sh kit 0.5.0-beta.0`), or the kit group at once with
+  `--group` — dry-run first, as for a stable cut — after which merges count
+  `beta.1`, `beta.2`, …
 - `release` cuts nothing. It only resets the gate so the ladder can start
   again at `alpha`. With the manifest at `0.5.0-rc.N` a merge on `next`
   still proposes `rc.N+1`; with the manifest already stable and no
@@ -186,8 +229,185 @@ the config says: `0.5.0-alpha.3` becomes `0.5.0-alpha.4` under
   land the same two commits on `main` so the config stays identical.
 
 Promoting `next` to stable is the `next → main` merge described in
-[Branch model](#branch-model); stable `x.y.z` is cut there with
-`Release-As: x.y.z`, never by the promote script.
+[Branch model](#branch-model); stable `x.y.z` is cut there with a pin, never
+by the promote script.
+
+### Breaking changes start a new minor line
+
+Any breaking change since a component's last release starts a new line for
+that component. On a prerelease channel that is `x.(y+1).0-alpha.0` while the
+major is 0, `(x+1).0.0-alpha.0` from 1.0, or a higher line when the component
+is in a linked group whose highest line is higher. A stable cut after a
+breaking change is `x.(y+1).0` (from 1.0, `(x+1).0.0`). `qmochi` at
+`0.2.0-alpha.1` plus a `feat!:` becomes `0.3.0-alpha.0`; `feat:`, `fix:` and
+`perf:` alone keep counting (`0.2.0-alpha.2`). For a linked group's member the
+new line is a linked release too, see [Linked releases](#linked-releases).
+
+A commit is breaking when release-please's parser says so: a `!` before the
+colon of a conventional header (`feat!:x` included), a body line that starts
+with `BREAKING CHANGE:` and text, a `BREAKING CHANGE:` footer with text,
+`BREAKING-CHANGE:` and text anywhere in the body, or a trailing footer whose
+token ends in `!` (`wip!: x`, `Refs!: 12`), which release-please parses as a
+breaking commit of its own. A paragraph that opens with a lowercase type, a
+colon and a space counts as its own commit. `scripts/release-lib.sh` has the
+full rules, corner cases included. A commit counts for a component when
+release-please routes it there: its files, the component's path and
+`exclude-paths`. Dependency bumps marked `!` (`build(deps)!:`) count.
+
+release-please does not do this by itself: while the manifest carries a
+prerelease suffix it bumps the counter whatever the commits say. Three pieces
+close the gap.
+
+**The check.** `.github/workflows/release-bump-check.yml` runs
+`scripts/check-release-bump.sh` on every release PR
+(`release-please--branches--*`) as the `breaking-bump` job. It checks each
+package the PR releases (the manifest entries it moves, plus the component or
+group its branch names), reading the current version and the config from the
+merge base of the PR and its base branch, so a sibling release merged meanwhile
+does not count, and the proposed version from the PR. It fails when:
+
+- **stale**: the proposed version is already tagged, or the package's pin is
+  not newer than its current version. A pin or footer left behind re-proposes
+  a released version, which release-please only warns about
+  (`DuplicateReleaseError`) after merging.
+- **breaking**: a breaking commit since the package's tag of the current
+  version (`qmochi/v0.2.0-alpha.1`) touches it, and the proposed version
+  starts no new line. A new line has patch 0, `alpha.0` or no prerelease
+  suffix (a stable cut), and a minor above the current one while the major
+  is 0, or a major above it with minor 0 from 1.0. So `x.(y+1).0-alpha.0`
+  passes, a higher line passes (a linked group's highest can be one), and
+  `x.(y+1).0` passes as a stable cut. `0.5.1-alpha.3 → 0.6.0-alpha.3` and
+  `0.5.1-alpha.3 → 0.6.0-beta.0` fail. The fix the check prints is
+  `x.(y+1).0-alpha.0`, or the group's highest for a linked group.
+- **linked**: see [Linked releases](#linked-releases).
+- **pins**: the PR's own config, at its head, still holds a pin its manifest
+  has reached, or a linked-versions plugin entry whose members keep no pin.
+  The PR is waiting for its `pins` job, see below.
+
+Each failure prints the `scripts/release-as.sh` command that fixes it. The job
+is skipped on every other PR. Run it locally the same way; `--config`,
+`--manifest`, `--branch` and `--head-ref` take other paths and names:
+
+```sh
+scripts/check-release-bump.sh origin/next \
+  origin/release-please--branches--next--groups--kit
+```
+
+**The helper.** `scripts/release-as.sh <component> <version>`
+(`make release-as COMPONENT=qmochi VERSION=0.3.0-alpha.0`) pins one package:
+it adds `"release-as": "<version>"` right after the package's `component`
+line, checks with `jq` that nothing else in the config changed, and commits
+the config alone as `chore(release): start <component> <version>` (`cut` for
+a stable version). `--group <group> <version>` pins every member of a linked
+group and wires the plugin, `--cleanup` drops the pins the manifest has
+reached, and `--dry-run` prints the diff instead. It refuses, writing nothing,
+a version not newer than the manifest's, a pin the package already carries
+(so never an empty commit), a linked release for a single member, and a run
+over staged changes. After a pin it prints the dry-run to run once the branch
+is pushed.
+
+**The release PR drops its pins.** The `pins` job of
+`.github/workflows/changelog-rewrite.yml` runs `scripts/release-as.sh
+--cleanup` on the release PR's branch. A pin that the PR's manifest has
+reached is one the PR cuts, so it goes there, with a linked release's plugin
+entry once no member keeps a pin. Merging the release PR leaves the config as
+it was before the pins, and no later release PR re-proposes the version.
+
+Until that commit lands, the check's pins rule fails the PR ("Waiting for the
+pins job"), and the job's push runs the check again. release-please rewrites
+its branch on every push to the base, pins included, and the job drops them
+again. The job runs after the changelog rewrite and the lockfile sync whether
+they passed or failed, but not in a cancelled run, which leaves it to the
+newer one. If it fails, re-run it, or run `scripts/release-as.sh --cleanup` on
+the PR branch and push. Once `breaking-bump` is a required check (see the
+release brake above), this holds the merge until the pins are gone; a pin
+that survives anyway fails the next release PR as stale.
+
+To fix a failing release PR, run the command the check printed on a branch off
+the PR's base, push, dry-run against that branch (the component's or group's
+title shows the new version, every other title is unchanged) and merge.
+release-please rebuilds the release PR at the new version, and the check
+passes.
+
+How the rule meets the rest of the flow:
+
+- **Channels.** A breaking change during `beta` or `rc` also starts the new
+  line at `alpha`: `0.6.0-beta.2` plus a breaking change becomes
+  `0.7.0-alpha.0`. A new minor line is new work, and it earns `beta` again.
+  Leave the config's `prerelease-type` alone: it only takes effect after a
+  stable version, and the gate forbids moving it back. Pin the new line to
+  `0.7.0-beta.0` when it is ready.
+- **Stable cuts.** The first breaking change after a stable version needs no
+  pin: from a stable version release-please bumps by the commits, so `0.6.0`
+  plus a `feat!:` already proposes `0.7.0-alpha.0` (`2.0.0-alpha.0` from
+  `1.2.0`). A stable cut (a pin of `0.6.0` from `0.6.0-rc.N`) passes unless a
+  breaking commit touched the component since `rc.N`; `main` takes fixes only,
+  so such a commit should not be there. If it is, the check asks for
+  `0.7.0-alpha.0`; a stable cut of `0.7.0` passes too.
+- **LTS lines** take fixes only, so the check has nothing to catch there.
+
+### Linked releases
+
+The config's top-level `x-linked-groups` key lists linked groups;
+release-please ignores it, and this repo's scripts read it. Today there is
+one, `kit`: `kit`, `kit-php`, `kit-py`, `kit-rs` and `kit-ts`.
+
+A release is linked when a member's proposed version starts a new major, in
+any channel, or a new minor with a prerelease suffix (the pre-release phase:
+`alpha`, `beta`, `rc` on `next`). A linked release releases every member at
+that same version, the highest across the group, in one PR, members without
+changes of their own included. Anything else (patches, prerelease counters,
+stable minors) versions each member on its own, until the next linked release.
+
+release-please's `linked-versions` plugin cannot link only sometimes: wired
+permanently, it would align every release. So it is wired for one release at
+a time. `scripts/release-as.sh --group kit 0.6.0-alpha.0` pins every member to
+that version and adds the plugin to the config's `plugins`, on one line; its
+commit carries `Release-As: 0.6.0-alpha.0`, which makes it count for `kit`.
+release-please then opens one PR, `chore(next): release kit libraries` on
+`release-please--branches--next--groups--kit`, moving every member: the plugin
+gives a member without commits a synthetic one. The `pins` job drops the pins
+and the plugin entry in that PR, so after the merge release-please is back to
+one PR per component. `group-pull-request-title-pattern`
+(`chore${scope}: release ${component} libraries`) stays in the config for
+good: release-please needs it to recognise the merged group PR, and without it
+the merge tags no member.
+
+The group's pin commit is a `chore`, but its `Release-As:` footer gets it into
+`kit`'s changelog anyway, under "Miscellaneous" (so does a pin of `kit`
+alone). `scripts/rewrite-changelog.sh` drops that line on the release PR, and
+the section with it when nothing else is in it. Other commits that touch only
+the config reach `kit` alone too: give release tooling a hidden type
+(`ci(release)`, `chore(release)`), or it lands in `kit`'s changelog as a
+feature or fix.
+
+The check fails a member's release PR whose proposed version is linked unless
+that PR moves every member to the same version, and prints the `--group`
+command with the highest version the group can take. A member's own pin of a
+linked version is refused for the same reason. release-please never closes
+the per-component PRs a group PR supersedes: close them by hand.
+
+### Pins and the main/next window
+
+A pin lives only on the branch that cuts its version: the same pin on `main`
+would have `main` propose that version too. So while a pin is pending, the
+config differs between `main` and `next` by the pin lines, and the plugin line
+of a linked release. The release PR's cleanup restores byte-identity when it
+merges. Every other config change still lands on both branches alike.
+
+The risk is a `next → main` promotion inside that window. It carries the pins
+into `main`, and like every promotion it replays `next`'s history, including
+the `Release-As:` footer of a root pin commit. `main`'s release-please then
+proposes the versions `next`'s pending release PR cuts. The stale rule fails
+such a PR only when its check runs after `next` has tagged the version:
+creating a tag runs no check, so a `main` release PR whose check passed
+before the tag existed stays green until a push re-runs it (release-please
+rebuilds the PR on every push to `main`). The pins rule does not help either:
+`main`'s pins job drops the promoted pins like any other. So with release PRs
+open on both branches, re-run the other branch's check after one merges, and
+before approving it. The fix is `scripts/release-as.sh --cleanup` for pins, or
+for a footer a pin of the version `main` should cut, which wins over it.
+Promote after the pending release PR merges and none of this happens.
 
 ## Components
 
@@ -200,7 +420,9 @@ Promoting `next` to stable is the `next → main` merge described in
 | kit-ts | `sdk/ts` | Node | alpha → beta → rc |
 | qmochi | `incubator/qmochi` | Go | alpha → beta → rc |
 
-`kit`, `kit-ts`, `kit-py`, `kit-rs`, and `kit-php` share a linked version.
+`kit`, `kit-php`, `kit-py`, `kit-rs` and `kit-ts` form the linked group `kit`:
+each versions on its own, except in a linked release, see
+[Linked releases](#linked-releases).
 
 ### The cli-go template's kit pin
 
@@ -240,20 +462,28 @@ version it cuts. Each SDK's tests hold its pin equal to the manifest's
 
 ## Bump policy
 
-Bump size is the same on both branches; only the prerelease suffix differs
-(present on `next`, absent on `main`).
+Both branches share one config, so a commit bumps the same way on either.
 
-Pre-1.0 (current):
+On a prerelease line (the manifest carries `-alpha.N`, `-beta.N` or `-rc.N`):
 
-- `feat:` / `fix:` / `perf:` → minor (`0.x → 0.x+1`).
-- `feat!:` / `BREAKING CHANGE` → minor (downgraded from major via
-  `bump-minor-pre-major`).
+- `feat:` / `fix:` / `perf:` → the counter (`0.5.0-alpha.26 → 0.5.0-alpha.27`).
+- `feat!:` / `BREAKING CHANGE` → a new minor line, `x.(y+1).0-alpha.0`
+  (`(x+1).0.0-alpha.0` from 1.0), by `scripts/release-as.sh`; see
+  [Breaking changes start a new minor line](#breaking-changes-start-a-new-minor-line).
 
-Post-1.0:
+After a stable version, release-please opens the next line from the commits,
+at the config's `prerelease-type` (`-alpha.0`):
 
-- `feat:` → minor.
-- `fix:` / `perf:` → patch.
-- `feat!:` / `BREAKING CHANGE` → major.
+- `fix:` / `perf:` → patch (`0.6.0 → 0.6.1-alpha.0`).
+- `feat:` → minor (`0.6.0 → 0.7.0-alpha.0`).
+- `feat!:` / `BREAKING CHANGE` → minor before 1.0 (`bump-minor-pre-major`),
+  major from 1.0 (`1.2.0 → 2.0.0-alpha.0`).
+
+For a kit group member, a new minor with a prerelease suffix or a new major is
+a linked release, whichever commit causes it: `0.6.0` plus a `feat:` proposes
+`0.7.0-alpha.0`, and the whole group moves there with
+`scripts/release-as.sh --group kit 0.7.0-alpha.0`; see
+[Linked releases](#linked-releases).
 
 `bump-minor-pre-major: true` is retired at `1.0.0`.
 
