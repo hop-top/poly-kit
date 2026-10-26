@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/cli/cmdmeta"
 )
 
 // Annotation keys reserved under the kit/ prefix for evolution and
@@ -14,14 +16,14 @@ const (
 	// kitDeprecatedSince is the schema version at which a command was
 	// marked deprecated. Pairs with cobra.Command.Deprecated for the
 	// human message.
-	kitDeprecatedSince = "kit/deprecated-since"
+	kitDeprecatedSince = cmdmeta.KeyDeprecatedSince
 	// kitRemovalTarget is the schema version in which a deprecated
 	// command will be removed (purely informational).
 	kitRemovalTarget = "kit/removal-target"
 	// kitReplacedBy names the command that replaces a deprecated one,
 	// as a path below the root. The deprecation notice names it when
 	// the command carries no message of its own.
-	kitReplacedBy = "kit/replaced-by"
+	kitReplacedBy = cmdmeta.KeyReplacedBy
 	// kitSince is the schema version in which a command first
 	// appeared. Read by --api-version filtering: commands newer than
 	// the requested version are hidden.
@@ -50,7 +52,7 @@ const (
 	// the Manifest.
 	//
 	//lint:ignore U1000 framework API surface
-	kitExitCodes = "kit/exit-codes"
+	kitExitCodes = cmdmeta.KeyExitCodes
 	// kitSpecCommandAnnotation marks the spec subcommand itself so
 	// the deprecation-warning middleware knows to skip it (warnings
 	// would corrupt the manifest output).

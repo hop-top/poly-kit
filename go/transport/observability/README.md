@@ -10,7 +10,7 @@ surface. Off until configured; linked only by tools that ask for it.
 
 ## Use it when
 
-- trace and measure the kit-shipped `api` and `socket` services → `cli.WithObservability(observability.NewServe())`, then `services.<svc>.tracing.enabled` / `services.<svc>.metrics.enabled` (or `services.all.*`) in config
+- trace and measure the kit-shipped `api` and `socket` services → `service.WithObservability(observability.NewServe())`, then `services.<svc>.tracing.enabled` / `services.<svc>.metrics.enabled` (or `services.all.*`) in config
 - send to a collector → `exporter: otlp` (default), `endpoint: http://127.0.0.1:4318` (default); print locally → `exporter: stdout`
 - let Prometheus scrape a kit HTTP listener (api, mcp, rpc) → `metrics.scrape.enabled: true` (`/metrics`; `exporter: none` to push nothing; `scrape.allow_remote: true` beyond loopback)
 - keep your own OpenTelemetry SDK → `NewServe(WithTracerProvider(tp), WithMeterProvider(mp))`
@@ -21,8 +21,8 @@ surface. Off until configured; linked only by tools that ask for it.
 
 ```go
 root := cli.New(cfg,
-    cli.WithAPI(apiCfg),
-    cli.WithObservability(observability.NewServe()),
+    service.WithAPI(apiCfg),
+    service.WithObservability(observability.NewServe()),
 )
 ```
 

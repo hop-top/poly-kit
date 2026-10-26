@@ -26,12 +26,14 @@ const (
 	StatusError       = "error"
 )
 
-// Default timeouts for the status pipeline. Promote to StatusConfig
-// fields only when adopter demand surfaces.
-const (
-	defaultStatusProviderTimeout = 2 * time.Second
-	defaultStatusOverallTimeout  = 10 * time.Second
-)
+// StatusProviderTimeout is the deadline the status pipeline gives one
+// StatusProvider, for the root `status` and for `service status`
+// sections alike; a provider that misses it is reported unavailable.
+const StatusProviderTimeout = 2 * time.Second
+
+// defaultStatusOverallTimeout bounds one root `status` run. Promote to
+// a StatusConfig field only when adopter demand surfaces.
+const defaultStatusOverallTimeout = 10 * time.Second
 
 // Default key-pattern redaction set. Keys containing any of these
 // substrings (case-insensitive) render as "[redacted]" inside
@@ -454,18 +456,19 @@ func runStatus(cmd *cobra.Command, r *Root) error {
 	// it. The tag-driven formats cannot express nesting, so they get the
 	// flat one-row-per-section projection instead; handing them
 	// StatusOutput resolves zero columns and prints nothing at all.
-	if isStatusTabular(format) {
-		return output.Render(cmd.OutOrStdout(), format, statusRows(sections))
+	if IsTabularFormat(format) {
+		return output.Render(cmd.OutOrStdout(), format, StatusSectionRows(sections))
 	}
 	return output.Render(cmd.OutOrStdout(), format, out)
 }
 
-// isStatusTabular reports whether format projects values through their
-// `table:""` tags into a flat, columnar document and therefore needs
-// the StatusRow projection rather than the nested StatusOutput.
+// IsTabularFormat reports whether format projects values through their
+// `table:""` tags into a flat, columnar document (table, csv, text,
+// human) and therefore needs the StatusRow projection rather than the
+// nested StatusOutput.
 //
 // Mirrors output.isTagDriven, which is unexported.
-func isStatusTabular(format output.Format) bool {
+func IsTabularFormat(format output.Format) bool {
 	switch format {
 	case output.Table, output.CSV, output.Text, output.Human:
 		return true
@@ -475,7 +478,7 @@ func isStatusTabular(format output.Format) bool {
 }
 
 func runProvider(ctx context.Context, name string, fn StatusProvider) StatusSection {
-	pctx, cancel := context.WithTimeout(ctx, defaultStatusProviderTimeout)
+	pctx, cancel := context.WithTimeout(ctx, StatusProviderTimeout)
 	defer cancel()
 	resultCh := make(chan struct {
 		sec StatusSection
@@ -514,7 +517,7 @@ func runProvider(ctx context.Context, name string, fn StatusProvider) StatusSect
 			return StatusSection{
 				Title:        name,
 				Status:       StatusUnavailable,
-				ErrorMessage: fmt.Sprintf("timeout after %s", defaultStatusProviderTimeout),
+				ErrorMessage: fmt.Sprintf("timeout after %s", StatusProviderTimeout),
 			}
 		}
 		return StatusSection{Title: name, Status: StatusUnavailable, ErrorMessage: "canceled"}
@@ -623,9 +626,10 @@ type StatusRow struct {
 	Detail string `json:"detail,omitempty" yaml:"detail,omitempty" table:"DETAIL,priority=7"`
 }
 
-// statusRows flattens sections into the table projection, preserving
-// the caller's already-sorted order.
-func statusRows(sections []StatusSection) []StatusRow {
+// StatusSectionRows flattens sections into the SECTION/STATUS/DETAIL
+// table projection the root `status` renders, preserving the caller's
+// already-sorted order.
+func StatusSectionRows(sections []StatusSection) []StatusRow {
 	rows := make([]StatusRow, 0, len(sections))
 	for _, sec := range sections {
 		status := sec.Status

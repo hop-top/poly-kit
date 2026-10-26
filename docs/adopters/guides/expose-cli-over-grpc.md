@@ -264,7 +264,7 @@ Every command can be streamed; nothing to register. What to rely on:
   client goes away, your command watches `cmd.Context()`. Stopping the
   service ends open streams too.
 - **Long streams want a root factory.** Without
-  `cli.WithRootFactory`, a running stream holds the tool's command
+  `service.WithRootFactory`, a running stream holds the tool's command
   tree and every other call waits for it; see
   [step 10 of the REST guide](expose-cli-over-rest.md#10-run-requests-in-parallel).
 
@@ -408,8 +408,8 @@ Beyond loopback, the service refuses to start (exit `2`) without a
 verifier unless you opt out by name with
 `services.rpc.insecure_remote`, and without a `--policy` it enforces
 `kit-default` unless you opt out with `services.rpc.insecure_no_policy`.
-The permission gate (`cli.WithPermission`), the audit sinks
-(`cli.WithAuditSinks`) and the walkthrough are shared with the other
+The permission gate (`service.WithPermission`), the audit sinks
+(`service.WithAuditSinks`) and the walkthrough are shared with the other
 services: [secure-remote-serving.md](secure-remote-serving.md).
 
 ### 11. Add your own interceptors
@@ -445,7 +445,7 @@ A refusal is an RPC error, and the command never ran:
 | `not_found`           | unknown command, hidden by `Expose`/`Hide`, or never remote  |
 | `unauthenticated`     | the verifier refused the call, or `kit/auth-required` without a verified caller |
 | `failed_precondition` | `kit/requires-confirmation` without `X-Confirm-Token`        |
-| `permission_denied`   | destructive ceiling, a scope the command's `kit/permissions` names that `Auth`'s claims lack (message led by `cmdsurface: insufficient scope`), `--policy`, or `cli.WithPermission`; the message says which. Also the listener's Host and Origin checks, the message led by `host_rejected` or `origin_rejected` |
+| `permission_denied`   | destructive ceiling, a scope the command's `kit/permissions` names that `Auth`'s claims lack (message led by `cmdsurface: insufficient scope`), `--policy`, or `service.WithPermission`; the message says which. Also the listener's Host and Origin checks, the message led by `host_rejected` or `origin_rejected` |
 | `resource_exhausted`  | request over the body limit (`services.rpc.body_limit.max_bytes`, else `MaxBodyBytes`), or the caller is over its rate limit or quota (with `Retry-After` metadata) |
 | `unavailable`         | every in-flight slot and the queue are full (`concurrency`); retry after `Retry-After` |
 | `deadline_exceeded`   | the command ran past its deadline (`kit/timeout`, else `timeouts.command`) |

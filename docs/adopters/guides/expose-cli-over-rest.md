@@ -59,11 +59,12 @@ import (
     "context"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
 )
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
-        cli.WithAPI(cli.APIConfig{}), // listens on 127.0.0.1:8080
+        service.WithAPI(service.APIConfig{}), // listens on 127.0.0.1:8080
     )
     _ = root.Execute(context.Background())
 }
@@ -152,6 +153,7 @@ import (
     "github.com/spf13/cobra"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
     "hop.top/kit/go/console/output"
 )
 
@@ -165,7 +167,7 @@ type Widget struct {
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
         cli.WithStatus(cli.StatusConfig{}),
-        cli.WithAPI(cli.APIConfig{Addr: ":8080"}),
+        service.WithAPI(service.APIConfig{Addr: ":8080"}),
     )
 
     list := &cobra.Command{
@@ -282,9 +284,12 @@ route, and discovery says why:
 Permit them by naming the REST surface:
 
 ```go
-import "hop.top/kit/go/transport/cmdsurface"
+import (
+    "hop.top/kit/go/console/cli/service"
+    "hop.top/kit/go/transport/cmdsurface"
+)
 
-cli.WithAPI(cli.APIConfig{
+service.WithAPI(service.APIConfig{
     Policy: cmdsurface.Policy{
         AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceREST},
     },
@@ -328,7 +333,7 @@ socket.
 the CLI and every other surface keep the command:
 
 ```go
-cli.WithAPI(cli.APIConfig{
+service.WithAPI(service.APIConfig{
     Hide: []string{"admin *", "debug dump"},
 })
 ```
@@ -354,9 +359,12 @@ your declared output schemas, the confirmation flags where a command
 is gated:
 
 ```go
-import "hop.top/kit/go/transport/api"
+import (
+    "hop.top/kit/go/console/cli/service"
+    "hop.top/kit/go/transport/api"
+)
 
-cli.WithAPI(cli.APIConfig{
+service.WithAPI(service.APIConfig{
     OpenAPI: &api.OpenAPIConfig{Title: "mytool", Version: "1.4.2"},
 })
 ```
@@ -429,10 +437,11 @@ applies when no `auth.mode` is configured:
 import (
     "net/http"
 
+    "hop.top/kit/go/console/cli/service"
     "hop.top/kit/go/transport/api"
 )
 
-cli.WithAPI(cli.APIConfig{
+service.WithAPI(service.APIConfig{
     Addr: "0.0.0.0:8080",
     Auth: func(r *http.Request) (any, error) {
         claims, err := validateToken(r.Header.Get("Authorization"))
@@ -462,7 +471,7 @@ The others wait in a bounded queue, 64 deep; past it a request is
 refused `503 overloaded` with `Retry-After` (see
 [bounding calls](secure-remote-serving.md#13-bound-how-many-calls-run-at-once)).
 To run requests in parallel, hand kit the function that builds your
-root — the one `main` already has — with `cli.WithRootFactory`. Every
+root — the one `main` already has — with `service.WithRootFactory`. Every
 request then runs on a tree of its own.
 
 ```go
@@ -474,12 +483,13 @@ import (
     "github.com/spf13/cobra"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
 )
 
 func newRoot() *cli.Root {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
-        cli.WithAPI(cli.APIConfig{}),
-        cli.WithRootFactory(newRoot), // a fresh tree per request
+        service.WithAPI(service.APIConfig{}),
+        service.WithRootFactory(newRoot), // a fresh tree per request
     )
     root.Cmd.AddCommand(&cobra.Command{
         Use:         "ping",
@@ -586,8 +596,8 @@ If the api needs another service of yours to be useful — a store, a
 bus consumer — name it, and readiness follows it:
 
 ```go
-cli.WithAPI(cli.APIConfig{DependsOn: []string{"store"}}),
-cli.WithService(store), // started first; /readyz is 503 while it is not ready
+service.WithAPI(service.APIConfig{DependsOn: []string{"store"}}),
+service.WithService(store), // started first; /readyz is 503 while it is not ready
 ```
 
 A Kubernetes container spec:
@@ -631,7 +641,7 @@ The full table is in the
 | `services.api.health.enabled` | `true` | Serve `/healthz` and `/readyz`. |
 | `services.api.health.path_prefix` | `""` | Mount both probe routes under a prefix. |
 | `services.api.health.detail` | loopback only | Name failing checks in a `/readyz` `503`. |
-| `cli.WithRootFactory(newRoot)` | not set | Run requests in parallel, each on a tree `newRoot` builds (step 10). Unset serializes them on the tool's own tree. |
+| `service.WithRootFactory(newRoot)` | not set | Run requests in parallel, each on a tree `newRoot` builds (step 10). Unset serializes them on the tool's own tree. |
 | `services.api.cache.enabled` | `true` | Serve reads that declare `kit/cache-ttl` from a result cache, with `ETag` and `304`. `backend` (default `memory`), `max_bytes`, `path`; see [result cache](../reference/transport-api.md#result-cache). |
 | `services.api.compression.enabled` | `false` | gzip/zstd response bodies for clients that accept them. `min_bytes` (default `1024`) sets the floor; `services.all.compression` sets both for every service. See [response compression](../reference/transport-api.md#response-compression). |
 | `services.api.auth`, `rate_limit`, `timeouts`, `body_limit`, ... | see reference | Every middleware block, its keys and defaults: [served-middleware.md](../reference/served-middleware.md). |
@@ -648,7 +658,7 @@ as it applies to REST:
 - **One command at a time, unless you opt in.** By default the
   projection runs commands in process on the tool's own command tree,
   and the runner serializes them: a second request waits for the
-  first to finish. With `cli.WithRootFactory` (step 10) every request
+  first to finish. With `service.WithRootFactory` (step 10) every request
   runs on a tree of its own, in parallel.
 - **Each request starts clean.** Flags from one request do not carry
   into the next. Every command starts from the flag state the

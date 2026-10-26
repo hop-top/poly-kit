@@ -149,7 +149,11 @@ The command tree, the reflector, and the transports would form a
 cycle if wired naively; `console/cli/cmdmeta` is what breaks it. The
 rule that keeps the graph acyclic:
 
-- `console/cli` may import `transport/*` and `console/serve`.
+- `console/cli` imports no transport package but the
+  `transport/cmdsurface/admitted` leaf, through which it reads a
+  served invocation, and not `console/serve`. The serve plane,
+  `console/cli/service`, imports `console/cli`, `transport/*` and
+  `console/serve`, and `console/cli` never imports it.
 - `transport/*` and `ai/cmdreflect` MUST NOT import `console/cli`.
   They reach cobra annotations through `console/cli/cmdmeta`, which
   is a leaf with zero kit imports for exactly this reason.

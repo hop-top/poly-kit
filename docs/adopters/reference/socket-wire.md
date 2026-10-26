@@ -79,12 +79,12 @@ mid-command cancels it (see [Cancellation](#cancellation)), and the
 result is discarded. Stopping the service cancels every command in
 flight. Requests on one connection are answered in order; across
 connections the bridge's runner serializes in-process commands, one
-at a time, unless the tool opts in with `cli.WithRootFactory`, which
+at a time, unless the tool opts in with `service.WithRootFactory`, which
 runs each request on a tree of its own, in parallel.
 
 ## Surface
 
-The built-in service (`cli.WithSocket`) invokes every request as
+The built-in service (`service.WithSocket`) invokes every request as
 `cmdsurface.SurfaceSocket` (`socket`), a surface of its own. Policy, enablement, and audit sinks key
 off that value: a destructive command runs only when
 `Policy.AllowDestructiveOn` names `SurfaceSocket`, and audit records
@@ -115,7 +115,7 @@ served normally.
 The transport ships without an authenticator: the socket file's
 `0600` permission is the access control, and for the common case
 that is the authentication. `Transport.Auth` (an `Authenticator`,
-`cli.SocketConfig.Auth` for the built-in service) verifies each
+`service.SocketConfig.Auth` for the built-in service) verifies each
 request before it is invoked. It receives the connection, so it may
 read peer credentials from the kernel, and the request, so it may
 verify something the caller sent. A non-nil error answers
@@ -164,11 +164,11 @@ A peer holds no scopes by default, so a command declaring
 `kit/permissions` is refused over the socket as `DENIED`, led by
 `cmdsurface: insufficient scope`, until something grants them. On the
 built-in service, `services.socket.auth.peer.scopes` grants its list
-to every admitted peer; without it, `cli.SocketConfig.PeerScopes`
+to every admitted peer; without it, `service.SocketConfig.PeerScopes`
 maps each peer's credentials to its scopes:
 
 ```go
-cli.WithSocket(cli.SocketConfig{
+service.WithSocket(service.SocketConfig{
     PeerScopes: func(c socket.PeerCred) []string {
         if c.UID == 0 {
             return []string{"widgets:admin"}
@@ -258,7 +258,7 @@ directory.
 | `SocketMode` | the `0600` the socket file is created with |
 
 Register it through
-[`cli.WithSocket`](../../../go/console/cli/serve_socket.go) rather than
+[`service.WithSocket`](../../../go/console/cli/service/serve_socket.go) rather than
 constructing the service by hand.
 
 ## Related pages

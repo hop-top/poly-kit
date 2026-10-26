@@ -11,11 +11,11 @@ over TCP is `go/transport/api`; a schema-typed RPC is
 
 ## Use it when
 
-- serve the tree on a socket → `cli.WithSocket(cli.SocketConfig{...})`
+- serve the tree on a socket → `service.WithSocket(service.SocketConfig{...})`
 - construct the transport by hand → `socket.New(path)`
-- verify each request before it runs → `Transport.Auth` (an `Authenticator`), `cli.SocketConfig.Auth`
+- verify each request before it runs → `Transport.Auth` (an `Authenticator`), `service.SocketConfig.Auth`
 - name each caller by its kernel-reported uid → `NewPeerAuthenticator(PeerAuthConfig{...})`, or `services.socket.auth.mode: peer` on the built-in service
-- grant a peer scopes for `kit/permissions` commands → `PeerAuthConfig.Scopes`, `cli.SocketConfig.PeerScopes`, or `services.socket.auth.peer.scopes`
+- grant a peer scopes for `kit/permissions` commands → `PeerAuthConfig.Scopes`, `service.SocketConfig.PeerScopes`, or `services.socket.auth.peer.scopes`
 - ask the kernel who is on a connection → `PeerCredentials(conn)`
 - observe refusals → `Transport.OnRefused`, which the built-in service routes into `Bridge.Audit`
 - read a response → `Request`, `Response`, `Error` wire types
@@ -33,7 +33,7 @@ over TCP is `go/transport/api`; a schema-typed RPC is
 ```
 
 Register it through
-[`cli.WithSocket`](../../console/cli/serve_socket.go) rather than
+[`service.WithSocket`](../../console/cli/service/serve_socket.go) rather than
 constructing the service by hand.
 
 ## Contract
@@ -52,7 +52,7 @@ constructing the service by hand.
 - `go/transport/transportsvc`: the lifecycle seam this transport implements.
 - `go/transport/cmdsurface`: the bridge whose gate produces every refusal code.
 - `go/transport/rpc`: ConnectRPC and protobuf, when you need a schema rather than dynamic dispatch.
-- `go/console/cli`: `cli.WithSocket`, `cli.SocketConfig`, `cli.WithRootFactory`.
+- `go/console/cli`: `service.WithSocket`, `service.SocketConfig`, `service.WithRootFactory`.
 
 ## See also
 

@@ -162,7 +162,7 @@ services:
     addr: 127.0.0.1:9092
 ```
 
-Add a service of your own with `cli.WithService` in `cmd/root.go`; it
+Add a service of your own with `service.WithService` (from `hop.top/kit/go/console/cli/service`) in `cmd/root.go`; it
 appears in `service list` beside `api`, `socket`, `mcp` and `rpc` and
 starts under the same supervisor.
 

@@ -1,0 +1,572 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"strings"
+	"sync"
+	"time"
+
+	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/policy"
+	"hop.top/kit/go/console/output"
+	"hop.top/kit/go/transport/authn"
+	"hop.top/kit/go/transport/cmdsurface"
+)
+
+// serveAuthState is what every kit-shipped transport service shares
+// on the security side: the adopter's permission gate, the audit
+// sinks, and the extra bridge options tests inject. It lives on the
+// Root so the api, socket, and mcp services, and any service registered
+// later, resolve the same values at Start.
+type serveAuthState struct {
+	permission cmdsurface.PermissionFunc
+	// rules compiles the active --policy's permissions: block; nil
+	// until an evaluator is wired with WithPermissionRules.
+	rules PermissionRuleCompiler
+	sinks cmdsurface.SinkSet
+	// chains holds the audit chains services.<svc>.audit.sinks
+	// opened, shared by every service that names the same file.
+	chains auditChains
+	// idem is the idempotency ledger every service shares.
+	idem serveIdempotencyState
+	// tokenCheck is the WithTokenCheck revocation hook; nil when unset.
+	tokenCheck func(ctx context.Context, t *authn.Token) error
+	// bridgeOpts are applied last on every kit-shipped service's
+	// bridge. Not exposed: tests use it to install a stub Runner
+	// behind the real serve path.
+	bridgeOpts []cmdsurface.Option
+	// usage is the ledger policy budgets are counted in; see
+	// serve_usage.go.
+	usage usageState
+}
+
+// WithPermission installs the permission gate every kit-shipped
+// transport service consults before running a command. It runs in
+// [cmdsurface.Bridge.Invoke] after the destructive ceiling and
+// before the command, on the api, socket, and mcp services
+// alike, so a caller is answered the same way whichever transport
+// carried the call.
+//
+// fn is the last of the deciders, and each can only narrow. The
+// bridge's built-in scope check runs first: a command declaring
+// kit/permissions runs on a served surface only for a caller whose
+// verified credential holds every scope it names, and is otherwise
+// refused insufficient_scope (see [cmdsurface.ErrInsufficientScope]).
+// Then the tool's policy engine: a --policy that refuses a command's
+// side-effect class refuses it here too — for every caller, or, under
+// the policy's callers section, for the callers its rules name. Then
+// the policy's permissions: rules, when an evaluator is wired
+// ([WithPermissionRules]). fn is asked last, for whatever else this
+// caller may not do — a suspended account, a tenant boundary, a
+// decision that needs your own data.
+//
+// Without this option every caller the scope check, the policy and
+// its rules admit may run the command.
+func WithPermission(fn cmdsurface.PermissionFunc) func(*cli.Root) {
+	return func(r *cli.Root) { stateOf(r).serveAuth.permission = fn }
+}
+
+// WithTokenCheck installs a revocation check on every credential
+// verifier services.<svc>.auth.mode selects: a jwt, jwks or oidc
+// bearer token, and a kit API key under apikey, which is presented as
+// the token [authn.APIKey.Token] describes (its principal, tenant,
+// scopes, and its id as jti). check runs after every other check
+// passed, as [authn.Options.Check] does; a non-nil error refuses the
+// credential as invalid — 401 unauthenticated, audited — naming the
+// error. It applies wherever the verifier is built from configuration:
+// every served listener and `token verify`. Look the token's jti,
+// subject or issue time up in a deny list; the call is on the request
+// path, so keep it fast.
+//
+// A verifier installed in code (APIConfig.Auth and its siblings) is
+// the adopter's own and is not wrapped; set authn.Options.Check there.
+func WithTokenCheck(check func(ctx context.Context, t *authn.Token) error) func(*cli.Root) {
+	return func(r *cli.Root) { stateOf(r).serveAuth.tokenCheck = check }
+}
+
+// tokenCheck returns the WithTokenCheck check, nil when unset.
+func tokenCheck(r *cli.Root) func(ctx context.Context, t *authn.Token) error {
+	if r == nil {
+		return nil
+	}
+	return stateOf(r).serveAuth.tokenCheck
+}
+
+// PermissionRuleCompiler turns the permissions: block of the active
+// --policy into a permission gate. It validates and compiles every
+// rule up front, and returns an error naming the first rule it cannot
+// use; the service then refuses to start.
+type PermissionRuleCompiler func(rules []policy.PermissionRule) (cmdsurface.PermissionFunc, error)
+
+// WithPermissionRules installs the evaluator for the permissions:
+// block of the tool's --policy file. The compiled rules join the
+// permission gate of every kit-shipped transport service, after the
+// scope check and the policy's allow lists and before the adopter's
+// [WithPermission]; they can only narrow what those admitted.
+//
+// kit's evaluator is CEL, in go/console/cli/celpermission: pass
+// celpermission.With() rather than calling this directly. It is
+// separate so a tool that never serves rules does not link cel-go.
+// A policy that declares rules while no evaluator is wired refuses
+// to serve rather than serve without them.
+func WithPermissionRules(compile PermissionRuleCompiler) func(*cli.Root) {
+	return func(r *cli.Root) { stateOf(r).serveAuth.rules = compile }
+}
+
+// WithAuditSinks registers audit sinks on every kit-shipped transport
+// service. Each receives one record per refusal — authentication,
+// surface enablement, the destructive ceiling, the permission gate —
+// and one per command executed over a remote surface, carrying the
+// principal, tenant, request id, trace id, surface, command path,
+// and the verdict (the refusal's error, or the command's exit code).
+//
+// Sinks are best-effort and never change a verdict. See
+// [cmdsurface.SinkSpec] for the filters, and [cmdsurface.FileSink],
+// [cmdsurface.LogSink], [cmdsurface.WebhookSink], and
+// [cmdsurface.BusSink] for ready-made destinations.
+func WithAuditSinks(specs ...cmdsurface.SinkSpec) func(*cli.Root) {
+	return func(r *cli.Root) {
+		st := stateOf(r)
+		st.serveAuth.sinks = append(st.serveAuth.sinks, specs...)
+	}
+}
+
+// serveBridgeOptions returns the bridge options every kit-shipped
+// transport service applies at Start: the composed permission gate,
+// the audit sinks — registered in code, then svc's audit.sinks list —
+// with svc's audit.redact block, svc's per-command deadline default
+// (timeouts.command), idempotency replay as svc's idempotency block
+// sets it, svc's quota block, and any test-injected options. It is
+// resolved at Start, not at registration, because --policy is parsed
+// and adopter options run only after the service was constructed.
+func serveBridgeOptions(r *cli.Root, svc string, exp ServeExposure) ([]cmdsurface.Option, error) {
+	perm, err := servePermission(r, exp)
+	if err != nil {
+		return nil, err
+	}
+	redaction, err := serveAuditRedaction(r.Viper, svc)
+	if err != nil {
+		return nil, err
+	}
+	configured, err := serveConfiguredAuditSinks(r, svc)
+	if err != nil {
+		return nil, err
+	}
+	commandTimeout, err := serveCommandTimeout(r.Viper, svc)
+	if err != nil {
+		return nil, err
+	}
+	idem, err := serveIdempotencyOptions(r, svc)
+	if err != nil {
+		return nil, err
+	}
+	capacity, err := serveConcurrencyOptions(r, svc)
+	if err != nil {
+		return nil, err
+	}
+	quota, err := serveQuotaOptions(r, svc)
+	if err != nil {
+		return nil, err
+	}
+	st := stateOf(r)
+	opts := []cmdsurface.Option{
+		cmdsurface.WithPermission(perm),
+		cmdsurface.WithSinks(st.serveAuth.sinks...),
+		cmdsurface.WithSinks(configured...),
+		cmdsurface.WithAuditRedaction(redaction),
+		cmdsurface.WithCommandTimeout(commandTimeout),
+	}
+	opts = append(opts, idem...)
+	opts = append(opts, capacity...)
+	opts = append(opts, quota...)
+	return append(opts, st.serveAuth.bridgeOpts...), nil
+}
+
+// servePermission builds the permission gate the services share. The
+// policy engine's verdict comes first: it answers the same question
+// wrapPolicyRunE asks on the CLI, from the same --policy, for the
+// caller the transport established (see permissionFromEngine). With no
+// --policy named, a service exposed beyond loopback enforces
+// kit-default unless it opted out with insecure_no_policy. The
+// policy's permissions: rules run second and the adopter's gate last,
+// for the caller-specific answer. The first refusal stands: a later
+// decider is never asked about a call an earlier one refused. A caller
+// rule's max_ops budget is checked at the policy's turn and charged
+// only once every decider has admitted the call, so a call the rules
+// or the adopter refuse spends nothing.
+func servePermission(r *cli.Root, exp ServeExposure) (cmdsurface.PermissionFunc, error) {
+	engine, err := cli.PolicyEngine(r, r.Cmd)
+	if err != nil {
+		return nil, err
+	}
+	if exp.kitDefault() && !servePolicyConfigured(r) {
+		_, maxOps := cli.PolicyFlags(r.Cmd)
+		engine = policy.NewEngine(policy.KitDefault(), maxOps)
+	}
+	var ledger *cmdsurface.UsageLedger
+	if engine.Policy().HasBudgets() {
+		if ledger, err = usageLedgerOf(r); err != nil {
+			return nil, fmt.Errorf("policy %q: %w", engine.Policy().Name, err)
+		}
+	}
+	eg := newEngineGate(engine, ledger)
+	gates := []cmdsurface.PermissionFunc{eg.decide}
+	rules, err := servePermissionRules(r, engine.Policy())
+	if err != nil {
+		return nil, err
+	}
+	if rules != nil {
+		gates = append(gates, rules)
+	}
+	if adopter := stateOf(r).serveAuth.permission; adopter != nil {
+		gates = append(gates, adopter)
+	}
+	if ledger != nil {
+		gates = append(gates, eg.charge)
+	}
+	if len(gates) == 1 {
+		return gates[0], nil
+	}
+	return func(ctx context.Context, meta cmdsurface.Meta, leaf *cmdsurface.Leaf) cmdsurface.PermissionDecision {
+		for _, gate := range gates {
+			if dec := gate(ctx, meta, leaf); !dec.Allowed {
+				return dec
+			}
+		}
+		return cmdsurface.PermissionDecision{Allowed: true}
+	}, nil
+}
+
+// servePermissionRules compiles p's permissions: block with the wired
+// evaluator; nil when p declares no rules. A rule that does not compile,
+// or rules with no evaluator to run them, is a usage error: the service
+// refuses to start rather than serve without the rules the operator
+// named.
+func servePermissionRules(r *cli.Root, p policy.Policy) (cmdsurface.PermissionFunc, error) {
+	if len(p.Permissions) == 0 {
+		return nil, nil
+	}
+	st := stateOf(r)
+	if st.serveAuth.rules == nil {
+		return nil, output.UsageError(fmt.Sprintf(
+			"policy %q declares permissions: rules, but this tool wires no rule evaluator (celpermission.With)", p.Name))
+	}
+	gate, err := st.serveAuth.rules(p.Permissions)
+	if err != nil {
+		return nil, output.UsageError(fmt.Sprintf("policy %q: %v", p.Name, err))
+	}
+	return gate, nil
+}
+
+// refuseAll is the permission gate of a bridge whose shared options
+// could not be resolved: it refuses every call with why, so a service
+// never runs a command without its gate and audit sinks.
+func refuseAll(err error) cmdsurface.PermissionFunc {
+	return func(context.Context, cmdsurface.Meta, *cmdsurface.Leaf) cmdsurface.PermissionDecision {
+		return cmdsurface.PermissionDecision{Reason: err.Error(), CallerIndependent: true}
+	}
+}
+
+// permissionFromEngine adapts the policy engine to the bridge's gate,
+// checking a caller rule's max_ops budget without charging it; the
+// charge is engineGate.charge, which servePermission runs last.
+func permissionFromEngine(engine *policy.Engine, ledger *cmdsurface.UsageLedger) cmdsurface.PermissionFunc {
+	return newEngineGate(engine, ledger).decide
+}
+
+// engineGate adapts the policy engine to the bridge's permission slot,
+// in two halves: decide answers at the policy's turn, charge spends
+// the caller's budget once every later decider has admitted the call.
+//
+// The engine answers for the caller the transport established
+// (policyCaller): the first of the policy's caller rules matching it,
+// then the policy's own rules. A refusal no caller rule could lift
+// holds for every caller, and the decision says so, which is what lets
+// discovery withhold the command at mount rather than mount a route
+// that can only refuse; any other refusal is the caller's own.
+//
+// A caller rule with max_ops counts each admitted write or destructive
+// call against the caller's budget in ledger. decide refuses once the
+// window's budget is spent, reading it only; charge takes one from it,
+// refusing if a concurrent call spent the last one first. A probe
+// (cmdsurface.IsProbe) is never charged. A ledger that cannot be read
+// or written refuses: a budget nobody can count is not enforced by
+// admitting everything.
+//
+// The engine is guarded by a mutex because it is documented as
+// unsafe for concurrent use, and a transport service answers
+// requests concurrently.
+type engineGate struct {
+	mu     sync.Mutex
+	engine *policy.Engine
+	ledger *cmdsurface.UsageLedger
+}
+
+func newEngineGate(engine *policy.Engine, ledger *cmdsurface.UsageLedger) *engineGate {
+	return &engineGate{engine: engine, ledger: ledger}
+}
+
+// budget returns the budget a call to leaf by meta's caller counts
+// against, if any.
+func (g *engineGate) budget(meta cmdsurface.Meta, leaf *cmdsurface.Leaf) (policy.Budget, bool) {
+	if g.engine == nil || g.ledger == nil || leaf == nil || leaf.Cmd == nil {
+		return policy.Budget{}, false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	b, ok := g.engine.BudgetFor(policyCaller(meta))
+	return b, ok && g.engine.Mutating(leaf.Cmd)
+}
+
+func (g *engineGate) decide(ctx context.Context, meta cmdsurface.Meta, leaf *cmdsurface.Leaf) cmdsurface.PermissionDecision {
+	if g.engine == nil || leaf == nil || leaf.Cmd == nil {
+		return cmdsurface.PermissionDecision{Allowed: true}
+	}
+	caller := policyCaller(meta)
+	g.mu.Lock()
+	allowed, _, reason := g.engine.AuthorizeFor(leaf.Cmd, caller)
+	everyone := !allowed && g.engine.RefusedForEveryone(leaf.Cmd)
+	g.mu.Unlock()
+	if !allowed {
+		return cmdsurface.PermissionDecision{
+			Reason:            reason,
+			CallerIndependent: everyone,
+		}
+	}
+	if b, ok := g.budget(meta, leaf); ok {
+		return budgetDecision(ctx, g.ledger, b, false)
+	}
+	return cmdsurface.PermissionDecision{Allowed: true}
+}
+
+func (g *engineGate) charge(ctx context.Context, meta cmdsurface.Meta, leaf *cmdsurface.Leaf) cmdsurface.PermissionDecision {
+	if cmdsurface.IsProbe(ctx) {
+		return cmdsurface.PermissionDecision{Allowed: true}
+	}
+	if b, ok := g.budget(meta, leaf); ok {
+		return budgetDecision(ctx, g.ledger, b, true)
+	}
+	return cmdsurface.PermissionDecision{Allowed: true}
+}
+
+// budgetDecision checks there is a call left in b or, when take, counts
+// one against it.
+func budgetDecision(ctx context.Context, ledger *cmdsurface.UsageLedger, b policy.Budget, take bool) cmdsurface.PermissionDecision {
+	var (
+		u   cmdsurface.Usage
+		ok  bool
+		err error
+	)
+	if take {
+		u, ok, err = ledger.Take(ctx, b.Key, b.Window, int64(b.MaxOps))
+	} else {
+		u, err = ledger.Usage(ctx, b.Key, b.Window)
+		ok = u.Ops < int64(b.MaxOps)
+	}
+	switch {
+	case err != nil:
+		return cmdsurface.PermissionDecision{Reason: "policy: max_ops budget unavailable: " + err.Error()}
+	case !ok:
+		return cmdsurface.PermissionDecision{Reason: fmt.Sprintf(
+			"policy: max_ops budget of %d per %s spent; resets at %s",
+			b.MaxOps, b.Window, u.Reset.UTC().Format(time.RFC3339))}
+	}
+	return cmdsurface.PermissionDecision{Allowed: true}
+}
+
+// policyCaller is the policy's view of the caller meta describes
+// ([cli.PolicyCaller] over [cmdsurface.CallerOf]): the same mapping the
+// --policy check inside the served command applies to the caller the
+// bridge stamped for it.
+func policyCaller(meta cmdsurface.Meta) *policy.Caller {
+	return cli.PolicyCaller(cmdsurface.CallerOf(meta))
+}
+
+// isLoopbackAddr reports whether a host:port listen address binds a
+// loopback interface only. An empty host binds every interface and is
+// not loopback; the literal "localhost" is accepted by name because
+// it is the address every guide and script uses for the same intent.
+func isLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	// An IPv6 zone ("::1%lo0") is not part of the address.
+	if i := strings.IndexByte(host, '%'); i >= 0 {
+		host = host[:i]
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// servePolicyConfigured reports whether a delegation policy was named
+// for this invocation. Without one, a service on loopback, or one that
+// opted out with insecure_no_policy, has a permission gate that cannot
+// refuse anything at all; any other enforces kit-default.
+//
+// It asks the flag rather than the engine because a "no policy"
+// engine is not nil: PolicyEngine always returns one, and with
+// --policy unset its Allow map is nil, which Authorize default-
+// permits for every side-effect class, destructive included. A nil
+// engine and a --policy-less engine are equally toothless, so the
+// question that separates them is whether a policy was named at all.
+//
+// --policy is a persistent root flag bound to viper, so a config
+// file that sets it counts exactly as the command line does.
+func servePolicyConfigured(r *cli.Root) bool {
+	if r == nil || r.Cmd == nil {
+		return false
+	}
+	name, _ := cli.PolicyFlags(r.Cmd)
+	return strings.TrimSpace(name) != ""
+}
+
+// The hooks below are package functions rather than Root methods on
+// purpose: the linker keeps every exported method of a type that can
+// reach reflection, so a method would link the serve bridge machinery
+// into every kit CLI, served or not. A function nobody calls is
+// dropped.
+
+// ServeBridgeOptions returns the bridge options the kit-shipped
+// transport service svc applies when it starts: the per-invocation
+// runner when [WithRootFactory] is set (carrying the operator's
+// replayed root flags), the invocation tracing and metrics of the
+// provider [WithObservability] linked, then the composed permission
+// gate ([WithPermission] after the --policy engine), the audit sinks
+// ([WithAuditSinks], then svc's audit.sinks list) with svc's
+// audit.redact block, the per-command deadline (timeouts.command),
+// the capacity gate (services.<svc>.concurrency, on by default
+// wherever the service listens), and any test-injected options. It is
+// the same set the socket service's bridge gets, and it must be
+// called at Start — --policy is parsed and every Root option has run
+// only by then.
+//
+// On error the options returned refuse every call: a caller that
+// cannot report the error builds its bridge from them rather than
+// serve ungated or unaudited. [ValidateServeBridge] makes that path
+// unreachable in practice.
+//
+// A service living outside this package — the MCP service in
+// go/console/cli/mcpserve — builds its bridge from it, so it meets
+// exactly the gates the built-in services do.
+//
+// The rate limit (services.<svc>.rate_limit) takes its beyond-loopback
+// default here, on unless configured off: a service that does not say
+// where it listens is not assumed to be local. A service that knows
+// uses [ServeBridgeOptionsFor].
+func ServeBridgeOptions(r *cli.Root, svc string) ([]cmdsurface.Option, error) {
+	return ServeBridgeOptionsFor(r, svc, false)
+}
+
+// ServeBridgeOptionsFor is [ServeBridgeOptions] for a service whose
+// exposure is known. loopback is true for a service reachable only
+// from this machine — bound to a loopback address, a Unix socket, or
+// stdio — which turns the rate limit's default off, and keeps the
+// permission gate from defaulting to kit-default. The
+// insecure_no_policy opt-in is read from services.<svc>.insecure_no_policy;
+// a service with an opt-in of its own in code or on a flag uses
+// [ServeBridgeOptionsExposed].
+func ServeBridgeOptionsFor(r *cli.Root, svc string, loopback bool) ([]cmdsurface.Option, error) {
+	return ServeBridgeOptionsExposed(r, svc, ServeExposure{
+		Loopback:         loopback,
+		InsecureNoPolicy: serveConfigOptIn(r, svc, "insecure_no_policy"),
+	})
+}
+
+// ServeExposure is how far a served service reaches, as far as the
+// bridge options it applies depend on it.
+type ServeExposure struct {
+	// Loopback is true for a service reachable only from this
+	// machine: bound to a loopback address, a Unix socket, or stdio.
+	Loopback bool
+	// InsecureNoPolicy is the service's resolved insecure_no_policy
+	// opt-in: beyond loopback, serve with no policy at all rather
+	// than kit-default when no --policy is named.
+	InsecureNoPolicy bool
+}
+
+// kitDefault reports whether the exposure calls for kit-default when
+// no --policy is named: beyond loopback, without the opt-in.
+func (e ServeExposure) kitDefault() bool { return !e.Loopback && !e.InsecureNoPolicy }
+
+// ServeBridgeOptionsExposed is [ServeBridgeOptionsFor] with the whole
+// exposure given: beyond loopback, with no --policy named and no
+// insecure_no_policy opt-in, the permission gate enforces
+// [policy.KitDefault]; the rate limit defaults on.
+func ServeBridgeOptionsExposed(r *cli.Root, svc string, exp ServeExposure) ([]cmdsurface.Option, error) {
+	shared, err := serveBridgeOptions(r, svc, exp)
+	if err == nil {
+		var limit []cmdsurface.Option
+		limit, err = serveRateLimitOptions(r, svc, exp.Loopback)
+		shared = append(limit, shared...)
+	}
+	if err != nil {
+		return []cmdsurface.Option{cmdsurface.WithPermission(refuseAll(err))}, err
+	}
+	opts := append(serveRunnerOptions(r), serveObservabilityOptions(r, svc)...)
+	return append(opts, shared...), nil
+}
+
+// ValidateServeBridge is the configuration check the kit-shipped
+// transport service svc runs in its Validate hook: a --policy that
+// cannot load, an audit.redact block, audit.sinks list, rate_limit or
+// concurrency block [ServeBridgeOptions] would refuse, an audit chain
+// that cannot open, a timeouts block that does not parse or a
+// kit/timeout or kit/withhold-from annotation that does not, or a root
+// factory that cannot build a usable tree, is a usage error before
+// anything binds. The chains it opens are the ones Start reuses.
+func ValidateServeBridge(r *cli.Root, svc string) error {
+	if _, err := servePermission(r, ServeExposure{Loopback: true}); err != nil {
+		return err
+	}
+	if err := validateServeAudit(r, svc); err != nil {
+		return err
+	}
+	if _, _, err := serveRateLimit(r.Viper, svc, false); err != nil {
+		return err
+	}
+	if _, _, err := serveConcurrency(r.Viper, svc); err != nil {
+		return err
+	}
+	if _, _, err := serveQuota(r.Viper, svc); err != nil {
+		return err
+	}
+	if err := validateServeTimeouts(r, svc); err != nil {
+		return err
+	}
+	if _, err := serveConfiguredAuditSinks(r, svc); err != nil {
+		return err
+	}
+	if _, err := serveIdempotency(r.Viper, svc); err != nil {
+		return err
+	}
+	return validateRootFactory(r)
+}
+
+// ServePolicyConfigured reports whether a delegation policy was named
+// (--policy) for this run. Without one, a service beyond loopback
+// enforces kit-default unless it opted out with insecure_no_policy.
+func ServePolicyConfigured(r *cli.Root) bool { return servePolicyConfigured(r) }
+
+// IsLoopbackAddr reports whether a host:port listen address binds a
+// loopback interface only: 127.0.0.0/8, ::1, or the name localhost.
+// An empty host binds every interface and is not loopback.
+func IsLoopbackAddr(addr string) bool { return isLoopbackAddr(addr) }
+
+// serveConfigOptIn reads services.<svc>.<key> as a bool: false when
+// unset.
+func serveConfigOptIn(r *cli.Root, svc, key string) bool {
+	if r == nil || r.Viper == nil {
+		return false
+	}
+	k := serveKeyPrefix + svc + "." + key
+	return r.Viper.IsSet(k) && r.Viper.GetBool(k)
+}

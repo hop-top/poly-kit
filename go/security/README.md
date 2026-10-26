@@ -55,7 +55,7 @@ names its line (`example_test.go`).
 
 - `go/transport/cmdsurface`: `ChainSink` puts invocation audits here,
   after redaction.
-- `go/console/cli`: `cli.WithAuditCommand` mounts `<tool> audit verify`.
+- `go/console/cli`: `service.WithAuditCommand` mounts `<tool> audit verify`.
 - `go/runtime/provenance`: field-level provenance, which this log does
   not feed yet.
 

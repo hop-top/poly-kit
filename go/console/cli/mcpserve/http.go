@@ -15,7 +15,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/go/transport/mcpsdk"
@@ -54,7 +54,7 @@ type mcpCall struct {
 // stream. A 2026-07-28 request is served statelessly; its
 // confirmation question comes back as an input_required result.
 type httpServing struct {
-	svc *service
+	svc *mcpService
 
 	mu     sync.Mutex
 	ln     net.Listener
@@ -63,7 +63,7 @@ type httpServing struct {
 	stop   context.CancelFunc
 }
 
-func newHTTP(svc *service) *httpServing {
+func newHTTP(svc *mcpService) *httpServing {
 	return &httpServing{svc: svc}
 }
 
@@ -114,7 +114,7 @@ func (h *httpServing) serve(ctx context.Context, s *mcpsdk.Surface) error {
 	// Server timeouts come from the timeouts block, kit defaults
 	// where it sets nothing. A client stalled mid-header or mid-body
 	// does not hold the stop (api.ReleaseStalledOnShutdown).
-	if err := cli.ConfigureServeHTTP(h.svc.root, ServiceName, srv, api.DefaultServerTimeouts()); err != nil {
+	if err := service.ConfigureServeHTTP(h.svc.root, ServiceName, srv, api.DefaultServerTimeouts()); err != nil {
 		cancelBase()
 		_ = ln.Close()
 		return err
@@ -209,7 +209,7 @@ func (h *httpServing) handler(mux *http.ServeMux) (http.Handler, error) {
 
 	l := h.svc.httpListener()
 	l.Routes = mux
-	chain, err := cli.ServeHTTPHandler(h.svc.root, l, api.Chain(inner...)(mux))
+	chain, err := service.ServeHTTPHandler(h.svc.root, l, api.Chain(inner...)(mux))
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +223,7 @@ func (h *httpServing) handler(mux *http.ServeMux) (http.Handler, error) {
 // aside when host_check admits other names (an allow list) or is
 // switched off. Otherwise it stays in force beneath kit's Host check.
 func (h *httpServing) surfaceOptions() ([]mcpsdk.Option, error) {
-	set, err := cli.ResolveServeHTTPListener(h.svc.root, h.svc.httpListener())
+	set, err := service.ResolveServeHTTPListener(h.svc.root, h.svc.httpListener())
 	if err != nil {
 		return nil, err
 	}

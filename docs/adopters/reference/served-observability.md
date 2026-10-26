@@ -34,18 +34,19 @@ when you add one.
 ```go
 import (
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
     "hop.top/kit/go/transport/observability"
 )
 
 root := cli.New(cfg,
-    cli.WithAPI(apiCfg),
-    cli.WithSocket(socketCfg),
-    cli.WithObservability(observability.NewServe()),
+    service.WithAPI(apiCfg),
+    service.WithSocket(socketCfg),
+    service.WithObservability(observability.NewServe()),
 )
 ```
 
-`go/console/cli`, `go/transport/api` and `go/transport/cmdsurface`
-import no OpenTelemetry code. The SDK and the exporters reach a binary
+`go/console/cli`, `go/console/cli/service`, `go/transport/api` and
+`go/transport/cmdsurface` import no OpenTelemetry code. The SDK and the exporters reach a binary
 only through this option, so a tool that does not call it carries none
 of them.
 
@@ -256,8 +257,8 @@ carries `service.name` and `service.version`. So
 - It needs the provider's own meter provider: combined with
   `WithMeterProvider`, `scrape.enabled` fails `serve` at start. A tool
   with its own SDK serves its own endpoint.
-- A provider linked through `cli.WithObservability` serves it only if
-  it implements `cli.ServeMetricsEndpoint`; kit's does. Otherwise
+- A provider linked through `service.WithObservability` serves it only if
+  it implements `service.ServeMetricsEndpoint`; kit's does. Otherwise
   `scrape.enabled` is refused at validation.
 - Services with identical resolved metrics configuration share one
   provider, so `services.all.metrics` makes the api's endpoint report

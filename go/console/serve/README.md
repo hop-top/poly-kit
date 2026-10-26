@@ -10,7 +10,7 @@ The cobra command and the `services.*` config block belong to
 ## Use it when
 
 - a tool has a long-running thing to serve → implement `Service` (Name,
-  Start, Ready, Stop); register via `cli.WithService`
+  Start, Ready, Stop); register via `service.WithService`
 - start order, config validation, policy class, or bound address matter →
   also implement `Dependent`, `Validator`, `Classified`, or `Addressed`
 - the run must survive this service failing → `Optional` (`services.<name>.optional`);
@@ -65,10 +65,10 @@ this package is the authority for signatures only. Points a caller gets wrong:
 
 ## Neighbours
 
-- `hop.top/kit/go/console/cli`: `service start` command, `WithService`,
+- `hop.top/kit/go/console/cli/service`: `service start` command, `WithService`,
   `WithServiceOverride`, `WithServicePolicy`, `services.*` resolution
   (`WithOwnServiceConfig` hands it to a tool with its own loader)
-- kit-shipped services: `api` (`cli.WithAPI`), `socket` (`cli.WithSocket`),
+- kit-shipped services: `api` (`service.WithAPI`), `socket` (`service.WithSocket`),
   `mcp` (`mcpserve.With`), `rpc` (`rpcserve.With`), all under `go/console/cli`
 - `hop.top/kit/go/transport/transportsvc`: transport-backed `Service` implementations
 - `hop.top/kit/go/runtime/bus`: `Event`, `TopicMap`, `ValidateTopic`

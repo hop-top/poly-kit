@@ -91,7 +91,7 @@ transport has decoded it:
 | 1–3 | resolve, enabled, invocable | — | `unknown_command`, `not_enabled`, `not_invocable` |
 | 4 | a verified caller, for `kit/auth-required` | `auth` | `unauthenticated` |
 | 5 | destructive ceiling | — (`Policy`) | `destructive_blocked` |
-| 6 | permission: scopes, `--policy`, `cli.WithPermission` | — | `insufficient_scope`, `permission_denied` |
+| 6 | permission: scopes, `--policy`, `service.WithPermission` | — | `insufficient_scope`, `permission_denied` |
 | 7 | rate limit | `rate_limit` | `rate_limited` |
 | 8 | idempotency replay, then the result cache | `idempotency`, `cache` | `idempotency_conflict`, `idempotency_key_reused` |
 | 9 | quota | `quota` | `quota_exceeded` |
@@ -111,7 +111,7 @@ have no slot.
 
 "HTTP" is the api service, the rpc service and the mcp service over
 HTTP. "Bridge" is those three, the socket service, the mcp service
-over stdio, and a service of yours built with `cli.ServeBridgeOptions`.
+over stdio, and a service of yours built with `service.ServeBridgeOptions`.
 
 | Block | Read by | Refused under |
 |---|---|---|
@@ -290,7 +290,7 @@ Redaction of declared secret flags cannot be switched off. Rules:
 | `metrics.scrape.allow_remote` | `false` | allow the scrape on a non-loopback bind |
 
 Nothing exports until the tool links a provider
-(`cli.WithObservability`) and a key enables it. Names of spans and
+(`service.WithObservability`) and a key enables it. Names of spans and
 instruments: [served-observability.md](served-observability.md).
 
 ## Refusals by surface
@@ -360,13 +360,13 @@ configuration:
 |---|---|
 | `APIConfig.Auth`, `rpcserve.Config.Auth`, `mcpserve.Config.Auth`, `SocketConfig.Auth` | a verifier of your own; `auth.mode` replaces it when set |
 | `APIConfig.MaxBodyBytes`, `rpcserve.Config.MaxBodyBytes` | the body cap below `body_limit.max_bytes` |
-| `cli.WithServeRateLimit(cmdsurface.RateLimit{...})` | tier numbers below `rate_limit.*`; does not switch the limit on |
+| `service.WithServeRateLimit(cmdsurface.RateLimit{...})` | tier numbers below `rate_limit.*`; does not switch the limit on |
 | `SocketConfig.PeerScopes` | scopes of a peer when `auth.peer.scopes` is unset |
-| `cli.WithTokenCheck(fn)` | a revocation check on every credential an `auth.mode` verifier accepted |
-| `cli.WithIdentity`, `cli.WithAPIKeys` | the keypair `jwt` trusts and `token create` signs with; the `token key` verbs |
-| `cli.WithAuditSinks`, `cli.WithAuditCommand` | sinks beside `audit.sinks`; `audit verify` |
-| `cli.WithObservability(p)` | the tracing and metrics provider |
-| `cli.WithServeIdempotencyStore`, `cli.WithUsageStore` | the replay store; the quota and budget store |
+| `service.WithTokenCheck(fn)` | a revocation check on every credential an `auth.mode` verifier accepted |
+| `cli.WithIdentity`, `service.WithAPIKeys` | the keypair `jwt` trusts and `token create` signs with; the `token key` verbs |
+| `service.WithAuditSinks`, `service.WithAuditCommand` | sinks beside `audit.sinks`; `audit verify` |
+| `service.WithObservability(p)` | the tracing and metrics provider |
+| `service.WithServeIdempotencyStore`, `service.WithUsageStore` | the replay store; the quota and budget store |
 | `kit/timeout`, `kit/cache-ttl` annotations | one command's deadline; one read's cache lifetime |
 
 ## Related pages

@@ -149,7 +149,7 @@ func TestSurface_SocketIsDistinctFromRPC(t *testing.T) {
 	if !SurfaceSocket.IsValid() {
 		t.Error("socket must be a valid surface")
 	}
-	if !SurfaceSocket.remote() {
+	if !isRemote(SurfaceSocket) {
 		t.Error("socket is a transport surface: it is gated and audited like rpc")
 	}
 	// A grant on rpc must not reach the socket, nor the reverse.

@@ -21,6 +21,7 @@ import (
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/mcpserve"
 	"hop.top/kit/go/console/cli/rpcserve"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/core/config"
 	"{{.Module}}/internal/version"
@@ -47,12 +48,15 @@ func newRoot() *cli.Root {
 		// `service start api`: the command tree over REST on 127.0.0.1:8080, with
 		// discovery at /v1/commands and an OpenAPI document. Enabled by
 		// default under a bare `service start`. A non-loopback address needs
-		// Auth, or services.api.insecure_remote by name.
-		cli.WithAPI(cli.APIConfig{}),
+		// Auth, or services.api.insecure_remote by name. The serve
+		// options come from go/console/cli/service; a CLI that keeps
+		// none of them (api, socket, mcp, rpc) and drops that import
+		// links none of the serve plane.
+		service.WithAPI(service.APIConfig{}),
 		// `service start socket`: the same tree over an owner-only Unix socket.
 		// Registered but not enabled; `service start socket` starts it, or set
 		// services.socket.enabled in the config file.
-		cli.WithSocket(cli.SocketConfig{}),
+		service.WithSocket(service.SocketConfig{}),
 		// `service start mcp`: the same tree as MCP tools, one per command, on
 		// its own listener at http://127.0.0.1:8081/mcp, or over stdio
 		// for a desktop host that spawns `{{.Name}} service start mcp --stdio`.

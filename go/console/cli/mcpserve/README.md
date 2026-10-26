@@ -23,7 +23,7 @@ registers the `mcp` service; the protocol is the official Go SDK via
 
 ```go
 root := cli.New(cli.Config{Name: "mytool", Version: version},
-    cli.WithAPI(cli.APIConfig{}),
+    service.WithAPI(service.APIConfig{}),
     mcpserve.With(mcpserve.Config{}),
 )
 ```

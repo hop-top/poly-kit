@@ -10,8 +10,8 @@ order:
 | Option | Why it is there |
 |--------|-----------------|
 | `cli.WithStatus(cli.StatusConfig{})` | every kit root is validated to carry the reserved `status` verb; without it `Execute` refuses to run |
-| `cli.WithAPI(cli.APIConfig{})` | registers the `api` service: the command tree over REST on `127.0.0.1:8080`, discovery at `/v1/commands`, an OpenAPI document; enabled by default under a bare `service start` |
-| `cli.WithSocket(cli.SocketConfig{})` | registers the `socket` service: the same tree over an owner-only Unix socket; registered but not enabled, per the serve contract's default |
+| `service.WithAPI(service.APIConfig{})` | registers the `api` service: the command tree over REST on `127.0.0.1:8080`, discovery at `/v1/commands`, an OpenAPI document; enabled by default under a bare `service start` |
+| `service.WithSocket(service.SocketConfig{})` | registers the `socket` service: the same tree over an owner-only Unix socket; registered but not enabled, per the serve contract's default |
 | `mcpserve.With(mcpserve.Config{})` | registers the `mcp` service: the same tree as MCP tools over streamable HTTP on `127.0.0.1:8081/mcp`, or over stdio with `--stdio`; registered but not enabled. It is the one option that links the MCP SDK (about 2 MB stripped); removing it and its import drops the SDK |
 | `rpcserve.With(rpcserve.Config{})` | registers the `rpc` service: the same tree as the `cmdsurface.v1.Commands` service for Connect, gRPC and gRPC-Web clients on `127.0.0.1:8082`; registered but not enabled. It adds about 0.4 MB stripped (0.6 MB with symbols); removing it and its import drops it |
 

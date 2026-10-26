@@ -292,7 +292,7 @@ func (a *Admission) capacityGated() bool {
 	if _, replay := a.idem.replayed(); replay {
 		return false
 	}
-	return a.b.capacity != nil && a.inv.Meta.Surface.remote() &&
+	return a.b.capacity != nil && isRemote(a.inv.Meta.Surface) &&
 		(a.cache == nil || a.cache.hit == nil)
 }
 

@@ -19,11 +19,11 @@
 //
 // The lifecycle contract lives in
 // [hop.top/kit/go/console/serve], and this seam implements it. It
-// cannot live there: the command-tree half of the seam reaches
-// cmdsurface, which reaches cmdreflect, which reaches
-// [hop.top/kit/go/console/cli], which registers services back into
-// serve. The contract package stays free of the transport stack, and
-// the seam sits above both.
+// does not live there because the command-tree half of the seam
+// reaches cmdsurface and, through it, the transport stack (api, auth,
+// the audit chain), which a package that only defines the supervisor
+// contract must not link. The contract package stays free of the
+// transport stack, and the seam sits above both.
 //
 // The normative specification is
 // docs/contracts/serve-lifecycle.md §"Transport services".

@@ -337,10 +337,10 @@ own transport on the seam.
 
 The seam lives under `go/transport/` rather than beside the contract
 types in [`go/console/serve`](../../go/console/serve/) because the
-command-tree half of it reaches `cmdsurface`, which reaches
-`cmdreflect`, which reaches `go/console/cli`, which registers services
-back into `service start`. Keeping the contract package free of the transport
-stack is what keeps that acyclic.
+command-tree half of it reaches `cmdsurface` and, through it, the
+transport stack (the HTTP api, authentication, the audit chain). The
+contract package defines only the supervisor and stays free of the
+transport stack; the seam sits above both.
 
 ## Readiness
 
@@ -698,7 +698,7 @@ as the tool wired them. A service configured only by environment
 variables is configured.
 
 A tool that layers its own configuration can take that job away from
-`service start` (Go: `cli.WithOwnServiceConfig()`). kit then discovers,
+`service start` (Go: `service.WithOwnServiceConfig()`). kit then discovers,
 reads and binds nothing: the supervisor, the selector and `service list`
 read `services.*` exactly as the tool's loader left it, and the tool
 owns every source above, `-c` included. The project file is the
@@ -993,11 +993,14 @@ of any of them.
   transport only carries the key.
   A command's own `--idempotency-key` middleware MUST scope a served
   invocation's key to its caller with the same scope the bridge uses
-  (`cmdsurface.ScopeIdempotencyKey`, over `cmdsurface.IdempotencyScope`).
+  (`admitted.ScopeIdempotencyKey`, which `cmdsurface.ScopeIdempotencyKey`
+  forwards to, over `cmdsurface.IdempotencyScope`).
   The bridge carries the admitted `Meta` on the run's context, whatever
-  the runner, and `cmdsurface.AdmittedMeta` is the one accessor a
-  command reads it with; a runner that hands the call to a child
-  process MUST pass the scope as `KIT_IDEMPOTENCY_SCOPE`.
+  the runner. A command reads the full `Meta` with
+  `cmdsurface.AdmittedMeta`, and its caller with `admitted.CallerFrom`
+  from `go/transport/cmdsurface/admitted`, which links no part of the
+  bridge; both answer from the same stamp. A runner that hands the call
+  to a child process MUST pass the scope as `KIT_IDEMPOTENCY_SCOPE`.
 
 ### Permission
 
@@ -1028,7 +1031,7 @@ of any of them.
   audit as `Invoke` — before it opens the stream, and runs it with
   `Admission.Stream`; it MUST NOT call the runner directly. The
   default permits everything.
-- `cli.WithPermission` installs the adopter's decision on the api,
+- `service.WithPermission` installs the adopter's decision on the api,
   socket, mcp, and rpc services. It composes after the tool's policy engine:
   a `--policy` that refuses a side-effect class refuses it on every
   surface, before the adopter's decision is asked — the same
@@ -1043,7 +1046,8 @@ of any of them.
   established, peer credentials on the socket included, holds its
   credential's scopes only. The command runs
   under the same answer: the in-process run sees the admitted `Meta`
-  (`cmdsurface.AdmittedMeta`), so the `--policy` check inside the
+  (`cmdsurface.AdmittedMeta`) and its caller (`admitted.CallerFrom`,
+  which the `--policy` check reads), so the `--policy` check inside the
   command asks for the same caller. The policy's `permissions:` rules
   sit between the policy and the adopter's decision (see slot 6 under
   [Middleware](#gate-order-on-the-invocation-plane)).
@@ -1054,7 +1058,7 @@ of any of them.
   tenant, a budget of admitted write and destructive calls over fixed
   `window`s (default one hour, aligned to the epoch), counted on
   `storage/kv` so a restart resets nothing: `$XDG_STATE_HOME/<tool>/usage.db`
-  by default, or the store `cli.WithUsageStore` names. The permission
+  by default, or the store `service.WithUsageStore` names. The permission
   gate refuses a spent budget `permission_denied` at the policy's turn,
   naming when the window resets, and charges one call only after every
   slot-6 decider — rules and adopter included — has admitted it; a call
@@ -1089,7 +1093,7 @@ of any of them.
   ceiling, permission — and every execution on a remote surface MUST
   reach the bridge's sinks with the Meta above, the command path, and
   the verdict: the refusing error, or the command's Result.
-- `cli.WithAuditSinks` registers sinks on every kit-shipped transport
+- `service.WithAuditSinks` registers sinks on every kit-shipped transport
   service. Sinks are best-effort and MUST NOT change a verdict.
 - `services.<svc>.audit.sinks` (then `services.all.audit.sinks`) adds
   sinks from configuration. `chain` appends to a hash-chained log
@@ -1097,7 +1101,7 @@ of any of them.
   share one log, and a second process MUST be refused at start rather
   than fork the chain. An entry that does not parse is refused at
   validation.
-- `<tool> audit verify`, mounted by `cli.WithAuditCommand`, is
+- `<tool> audit verify`, mounted by `service.WithAuditCommand`, is
   kit-reserved and so `management-only` on every served surface. A
   broken chain exits 71, `TAMPER_DETECTED`.
 - CLI and in-process library invocations are not audited: the first
@@ -1125,12 +1129,12 @@ Like every service that arrives through the registry, `mcp` is
 The service lives in its own package so that only a tool serving MCP
 links the MCP SDK: `go/console/cli` MUST NOT depend on it. It reaches
 the Root through the same exported hooks any out-of-package transport
-service can use — `cli.WithService`, `cli.ServeBridgeOptions` (or
-`cli.ServeBridgeOptionsFor`, which states the service's exposure for
-the rate limit's default), `cli.ValidateServeBridge`,
-`cli.ServePolicyConfigured`, `cli.IsLoopbackAddr`, and for its
-listener `cli.ServeHTTPHandler`, `cli.ValidateServeHTTPListener` and
-`cli.ResolveServeHTTPListener` — and so meets exactly the gates and
+service can use — `service.WithService`, `service.ServeBridgeOptions` (or
+`service.ServeBridgeOptionsFor`, which states the service's exposure for
+the rate limit's default), `service.ValidateServeBridge`,
+`service.ServePolicyConfigured`, `service.IsLoopbackAddr`, and for its
+listener `service.ServeHTTPHandler`, `service.ValidateServeHTTPListener` and
+`service.ResolveServeHTTPListener` — and so meets exactly the gates and
 the [HTTP-plane middleware](#middleware-order-on-the-http-plane) the
 in-package services do.
 
@@ -1706,9 +1710,9 @@ What each slot does:
   counted its limit; slot 13 counts a run that completed without
   error, so the call that crosses a limit completes and a replay or a
   cache hit counts nothing. Counts live in the usage store
-  (`$XDG_STATE_HOME/<tool>/usage.db`, or `cli.WithUsageStore`), per
+  (`$XDG_STATE_HOME/<tool>/usage.db`, or `service.WithUsageStore`), per
   service, so a restart resets nothing. `quota show` and
-  `quota reset`, mounted by `cli.WithQuotaCommand`, are kit-reserved
+  `quota reset`, mounted by `service.WithQuotaCommand`, are kit-reserved
   and so `management-only` on every served surface. A store that
   cannot be read refuses the call.
 - **10.** The confirmation a surface obtains from a person: an MCP
@@ -1948,7 +1952,7 @@ at validation, exit `2`, and each stays a default under
 
 Which kit-shipped services apply each configurable block. "Bridge
 services" are `api`, `mcp`, `rpc`, `socket`, and an adopter's service
-built with `cli.ServeBridgeOptions`. The mcp service over stdio
+built with `service.ServeBridgeOptions`. The mcp service over stdio
 reads no HTTP-listener key.
 
 | Block                                   | Applied by                                     | Refused under            |
@@ -1983,7 +1987,7 @@ loopback: it proves the server to the client, not the client to the
 server. `auth.mode: mtls` does.
 
 Permission and confirmation have no block. Permission is configured
-by `--policy` and `cli.WithPermission`; confirmation belongs to the
+by `--policy` and `service.WithPermission`; confirmation belongs to the
 surface that asks the person.
 
 ### Client address
@@ -2160,7 +2164,7 @@ service, the rpc service, the mcp service's HTTP transport — under
 `services.<svc>` or `services.all`, resolved like any block. Under
 `services.socket` they are refused at validation, exit `2`, as every
 block that acts on an HTTP listener alone is; the mcp service's stdio
-transport does not read them. `cli.ResolveServeTLS` is the one
+transport does not read them. `service.ResolveServeTLS` is the one
 resolver, and `ServeTLS.Serve` the one place a listener starts
 serving.
 
@@ -2277,7 +2281,7 @@ its name under `services.<svc>.auth` or `services.all.auth`:
   (never `none`, never HMAC) by a trusted key, carries `exp` and `sub`,
   is inside `exp`/`nbf`/`iat` with the skew, and matches `issuer` and
   `audience` where set, and, when the tool installs one
-  (`cli.WithTokenCheck`), passes the revocation check, which runs last
+  (`service.WithTokenCheck`), passes the revocation check, which runs last
   on a token every other check accepted. Anything else is refused at
   slot 12 as `unauthenticated`, audited like any refusal, with the
   `WWW-Authenticate: Bearer` challenge. The check is code, not
@@ -2349,7 +2353,7 @@ kit HTTP listeners, sent as `X-API-Key: <key>` or
   id and secret, compared in constant time. The secret is never
   stored and is shown once, at issue. No slow KDF: a 256-bit random
   secret cannot be guessed, and a KDF would only cost every request.
-- `cli.WithAPIKeys` mounts `token key create --sub [--tenant]
+- `service.WithAPIKeys` mounts `token key create --sub [--tenant]
   [--scopes] [--expires]`, `token key list` and `token key revoke
   <id>` (exit `3` for an unknown id), whether or not the tool has
   `WithAPI`: a tool serving only `mcp` or `rpc` under `auth.mode:
@@ -2361,7 +2365,7 @@ kit HTTP listeners, sent as `X-API-Key: <key>` or
 - The key's principal, tenant and scopes are the call's `Caller`,
   `Tenant` and `Meta.Extra["scopes"]`; `Established` is `verified`.
   An unknown, malformed, revoked or expired key, or one the
-  `cli.WithTokenCheck` check refuses, is `unauthenticated` at slot 12,
+  `service.WithTokenCheck` check refuses, is `unauthenticated` at slot 12,
   audited. A store that cannot be read refuses the
   request without judging the key.
 - The store is opened on the first request and closed when the
@@ -2494,7 +2498,7 @@ Rules:
   cancelable rather than blocked on the runner's lock. The gate is
   per service while the tree is shared by all of them, so a call
   admitted by one service while another service's call runs waits on
-  the tree's lock. With a root factory (`cli.WithRootFactory`) up to
+  the tree's lock. With a root factory (`service.WithRootFactory`) up to
   `max_inflight` run in parallel.
 - A transport that commits its response before running — an SSE or
   projection stream — takes the call's place before it commits
@@ -2652,7 +2656,7 @@ Rules:
   admission.
 - **Store.** Records live in `serve-idempotency.db` in the tool's
   state directory, separate from the CLI's own `--idempotency-key`
-  store, opened on the first keyed call. `cli.WithServeIdempotencyStore`
+  store, opened on the first keyed call. `service.WithServeIdempotencyStore`
   replaces it (a shared store for replicas, a memory store in
   tests). Calls in flight are tracked per process: two processes
   sharing a store replay each other's records, but do not see each
@@ -2914,7 +2918,7 @@ parallel. The factory MUST return a tree that shares no mutable state
 with the trees it returned before — no flag bound to a package-level
 variable, no closure over a struct another invocation writes.
 
-A kit root supplies the factory through `cli.WithRootFactory(build)`,
+A kit root supplies the factory through `service.WithRootFactory(build)`,
 where `build` is the tool's own construction — `cli.New` plus every
 command it mounts, the function `main` already has. The kit-shipped
 `api`, `socket`, `mcp`, and `rpc` services then hand their bridge the factory runner
@@ -3081,8 +3085,12 @@ Rules:
 
 ## Compatibility
 
-Adopters calling [`cli.WithAPI(...)`](../../go/console/cli/api.go)
-keep working. `WithAPI` registers the HTTP API as the `api` service
+Adopters calling [`service.WithAPI(...)`](../../go/console/cli/service/api.go)
+keep working. The serve options moved from `go/console/cli` to
+`go/console/cli/service` with the same names
+([migration](../adopters/guides/migrate-to-cli-service.md)), so a tool
+that serves imports that package and a tool that does not links none
+of it. `WithAPI` registers the HTTP API as the `api` service
 under the kit-owned `service start` parent rather than mounting a
 single-purpose leaf `service start` command. For a tool whose only service is
 the API, `<tool> service start` starts the same server, with the same `--addr`

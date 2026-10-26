@@ -7,13 +7,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"hop.top/kit/go/ai/cmdreflect"
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/storage/kv"
 )
 
@@ -25,20 +24,13 @@ import (
 // It is honored only on a leaf that declares kit/side-effect: read. A
 // write, destructive, interactive, unannotated or inferred tier is never
 // cached, whatever it declares here.
-const AnnotationCacheTTL = "kit/cache-ttl"
+const AnnotationCacheTTL = cmdmeta.KeyCacheTTL
 
 // ParseCacheTTL parses a kit/cache-ttl value. Anything that is not a
-// Go duration greater than zero is an error.
-func ParseCacheTTL(v string) (time.Duration, error) {
-	d, err := time.ParseDuration(strings.TrimSpace(v))
-	if err != nil {
-		return 0, fmt.Errorf("%s %q: want a Go duration such as 30s or 5m", AnnotationCacheTTL, v)
-	}
-	if d <= 0 {
-		return 0, fmt.Errorf("%s %q: want a duration greater than zero", AnnotationCacheTTL, v)
-	}
-	return d, nil
-}
+// Go duration greater than zero is an error. It is
+// [cmdmeta.ParseCacheTTL], which go/console/cli's Root.Validate
+// shares, so the CLI and the cache refuse the same values.
+func ParseCacheTTL(v string) (time.Duration, error) { return cmdmeta.ParseCacheTTL(v) }
 
 // cacheTTLOf resolves a leaf's cache TTL at discovery: zero unless the
 // leaf declares the read tier itself and a valid kit/cache-ttl.
@@ -320,7 +312,7 @@ func (a *Admission) answerFromCache(ctx context.Context, e *cacheEntry, mark str
 
 // auditOutcome audits one outcome on a remote surface, as Run does.
 func (a *Admission) auditOutcome(ctx context.Context, inv Invocation, res Result, err error) {
-	if inv.Meta.Surface.remote() {
+	if isRemote(inv.Meta.Surface) {
 		a.b.Audit(ctx, inv, res, err)
 	}
 }

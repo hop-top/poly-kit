@@ -618,7 +618,7 @@ func (b *Bridge) callerIndependentGates(inv Invocation, leaf *Leaf) error {
 		return fmt.Errorf("%w: %s on %s is %s (%s)",
 			ErrNotInvocable, leaf.PathKey(), surface, reason, reason.Explain())
 	}
-	if leaf.Class.AuthRequired && surface.remote() && !inv.Meta.Authenticated() {
+	if leaf.Class.AuthRequired && isRemote(surface) && !inv.Meta.Authenticated() {
 		return fmt.Errorf("%w: %s on %s requires an authenticated caller",
 			ErrAuthRefused, leaf.PathKey(), surface)
 	}
@@ -700,7 +700,7 @@ func (a *Admission) Run(ctx context.Context) (Result, error) {
 	defer a.dropPlace(ctx)
 	if res, ok := a.idem.replayed(); ok {
 		ctx = a.b.auditContext(ctx, a.leaf)
-		if a.inv.Meta.Surface.remote() {
+		if isRemote(a.inv.Meta.Surface) {
 			a.b.Audit(ctx, a.inv, res, nil)
 		}
 		return res, nil
@@ -718,7 +718,7 @@ func (a *Admission) Run(ctx context.Context) (Result, error) {
 	res, err := a.runBounded(ctx)
 	// Slot 13: a successful run is recorded under its key.
 	a.idem.settle(ctx, res, err)
-	if a.inv.Meta.Surface.remote() {
+	if isRemote(a.inv.Meta.Surface) {
 		a.b.Audit(ctx, a.inv, res, err)
 	}
 	return res, err
@@ -761,7 +761,7 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 		ctx = a.b.auditContext(ctx, a.leaf)
 		replayEvents(res, out)
 		close(out)
-		if a.inv.Meta.Surface.remote() {
+		if isRemote(a.inv.Meta.Surface) {
 			a.b.Audit(ctx, a.inv, res, nil)
 		}
 		return nil
@@ -778,7 +778,7 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 	if qerr != nil {
 		qerr = queueDeadlineError(runCtx, qerr, a.leaf, bound)
 		close(out)
-		if a.inv.Meta.Surface.remote() {
+		if isRemote(a.inv.Meta.Surface) {
 			a.b.Audit(ctx, a.inv, Result{}, qerr)
 		}
 		return qerr
@@ -806,7 +806,7 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 	if err == nil {
 		a.recordQuota(ctx, resultBytes(res))
 	}
-	if a.inv.Meta.Surface.remote() {
+	if isRemote(a.inv.Meta.Surface) {
 		a.b.Audit(ctx, a.inv, res, err)
 	}
 	return err
@@ -816,7 +816,7 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 // is remote and returns err unchanged, so every early return in
 // Invoke reads the same.
 func (b *Bridge) refuse(ctx context.Context, inv Invocation, err error) error {
-	if inv.Meta.Surface.remote() {
+	if isRemote(inv.Meta.Surface) {
 		b.Audit(ctx, inv, Result{}, err)
 	}
 	return err
@@ -918,7 +918,7 @@ func (b *Bridge) Audit(ctx context.Context, inv Invocation, res Result, err erro
 // runtimes. Audit applies to remote surfaces: a CLI invocation is
 // the operator's own act, and an in-process library call has no
 // caller to attribute.
-func (s Surface) remote() bool {
+func isRemote(s Surface) bool {
 	return s != SurfaceCLI && s != SurfaceLib
 }
 
