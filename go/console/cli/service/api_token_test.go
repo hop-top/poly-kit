@@ -17,10 +17,12 @@ import (
 
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/core/identity"
@@ -133,63 +135,120 @@ func TestTokenCreateRefusals(t *testing.T) {
 	}
 }
 
-// TestTokenCommandMounting pins where token and its leaves appear:
-// with Auth, claims, decode and verify; with an identity keypair,
-// create too, with or without Auth or WithAPI once a service option is
-// set; with API keys, key, with or without WithAPI; with none of them,
-// or with an identity and no serve plane, no token command.
-func TestTokenCommandMounting(t *testing.T) {
-	leaves := func(r *cli.Root) map[string]bool {
-		for _, c := range r.Cmd.Commands() {
-			if c.Name() == "token" {
-				out := map[string]bool{}
-				for _, l := range c.Commands() {
-					out[l.Name()] = true
-				}
-				return out
+// tokenTree lists the leaves of r's token commands, and how many token
+// commands r has.
+func tokenTree(r *cli.Root) (map[string]bool, int) {
+	var out map[string]bool
+	n := 0
+	for _, c := range r.Cmd.Commands() {
+		if c.Name() == "token" {
+			n++
+			if out == nil {
+				out = map[string]bool{}
+			}
+			for _, l := range c.Commands() {
+				out[l.Name()] = true
 			}
 		}
-		return nil
 	}
+	return out, n
+}
+
+// adopterToken mounts a token command of the adopter's own, with a
+// hello leaf, through an option, as a tool that had one before kit
+// shipped its own does.
+func adopterToken(r *cli.Root) {
+	c := &cobra.Command{Use: "token", Short: "the adopter's own"}
+	c.AddCommand(&cobra.Command{Use: "hello", Short: "hi", RunE: func(*cobra.Command, []string) error { return nil }})
+	r.Cmd.AddCommand(c)
+}
+
+// TestTokenCommandMounting pins where token and its leaves appear. The
+// signing leaves (create, decode, claims) mount with an identity
+// keypair alone, cli-side; verify joins them once a serve option puts
+// the Root in front of others; key with API keys. Every
+// combination is one token command, and an adopter's own token command
+// gets the kit's leaves grafted into it, still one command, reserved.
+func TestTokenCommandMounting(t *testing.T) {
 	auth := service.WithAPI(service.APIConfig{Auth: func(*http.Request) (any, error) { return nil, nil }})
-
-	got := leaves(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true}, auth))
-	assert.Equal(t, map[string]bool{"claims": true, "decode": true, "verify": true}, got)
-
-	dir := t.TempDir()
-	got = leaves(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true},
-		service.WithAPI(service.APIConfig{}), cli.WithIdentity(cli.IdentityConfig{Dir: dir})))
-	assert.Equal(t, map[string]bool{"claims": true, "decode": true, "verify": true, "create": true}, got,
-		"WithIdentity after WithAPI still mounts create")
-
-	got = leaves(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true},
-		cli.WithIdentity(cli.IdentityConfig{Dir: dir}), auth))
-	assert.True(t, got["create"])
-
-	assert.Nil(t, leaves(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true},
-		service.WithAPI(service.APIConfig{}))))
-
-	// A tool that serves no REST api still issues what its services
-	// accept: a key source mounts token once any service option puts
-	// the serve plane on the Root. The token command is serve-plane
-	// code, so a Root that serves nothing links none of it.
 	mcp := service.WithService(&stubService{name: "mcp"})
-	got = leaves(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true},
-		cli.WithIdentity(cli.IdentityConfig{Dir: dir}), mcp))
-	assert.Equal(t, map[string]bool{"claims": true, "decode": true, "verify": true, "create": true}, got,
-		"WithIdentity with a served service mounts token create")
+	set := func(names ...string) map[string]bool {
+		out := map[string]bool{}
+		for _, n := range names {
+			out[n] = true
+		}
+		return out
+	}
+	cases := []struct {
+		name string
+		opts func(t *testing.T) []func(*cli.Root)
+		want map[string]bool
+	}{
+		{"api auth", func(*testing.T) []func(*cli.Root) { return []func(*cli.Root){auth} },
+			set("claims", "decode", "verify")},
+		{"identity after WithAPI", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){service.WithAPI(service.APIConfig{}), identityOpt(t)}
+		}, set("claims", "decode", "verify", "create")},
+		{"identity before api auth", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){identityOpt(t), auth}
+		}, set("claims", "decode", "verify", "create")},
+		{"identity with a served service", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){identityOpt(t), mcp}
+		}, set("claims", "decode", "verify", "create")},
+		{"api keys alone", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){apiKeysOpt(t)}
+		}, set("claims", "decode", "verify", "key")},
+		{"identity, api keys and a service: all five", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){apiKeysOpt(t), mcp, identityOpt(t)}
+		}, set("claims", "decode", "verify", "create", "key")},
+		{"bare identity: the signing leaves", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){identityOpt(t)}
+		}, set("claims", "decode", "create")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			testhome.Isolate(t)
+			r := cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true}, tc.opts(t)...)
+			got, n := tokenTree(r)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, 1, n, "one token command")
+			assert.True(t, r.IsReserved("token"))
+		})
+		t.Run(tc.name+", grafted", func(t *testing.T) {
+			testhome.Isolate(t)
+			r := cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true},
+				append([]func(*cli.Root){adopterToken}, tc.opts(t)...)...)
+			got, n := tokenTree(r)
+			want := set("hello")
+			for k := range tc.want {
+				want[k] = true
+			}
+			assert.Equal(t, want, got)
+			assert.Equal(t, 1, n, "the kit's leaves grafted onto the adopter's token, not a second one")
+			assert.True(t, r.IsReserved("token"))
+		})
+	}
 
-	got = leaves(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true},
-		service.WithAPIKeys(service.APIKeysConfig{Path: filepath.Join(t.TempDir(), "apikeys.db")})))
-	assert.Equal(t, map[string]bool{"claims": true, "decode": true, "verify": true, "key": true}, got,
-		"WithAPIKeys alone mounts token key")
+	for name, opts := range map[string][]func(*cli.Root){
+		"WithAPI alone":     {service.WithAPI(service.APIConfig{})},
+		"a service, no key": {mcp},
+	} {
+		t.Run("no token: "+name, func(t *testing.T) {
+			testhome.Isolate(t)
+			got, n := tokenTree(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true}, opts...))
+			assert.Zero(t, n, "%v", got)
+		})
+	}
+}
 
-	assert.Nil(t, leaves(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true},
-		cli.WithIdentity(cli.IdentityConfig{Dir: dir}))),
-		"WithIdentity with no serve plane mounts no token command")
+func identityOpt(t *testing.T) func(*cli.Root) {
+	t.Helper()
+	return cli.WithIdentity(cli.IdentityConfig{Dir: filepath.Join(t.TempDir(), "id")})
+}
 
-	assert.Nil(t, leaves(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true}, mcp)),
-		"no key source, no token command")
+func apiKeysOpt(t *testing.T) func(*cli.Root) {
+	t.Helper()
+	return service.WithAPIKeys(service.APIKeysConfig{Path: filepath.Join(t.TempDir(), "apikeys.db")})
 }
 
 // verdict is what token verify prints.
