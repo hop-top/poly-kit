@@ -1,5 +1,6 @@
 //! cobra's default `completion` command: `completion bash|zsh|fish|powershell`
-//! with `--no-descriptions`, help texts included.
+//! with `--no-descriptions`, help texts included, plus kit's
+//! `completion fig|usage` spec exports.
 
 use clap::{Arg, ArgAction, Command};
 
@@ -10,7 +11,8 @@ pub(crate) const COMPLETION: &str = "completion";
 /// The flag that drops descriptions from the generated script.
 pub(crate) const NO_DESC_FLAG: &str = "no-descriptions";
 
-/// cobra's default `completion` command, texts included.
+/// cobra's default `completion` command, texts included, with the
+/// spec exports.
 pub(crate) fn completion_command(prog: &str) -> Command {
     let mut cmd = Command::new(COMPLETION)
         .about("Generate the autocompletion script for the specified shell")
@@ -32,7 +34,7 @@ pub(crate) fn completion_command(prog: &str) -> Command {
                 ),
         );
     }
-    cmd
+    cmd.subcommands(crate::cli::completion_spec::export_commands())
 }
 
 fn shell_long_help(sh: Shell, p: &str) -> String {

@@ -317,9 +317,11 @@ test-parity-bus: ## bus-v1 conformance corpus, CloudEvents and streams included 
 
 # Completion-spec exports (Fig module, Usage KDL) over one fixture tree.
 # Go runner only; a port adds its runner here.
-test-parity-completion-spec: ## completion-spec-v1 corpus: Fig and Usage exports, byte for byte (Go runner)
+test-parity-completion-spec: ## completion-spec-v1 corpus: Fig and Usage exports, byte for byte (Go and Rust runners)
 	@echo "==> completion-spec-v1 conformance: Go"
 	go test ./go/console/cli/completionspec/ -run '^TestConformanceCompletionSpec' -count=1
+	@echo "==> completion-spec-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features cli --test cli_completion_spec_conformance --locked
 
 # Shared retry-v1 backoff corpus: Go and Rust runners read the same vectors.
 test-parity-config: ## config-v1 conformance corpus (Go and Rust runners)
