@@ -160,6 +160,18 @@ func TestNetworkAdapter_RedialPendingDuringLoopExit(t *testing.T) {
 			<-release
 		}
 	}
+	var waits, minAttempt atomic.Int32
+	minAttempt.Store(1 << 30)
+	n.backoffWait = func(ctx context.Context, attempt int, _ time.Duration) bool {
+		waits.Add(1)
+		for {
+			m := minAttempt.Load()
+			if int32(attempt) >= m || minAttempt.CompareAndSwap(m, int32(attempt)) {
+				break
+			}
+		}
+		return ctx.Err() == nil
+	}
 	events := collect(b, "kit.runtime.link.#")
 	n.Dial(url)
 	first := <-accepted
@@ -189,6 +201,13 @@ func TestNetworkAdapter_RedialPendingDuringLoopExit(t *testing.T) {
 	case <-accepted:
 	case <-time.After(failAfter):
 		t.Fatal("the drop was never redialed")
+	}
+	// The pending run waited its backoff before that dial.
+	if w := waits.Load(); w < 1 {
+		t.Fatalf("the pending run dialed without waiting (%d waits)", w)
+	}
+	if a := minAttempt.Load(); a < 1 {
+		t.Fatalf("the pending run waited at attempt %d, want >= 1", a)
 	}
 	closeWithin(t, n)
 }

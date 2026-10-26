@@ -108,9 +108,9 @@ type NetworkAdapter struct {
 	peers        map[string]*peerState
 	skipped      map[string]*atomic.Uint64
 	reconnecting map[string]bool
-	// pendingRedial marks an address whose link dropped while its
-	// reconnect loop was still running; the loop consumes the mark
-	// before it exits, so no drop is lost.
+	// pendingRedial holds the redial request an address's running loop
+	// has yet to serve; the value is whether that run waits the backoff
+	// first. See requestRedial.
 	pendingRedial map[string]bool
 	mu            sync.RWMutex
 	reconnect     util.RetryConfig
@@ -274,6 +274,7 @@ func (n *NetworkAdapter) Disconnect(addr string) error {
 	l, ok := n.conns[addr]
 	ps := n.peers[addr]
 	delete(n.peers, addr)
+	delete(n.pendingRedial, addr)
 	n.mu.Unlock()
 	if ps != nil {
 		ps.setFinal("")
@@ -295,6 +296,7 @@ func (n *NetworkAdapter) Close() error {
 		n.unsub()
 	}
 	n.mu.Lock()
+	clear(n.pendingRedial)
 	links := make([]*link, 0, len(n.conns))
 	for _, l := range n.conns {
 		links = append(links, l)
@@ -328,29 +330,53 @@ func (n *NetworkAdapter) dialConfigured(addr string) {
 // goReconnect starts a reconnect loop for addr that dials at once,
 // tracked by the adapter's WaitGroup so Close waits for it.
 func (n *NetworkAdapter) goReconnect(addr string) {
-	n.startReconnect(addr, false)
+	n.requestRedial(addr, false)
 }
+
+// The redial state machine is documented on requestRedial.
 
 // goReconnectAfterDrop starts a reconnect loop for an address whose link
 // went down. It never dials at once: it first waits the backoff for the
 // address's run of short-lived links (see stableAfter).
 func (n *NetworkAdapter) goReconnectAfterDrop(addr string) {
-	n.startReconnect(addr, true)
+	n.requestRedial(addr, true)
 }
 
-func (n *NetworkAdapter) startReconnect(addr string, wait bool) {
+// requestRedial is the one entry to an address's redial state machine.
+// Dial, WithNetwork's retry after a failed first connect, and the redial
+// after a link drop all go through it; wait says whether the run waits
+// the backoff before it dials (a drop) or dials now (a dial request).
+//
+// Per registered address, under n.mu:
+//
+//	state            event                        next
+//	idle / up        request                      running (loop started; waits if wait)
+//	running          request                      running + mark (wait = AND of the requests)
+//	running          dial fails                   running (attempt+1, waits)
+//	running          dial succeeds / gives up     exit check
+//	exit check       mark, address kept, open     running (mark consumed; waits as marked)
+//	exit check       no mark (or forgotten/closed) idle / up (loop gone)
+//	up               link drops                   request(wait), flaps+1 or reset (stableAfter)
+//	any              Disconnect                   address forgotten, mark cleared; the loop exits at its check
+//	any              Close                        closed, marks cleared; loops stop, nothing dials
+//
+// Explicit Connect dials inline and owns no loop: a link it makes joins
+// the table at up.
+//
+// A request that finds a loop running never just returns: the loop
+// consumes its mark under this lock before it exits, so every request
+// is served by the running loop or starts one.
+func (n *NetworkAdapter) requestRedial(addr string, wait bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.closed.Load() || n.peers[addr] == nil {
 		return
 	}
 	if n.reconnecting[addr] {
-		// A loop is running and may already be past the dial that made
-		// the link that dropped: leave it a mark instead of losing the
-		// request. It checks the mark under this lock before it exits.
-		if wait {
-			n.pendingRedial[addr] = true
+		if prev, ok := n.pendingRedial[addr]; ok {
+			wait = wait && prev
 		}
+		n.pendingRedial[addr] = wait
 		return
 	}
 	n.reconnecting[addr] = true
@@ -398,10 +424,10 @@ func (n *NetworkAdapter) reconnectLoop(addr string, wait bool) {
 		// Under the lock startReconnect takes: a drop either left its
 		// mark before this point or starts a loop of its own after it.
 		n.mu.Lock()
-		if n.pendingRedial[addr] && n.peers[addr] != nil && !n.closed.Load() && ctx.Err() == nil {
+		if marked, ok := n.pendingRedial[addr]; ok && n.peers[addr] != nil && !n.closed.Load() && ctx.Err() == nil {
 			delete(n.pendingRedial, addr)
 			n.mu.Unlock()
-			wait = true
+			wait = marked
 			continue
 		}
 		delete(n.pendingRedial, addr)
