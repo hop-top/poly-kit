@@ -10,6 +10,7 @@ use super::NetworkAdapter;
 use crate::bus::context::Context;
 
 mod events;
+mod fsm;
 mod handshake;
 mod links;
 mod policy;

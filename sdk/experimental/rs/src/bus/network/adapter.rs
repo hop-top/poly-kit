@@ -45,7 +45,7 @@ pub(crate) struct State {
     /// Addresses whose link dropped while their reconnect loop was still
     /// running; the loop consumes the mark before it exits, so no drop is
     /// lost. Go's `pendingRedial`.
-    pub(crate) pending_redial: std::collections::HashSet<String>,
+    pub(crate) pending_redial: HashMap<String, bool>,
 }
 
 /// What the adapter keeps for an outbound address across reconnects: Go's
@@ -85,8 +85,10 @@ pub(crate) struct Inner {
     /// Go's `handshakeTimeout`; a test seam shortens it.
     pub(crate) handshake_timeout: Mutex<Duration>,
     /// Test seam: holds a reconnect loop at its exit, once.
+    #[cfg(test)]
     pub(crate) exit_gate: Mutex<Option<super::reconnect::ExitGate>>,
     /// Test seam: replaces a reconnect loop's backoff sleep.
+    #[cfg(test)]
     pub(crate) backoff_wait: Mutex<Option<super::reconnect::BackoffWait>>,
 }
 
@@ -230,7 +232,9 @@ impl NetworkAdapter {
             tasks: WaitGroup::default(),
             write_fault: Mutex::new(None),
             handshake_timeout: Mutex::new(super::session::HANDSHAKE_TIMEOUT),
+            #[cfg(test)]
             exit_gate: Mutex::new(None),
+            #[cfg(test)]
             backoff_wait: Mutex::new(None),
         });
         let weak = Arc::downgrade(&inner);
@@ -390,6 +394,7 @@ impl Inner {
         let link = {
             let mut st = self.state();
             st.peers.remove(addr);
+            st.pending_redial.remove(addr);
             st.conns.get(addr).cloned()
         }?;
         link.close(STATUS_NORMAL, "disconnect");
@@ -410,7 +415,11 @@ impl Inner {
             self.bus.unsubscribe(id);
         }
         self.closing.fire();
-        let links: Vec<_> = self.state().conns.values().cloned().collect();
+        let links: Vec<_> = {
+            let mut st = self.state();
+            st.pending_redial.clear();
+            st.conns.values().cloned().collect()
+        };
         for l in links {
             l.close(STATUS_GOING_AWAY, "closing");
         }

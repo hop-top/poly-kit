@@ -134,6 +134,15 @@ fn redial_pending_during_loop_exit() {
         entered: entered_tx,
         release: Arc::clone(&release),
     });
+    let attempts = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let a = Arc::clone(&attempts);
+    *n.0.backoff_wait
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(move |attempt| {
+        a.lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(attempt);
+    }));
     n.dial(&url);
     accepted
         .recv_timeout(Duration::from_secs(5))
@@ -158,6 +167,15 @@ fn redial_pending_during_loop_exit() {
     accepted
         .recv_timeout(Duration::from_secs(5))
         .expect("the drop is redialed");
+    // The pending run waited its backoff before that dial.
+    let waited = attempts
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    assert!(
+        waited.first().is_some_and(|&a| a >= 1),
+        "the pending run dialed without waiting its backoff: {waited:?}"
+    );
     let nn = n.clone();
     within(move || nn.close()).unwrap();
 }
