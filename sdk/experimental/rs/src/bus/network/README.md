@@ -44,7 +44,8 @@ bus_a.publish(&Event::new("crm.sales.deal.created", "crm", json!({"id": 1})))?; 
 - Blocking methods panic on the network thread; use the `_async` twins from async code.
 - Not yet ported: streams (resume, subscriptions, outbox), `kit.runtime.link.*` events, CloudEvents
   outbound frames, the error callback, the browser transport.
-- Parity: Go's network tests ported by name in `tests/bus_network*.rs`.
+- Parity: Go's network tests ported by name in `tests/bus_network*.rs`; Go and Rust peers mixed in
+  `tests/bus_network_crosslang.rs` (`make test-parity-bus-network`).
 
 ## Neighbours
 

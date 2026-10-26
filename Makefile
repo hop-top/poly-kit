@@ -4,7 +4,7 @@
 	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	completion-regen test-parity test-parity-bus test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-taxonomy test-parity-typeid test-py \
+	completion-regen test-parity test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-rs-wasm test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint
 
@@ -215,7 +215,7 @@ test-rs-wasm: ## Rust: bus wasm32 smoke test under Node (needs the matching wasm
 	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features bus --test bus_wasm
 
-test-parity: test-parity-typeid test-parity-bus test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -312,6 +312,14 @@ test-parity-bus: ## bus-v1 conformance corpus, CloudEvents and streams included 
 	go test ./go/runtime/bus/ -run '^(TestConformance|TestCloudEventsConformance|TestStreamConformance)' -count=1
 	@echo "==> bus-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --test bus_conformance --test bus_cloudevents_conformance --test 'bus_stream_conformance*' --all-features --locked
+
+# Bus network across languages: Go hub <-> Rust client, Rust hub <-> Go
+# client and mixed three-node relays, with and without auth. The Go peer
+# is sdk/tests/cross-lang/bus-network/gonode; BUS_NETWORK_CROSSLANG gates
+# the cases so a plain `cargo test` needs no Go toolchain.
+test-parity-bus-network: ## bus network cross-language e2e (Go <-> Rust hubs, clients, mixed relay)
+	@echo "==> bus network: Go <-> Rust over WebSocket"
+	cd sdk/experimental/rs && BUS_NETWORK_CROSSLANG=1 cargo test --locked --features bus-network --test bus_network_crosslang -- --test-threads=1
 
 # Completion-spec exports (Fig module, Usage KDL) over one fixture tree.
 # Go runner only; a port adds its runner here.
