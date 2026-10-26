@@ -11,7 +11,8 @@ offline marker is `hop_top_kit::netpolicy`.
 
 - a bus should dial peers at build time → `DynBus::builder().with_network(addrs)`, options via `network_options`
 - you dial or serve by hand → `NetworkAdapter::new(bus.clone(), NetworkOptions::new())`, then `connect`, `dial` or `listen`
-- your HTTP framework owns the socket → send the `101`, then `accept_upgraded(io, addr)`
+- your HTTP framework owns the socket → `check_upgrade(&req)`, send `Upgrade::response()`, then `accept_upgraded(io, addr)`
+- you serve with axum → `any(net.axum_handler())` (feature `bus-network-axum`)
 - peers must prove a shared secret → `NetworkOptions::auth(StaticTokenAuth::new(t))`, or `auth_from_env(&names)`
 - a hub bridges several peers → `NetworkOptions::relay(true)`; only some topics may leave → `TopicFilter`
 - you run your own tokio runtime → `TokioSpawn` is the `Spawn` for `subscribe_async`

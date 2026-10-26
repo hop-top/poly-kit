@@ -33,13 +33,16 @@
 //!   30 s), each attempt bounded by 10 s, one loop per address, until it
 //!   connects, the address is disconnected, or the adapter closes.
 //! - Close sends 1001 to every peer and waits for the readers.
+//! - The acceptor applies coder/websocket's default checks, the Origin
+//!   check included ([`check_upgrade`]).
 //!
 //! # Differences from Go
 //!
 //! - The I/O runs on a dedicated runtime thread (see [`TokioSpawn`] for
 //!   the executor seam); blocking methods have `_async` twins.
-//! - Accepting is [`NetworkAdapter::listen`] or
-//!   [`NetworkAdapter::accept_upgraded`], in place of an `http.Handler`.
+//! - Accepting is [`NetworkAdapter::listen`], [`NetworkAdapter::accept_upgraded`]
+//!   after [`check_upgrade`], or the axum handler (`bus-network-axum`),
+//!   in place of an `http.Handler`.
 //! - Not yet ported: streams (resume, subscriptions, outbox), the
 //!   `kit.runtime.link.*` events, CloudEvents outbound frames and the
 //!   error callback. Inbound frames on those topics are dropped, as Go
@@ -48,6 +51,8 @@
 mod accept;
 mod adapter;
 mod auth;
+#[cfg(feature = "bus-network-axum")]
+mod axum;
 mod conn;
 mod ctx;
 mod error;
@@ -57,6 +62,7 @@ mod relay;
 mod runtime;
 mod session;
 mod sync;
+mod upgrade;
 mod wire;
 
 #[cfg(test)]
@@ -69,3 +75,4 @@ pub use auth::{Authenticator, OpenAuth, StaticTokenAuth};
 pub use error::{AuthError, NetworkError};
 pub use filter::TopicFilter;
 pub use runtime::TokioSpawn;
+pub use upgrade::{check_upgrade, Rejection, Upgrade};

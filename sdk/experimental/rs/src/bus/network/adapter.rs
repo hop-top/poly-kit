@@ -178,8 +178,8 @@ fn is_offline(ctx: &Context) -> bool {
 /// a loop of peers never echoes.
 ///
 /// Links are made by [`connect`](Self::connect) (outbound, reconnected
-/// with backoff when they drop) and accepted by [`listen`](Self::listen)
-/// or [`accept_upgraded`](Self::accept_upgraded).
+/// with backoff when they drop) and accepted by [`listen`](Self::listen),
+/// [`accept_upgraded`](Self::accept_upgraded) or the axum handler.
 ///
 /// The I/O runs on the crate's network runtime, a dedicated thread, so
 /// no async runtime is needed. The blocking methods ([`connect`],

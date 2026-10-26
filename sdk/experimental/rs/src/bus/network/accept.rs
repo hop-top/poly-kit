@@ -9,9 +9,10 @@ use std::sync::Arc;
 use futures_util::SinkExt;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
+use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{accept_async_with_config, WebSocketStream};
+use tokio_tungstenite::{accept_hdr_async_with_config, WebSocketStream};
 
 use super::adapter::{Inner, NetworkAdapter};
 use super::conn::{
@@ -19,12 +20,14 @@ use super::conn::{
     STATUS_POLICY,
 };
 use super::runtime;
+use super::upgrade::check_upgrade;
 use super::wire::{parse_auth_frame, AUTH_OK};
 
 impl NetworkAdapter {
     /// Accepts peers on `addr` (`host:port`; port 0 picks one) and
     /// returns the bound address. Any request path upgrades, as Go's
-    /// handler does wherever it is mounted. The listener stops on
+    /// handler does wherever it is mounted; requests failing
+    /// [`check_upgrade`] are refused. The listener stops on
     /// [`close`](Self::close).
     pub fn listen(&self, addr: &str) -> io::Result<SocketAddr> {
         let std = StdListener::bind(addr)?;
@@ -43,8 +46,9 @@ impl NetworkAdapter {
         Ok(local)
     }
 
-    /// Takes over a connection a framework already upgraded: hand the
-    /// raw I/O here after the `101` response.
+    /// Takes over a connection a framework already upgraded: send
+    /// [`Upgrade::response`](super::Upgrade::response) for a request that
+    /// passed [`check_upgrade`], then hand the raw I/O here.
     /// `remote_addr` keys the link, as Go's `r.RemoteAddr` does. Runs the
     /// auth handshake and the reader on the network runtime; returns at
     /// once.
@@ -82,7 +86,8 @@ impl Inner {
     }
 
     async fn accept_tcp(self: &Arc<Self>, tcp: TcpStream, peer: SocketAddr) {
-        if let Ok(ws) = accept_async_with_config(tcp, Some(ws_config())).await {
+        if let Ok(ws) = accept_hdr_async_with_config(tcp, upgrade_callback, Some(ws_config())).await
+        {
             self.serve_ws(ws, peer.to_string()).await;
         }
     }
@@ -138,5 +143,15 @@ impl Inner {
             return;
         };
         runtime::handle().spawn(Arc::clone(self).read_loop(link, source));
+    }
+}
+
+/// The upgrade checks as tungstenite's handshake callback.
+// The callback's signature is tungstenite's; its error is a response.
+#[allow(clippy::result_large_err)]
+fn upgrade_callback(req: &Request, resp: Response) -> Result<Response, ErrorResponse> {
+    match check_upgrade(req) {
+        Ok(_) => Ok(resp),
+        Err(r) => Err(r.response().map(Some)),
     }
 }
