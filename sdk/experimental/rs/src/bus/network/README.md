@@ -16,6 +16,8 @@ offline marker is `hop_top_kit::netpolicy`.
 - peers must prove a shared secret → `NetworkOptions::auth(StaticTokenAuth::new(t))`, or `auth_from_env(&names)`
 - a hub bridges several peers → `NetworkOptions::relay(true)`; only some topics may leave → `TopicFilter`
 - you run your own tokio runtime → `TokioSpawn` is the `Spawn` for `subscribe_async`
+- you dial `wss://` on Android, or trust your own CA → `NetworkOptions::tls_config(Arc<rustls::ClientConfig>)`
+- you watch links come and go → subscribe `kit.runtime.link.#`; unreturned errors → `NetworkOptions::error_func`
 
 ## Quick start
 
@@ -42,8 +44,12 @@ bus_a.publish(&Event::new("crm.sales.deal.created", "crm", json!({"id": 1})))?; 
 - A dropped outbound link reconnects (100 ms to 30 s jittered, 10 s per attempt, one loop per address)
   until connected, `disconnect`, or `close`. A failed `connect` starts no loop; `dial` does.
 - Blocking methods panic on the network thread; use the `_async` twins from async code.
-- Not yet ported: streams (resume, subscriptions, outbox), `kit.runtime.link.*` events, CloudEvents
-  outbound frames, the error callback, the browser transport.
+- Local events as Go: `kit.runtime.link.connected`/`disconnected`, `kit.runtime.stream.invalidated` on a
+  reconnect; never forwarded. Failed handshakes go to `error_func`.
+- Relay skips the arrival link; empty origins take the link's; a duplicate inbound address gets 1000.
+- TLS: platform roots by default (none on Android: pass `tls_config`); `bus-network-webpki-roots` adds
+  Mozilla's.
+- Not yet ported: streams, CloudEvents outbound frames, binary CloudEvents data, the browser transport.
 - Parity: Go's network tests ported by name in `tests/bus_network*.rs`; Go and Rust peers mixed in
   `tests/bus_network_crosslang.rs` (`make test-parity-bus-network`).
 

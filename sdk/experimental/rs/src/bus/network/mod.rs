@@ -33,6 +33,19 @@
 //!   30 s), each attempt bounded by 10 s, one loop per address, until it
 //!   connects, the address is disconnected, or the adapter closes.
 //! - Close sends 1001 to every peer and waits for the readers.
+//! - The adapter publishes its own events on the local bus, never
+//!   forwarded: `kit.runtime.link.connected` (`peer`, `stream` empty,
+//!   `resume` `unsupported`, `format` `kit`) when an outbound link comes
+//!   up, `kit.runtime.link.disconnected` (`peer`, `final`, `code` when
+//!   known: `auth`, `timeout`) when one goes down or a handshake is
+//!   refused (once per change of code), and
+//!   `kit.runtime.stream.invalidated` (`reason` `unsupported`) when a link
+//!   comes back: events may have gone by while it was down.
+//! - Errors no caller can receive (a reconnect's refused handshake) go to
+//!   [`NetworkOptions::error_func`].
+//! - Relay never sends an event back on the link it arrived on; a frame
+//!   without an origin takes the link's, else this adapter's; a second
+//!   inbound link under a linked address is refused (1000 `duplicate`).
 //! - The acceptor applies coder/websocket's default checks, the Origin
 //!   check included ([`check_upgrade`]).
 //!
@@ -43,10 +56,13 @@
 //! - Accepting is [`NetworkAdapter::listen`], [`NetworkAdapter::accept_upgraded`]
 //!   after [`check_upgrade`], or the axum handler (`bus-network-axum`),
 //!   in place of an `http.Handler`.
-//! - Not yet ported: streams (resume, subscriptions, outbox), the
-//!   `kit.runtime.link.*` events, CloudEvents outbound frames and the
-//!   error callback. Inbound frames on those topics are dropped, as Go
-//!   does.
+//! - `wss://` trusts the platform's roots by default (Go: the default
+//!   transport); [`NetworkOptions::tls_config`] takes a rustls config,
+//!   which Android needs. Feature `bus-network-webpki-roots` adds
+//!   Mozilla's roots to the defaults.
+//! - Not yet ported: streams (resume, subscriptions, outbox, positions),
+//!   CloudEvents outbound frames and binary CloudEvents data inbound.
+//!   Inbound frames on the adapter's own topics are dropped, as Go does.
 
 mod accept;
 mod adapter;

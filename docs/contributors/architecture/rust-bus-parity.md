@@ -54,9 +54,10 @@ and it stays unported.
   dispatch, retry policy, netpolicy core) keeps building for
   `wasm32-unknown-unknown` with `--no-default-features --features bus`.
   It takes no runtime or socket dependency.
-- Tokio and native socket pieces (async dispatch pool, native network
-  adapter) sit behind their own features. Enabling `bus` alone never
-  pulls them in.
+- Tokio and native socket pieces sit behind their own features
+  (`bus-network`, `bus-network-axum`, `bus-network-webpki-roots`); the
+  async dispatch pool itself needs no runtime. Enabling `bus` alone
+  never pulls them in.
 - The browser WebSocket transport sits behind its own feature, separate
   from the native socket feature, so a wasm build selects exactly one
   transport.
@@ -128,6 +129,26 @@ task on its own executor. A tokio adapter can follow behind a feature.
   The target only selects this single-threaded policy, so native unit
   tests run it; `make test-rs-wasm` runs a smoke test on wasm32 under
   Node with `wasm-bindgen-test`.
+
+## Network adapter
+
+`bus::network` (feature `bus-network`) ports Go's `NetworkAdapter` on
+links without streams; Go peers that speak streams fall back to that
+link with a Rust peer, in either role.
+
+- One process-wide current-thread tokio runtime on a dedicated thread
+  carries every adapter's sockets. Blocking methods hand work to it and
+  wait, so they panic when called on it; `_async` variants serve async
+  callers. Inbound publishes, authenticators and the error callback run
+  on tokio's blocking pool, never on the socket thread.
+- Outbound forwarding is the async `#` subscriber, as in Go before
+  streams. The stream port replaces it with a log append and a writer
+  per link, behind the same public API.
+- TLS is rustls on ring with the platform's roots; Android callers pass
+  a `rustls::ClientConfig` (or opt into Mozilla's roots), since rustls
+  reads no root store there.
+- Cross-language tests run Go and Rust hubs, clients and mixed relays
+  (`make test-parity-bus-network`).
 
 ## Go-first rule
 
