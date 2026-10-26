@@ -381,12 +381,28 @@ func (r *Root) gateConfirm(cmd *cobra.Command, se SideEffect) error {
 		expected := destructiveTokenSha(cmd)
 		got := flagValue(cmd, confirmTokenFlag)
 		if got == "" {
-			fmt.Fprintf(cmd.ErrOrStderr(),
-				"This is a destructive operation requiring typed confirmation.\nToken: %s\nRe-run with --confirm-token=%s to proceed.\n",
-				expected, expected)
-			return renderPolicyError(cmd, output.UnauthorizedError(
-				"destructive command "+cmd.CommandPath()+" requires --confirm-token="+expected,
-			))
+			// The token preview is a human affordance. Under a machine
+			// format it would prepend prose to stderr ahead of the
+			// envelope, leaving the stream unparseable as JSON/YAML and
+			// unreadable as prose. Machine callers recover the token
+			// from the envelope instead: Message names it and
+			// SuggestedFix carries the re-run instruction verbatim.
+			refusal := output.UnauthorizedError(
+				"destructive command " + cmd.CommandPath() + " requires --confirm-token=" + expected,
+			)
+			if isMachineFormat(activeFormat(cmd)) {
+				// The preview is replaced by SuggestedFix, which carries
+				// the same instruction inside the envelope.
+				refusal.SuggestedFix = "re-run with --confirm-token=" +
+					expected + " to proceed"
+			} else {
+				// Human format keeps the preview verbatim; adding a Fix
+				// line as well would only repeat it.
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"This is a destructive operation requiring typed confirmation.\nToken: %s\nRe-run with --confirm-token=%s to proceed.\n",
+					expected, expected)
+			}
+			return renderPolicyError(cmd, refusal)
 		}
 		if got != expected {
 			return renderPolicyError(cmd, output.UnauthorizedError(
