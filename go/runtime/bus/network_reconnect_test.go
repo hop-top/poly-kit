@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -40,8 +42,10 @@ func TestNetworkAdapter_ReconnectBacksOffAgainstAFlappingAcceptor(t *testing.T) 
 	url, accepts := flappingAcceptor(t, 0)
 	const drops = 20
 	waits := make(chan int, 1024)
+	var total atomic.Int32
 	n := NewNetworkAdapter(New())
 	n.backoffWait = func(ctx context.Context, attempt int, _ time.Duration) bool {
+		total.Add(1)
 		select {
 		case waits <- attempt:
 		default: // the test has what it needs
@@ -62,15 +66,22 @@ func TestNetworkAdapter_ReconnectBacksOffAgainstAFlappingAcceptor(t *testing.T) 
 	if got[0] != 1 {
 		t.Fatalf("first redial waited at attempt %d, want 1 (the first short link)", got[0])
 	}
-	for i := 1; i < len(got); i++ {
-		if got[i] < got[i-1] {
-			t.Fatalf("backoff went back from %d to %d: %v", got[i-1], got[i], got)
+	// No wait restarts from scratch while the links stay short (a failed
+	// dial inside a loop may raise one wait above the next, so the order
+	// is not asserted).
+	for _, a := range got {
+		if a < 1 {
+			t.Fatalf("a wait restarted: %v", got)
 		}
 	}
 	// Every link drops at once, so each one counts: the attempt reached
 	// is at least the number of links that came up before it.
-	if last, up := got[drops-1], int(accepts.Load()); last < drops/2 || up > drops+1 {
-		t.Fatalf("after %d waits: attempt %d, %d links; want the attempt to track the links and no redial without a wait", drops, last, up)
+	// Every link but the first follows a wait: no redial without one.
+	if up, w := accepts.Load(), total.Load(); up > w+1 {
+		t.Fatalf("%d links after %d waits: a redial skipped its wait", up, w)
+	}
+	if last := got[drops-1]; last < drops/2 {
+		t.Fatalf("after %d waits the attempt is %d; want it to track the short links", drops, last)
 	}
 }
 
@@ -158,8 +169,21 @@ func TestNetworkAdapter_RedialPendingDuringLoopExit(t *testing.T) {
 	case <-time.After(failAfter):
 		t.Fatal("the loop never reached its exit")
 	}
+	n.mu.RLock()
+	l := n.conns[url]
+	n.mu.RUnlock()
+	if l == nil {
+		t.Fatal("no link")
+	}
 	_ = first.Close(statusNormal, "duplicate")
 	events.nextTopic(t, TopicLinkDisconnected) // the drop was seen meanwhile
+	// The reader closes done after it asked for the redial: the request
+	// met the held loop.
+	select {
+	case <-l.done:
+	case <-time.After(failAfter):
+		t.Fatal("the reader never finished")
+	}
 	close(release)
 	select {
 	case <-accepted:
@@ -204,17 +228,114 @@ func TestNetworkAdapter_RedialNeverLostUnderManyFlappingPeers(t *testing.T) {
 	}
 }
 
-// Close during a backoff wait returns promptly, not after the wait.
+// Close during a backoff wait returns promptly, not after the wait. The
+// test closes only once the dropped link's reader has asked for the
+// redial, so the loop is in its wait.
 func TestNetworkAdapter_CloseDuringBackoffIsPrompt(t *testing.T) {
-	url, accepts := flappingAcceptor(t, 0)
-	b := New()
-	n := NewNetworkAdapter(b, WithBackoff(20*time.Second, 30*time.Second))
-	events := collect(b, "kit.runtime.link.#")
+	dropFirst := make(chan struct{})
+	accepted := make(chan struct{}, 4)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		accepted <- struct{}{}
+		<-dropFirst
+		_ = c.Close(statusNormal, "duplicate")
+	}))
+	t.Cleanup(srv.Close)
+	url := "ws" + srv.URL[4:]
+	n := NewNetworkAdapter(New(), WithBackoff(20*time.Second, 30*time.Second))
 	n.Dial(url)
-	events.nextTopic(t, TopicLinkConnected)
-	events.nextTopic(t, TopicLinkDisconnected) // now in the 20 s+ wait
+	<-accepted
+	var l *link
+	for deadline := time.Now().Add(failAfter); l == nil; {
+		if time.Now().After(deadline) {
+			t.Fatal("the link never registered")
+		}
+		n.mu.RLock()
+		l = n.conns[url]
+		n.mu.RUnlock()
+		runtime.Gosched()
+	}
+	close(dropFirst)
+	select {
+	case <-l.done:
+	case <-time.After(failAfter):
+		t.Fatal("the reader never finished")
+	}
+	n.mu.RLock()
+	waiting := n.reconnecting[url]
+	n.mu.RUnlock()
+	if !waiting {
+		t.Fatal("the redial is not waiting")
+	}
 	if d := closeWithin(t, n); d > 500*time.Millisecond {
 		t.Fatalf("close took %v during a backoff wait", d)
 	}
-	_ = accepts
+}
+
+// A link that drops after the loop that dialed it has exited starts a
+// new loop, and that loop waits the backoff before it dials. The test
+// drops the link only once no loop runs, then checks the order.
+func TestNetworkAdapter_RedialAfterDropWaitsFirst(t *testing.T) {
+	var (
+		mu  sync.Mutex
+		log []string
+	)
+	note := func(s string) { mu.Lock(); log = append(log, s); mu.Unlock() }
+	dropFirst := make(chan struct{})
+	accepted := make(chan struct{}, 4)
+	var first atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		note("accept")
+		accepted <- struct{}{}
+		if first.CompareAndSwap(false, true) {
+			<-dropFirst
+			_ = c.Close(statusNormal, "duplicate")
+			return
+		}
+		for {
+			if _, _, err := c.Read(context.Background()); err != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+	url := "ws" + srv.URL[4:]
+	n := NewNetworkAdapter(New())
+	n.backoffWait = func(ctx context.Context, _ int, _ time.Duration) bool {
+		note("wait")
+		return ctx.Err() == nil
+	}
+	n.Dial(url)
+	<-accepted
+	for deadline := time.Now().Add(failAfter); ; runtime.Gosched() {
+		n.mu.RLock()
+		idle := !n.reconnecting[url] && n.conns[url] != nil
+		n.mu.RUnlock()
+		if idle {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the dialing loop never exited")
+		}
+	}
+	close(dropFirst)
+	select {
+	case <-accepted:
+	case <-time.After(failAfter):
+		t.Fatal("the drop was never redialed")
+	}
+	mu.Lock()
+	got := append([]string(nil), log...)
+	mu.Unlock()
+	if len(got) < 3 || got[1] != "wait" {
+		t.Fatalf("order %v, want accept, wait, accept: the redial waits first", got)
+	}
+	closeWithin(t, n)
 }
