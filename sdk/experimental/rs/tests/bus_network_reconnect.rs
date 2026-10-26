@@ -1,0 +1,178 @@
+//! Outbound links that drop come back: reconnect with backoff, one loop
+//! per address, stopping on disconnect and on close, plus the duplicate
+//! guard on connect.
+
+#![cfg(feature = "bus-network")]
+
+mod bus_network_support;
+
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+
+use bus_network_support::*;
+use hop_top_kit::bus::network::{NetworkAdapter, NetworkOptions};
+use hop_top_kit::bus::{Context, DynBus};
+use serde_json::Value;
+
+fn fast() -> NetworkOptions {
+    NetworkOptions::new().backoff(Duration::from_millis(20), Duration::from_millis(100))
+}
+
+/// A hub on a fixed address that can go away and come back.
+fn hub_at(addr: &str, origin: &str) -> (DynBus, NetworkAdapter) {
+    let bus = DynBus::new();
+    let net = NetworkAdapter::new(bus.clone(), NetworkOptions::new().origin_id(origin));
+    let (n, a) = (net.clone(), addr.to_string());
+    assert!(
+        eventually(Duration::from_secs(5), move || n.listen(&a).is_ok()),
+        "rebind {addr}"
+    );
+    (bus, net)
+}
+
+#[test]
+fn a_dropped_outbound_link_reconnects() {
+    let hub = Hub::start(NetworkOptions::new().origin_id("hub"));
+    let addr = hub
+        .url
+        .trim_start_matches("ws://")
+        .trim_end_matches('/')
+        .to_string();
+    let b = Peer::new(fast().origin_id("B"));
+    b.connect(&hub.url).expect("connect");
+    drop(hub); // closes with 1001
+
+    assert!(
+        eventually(DELIVERY, || b
+            .net
+            .link_state(&format!("ws://{addr}/"))
+            .is_some_and(|s| !s.connected)),
+        "the link goes down"
+    );
+    let (bus2, net2) = hub_at(&addr, "hub2");
+    assert!(
+        eventually(Duration::from_secs(5), || b
+            .net
+            .link_state(&format!("ws://{addr}/"))
+            .is_some_and(|s| s.connected)),
+        "the link comes back"
+    );
+    let got = flag_on(&bus2, "after.reconnect");
+    sleep_ms(50);
+    publish(&b.bus, ev("after.reconnect", "B", Value::Null));
+    wait_for(&got, "events flow after the reconnect");
+    within(move || net2.close()).unwrap();
+}
+
+#[test]
+fn dial_keeps_trying_until_the_peer_appears() {
+    let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = probe.local_addr().unwrap().to_string();
+    drop(probe);
+    let url = format!("ws://{addr}/");
+    let b = Peer::new(fast().origin_id("B"));
+    b.net.dial(&url);
+    sleep_ms(150);
+    assert!(b.net.link_state(&url).is_some_and(|s| !s.connected));
+
+    let (bus2, net2) = hub_at(&addr, "late");
+    assert!(
+        eventually(Duration::from_secs(5), || b
+            .net
+            .link_state(&url)
+            .is_some_and(|s| s.connected)),
+        "dial connects once the peer listens"
+    );
+    let got = flag_on(&bus2, "late.hello");
+    sleep_ms(50);
+    publish(&b.bus, ev("late.hello", "B", Value::Null));
+    wait_for(&got, "events flow after a late dial");
+    within(move || net2.close()).unwrap();
+}
+
+#[test]
+fn disconnect_forgets_the_address() {
+    let hub = Hub::start(NetworkOptions::new().origin_id("hub"));
+    let b = Peer::new(fast().origin_id("B"));
+    b.connect(&hub.url).expect("connect");
+    let (n, u) = (b.net.clone(), hub.url.clone());
+    within(move || n.disconnect(&u)).unwrap();
+    sleep_ms(300);
+    assert!(
+        b.net.link_state(&hub.url).is_none(),
+        "no reconnect after disconnect"
+    );
+
+    let got = flag_on(&hub.bus, "gone.quiet");
+    publish(&b.bus, ev("gone.quiet", "B", Value::Null));
+    sleep_ms(200);
+    assert!(
+        !got.load(Ordering::SeqCst),
+        "nothing flows to a forgotten peer"
+    );
+
+    // An unknown address is not an error.
+    let n = b.net.clone();
+    within(move || n.disconnect("ws://127.0.0.1:1/")).unwrap();
+}
+
+#[test]
+fn close_stops_reconnecting() {
+    let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("ws://{}/", probe.local_addr().unwrap());
+    drop(probe);
+    let b = NetworkAdapter::new(DynBus::new(), fast());
+    b.dial(&url);
+    sleep_ms(100);
+    let n = b.clone();
+    let started = std::time::Instant::now();
+    within(move || n.close()).unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "close interrupts the backoff and the dial"
+    );
+    let n = b.clone();
+    let err =
+        within(move || n.connect(&Context::background(), "ws://127.0.0.1:1/")).expect_err("closed");
+    assert!(err.is_closed());
+}
+
+#[test]
+fn a_second_connect_to_a_linked_address_adds_no_link() {
+    let hub = Hub::start(NetworkOptions::new().origin_id("hub"));
+    let b = Peer::new(NetworkOptions::new().origin_id("B"));
+    b.connect(&hub.url).expect("connect");
+    b.connect(&hub.url)
+        .expect("duplicate connect is not an error");
+    let n = count_on(&hub.bus, "dup.check");
+    sleep_ms(50);
+    publish(&b.bus, ev("dup.check", "B", Value::Null));
+    sleep_ms(300);
+    assert_eq!(n.load(Ordering::SeqCst), 1, "one link, one delivery");
+}
+
+#[test]
+fn a_failed_connect_starts_no_reconnect_loop() {
+    let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = probe.local_addr().unwrap().to_string();
+    drop(probe);
+    let url = format!("ws://{addr}/");
+    let b = Peer::new(fast().origin_id("B"));
+    let err = b.connect(&url).expect_err("nothing listens");
+    assert!(
+        err.to_string().starts_with("failed to WebSocket dial: "),
+        "{err}"
+    );
+    assert!(
+        b.net.link_state(&url).is_none(),
+        "a failed dial registers nothing"
+    );
+
+    let (_bus2, net2) = hub_at(&addr, "late");
+    sleep_ms(400);
+    assert!(
+        b.net.link_state(&url).is_none(),
+        "Go: only dial and dropped links retry"
+    );
+    within(move || net2.close()).unwrap();
+}
