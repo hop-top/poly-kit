@@ -2260,16 +2260,31 @@ its name under `services.<svc>.auth` or `services.all.auth`:
   every key in `public_key_files`; with neither it is refused. A
   token's `kid` selects the key; a key left in `public_key_files` after
   rotation keeps verifying what it signed.
-- `token create` (mounted with `WithIdentity` plus any serve option,
-  whether or not the tool has `WithAPI`; `token` itself mounts with
-  `WithIdentity`, API keys or API auth plus any serve option) signs a
-  token `jwt` accepts: EdDSA, the keypair's `kid` in the header, `sub`,
-  `exp`, and optionally `tenant`, `aud`, `iss` and the scopes, written
-  as `scope` (space-delimited) and `scopes` (a list). `token verify
+- `token` is one kit-reserved command whose leaves mount by what the
+  tool has. `WithIdentity` alone, with no serve option, mounts `token
+  create`, `decode` and `claims` (package `cli`, on
+  `go/core/identity` only: a tool that serves nothing links no serve
+  authentication). Any serve option — or `peers.With`, which counts as
+  one — with `WithIdentity`, API keys or API auth adds `token verify`;
+  `WithAPIKeys` adds `token key`. The leaves merge into the one
+  command, and a tool with a `token` command of its own, mounted
+  through an option to `cli.New`, gets them grafted into it.
+- `token create` signs a token `jwt` accepts: EdDSA, the keypair's
+  `kid` in the header, `sub`, `iat`, `exp`, and optionally `tenant`,
+  `aud`, `iss` and the scopes, written as `scope` (space-delimited) and
+  `scopes` (a list). Two trust models use it. **Issuer = verifier**:
+  the serving tool mints a token or API key, hands it to a client, and
+  verifies it when it comes back. **Self-signed client**: tool A, with
+  an identity and no serve plane, mints its own tokens; tool B, serving
+  under `auth.mode: jwt`, names A's public key (the PEM
+  `identity.Keypair.MarshalPublicKey` writes) in
+  `auth.jwt.public_key_files` and accepts them. Both sign through
+  `identity.Keypair.SignJWT`, as peer challenges do, so a token one
+  tool mints verifies byte for byte on the other. `token verify
   <token>` checks one as `--service` (default `api`) would: exit `0`
   valid, `5` refused, `6` key set unreachable, `2` nothing to verify
-  with. The `token` command is kit-reserved and never served: no
-  transport — api, mcp, rpc, socket — lists or runs any of its leaves.
+  with. The `token` command is never served: no transport — api, mcp,
+  rpc, socket — lists or runs any of its leaves.
 - `jwks` and `oidc` fetch nothing at start. The key set is fetched on
   the first request that needs it, again once older than `refresh`,
   and again — at most once a minute — when a token names a `kid` the
@@ -3252,12 +3267,16 @@ changing a line:
    method returns true. Every service is required, and every run exits
    as before, unless one of those says otherwise.
 12. **A key source mounts `token` on its own, and no surface serves
-   it.** `cli.WithAPIKeys` or `cli.WithIdentity`, with any serve
-   option, now mounts the kit-reserved `token` command without
-   `WithAPI` (an identity on a tool that serves nothing mounts none),
-   so a tool that serves only `mcp`, `rpc` or the socket can issue the
-   keys and tokens its service accepts; a tool with a `token` command
-   of its own gets the kit's leaves grafted into it.
+   it.** `service.WithAPIKeys` or `cli.WithIdentity`, with any serve
+   option or `peers.With`, mounts the kit-reserved `token` command
+   without `WithAPI`, so a tool that serves only `mcp`, `rpc` or the
+   socket can issue the keys and tokens its service accepts. An
+   identity on a tool that serves nothing now mounts `token create`,
+   `decode` and `claims` too, for the self-signed client model; a
+   `token` command the adopter mounts after `cli.New` on such a tool
+   now collides with kit's. A tool with a `token` command of its own,
+   mounted through an option to `cli.New`, gets the kit's leaves
+   grafted into it.
 13. **The socket serves only kit's introspection verbs.** It used to
    run every kit-reserved command, through its bridge's admission of
    reserved verbs — `token` (minting keys), `quota show` and `quota

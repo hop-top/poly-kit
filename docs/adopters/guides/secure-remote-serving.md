@@ -270,10 +270,11 @@ own permission decision as `Meta.Extra["scopes"]`, comma-joined.
 
 **Issue your own tokens with `jwt`.** It trusts the tool's identity
 keypair (`cli.WithIdentity`) and any keys in
-`auth.jwt.public_key_files`. `WithIdentity` plus any serve option
-(`WithAPI`, or only mcp, rpc or socket) mounts `token create`, which signs with the keypair, and `token verify`,
-which checks a token the way a service would (`--service rpc` for
-another one; exit `5` when refused):
+`auth.jwt.public_key_files`. `WithIdentity` mounts `token create`,
+which signs with the keypair, on any tool, serving or not; with any
+serve option (`WithAPI`, or only mcp, rpc or socket) or `peers.With`
+it adds `token verify`, which checks a token the way a service would
+(`--service rpc` for another one; exit `5` when refused):
 
 ```console
 $ export TOKEN=$(mytool token create --sub ci-bot --tenant acme --scopes widgets:read --expires 1h)
@@ -292,6 +293,25 @@ The scopes are written as `scope` (space-delimited, the claim OAuth
 resource servers read) and as `scopes` (a list). `token claims`
 prints an unsigned template for an external signer. `token` itself is
 never served: remote callers cannot mint tokens.
+
+**Trust another tool's self-signed tokens.** The model above has the
+serving tool issue and verify its own. A client tool that serves
+nothing can sign its own instead: give it `cli.WithIdentity`, and its
+`token create` mints EdDSA tokens with its key. On the serving tool,
+name the client's public key under `jwt`, and its tokens are accepted
+beside the tool's own:
+
+```yaml
+services:
+  api:
+    auth:
+      mode: jwt
+      jwt:
+        public_key_files: [/etc/mytool/trusted/ci-client.pub]
+```
+
+The client never links the serve plane; `examples/relay` uses the same
+token to authenticate its bus connections.
 
 **Hand out API keys with `apikey`.** Add
 `service.WithAPIKeys(service.APIKeysConfig{})` and import the store's driver
@@ -1714,7 +1734,7 @@ keys, defaults and refusals.
 | `kit/permissions` annotation | none | Scopes a verified caller must all hold; otherwise `403 insufficient_scope`. The owner (socket file, stdio, CLI) is not asked. |
 | `--policy=<name>` | `kit-default` beyond loopback, none on loopback | The tool's policy engine, applied to remote calls; its `callers` section answers per caller. `kit-default` is reserved for the shipped policy. |
 | `service.WithPermission(fn)` | permit all | Permission decision on every kit-shipped transport service, after the scope check and `--policy`; can only narrow. |
-| `cli.WithIdentity(cfg)` | none | The keypair `auth.mode: jwt` trusts; with any serve option, mounts `token create` and `token verify`. |
+| `cli.WithIdentity(cfg)` | none | The keypair `auth.mode: jwt` trusts; mounts `token create`, `decode` and `claims` on any tool, and `token verify` with any serve option or `peers.With`. |
 | `service.WithAPIKeys(cfg)` | not mounted | Mounts `token key create`, `list` and `revoke` for `auth.mode: apikey`. |
 | `service.WithTokenCheck(fn)` | none | Revocation check on every credential the `auth.mode` verifier accepted (`jwt`, `jwks`, `oidc`, `apikey`); an error refuses it `401`. |
 | `service.WithServeRateLimit(cfg)` | kit tiers | The tool's own tier numbers below `rate_limit.*`; does not switch the limit on. |

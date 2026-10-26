@@ -1,6 +1,6 @@
 # cli
 
-standardized CLI framework and flag parsing. A `write`/`destructive` leaf previews under `--dry-run` (`cli.RenderPlan`) or calls `cli.OptOutDryRun`; the confirm gate skips only for a leaf that previews ([sideeffect.md](../../../docs/adopters/reference/sideeffect.md#--dry-run-and-the-confirm-gate)).
+standardized CLI framework and flag parsing. A `write`/`destructive` leaf previews under `--dry-run` (`cli.RenderPlan`) or calls `cli.OptOutDryRun`; the confirm gate skips only for a leaf that previews ([sideeffect.md](../../../docs/adopters/reference/sideeffect.md#--dry-run-and-the-confirm-gate)). `cli.WithIdentity` mounts the kit-reserved `token create|decode|claims` (self-signed EdDSA tokens another tool trusts via `auth.jwt.public_key_files`) without linking the serve plane, which adds `verify` and `key` ([bearer tokens](../../../docs/contracts/serve-lifecycle.md#bearer-tokens)).
 
 ## Flag validators
 
