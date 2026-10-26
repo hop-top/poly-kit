@@ -34,6 +34,7 @@ type linkMsg struct {
 // its cursor plus every control frame, so replies and events share one
 // ordered sequence; its reader injects inbound events into the bus.
 type link struct {
+	id       uint64 // unique per link; see LogEntry.via
 	n        *NetworkAdapter
 	conn     *websocket.Conn
 	addr     string
@@ -69,7 +70,8 @@ type link struct {
 func (n *NetworkAdapter) newLink(conn *websocket.Conn, addr string, outbound bool) *link {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &link{
-		n: n, conn: conn, addr: addr, outbound: outbound,
+		id: linkIDs.Add(1),
+		n:  n, conn: conn, addr: addr, outbound: outbound,
 		subs: newSubState(), ctl: make(chan linkMsg, 16),
 		ctx: ctx, cancel: cancel,
 		done: make(chan struct{}), wdone: make(chan struct{}),
@@ -232,7 +234,7 @@ func (l *link) drain() bool {
 
 func (l *link) send(e LogEntry) bool {
 	n := l.n
-	if e.via == l {
+	if e.via != 0 && e.via == l.id {
 		return true
 	}
 	if !entryDelivers(l.subs, l.peerOrigin(), e) {
@@ -432,7 +434,7 @@ func (l *link) onEvent(data []byte) bool {
 		}
 	}
 	ctx := context.WithValue(l.ctx, networkOriginKey, origin)
-	ctx = context.WithValue(ctx, viaKey{}, l)
+	ctx = context.WithValue(ctx, viaKey{}, l.id)
 	if l.outbound {
 		ctx = context.WithValue(ctx, deliveryKey{}, l.addr)
 	}
@@ -477,12 +479,20 @@ func (l *link) linkDown() {
 		ps.state.Code = code
 	}
 	final := ps.state.Final
+	// A link shorter than the stability window counts as a failed
+	// attempt, so a peer that drops links right after they come up is
+	// redialed with a growing backoff instead of at once.
+	if time.Since(ps.upAt) < n.stableAfter() {
+		ps.flaps++
+	} else {
+		ps.flaps = 0
+	}
 	ps.mu.Unlock()
 	if n.closed.Load() {
 		return
 	}
 	n.publishDisconnected(l.addr, final, code)
 	if !final {
-		n.goReconnect(l.addr)
+		n.goReconnectAfterDrop(l.addr)
 	}
 }

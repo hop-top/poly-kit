@@ -130,3 +130,53 @@ func TestNetworkAdapter_Handler_DuplicateAddrRefused(t *testing.T) {
 		t.Fatal("Close did not end every reader")
 	}
 }
+
+// The filter applies to relayed events too: a hub that denies a topic
+// never relays it, even though it arrived from a peer.
+func TestNetworkAdapter_Relay_FilterAppliesToRelayedEvents(t *testing.T) {
+	hub := newHub(t, WithOriginID("hub"), WithRelay(true), WithFilter(TopicFilter{Deny: []string{"secret.#"}}))
+	a, b := newClient(t, WithOriginID("A")), newClient(t, WithOriginID("B"))
+	connect(t, a, hub.url)
+	connect(t, b, hub.url)
+	var secret, public atomic.Int32
+	b.bus.Subscribe("secret.#", func(context.Context, Event) error { secret.Add(1); return nil })
+	b.bus.Subscribe("public.#", func(context.Context, Event) error { public.Add(1); return nil })
+	time.Sleep(50 * time.Millisecond)
+	_ = a.bus.Publish(context.Background(), NewEvent("secret.test.event.sent", "A", nil))
+	_ = a.bus.Publish(context.Background(), NewEvent("public.test.event.sent", "A", nil))
+	deadline := time.Now().Add(failAfter)
+	for public.Load() != 1 {
+		if time.Now().After(deadline) {
+			t.Fatal("the allowed topic was not relayed")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if n := secret.Load(); n != 0 {
+		t.Fatalf("a denied topic was relayed %d times", n)
+	}
+}
+
+// Credentials in a dial address never reach the error callback: the
+// reported error drops userinfo, query and fragment.
+func TestNetworkAdapter_HandshakeErrorRedactsCredentials(t *testing.T) {
+	auth := &gateAuth{}
+	auth.setReject(true)
+	h := newHub(t, WithAuth(auth))
+	errs := make(chan error, 1)
+	cl := newClient(t, WithAuth(OpenAuth()), WithNetworkErrorFunc(func(err error) { errs <- err }))
+	host := h.url[len("ws://"):]
+	addr := "ws://user:hunter2@" + host + "/bus?token=abc#frag"
+	if err := cl.n.Connect(context.Background(), addr); !errors.Is(err, ErrAuthFailed) {
+		t.Fatalf("connect err = %v", err)
+	}
+	select {
+	case err := <-errs:
+		want := "bus: handshake with ws://" + host + "/bus: bus: network auth failed"
+		if err.Error() != want {
+			t.Fatalf("reported %q, want %q", err, want)
+		}
+	case <-time.After(failAfter):
+		t.Fatal("no error reported")
+	}
+}

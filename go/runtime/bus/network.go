@@ -90,9 +90,12 @@ type ctxKey struct{}
 // networkOriginKey marks events injected from the network to prevent re-forwarding.
 var networkOriginKey = ctxKey{}
 
-// viaKey carries the link an inbound event arrived on, so a relay never
-// sends it back there, whatever origin the frame claimed.
+// viaKey carries the id of the link an inbound event arrived on, so a
+// relay never sends it back there, whatever origin the frame claimed.
 type viaKey struct{}
+
+// linkIDs numbers links from 1; 0 marks a local event.
+var linkIDs atomic.Uint64
 
 // NetworkAdapter bridges a local bus to remote peers over WebSocket.
 //
@@ -199,7 +202,7 @@ func (n *NetworkAdapter) observe(ctx context.Context, e Event) {
 	if !n.filter.Match(string(e.Topic)) {
 		return
 	}
-	via, _ := ctx.Value(viaKey{}).(*link)
+	via, _ := ctx.Value(viaKey{}).(uint64)
 	n.log.Append(LogEntry{Event: e, Origin: origin, via: via})
 	n.wake()
 }
@@ -314,9 +317,20 @@ func (n *NetworkAdapter) dialConfigured(addr string) {
 	}
 }
 
-// goReconnect starts a reconnect loop for addr, tracked by the adapter's
-// WaitGroup so Close waits for it.
+// goReconnect starts a reconnect loop for addr that dials at once,
+// tracked by the adapter's WaitGroup so Close waits for it.
 func (n *NetworkAdapter) goReconnect(addr string) {
+	n.startReconnect(addr, false)
+}
+
+// goReconnectAfterDrop starts a reconnect loop for an address whose link
+// went down. It never dials at once: it first waits the backoff for the
+// address's run of short-lived links (see stableAfter).
+func (n *NetworkAdapter) goReconnectAfterDrop(addr string) {
+	n.startReconnect(addr, true)
+}
+
+func (n *NetworkAdapter) startReconnect(addr string, wait bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.closed.Load() || n.reconnecting[addr] || n.peers[addr] == nil {
@@ -324,12 +338,26 @@ func (n *NetworkAdapter) goReconnect(addr string) {
 	}
 	n.reconnecting[addr] = true
 	n.wg.Add(1)
-	go n.reconnectLoop(addr)
+	go n.reconnectLoop(addr, wait)
+}
+
+// stableAfter is the stability window: a link that stayed up this long
+// resets its address's backoff. It is the maximum backoff, so a link
+// counts as healthy once it outlived the longest wait the policy would
+// impose, and the window scales with WithBackoff.
+func (n *NetworkAdapter) stableAfter() time.Duration {
+	if n.reconnect.MaxDelay > 0 {
+		return n.reconnect.MaxDelay
+	}
+	return 30 * time.Second
 }
 
 // reconnectLoop dials addr until connected, Disconnect, Close, or a
-// final failure. Start it through goReconnect.
-func (n *NetworkAdapter) reconnectLoop(addr string) {
+// final failure, waiting the backoff between attempts. With wait it
+// also waits before the first dial, starting at the address's count of
+// consecutive short-lived links, so backoff persists across them. Start
+// it through goReconnect or goReconnectAfterDrop.
+func (n *NetworkAdapter) reconnectLoop(addr string, wait bool) {
 	defer n.wg.Done()
 	defer func() {
 		n.mu.Lock()
@@ -352,14 +380,34 @@ func (n *NetworkAdapter) reconnectLoop(addr string) {
 		cancel()
 	}()
 
-	_ = util.Retry(ctx, n.reconnect, func() error {
-		dialCtx, dialCancel := context.WithTimeout(ctx, 10*time.Second)
-		defer dialCancel()
-		if err := n.connect(dialCtx, addr, true); err != nil && !isFinalConnectErr(err) {
-			return err
+	attempt := 0
+	if wait {
+		if ps := n.peer(addr); ps != nil {
+			ps.mu.Lock()
+			attempt = ps.flaps
+			ps.mu.Unlock()
 		}
-		return nil
-	})
+	}
+	for tries := 1; ; tries++ {
+		if wait {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(n.reconnect.Backoff(attempt)):
+			}
+		}
+		wait = true
+		dialCtx, dialCancel := context.WithTimeout(ctx, 10*time.Second)
+		err := n.connect(dialCtx, addr, true)
+		dialCancel()
+		if err == nil || isFinalConnectErr(err) || ctx.Err() != nil {
+			return
+		}
+		if n.reconnect.MaxAttempts > 0 && tries >= n.reconnect.MaxAttempts {
+			return
+		}
+		attempt++
+	}
 }
 
 // WithNetworkOption appends NetworkOptions used when constructing

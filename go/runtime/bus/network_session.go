@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/coder/websocket"
@@ -156,6 +157,7 @@ func (n *NetworkAdapter) connect(ctx context.Context, addr string, fromLoop bool
 	ps.send.linkUp(n.log)
 	// A fresh state also clears Final from an earlier refused session.
 	ps.state = LinkState{Connected: true, Streams: l.stream, Format: format, Resume: resume}
+	ps.upAt = time.Now()
 	if l.stream {
 		ps.state.Stream = ack.Stream.ID
 	}
@@ -175,7 +177,7 @@ func (n *NetworkAdapter) connect(ctx context.Context, addr string, fromLoop bool
 // token is not. link.disconnected is published once per change of
 // code, so a retrying address does not flood the bus.
 func (n *NetworkAdapter) handshakeFailed(addr string, ps *peerState, err error) error {
-	n.reportErr(fmt.Errorf("bus: handshake with %s: %w", addr, err))
+	n.reportErr(fmt.Errorf("bus: handshake with %s: %w", redactAddr(addr), err))
 	var (
 		se    *StreamError
 		code  string
@@ -378,4 +380,17 @@ func (n *NetworkAdapter) refuseOrClose(ctx context.Context, conn *websocket.Conn
 func (n *NetworkAdapter) refuseSession(ctx context.Context, conn *websocket.Conn, e *StreamError) {
 	_ = conn.Write(ctx, websocket.MessageText, encodeSessionError(e))
 	_ = conn.Close(statusPolicy, "invalid session")
+}
+
+// redactAddr drops the userinfo, query and fragment of a dial address,
+// so credentials in a URL never reach the error callback or a log.
+func redactAddr(addr string) string {
+	u, err := url.Parse(addr)
+	if err != nil {
+		return "<unparseable address>"
+	}
+	u.User = nil
+	u.RawQuery, u.ForceQuery = "", false
+	u.Fragment, u.RawFragment = "", ""
+	return u.String()
 }
