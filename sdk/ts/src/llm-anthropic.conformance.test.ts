@@ -1,12 +1,17 @@
 // Runs contracts/llm-v1/vectors.json against this SDK: every
 // anthropic_* section through AnthropicAdapter and loopback fake
-// servers, credential_headers, redact_uri and usage_cost. Go is
+// servers, credential_headers, redact_uri, usage_cost, and the bus_*
+// payloads through the pure builders (this client publishes no bus
+// events). Go is
 // canonical; a failure means this SDK drifted, not that a vector
 // should change. tool_names runs in llm-toolnames.conformance.test.ts.
 //
 // Sections this SDK does not run are listed in NOT_RUN with the reason;
 // a section in neither list fails the run, so none is skipped silently.
 
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -15,6 +20,7 @@ import {
   HTTPStatusError,
   KeyEndpointError,
   ModelError,
+  PermissionDeniedError,
   RateLimitError,
   ResponseTooLargeError,
   StreamTruncatedError,
@@ -22,13 +28,19 @@ import {
   inlineSource,
   isFallbackable,
   redactURI,
+  requestStartedPayload,
+  responseReceivedPayload,
   usageCost,
+  type CallOp,
   type Message,
   type Request,
   type ResolvedConfig,
+  type Token,
   type ToolCall,
+  type ToolChoiceMode,
   type ToolDef,
   type ToolStream,
+  type Usage,
 } from "./llm";
 import { AnthropicAdapter } from "./llm-anthropic";
 import {
@@ -59,6 +71,7 @@ interface VRequest {
   stop_sequences?: string[];
   messages: VMessage[];
   thinking_budget?: number;
+  extensions?: Record<string, unknown>;
 }
 
 interface VTool {
@@ -88,6 +101,8 @@ const RUN = [
   "anthropic_request", "anthropic_request_error", "anthropic_headers",
   "anthropic_stream", "anthropic_accumulate", "anthropic_error",
   "anthropic_limits", "anthropic_response", "anthropic_tool_names",
+  "anthropic_tool_choice", "anthropic_hermetic", "anthropic_stream_events",
+  "bus_request_started", "bus_response_received",
 ];
 const SIBLING = ["tool_names"];
 const NOT_RUN: Record<string, string> = {
@@ -95,27 +110,10 @@ const NOT_RUN: Record<string, string> = {
     "core parseURI keeps its own error texts and rejects an empty model; adapters are unaffected",
   key_endpoint:
     "core has no llm.yaml, ApplyAPIKey or Resolve-time key guard; adapters guard keys instead",
-  anthropic_tool_choice:
-    "pending the TypeScript port of the Go 403 split / system joining / stream events / hermetic / metadata-only bus changes",
-  anthropic_hermetic:
-    "pending the TypeScript port of the Go 403 split / system joining / stream events / hermetic / metadata-only bus changes",
-  anthropic_stream_events:
-    "pending the TypeScript port of the Go 403 split / system joining / stream events / hermetic / metadata-only bus changes",
-  bus_request_started:
-    "pending the TypeScript port of the Go 403 split / system joining / stream events / hermetic / metadata-only bus changes",
-  bus_response_received:
-    "pending the TypeScript port of the Go 403 split / system joining / stream events / hermetic / metadata-only bus changes",
 };
 /** Single vectors not run, with why. */
 const NOT_RUN_VECTORS: Record<string, string> = {
   "credential_headers/llm.yaml base_url": "core has no llm.yaml layer",
-  "anthropic_error/403 permission denied": "403 permission-denied split pending the TypeScript port",
-  "anthropic_error/stream: 403 before any event": "403 permission-denied split pending the TypeScript port",
-  "anthropic_stream/permission error event mid-stream": "403 permission-denied split pending the TypeScript port",
-  "anthropic_request/system messages join in order": "system-message joining pending the TypeScript port",
-  "anthropic_request/empty system messages are skipped": "system-message joining pending the TypeScript port",
-  "anthropic_request/only empty system messages send no system": "system-message joining pending the TypeScript port",
-  "anthropic_request/system cache breakpoints split the joined text": "system-message joining pending the TypeScript port",
 };
 
 const file = loadVectors<File>();
@@ -176,6 +174,7 @@ function toMessage(m: VMessage): Message {
 function toRequest(r: VRequest): Request {
   strictKeys(r, [
     "model", "temperature", "max_tokens", "stop_sequences", "messages", "thinking_budget",
+    "extensions",
   ], "request");
   const out: Request = { messages: r.messages.map(toMessage) };
   if (r.model) out.model = r.model;
@@ -183,6 +182,7 @@ function toRequest(r: VRequest): Request {
   if (r.max_tokens) out.maxTokens = r.max_tokens;
   if (r.stop_sequences) out.stopSequences = r.stop_sequences;
   if (r.thinking_budget) out.thinking = { budgetTokens: r.thinking_budget };
+  if (r.extensions) out.extensions = r.extensions;
   return out;
 }
 
@@ -244,6 +244,10 @@ function errorKind(err: unknown): [string, number] {
   if (err === undefined || err === null) return ["", 0];
   if (err instanceof StreamTruncatedError) return ["truncated", 0];
   if (err instanceof ResponseTooLargeError) return ["too_large", 0];
+  if (err instanceof PermissionDeniedError) {
+    // A permission denial is an auth error too.
+    return [err instanceof AuthError ? "permission_denied" : "permission_denied without auth", 0];
+  }
   if (err instanceof AuthError) return ["auth", 0];
   if (err instanceof RateLimitError) return ["rate_limit", 0];
   if (err instanceof ModelError) return ["model", 0];
@@ -325,11 +329,6 @@ describe("llm-v1 conformance: anthropic_request", () => {
     want_body: unknown;
   };
   for (const v of section("anthropic_request") as V[]) {
-    const why = NOT_RUN_VECTORS[`anthropic_request/${v.name}`];
-    if (why) {
-      it.skip(`${v.name} (${why})`, () => {});
-      continue;
-    }
     it(v.name, async () => {
       strictKeys(v, ["name", "adapter_model", "request", "tools", "want_body"], v.name);
       const s = await server((_h, res) => reply(res, "application/json", OK_MESSAGE));
@@ -445,11 +444,6 @@ describe("llm-v1 conformance: anthropic_stream", () => {
     want_thinking: string[];
   };
   for (const v of section("anthropic_stream") as V[]) {
-    const why = NOT_RUN_VECTORS[`anthropic_stream/${v.name}`];
-    if (why) {
-      it.skip(`${v.name} (${why})`, () => {});
-      continue;
-    }
     it(v.name, async () => {
       strictKeys(v, [
         "name", "sse", "want_tokens", "want_error", "error_kind", "thinking_budget", "want_thinking",
@@ -539,11 +533,6 @@ describe("llm-v1 conformance: anthropic_error", () => {
     stream: boolean;
   };
   for (const v of section("anthropic_error") as V[]) {
-    const why = NOT_RUN_VECTORS[`anthropic_error/${v.name}`];
-    if (why) {
-      it.skip(`${v.name} (${why})`, () => {});
-      continue;
-    }
     it(v.name, { timeout: 10_000 }, async () => {
       strictKeys(v, [
         "name", "responses", "want_kind", "want_status", "fallbackable", "attempts", "stream",
@@ -739,6 +728,301 @@ describe("llm-v1 conformance: anthropic_tool_names", () => {
       expect(sent.tools).toEqual(v.want_tools);
       expect(sent.history).toEqual(v.want_history);
       expect(calls.map((c) => ({ id: c.id, name: c.name }))).toEqual(v.want_calls ?? []);
+    });
+  }
+});
+
+// A complete, empty streamed turn.
+const MINIMAL_SSE =
+  'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"m","stop_reason":null,"usage":{"input_tokens":1,"output_tokens":0}}}\n\n' +
+  'event: message_stop\ndata: {"type":"message_stop"}\n\n';
+
+const toolDefs = (names: string[]): ToolDef[] =>
+  names.map((name) => ({ name, description: "", parameters: undefined }));
+
+describe("llm-v1 conformance: anthropic_tool_choice", () => {
+  type V = {
+    name: string;
+    call: "complete" | "stream" | "tools" | "stream_tools";
+    tools: string[];
+    tool_choice: { mode: string; name?: string } | null;
+    want_tool_choice?: unknown;
+    error?: string;
+  };
+  for (const v of section("anthropic_tool_choice") as V[]) {
+    it(v.name, async () => {
+      strictKeys(v, ["name", "call", "tools", "tool_choice", "want_tool_choice", "error"], v.name);
+      const streaming = v.call === "stream" || v.call === "stream_tools";
+      const s = await server((_h, res) =>
+        streaming ? reply(res, "text/event-stream", MINIMAL_SSE) : reply(res, "application/json", OK_MESSAGE)
+      );
+      const a = adapter(s.url);
+      const req: Request = { ...HI };
+      if (v.tool_choice) {
+        strictKeys(v.tool_choice, ["mode", "name"], v.name);
+        req.toolChoice = { mode: v.tool_choice.mode as ToolChoiceMode };
+        if (v.tool_choice.name !== undefined) req.toolChoice.name = v.tool_choice.name;
+      }
+      const tools = toolDefs(v.tools);
+      let err: unknown;
+      try {
+        switch (v.call) {
+          case "complete":
+            await a.complete(req);
+            break;
+          case "tools":
+            await a.callWithTools(req, tools);
+            break;
+          case "stream": {
+            const r = await drain(a.stream(req));
+            if (r.error) throw r.error;
+            break;
+          }
+          case "stream_tools": {
+            const r = await drain(a.streamWithTools(req, tools));
+            if (r.error) throw r.error;
+            break;
+          }
+          default:
+            throw new Error(`unknown call ${JSON.stringify(v.call)}`);
+        }
+      } catch (e) {
+        err = e;
+      }
+      if (v.error) {
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toBe(v.error);
+        expect(s.hits, "a rejected request is never sent").toHaveLength(0);
+        return;
+      }
+      expect(err).toBeUndefined();
+      const body = JSON.parse(s.hits[0]!.body) as { tool_choice?: unknown };
+      if (v.want_tool_choice === null || v.want_tool_choice === undefined) {
+        expect("tool_choice" in body, "no tool_choice sent").toBe(false);
+        return;
+      }
+      expect(body.tool_choice).toEqual(v.want_tool_choice);
+    });
+  }
+});
+
+describe("llm-v1 conformance: anthropic_hermetic", () => {
+  type V = {
+    name: string;
+    base_url: string;
+    yaml: string;
+    env: Record<string, string>;
+    want_host: string;
+    sent: string[];
+    withheld: string[];
+  };
+  for (const v of section("anthropic_hermetic") as V[]) {
+    it(v.name, async () => {
+      strictKeys(v, ["name", "base_url", "yaml", "env", "want_host", "sent", "withheld"], v.name);
+      // This SDK reads no llm.yaml at all; the file is written anyway,
+      // where Go would find it, so the vector runs as given.
+      const xdg = mkdtempSync(join(tmpdir(), "kit-llm-hermetic-"));
+      const restore = isolateEnv(["XDG_CONFIG_HOME"]);
+      process.env["XDG_CONFIG_HOME"] = xdg;
+      if (v.yaml !== "") {
+        mkdirSync(join(xdg, "hop"), { recursive: true });
+        writeFileSync(join(xdg, "hop", "llm.yaml"), v.yaml);
+      }
+      Object.assign(process.env, v.env);
+      // Intercept fetch: the vectors name hosts no test may reach.
+      const sent: { url: string; headers: Headers }[] = [];
+      const orig = globalThis.fetch;
+      globalThis.fetch = (async (u: unknown, init?: RequestInit) => {
+        sent.push({ url: String(u), headers: new Headers(init?.headers) });
+        return new globalThis.Response(OK_MESSAGE, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof fetch;
+      try {
+        const a = new AnthropicAdapter({
+          uri: { scheme: "anthropic", model: "m" },
+          provider: { apiKey: "kit-key", baseURL: v.base_url || undefined, model: "m" },
+          fallbacks: [],
+          hermetic: true,
+        });
+        await a.complete(HI);
+      } finally {
+        globalThis.fetch = orig;
+        restore();
+        rmSync(xdg, { recursive: true, force: true });
+      }
+      expect(sent).toHaveLength(1);
+      expect(new URL(sent[0]!.url).host).toBe(v.want_host);
+      for (const h of v.sent) expect(sent[0]!.headers.get(h), h).toBeTruthy();
+      for (const h of v.withheld) expect(sent[0]!.headers.get(h), h).toBeNull();
+    });
+  }
+});
+
+function usageJSON(u: Usage): Record<string, number> {
+  return {
+    prompt_tokens: u.promptTokens,
+    completion_tokens: u.completionTokens,
+    cache_read_tokens: u.cacheReadTokens ?? 0,
+    cache_creation_tokens: u.cacheCreationTokens ?? 0,
+    total_tokens: u.totalTokens,
+  };
+}
+
+/** One streamed token as the vectors spell it. */
+function eventJSON(t: Token): Record<string, unknown> {
+  if (t.done) return { type: "done" };
+  const ev = t.toolCall;
+  if (ev) {
+    const out: Record<string, unknown> = { type: "tool_call", kind: ev.kind, index: ev.index };
+    switch (ev.kind) {
+      case "start":
+        out["id"] = ev.id;
+        out["name"] = ev.name;
+        break;
+      case "delta":
+        out["arguments"] = ev.argumentsDelta;
+        break;
+      case "end":
+        expect(ev.call, "end carries the call").toBeDefined();
+        expect(ev.id, "end repeats the id").toBe(ev.call!.id);
+        expect(ev.name, "end repeats the name").toBe(ev.call!.name);
+        out["id"] = ev.call!.id;
+        out["name"] = ev.call!.name;
+        out["arguments"] = ev.call!.arguments;
+        break;
+    }
+    return out;
+  }
+  if (t.usage) return { type: "usage", usage: usageJSON(t.usage) };
+  if (t.thinking) return { type: "thinking", thinking: t.thinking };
+  return { type: "text", text: t.content };
+}
+
+describe("llm-v1 conformance: anthropic_stream_events", () => {
+  type V = {
+    name: string;
+    sse?: string;
+    sse_from?: string;
+    tools: string[];
+    stream_events: boolean;
+    want_events: unknown[];
+    error_kind: string;
+  };
+  const streams = new Map(
+    (section("anthropic_stream") as { name: string; sse: string }[]).map((s) => [
+      `anthropic_stream/${s.name}`,
+      s.sse,
+    ])
+  );
+  for (const v of section("anthropic_stream_events") as V[]) {
+    it(v.name, async () => {
+      strictKeys(v, [
+        "name", "sse", "sse_from", "tools", "stream_events", "want_events", "error_kind",
+      ], v.name);
+      const sse = v.sse_from ? streams.get(v.sse_from) : v.sse;
+      expect(sse, `sse_from ${v.sse_from}`).toBeDefined();
+      const s = await sseServer(sse!);
+      const a = adapter(s.url);
+      const req: Request = { ...HI, streamEvents: v.stream_events };
+      const withTools = v.tools.length > 0;
+      const st: ToolStream = withTools ? a.streamWithTools(req, toolDefs(v.tools)) : a.stream(req);
+      const iter = st[Symbol.asyncIterator]();
+      const got: unknown[] = [];
+      const ends: { index: number; call: ToolCall }[] = [];
+      let last: Usage | undefined;
+      let err: unknown;
+      try {
+        for (;;) {
+          const r = await iter.next();
+          if (r.done) break;
+          const t = r.value;
+          got.push(eventJSON(t));
+          if (t.toolCall?.kind === "end") ends.push({ index: t.toolCall.index, call: t.toolCall.call! });
+          if (t.usage) last = t.usage;
+          if (t.done) {
+            expect((await iter.next()).done, "nothing follows done").toBe(true);
+            break;
+          }
+        }
+      } catch (e) {
+        err = e;
+      }
+      expect(got).toEqual(v.want_events);
+      expect(errorKind(err)[0], String(err)).toBe(v.error_kind);
+      if (!withTools || err !== undefined) return;
+      // The events and the outcome tell the same story.
+      const out = st.outcome();
+      expect(out).toBeDefined();
+      if (v.stream_events) {
+        expect(out!.toolCalls).toHaveLength(ends.length);
+        for (const e of ends) expect(e.call, "end call is outcome.toolCalls[index]").toEqual(out!.toolCalls[e.index]);
+        if (last) expect(out!.usage, "the last usage snapshot is the outcome's").toEqual(last);
+      }
+    });
+  }
+});
+
+describe("llm-v1 conformance: bus_request_started", () => {
+  type V = {
+    name: string;
+    op: CallOp;
+    tools: string[];
+    request: VRequest;
+    want_payload: unknown;
+  };
+  for (const v of section("bus_request_started") as V[]) {
+    it(v.name, () => {
+      strictKeys(v, ["name", "op", "tools", "request", "want_payload"], v.name);
+      const got = requestStartedPayload(v.op, toRequest(v.request), v.tools.length);
+      expect(JSON.parse(JSON.stringify(got))).toEqual(v.want_payload);
+    });
+  }
+});
+
+describe("llm-v1 conformance: bus_response_received", () => {
+  type V = {
+    name: string;
+    op: CallOp;
+    response: {
+      content: string;
+      finish_reason: string;
+      usage: Record<string, number>;
+      thinking?: { thinking: string; signature: string }[];
+    };
+    tool_calls: { id: string; name: string; arguments: string }[];
+    want_payload: Record<string, unknown>;
+  };
+  for (const v of section("bus_response_received") as V[]) {
+    it(v.name, () => {
+      strictKeys(v, ["name", "op", "response", "tool_calls", "want_payload"], v.name);
+      const r = v.response;
+      strictKeys(r, ["content", "finish_reason", "usage", "thinking"], v.name);
+      const got = responseReceivedPayload(
+        v.op,
+        {
+          content: r.content,
+          role: "assistant",
+          finishReason: r.finish_reason,
+          usage: {
+            promptTokens: r.usage["prompt_tokens"]!,
+            completionTokens: r.usage["completion_tokens"]!,
+            cacheReadTokens: r.usage["cache_read_tokens"]!,
+            cacheCreationTokens: r.usage["cache_creation_tokens"]!,
+            totalTokens: r.usage["total_tokens"]!,
+          },
+          thinking: (r.thinking ?? []).map((t) => ({ ...t, redacted: "" })),
+        },
+        v.tool_calls.map((c) => ({ id: c.id, name: c.name, arguments: c.arguments })),
+        12.7
+      );
+      const payload = JSON.parse(JSON.stringify(got)) as Record<string, unknown>;
+      // duration_ms is a non-negative integer, not compared.
+      expect(Number.isInteger(payload["duration_ms"])).toBe(true);
+      expect(payload["duration_ms"] as number).toBeGreaterThanOrEqual(0);
+      delete payload["duration_ms"];
+      expect(payload).toEqual(v.want_payload);
     });
   }
 });

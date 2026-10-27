@@ -200,12 +200,24 @@ export function credentialsTrusted(
   baseURL: string,
   ...extra: string[]
 ): boolean {
+  return trustedOrigin(scheme, baseURL, extra, process.env["LLM_BASE_URL"]);
+}
+
+/**
+ * @internal {@link credentialsTrusted} with `LLM_BASE_URL` passed in:
+ * a hermetic adapter passes none.
+ */
+export function trustedOrigin(
+  scheme: string,
+  baseURL: string,
+  extra: readonly string[],
+  llmBaseURL: string | undefined
+): boolean {
   const e = parseEndpoint(baseURL);
   if (!e) return false;
   if (isLoopback(e.host)) return true;
   const trusted = [...(declarations.get(scheme)?.endpoints ?? []), ...extra];
-  const env = process.env["LLM_BASE_URL"];
-  if (env) trusted.push(env);
+  if (llmBaseURL) trusted.push(llmBaseURL);
   return trusted.some((t) => {
     const te = t ? parseEndpoint(t) : undefined;
     return te !== undefined && origin(te) === origin(e);

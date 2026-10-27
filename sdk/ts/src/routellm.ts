@@ -63,10 +63,13 @@ function defaultRouterConfig(): RouterConfig {
 
 /**
  * Extract and validate RouteLLM configuration from provider extras.
- * Environment variables override all other sources.
+ * Environment variables (`ROUTELLM_BASE_URL`, `ROUTELLM_STRONG_MODEL`,
+ * `ROUTELLM_WEAK_MODEL`, `ROUTELLM_ROUTERS`) override all other
+ * sources; with `opts.hermetic` none is read.
  */
 export function parseRouterConfig(
-  extras?: Record<string, unknown>
+  extras?: Record<string, unknown>,
+  opts: { hermetic?: boolean } = {}
 ): RouterConfig {
   const cfg = defaultRouterConfig();
 
@@ -114,6 +117,8 @@ export function parseRouterConfig(
       }
     }
   }
+
+  if (opts.hermetic) return cfg;
 
   // Environment variable overrides (highest precedence).
   const envBaseUrl = process.env["ROUTELLM_BASE_URL"];
@@ -200,7 +205,7 @@ export class RouteLLMAdapter
   private readonly inner: OpenAIAdapter;
 
   constructor(cfg: ResolvedConfig) {
-    this.config = parseRouterConfig(cfg.provider.extras);
+    this.config = parseRouterConfig(cfg.provider.extras, { hermetic: cfg.hermetic });
     // The server speaks the OpenAI wire: its tool-name rule applies.
     // Checked here so an unknown mode fails construction.
     toolNameModeOf(cfg.provider.params);
@@ -239,6 +244,7 @@ export class RouteLLMAdapter
           params,
         },
         fallbacks: [],
+        hermetic: cfg.hermetic,
       },
       { label: "routellm" }
     );

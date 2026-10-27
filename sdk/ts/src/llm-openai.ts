@@ -30,8 +30,10 @@ import {
   LLMError,
   ModelError,
   OPENAI_TOOL_NAMES,
+  PermissionDeniedError,
   RateLimitError,
   ToolNames,
+  checkToolChoice,
   checkToolLinkage,
   register,
   toolNameModeOf,
@@ -159,7 +161,7 @@ export class OpenAIAdapter
 
   async complete(req: Request): Promise<Response> {
     const names = this.toolNameMap([]);
-    const c = await this.send(await this.buildBody(req, names), req);
+    const c = await this.send(await this.buildBody(req, names, []), req);
     const choice = c.choices?.[0];
     return {
       content: choice?.message?.content ?? "",
@@ -171,7 +173,7 @@ export class OpenAIAdapter
 
   async callWithTools(req: Request, tools: ToolDef[]): Promise<ToolResponse> {
     const names = this.toolNameMap(tools);
-    const body = await this.buildBody(req, names);
+    const body = await this.buildBody(req, names, tools);
     body["tools"] = mapTools(names.defs(tools));
     const c = await this.send(body, req);
     const choice = c.choices?.[0];
@@ -244,7 +246,7 @@ export class OpenAIAdapter
     done: (o: StreamOutcome) => void
   ): AsyncGenerator<Token> {
     const names = this.toolNameMap(tools ?? []);
-    const body = await this.buildBody(req, names);
+    const body = await this.buildBody(req, names, tools ?? []);
     if (tools) body["tools"] = mapTools(names.defs(tools));
     body["stream"] = true;
     const resp = await post(this.transport(req), this.url(), {
@@ -287,7 +289,20 @@ export class OpenAIAdapter
     yield { content: "", done: true };
   }
 
-  private async buildBody(req: Request, names: ToolNames): Promise<Wire> {
+  /**
+   * Maps `req`; `tools` are the call's tools, which `req.toolChoice` is
+   * checked against (none for a call without tools).
+   */
+  private async buildBody(
+    req: Request,
+    names: ToolNames,
+    tools: ReadonlyArray<{ name: string }>
+  ): Promise<Wire> {
+    try {
+      checkToolChoice(req.toolChoice, tools);
+    } catch (err) {
+      throw new LLMError(`${this.label}: ${(err as Error).message}`);
+    }
     const messages: Wire[] = [];
     for (const m of req.messages) {
       messages.push(await mapMessage(m, names, this.label));
@@ -298,6 +313,16 @@ export class OpenAIAdapter
       body["max_tokens"] = req.maxTokens;
     }
     if (req.stopSequences?.length) body["stop"] = req.stopSequences;
+    const c = req.toolChoice;
+    if (c) {
+      // any is "required"; a named tool goes by the name sent for it.
+      body["tool_choice"] =
+        c.mode === "tool"
+          ? { type: "function", function: { name: names.wire(c.name ?? "") } }
+          : c.mode === "any"
+            ? "required"
+            : c.mode;
+    }
     return body;
   }
 }
@@ -557,8 +582,9 @@ function mapErrorResponse(
   const api = new APIError(scheme, r.status, e.type ?? "", message);
   switch (r.status) {
     case 401:
-    case 403:
       return new AuthError(scheme, api);
+    case 403:
+      return new PermissionDeniedError(scheme, api);
     case 429:
       return new RateLimitError(scheme);
     case 404:

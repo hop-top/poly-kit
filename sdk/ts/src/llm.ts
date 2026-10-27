@@ -50,6 +50,13 @@ export {
   credentialsTrusted,
   redactURI,
 } from "./llm-endpoint";
+export {
+  requestStartedPayload,
+  responseReceivedPayload,
+  type CallOp,
+  type RequestStartedPayload,
+  type ResponseReceivedPayload,
+} from "./llm-payload";
 
 // ─── Data types ──────────────────────────────────────────────────────────────
 
@@ -163,6 +170,73 @@ export interface Request {
   extensions?: Record<string, unknown>;
   /** Enables extended thinking; thinking deltas then stream as {@link Token.thinking}. */
   thinking?: ThinkingConfig;
+  /**
+   * Makes a stream also yield incremental tool-call events
+   * ({@link Token.toolCall}) and usage snapshots ({@link Token.usage}).
+   * Unset, a stream yields exactly the tokens it always has. Ignored by
+   * `complete` and `callWithTools`.
+   */
+  streamEvents?: boolean;
+  /**
+   * Constrains tool use on a tool-calling request (`callWithTools`,
+   * `streamWithTools`); unset leaves the provider default. See
+   * {@link ToolChoice}.
+   */
+  toolChoice?: ToolChoice;
+}
+
+/** Whether the model must call a tool. */
+export type ToolChoiceMode = "auto" | "any" | "none" | "tool";
+
+/**
+ * Constrains tool use: `auto` lets the model decide (the providers'
+ * default), `any` makes it call at least one tool of its pick, `none`
+ * forbids tool calls although tools are defined, `tool` makes it call
+ * the tool `name`: its {@link ToolDef.name} as defined, before any
+ * provider name mapping. Set `name` with mode `tool` only.
+ *
+ * Adapters reject an invalid choice ({@link checkToolChoice}) before
+ * sending, and so does a call without tools (`complete`, `stream`).
+ */
+export interface ToolChoice {
+  mode: ToolChoiceMode;
+  name?: string;
+}
+
+const TOOL_CHOICE_MODES: readonly string[] = ["auto", "any", "none", "tool"];
+
+/**
+ * Throws an {@link LLMError} saying why `c` cannot go with `tools`: a
+ * mode that is not a {@link ToolChoiceMode}, no tools, a name missing
+ * with mode `tool` or set with another mode, or naming no tool in
+ * `tools`. Undefined `c` is valid. Adapters prefix the message with
+ * their scheme.
+ */
+export function checkToolChoice(
+  c: ToolChoice | undefined,
+  tools: ReadonlyArray<{ name: string }>
+): void {
+  if (!c) return;
+  const q = (v: string) => JSON.stringify(v);
+  if (!TOOL_CHOICE_MODES.includes(c.mode)) {
+    throw new LLMError(`unknown tool_choice mode ${q(String(c.mode))}`);
+  }
+  if (tools.length === 0) {
+    throw new LLMError(`tool_choice ${q(c.mode)} needs tools`);
+  }
+  const name = c.name ?? "";
+  if (c.mode !== "tool") {
+    if (name !== "") {
+      throw new LLMError(`tool_choice ${q(c.mode)} takes no tool name`);
+    }
+    return;
+  }
+  if (name === "") {
+    throw new LLMError(`tool_choice ${q(c.mode)} needs a tool name`);
+  }
+  if (!tools.some((t) => t.name === name)) {
+    throw new LLMError(`tool_choice names unknown tool ${q(name)}`);
+  }
 }
 
 export interface Response {
@@ -208,7 +282,10 @@ export function usageCost(u: Usage, p: Price): number {
 
 /**
  * A single streaming chunk. The final token has `done: true`; nothing
- * follows it.
+ * follows it. A token carries one thing: a text delta (`content`), a
+ * thinking delta (`thinking`), a tool-call event (`toolCall`), a usage
+ * snapshot (`usage`), or the end (`done`); `content` is `""` on all but
+ * a text delta.
  */
 export interface Token {
   content: string;
@@ -217,7 +294,56 @@ export interface Token {
    * {@link Request.thinking}; `content` is then empty.
    */
   thinking?: string;
+  /**
+   * An incremental tool-call event, sent only when the request set
+   * {@link Request.streamEvents}. See {@link ToolCallEvent}.
+   */
+  toolCall?: ToolCallEvent;
+  /**
+   * The turn's usage so far, sent only when the request set
+   * {@link Request.streamEvents}, each time the provider reports it. A
+   * cumulative snapshot, never a delta: counts never go down, and the
+   * last one equals the finished turn's usage ({@link StreamOutcome.usage}).
+   */
+  usage?: Usage;
   done: boolean;
+}
+
+/**
+ * The step of a streamed tool call: `start` opens it (`index`, `id`,
+ * `name`), `delta` carries a fragment of its JSON arguments, `end`
+ * closes it (`call` holds it complete).
+ */
+export type ToolCallEventKind = "start" | "delta" | "end";
+
+/**
+ * One step of a tool call as it streams.
+ *
+ * For each call: one start, then any deltas, then one end, in that
+ * order; events of parallel calls may interleave and are told apart by
+ * `index`, the call's position in {@link StreamOutcome.toolCalls}. A
+ * call that started but never ended (the stream failed, was cancelled
+ * or closed) did not complete: no end event is made up for it.
+ */
+export interface ToolCallEvent {
+  kind: ToolCallEventKind;
+  index: number;
+  /**
+   * Set on start and end. `name` is the tool's name as the caller
+   * defined it, whatever name went over the wire.
+   */
+  id?: string;
+  name?: string;
+  /**
+   * A raw fragment of the arguments' JSON, on delta only; fragments
+   * concatenate to the complete arguments and are not valid JSON alone.
+   */
+  argumentsDelta?: string;
+  /**
+   * The complete call, on end only: exactly the entry at `index` in
+   * {@link StreamOutcome.toolCalls}.
+   */
+  call?: ToolCall;
 }
 
 export interface ToolDef {
@@ -319,6 +445,14 @@ export interface ResolvedConfig {
   uri: URI;
   provider: ProviderConfig;
   fallbacks: string[];
+  /**
+   * Set by the `hermetic` option ({@link LoadOptions}): the adapter
+   * reads nothing ambient while it builds and runs, no environment
+   * variable (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`,
+   * `ANTHROPIC_WORKSPACE_ID`, `<SCHEME>_API_KEY`, `ROUTELLM_*`,
+   * `LLM_BASE_URL`). Only this config counts.
+   */
+  hermetic?: boolean;
 }
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
@@ -349,6 +483,10 @@ export class CapabilityNotSupportedError extends LLMError {
   }
 }
 
+/**
+ * The provider refused the credential (HTTP 401). A 403 is the narrower
+ * {@link PermissionDeniedError}, still an `AuthError`.
+ */
 export class AuthError extends LLMError {
   provider: string;
 
@@ -361,6 +499,26 @@ export class AuthError extends LLMError {
     this.name = "AuthError";
     this.provider = provider;
     if (cause) this.cause = cause;
+  }
+}
+
+/**
+ * The credential was accepted but may not do what was asked (HTTP 403,
+ * an Anthropic `permission_error`): a key without access to the model,
+ * workspace or feature. Retrying with the same key will not help.
+ *
+ * It is an auth error too: `err instanceof AuthError` holds, with the
+ * same `provider` and `cause`, so code written before the split keeps
+ * treating a 403 as an auth failure. Test `PermissionDeniedError` first
+ * to tell the two apart.
+ */
+export class PermissionDeniedError extends AuthError {
+  constructor(provider: string, cause?: Error) {
+    super(provider, cause);
+    this.message =
+      `permission denied for provider: ${provider}` +
+      (cause ? `: ${cause.message}` : "");
+    this.name = "PermissionDeniedError";
   }
 }
 
@@ -601,6 +759,19 @@ export function parseURI(raw: string): URI {
 
 // ─── Config loading ──────────────────────────────────────────────────────────
 
+/** Options for {@link loadConfig}, {@link resolve} and {@link createLLM}. */
+export interface LoadOptions {
+  /**
+   * Reads nothing ambient: the provider comes from the URI alone
+   * (`api_key`, `base_url`, host). No `LLM_PROVIDER`, `LLM_FALLBACK`,
+   * `LLM_API_KEY` or `LLM_BASE_URL`, and the adapter gets
+   * {@link ResolvedConfig.hermetic}, so it reads no environment
+   * variable either. For embedding kit in an app that owns its
+   * configuration.
+   */
+  hermetic?: boolean;
+}
+
 /**
  * Builds a {@link ResolvedConfig} from a URI string + env vars.
  *
@@ -611,23 +782,28 @@ export function parseURI(raw: string): URI {
  * config. If `uri.host` is set, it derives a baseURL. Env vars
  * `LLM_API_KEY` and `LLM_BASE_URL` override last.
  *
- * Env vars:
+ * Env vars (none read with `opts.hermetic`):
  * - `LLM_PROVIDER` — full default URI when no arg provided
  * - `LLM_API_KEY` — overrides provider API key
  * - `LLM_BASE_URL` — overrides provider base URL
  * - `LLM_FALLBACK` — comma-separated fallback URIs
  */
-export function loadConfig(uriStr?: string): ResolvedConfig {
-  const effective = uriStr || process.env["LLM_PROVIDER"];
+export function loadConfig(uriStr?: string, opts: LoadOptions = {}): ResolvedConfig {
+  const hermetic = opts.hermetic === true;
+  const env = (k: string): string | undefined =>
+    hermetic ? undefined : process.env[k] || undefined;
+  const effective = uriStr || env("LLM_PROVIDER");
   if (!effective) {
     throw new LLMError(
-      "no LLM URI provided and LLM_PROVIDER env var is not set"
+      hermetic
+        ? "no LLM URI provided (hermetic: LLM_PROVIDER is not read)"
+        : "no LLM URI provided and LLM_PROVIDER env var is not set"
     );
   }
 
   const uri = parseURI(effective);
 
-  const fallbackEnv = process.env["LLM_FALLBACK"];
+  const fallbackEnv = env("LLM_FALLBACK");
   const fallbacks = fallbackEnv
     ? fallbackEnv.split(",").map((s) => s.trim()).filter(Boolean)
     : [];
@@ -651,12 +827,14 @@ export function loadConfig(uriStr?: string): ResolvedConfig {
   }
 
   // Env var overrides apply LAST
-  const envApiKey = process.env["LLM_API_KEY"] || undefined;
-  const envBaseURL = process.env["LLM_BASE_URL"] || undefined;
+  const envApiKey = env("LLM_API_KEY");
+  const envBaseURL = env("LLM_BASE_URL");
   if (envApiKey) provider.apiKey = envApiKey;
   if (envBaseURL) provider.baseURL = envBaseURL;
 
-  return { uri, provider, fallbacks };
+  const cfg: ResolvedConfig = { uri, provider, fallbacks };
+  if (hermetic) cfg.hermetic = true;
+  return cfg;
 }
 
 // ─── Registry ────────────────────────────────────────────────────────────────
@@ -687,9 +865,13 @@ export function register(
 
 export { declarationOf };
 
-/** Resolve a URI to a Provider instance via the registry. */
-export function resolve(uriStr: string): Provider {
-  const cfg = loadConfig(uriStr);
+/**
+ * Resolve a URI to a Provider instance via the registry. With
+ * `opts.hermetic` neither the config nor the adapter reads anything
+ * ambient (see {@link LoadOptions}).
+ */
+export function resolve(uriStr: string, opts: LoadOptions = {}): Provider {
+  const cfg = loadConfig(uriStr, opts);
   const factory = registry.get(cfg.uri.scheme);
   if (!factory) {
     throw new ProviderNotFoundError(cfg.uri.scheme);
@@ -705,7 +887,7 @@ export function clearRegistry(): void {
 
 // ─── Client ──────────────────────────────────────────────────────────────────
 
-export interface ClientOptions {
+export interface ClientOptions extends LoadOptions {
   fallback?: string[];
   onRequest?: (req: Request) => void;
   onResponse?: (resp: Response, durationMs: number) => void;
@@ -734,13 +916,14 @@ export interface Client {
  * On fallbackable errors, it tries each fallback URI in order.
  */
 export function createLLM(uri: string, opts?: ClientOptions): Client {
-  const cfg = loadConfig(uri);
+  const load: LoadOptions = { hermetic: opts?.hermetic };
+  const cfg = loadConfig(uri, load);
 
   // Merge fallbacks: opts > env > none
   const fallbackURIs = opts?.fallback ?? cfg.fallbacks;
 
   // Resolve primary; cache fallback providers for close()
-  const primary = resolve(uri);
+  const primary = resolve(uri, load);
   const allURIs = [uri, ...fallbackURIs];
   const resolvedProviders = new Map<number, Provider>();
   resolvedProviders.set(0, primary);
@@ -748,7 +931,7 @@ export function createLLM(uri: string, opts?: ClientOptions): Client {
   function resolveAt(index: number): Provider {
     let p = resolvedProviders.get(index);
     if (!p) {
-      p = resolve(allURIs[index]);
+      p = resolve(allURIs[index], load);
       resolvedProviders.set(index, p);
     }
     return p;
@@ -894,7 +1077,13 @@ export function createLLM(uri: string, opts?: ClientOptions): Client {
         p.callWithTools!(request, tools)
       );
       opts?.onResponse?.(
-        { content: resp.content, role: "assistant" },
+        {
+          content: resp.content,
+          role: "assistant",
+          usage: resp.usage,
+          finishReason: resp.finishReason,
+          thinking: resp.thinking,
+        },
         Date.now() - start
       );
       return resp;

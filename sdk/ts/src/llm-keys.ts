@@ -7,7 +7,7 @@
  */
 
 import type { ResolvedConfig } from "./llm";
-import { credentialsTrusted, redactURI } from "./llm-endpoint";
+import { redactURI, trustedOrigin } from "./llm-endpoint";
 import { KeyEndpointError } from "./llm-errors";
 
 /** `<SCHEME>_API_KEY`: `openrouter` reads `OPENROUTER_API_KEY`. */
@@ -18,6 +18,8 @@ export function envKeyName(scheme: string): string {
 /**
  * Returns `cfg` with the provider key resolved: the configured key
  * (URI `api_key` or `LLM_API_KEY`), else `envVar` when given and set.
+ * A hermetic `cfg` reads no environment: neither `envVar` nor
+ * `LLM_BASE_URL`.
  *
  * A key the URI itself carries is the caller's choice for its endpoint.
  * Any other key reaches an endpoint only the URI names (its `base_url`
@@ -30,8 +32,9 @@ export function withResolvedKey(
   envVar: string | undefined,
   trusted: string[]
 ): ResolvedConfig {
+  const hermetic = cfg.hermetic === true;
   let key = cfg.provider.apiKey;
-  if ((key ?? "").trim() === "" && envVar) {
+  if ((key ?? "").trim() === "" && envVar && !hermetic) {
     const v = process.env[envVar];
     key = v && v.trim() !== "" ? v : undefined;
   }
@@ -45,7 +48,12 @@ export function withResolvedKey(
     uriEndpoint &&
     !fromURI &&
     cfg.provider.baseURL === uriEndpoint &&
-    !credentialsTrusted(cfg.uri.scheme, uriEndpoint, ...trusted)
+    !trustedOrigin(
+      cfg.uri.scheme,
+      uriEndpoint,
+      trusted,
+      hermetic ? undefined : process.env["LLM_BASE_URL"]
+    )
   ) {
     throw new KeyEndpointError(cfg.uri.scheme, redactURI(uriEndpoint));
   }

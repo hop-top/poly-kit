@@ -12,7 +12,8 @@
  * `ANTHROPIC_WORKSPACE_ID` are read from the environment. The token and
  * workspace header go only to a trusted origin (the default endpoint,
  * `ANTHROPIC_BASE_URL`, `LLM_BASE_URL`, loopback); no credential goes
- * over plain http to a remote host.
+ * over plain http to a remote host. A hermetic config
+ * ({@link ResolvedConfig.hermetic}) reads none of these variables.
  *
  * @example
  * ```ts
@@ -29,8 +30,10 @@ import {
   AuthError,
   LLMError,
   ModelError,
+  PermissionDeniedError,
   RateLimitError,
   ToolNames,
+  checkToolChoice,
   register,
   toolNameModeOf,
   type CacheControl,
@@ -47,6 +50,7 @@ import {
   type Token,
   type ToolCall,
   type ToolCaller,
+  type ToolChoice,
   type ToolDef,
   type ToolNameMode,
   type ToolResponse,
@@ -80,6 +84,8 @@ const API_VERSION = "2023-06-01";
 const DEFAULT_MAX_TOKENS = 1024;
 /** The API's least thinking budget. */
 const MIN_THINKING_BUDGET = 1024;
+/** Joins consecutive system messages into one text. */
+const SYSTEM_SEPARATOR = "\n\n";
 
 /** An API error type and the HTTP status it stands for. */
 const EVENT_STATUS: Record<string, number> = {
@@ -122,7 +128,9 @@ export class AnthropicAdapter
       throw new LLMError(`anthropic: ${(err as Error).message}`);
     }
 
-    const envBase = process.env["ANTHROPIC_BASE_URL"];
+    // A hermetic adapter reads no environment variable.
+    const env = envReader(cfg);
+    const envBase = env("ANTHROPIC_BASE_URL");
     if (envBase !== undefined) checkBaseURL("ANTHROPIC_BASE_URL", envBase);
     if (cfg.provider.baseURL) checkBaseURL("base URL", cfg.provider.baseURL);
     const base = cfg.provider.baseURL || envBase || ANTHROPIC_DEFAULT_BASE_URL;
@@ -139,18 +147,20 @@ export class AnthropicAdapter
       "anthropic-version": API_VERSION,
       "x-api-key": key,
     };
-    const token = process.env["ANTHROPIC_AUTH_TOKEN"] ?? "";
-    const env: Record<string, string> = {};
+    const token = env("ANTHROPIC_AUTH_TOKEN") ?? "";
+    const extra: Record<string, string> = {};
     if (token.trim() !== "") {
       checkKeyEndpoint(SCHEME, token, base);
-      env["authorization"] = `Bearer ${token}`;
+      extra["authorization"] = `Bearer ${token}`;
     }
-    const ws = process.env["ANTHROPIC_WORKSPACE_ID"] ?? "";
-    if (ws !== "") env["anthropic-workspace-id"] = ws;
+    const ws = env("ANTHROPIC_WORKSPACE_ID") ?? "";
+    if (ws !== "") extra["anthropic-workspace-id"] = ws;
     const trusted = [ANTHROPIC_DEFAULT_BASE_URL];
     if (envBase) trusted.push(envBase);
-    if (credentialsTrusted(SCHEME, base, ...trusted)) {
-      Object.assign(this.headers, env);
+    // With neither, the trust check (which reads LLM_BASE_URL) is not
+    // asked.
+    if (Object.keys(extra).length > 0 && credentialsTrusted(SCHEME, base, ...trusted)) {
+      Object.assign(this.headers, extra);
     }
     this.secrets = [key, token].filter((s) => s.trim() !== "");
   }
@@ -161,7 +171,9 @@ export class AnthropicAdapter
 
   async complete(req: Request): Promise<Response> {
     const names = this.toolNameMap([]);
-    const msg = await this.send(await this.buildBody(req, names), req);
+    const body = await this.buildBody(req, names);
+    setToolChoice(body, req.toolChoice, [], names);
+    const msg = await this.send(body, req);
     return {
       content: textOf(msg),
       role: "assistant",
@@ -175,6 +187,7 @@ export class AnthropicAdapter
     const names = this.toolNameMap(tools);
     const body = await this.buildBody(req, names);
     body["tools"] = mapTools(names.defs(tools));
+    setToolChoice(body, req.toolChoice, tools, names);
     const msg = await this.send(body, req);
     return toolResponseOf(msg, names);
   }
@@ -239,6 +252,7 @@ export class AnthropicAdapter
     const names = this.toolNameMap(tools ?? []);
     const body = await this.buildBody(req, names);
     if (tools) body["tools"] = mapTools(names.defs(tools));
+    setToolChoice(body, req.toolChoice, tools ?? [], names);
     body["stream"] = true;
     const opts = this.transport(req);
     const resp = await post(opts, this.url(), {
@@ -246,6 +260,7 @@ export class AnthropicAdapter
       accept: "text/event-stream",
     }, body);
     const acc = new Accumulator();
+    const events = req.streamEvents ? new EventMapper(acc, names) : undefined;
     try {
       for await (const ev of sseEvents(resp, this.limits.event, SCHEME)) {
         let evt: StreamEvent;
@@ -258,17 +273,22 @@ export class AnthropicAdapter
           throw streamError(evt.error, req.model || this.model);
         }
         acc.add(evt);
-        if (evt.type === "content_block_delta") {
-          const d = evt.delta ?? {};
-          if (d.type === "text_delta") {
-            yield { content: d.text ?? "", done: false };
-          } else if (d.type === "thinking_delta" && req.thinking) {
-            yield { content: "", thinking: d.thinking ?? "", done: false };
-          }
+        const d = evt.delta ?? {};
+        if (evt.type === "content_block_delta" && d.type === "text_delta") {
+          yield { content: d.text ?? "", done: false };
+        } else if (
+          evt.type === "content_block_delta" &&
+          d.type === "thinking_delta" &&
+          req.thinking
+        ) {
+          yield { content: "", thinking: d.thinking ?? "", done: false };
         } else if (evt.type === "message_stop") {
           done(acc.outcome(names));
           yield { content: "", done: true };
           return;
+        } else {
+          const tok = events?.map(evt);
+          if (tok) yield tok;
         }
       }
     } catch (err) {
@@ -283,21 +303,13 @@ export class AnthropicAdapter
       req.maxTokens !== undefined && req.maxTokens > 0
         ? req.maxTokens
         : DEFAULT_MAX_TOKENS;
-    const { system, systemCC, messages } = await extractSystem(
-      req.messages,
-      names
-    );
+    const { system, messages } = await extractSystem(req.messages, names);
     const body: Block = {
       model: req.model || this.model,
       max_tokens: maxTokens,
       messages,
     };
-    if (system !== "") {
-      const sp: Block = { type: "text", text: system };
-      const cc = cacheParam(systemCC);
-      if (cc) sp["cache_control"] = cc;
-      body["system"] = [sp];
-    }
+    if (system.length > 0) body["system"] = system;
     if (req.thinking) {
       const b = req.thinking.budgetTokens;
       if (b < MIN_THINKING_BUDGET) {
@@ -318,6 +330,11 @@ export class AnthropicAdapter
   }
 }
 
+/** Reads the environment, or nothing for a hermetic config. */
+function envReader(cfg: ResolvedConfig): (k: string) => string | undefined {
+  return cfg.hermetic ? () => undefined : (k) => process.env[k];
+}
+
 function checkBaseURL(what: string, base: string): void {
   try {
     new URL(base);
@@ -329,24 +346,19 @@ function checkBaseURL(what: string, base: string): void {
 // ─── Request mapping ─────────────────────────────────────────────────────────
 
 /**
- * Separates any system message from the conversation (the last one
- * wins); the API takes system as a top-level field.
+ * Separates the system messages from the conversation: the API takes
+ * system as a top-level field. See {@link systemBlocks}.
  */
 async function extractSystem(
   msgs: Message[],
   names: ToolNames
-): Promise<{ system: string; systemCC?: CacheControl; messages: Block[] }> {
-  let system = "";
-  let systemCC: CacheControl | undefined;
+): Promise<{ system: Block[]; messages: Block[] }> {
+  const system = systemBlocks(msgs);
   const out: { role: string; content: Block[] }[] = [];
 
   for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i]!;
-    if (m.role === "system") {
-      system = m.content;
-      systemCC = m.cacheControl;
-      continue;
-    }
+    if (m.role === "system") continue;
     checkLinkageRole(m);
 
     if (m.role === "tool") {
@@ -375,7 +387,31 @@ async function extractSystem(
     blocks = [...replayThinking(m.thinking ?? []), ...blocks];
     out.push({ role: m.role, content: blocks });
   }
-  return { system, systemCC, messages: out };
+  return { system, messages: out };
+}
+
+/**
+ * Every system message, wherever it sits, as the system field: their
+ * content joined in order with a blank line ({@link SYSTEM_SEPARATOR}),
+ * empty ones skipped. A `cacheControl` on a system message ends a text
+ * block there and carries that breakpoint, so each breakpoint caches
+ * exactly the text up to it; the next system message starts a new
+ * block. No system text yields no blocks.
+ */
+function systemBlocks(msgs: Message[]): Block[] {
+  const out: Block[] = [];
+  let text = "";
+  for (const m of msgs) {
+    if (m.role !== "system") continue;
+    if (m.content !== "") {
+      text = text === "" ? m.content : text + SYSTEM_SEPARATOR + m.content;
+    }
+    if (!m.cacheControl || text === "") continue;
+    out.push({ type: "text", text, cache_control: cacheParam(m.cacheControl) });
+    text = "";
+  }
+  if (text !== "") out.push({ type: "text", text });
+  return out;
 }
 
 /**
@@ -495,6 +531,27 @@ async function mapParts(parts: ContentPart[]): Promise<Block[]> {
 }
 
 /**
+ * Sets the body's `tool_choice` for `c`, checked against `tools`; a
+ * named tool goes by the name the request sends for it. Unset `c` sends
+ * none.
+ */
+function setToolChoice(
+  body: Block,
+  c: ToolChoice | undefined,
+  tools: ReadonlyArray<{ name: string }>,
+  names: ToolNames
+): void {
+  try {
+    checkToolChoice(c, tools);
+  } catch (err) {
+    throw new LLMError(`anthropic: ${(err as Error).message}`);
+  }
+  if (!c) return;
+  body["tool_choice"] =
+    c.mode === "tool" ? { type: "tool", name: names.wire(c.name ?? "") } : { type: c.mode };
+}
+
+/**
  * Tool definitions as the API takes them. `input_schema` is required: a
  * tool without parameters, or with ones that are not a JSON object,
  * takes an empty object schema.
@@ -588,17 +645,16 @@ function thinkingBlocks(msg: WireMessage): ThinkingBlock[] {
   return out;
 }
 
+/** A tool_use block as a call carrying the name the caller defined. */
+function toolCallOf(b: WireBlock, names: ToolNames): ToolCall {
+  return { id: b.id ?? "", name: names.original(b.name ?? ""), arguments: b.input ?? {} };
+}
+
 /** Maps `msg`; each call carries the name the caller defined. */
 function toolResponseOf(msg: WireMessage, names: ToolNames): ToolResponse {
   const calls: ToolCall[] = [];
   for (const b of msg.content ?? []) {
-    if (b.type === "tool_use") {
-      calls.push({
-        id: b.id ?? "",
-        name: names.original(b.name ?? ""),
-        arguments: b.input ?? {},
-      });
-    }
+    if (b.type === "tool_use") calls.push(toolCallOf(b, names));
   }
   return {
     content: textOf(msg),
@@ -641,7 +697,7 @@ interface AccBlock extends WireBlock {
 class Accumulator {
   private content: AccBlock[] = [];
   private stopReason = "";
-  private usage: WireUsage = {};
+  private usage_: WireUsage = {};
 
   add(evt: StreamEvent): void {
     switch (evt.type) {
@@ -649,19 +705,19 @@ class Accumulator {
         const m = evt.message ?? {};
         this.content = (m.content ?? []).map((b) => ({ ...b }));
         this.stopReason = m.stop_reason ?? "";
-        this.usage = { ...(m.usage ?? {}) };
+        this.usage_ = { ...(m.usage ?? {}) };
         break;
       }
       case "message_delta": {
         this.stopReason = evt.delta?.stop_reason ?? "";
         const u = evt.usage ?? {};
-        this.usage.output_tokens = u.output_tokens ?? 0;
-        if (u.input_tokens !== undefined) this.usage.input_tokens = u.input_tokens;
+        this.usage_.output_tokens = u.output_tokens ?? 0;
+        if (u.input_tokens !== undefined) this.usage_.input_tokens = u.input_tokens;
         if (u.cache_read_input_tokens != null) {
-          this.usage.cache_read_input_tokens = u.cache_read_input_tokens;
+          this.usage_.cache_read_input_tokens = u.cache_read_input_tokens;
         }
         if (u.cache_creation_input_tokens != null) {
-          this.usage.cache_creation_input_tokens = u.cache_creation_input_tokens;
+          this.usage_.cache_creation_input_tokens = u.cache_creation_input_tokens;
         }
         break;
       }
@@ -709,13 +765,26 @@ class Accumulator {
     }
   }
 
+  /** The usage folded so far. */
+  usage(): Usage {
+    return usageOf(this.usage_);
+  }
+
+  /** The block at content index `i`, undefined when none started. */
+  block(i: number): AccBlock | undefined {
+    return this.content[i];
+  }
+
+  /** The tool_use block at `i` as its finished call. */
+  call(i: number, names: ToolNames): ToolCall {
+    return toolCallOf(finished(this.content[i]!), names);
+  }
+
   outcome(names: ToolNames): StreamOutcome {
     const msg: WireMessage = {
-      content: this.content.map((b) =>
-        b.type === "tool_use" ? { ...b, input: parseInput(b.inputRaw) } : b
-      ),
+      content: this.content.map(finished),
       stop_reason: this.stopReason,
-      usage: this.usage,
+      usage: this.usage_,
     };
     const tr = toolResponseOf(msg, names);
     return {
@@ -725,6 +794,69 @@ class Accumulator {
       finishReason: tr.finishReason ?? "",
       usage: tr.usage!,
     };
+  }
+}
+
+/** A streamed block as the finished message holds it: tool input parsed. */
+function finished(b: AccBlock): WireBlock {
+  return b.type === "tool_use" ? { ...b, input: parseInput(b.inputRaw) } : b;
+}
+
+/**
+ * Maps accumulated stream events to tool-call and usage tokens, for a
+ * request that asked for them ({@link Request.streamEvents}).
+ */
+class EventMapper {
+  /** A tool_use block's content index to its call index. */
+  private readonly calls = new Map<number, number>();
+
+  constructor(
+    private readonly acc: Accumulator,
+    private readonly names: ToolNames
+  ) {}
+
+  /** The token `evt`, already folded into the accumulator, makes. */
+  map(evt: StreamEvent): Token | undefined {
+    const at = evt.index ?? -1;
+    switch (evt.type) {
+      case "message_start":
+      case "message_delta":
+        return { content: "", usage: this.acc.usage(), done: false };
+      case "content_block_start": {
+        const b = this.acc.block(at);
+        if (b?.type !== "tool_use") return undefined;
+        const index = this.calls.size;
+        this.calls.set(at, index);
+        return {
+          content: "",
+          toolCall: { kind: "start", index, id: b.id ?? "", name: this.names.original(b.name ?? "") },
+          done: false,
+        };
+      }
+      case "content_block_delta": {
+        const index = this.calls.get(at);
+        const d = evt.delta ?? {};
+        if (index === undefined || d.type !== "input_json_delta" || !d.partial_json) {
+          return undefined;
+        }
+        return {
+          content: "",
+          toolCall: { kind: "delta", index, argumentsDelta: d.partial_json },
+          done: false,
+        };
+      }
+      case "content_block_stop": {
+        const index = this.calls.get(at);
+        if (index === undefined) return undefined;
+        const call = this.acc.call(at, this.names);
+        return {
+          content: "",
+          toolCall: { kind: "end", index, id: call.id, name: call.name, call },
+          done: false,
+        };
+      }
+    }
+    return undefined;
   }
 }
 
@@ -772,8 +904,9 @@ function classify(status: number, type: string, message: string, model: string):
   const api = new APIError(SCHEME, status, type, message);
   switch (status) {
     case 401:
-    case 403:
       return new AuthError(SCHEME, api);
+    case 403:
+      return new PermissionDeniedError(SCHEME, api);
     case 429:
       return new RateLimitError(SCHEME);
     case 404:
@@ -786,7 +919,7 @@ function classify(status: number, type: string, message: string, model: string):
 // ─── Registration ────────────────────────────────────────────────────────────
 
 function anthropicFactory(cfg: ResolvedConfig): Provider {
-  const envBase = process.env["ANTHROPIC_BASE_URL"];
+  const envBase = envReader(cfg)("ANTHROPIC_BASE_URL");
   const trusted = [ANTHROPIC_DEFAULT_BASE_URL, ...(envBase ? [envBase] : [])];
   const a = new AnthropicAdapter(
     withResolvedKey(cfg, "ANTHROPIC_API_KEY", trusted)
