@@ -6,8 +6,8 @@ use base64::Engine as _;
 use serde_json::{json, Map, Value};
 
 use crate::llm::{
-    CacheControl, LlmError, Media, Message, Part, Request, Response, Role, ThinkingBlock, ToolCall,
-    ToolDef, ToolNames, ToolResponse, Usage,
+    check_tool_choice, CacheControl, LlmError, Media, Message, Part, Request, Response, Role,
+    ThinkingBlock, ToolCall, ToolChoice, ToolChoiceMode, ToolDef, ToolNames, ToolResponse, Usage,
 };
 
 use super::{DEFAULT_MAX_TOKENS, SCHEME};
@@ -75,10 +75,30 @@ pub(crate) fn body(
             .collect::<Result<_, _>>()?;
         b.insert("tools".into(), Value::Array(defs));
     }
+    if let Some(choice) = tool_choice(req.tool_choice.as_ref(), tools.unwrap_or_default(), names)? {
+        b.insert("tool_choice".into(), choice);
+    }
     if stream {
         b.insert("stream".into(), Value::Bool(true));
     }
     Ok(Value::Object(b))
+}
+
+/// The body's `tool_choice` for `c`, checked against `tools`
+/// ([`check_tool_choice`]); a named tool goes by the name the request
+/// sends for it. `None` sends none.
+fn tool_choice(
+    c: Option<&ToolChoice>,
+    tools: &[ToolDef],
+    names: &ToolNames,
+) -> Result<Option<Value>, LlmError> {
+    check_tool_choice(c, tools).map_err(|e| invalid(format!("{SCHEME}: {e}")))?;
+    let Some(c) = c else { return Ok(None) };
+    Ok(Some(if c.mode == ToolChoiceMode::TOOL {
+        json!({ "type": "tool", "name": names.wire(&c.name) })
+    } else {
+        json!({ "type": c.mode.as_str() })
+    }))
 }
 
 fn text_block(text: &str) -> Value {

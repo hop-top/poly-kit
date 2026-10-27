@@ -720,3 +720,64 @@ fn topics_prefix_and_validation() {
     assert!(Topics::with_prefix("myapp.ai.").is_err());
     assert_eq!(Topics::default().request_end, "kit.ai.response.received");
 }
+
+#[test]
+fn check_tool_choice_cases() {
+    use hop_top_kit::llm::{check_tool_choice, ToolChoice, ToolChoiceMode, ToolDef};
+    let tools = [ToolDef::named("get_weather"), ToolDef::named("pane.open")];
+    let mode = |m: &str| ToolChoice {
+        mode: ToolChoiceMode::new(m),
+        name: String::new(),
+    };
+    let named = |m: ToolChoiceMode, n: &str| ToolChoice {
+        mode: m,
+        name: n.into(),
+    };
+    let cases: Vec<(Option<ToolChoice>, &[ToolDef], &str)> = vec![
+        (None, &[], ""),
+        (None, &tools, ""),
+        (Some(ToolChoice::auto()), &tools, ""),
+        (Some(ToolChoice::any()), &tools, ""),
+        (Some(ToolChoice::none()), &tools, ""),
+        (Some(ToolChoice::tool("pane.open")), &tools, ""),
+        (Some(mode("auto")), &tools, ""),
+        (
+            Some(ToolChoice::auto()),
+            &[],
+            r#"tool_choice "auto" needs tools"#,
+        ),
+        (
+            Some(ToolChoice::none()),
+            &[],
+            r#"tool_choice "none" needs tools"#,
+        ),
+        (Some(mode("")), &tools, r#"unknown tool_choice mode """#),
+        (
+            Some(mode("required")),
+            &tools,
+            r#"unknown tool_choice mode "required""#,
+        ),
+        (
+            Some(mode("tool")),
+            &tools,
+            r#"tool_choice "tool" needs a tool name"#,
+        ),
+        (
+            Some(named(ToolChoiceMode::ANY, "get_weather")),
+            &tools,
+            r#"tool_choice "any" takes no tool name"#,
+        ),
+        (
+            Some(ToolChoice::tool("nope")),
+            &tools,
+            r#"tool_choice names unknown tool "nope""#,
+        ),
+    ];
+    for (choice, tools, want) in cases {
+        let got = check_tool_choice(choice.as_ref(), tools);
+        match got {
+            Ok(()) => assert!(want.is_empty(), "{choice:?}: want {want}"),
+            Err(e) => assert_eq!(e.to_string(), want, "{choice:?}"),
+        }
+    }
+}

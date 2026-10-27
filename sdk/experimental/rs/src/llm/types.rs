@@ -223,6 +223,12 @@ pub struct Request {
     /// Enables extended thinking; its deltas stream as [`Token::thinking`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking: Option<Thinking>,
+    /// Constrains tool use on a tool-calling request (`call_with_tools`,
+    /// `stream_with_tools`); `None` leaves the provider default. Set on
+    /// a call without tools, it fails the request before sending. See
+    /// [`ToolChoice`](super::ToolChoice).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<super::ToolChoice>,
 }
 
 fn is_zero(n: &u32) -> bool {

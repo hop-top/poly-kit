@@ -12,6 +12,8 @@
 //!   [`Sources`], with Go's precedence.
 //! - [`Client`]: fallback chain and bus events.
 //! - [`LlmError`]: Go's error taxonomy; [`LlmError::is_fallbackable`].
+//! - [`ToolChoice`]: `auto`, `any`, `none` or one named tool on a
+//!   tool-calling request; [`check_tool_choice`].
 //! - [`ToolNames`]: tool-name rules ([`ANTHROPIC_TOOL_NAMES`] and
 //!   friends) and the reversible sanitizer adapters run per request;
 //!   [`ToolNameMode`] is the `tool_names` provider param.
@@ -31,6 +33,7 @@ mod error;
 mod keys;
 mod provider;
 mod registry;
+mod toolchoice;
 mod toolnames;
 pub mod types;
 mod uri;
@@ -49,6 +52,7 @@ pub use error::{KeyEndpointReason, LlmError, MissingKeyError, ToolNameReason};
 pub use keys::{KeyResolution, KeySource, KeySourceKind, FALLBACK_ENV_KEY};
 pub use provider::{BoxFuture, Capability, Provider, TokenStream};
 pub use registry::{default_registry, Declaration, Factory, ProviderKey, Registry};
+pub use toolchoice::{check_tool_choice, ToolChoice, ToolChoiceMode};
 pub use toolnames::{
     ToolNameMode, ToolNameRule, ToolNames, ANTHROPIC_TOOL_NAMES, GEMINI_TOOL_NAMES,
     OPENAI_TOOL_NAMES, TOOL_NAMES_PARAM,
