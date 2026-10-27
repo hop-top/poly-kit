@@ -53,8 +53,8 @@ struct Corpus {
     // Sections below are pending Rust port: decoded loosely, not run.
     #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
     anthropic_tool_choice: Vec<ToolChoiceCase>,
-    #[allow(dead_code)]
-    anthropic_hermetic: Vec<Value>,
+    #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+    anthropic_hermetic: Vec<HermeticCase>,
     #[allow(dead_code)]
     anthropic_stream_events: Vec<Value>,
     #[allow(dead_code)]
@@ -98,6 +98,19 @@ struct ToolChoiceCase {
     want_tool_choice: Option<Value>,
     #[serde(default)]
     error: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+struct HermeticCase {
+    name: String,
+    base_url: String,
+    yaml: String,
+    env: BTreeMap<String, String>,
+    want_host: String,
+    sent: Vec<String>,
+    withheld: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -1413,6 +1426,59 @@ mod anthropic {
                     )
                 }
                 Some(want) => assert_eq!(&body["tool_choice"], want, "{}", v.name),
+            }
+        }
+    }
+
+    /// Headers `send` sets on every request beside the credentials;
+    /// `anthropic_headers` pins them.
+    const FIXED_HEADERS: &[&str] = &["anthropic-version", "content-type"];
+
+    /// The adapter built hermetic, with the vector's `ANTHROPIC_*` and
+    /// `LLM_BASE_URL` as its environment and its llm.yaml as the config
+    /// file: both would count were it not hermetic. The client is
+    /// offline, so the request is refused at the one chokepoint every
+    /// request passes, which reports where it was going; nothing leaves
+    /// the machine. The headers are the credentials the adapter sends
+    /// (`credential_headers`, exactly what `send` adds) and the fixed
+    /// ones.
+    #[tokio::test]
+    async fn hermetic_vectors() {
+        use hop_top_kit::llm::ConfigFile;
+        use hop_top_kit::netpolicy::NetPolicy;
+        let c = load();
+        assert!(!c.anthropic_hermetic.is_empty());
+        for v in &c.anthropic_hermetic {
+            let vars = v.env.clone();
+            let mut rc = cfg(&v.base_url, "m", "kit-key");
+            rc.net_policy = NetPolicy::new(true);
+            let a = Adapter::builder(rc)
+                .env(move |k| vars.get(k).cloned())
+                .config_file(ConfigFile::parse(&v.yaml).unwrap())
+                .hermetic()
+                .build()
+                .unwrap_or_else(|e| panic!("{}: {e}", v.name));
+            let err = a.complete(&hi()).await.expect_err(&v.name);
+            let LlmError::Offline(o) = &err else {
+                panic!("{}: want the offline refusal, got {err:?}", v.name);
+            };
+            let host = url::Url::parse(&o.url)
+                .unwrap_or_else(|e| panic!("{}: {}: {e}", v.name, o.url))
+                .host_str()
+                .unwrap_or_default()
+                .to_string();
+            assert_eq!(host, v.want_host, "{}", v.name);
+            let sent = a.credential_headers();
+            for h in &v.sent {
+                assert!(
+                    sent.contains(&h.as_str()) || FIXED_HEADERS.contains(&h.as_str()),
+                    "{}: {h} sent",
+                    v.name
+                );
+            }
+            for h in &v.withheld {
+                assert!(!sent.contains(&h.as_str()), "{}: {h} withheld", v.name);
+                assert!(!FIXED_HEADERS.contains(&h.as_str()), "{}: {h}", v.name);
             }
         }
     }

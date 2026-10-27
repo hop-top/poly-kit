@@ -132,6 +132,12 @@ impl Registry {
             .map(|e| e.decl.clone())
     }
 
+    /// [`Registry::resolve_with`] and default options: the adapter may
+    /// read its ambient inputs.
+    pub fn resolve(&self, uri: &str) -> Result<Box<dyn Provider>, LlmError> {
+        self.resolve_with(uri, ResolveOptions::default())
+    }
+
     /// Parse `uri`, find its adapter and build a provider (Go `Resolve`).
     ///
     /// The key is the URI's `api_key` param alone; a blank one is
@@ -139,7 +145,15 @@ impl Registry {
     /// param, the URI's host (`http://host:port`), the declaration's.
     /// Use [`Registry::apply_api_key`] or [`Registry::load_config`] to
     /// bring in keys from llm.yaml, a store or the environment.
-    pub fn resolve(&self, uri: &str) -> Result<Box<dyn Provider>, LlmError> {
+    ///
+    /// [`ResolveOptions::hermetic`] hands the adapter
+    /// [`ResolvedConfig::hermetic`]: it then reads no environment
+    /// variable and no llm.yaml, only what the URI says.
+    pub fn resolve_with(
+        &self,
+        uri: &str,
+        opts: ResolveOptions,
+    ) -> Result<Box<dyn Provider>, LlmError> {
         let mut parsed = parse_uri(uri).map_err(|e| {
             LlmError::invalid(format!("llm: invalid URI {:?}: {e}", redact_uri(uri)))
         })?;
@@ -177,7 +191,32 @@ impl Registry {
             provider,
             fallbacks: Vec::new(),
             net_policy: self.policy(),
+            hermetic: opts.hermetic,
         })
+    }
+}
+
+/// Options of one [`Registry::resolve_with`] call (Go `ResolveOption`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub struct ResolveOptions {
+    /// See [`ResolveOptions::hermetic`].
+    pub hermetic: bool,
+}
+
+impl ResolveOptions {
+    /// Read nothing ambient (Go `Hermetic`): the provider comes from the
+    /// URI alone. The adapter gets [`ResolvedConfig::hermetic`], so it
+    /// reads no environment variable and no llm.yaml: credentials and
+    /// endpoints come only from the URI (`api_key`, `base_url`, host).
+    /// For embedding kit in an app that owns its configuration.
+    ///
+    /// [`Registry::load_config`], [`Registry::apply_api_key`] and
+    /// [`Registry::resolve_api_key`] exist to read llm.yaml, the
+    /// environment and a secret store; a hermetic caller does not call
+    /// them.
+    pub fn hermetic() -> Self {
+        ResolveOptions { hermetic: true }
     }
 }
 

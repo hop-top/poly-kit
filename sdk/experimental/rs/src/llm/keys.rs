@@ -280,6 +280,7 @@ impl Registry {
             provider: pc,
             fallbacks,
             net_policy: self.policy(),
+            hermetic: false,
         })
     }
 }

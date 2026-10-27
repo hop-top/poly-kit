@@ -5,7 +5,10 @@
 //! calls and streaming with tools. The key comes from the resolved
 //! config only; `ANTHROPIC_BASE_URL` (below a configured base URL),
 //! `ANTHROPIC_AUTH_TOKEN` (sent as a bearer token when not blank) and
-//! `ANTHROPIC_WORKSPACE_ID` are read as in Go. Native only.
+//! `ANTHROPIC_WORKSPACE_ID` are read as in Go, and llm.yaml and
+//! `LLM_BASE_URL` decide whether the latter two may go to the endpoint.
+//! [`Builder::hermetic`] (or [`ResolvedConfig::hermetic`]) reads none of
+//! them. Native only.
 //!
 //! Tool names follow [`ANTHROPIC_TOOL_NAMES`]: sanitized on the way out
 //! and restored on returned calls, per the `tool_names` provider param
@@ -125,6 +128,30 @@ fn tokio_sleeper() -> Sleeper {
 }
 
 impl Builder {
+    /// Read nothing ambient (Go `ResolvedConfig.Hermetic`): no
+    /// `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`,
+    /// `ANTHROPIC_WORKSPACE_ID` or `LLM_BASE_URL`, and no llm.yaml, from
+    /// the process or from [`Builder::env`] and [`Builder::config_file`].
+    /// The request goes to the configured base URL, else
+    /// [`DEFAULT_BASE_URL`], with the configured key only. Same as
+    /// [`ResolvedConfig::hermetic`].
+    ///
+    /// Proxy variables (`HTTPS_PROXY` and friends) are the HTTP
+    /// client's, as with Go's `net/http`; pass [`Builder::client`] to
+    /// set the transport yourself.
+    pub fn hermetic(mut self) -> Self {
+        self.cfg.hermetic = true;
+        self
+    }
+
+    /// An ambient variable: `None` when hermetic.
+    fn ambient(&self, name: &str) -> Option<String> {
+        if self.cfg.hermetic {
+            return None;
+        }
+        (self.env)(name)
+    }
+
     /// Read `ANTHROPIC_*` from `env` instead of the process environment.
     pub fn env(mut self, env: impl Fn(&str) -> Option<String> + Send + Sync + 'static) -> Self {
         self.env = Box::new(env);
@@ -177,16 +204,27 @@ impl Builder {
         crate::llm::check_endpoint_url(SCHEME, &key, base, url)?;
         let mut out = vec![("x-api-key", key)];
         let mut env_creds = Vec::new();
-        if let Some(t) = (self.env)("ANTHROPIC_AUTH_TOKEN").filter(|t| !t.trim().is_empty()) {
+        if let Some(t) = self
+            .ambient("ANTHROPIC_AUTH_TOKEN")
+            .filter(|t| !t.trim().is_empty())
+        {
             crate::llm::check_endpoint_url(SCHEME, &t, base, url)?;
             env_creds.push(("authorization", format!("Bearer {t}")));
         }
-        if let Some(w) = (self.env)("ANTHROPIC_WORKSPACE_ID").filter(|w| !w.is_empty()) {
+        if let Some(w) = self
+            .ambient("ANTHROPIC_WORKSPACE_ID")
+            .filter(|w| !w.is_empty())
+        {
             env_creds.push(("anthropic-workspace-id", w));
         }
+        // Without an environment credential there is nothing to trust:
+        // llm.yaml and LLM_BASE_URL are not read.
+        if env_creds.is_empty() {
+            return Ok(out);
+        }
         let mut trusted = vec![DEFAULT_BASE_URL.to_string()];
-        trusted.extend((self.env)("ANTHROPIC_BASE_URL"));
-        trusted.extend((self.env)("LLM_BASE_URL"));
+        trusted.extend(self.ambient("ANTHROPIC_BASE_URL"));
+        trusted.extend(self.ambient("LLM_BASE_URL"));
         let file = match &self.file {
             Some(f) => f.clone(),
             None => crate::llm::ConfigFile::load(),
@@ -207,7 +245,7 @@ impl Builder {
         }
         let (what, base) = if !p.base_url.is_empty() {
             ("base URL", p.base_url.clone())
-        } else if let Some(v) = (self.env)("ANTHROPIC_BASE_URL").filter(|v| !v.is_empty()) {
+        } else if let Some(v) = self.ambient("ANTHROPIC_BASE_URL").filter(|v| !v.is_empty()) {
             ("ANTHROPIC_BASE_URL", v)
         } else {
             ("base URL", DEFAULT_BASE_URL.to_string())
