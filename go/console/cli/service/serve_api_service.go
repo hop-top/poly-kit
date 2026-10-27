@@ -70,19 +70,25 @@ type apiService struct {
 	// wins over services.api.addr for one run.
 	addrFlag string
 	// tls is the listener's resolved services.api.tls and auth.mode,
-	// set by Validate and again by Start.
+	// set by Validate and again by Prepare.
 	tls *ServeTLS
 
-	mu   sync.Mutex
-	srv  *http.Server
-	addr string
-	up   bool
+	mu sync.Mutex
+	// prepared is the server Prepare built, which the next Start
+	// serves, and listen the address it resolved.
+	prepared *http.Server
+	listen   string
+	srv      *http.Server
+	addr     string
+	up       bool
 	// stopping is closed when Stop begins, ending every open stream
 	// so the drain is not held by a command with no end.
 	stopping chan struct{}
 	// cacheStore is the result cache's store, closed after the drain.
 	cacheStore io.Closer
 }
+
+var _ serve.Preparer = (*apiService)(nil)
 
 // newAPIService returns the api service over cfg. addr overrides
 // cfg.Addr when non-empty, which is how --addr keeps working.
@@ -270,10 +276,14 @@ func (a *apiService) listenAddr() string {
 	return a.cfg.Addr
 }
 
-// Start binds the listener, reports ready, and serves until ctx is
-// canceled. A start that fails closes the result cache's store
-// buildHandler opened: no Stop follows it to close the store.
-func (a *apiService) Start(ctx context.Context, ready func()) (err error) {
+// Prepare implements [serve.Preparer]: it resolves the listener's TLS
+// and address and builds the server — the projection reflected from
+// the tree, the HTTP-plane chain read from the configuration — in the
+// supervisor's prepare phase, before any service serves a call. A
+// prepare that fails closes the result cache's store buildHandler
+// opened; a prepared service the run never starts is stopped, which
+// closes it.
+func (a *apiService) Prepare(ctx context.Context) (err error) {
 	t, err := ResolveServeTLS(a.root, APIServiceName)
 	if err != nil {
 		return err
@@ -297,7 +307,33 @@ func (a *apiService) Start(ctx context.Context, ready func()) (err error) {
 		return err
 	}
 
-	ln, err := net.Listen("tcp", a.listenAddr())
+	a.mu.Lock()
+	a.prepared = srv
+	a.listen = a.listenAddr()
+	a.mu.Unlock()
+	return nil
+}
+
+// Start binds the listener, reports ready, and serves until ctx is
+// canceled, with the server Prepare built. Started without a Prepare
+// before it — outside a supervisor — it prepares first. A start that
+// fails closes the result cache's store: no Stop follows it to close
+// the store.
+func (a *apiService) Start(ctx context.Context, ready func()) (err error) {
+	srv, listen := a.takePrepared()
+	if srv == nil {
+		if err := a.Prepare(ctx); err != nil {
+			return err
+		}
+		srv, listen = a.takePrepared()
+	}
+	defer func() {
+		if err != nil {
+			_ = a.closeResultCache()
+		}
+	}()
+
+	ln, err := net.Listen("tcp", listen)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -312,11 +348,21 @@ func (a *apiService) Start(ctx context.Context, ready func()) (err error) {
 	// deterministically has succeeded, so the service is ready.
 	ready()
 
-	err = t.Serve(srv, ln)
+	err = a.tls.Serve(srv, ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
 	return err
+}
+
+// takePrepared hands the server Prepare built, and the address it
+// resolved, to one Start.
+func (a *apiService) takePrepared() (*http.Server, string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	srv, listen := a.prepared, a.listen
+	a.prepared = nil
+	return srv, listen
 }
 
 // Ready reports whether the listener is bound and serving.

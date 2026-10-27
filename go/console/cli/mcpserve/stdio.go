@@ -42,6 +42,7 @@ type stdioServing struct {
 	streams *stdioStreams
 
 	mu      sync.Mutex
+	surf    *mcpsdk.Surface
 	in      io.Reader
 	out     io.Writer
 	restore func()
@@ -49,6 +50,15 @@ type stdioServing struct {
 }
 
 func newStdio(streams *stdioStreams) *stdioServing { return &stdioServing{streams: streams} }
+
+// prepare keeps the surface to serve; the session itself needs
+// nothing more.
+func (s *stdioServing) prepare(surf *mcpsdk.Surface) error {
+	s.mu.Lock()
+	s.surf = surf
+	s.mu.Unlock()
+	return nil
+}
 
 // bind acquires the streams and redirects the process's own. There is
 // no address: the peer is whoever spawned the process.
@@ -87,9 +97,9 @@ func (s *stdioServing) bind(context.Context) (string, error) {
 // The peer closing its end — end of input — is how a host ends a
 // stdio server, so it is a clean stop, reached once every call read
 // before it has been answered (mcpsdk.StdioTransport).
-func (s *stdioServing) serve(ctx context.Context, surf *mcpsdk.Surface) error {
+func (s *stdioServing) serve(ctx context.Context) error {
 	s.mu.Lock()
-	in, out := s.in, s.out
+	in, out, surf := s.in, s.out, s.surf
 	s.mu.Unlock()
 	if in == nil {
 		return errors.New("mcp: serve called before bind")

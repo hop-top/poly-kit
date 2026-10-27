@@ -276,8 +276,39 @@ A registration MUST provide, at minimum:
 
 A registration MAY additionally declare a config `Validate` hook, a
 side-effect/network class for the policy gate, per-service flags, a
-`DependsOn` list, and that it is optional by default (see [Optional
-services](#optional-services)).
+`DependsOn` list, a `Prepare` step (see [Prepare
+phase](#prepare-phase)), and that it is optional by default (see
+[Optional services](#optional-services)).
+
+### Prepare phase
+
+The services of one run share state a served request writes: the
+tool's command tree, whose flag values and writers an in-process call
+resets and points at its caller under the tree's invocation lock, and
+the configuration bound to those flags. A service that reads that
+state while another service is already serving races with the calls it
+serves.
+
+So before it starts any service, the supervisor runs a **prepare
+phase**: it calls `Prepare` on every selected service that declares
+one, one at a time, in start order, on its own goroutine. Nothing else
+runs while a service prepares. A service does everything that reads
+shared state there — reflecting the command tree, collecting its
+flags, building a handler chain whose logger reads the configured
+level, resolving its listener's settings — and its `Start` only
+acquires and serves what `Prepare` built.
+
+- A required service whose `Prepare` fails is a start failure (reason
+  `prepare`): the run ends before any service starts.
+- An optional service whose `Prepare` fails is reported the same way
+  and is not started; the run starts the rest. Every service failing
+  to prepare leaves nothing serving, which is a start failure.
+- A service that prepared but that the run never starts — a later
+  service failed to prepare or to start, or the run was canceled — is
+  stopped, without lifecycle events, so whatever `Prepare` acquired is
+  released.
+- A service started outside a supervisor, with no `Prepare` before
+  it, prepares in `Start`.
 
 ### Naming rules
 
@@ -328,7 +359,7 @@ re-implement any of the following:
 
 | Centralized             | What it means for a transport                          |
 |-------------------------|--------------------------------------------------------|
-| Reflection              | the command tree is reflected once, at `Start`          |
+| Reflection              | the command tree is reflected once, in the prepare phase |
 | Policy                  | every invocation passes every invocation-plane gate     |
 | Readiness               | ready is reported once, after `Bind` returns            |
 | Address                 | `Bind`'s return value is surfaced via `Addressed`       |
@@ -336,11 +367,18 @@ re-implement any of the following:
 
 Rules:
 
-- Reflection happens at `Start`, never at construction. The command
-  tree is complete only after every option has run and every
-  subcommand is mounted; a transport that reflected at construction
-  would serve whatever subset existed when `main` happened to build
-  it.
+- Reflection happens in the [prepare phase](#prepare-phase), never at
+  construction. The command tree is complete only after every option
+  has run and every subcommand is mounted; a transport that reflected
+  at construction would serve whatever subset existed when `main`
+  happened to build it.
+- A transport that builds anything else from the command tree or the
+  root's configuration — a catalog narrowed by reflection, tool
+  schemas collected from flags, an HTTP handler chain — does it in its
+  optional `Prepare`, which the seam calls with the reflected bridge
+  during the prepare phase, before `Bind`. `Bind` and `Serve` use only
+  what `Prepare` built: once they run, other services are serving
+  calls that write that state.
 - The transport's surface is **pinned** by the seam. A transport
   cannot invoke as a surface other than its own, so per-leaf
   enablement and the destructive ceiling cannot be sidestepped by a

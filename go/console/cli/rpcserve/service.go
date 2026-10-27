@@ -188,7 +188,7 @@ type rpcService struct {
 	// the write timeout with it.
 	serverOpts []rpc.ServerOption
 	// tls is the listener's resolved services.rpc.tls and auth.mode,
-	// set by validate and again by Bind.
+	// set by validate and again by Prepare.
 	tls *service.ServeTLS
 }
 
@@ -202,7 +202,7 @@ var (
 // newService builds the rpc service on the transport seam, with the
 // bridge wiring every kit-shipped service gets: the adopter's Policy,
 // then the root factory's runner, the shared permission gate and the
-// audit sinks, resolved at Start.
+// audit sinks, resolved while preparing.
 func newService(root *cli.Root, cfg *Config) *rpcService {
 	s := &rpcService{root: root, cfg: cfg}
 	tr := &rpcTransport{svc: s}
@@ -377,24 +377,81 @@ func (s *rpcService) validate() error {
 
 // rpcTransport is the [transportsvc.Transport] behind the service: its
 // own listener, serving the Commands handler MountRPC builds over the
-// bridge the seam reflected at Start.
+// bridge the seam reflected while preparing.
 type rpcTransport struct {
 	svc *rpcService
 
-	mu   sync.Mutex
-	ln   net.Listener
-	srv  *http.Server
-	stop context.CancelFunc
+	mu sync.Mutex
+	// addr and prepared are what Prepare resolved and built: the
+	// listen address, and the server with the Commands handler behind
+	// the HTTP-plane chain.
+	addr     string
+	prepared *http.Server
+	ln       net.Listener
+	srv      *http.Server
+	stop     context.CancelFunc
 }
 
-// Bind acquires the listener and reports the base URL a Connect,
-// gRPC-Web or `buf curl` client is configured with; a gRPC client
-// dials its host:port.
-func (t *rpcTransport) Bind(context.Context) (string, error) {
+var _ transportsvc.Preparer = (*rpcTransport)(nil)
+
+// Prepare resolves the listener's TLS, address and HTTP-plane blocks,
+// narrows the bridge to what a network surface serves, and builds the
+// server: the Commands handler behind the HTTP-plane chain. It runs in
+// the supervisor's prepare phase, before any service serves a call, so
+// none of it reads the tree or the configuration while a call writes
+// them.
+func (t *rpcTransport) Prepare(_ context.Context, b *cmdsurface.Bridge) error {
 	if err := t.svc.resolveTLS(); err != nil {
-		return "", err
+		return err
 	}
-	ln, err := net.Listen("tcp", t.svc.addr())
+	withholdUnserved(b, t.svc.root, cmdsurface.SurfaceRPC)
+
+	l := t.svc.httpListener()
+	set, err := service.ResolveServeHTTPListener(t.svc.root, l)
+	if err != nil {
+		return err
+	}
+	rs := rpc.NewServer(t.svc.serverOpts...)
+	if err := cmdsurface.MountRPC(b, rs, t.mountOptions(b, set)...); err != nil {
+		return err
+	}
+	// The HTTP-plane chain every kit listener shares, slots 1-11, in
+	// front of the Commands handler; authentication (12) is the
+	// interceptor mountOptions installs.
+	handler, err := service.ServeHTTPHandler(t.svc.root, l,
+		protectedResourceDocument(t.svc.tls.ProtectedResource(), liftStreamWriteDeadline(rs)))
+	if err != nil {
+		return err
+	}
+	srv := rs.HTTPServer()
+	srv.Handler = handler
+	// Server timeouts come from the timeouts block; where it sets
+	// nothing, the rpc server's own (read 5s, write 10s) and the kit
+	// read-header default.
+	fallback := api.ServerTimeoutsOf(srv)
+	fallback.ReadHeader = api.DefaultReadHeaderTimeout
+	if err := service.ConfigureServeHTTP(t.svc.root, ServiceName, srv, fallback); err != nil {
+		return err
+	}
+
+	t.mu.Lock()
+	t.addr = l.Addr
+	t.prepared = srv
+	t.mu.Unlock()
+	return nil
+}
+
+// Bind acquires the listener at the address Prepare resolved and
+// reports the base URL a Connect, gRPC-Web or `buf curl` client is
+// configured with; a gRPC client dials its host:port.
+func (t *rpcTransport) Bind(context.Context) (string, error) {
+	t.mu.Lock()
+	addr, prepared := t.addr, t.prepared != nil
+	t.mu.Unlock()
+	if !prepared {
+		return "", errors.New("rpc: Bind called before Prepare")
+	}
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return "", fmt.Errorf("listen: %w", err)
 	}
@@ -404,60 +461,22 @@ func (t *rpcTransport) Bind(context.Context) (string, error) {
 	return t.svc.tls.Scheme() + "://" + ln.Addr().String(), nil
 }
 
-// Serve mounts the Commands handler and serves until ctx is canceled
-// or Close runs.
+// Serve serves the server Prepare built until ctx is canceled or
+// Close runs.
 func (t *rpcTransport) Serve(ctx context.Context, _ transportsvc.Invoker) error {
 	t.mu.Lock()
-	ln := t.ln
+	ln, srv := t.ln, t.prepared
+	t.prepared = nil
 	t.mu.Unlock()
 	if ln == nil {
 		return errors.New("rpc: Serve called before Bind")
-	}
-	b := t.svc.Bridge()
-	if b == nil {
-		_ = ln.Close()
-		return errors.New("rpc: no bridge; the service has not started")
-	}
-	withholdUnserved(b, t.svc.root, cmdsurface.SurfaceRPC)
-
-	l := t.svc.httpListener()
-	set, err := service.ResolveServeHTTPListener(t.svc.root, l)
-	if err != nil {
-		_ = ln.Close()
-		return err
-	}
-	rs := rpc.NewServer(t.svc.serverOpts...)
-	if err := cmdsurface.MountRPC(b, rs, t.mountOptions(b, set)...); err != nil {
-		_ = ln.Close()
-		return err
-	}
-	// The HTTP-plane chain every kit listener shares, slots 1-11, in
-	// front of the Commands handler; authentication (12) is the
-	// interceptor mountOptions installs.
-	handler, err := service.ServeHTTPHandler(t.svc.root, l,
-		protectedResourceDocument(t.svc.tls.ProtectedResource(), liftStreamWriteDeadline(rs)))
-	if err != nil {
-		_ = ln.Close()
-		return err
 	}
 
 	// Request contexts derive from base, so stopping the service ends
 	// every open stream — a stream has no end of its own, and would
 	// otherwise hold Shutdown until its budget ran out.
 	base, cancelBase := context.WithCancel(context.WithoutCancel(ctx))
-	srv := rs.HTTPServer()
-	srv.Handler = handler
 	srv.BaseContext = func(net.Listener) context.Context { return base }
-	// Server timeouts come from the timeouts block; where it sets
-	// nothing, the rpc server's own (read 5s, write 10s) and the kit
-	// read-header default.
-	fallback := api.ServerTimeoutsOf(srv)
-	fallback.ReadHeader = api.DefaultReadHeaderTimeout
-	if err := service.ConfigureServeHTTP(t.svc.root, ServiceName, srv, fallback); err != nil {
-		cancelBase()
-		_ = ln.Close()
-		return err
-	}
 
 	t.mu.Lock()
 	t.srv = srv
@@ -470,7 +489,7 @@ func (t *rpcTransport) Serve(ctx context.Context, _ transportsvc.Invoker) error 
 	defer after()
 
 	// Over TLS the server offers HTTP/2 by ALPN in place of h2c.
-	err = t.svc.tls.Serve(srv, ln)
+	err := t.svc.tls.Serve(srv, ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
