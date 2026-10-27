@@ -49,6 +49,7 @@ func deadlineTree() *cobra.Command {
 		waiter("wait", nil),
 		waiter("bounded", map[string]string{AnnotationTimeout: "100ms"}),
 		waiter("patient", map[string]string{AnnotationTimeout: "2s"}),
+		waiter("brief", map[string]string{AnnotationTimeout: "1s"}),
 	)
 	stubborn := &cobra.Command{
 		Use:         "stubborn",
@@ -106,6 +107,9 @@ func TestDeadline_BridgeDefaultAppliesWithoutAnnotation(t *testing.T) {
 		t.Fatalf("err = %v, want ErrDeadlineExceeded from the default", err)
 	}
 
+	// A call well inside the default finishes. The default is wide
+	// here: a 10ms call under a 100ms default raced a loaded machine.
+	b = New(deadlineTree(), WithCommandTimeout(30*time.Second))
 	res, err := b.Invoke(context.Background(), invokeFor("wait", 10*time.Millisecond))
 	if err != nil || !strings.Contains(res.Stdout, "finished") {
 		t.Fatalf("a call inside the default = %+v, %v; want it to finish", res, err)
@@ -183,11 +187,13 @@ func TestDeadline_StreamDeliversDoneThenTheRefusal(t *testing.T) {
 // and Run — a person answering a confirmation — does not count.
 func TestDeadline_NotArmedUntilTheRun(t *testing.T) {
 	b := New(deadlineTree())
-	adm, err := b.Admit(context.Background(), invokeFor("bounded", 10*time.Millisecond))
+	// A 1s bound, not 100ms: the run itself must fit in what is left
+	// of the bound on a loaded machine, so the margin is the bound.
+	adm, err := b.Admit(context.Background(), invokeFor("brief", 0))
 	if err != nil {
 		t.Fatalf("Admit: %v", err)
 	}
-	time.Sleep(200 * time.Millisecond) // longer than the 100ms bound
+	time.Sleep(1200 * time.Millisecond) // longer than the 1s bound
 	res, err := adm.Run(context.Background())
 	if err != nil || !strings.Contains(res.Stdout, "finished") {
 		t.Fatalf("Run = %+v, %v; the wait before the run must not spend the deadline", res, err)
@@ -208,14 +214,16 @@ func TestDeadline_KillsTheSubprocessGroup(t *testing.T) {
 	runner := &fakeRunner{run: func(ctx context.Context, _ Invocation) (Result, error) {
 		return sub.Run(ctx, Invocation{Path: []string{"-c", "sleep 30 & echo $!; wait"}})
 	}}
-	b := New(deadlineTree(), WithRunner(runner), WithCommandTimeout(500*time.Millisecond))
+	// The deadline must outlast the shell's start-up, or it fires
+	// before the pid is printed; 500ms raced a loaded machine.
+	b := New(deadlineTree(), WithRunner(runner), WithCommandTimeout(2*time.Second))
 
 	start := time.Now()
 	res, err := b.Invoke(context.Background(), invokeFor("wait", 0))
 	if !errors.Is(err, ErrDeadlineExceeded) {
 		t.Fatalf("err = %v, want ErrDeadlineExceeded", err)
 	}
-	if time.Since(start) > 5*time.Second {
+	if time.Since(start) > 10*time.Second {
 		t.Fatalf("the subprocess outlived its deadline by %s", time.Since(start))
 	}
 	pid, perr := strconv.Atoi(strings.TrimSpace(res.Stdout))

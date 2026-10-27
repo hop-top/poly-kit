@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -429,6 +430,94 @@ collect:
 	}
 	if res.ExitCode != 0 {
 		t.Errorf("done Result.ExitCode=%d want=0", res.ExitCode)
+	}
+}
+
+// TestSubprocessRunner_Stream_SlowConsumerGetsAllOutput pins that a
+// consumer reading the event channel slowly loses nothing. The child
+// writes more than one read of its pipe takes, then exits while the
+// consumer has not read yet; every line must still arrive, and the
+// run must end without error.
+func TestSubprocessRunner_Stream_SlowConsumerGetsAllOutput(t *testing.T) {
+	sh := findSh(t)
+	if sh == "" {
+		t.Skip("no POSIX shell available")
+	}
+	const n = 8000
+	ch := make(chan Event) // unbuffered: the consumer sets the pace
+	errc := make(chan error, 1)
+	go func() {
+		errc <- SubprocessRunner(sh).Stream(context.Background(), Invocation{
+			Args:    []string{"-c", fmt.Sprintf("seq 1 %d", n)},
+			ownArgv: true,
+		}, ch)
+	}()
+
+	// Stall well past any short grace the runner could give its I/O
+	// after the child exits, as a slow network client would.
+	time.Sleep(500 * time.Millisecond)
+
+	var lines int
+	var done *Result
+	deadline := time.After(30 * time.Second)
+	for ch != nil {
+		select {
+		case ev, ok := <-ch:
+			if !ok {
+				ch = nil
+				break
+			}
+			switch ev.Kind {
+			case "stdout":
+				lines++
+			case "done":
+				done, _ = ev.Data.(*Result)
+			}
+		case <-deadline:
+			t.Fatalf("stream did not finish; %d lines so far", lines)
+		}
+	}
+	if err := <-errc; err != nil {
+		t.Fatalf("Stream err: %v", err)
+	}
+	if lines != n {
+		t.Errorf("stdout lines=%d want=%d", lines, n)
+	}
+	if done == nil || strings.Count(done.Stdout, "\n") != n {
+		t.Errorf("done Result missing output")
+	}
+}
+
+// TestSubprocessRunner_OrphanHoldingOutputIsBounded pins the other
+// side of the drain: a process the child leaves behind with its
+// stdout open does not hold the run open. The run returns soon after
+// the child exits, with the child's output, reporting the cut pipe as
+// exec.ErrWaitDelay.
+func TestSubprocessRunner_OrphanHoldingOutputIsBounded(t *testing.T) {
+	sh := findSh(t)
+	if sh == "" {
+		t.Skip("no POSIX shell available")
+	}
+	inv := Invocation{Args: []string{"-c", "echo hi; sleep 3 &"}, ownArgv: true}
+
+	start := time.Now()
+	res, err := SubprocessRunner(sh).Run(context.Background(), inv)
+	if !errors.Is(err, exec.ErrWaitDelay) {
+		t.Fatalf("Run err=%v, want exec.ErrWaitDelay", err)
+	}
+	if res.Stdout != "hi\n" {
+		t.Errorf("Run stdout=%q, want hi", res.Stdout)
+	}
+
+	out := make(chan Event, 8)
+	err = SubprocessRunner(sh).Stream(context.Background(), inv, out)
+	for range out {
+	}
+	if !errors.Is(err, exec.ErrWaitDelay) {
+		t.Fatalf("Stream err=%v, want exec.ErrWaitDelay", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("runs took %s; the orphan held them open", d)
 	}
 }
 

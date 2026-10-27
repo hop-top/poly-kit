@@ -71,7 +71,11 @@ import (
 // to SurfaceWS. Concurrent invocations on the same connection are
 // allowed: each invoke runs in its own goroutine keyed by the client's
 // correlation id. A cancel frame with a known id aborts the running
-// invocation by canceling its per-invocation context.
+// invocation by canceling its per-invocation context. An id is in
+// flight from its invoke until its terminal frame ("result" or
+// "error"), a canceled run included; an invoke reusing an id in
+// flight is refused with "error" code=bad_request, and an id may be
+// reused as soon as its terminal frame has been read.
 //
 // b and r are required; nil values return an error.
 func MountWS(b *Bridge, r *api.Router, opts ...WSOption) error {
@@ -234,8 +238,11 @@ type wsConn struct {
 
 	invMu sync.Mutex
 	// cancels maps a client-supplied correlation id to the cancel
-	// function of the per-invocation context. cancel frames look up
-	// the entry; the worker goroutine deletes its entry on exit.
+	// function of the per-invocation context. An id is in flight from
+	// its invoke until its terminal frame: cancel frames look up the
+	// entry without removing it, and the worker deletes it just before
+	// writing the terminal frame, so a client that has read that frame
+	// may reuse the id at once.
 	cancels map[string]context.CancelFunc
 }
 
@@ -272,22 +279,24 @@ func (wc *wsConn) registerCancel(id string, cancel context.CancelFunc) bool {
 	return true
 }
 
-// finishCancel removes id from the active map. Safe to call even if
-// id is not present (idempotent on the worker's exit path).
-func (wc *wsConn) finishCancel(id string) {
+// writeTerminal frees id, then writes f, the invocation's terminal
+// frame. Freeing first is what lets a client reuse an id as soon as
+// it reads the terminal frame: freed after the write, the id would
+// still be in flight when that client's next invoke arrives.
+func (wc *wsConn) writeTerminal(ctx context.Context, id string, f wsFrame) {
 	wc.invMu.Lock()
 	delete(wc.cancels, id)
 	wc.invMu.Unlock()
+	_ = wc.writeFrame(ctx, f)
 }
 
 // cancelOne triggers cancellation of the invocation registered under
-// id, if any. Returns false when id was not active.
+// id, if any. Returns false when id was not active. The id stays in
+// flight until the canceled run writes its terminal frame, so a
+// reuse in between cannot start a second run under the same id.
 func (wc *wsConn) cancelOne(id string) bool {
 	wc.invMu.Lock()
 	cancel, ok := wc.cancels[id]
-	if ok {
-		delete(wc.cancels, id)
-	}
 	wc.invMu.Unlock()
 	if ok {
 		cancel()
@@ -501,11 +510,9 @@ func runStream(
 	id string,
 	inv Invocation,
 ) {
-	defer wc.finishCancel(id)
-
 	adm, err := b.Admit(runCtx, inv)
 	if err != nil {
-		_ = wc.writeFrame(parent, wsFrame{
+		wc.writeTerminal(parent, id, wsFrame{
 			Op: "error",
 			ID: id,
 			Error: &wsErrorPayload{
@@ -560,7 +567,7 @@ func runStream(
 
 	streamErr := <-errc
 	if streamErr != nil {
-		_ = wc.writeFrame(parent, wsFrame{
+		wc.writeTerminal(parent, id, wsFrame{
 			Op: "error",
 			ID: id,
 			Error: &wsErrorPayload{
@@ -574,7 +581,7 @@ func runStream(
 		res.Stdout = stdout.String()
 		res.Stderr = stderr.String()
 	}
-	_ = wc.writeFrame(parent, wsFrame{Op: "result", ID: id, Result: &res})
+	wc.writeTerminal(parent, id, wsFrame{Op: "result", ID: id, Result: &res})
 }
 
 // errorCode maps known bridge sentinels to wire codes; unknown errors

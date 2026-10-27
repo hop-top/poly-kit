@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -395,13 +397,25 @@ func TestSubprocessRunner_CancelKillsChild(t *testing.T) {
 			r := SubprocessRunner(sh)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			inv := Invocation{Path: []string{"-c", "sleep 30 & echo $!; wait"}}
+			// The pid also lands in a file, written before the shell
+			// waits: Run returns its stdout only at the end, so the file
+			// is how the run case knows the child is up before it cancels.
+			pidFile := filepath.Join(t.TempDir(), "pid")
+			inv := Invocation{Path: []string{"-c", `sleep 30 & echo $! > "$0.tmp" && mv "$0.tmp" "$0" && echo $!; wait`, pidFile}}
 
 			var stdout string
 			switch mode {
 			case "run":
 				go func() {
-					time.Sleep(150 * time.Millisecond)
+					// Cancel once the child is up; a fixed sleep raced a
+					// loaded machine's shell start-up.
+					deadline := time.Now().Add(10 * time.Second)
+					for time.Now().Before(deadline) {
+						if _, err := os.Stat(pidFile); err == nil {
+							break
+						}
+						time.Sleep(5 * time.Millisecond)
+					}
 					cancel()
 				}()
 				res, err := r.Run(ctx, inv)
@@ -409,6 +423,11 @@ func TestSubprocessRunner_CancelKillsChild(t *testing.T) {
 					t.Fatalf("err=%v want context.Canceled", err)
 				}
 				stdout = res.Stdout
+				if stdout == "" {
+					// Canceled before stdout was flushed: the file has it.
+					b, _ := os.ReadFile(pidFile)
+					stdout = string(b)
+				}
 			case "stream":
 				ch := make(chan Event, 32)
 				errc := make(chan error, 1)
