@@ -172,8 +172,9 @@ type Result struct {
 //
 // Reserved Kind values:
 //
-//   - "stdout"  — one line written to stdout
-//   - "stderr"  — one line written to stderr
+//   - "stdout"  — one line written to stdout, newline stripped; a
+//     line longer than [MaxEventLineBytes] spans several Events
+//   - "stderr"  — one line written to stderr, as for stdout
 //   - "progress" — a structured progress update (Data is payload)
 //   - "done"    — terminal event; Data is *Result (or nil on err)
 type Event struct {
