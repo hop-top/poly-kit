@@ -380,6 +380,8 @@ test-parity-config: ## config-v1 conformance corpus (Go and Rust runners)
 test-parity-redact: ## redact-v1 conformance corpus: rules dump, spans and output (Go and Rust runners)
 	@echo "==> redact-v1 conformance: Go"
 	go test ./go/core/redact/ -run '^TestConformanceRedact' -count=1
+	@echo "==> redact-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features redact --test redact_conformance --locked
 
 test-parity-retry: ## retry-v1 conformance corpus (Go and Rust runners)
 	@echo "==> retry-v1 conformance: Go"

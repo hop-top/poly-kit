@@ -2083,6 +2083,61 @@
       "output": "<h>"
     },
     {
+      "name": "re2-literal-brace",
+      "note": "Go reads a { that opens no valid repeat as a literal; the regex crate rejects it",
+      "rules": [
+        {
+          "id": "t",
+          "regex": "\\${{[a-z]+}}"
+        },
+        {
+          "id": "c",
+          "regex": "a{,2}"
+        },
+        {
+          "id": "r",
+          "regex": "a{2}"
+        }
+      ],
+      "strategy": "tag",
+      "input": "${{abc}} a{,2} aa",
+      "findings": [
+        {
+          "rule": "t",
+          "start": 0,
+          "end": 8
+        },
+        {
+          "rule": "c",
+          "start": 9,
+          "end": 14
+        },
+        {
+          "rule": "r",
+          "start": 15,
+          "end": 17
+        }
+      ],
+      "spans": [
+        {
+          "rule": "t",
+          "start": 0,
+          "end": 8
+        },
+        {
+          "rule": "c",
+          "start": 9,
+          "end": 14
+        },
+        {
+          "rule": "r",
+          "start": 15,
+          "end": 17
+        }
+      ],
+      "output": "<t> <c> <r>"
+    },
+    {
       "name": "re2-ungreedy-flag",
       "rules": [
         {

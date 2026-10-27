@@ -35,6 +35,10 @@ pub mod domain;
 #[cfg(feature = "config")]
 pub mod config;
 
+// Secret and PII redaction (a port of go/core/redact). No I/O.
+#[cfg(feature = "redact")]
+pub mod redact;
+
 // Base directories for the config loader (a port of go/core/xdg's
 // home and config-home resolution). Filesystem-only: off wasm32.
 #[cfg(all(feature = "config", not(target_arch = "wasm32")))]
