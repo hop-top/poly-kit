@@ -530,7 +530,10 @@ func runStream(
 	}()
 
 	res := Result{}
-	var stdout, stderr strings.Builder
+	// The fallback text, for a runner whose done Event carries no
+	// Result, is bounded as a runner's own capture is.
+	var defaults runnerConfig
+	stdout, stderr := defaults.newCapture(), defaults.newCapture()
 	sawDoneResult := false
 
 	for ev := range events {
@@ -543,17 +546,17 @@ func runStream(
 		switch ev.Kind {
 		case "stdout":
 			if s, ok := ev.Data.(string); ok {
-				if stdout.Len() > 0 {
-					stdout.WriteByte('\n')
+				if !stdout.empty() {
+					stdout.writeString("\n")
 				}
-				stdout.WriteString(s)
+				stdout.writeString(s)
 			}
 		case "stderr":
 			if s, ok := ev.Data.(string); ok {
-				if stderr.Len() > 0 {
-					stderr.WriteByte('\n')
+				if !stderr.empty() {
+					stderr.writeString("\n")
 				}
-				stderr.WriteString(s)
+				stderr.writeString(s)
 			}
 		case "done":
 			// Prefer the Result the runner carries on done; if absent,
@@ -580,6 +583,7 @@ func runStream(
 	if !sawDoneResult {
 		res.Stdout = stdout.String()
 		res.Stderr = stderr.String()
+		res.Truncated = stdout.truncated() || stderr.truncated()
 	}
 	wc.writeTerminal(parent, id, wsFrame{Op: "result", ID: id, Result: &res})
 }

@@ -2,7 +2,6 @@ package cmdsurface
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -52,11 +51,11 @@ func (r *inProcessRunner) Run(ctx context.Context, inv Invocation) (Result, erro
 	}
 	defer ex.release()
 
-	var stdout, stderr bytes.Buffer
-	ex.attach(&stdout, &stderr)
+	stdout, stderr := r.newCapture(), r.newCapture()
+	ex.attach(stdout, stderr)
 
 	execErr := ex.root.ExecuteContext(ctx)
-	res := ex.result(execErr, stdout.String(), stderr.String())
+	res := ex.result(execErr, stdout, stderr)
 	return res, canceled(ctx, execErr)
 }
 
@@ -80,8 +79,10 @@ func (r *inProcessRunner) Stream(ctx context.Context, inv Invocation, out chan<-
 	outR, outW := io.Pipe()
 	errR, errW := io.Pipe()
 
-	var stdoutBuf, stderrBuf bytes.Buffer
-	ex.attach(io.MultiWriter(outW, &stdoutBuf), io.MultiWriter(errW, &stderrBuf))
+	// Events carry every line; the copy kept for the done Result is
+	// capped as Run's is.
+	stdoutBuf, stderrBuf := r.newCapture(), r.newCapture()
+	ex.attach(io.MultiWriter(outW, stdoutBuf), io.MultiWriter(errW, stderrBuf))
 
 	// Scanners drain each pipe and forward one Event per line.
 	var wg sync.WaitGroup
@@ -96,7 +97,7 @@ func (r *inProcessRunner) Stream(ctx context.Context, inv Invocation, out chan<-
 	_ = errW.Close()
 	wg.Wait()
 
-	res := ex.result(execErr, stdoutBuf.String(), stderrBuf.String())
+	res := ex.result(execErr, stdoutBuf, stderrBuf)
 	out <- Event{Kind: "done", Data: &res, At: time.Now()}
 	return canceled(ctx, execErr)
 }
@@ -221,6 +222,10 @@ func joinPath(path []string) string {
 // Each Invocation runs a fresh process; SubprocessRunner is safe for
 // concurrent use.
 //
+// The Result keeps at most [DefaultOutputCap] bytes of each stream,
+// or the bound [WithOutputCap] sets; the child's output past it is
+// read and discarded, so the child runs to completion.
+//
 // The child inherits the server's environment. When the Invocation
 // carries a trace context (Meta.Traceparent), the child also receives
 // it as TRACEPARENT and TRACESTATE, the environment-variable carrier
@@ -231,17 +236,23 @@ func joinPath(path []string) string {
 // the invocation's [IdempotencyScope] as [EnvIdempotencyScope], so
 // its --idempotency-key replay is confined to the caller exactly as
 // an in-process run's is (see [ScopeIdempotencyKey]).
-func SubprocessRunner(binaryPath string) Runner {
-	return &subprocessRunner{binary: binaryPath}
+func SubprocessRunner(binaryPath string, opts ...RunnerOption) Runner {
+	r := &subprocessRunner{binary: binaryPath}
+	for _, o := range opts {
+		o(&r.runnerConfig)
+	}
+	return r
 }
 
 type subprocessRunner struct {
+	runnerConfig
 	binary string
 }
 
 // Run executes the binary with the Invocation's argv synthesized from
-// Path + Flags + Args, buffers stdout/stderr, and returns a Result
-// with the captured streams and exit code. If ctx is canceled while
+// Path + Flags + Args, buffers stdout/stderr up to the output cap
+// (see [WithOutputCap]), and returns a Result with the captured
+// streams and exit code. If ctx is canceled while
 // the process is running the process group is killed and the wrapped
 // ctx.Err() is returned alongside the partial Result.
 func (r *subprocessRunner) Run(ctx context.Context, inv Invocation) (Result, error) {
@@ -268,14 +279,16 @@ func (r *subprocessRunner) Run(ctx context.Context, inv Invocation) (Result, err
 	// drained by childPipes, not os/exec, so it never cuts output.
 	cmd.WaitDelay = 100 * time.Millisecond
 
-	var stdout, stderr bytes.Buffer
+	// Each copy reads its pipe to EOF whatever the cap: output past it
+	// is discarded, never left in the pipe for the child to block on.
+	stdout, stderr := r.newCapture(), r.newCapture()
 	runErr := cmd.Start()
 	pipes.started()
 	if runErr == nil {
 		var wg sync.WaitGroup
 		wg.Add(2)
-		go func() { defer wg.Done(); _, _ = io.Copy(&stdout, pipes.stdout) }()
-		go func() { defer wg.Done(); _, _ = io.Copy(&stderr, pipes.stderr) }()
+		go func() { defer wg.Done(); _, _ = io.Copy(stdout, pipes.stdout) }()
+		go func() { defer wg.Done(); _, _ = io.Copy(stderr, pipes.stderr) }()
 		runErr = cmd.Wait()
 		pipes.exited()
 		wg.Wait()
@@ -283,8 +296,9 @@ func (r *subprocessRunner) Run(ctx context.Context, inv Invocation) (Result, err
 	}
 
 	res := Result{
-		Stdout: stdout.String(),
-		Stderr: stderr.String(),
+		Stdout:    stdout.String(),
+		Stderr:    stderr.String(),
+		Truncated: stdout.truncated() || stderr.truncated(),
 	}
 	if runErr != nil {
 		res.ExitCode = exitCodeOf(runErr)
@@ -344,12 +358,13 @@ func (r *subprocessRunner) Stream(ctx context.Context, inv Invocation, out chan<
 	}
 
 	// Tee each pipe so we keep a copy for the terminal Result while
-	// emitting one Event per line live.
-	var stdoutBuf, stderrBuf bytes.Buffer
+	// emitting one Event per line live. Events carry every line; the
+	// copy is capped as Run's is.
+	stdoutBuf, stderrBuf := r.newCapture(), r.newCapture()
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go scanLinesTee(pipes.stdout, &stdoutBuf, "stdout", out, &wg)
-	go scanLinesTee(pipes.stderr, &stderrBuf, "stderr", out, &wg)
+	go scanLinesTee(pipes.stdout, stdoutBuf, "stdout", out, &wg)
+	go scanLinesTee(pipes.stderr, stderrBuf, "stderr", out, &wg)
 
 	waitErr := cmd.Wait()
 	pipes.exited()
@@ -357,8 +372,9 @@ func (r *subprocessRunner) Stream(ctx context.Context, inv Invocation, out chan<
 	waitErr = pipes.waitErr(waitErr)
 
 	res := &Result{
-		Stdout: stdoutBuf.String(),
-		Stderr: stderrBuf.String(),
+		Stdout:    stdoutBuf.String(),
+		Stderr:    stderrBuf.String(),
+		Truncated: stdoutBuf.truncated() || stderrBuf.truncated(),
 	}
 	if waitErr != nil {
 		res.ExitCode = exitCodeOf(waitErr)
@@ -415,17 +431,17 @@ func childEnv(meta Meta) []string {
 }
 
 // scanLinesTee is the streaming sibling of scanLines: it also copies
-// every line into buf so the terminal "done" Event can carry the full
-// captured stream. Newline is restored when teeing because the scanner
-// strips it.
-func scanLinesTee(r io.Reader, buf *bytes.Buffer, kind string, out chan<- Event, wg *sync.WaitGroup) {
+// every line into buf so the terminal "done" Event can carry the
+// captured stream, up to buf's cap. Newline is restored when teeing
+// because the scanner strips it.
+func scanLinesTee(r io.Reader, buf *capturedOutput, kind string, out chan<- Event, wg *sync.WaitGroup) {
 	defer wg.Done()
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
+		_, _ = buf.Write(sc.Bytes())
+		_, _ = buf.Write([]byte{'\n'})
 		line := sc.Text()
-		buf.WriteString(line)
-		buf.WriteByte('\n')
 		out <- Event{Kind: kind, Data: line, At: time.Now()}
 	}
 }

@@ -56,7 +56,7 @@ var ErrNotInvocable = errors.New("cmdsurface: command not invocable through a ru
 func InProcessRunner(root *cobra.Command, opts ...RunnerOption) Runner {
 	r := &inProcessRunner{root: root}
 	for _, o := range opts {
-		o(r)
+		o(&r.runnerConfig)
 	}
 	if r.newRoot == nil && root != nil {
 		r.baseline = captureFlagState(root)
@@ -65,8 +65,8 @@ func InProcessRunner(root *cobra.Command, opts ...RunnerOption) Runner {
 	return r
 }
 
-// RunnerOption configures [InProcessRunner].
-type RunnerOption func(*inProcessRunner)
+// RunnerOption configures [InProcessRunner] or [SubprocessRunner].
+type RunnerOption func(*runnerConfig)
 
 // WithRootFactory makes the runner build a fresh cobra tree for every
 // invocation instead of re-entering one shared root. Each invocation
@@ -84,14 +84,14 @@ type RunnerOption func(*inProcessRunner)
 // prepare-without-execute hook.
 //
 // When a factory is set the root passed to InProcessRunner is ignored
-// and may be nil.
+// and may be nil. [SubprocessRunner] ignores the option.
 func WithRootFactory(newRoot func() *cobra.Command) RunnerOption {
-	return func(r *inProcessRunner) { r.newRoot = newRoot }
+	return func(c *runnerConfig) { c.newRoot = newRoot }
 }
 
 type inProcessRunner struct {
+	runnerConfig
 	root     *cobra.Command
-	newRoot  func() *cobra.Command
 	baseline map[*pflag.Flag]admitted.FlagState
 	// mu serializes invocations on root. It is the tree's lock, shared
 	// by every runner over the same root, not the runner's own: see
@@ -258,15 +258,21 @@ func (ex *execution) undo() {
 
 // result assembles the Result for an execution that returned execErr
 // with the given captured streams.
-func (ex *execution) result(execErr error, stdout, stderr string) Result {
-	res := Result{Stdout: stdout, Stderr: stderr}
+func (ex *execution) result(execErr error, stdoutCap, stderrCap *capturedOutput) Result {
+	stdout := stdoutCap.String()
+	res := Result{
+		Stdout:    stdout,
+		Stderr:    stderrCap.String(),
+		Truncated: stdoutCap.truncated() || stderrCap.truncated(),
+	}
 	if execErr != nil {
 		res.ExitCode = inProcessExitCode(execErr)
 		if res.Stderr == "" {
 			res.Stderr = execErr.Error()
 		}
 	}
-	if ex.structured {
+	// Truncated stdout is not the document the command wrote.
+	if ex.structured && !stdoutCap.truncated() {
 		if data, ok := decodeStructured(stdout); ok {
 			res.Data = data
 			if ex.selected {

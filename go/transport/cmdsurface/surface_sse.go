@@ -222,7 +222,10 @@ func newSSEHandler(b *Bridge, leaf *Leaf, cfg sseConfig) http.HandlerFunc {
 			return sseWriteComment(w, flusher)
 		}
 
-		var stdoutBuf, stderrBuf strings.Builder
+		// The fallback text, for a runner whose done Event carries no
+		// Result, is bounded as a runner's own capture is.
+		var defaults runnerConfig
+		stdoutBuf, stderrBuf := defaults.newCapture(), defaults.newCapture()
 		var runResult *Result // populated by the Runner's terminal "done" event, if any
 
 		forwardEvent := func(ev Event) error {
@@ -234,13 +237,13 @@ func newSSEHandler(b *Bridge, leaf *Leaf, cfg sseConfig) http.HandlerFunc {
 				return nil
 			case "stdout":
 				if s, ok := ev.Data.(string); ok {
-					stdoutBuf.WriteString(s)
-					stdoutBuf.WriteByte('\n')
+					stdoutBuf.writeString(s)
+					stdoutBuf.writeString("\n")
 				}
 			case "stderr":
 				if s, ok := ev.Data.(string); ok {
-					stderrBuf.WriteString(s)
-					stderrBuf.WriteByte('\n')
+					stderrBuf.writeString(s)
+					stderrBuf.writeString("\n")
 				}
 			}
 			return writeFrame("event", ev)
@@ -285,7 +288,7 @@ func newSSEHandler(b *Bridge, leaf *Leaf, cfg sseConfig) http.HandlerFunc {
 			})
 			return
 		}
-		res := buildTerminalResult(runResult, stdoutBuf.String(), stderrBuf.String())
+		res := buildTerminalResult(runResult, stdoutBuf, stderrBuf)
 		_ = writeFrame("result", res)
 	}
 }
@@ -330,11 +333,15 @@ func buildSSEInvocation(r *http.Request, leaf *Leaf) Invocation {
 // buildTerminalResult returns the final Result frame. When the
 // Runner produced its own *Result via a "done" Event we honor it;
 // otherwise we synthesize one from the accumulated stdout/stderr.
-func buildTerminalResult(fromRunner *Result, stdout, stderr string) Result {
+func buildTerminalResult(fromRunner *Result, stdout, stderr *capturedOutput) Result {
 	if fromRunner != nil {
 		return *fromRunner
 	}
-	return Result{Stdout: stdout, Stderr: stderr}
+	return Result{
+		Stdout:    stdout.String(),
+		Stderr:    stderr.String(),
+		Truncated: stdout.truncated() || stderr.truncated(),
+	}
 }
 
 // sseWriteFrame writes one "event: <name>\ndata: <json>\n\n" frame

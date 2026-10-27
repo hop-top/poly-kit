@@ -54,9 +54,10 @@ func invocationFromProto(m *cmdsurfacev1.Invocation) Invocation {
 // carries it even when zero.
 func resultToProto(res Result) (*cmdsurfacev1.Result, error) {
 	out := &cmdsurfacev1.Result{
-		ExitCode: proto.Int32(clampInt32(res.ExitCode)),
-		Stdout:   res.Stdout,
-		Stderr:   res.Stderr,
+		ExitCode:  proto.Int32(clampInt32(res.ExitCode)),
+		Stdout:    res.Stdout,
+		Stderr:    res.Stderr,
+		Truncated: res.Truncated,
 	}
 	if res.Data != nil {
 		v, raw, err := wireValue(res.Data)
