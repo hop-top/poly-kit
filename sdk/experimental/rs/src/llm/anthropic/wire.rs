@@ -41,10 +41,8 @@ pub(crate) fn body(
     b.insert("model".into(), json!(model));
     b.insert("max_tokens".into(), json!(max_tokens));
     b.insert("messages".into(), Value::Array(messages));
-    if let Some((s, cc)) = system {
-        let mut block = text_block(&s);
-        set_cache(&mut block, cc.as_ref())?;
-        b.insert("system".into(), json!([block]));
+    if !system.is_empty() {
+        b.insert("system".into(), Value::Array(system));
     }
     if let Some(t) = req.thinking {
         if t.budget_tokens < MIN_THINKING_BUDGET {
@@ -121,17 +119,47 @@ fn replay_thinking(tbs: &[ThinkingBlock]) -> Vec<Value> {
         .collect()
 }
 
-/// System text with its breakpoint.
-type System = (String, Option<CacheControl>);
+/// Joins consecutive system messages into one text.
+const SYSTEM_SEPARATOR: &str = "\n\n";
 
-/// The top-level system text (the last system message wins, as in Go)
-/// and the conversation without it.
-fn messages(msgs: &[Message], names: &ToolNames) -> Result<(Option<System>, Vec<Value>), LlmError> {
-    let mut system = None;
+/// Every system message, wherever it sits, as the system field's text
+/// blocks: their content joined in order with a blank line
+/// ([`SYSTEM_SEPARATOR`]), empty ones skipped. A cache breakpoint on a
+/// system message ends a block there and carries that breakpoint, so
+/// each breakpoint caches exactly the text up to it; the next system
+/// message starts a new block. No system text yields none.
+fn system_blocks(msgs: &[Message]) -> Result<Vec<Value>, LlmError> {
+    let mut out = Vec::new();
+    let mut text = String::new();
+    for m in msgs.iter().filter(|m| m.role == Role::System) {
+        if !m.content.is_empty() {
+            if !text.is_empty() {
+                text.push_str(SYSTEM_SEPARATOR);
+            }
+            text.push_str(&m.content);
+        }
+        let Some(cc) = &m.cache_control else { continue };
+        if text.is_empty() {
+            continue;
+        }
+        let mut block = text_block(&text);
+        set_cache(&mut block, Some(cc))?;
+        out.push(block);
+        text.clear();
+    }
+    if !text.is_empty() {
+        out.push(text_block(&text));
+    }
+    Ok(out)
+}
+
+/// The system field's blocks ([`system_blocks`]; Anthropic takes system
+/// as a top-level field) and the conversation without them.
+fn messages(msgs: &[Message], names: &ToolNames) -> Result<(Vec<Value>, Vec<Value>), LlmError> {
+    let system = system_blocks(msgs)?;
     let mut out: Vec<Value> = Vec::with_capacity(msgs.len());
     for (i, m) in msgs.iter().enumerate() {
         if m.role == Role::System {
-            system = Some((m.content.clone(), m.cache_control.clone()));
             continue;
         }
         check_linkage_role(m)?;
