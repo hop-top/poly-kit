@@ -1,0 +1,151 @@
+{
+  "version": "v1",
+  "description": "Capability id and subject grammar. A capability id is the reserved single segment `telemetry`, or two or more dot-separated segments each matching ^[a-z][a-z0-9_]*$, at most 128 bytes in all. A subject is empty (any subject) or 1-256 bytes of valid UTF-8 with no whitespace and no control characters.",
+  "capabilities": [
+    {
+      "id": "telemetry",
+      "ok": true
+    },
+    {
+      "id": "io.screen.capture",
+      "ok": true
+    },
+    {
+      "id": "io.clipboard.read",
+      "ok": true
+    },
+    {
+      "id": "io.microphone.capture",
+      "ok": true
+    },
+    {
+      "id": "app.export_v2",
+      "ok": true
+    },
+    {
+      "id": "io.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ok": true
+    },
+    {
+      "id": "",
+      "ok": false,
+      "error_kind": "invalid_capability"
+    },
+    {
+      "id": "screen",
+      "ok": false,
+      "error_kind": "invalid_capability"
+    },
+    {
+      "id": "Telemetry",
+      "ok": false,
+      "error_kind": "invalid_capability"
+    },
+    {
+      "id": "IO.screen",
+      "ok": false,
+      "error_kind": "invalid_capability"
+    },
+    {
+      "id": "io..read",
+      "ok": false,
+      "error_kind": "invalid_capability"
+    },
+    {
+      "id": ".io.read",
+      "ok": false,
+      "error_kind": "invalid_capability"
+    },
+    {
+      "id": "io.read.",
+      "ok": false,
+      "error_kind": "invalid_capability"
+    },
+    {
+      "id": "io.screen-capture",
+      "ok": false,
+      "error_kind": "invalid_capability"
+    },
+    {
+      "id": "1io.read",
+      "ok": false,
+      "error_kind": "invalid_capability"
+    },
+    {
+      "id": "io._read",
+      "ok": false,
+      "error_kind": "invalid_capability"
+    },
+    {
+      "id": "io.*",
+      "ok": false,
+      "error_kind": "invalid_capability"
+    },
+    {
+      "id": "io.read ",
+      "ok": false,
+      "error_kind": "invalid_capability"
+    },
+    {
+      "id": "io.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ok": false,
+      "error_kind": "invalid_capability"
+    }
+  ],
+  "subjects": [
+    {
+      "subject": "",
+      "ok": true
+    },
+    {
+      "subject": "app:dek",
+      "ok": true
+    },
+    {
+      "subject": "tool:kit",
+      "ok": true
+    },
+    {
+      "subject": "principal:usr_01h455vb4pex5vsknk084sn02q",
+      "ok": true
+    },
+    {
+      "subject": "app:café",
+      "ok": true
+    },
+    {
+      "subject": "app:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "ok": true
+    },
+    {
+      "subject": "has space",
+      "ok": false,
+      "error_kind": "invalid_subject"
+    },
+    {
+      "subject": " app:dek",
+      "ok": false,
+      "error_kind": "invalid_subject"
+    },
+    {
+      "subject": "app:dek\t",
+      "ok": false,
+      "error_kind": "invalid_subject"
+    },
+    {
+      "subject": "app:\u0007bell",
+      "ok": false,
+      "error_kind": "invalid_subject"
+    },
+    {
+      "subject": "app: nbsp",
+      "ok": false,
+      "error_kind": "invalid_subject"
+    },
+    {
+      "subject": "app:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "ok": false,
+      "error_kind": "invalid_subject"
+    }
+  ]
+}

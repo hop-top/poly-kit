@@ -31,6 +31,8 @@ type Store interface {
 	// Clear resets the persisted decision to StateUnknown by removing
 	// the kit.telemetry.consent block from the file. Used by `kit
 	// telemetry reset`. Other top-level keys are preserved. If no
-	// file exists, Clear is a no-op (success).
+	// file exists, Clear is a no-op (success). After Clear, Get MUST
+	// return StateUnknown: a store with a read fallback (FileStore's
+	// legacy telemetry.yaml) clears the fallback too.
 	Clear(ctx context.Context) error
 }

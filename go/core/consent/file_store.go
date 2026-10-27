@@ -31,7 +31,8 @@ const consentFileRel = "config.yaml"
 // config.yaml is missing or lacks the kit.telemetry.consent block; write
 // paths always emit to config.yaml. Migration is silent — the legacy
 // file is left in place to avoid clobbering sibling top-level keys that
-// adopters may have added by hand.
+// adopters may have added by hand; only Clear touches it, removing the
+// consent block alone so a reset sticks.
 const legacyConsentFileRel = "telemetry.yaml"
 
 // filePerm is the required mode of the on-disk file. 0600 because the
@@ -56,7 +57,9 @@ const dirPerm fs.FileMode = 0o700
 // dedicated <XDG_CONFIG_HOME>/kit/telemetry.yaml under bare
 // `telemetry.consent`. FileStore reads that legacy file as a fallback
 // when config.yaml is absent or lacks the consent block. Writes always
-// go to config.yaml; the legacy file is never modified.
+// go to config.yaml; Clear also strips the consent block from the
+// legacy file (other keys kept) so a reset is not undone by the
+// fallback.
 //
 // Concurrency: an internal mutex serializes Get/Set/Clear. The file
 // itself is rewritten atomically (tmp + rename) so external readers
@@ -73,8 +76,8 @@ type FileStore struct {
 	path string
 
 	// legacyPath is the pre-refactor location
-	// (<XDG_CONFIG_HOME>/kit/telemetry.yaml). Read-only fallback —
-	// never written to.
+	// (<XDG_CONFIG_HOME>/kit/telemetry.yaml). Read fallback; only
+	// Clear writes it, to remove the consent block.
 	legacyPath string
 
 	// mu serializes file access within a single process.
@@ -109,14 +112,18 @@ func (s *FileStore) Path() string {
 // Read order: canonical config.yaml first under kit.telemetry.consent;
 // if the file is absent OR the consent block is missing, fall back to
 // the legacy telemetry.yaml under bare telemetry.consent. The legacy
-// file is never re-written; the next Set/Clear migrates to config.yaml.
+// file is not re-written by reads; Set migrates to config.yaml and Clear
+// strips the legacy block.
 func (s *FileStore) Get(ctx context.Context) (Decision, error) {
 	if err := ctx.Err(); err != nil {
 		return Decision{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.getLocked()
+}
 
+func (s *FileStore) getLocked() (Decision, error) {
 	// Canonical path first.
 	doc, err := s.readDoc(s.path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -169,7 +176,10 @@ func (s *FileStore) Set(ctx context.Context, d Decision) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.setLocked(d)
+}
 
+func (s *FileStore) setLocked(d Decision) error {
 	doc, err := s.readDoc(s.path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
@@ -181,29 +191,48 @@ func (s *FileStore) Set(ctx context.Context, d Decision) error {
 	if err := upsertDecision(doc, d); err != nil {
 		return err
 	}
-	return s.writeDoc(doc)
+	return s.writeDoc(s.path, doc)
 }
 
-// Clear resets to StateUnknown by removing the kit.telemetry.consent
-// block from config.yaml. If config.yaml does not exist, Clear is a
-// no-op (success). Other top-level keys are preserved. The legacy
-// telemetry.yaml is never modified.
+// Clear resets to StateUnknown by removing the consent block from
+// config.yaml (kit.telemetry.consent) and from the legacy
+// telemetry.yaml (telemetry.consent), so a reset sticks on installs
+// that only carry the legacy file. Other keys in both files are
+// preserved; a missing file is skipped.
 func (s *FileStore) Clear(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.clearLocked()
+}
 
+func (s *FileStore) clearLocked() error {
 	doc, err := s.readDoc(s.path)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		return err
+	case doc != nil:
+		removeConsent(doc)
+		if err := s.writeDoc(s.path, doc); err != nil {
+			return err
 		}
+	}
+
+	legacy, err := s.readDoc(s.legacyPath)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
 		return err
 	}
-	removeConsent(doc)
-	return s.writeDoc(doc)
+	if _, found, _ := extractLegacyDecision(legacy); !found {
+		return nil
+	}
+	deleteMappingChild(mappingChild(rootMapping(legacy), keyTelemetry), keyConsent)
+	return s.writeDoc(s.legacyPath, legacy)
 }
 
 // readDoc reads and parses the YAML at path. Returns (nil,
@@ -230,8 +259,8 @@ func (s *FileStore) readDoc(path string) (*yaml.Node, error) {
 // 0700 perms — xdg.ConfigFile already creates the parents per its
 // docs, but we enforce the mode explicitly because the underlying
 // library uses its own defaults.
-func (s *FileStore) writeDoc(doc *yaml.Node) error {
-	if err := os.MkdirAll(filepath.Dir(s.path), dirPerm); err != nil {
+func (s *FileStore) writeDoc(path string, doc *yaml.Node) error {
+	if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
 		return fmt.Errorf("consent: mkdir: %w", err)
 	}
 
@@ -240,7 +269,7 @@ func (s *FileStore) writeDoc(doc *yaml.Node) error {
 		return fmt.Errorf("consent: marshal: %w", err)
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(s.path), ".config.yaml.tmp.*")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config.yaml.tmp.*")
 	if err != nil {
 		return fmt.Errorf("consent: create tmp: %w", err)
 	}
@@ -266,12 +295,12 @@ func (s *FileStore) writeDoc(doc *yaml.Node) error {
 	if err := os.Chmod(tmpPath, filePerm); err != nil {
 		return fmt.Errorf("consent: chmod tmp: %w", err)
 	}
-	if err := os.Rename(tmpPath, s.path); err != nil {
+	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("consent: rename: %w", err)
 	}
 	// Belt-and-braces: enforce perms on the final path in case the
 	// rename inherited the dir's mode on some platforms.
-	if err := os.Chmod(s.path, filePerm); err != nil {
+	if err := os.Chmod(path, filePerm); err != nil {
 		return fmt.Errorf("consent: chmod final: %w", err)
 	}
 	return nil

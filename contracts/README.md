@@ -14,6 +14,7 @@ Corpora bind every port, Go included; detail lives in each corpus README.
 - [completion-v1/](completion-v1/README.md): kit/console/cli shell
   completion: completers, `__complete` output, `completion <shell>`
   scripts byte for byte. Go and Rust runners.
+- [consent-v1/](consent-v1/README.md): kit/core/consent grants: records, decisions, refusals, audit, telemetry migration.
 - [config-v1/](config-v1/README.md): kit/core/config scalar parsing and
   typing, overrides, precedence, layered load, set/unset. Go and Rust.
 - [netpolicy-v1/](netpolicy-v1/README.md): kit/core/netpolicy `--offline`:
@@ -26,8 +27,7 @@ Corpora bind every port, Go included; detail lives in each corpus README.
   delay table, full-jitter bounds, stop rule. Go and Rust runners.
 - [kv-v1/](kv-v1/README.md): kit/storage/kv keys bind to SQLite as TEXT,
   written by one SDK and read back by another.
-- [identity-v1/](identity-v1/README.md): kit/core/identity HKDF-SHA256
-  key derivation over an Ed25519 seed.
+- [identity-v1/](identity-v1/README.md): kit/core/identity HKDF-SHA256 key derivation over an Ed25519 seed.
 - [typeid-v1/](typeid-v1/README.md): kit `typeid`: the string every SDK
   makes from `(prefix, uuid)` and recovers it from.
 - [proto/](proto/README.md): shared protobuf definitions;
