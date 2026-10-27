@@ -67,13 +67,18 @@ then to the rule added first. Rules follow gitleaks v8.30.1:
   an unset `secretGroup` to 1 when the pattern has exactly one group;
   with several groups the whole match is replaced.
 - **Entropy**: a secret at or below the floor is not a finding.
-- **Allowlists**: `Scan` applies gitleaks semantics (substring regexes,
-  stopwords). `Apply`, `ApplyBytes` and `Spans` fail closed: stopwords
-  never exempt, and a regex exempts only when it matches the whole
-  target. Path and commit checks never hold on text.
+- **Two modes**: `Scan` is detection and follows gitleaks exactly.
+  `Apply`, `ApplyBytes` and `Spans` fail closed: stopwords never exempt,
+  a regex exempts only when it matches the whole target, and a
+  distinctive rule skips the keyword gate and the entropy floor. A rule
+  is distinctive (`Rule.Distinctive()`) when every match starts with a
+  literal of at least 3 characters (`ghp_`, `xoxb-`, `AKIA`, `sk-ant-`);
+  of the 232 default rules 111 are, 121 are generic and keep both
+  checks. Path and commit checks never hold on text.
 - Kit patches two upstream allowlist entries at load time (an unanchored
   `true|false|null`, and the `author`/`primary` key names in
-  `generic-api-key`). `path` scopes are kept as data and not consulted.
+  `generic-api-key`). Rules scoped to a `path` run on all text; the
+  scope is kept as data.
 
 ## Replacement strategies
 

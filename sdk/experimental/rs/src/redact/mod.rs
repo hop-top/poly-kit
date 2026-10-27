@@ -22,6 +22,7 @@
 //! exported by Go (`contracts/redact-v1/rules.json`). There is no
 //! environment override. No I/O: wasm32-safe. `Send + Sync`.
 
+mod distinctive;
 mod rule;
 mod spans;
 mod syntax;

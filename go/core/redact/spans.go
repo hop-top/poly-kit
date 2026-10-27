@@ -81,7 +81,7 @@ func merge(hits []hit) []region {
 // collect returns every rule's hits on s, in rule order then position.
 func collect[T string | []byte](r *Redactor, s T, mode collectMode) []hit {
 	var buf [8]uint64
-	cand := r.candidates(s, buf[:])
+	cand := r.candidates(s, buf[:], mode)
 	var hits []hit
 	for i := range r.rules {
 		if !has(cand, i) {
@@ -145,7 +145,8 @@ func (r *Redactor) judge(s string, rule *Rule, i int, locs, subs [][]int, hits [
 			continue
 		}
 		secret := s[ss:se]
-		if rule.spec.Entropy != 0 && shannonEntropy(secret) <= rule.spec.Entropy {
+		trusted := mode != detect && rule.spec.Distinctive
+		if !trusted && rule.spec.Entropy != 0 && shannonEntropy(secret) <= rule.spec.Entropy {
 			continue
 		}
 		if r.exempt(rule, s, secret, ms, me, mode == detect) {
@@ -199,9 +200,10 @@ func lineAround(s string, start, end int) string {
 }
 
 // candidates returns the rules to run on s as a bitset: those passing
-// their keyword gate and, unless noPrefilter, the literal screen.
-// buf is scratch space the result may alias.
-func (r *Redactor) candidates(s any, buf []uint64) []uint64 {
+// their keyword gate (redaction exempts distinctive rules from it)
+// and, unless noPrefilter, the literal screen. buf is scratch space
+// the result may alias.
+func (r *Redactor) candidates(s any, buf []uint64, mode collectMode) []uint64 {
 	n := (len(r.rules) + 63) / 64
 	if n > len(buf) {
 		buf = make([]uint64, n)
@@ -209,26 +211,31 @@ func (r *Redactor) candidates(s any, buf []uint64) []uint64 {
 	buf = buf[:n]
 	switch v := s.(type) {
 	case string:
-		screen(r, v, buf)
+		screen(r, v, buf, mode != detect)
 	case []byte:
-		screen(r, v, buf)
+		screen(r, v, buf, mode != detect)
 	}
 	return buf
 }
 
-func screen[T string | []byte](r *Redactor, s T, dst []uint64) {
+func screen[T string | []byte](r *Redactor, s T, dst []uint64, redacting bool) {
 	lower, ascii := keywordText(s)
 	if r.noPrefilter {
 		clear(dst)
 		for i := range r.rules {
-			if keywordGate(r.rules[i].spec.Keywords, lower) {
+			trusted := redacting && r.rules[i].spec.Distinctive
+			if trusted || keywordGate(r.rules[i].spec.Keywords, lower) {
 				dst[i/64] |= 1 << (i % 64)
 			}
 		}
 		return
 	}
 	if ascii {
-		candidates(r.both, s, dst)
+		if redacting {
+			candidates(r.bothRedact, s, dst)
+		} else {
+			candidates(r.both, s, dst)
+		}
 		return
 	}
 	var kwBuf [8]uint64
@@ -240,6 +247,9 @@ func screen[T string | []byte](r *Redactor, s T, dst []uint64) {
 	candidates(r.pf, s, dst)
 	candidates(r.kw, lower.(T), kw)
 	for i := range dst {
+		if redacting {
+			kw[i] |= r.distinct[i]
+		}
 		dst[i] &= kw[i]
 	}
 }

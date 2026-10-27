@@ -178,6 +178,7 @@ func parseGitleaks(data []byte) (Policy, error) {
 			SecretGroup: gr.SecretGroup, Entropy: gr.Entropy,
 			Keywords: gr.Keywords, Tags: gr.Tags, Path: gr.Path,
 		}
+		spec.Distinctive = isDistinctive(gr.Regex)
 		if spec.SecretGroup == 0 && re.NumSubexp() == 1 {
 			spec.SecretGroup = 1
 		}
@@ -269,6 +270,7 @@ func loadPresidioSpecs(path string) ([]RuleSpec, error) {
 		out = append(out, RuleSpec{
 			ID: pr.ID, Description: pr.Description, Regex: pr.Pattern,
 			Replacement: pr.Replacement, AllowlistExact: pr.AllowlistExact,
+			Distinctive: isDistinctive(pr.Pattern),
 		})
 	}
 	return out, nil

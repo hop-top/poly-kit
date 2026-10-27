@@ -27,13 +27,15 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 
 | File | Pins |
 |------|------|
-| `rules.json` | the default policy as data (`redact.EmbeddedPolicy()`): gitleaks v8.30.1 rules with the kit patches, then the Presidio pack, then global allowlists. The Rust crate embeds a byte-identical copy (`src/redact/rules.json`). |
+| `rules.json` | the default policy as data (`redact.EmbeddedPolicy()`): gitleaks v8.30.1 rules with the kit patches, then the Presidio pack, then global allowlists. Every rule carries `distinctive`, which each port must compute identically. The Rust crate embeds a byte-identical copy (`src/redact/rules.json`). |
 | `vectors.json` | `{name, rules?, allowlists?, allowlist_exact?, strategy, input, pad?, findings?, spans, output}`; no `rules` means `rules.json` |
 
 Semantics the vectors pin:
 
 - Single pass. Every rule matches the original input; matches are trimmed of leading and trailing `\n`; the secret is the `secret_group` span (0, or a group that did not participate, means the whole match). Overlapping and adjacent spans merge: earliest start wins, then the longest, then the rule listed first. Replacements are never scanned.
+- Distinctive: every match starts with a literal of 3+ characters, walked on the parsed pattern: literals count their characters, a class of at most 4 characters counts as one, an alternation adds its shortest branch and ends the prefix unless every branch is wholly literal, a repeat with minimum 1 adds its operand's prefix and ends it, empty-width assertions are skipped. Inline rules leave the field out; it is computed.
 - Keywords: a rule runs only when the input lower-cased per rune with Go's simple mapping (U+0130 becomes `i`, the Kelvin sign `k`) contains one.
+- `findings` keep the keyword gate and entropy floor for every rule; `spans` and `output` skip both for distinctive rules.
 - Entropy: Shannon entropy over runes, divided by the byte length, summed in ascending rune order; a secret at or below the floor is dropped.
 - Two allowlist modes. `findings` is detection (`Scan`): gitleaks semantics, each regex tested on its own and needing a non-empty match, stopwords as case-insensitive substrings of the secret. `spans` and `output` are redaction: fail closed, stopwords never exempt, a regex exempts only when it matches the whole target (`secret`, `match` or `line`). AND lists need every populated check; paths and commits never hold.
 - `allowlist_exact` exempts a secret or whole match equal to an entry.

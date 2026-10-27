@@ -1463,6 +1463,133 @@
       "output": "api_token = <generic-api-key>"
     },
     {
+      "name": "distinctive-skips-keyword-gate-in-apply",
+      "note": "findings is empty: detection keeps the keyword gate",
+      "rules": [
+        {
+          "id": "t",
+          "regex": "tok_[0-9a-f]{8}",
+          "keywords": [
+            "zzz"
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "x tok_0123abcd",
+      "findings": [],
+      "spans": [
+        {
+          "rule": "t",
+          "start": 2,
+          "end": 14
+        }
+      ],
+      "output": "x <t>"
+    },
+    {
+      "name": "distinctive-skips-entropy-in-apply",
+      "rules": [
+        {
+          "id": "t",
+          "regex": "tok_(a{8})",
+          "secret_group": 1,
+          "entropy": 3
+        }
+      ],
+      "strategy": "tag",
+      "input": "tok_aaaaaaaa",
+      "findings": [],
+      "spans": [
+        {
+          "rule": "t",
+          "start": 4,
+          "end": 12
+        }
+      ],
+      "output": "tok_<t>"
+    },
+    {
+      "name": "distinctive-case-folded-prefix",
+      "rules": [
+        {
+          "id": "x",
+          "regex": "(?i)xoxb-[0-9]{4}",
+          "keywords": [
+            "nokw"
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "XOXB-1234",
+      "findings": [],
+      "spans": [
+        {
+          "rule": "x",
+          "start": 0,
+          "end": 9
+        }
+      ],
+      "output": "<x>"
+    },
+    {
+      "name": "distinctive-literal-alternation-prefix",
+      "rules": [
+        {
+          "id": "s",
+          "regex": "(?:sk|rk)_live_[a-z]{8}",
+          "keywords": [
+            "nokw"
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "rk_live_abcdefgh",
+      "findings": [],
+      "spans": [
+        {
+          "rule": "s",
+          "start": 0,
+          "end": 16
+        }
+      ],
+      "output": "<s>"
+    },
+    {
+      "name": "generic-without-keyword-not-redacted",
+      "rules": [
+        {
+          "id": "g",
+          "regex": "[a-z]+_([0-9a-f]{12})",
+          "secret_group": 1,
+          "keywords": [
+            "secret"
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "app_0123456789ab",
+      "findings": [],
+      "spans": [],
+      "output": "app_0123456789ab"
+    },
+    {
+      "name": "generic-short-prefix-keeps-gate",
+      "rules": [
+        {
+          "id": "g",
+          "regex": "ab[0-9]{8}",
+          "keywords": [
+            "nokw"
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "ab12345678",
+      "findings": [],
+      "spans": [],
+      "output": "ab12345678"
+    },
+    {
       "name": "multibyte-offsets-are-bytes",
       "rules": [
         {
@@ -2293,12 +2420,18 @@
       "output": "id A\u004bIAIOSFODNN7EXAMPLE"
     },
     {
-      "name": "default-low-entropy-dropped",
+      "name": "default-distinctive-low-entropy-redacted-by-apply",
       "strategy": "tag",
       "input": "k s\u006b-aaaaaaaaaaaaaaaaaaaaT3BlbkFJbbbbbbbbbbbbbbbbbbbb e",
       "findings": [],
-      "spans": [],
-      "output": "k s\u006b-aaaaaaaaaaaaaaaaaaaaT3BlbkFJbbbbbbbbbbbbbbbbbbbb e"
+      "spans": [
+        {
+          "rule": "openai-api-key",
+          "start": 2,
+          "end": 53
+        }
+      ],
+      "output": "k <openai-api-key> e"
     },
     {
       "name": "default-global-false-anchored",
@@ -2349,12 +2482,18 @@
       "output": "api_key = ${API_KEY}"
     },
     {
-      "name": "default-keyword-gates-airtable-pat",
+      "name": "default-distinctive-airtable-pat-without-keyword",
       "strategy": "tag",
       "input": "a p\u0061tZq9Lm2Wx7Rt4Vb.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef b",
       "findings": [],
-      "spans": [],
-      "output": "a p\u0061tZq9Lm2Wx7Rt4Vb.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef b"
+      "spans": [
+        {
+          "rule": "airtable-personnal-access-token",
+          "start": 2,
+          "end": 84
+        }
+      ],
+      "output": "a <airtable-personnal-access-token> b"
     },
     {
       "name": "default-keyword-present-airtable-pat",

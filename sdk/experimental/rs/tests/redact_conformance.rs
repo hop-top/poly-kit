@@ -11,7 +11,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use hop_top_kit::redact::{
-    self, AllowlistSpec, Policy, Redactor, Replacement, RuleSpec, RULES_JSON,
+    self, AllowlistSpec, Policy, Redactor, Replacement, Rule, RuleSpec, RULES_JSON,
 };
 use serde::Deserialize;
 
@@ -80,6 +80,17 @@ fn corpus_files_have_runners_and_rules_match() {
     );
     let p: Policy = serde_json::from_str(&contract).unwrap();
     Redactor::from_policy(&p).expect("every default rule compiles under the regex crate");
+    // The classification Go exported is the one this port computes.
+    let disagree: Vec<&str> = p
+        .rules
+        .iter()
+        .filter(|s| Rule::compile((*s).clone()).unwrap().distinctive() != s.distinctive)
+        .map(|s| s.id.as_str())
+        .collect();
+    assert!(
+        disagree.is_empty(),
+        "distinctive differs from rules.json for {disagree:?}"
+    );
 }
 
 #[test]

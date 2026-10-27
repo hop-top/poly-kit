@@ -238,6 +238,65 @@ fn send_sync_shared_across_threads() {
     });
 }
 
+#[test]
+fn distinctive_classification() {
+    for (pattern, want) in [
+        (r"ghp_[0-9a-zA-Z]{36}", true),
+        (r"\bxoxb-[0-9]{10}", true),
+        (r"(?i)\b(p8e-[a-z0-9]{32})", true),
+        (r"\b((?:A3T[A-Z0-9]|AKIA|ASIA)[A-Z2-7]{16})", true),
+        (r"(?:sk-ant-|sk-proj-)[a-z]{8}", true),
+        (r"(?:sk|rk)_live_[a-z]{8}", true),
+        (r"(?:ghu|ghs)_[0-9a-zA-Z]{36}", true),
+        (r"[ab]cd[0-9]", true),
+        (r"(?:s|r)k[a-z]{8}", false),
+        (r"ab[0-9]{8}", false),
+        (r"[\w.-]{0,50}?(?:adafruit)=([a-z0-9]{32})", false),
+        (r"(?:AKIA|ab)[0-9]{8}", false),
+        (r"[0-9a-f]{12}", false),
+        (r"A{3}[0-9]", false),
+    ] {
+        assert_eq!(
+            Rule::new("r", pattern, "").unwrap().distinctive(),
+            want,
+            "{pattern}"
+        );
+    }
+}
+
+#[test]
+fn distinctive_skips_keyword_gate_and_entropy_in_apply() {
+    let gated = RuleSpec {
+        keywords: vec!["zzz".into()],
+        ..spec("t", "tok_[0-9a-f]{8}")
+    };
+    let r = redactor(Replacement::Tag, vec![gated]);
+    assert_eq!(r.apply("x tok_0123abcd"), "x <t>");
+    assert!(r.scan("x tok_0123abcd").is_empty());
+    let low = RuleSpec {
+        secret_group: 1,
+        entropy: 3.0,
+        ..spec("t", "tok_(a{8})")
+    };
+    let r = redactor(Replacement::Tag, vec![low]);
+    assert_eq!(r.apply("tok_aaaaaaaa"), "tok_<t>");
+    assert!(r.scan("tok_aaaaaaaa").is_empty());
+}
+
+#[test]
+fn generic_keeps_gate_and_entropy_in_apply() {
+    let g = RuleSpec {
+        keywords: vec!["key".into()],
+        ..spec("g", "[0-9a-f]{12}")
+    };
+    let e = RuleSpec {
+        entropy: 3.0,
+        ..spec("e", "[a-h]{8}")
+    };
+    let r = redactor(Replacement::Tag, vec![g, e]);
+    assert_eq!(r.apply("0123456789ab abcdefgh"), "0123456789ab abcdefgh");
+}
+
 /// A seeded generator of strings matching a pattern, on its HIR.
 struct Gen(u64);
 

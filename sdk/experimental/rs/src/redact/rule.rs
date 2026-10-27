@@ -5,7 +5,7 @@ use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use super::{syntax, Error};
+use super::{distinctive, syntax, Error};
 
 /// The policy format this module reads.
 pub const POLICY_VERSION: &str = "v1";
@@ -56,6 +56,11 @@ pub struct RuleSpec {
     /// Literals compared against the whole secret and the whole match.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allowlist_exact: Vec<String>,
+    /// Computed when the rule compiles; a value set here is overwritten.
+    /// `apply` skips the keyword gate and the entropy floor for
+    /// distinctive rules.
+    #[serde(default)]
+    pub distinctive: bool,
 }
 
 /// A gitleaks allowlist. `Redactor::scan` applies gitleaks detection
@@ -93,8 +98,11 @@ fn is_zero_f(n: &f64) -> bool {
 /// Compiles a Go RE2 pattern with Go's meaning. Patterns the regex
 /// crate cannot express are errors.
 pub(crate) fn compile_go(pattern: &str) -> Result<Regex, String> {
-    let translated = syntax::translate(pattern)?;
-    RegexBuilder::new(&translated)
+    compile_translated(&syntax::translate(pattern)?)
+}
+
+fn compile_translated(translated: &str) -> Result<Regex, String> {
+    RegexBuilder::new(translated)
         .size_limit(64 << 20)
         .dfa_size_limit(16 << 20)
         .build()
@@ -133,7 +141,9 @@ impl Rule {
                 msg: "rule id is required".into(),
             });
         }
-        let re = compile_go(&spec.regex).map_err(bad)?;
+        let translated = syntax::translate(&spec.regex).map_err(bad)?;
+        let re = compile_translated(&translated).map_err(bad)?;
+        spec.distinctive = distinctive::is_distinctive(&translated);
         let groups = re.captures_len() - 1;
         if spec.secret_group > groups {
             return Err(bad(format!(
@@ -173,6 +183,11 @@ impl Rule {
     /// The compiled (translated) pattern.
     pub fn regex(&self) -> &Regex {
         &self.re
+    }
+    /// Every match starts with a literal of 3+ characters; `apply`
+    /// trusts it without the keyword gate or the entropy floor.
+    pub fn distinctive(&self) -> bool {
+        self.spec.distinctive
     }
     pub fn secret_group(&self) -> usize {
         self.spec.secret_group

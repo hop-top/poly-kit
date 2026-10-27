@@ -59,7 +59,8 @@
       "entropy": 3.8,
       "keywords": [
         "a3-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "1password-service-account-token",
@@ -68,7 +69,8 @@
       "entropy": 4,
       "keywords": [
         "ops_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "adafruit-api-key",
@@ -77,7 +79,8 @@
       "secret_group": 1,
       "keywords": [
         "adafruit"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "adobe-client-id",
@@ -87,7 +90,8 @@
       "entropy": 2,
       "keywords": [
         "adobe"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "adobe-client-secret",
@@ -97,7 +101,8 @@
       "entropy": 2,
       "keywords": [
         "p8e-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "age-secret-key",
@@ -105,7 +110,8 @@
       "regex": "AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}",
       "keywords": [
         "age-secret-key-1"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "airtable-api-key",
@@ -114,7 +120,8 @@
       "secret_group": 1,
       "keywords": [
         "airtable"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "airtable-personnal-access-token",
@@ -123,7 +130,8 @@
       "secret_group": 1,
       "keywords": [
         "airtable"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "algolia-api-key",
@@ -132,7 +140,8 @@
       "secret_group": 1,
       "keywords": [
         "algolia"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "alibaba-access-key-id",
@@ -142,7 +151,8 @@
       "entropy": 2,
       "keywords": [
         "ltai"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "alibaba-secret-key",
@@ -152,7 +162,8 @@
       "entropy": 2,
       "keywords": [
         "alibaba"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "anthropic-admin-api-key",
@@ -161,7 +172,8 @@
       "secret_group": 1,
       "keywords": [
         "sk-ant-admin01"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "anthropic-api-key",
@@ -170,7 +182,8 @@
       "secret_group": 1,
       "keywords": [
         "sk-ant-api03"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "artifactory-api-key",
@@ -179,7 +192,8 @@
       "entropy": 4.5,
       "keywords": [
         "akcp"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "artifactory-reference-token",
@@ -188,7 +202,8 @@
       "entropy": 4.5,
       "keywords": [
         "cmvmd"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "asana-client-id",
@@ -197,7 +212,8 @@
       "secret_group": 1,
       "keywords": [
         "asana"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "asana-client-secret",
@@ -206,7 +222,8 @@
       "secret_group": 1,
       "keywords": [
         "asana"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "atlassian-api-token",
@@ -218,7 +235,8 @@
         "confluence",
         "jira",
         "atatt3"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "authress-service-client-access-key",
@@ -231,7 +249,8 @@
         "ext_",
         "scauth_",
         "authress_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "aws-access-token",
@@ -252,7 +271,8 @@
             ".+EXAMPLE$"
           ]
         }
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "aws-amazon-bedrock-api-key-long-lived",
@@ -262,7 +282,8 @@
       "entropy": 3,
       "keywords": [
         "absk"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "aws-amazon-bedrock-api-key-short-lived",
@@ -271,7 +292,8 @@
       "entropy": 3,
       "keywords": [
         "bedrock-api-key-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "azure-ad-client-secret",
@@ -281,7 +303,8 @@
       "entropy": 3,
       "keywords": [
         "q~"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "beamer-api-token",
@@ -290,7 +313,8 @@
       "secret_group": 1,
       "keywords": [
         "beamer"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "bitbucket-client-id",
@@ -299,7 +323,8 @@
       "secret_group": 1,
       "keywords": [
         "bitbucket"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "bitbucket-client-secret",
@@ -308,7 +333,8 @@
       "secret_group": 1,
       "keywords": [
         "bitbucket"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "bittrex-access-key",
@@ -317,7 +343,8 @@
       "secret_group": 1,
       "keywords": [
         "bittrex"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "bittrex-secret-key",
@@ -326,7 +353,8 @@
       "secret_group": 1,
       "keywords": [
         "bittrex"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "cisco-meraki-api-key",
@@ -336,7 +364,8 @@
       "entropy": 3,
       "keywords": [
         "meraki"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "clickhouse-cloud-api-secret-key",
@@ -346,7 +375,8 @@
       "entropy": 3,
       "keywords": [
         "4b1d"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "clojars-api-token",
@@ -355,7 +385,8 @@
       "entropy": 2,
       "keywords": [
         "clojars_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "cloudflare-api-key",
@@ -365,7 +396,8 @@
       "entropy": 2,
       "keywords": [
         "cloudflare"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "cloudflare-global-api-key",
@@ -375,7 +407,8 @@
       "entropy": 2,
       "keywords": [
         "cloudflare"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "cloudflare-origin-ca-key",
@@ -386,7 +419,8 @@
       "keywords": [
         "cloudflare",
         "v1.0-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "codecov-access-token",
@@ -395,7 +429,8 @@
       "secret_group": 1,
       "keywords": [
         "codecov"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "cohere-api-token",
@@ -406,7 +441,8 @@
       "keywords": [
         "cohere",
         "co_api_key"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "coinbase-access-token",
@@ -415,7 +451,8 @@
       "secret_group": 1,
       "keywords": [
         "coinbase"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "confluent-access-token",
@@ -424,7 +461,8 @@
       "secret_group": 1,
       "keywords": [
         "confluent"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "confluent-secret-key",
@@ -433,7 +471,8 @@
       "secret_group": 1,
       "keywords": [
         "confluent"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "contentful-delivery-api-token",
@@ -442,7 +481,8 @@
       "secret_group": 1,
       "keywords": [
         "contentful"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "curl-auth-header",
@@ -451,7 +491,8 @@
       "entropy": 2.75,
       "keywords": [
         "curl"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "curl-auth-user",
@@ -472,7 +513,8 @@
             "['\"]?\\$?{{[^}]+}}['\"]?:['\"]?\\$?{{[^}]+}}['\"]?"
           ]
         }
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "databricks-api-token",
@@ -482,7 +524,8 @@
       "entropy": 3,
       "keywords": [
         "dapi"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "datadog-access-token",
@@ -491,7 +534,8 @@
       "secret_group": 1,
       "keywords": [
         "datadog"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "defined-networking-api-token",
@@ -500,7 +544,8 @@
       "secret_group": 1,
       "keywords": [
         "dnkey"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "digitalocean-access-token",
@@ -510,7 +555,8 @@
       "entropy": 3,
       "keywords": [
         "doo_v1_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "digitalocean-pat",
@@ -520,7 +566,8 @@
       "entropy": 3,
       "keywords": [
         "dop_v1_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "digitalocean-refresh-token",
@@ -529,7 +576,8 @@
       "secret_group": 1,
       "keywords": [
         "dor_v1_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "discord-api-token",
@@ -538,7 +586,8 @@
       "secret_group": 1,
       "keywords": [
         "discord"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "discord-client-id",
@@ -548,7 +597,8 @@
       "entropy": 2,
       "keywords": [
         "discord"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "discord-client-secret",
@@ -558,7 +608,8 @@
       "entropy": 2,
       "keywords": [
         "discord"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "doppler-api-token",
@@ -567,7 +618,8 @@
       "entropy": 2,
       "keywords": [
         "dp.pt."
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "droneci-access-token",
@@ -576,7 +628,8 @@
       "secret_group": 1,
       "keywords": [
         "droneci"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "dropbox-api-token",
@@ -585,7 +638,8 @@
       "secret_group": 1,
       "keywords": [
         "dropbox"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "dropbox-long-lived-api-token",
@@ -593,7 +647,8 @@
       "regex": "(?i)[\\w.-]{0,50}?(?:dropbox)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{11}(AAAAAAAAAA)[a-z0-9\\-_=]{43})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
       "keywords": [
         "dropbox"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "dropbox-short-lived-api-token",
@@ -602,7 +657,8 @@
       "secret_group": 1,
       "keywords": [
         "dropbox"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "duffel-api-token",
@@ -611,7 +667,8 @@
       "entropy": 2,
       "keywords": [
         "duffel_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "dynatrace-api-token",
@@ -620,7 +677,8 @@
       "entropy": 4,
       "keywords": [
         "dt0c01."
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "easypost-api-token",
@@ -629,7 +687,8 @@
       "entropy": 2,
       "keywords": [
         "ezak"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "easypost-test-api-token",
@@ -638,7 +697,8 @@
       "entropy": 2,
       "keywords": [
         "eztk"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "etsy-access-token",
@@ -648,7 +708,8 @@
       "entropy": 3,
       "keywords": [
         "etsy"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "facebook-access-token",
@@ -657,7 +718,8 @@
       "entropy": 3,
       "keywords": [
         "facebook"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "facebook-page-access-token",
@@ -668,7 +730,8 @@
       "keywords": [
         "eaam",
         "eaac"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "facebook-secret",
@@ -678,7 +741,8 @@
       "entropy": 3,
       "keywords": [
         "facebook"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "fastly-api-token",
@@ -687,7 +751,8 @@
       "secret_group": 1,
       "keywords": [
         "fastly"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "finicity-api-token",
@@ -696,7 +761,8 @@
       "secret_group": 1,
       "keywords": [
         "finicity"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "finicity-client-secret",
@@ -705,7 +771,8 @@
       "secret_group": 1,
       "keywords": [
         "finicity"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "finnhub-access-token",
@@ -714,7 +781,8 @@
       "secret_group": 1,
       "keywords": [
         "finnhub"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "flickr-access-token",
@@ -723,7 +791,8 @@
       "secret_group": 1,
       "keywords": [
         "flickr"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "flutterwave-encryption-key",
@@ -732,7 +801,8 @@
       "entropy": 2,
       "keywords": [
         "flwseck_test"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "flutterwave-public-key",
@@ -741,7 +811,8 @@
       "entropy": 2,
       "keywords": [
         "flwpubk_test"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "flutterwave-secret-key",
@@ -750,7 +821,8 @@
       "entropy": 2,
       "keywords": [
         "flwseck_test"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "flyio-access-token",
@@ -762,7 +834,8 @@
         "fo1_",
         "fm1",
         "fm2_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "frameio-api-token",
@@ -770,7 +843,8 @@
       "regex": "fio-u-(?i)[a-z0-9\\-_=]{64}",
       "keywords": [
         "fio-u-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "freemius-secret-key",
@@ -780,7 +854,8 @@
       "keywords": [
         "secret_key"
       ],
-      "path": "(?i)\\.php$"
+      "path": "(?i)\\.php$",
+      "distinctive": true
     },
     {
       "id": "freshbooks-access-token",
@@ -789,7 +864,8 @@
       "secret_group": 1,
       "keywords": [
         "freshbooks"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "gcp-api-key",
@@ -821,7 +897,8 @@
             "AIzaSyA8vmApnrHNFE0bApF4hoZ11srVL_n0nvY"
           ]
         }
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "generic-api-key",
@@ -2324,7 +2401,8 @@
             "\\.inc$"
           ]
         }
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "github-app-token",
@@ -2341,7 +2419,8 @@
             "(?:^|/)@octokit/auth-token/README\\.md$"
           ]
         }
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "github-fine-grained-pat",
@@ -2350,7 +2429,8 @@
       "entropy": 3,
       "keywords": [
         "github_pat_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "github-oauth",
@@ -2359,7 +2439,8 @@
       "entropy": 3,
       "keywords": [
         "gho_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "github-pat",
@@ -2375,7 +2456,8 @@
             "(?:^|/)@octokit/auth-token/README\\.md$"
           ]
         }
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "github-refresh-token",
@@ -2384,7 +2466,8 @@
       "entropy": 3,
       "keywords": [
         "ghr_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-cicd-job-token",
@@ -2393,7 +2476,8 @@
       "entropy": 3,
       "keywords": [
         "glcbt-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-deploy-token",
@@ -2402,7 +2486,8 @@
       "entropy": 3,
       "keywords": [
         "gldt-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-feature-flag-client-token",
@@ -2411,7 +2496,8 @@
       "entropy": 3,
       "keywords": [
         "glffct-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-feed-token",
@@ -2420,7 +2506,8 @@
       "entropy": 3,
       "keywords": [
         "glft-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-incoming-mail-token",
@@ -2429,7 +2516,8 @@
       "entropy": 3,
       "keywords": [
         "glimt-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-kubernetes-agent-token",
@@ -2438,7 +2526,8 @@
       "entropy": 3,
       "keywords": [
         "glagent-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-oauth-app-secret",
@@ -2447,7 +2536,8 @@
       "entropy": 3,
       "keywords": [
         "gloas-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-pat",
@@ -2456,7 +2546,8 @@
       "entropy": 3,
       "keywords": [
         "glpat-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-pat-routable",
@@ -2465,7 +2556,8 @@
       "entropy": 4,
       "keywords": [
         "glpat-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-ptt",
@@ -2474,7 +2566,8 @@
       "entropy": 3,
       "keywords": [
         "glptt-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-rrt",
@@ -2483,7 +2576,8 @@
       "entropy": 3,
       "keywords": [
         "gr1348941"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-runner-authentication-token",
@@ -2492,7 +2586,8 @@
       "entropy": 3,
       "keywords": [
         "glrt-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-runner-authentication-token-routable",
@@ -2501,7 +2596,8 @@
       "entropy": 4,
       "keywords": [
         "glrt-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-scim-token",
@@ -2510,7 +2606,8 @@
       "entropy": 3,
       "keywords": [
         "glsoat-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitlab-session-cookie",
@@ -2519,7 +2616,8 @@
       "entropy": 3,
       "keywords": [
         "_gitlab_session="
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "gitter-access-token",
@@ -2528,7 +2626,8 @@
       "secret_group": 1,
       "keywords": [
         "gitter"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "gocardless-api-token",
@@ -2538,7 +2637,8 @@
       "keywords": [
         "live_",
         "gocardless"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "grafana-api-key",
@@ -2548,7 +2648,8 @@
       "entropy": 3,
       "keywords": [
         "eyjrijoi"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "grafana-cloud-api-token",
@@ -2558,7 +2659,8 @@
       "entropy": 3,
       "keywords": [
         "glc_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "grafana-service-account-token",
@@ -2568,7 +2670,8 @@
       "entropy": 3,
       "keywords": [
         "glsa_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "harness-api-key",
@@ -2577,7 +2680,8 @@
       "keywords": [
         "pat.",
         "sat."
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "hashicorp-tf-api-token",
@@ -2586,7 +2690,8 @@
       "entropy": 3.5,
       "keywords": [
         "atlasv1"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "hashicorp-tf-password",
@@ -2598,7 +2703,8 @@
         "administrator_login_password",
         "password"
       ],
-      "path": "(?i)\\.(?:tf|hcl)$"
+      "path": "(?i)\\.(?:tf|hcl)$",
+      "distinctive": false
     },
     {
       "id": "heroku-api-key",
@@ -2607,7 +2713,8 @@
       "secret_group": 1,
       "keywords": [
         "heroku"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "heroku-api-key-v2",
@@ -2616,7 +2723,8 @@
       "entropy": 4,
       "keywords": [
         "hrku-aa"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "hubspot-api-key",
@@ -2625,7 +2733,8 @@
       "secret_group": 1,
       "keywords": [
         "hubspot"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "huggingface-access-token",
@@ -2635,7 +2744,8 @@
       "entropy": 2,
       "keywords": [
         "hf_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "huggingface-organization-api-token",
@@ -2645,7 +2755,8 @@
       "entropy": 2,
       "keywords": [
         "api_org_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "infracost-api-token",
@@ -2655,7 +2766,8 @@
       "entropy": 3,
       "keywords": [
         "ico-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "intercom-api-key",
@@ -2664,7 +2776,8 @@
       "secret_group": 1,
       "keywords": [
         "intercom"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "intra42-client-secret",
@@ -2676,7 +2789,8 @@
         "intra",
         "s-s4t2ud-",
         "s-s4t2af-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "jfrog-api-key",
@@ -2688,7 +2802,8 @@
         "artifactory",
         "bintray",
         "xray"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "jfrog-identity-token",
@@ -2700,7 +2815,8 @@
         "artifactory",
         "bintray",
         "xray"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "jwt",
@@ -2710,7 +2826,8 @@
       "entropy": 3,
       "keywords": [
         "ey"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "jwt-base64",
@@ -2719,7 +2836,8 @@
       "entropy": 2,
       "keywords": [
         "zxlk"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "kraken-access-token",
@@ -2728,7 +2846,8 @@
       "secret_group": 1,
       "keywords": [
         "kraken"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "kubernetes-secret-yaml",
@@ -2750,7 +2869,8 @@
             "(kind:(?s:.)+\\n---\\n(?s:.)+\\bdata:|data:(?s:.)+\\n---\\n(?s:.)+\\bkind:)"
           ]
         }
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "kucoin-access-token",
@@ -2759,7 +2879,8 @@
       "secret_group": 1,
       "keywords": [
         "kucoin"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "kucoin-secret-key",
@@ -2768,7 +2889,8 @@
       "secret_group": 1,
       "keywords": [
         "kucoin"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "launchdarkly-access-token",
@@ -2777,7 +2899,8 @@
       "secret_group": 1,
       "keywords": [
         "launchdarkly"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "linear-api-key",
@@ -2786,7 +2909,8 @@
       "entropy": 2,
       "keywords": [
         "lin_api_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "linear-client-secret",
@@ -2796,7 +2920,8 @@
       "entropy": 2,
       "keywords": [
         "linear"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "linkedin-client-id",
@@ -2808,7 +2933,8 @@
         "linkedin",
         "linked_in",
         "linked-in"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "linkedin-client-secret",
@@ -2820,7 +2946,8 @@
         "linkedin",
         "linked_in",
         "linked-in"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "lob-api-key",
@@ -2829,7 +2956,8 @@
       "keywords": [
         "test_",
         "live_"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "lob-pub-api-key",
@@ -2839,7 +2967,8 @@
         "test_pub",
         "live_pub",
         "_pub"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "looker-client-id",
@@ -2848,7 +2977,8 @@
       "secret_group": 1,
       "keywords": [
         "looker"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "looker-client-secret",
@@ -2857,7 +2987,8 @@
       "secret_group": 1,
       "keywords": [
         "looker"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "mailchimp-api-key",
@@ -2866,7 +2997,8 @@
       "secret_group": 1,
       "keywords": [
         "mailchimp"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "mailgun-private-api-token",
@@ -2875,7 +3007,8 @@
       "secret_group": 1,
       "keywords": [
         "mailgun"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "mailgun-pub-key",
@@ -2884,7 +3017,8 @@
       "secret_group": 1,
       "keywords": [
         "mailgun"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "mailgun-signing-key",
@@ -2893,7 +3027,8 @@
       "secret_group": 1,
       "keywords": [
         "mailgun"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "mapbox-api-token",
@@ -2902,7 +3037,8 @@
       "secret_group": 1,
       "keywords": [
         "mapbox"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "mattermost-access-token",
@@ -2911,7 +3047,8 @@
       "secret_group": 1,
       "keywords": [
         "mattermost"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "maxmind-license-key",
@@ -2921,7 +3058,8 @@
       "entropy": 4,
       "keywords": [
         "_mmk"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "messagebird-api-token",
@@ -2932,7 +3070,8 @@
         "messagebird",
         "message-bird",
         "message_bird"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "messagebird-client-id",
@@ -2943,7 +3082,8 @@
         "messagebird",
         "message-bird",
         "message_bird"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "microsoft-teams-webhook",
@@ -2953,7 +3093,8 @@
         "webhook.office.com",
         "webhookb2",
         "incomingwebhook"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "netlify-access-token",
@@ -2962,7 +3103,8 @@
       "secret_group": 1,
       "keywords": [
         "netlify"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "new-relic-browser-api-token",
@@ -2971,7 +3113,8 @@
       "secret_group": 1,
       "keywords": [
         "nrjs-"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "new-relic-insert-key",
@@ -2980,7 +3123,8 @@
       "secret_group": 1,
       "keywords": [
         "nrii-"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "new-relic-user-api-id",
@@ -2991,7 +3135,8 @@
         "new-relic",
         "newrelic",
         "new_relic"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "new-relic-user-api-key",
@@ -3000,7 +3145,8 @@
       "secret_group": 1,
       "keywords": [
         "nrak"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "notion-api-token",
@@ -3010,7 +3156,8 @@
       "entropy": 4,
       "keywords": [
         "ntn_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "npm-access-token",
@@ -3020,7 +3167,8 @@
       "entropy": 2,
       "keywords": [
         "npm_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "nuget-config-password",
@@ -3040,7 +3188,8 @@
             "^\\%\\S.*\\%$"
           ]
         }
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "nytimes-access-token",
@@ -3051,7 +3200,8 @@
         "nytimes",
         "new-york-times",
         "newyorktimes"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "octopus-deploy-api-key",
@@ -3061,7 +3211,8 @@
       "entropy": 3,
       "keywords": [
         "api-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "okta-access-token",
@@ -3071,7 +3222,8 @@
       "entropy": 4,
       "keywords": [
         "okta"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "openai-api-key",
@@ -3081,7 +3233,8 @@
       "entropy": 3,
       "keywords": [
         "t3blbkfj"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "openshift-user-token",
@@ -3091,7 +3244,8 @@
       "entropy": 3.5,
       "keywords": [
         "sha256~"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "perplexity-api-key",
@@ -3101,7 +3255,8 @@
       "entropy": 4,
       "keywords": [
         "pplx-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "plaid-api-token",
@@ -3110,7 +3265,8 @@
       "secret_group": 1,
       "keywords": [
         "plaid"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "plaid-client-id",
@@ -3120,7 +3276,8 @@
       "entropy": 3.5,
       "keywords": [
         "plaid"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "plaid-secret-key",
@@ -3130,7 +3287,8 @@
       "entropy": 3.5,
       "keywords": [
         "plaid"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "planetscale-api-token",
@@ -3140,7 +3298,8 @@
       "entropy": 3,
       "keywords": [
         "pscale_tkn_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "planetscale-oauth-token",
@@ -3150,7 +3309,8 @@
       "entropy": 3,
       "keywords": [
         "pscale_oauth_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "planetscale-password",
@@ -3160,7 +3320,8 @@
       "entropy": 3,
       "keywords": [
         "pscale_pw_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "postman-api-token",
@@ -3170,7 +3331,8 @@
       "entropy": 3,
       "keywords": [
         "pmak-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "prefect-api-token",
@@ -3180,7 +3342,8 @@
       "entropy": 2,
       "keywords": [
         "pnu_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "private-key",
@@ -3188,7 +3351,8 @@
       "regex": "(?i)-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----[\\s\\S-]{64,}?KEY(?: BLOCK)?-----",
       "keywords": [
         "-----begin"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "privateai-api-token",
@@ -3200,7 +3364,8 @@
         "privateai",
         "private_ai",
         "private-ai"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "pulumi-api-token",
@@ -3210,7 +3375,8 @@
       "entropy": 2,
       "keywords": [
         "pul-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "pypi-upload-token",
@@ -3219,7 +3385,8 @@
       "entropy": 3,
       "keywords": [
         "pypi-ageichlwas5vcmc"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "rapidapi-access-token",
@@ -3228,7 +3395,8 @@
       "secret_group": 1,
       "keywords": [
         "rapidapi"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "readme-api-token",
@@ -3238,7 +3406,8 @@
       "entropy": 2,
       "keywords": [
         "rdme_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "rubygems-api-token",
@@ -3248,7 +3417,8 @@
       "entropy": 2,
       "keywords": [
         "rubygems_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "scalingo-api-token",
@@ -3258,7 +3428,8 @@
       "entropy": 2,
       "keywords": [
         "tk-us-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "sendbird-access-id",
@@ -3267,7 +3438,8 @@
       "secret_group": 1,
       "keywords": [
         "sendbird"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "sendbird-access-token",
@@ -3276,7 +3448,8 @@
       "secret_group": 1,
       "keywords": [
         "sendbird"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "sendgrid-api-token",
@@ -3286,7 +3459,8 @@
       "entropy": 2,
       "keywords": [
         "sg."
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "sendinblue-api-token",
@@ -3296,7 +3470,8 @@
       "entropy": 2,
       "keywords": [
         "xkeysib-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "sentry-access-token",
@@ -3306,7 +3481,8 @@
       "entropy": 3,
       "keywords": [
         "sentry"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "sentry-org-token",
@@ -3315,7 +3491,8 @@
       "entropy": 4.5,
       "keywords": [
         "sntrys_eyjpyxqio"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "sentry-user-token",
@@ -3325,7 +3502,8 @@
       "entropy": 3.5,
       "keywords": [
         "sntryu_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "settlemint-application-access-token",
@@ -3335,7 +3513,8 @@
       "entropy": 3,
       "keywords": [
         "sm_aat"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "settlemint-personal-access-token",
@@ -3345,7 +3524,8 @@
       "entropy": 3,
       "keywords": [
         "sm_pat"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "settlemint-service-access-token",
@@ -3355,7 +3535,8 @@
       "entropy": 3,
       "keywords": [
         "sm_sat"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "shippo-api-token",
@@ -3365,7 +3546,8 @@
       "entropy": 2,
       "keywords": [
         "shippo_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "shopify-access-token",
@@ -3374,7 +3556,8 @@
       "entropy": 2,
       "keywords": [
         "shpat_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "shopify-custom-access-token",
@@ -3383,7 +3566,8 @@
       "entropy": 2,
       "keywords": [
         "shpca_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "shopify-private-app-access-token",
@@ -3392,7 +3576,8 @@
       "entropy": 2,
       "keywords": [
         "shppa_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "shopify-shared-secret",
@@ -3401,7 +3586,8 @@
       "entropy": 2,
       "keywords": [
         "shpss_"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "sidekiq-secret",
@@ -3411,7 +3597,8 @@
       "keywords": [
         "bundle_enterprise__contribsys__com",
         "bundle_gems__contribsys__com"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "sidekiq-sensitive-url",
@@ -3421,7 +3608,8 @@
       "keywords": [
         "gems.contribsys.com",
         "enterprise.contribsys.com"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "slack-app-token",
@@ -3430,7 +3618,8 @@
       "entropy": 2,
       "keywords": [
         "xapp"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "slack-bot-token",
@@ -3439,7 +3628,8 @@
       "entropy": 3,
       "keywords": [
         "xoxb"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "slack-config-access-token",
@@ -3449,7 +3639,8 @@
       "keywords": [
         "xoxe.xoxb-",
         "xoxe.xoxp-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "slack-config-refresh-token",
@@ -3458,7 +3649,8 @@
       "entropy": 2,
       "keywords": [
         "xoxe-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "slack-legacy-bot-token",
@@ -3467,7 +3659,8 @@
       "entropy": 2,
       "keywords": [
         "xoxb"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "slack-legacy-token",
@@ -3477,7 +3670,8 @@
       "keywords": [
         "xoxo",
         "xoxs"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "slack-legacy-workspace-token",
@@ -3487,7 +3681,8 @@
       "keywords": [
         "xoxa",
         "xoxr"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "slack-user-token",
@@ -3497,7 +3692,8 @@
       "keywords": [
         "xoxp-",
         "xoxe-"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "slack-webhook-url",
@@ -3505,7 +3701,8 @@
       "regex": "(?:https?://)?hooks.slack.com/(?:services|workflows|triggers)/[A-Za-z0-9+/]{43,56}",
       "keywords": [
         "hooks.slack.com"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "snyk-api-token",
@@ -3514,7 +3711,8 @@
       "secret_group": 1,
       "keywords": [
         "snyk"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "sonar-api-token",
@@ -3523,7 +3721,8 @@
       "secret_group": 2,
       "keywords": [
         "sonar"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "sourcegraph-access-token",
@@ -3533,7 +3732,8 @@
       "keywords": [
         "sgp_",
         "sourcegraph"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "square-access-token",
@@ -3544,7 +3744,8 @@
       "keywords": [
         "sq0atp-",
         "eaaa"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "squarespace-access-token",
@@ -3553,7 +3754,8 @@
       "secret_group": 1,
       "keywords": [
         "squarespace"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "stripe-access-token",
@@ -3568,7 +3770,8 @@
         "rk_test",
         "rk_live",
         "rk_prod"
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "sumologic-access-id",
@@ -3578,7 +3781,8 @@
       "entropy": 3,
       "keywords": [
         "sumo"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "sumologic-access-token",
@@ -3588,7 +3792,8 @@
       "entropy": 3,
       "keywords": [
         "sumo"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "telegram-bot-api-token",
@@ -3597,7 +3802,8 @@
       "secret_group": 1,
       "keywords": [
         "telegr"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "travisci-access-token",
@@ -3606,7 +3812,8 @@
       "secret_group": 1,
       "keywords": [
         "travis"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "twilio-api-key",
@@ -3615,7 +3822,8 @@
       "entropy": 3,
       "keywords": [
         "sk"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "twitch-api-token",
@@ -3624,7 +3832,8 @@
       "secret_group": 1,
       "keywords": [
         "twitch"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "twitter-access-secret",
@@ -3633,7 +3842,8 @@
       "secret_group": 1,
       "keywords": [
         "twitter"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "twitter-access-token",
@@ -3642,7 +3852,8 @@
       "secret_group": 1,
       "keywords": [
         "twitter"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "twitter-api-key",
@@ -3651,7 +3862,8 @@
       "secret_group": 1,
       "keywords": [
         "twitter"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "twitter-api-secret",
@@ -3660,7 +3872,8 @@
       "secret_group": 1,
       "keywords": [
         "twitter"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "twitter-bearer-token",
@@ -3669,7 +3882,8 @@
       "secret_group": 1,
       "keywords": [
         "twitter"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "typeform-api-token",
@@ -3678,7 +3892,8 @@
       "secret_group": 1,
       "keywords": [
         "tfp_"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "vault-batch-token",
@@ -3688,7 +3903,8 @@
       "entropy": 4,
       "keywords": [
         "hvb."
-      ]
+      ],
+      "distinctive": true
     },
     {
       "id": "vault-service-token",
@@ -3706,7 +3922,8 @@
             "s\\.[A-Za-z]{24}"
           ]
         }
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "yandex-access-token",
@@ -3715,7 +3932,8 @@
       "secret_group": 1,
       "keywords": [
         "yandex"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "yandex-api-key",
@@ -3724,7 +3942,8 @@
       "secret_group": 1,
       "keywords": [
         "yandex"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "yandex-aws-access-token",
@@ -3733,7 +3952,8 @@
       "secret_group": 1,
       "keywords": [
         "yandex"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "zendesk-secret-key",
@@ -3742,73 +3962,85 @@
       "secret_group": 1,
       "keywords": [
         "zendesk"
-      ]
+      ],
+      "distinctive": false
     },
     {
       "id": "email",
       "description": "Email address (RFC 5322 simplified).",
       "regex": "([a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,})",
-      "replacement": "<EMAIL>"
+      "replacement": "<EMAIL>",
+      "distinctive": false
     },
     {
       "id": "phone-e164",
       "description": "International phone number in E.164 format (+CCNNNNNNNNN).",
       "regex": "\\+[1-9]\\d{6,14}\\b",
-      "replacement": "<PHONE>"
+      "replacement": "<PHONE>",
+      "distinctive": false
     },
     {
       "id": "phone-us",
       "description": "US phone number with optional country code, dashes/dots/parens.",
       "regex": "\\b(?:\\+?1[\\s.\\-]?)?\\(?\\d{3}\\)?[\\s.\\-]\\d{3}[\\s.\\-]\\d{4}\\b",
-      "replacement": "<PHONE>"
+      "replacement": "<PHONE>",
+      "distinctive": false
     },
     {
       "id": "us-ssn",
       "description": "US Social Security Number (NNN-NN-NNNN).",
       "regex": "\\b\\d{3}-\\d{2}-\\d{4}\\b",
-      "replacement": "<SSN>"
+      "replacement": "<SSN>",
+      "distinctive": false
     },
     {
       "id": "us-itin",
       "description": "US Individual Taxpayer Identification Number (9XX-NN-NNNN).",
       "regex": "\\b9\\d{2}-\\d{2}-\\d{4}\\b",
-      "replacement": "<ITIN>"
+      "replacement": "<ITIN>",
+      "distinctive": false
     },
     {
       "id": "credit-card",
       "description": "Credit card number (Visa/MC/Amex/Discover; 13-19 digits with optional separators). Luhn validation deferred to v2.",
       "regex": "\\b(?:\\d[ \\-]?){12,18}\\d\\b",
-      "replacement": "<CREDIT_CARD>"
+      "replacement": "<CREDIT_CARD>",
+      "distinctive": false
     },
     {
       "id": "iban",
       "description": "International Bank Account Number (ISO 13616, 15-34 alphanumeric chars after country prefix).",
       "regex": "\\b[A-Z]{2}\\d{2}[A-Z0-9]{11,30}\\b",
-      "replacement": "<IBAN>"
+      "replacement": "<IBAN>",
+      "distinctive": false
     },
     {
       "id": "ipv4",
       "description": "IPv4 dotted-quad address.",
       "regex": "\\b(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\b",
-      "replacement": "<IP>"
+      "replacement": "<IP>",
+      "distinctive": false
     },
     {
       "id": "ipv6",
       "description": "IPv6 address (full or compressed). Compressed form approximation: ::-prefix or middle ::.",
       "regex": "\\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\\b|\\b(?:[0-9a-fA-F]{1,4}:){1,7}:|\\b(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}\\b",
-      "replacement": "<IP>"
+      "replacement": "<IP>",
+      "distinctive": false
     },
     {
       "id": "us-passport",
       "description": "US passport number (9 digits, may be prefixed with letter).",
       "regex": "\\b[A-Z]?\\d{9}\\b",
-      "replacement": "<US_PASSPORT>"
+      "replacement": "<US_PASSPORT>",
+      "distinctive": false
     },
     {
       "id": "us-driver-license",
       "description": "US driver license — generic 7-13 alphanumeric. State-specific patterns vary widely; this is a coarse catch.",
       "regex": "\\b[A-Z]\\d{7,13}\\b",
-      "replacement": "<US_DRIVER_LICENSE>"
+      "replacement": "<US_DRIVER_LICENSE>",
+      "distinctive": false
     }
   ]
 }

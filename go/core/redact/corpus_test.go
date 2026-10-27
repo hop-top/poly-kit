@@ -118,12 +118,16 @@ func TestKeywordScanner_MatchesReference(t *testing.T) {
 		lower, _ := keywordText(in)
 		kw := make([]uint64, r.pf.words())
 		candidates(r.kw, lower.(string), kw)
-		full := r.candidates(in, nil)
+		full := r.candidates(in, nil, detect)
+		red := r.candidates(in, nil, redactQuiet)
 		lit := make([]uint64, r.pf.words())
 		candidates(r.pf, in, lit)
 		for i := range r.rules {
 			if has(full, i) != (has(lit, i) && has(kw, i)) {
 				t.Errorf("%q: rule %s combined screen disagrees with literal AND keyword", in, r.rules[i].spec.ID)
+			}
+			if has(red, i) != (has(lit, i) && (has(kw, i) || r.rules[i].spec.Distinctive)) {
+				t.Errorf("%q: rule %s redaction screen disagrees with literal AND (keyword OR distinctive)", in, r.rules[i].spec.ID)
 			}
 			if want := keywordGate(r.rules[i].spec.Keywords, lower); has(kw, i) != want {
 				t.Errorf("%q: rule %s keyword scanner %v, reference %v", in, r.rules[i].spec.ID, has(kw, i), want)

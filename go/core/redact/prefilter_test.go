@@ -117,7 +117,7 @@ func samples(pattern string, rnd *rand.Rand, n int) []string {
 
 // candidateRules is the full screen (keyword gates and literals).
 func candidateRules(r *Redactor, s string, _ []uint64) []uint64 {
-	return r.candidates(s, nil)
+	return r.candidates(s, nil, detect)
 }
 
 // assertSound fails for every rule of r that matches s while the

@@ -38,6 +38,10 @@ type RuleSpec struct {
 	// AllowlistExact holds literals compared against the whole secret
 	// and the whole match.
 	AllowlistExact []string `json:"allowlist_exact,omitempty"`
+	// Distinctive is computed from Regex when the rule compiles (see
+	// isDistinctive); a value set here is overwritten. Apply skips the
+	// keyword gate and the entropy floor for distinctive rules.
+	Distinctive bool `json:"distinctive"`
 }
 
 // AllowlistSpec is a gitleaks allowlist. With Condition "OR" (the
@@ -96,6 +100,12 @@ func (r Rule) Keywords() []string { return slices.Clone(r.spec.Keywords) }
 // Tags returns a copy of the rule's tags.
 func (r Rule) Tags() []string { return slices.Clone(r.spec.Tags) }
 
+// Distinctive reports whether every match starts with a literal of at
+// least 3 characters (ghp_, AKIA, sk-ant-). Apply redacts such a rule's
+// matches without the keyword gate or the entropy floor; Scan keeps
+// both.
+func (r Rule) Distinctive() bool { return r.spec.Distinctive }
+
 // Spec returns a deep copy of the rule as data.
 func (r Rule) Spec() RuleSpec { return r.spec.clone() }
 
@@ -146,6 +156,7 @@ func CompileRule(spec RuleSpec) (Rule, error) {
 		return Rule{}, fmt.Errorf("redact: rule %s: invalid entropy %v", spec.ID, spec.Entropy)
 	}
 	spec = spec.clone()
+	spec.Distinctive = isDistinctive(spec.Regex)
 	for i, k := range spec.Keywords {
 		if k == "" {
 			return Rule{}, fmt.Errorf("redact: rule %s: empty keyword", spec.ID)

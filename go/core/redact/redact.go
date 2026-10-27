@@ -97,9 +97,12 @@ type Redactor struct {
 	needLine bool
 
 	// pf indexes the rules' required literals, kw their keyword gates
-	// and both both, for ASCII input (see prefilter.go). Maintained by
+	// and both both, for ASCII input (see prefilter.go); bothRedact
+	// leaves out the gates of distinctive rules, which redaction skips.
+	// distinct is the bitset of distinctive rules. Maintained by
 	// AddRules.
-	pf, kw, both *prefilter
+	pf, kw, both, bothRedact *prefilter
+	distinct                 []uint64
 	// noPrefilter runs every rule on every input; the reference
 	// behavior the prefilter is tested against. Keyword gates still
 	// apply: they are rule semantics, not an optimization.
@@ -152,7 +155,7 @@ func (r *Redactor) AddRule(id, pattern, replacement string) (*Redactor, error) {
 // AddRules appends pre-compiled rules in bulk. Used by the loader.
 func (r *Redactor) AddRules(rules ...Rule) *Redactor {
 	if r.pf == nil {
-		r.pf, r.kw, r.both = &prefilter{}, &prefilter{}, &prefilter{}
+		r.pf, r.kw, r.both, r.bothRedact = &prefilter{}, &prefilter{}, &prefilter{}, &prefilter{}
 	}
 	for _, rule := range rules {
 		pattern := "" // a zero Rule screens as always-run
@@ -163,6 +166,18 @@ func (r *Redactor) AddRules(rules ...Rule) *Redactor {
 		r.pf.addScreen(sc)
 		r.kw.addScreen(keywordScreen(rule.spec.Keywords))
 		r.both.addScreen(sc.withKeywords(rule.spec.Keywords))
+		if rule.spec.Distinctive {
+			r.bothRedact.addScreen(sc)
+		} else {
+			r.bothRedact.addScreen(sc.withKeywords(rule.spec.Keywords))
+		}
+		i := len(r.rules)
+		for len(r.distinct) <= i/64 {
+			r.distinct = append(r.distinct, 0)
+		}
+		if rule.spec.Distinctive {
+			r.distinct[i/64] |= 1 << (i % 64)
+		}
 		for i := range rule.allowlists {
 			r.needLine = r.needLine || rule.allowlists[i].target == "line"
 		}

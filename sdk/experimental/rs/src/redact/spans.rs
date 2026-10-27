@@ -52,7 +52,8 @@ pub(crate) fn collect(r: &Redactor, s: &str, mode: Mode) -> Vec<Hit> {
             continue;
         }
         let keys = &r.gate.rule_keys[i];
-        if !keys.is_empty() && !keys.iter().any(|&k| present[k]) {
+        let trusted = mode != Mode::Detect && rule.spec.distinctive;
+        if !trusted && !keys.is_empty() && !keys.iter().any(|&k| present[k]) {
             continue;
         }
         rule_hits(r, s, i, rule, mode, &mut hits);
@@ -93,7 +94,8 @@ fn rule_hits(r: &Redactor, s: &str, i: usize, rule: &Rule, mode: Mode, hits: &mu
             return;
         }
         let secret = &s[ss..se];
-        if rule.spec.entropy != 0.0 && shannon_entropy(secret) <= rule.spec.entropy {
+        let trusted = mode != Mode::Detect && rule.spec.distinctive;
+        if !trusted && rule.spec.entropy != 0.0 && shannon_entropy(secret) <= rule.spec.entropy {
             return;
         }
         if exempt(r, rule, s, secret, ms, me, mode == Mode::Detect) {

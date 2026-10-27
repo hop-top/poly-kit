@@ -27,7 +27,7 @@ let line = r.apply("aws_access_key_id = AKIA…"); // Cow: borrowed when clean
 
 - Single pass: spans from every rule on the original text, overlapping and adjacent ones merged (earliest start wins, then the longest, then the rule added first), replaced once. No rule sees another's placeholder.
 - gitleaks rule semantics: keyword gate on the input lower-cased as Go does, secret group, inclusive entropy floor, global and per-rule allowlists.
-- Two allowlist modes: `scan` is detection (substring regexes, stopwords, as gitleaks); `apply` and `spans` fail closed (stopwords never exempt, a regex must match the whole target). Paths and commits never hold.
+- Two modes: `scan` is exact gitleaks detection; `apply` and `spans` fail closed (stopwords never exempt, a regex must match the whole target, and a distinctive rule, `Rule::distinctive()`, skips the keyword gate and entropy floor). Distinctive means every match starts with a literal of 3+ characters; the classification matches Go's for every default rule. Paths and commits never hold; path-scoped rules run.
 - Patterns are Go RE2 and keep Go's meaning: `\d`, `\s`, `\w`, `\b` are ASCII, `\Q…\E` and a `{` that opens no repeat are literal (see `syntax.rs`). A pattern the `regex` crate cannot express fails `Rule::compile` or `from_policy` loudly; nothing is skipped.
 - The default policy is `rules.json`, byte-identical to the contract's, exported by Go. Unlike Go there is no `KIT_REDACT_RULES_PATH` override; load another policy with `from_policy`.
 - `Replacement::Custom` panics degrade to `Mask`. Observers see the secret: count it, never persist it.
