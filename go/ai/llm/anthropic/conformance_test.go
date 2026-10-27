@@ -12,13 +12,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/packages/ssestream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -377,58 +375,54 @@ func TestConformanceAnthropicAccumulate(t *testing.T) {
 	}
 	for _, v := range f.AnthropicAccumulate {
 		t.Run(v.Name, func(t *testing.T) {
+			clearAnthropicEnv(t)
 			sse := v.SSE
 			if v.SSEFrom != "" {
 				var ok bool
 				sse, ok = streams[v.SSEFrom]
 				require.True(t, ok, "sse_from %q", v.SSEFrom)
 			}
-			res := &http.Response{
-				Header: http.Header{"Content-Type": []string{"text/event-stream"}},
-				Body:   io.NopCloser(strings.NewReader(sse)),
-			}
-			stream := ssestream.NewStream[sdk.MessageStreamEventUnion](ssestream.NewDecoder(res), nil)
-			var msg sdk.Message
-			var accErr error
-			for stream.Next() {
-				if accErr = msg.Accumulate(stream.Current()); accErr != nil {
+			p := newConfAdapter(t, sseServer(t, sse).URL, "m", "k")
+			st, err := p.(llm.ToolStreamer).StreamWithTools(context.Background(), llm.Request{
+				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+			}, []llm.ToolDef{{Name: "get_weather"}})
+			require.NoError(t, err)
+			defer st.Close()
+			var streamErr error
+			for {
+				tok, err := st.Next()
+				if err != nil {
+					if !errors.Is(err, io.EOF) {
+						streamErr = err
+					}
+					break
+				}
+				if tok.Done {
 					break
 				}
 			}
-			if accErr == nil {
-				accErr = stream.Err()
-			}
-			require.Equal(t, v.Want.Error, accErr != nil, "error: %v", accErr)
+			require.Equal(t, v.Want.Error, streamErr != nil, "error: %v", streamErr)
 			if v.Want.Error {
+				_, ok := st.Outcome()
+				assert.False(t, ok, "no outcome after an error")
 				return
 			}
-			var text, thinking string
-			type call struct {
-				ID    string          `json:"id"`
-				Name  string          `json:"name"`
-				Input json.RawMessage `json:"input"`
+			out, ok := st.Outcome()
+			require.True(t, ok)
+			thinking := ""
+			for _, b := range out.Thinking {
+				thinking += b.Thinking
 			}
-			calls := []call{}
-			for _, b := range msg.Content {
-				switch b.Type {
-				case "text":
-					text += b.Text
-				case "thinking":
-					thinking += b.Thinking
-				case "tool_use":
-					calls = append(calls, call{ID: b.ID, Name: b.Name, Input: b.Input})
-				}
-			}
-			assert.Equal(t, v.Want.Text, text)
+			assert.Equal(t, v.Want.Text, out.Content)
 			assert.Equal(t, v.Want.Thinking, thinking)
-			assert.Equal(t, v.Want.StopReason, string(msg.StopReason))
-			assert.Equal(t, v.Want.Usage.InputTokens, msg.Usage.InputTokens)
-			assert.Equal(t, v.Want.Usage.OutputTokens, msg.Usage.OutputTokens)
-			require.Len(t, calls, len(v.Want.ToolCalls))
+			assert.Equal(t, v.Want.StopReason, out.FinishReason)
+			assert.Equal(t, int(v.Want.Usage.InputTokens), out.Usage.PromptTokens)
+			assert.Equal(t, int(v.Want.Usage.OutputTokens), out.Usage.CompletionTokens)
+			require.Len(t, out.ToolCalls, len(v.Want.ToolCalls))
 			for i, want := range v.Want.ToolCalls {
-				assert.Equal(t, want.ID, calls[i].ID)
-				assert.Equal(t, want.Name, calls[i].Name)
-				assert.JSONEq(t, string(want.Input), string(calls[i].Input))
+				assert.Equal(t, want.ID, out.ToolCalls[i].ID)
+				assert.Equal(t, want.Name, out.ToolCalls[i].Name)
+				assert.JSONEq(t, string(want.Input), string(out.ToolCalls[i].Arguments))
 			}
 		})
 	}

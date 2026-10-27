@@ -40,10 +40,11 @@ type Adapter struct {
 
 // compile-time interface checks
 var (
-	_ llm.Provider   = (*Adapter)(nil)
-	_ llm.Completer  = (*Adapter)(nil)
-	_ llm.Streamer   = (*Adapter)(nil)
-	_ llm.ToolCaller = (*Adapter)(nil)
+	_ llm.Provider     = (*Adapter)(nil)
+	_ llm.Completer    = (*Adapter)(nil)
+	_ llm.Streamer     = (*Adapter)(nil)
+	_ llm.ToolCaller   = (*Adapter)(nil)
+	_ llm.ToolStreamer = (*Adapter)(nil)
 )
 
 // New creates an Adapter from a resolved config.
@@ -164,6 +165,10 @@ func (a *Adapter) Stream(
 	if err != nil {
 		return nil, err
 	}
+	return a.openStream(ctx, params, req)
+}
+
+func (a *Adapter) openStream(ctx context.Context, params anthropic.MessageNewParams, req llm.Request) (*streamIter, error) {
 	stream := a.client.Messages.NewStreaming(ctx, params)
 	// The SDK returns a stream immediately; check for init error.
 	if err := stream.Err(); err != nil {
@@ -171,6 +176,19 @@ func (a *Adapter) Stream(
 		return nil, a.mapError(err, a.effectiveModel(req))
 	}
 	return &streamIter{stream: stream, a: a, model: a.effectiveModel(req)}, nil
+}
+
+// StreamWithTools streams a tool-use request: text deltas as tokens,
+// then the calls, stop reason and usage from Outcome.
+func (a *Adapter) StreamWithTools(
+	ctx context.Context, req llm.Request, tools []llm.ToolDef,
+) (llm.ToolStream, error) {
+	params, err := a.buildParams(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	params.Tools = mapTools(tools)
+	return a.openStream(ctx, params, req)
 }
 
 // CallWithTools sends a tool-use request and maps the response back
@@ -501,6 +519,17 @@ type streamIter struct {
 	a      *Adapter
 	model  string
 	done   bool
+	// msg folds every event, as the SDK's Message.Accumulate does.
+	msg     anthropic.Message
+	outcome *llm.StreamOutcome
+}
+
+// Outcome is the finished turn, once Next returned Done.
+func (s *streamIter) Outcome() (llm.StreamOutcome, bool) {
+	if s.outcome == nil {
+		return llm.StreamOutcome{}, false
+	}
+	return *s.outcome, true
 }
 
 func (s *streamIter) Next() (llm.Token, error) {
@@ -517,6 +546,10 @@ func (s *streamIter) Next() (llm.Token, error) {
 			return llm.Token{}, llmerrors.NewStreamTruncated(scheme)
 		}
 		evt := s.stream.Current()
+		if err := s.msg.Accumulate(evt); err != nil {
+			s.done = true
+			return llm.Token{}, fmt.Errorf("anthropic: %w", err)
+		}
 		switch evt.Type {
 		case "content_block_delta":
 			if evt.Delta.Type == "text_delta" {
@@ -524,6 +557,8 @@ func (s *streamIter) Next() (llm.Token, error) {
 			}
 		case "message_stop":
 			s.done = true
+			out := outcomeFromMessage(&s.msg)
+			s.outcome = &out
 			return llm.Token{Done: true}, nil
 		}
 		// skip other event types
@@ -608,4 +643,29 @@ func refuseRedirect(req *http.Request, _ []*http.Request) error {
 		code = req.Response.StatusCode
 	}
 	return llmerrors.NewHTTPStatusError(code, "anthropic: redirect not followed")
+}
+
+// thinkingBlocks returns msg's thinking and redacted thinking blocks.
+func thinkingBlocks(msg *anthropic.Message) []llm.ThinkingBlock {
+	var out []llm.ThinkingBlock
+	for _, b := range msg.Content {
+		switch b.Type {
+		case "thinking":
+			out = append(out, llm.ThinkingBlock{Thinking: b.Thinking, Signature: b.Signature})
+		case "redacted_thinking":
+			out = append(out, llm.ThinkingBlock{Redacted: b.Data})
+		}
+	}
+	return out
+}
+
+func outcomeFromMessage(msg *anthropic.Message) llm.StreamOutcome {
+	tr := toolResponseFromMessage(msg)
+	return llm.StreamOutcome{
+		Content:      tr.Content,
+		Thinking:     thinkingBlocks(msg),
+		ToolCalls:    tr.ToolCalls,
+		FinishReason: string(msg.StopReason),
+		Usage:        responseFromMessage(msg).Usage,
+	}
 }

@@ -59,6 +59,41 @@ type ToolCaller interface {
 	CallWithTools(ctx context.Context, req Request, tools []ToolDef) (ToolResponse, error)
 }
 
+// ToolStreamer streams a tool-calling completion: text deltas as tokens,
+// then the whole turn (tool calls, stop reason, usage) from
+// [ToolStream.Outcome].
+type ToolStreamer interface {
+	StreamWithTools(ctx context.Context, req Request, tools []ToolDef) (ToolStream, error)
+}
+
+// ToolStream is a [TokenIterator] whose finished turn can be read back.
+// Outcome reports ok only once the final token (Done) was returned;
+// after an error it stays false.
+type ToolStream interface {
+	TokenIterator
+	Outcome() (StreamOutcome, bool)
+}
+
+// StreamOutcome is what a finished stream folded into.
+type StreamOutcome struct {
+	Content string
+	// Thinking holds the turn's thinking blocks in order; replay them
+	// on the assistant message, unchanged, in a follow-up turn.
+	Thinking     []ThinkingBlock
+	ToolCalls    []ToolCall
+	FinishReason string
+	Usage        Usage
+}
+
+// ThinkingBlock is one block of a model's extended thinking. Signature
+// verifies Thinking; a redacted block carries only Redacted, the
+// provider's opaque data. Pass blocks back exactly as received.
+type ThinkingBlock struct {
+	Thinking  string
+	Signature string
+	Redacted  string
+}
+
 // ---------------------------------------------------------------------------
 // Data types
 // ---------------------------------------------------------------------------
@@ -412,6 +447,9 @@ func (c *Client) Capabilities() []string {
 	if _, ok := c.primary.(ToolCaller); ok {
 		caps = append(caps, "tool_call")
 	}
+	if _, ok := c.primary.(ToolStreamer); ok {
+		caps = append(caps, "stream_tools")
+	}
 	if _, ok := c.primary.(ImageGenerator); ok {
 		caps = append(caps, "image_gen")
 	}
@@ -595,4 +633,38 @@ func (c *Client) CallWithTools(
 	exhausted := llmerrors.NewFallbackExhausted(errs)
 	c.publish(ctx, c.cfg.topics.RequestError, RequestErrorPayload{Err: exhausted, ErrMessage: exhausted.Error()})
 	return ToolResponse{}, exhausted
+}
+
+// StreamWithTools delegates to the adapter's [ToolStreamer]. Fallback
+// applies to opening the stream only, as for [Client.Stream].
+func (c *Client) StreamWithTools(ctx context.Context, req Request, tools []ToolDef) (ToolStream, error) {
+	c.publish(ctx, c.cfg.topics.RequestStart, RequestStartPayload{Request: req})
+
+	chain := append([]Provider{c.primary}, c.cfg.fallbacks...)
+	var errs []error
+	for i, p := range chain {
+		ts, ok := p.(ToolStreamer)
+		if !ok {
+			errs = append(errs, llmerrors.NewCapabilityNotSupported("stream_tools", fmt.Sprintf("provider[%d]", i)))
+			continue
+		}
+		st, err := ts.StreamWithTools(ctx, req, tools)
+		if err == nil {
+			return st, nil
+		}
+		errs = append(errs, err)
+		if !llmerrors.IsFallbackable(err) {
+			c.publish(ctx, c.cfg.topics.RequestError, RequestErrorPayload{Err: err, ErrMessage: err.Error()})
+			return nil, err
+		}
+		if i < len(chain)-1 {
+			c.publish(ctx, c.cfg.topics.Fallback, FallbackPayload{From: i, To: i + 1, Err: err, ErrMessage: err.Error()})
+		}
+	}
+	if allCapabilityErrors(errs) {
+		return nil, errs[len(errs)-1]
+	}
+	exhausted := llmerrors.NewFallbackExhausted(errs)
+	c.publish(ctx, c.cfg.topics.RequestError, RequestErrorPayload{Err: exhausted, ErrMessage: exhausted.Error()})
+	return nil, exhausted
 }
