@@ -59,7 +59,8 @@ pub use toolnames::{
 };
 pub use types::{
     CacheControl, Media, MediaKind, Message, Part, Price, ProviderData, Request, Response, Role,
-    StreamOutcome, Thinking, ThinkingBlock, Token, ToolCall, ToolDef, ToolResponse, Usage,
+    StreamOutcome, Thinking, ThinkingBlock, Token, ToolCall, ToolCallEvent, ToolCallEventKind,
+    ToolDef, ToolResponse, Usage,
 };
 pub use uri::{parse_uri, redact_uri, Uri};
 

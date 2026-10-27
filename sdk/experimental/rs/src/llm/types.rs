@@ -229,6 +229,12 @@ pub struct Request {
     /// [`ToolChoice`](super::ToolChoice).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<super::ToolChoice>,
+    /// Makes a stream also yield incremental tool-call events
+    /// ([`Token::tool_call`]) and usage snapshots ([`Token::usage`]).
+    /// Unset, a stream yields exactly the tokens it always has. Ignored
+    /// by `complete` and `call_with_tools`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub stream_events: bool,
 }
 
 fn is_zero(n: &u32) -> bool {
@@ -306,13 +312,71 @@ pub struct ToolResponse {
 }
 
 /// One streaming chunk. The last has `done` set and no content.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+///
+/// A token carries one thing: text in `content`, a thinking delta, a
+/// tool-call event or a usage snapshot; the others are empty.
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Token {
     pub content: String,
     /// A thinking delta, sent only when the request enabled thinking;
     /// `content` is then empty.
     pub thinking: String,
+    /// An incremental tool-call event, sent only when the request set
+    /// [`Request::stream_events`]. See [`ToolCallEvent`].
+    pub tool_call: Option<ToolCallEvent>,
+    /// The turn's usage so far, sent only when the request set
+    /// [`Request::stream_events`], each time the provider reports it. A
+    /// cumulative snapshot, never a delta: counts never go down, and the
+    /// last one equals the finished turn's ([`StreamOutcome::usage`]).
+    pub usage: Option<Usage>,
     pub done: bool,
+}
+
+/// The step of a streamed tool call ([`ToolCallEvent::kind`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolCallEventKind {
+    /// Opens a call: `index`, `id` and `name` are set.
+    Start,
+    /// A fragment of the call's JSON arguments, in `arguments_delta`.
+    Delta,
+    /// Closes a call: `call` holds it complete.
+    End,
+}
+
+impl ToolCallEventKind {
+    /// `start`, `delta` or `end`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ToolCallEventKind::Start => "start",
+            ToolCallEventKind::Delta => "delta",
+            ToolCallEventKind::End => "end",
+        }
+    }
+}
+
+/// One step of a tool call as it streams (Go `ToolCallEvent`).
+///
+/// For each call: one start, then any deltas, then one end, in that
+/// order; events of parallel calls may interleave and are told apart by
+/// `index`, the call's position in [`StreamOutcome::tool_calls`]. A call
+/// that started but never ended (the stream failed or was dropped) did
+/// not complete: no end event is made up for it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ToolCallEvent {
+    pub kind: ToolCallEventKind,
+    pub index: usize,
+    /// Set on start and end. `name` is the tool's name as the caller
+    /// defined it, whatever name went over the wire.
+    pub id: String,
+    pub name: String,
+    /// A raw fragment of the arguments' JSON, on delta only; fragments
+    /// concatenate to the complete arguments and are not valid JSON
+    /// alone.
+    pub arguments_delta: String,
+    /// The complete call, on end only: exactly the entry at `index` in
+    /// [`StreamOutcome::tool_calls`].
+    pub call: Option<ToolCall>,
 }
 
 /// What a finished stream folded into: everything [`ToolResponse`] and

@@ -2,11 +2,13 @@
 //! message, rule for rule the Go SDK's `Message.Accumulate`. Pinned by
 //! `contracts/llm-v1` (`anthropic_stream`, `anthropic_accumulate`).
 
+use std::collections::BTreeMap;
+
 use serde_json::Value;
 
 use crate::llm::{
-    BoxFuture, LlmError, StreamOutcome, ThinkingBlock, Token, TokenStream, ToolCall, ToolNames,
-    Usage,
+    BoxFuture, LlmError, StreamOutcome, ThinkingBlock, Token, TokenStream, ToolCall, ToolCallEvent,
+    ToolCallEventKind, ToolNames, Usage,
 };
 
 use super::http::map_event_error;
@@ -147,15 +149,26 @@ impl Accumulator {
         Ok(None)
     }
 
+    /// The usage folded so far.
+    pub fn usage(&self) -> Usage {
+        Usage::with_cache(
+            self.input_tokens,
+            self.output_tokens,
+            self.cache_read_tokens,
+            self.cache_creation_tokens,
+        )
+    }
+
+    /// The block at `index` when it is a tool call, as folded so far.
+    fn tool_call(&self, index: u64) -> Option<ToolCall> {
+        let b = self.blocks.get(usize::try_from(index).ok()?)?;
+        (b.kind == "tool_use").then(|| call_of(b))
+    }
+
     pub fn outcome(&self) -> StreamOutcome {
         let mut out = StreamOutcome {
             finish_reason: self.stop_reason.clone(),
-            usage: Usage::with_cache(
-                self.input_tokens,
-                self.output_tokens,
-                self.cache_read_tokens,
-                self.cache_creation_tokens,
-            ),
+            usage: self.usage(),
             ..StreamOutcome::default()
         };
         for b in &self.blocks {
@@ -170,16 +183,20 @@ impl Accumulator {
                     redacted: b.data.clone(),
                     ..ThinkingBlock::default()
                 }),
-                "tool_use" => out.tool_calls.push(ToolCall {
-                    id: b.id.clone(),
-                    name: b.name.clone(),
-                    arguments: b.input.clone(),
-                    ..ToolCall::default()
-                }),
+                "tool_use" => out.tool_calls.push(call_of(b)),
                 _ => {}
             }
         }
         out
+    }
+}
+
+fn call_of(b: &Block) -> ToolCall {
+    ToolCall {
+        id: b.id.clone(),
+        name: b.name.clone(),
+        arguments: b.input.clone(),
+        ..ToolCall::default()
     }
 }
 
@@ -207,6 +224,11 @@ pub(crate) struct AnthropicStream {
     thinking: bool,
     /// Maps the outcome's tool names back to the caller's.
     names: ToolNames,
+    /// Tool-call events and usage snapshots stream as tokens
+    /// ([`crate::llm::Request::stream_events`]).
+    events: bool,
+    /// A tool_use block's content index to its call index.
+    calls: BTreeMap<u64, usize>,
 }
 
 /// Removes credential values from text bound for an error.
@@ -221,6 +243,7 @@ impl AnthropicStream {
         scrub: Scrub,
         thinking: bool,
         names: ToolNames,
+        events: bool,
     ) -> Self {
         AnthropicStream {
             resp,
@@ -233,6 +256,8 @@ impl AnthropicStream {
             scrub,
             thinking,
             names,
+            events,
+            calls: BTreeMap::new(),
         }
     }
 
@@ -280,8 +305,72 @@ impl AnthropicStream {
             }))),
             Ok(Some(Delta::Thinking(_))) => None,
             Ok(None) if ev.event == "message_stop" => Some(self.done()),
-            Ok(None) => None,
+            Ok(None) => self.stream_event(&ev.event, &v).map(|t| Ok(Some(t))),
         }
+    }
+
+    /// The tool-call or usage token an applied event makes, when the
+    /// request asked for them (Go `streamIter.event`).
+    fn stream_event(&mut self, kind: &str, ev: &Value) -> Option<Token> {
+        if !self.events {
+            return None;
+        }
+        let index = ev["index"].as_u64().unwrap_or(u64::MAX);
+        let tool_call = match kind {
+            "message_start" | "message_delta" => {
+                return Some(Token {
+                    usage: Some(self.acc.usage()),
+                    ..Token::default()
+                });
+            }
+            "content_block_start" => {
+                let call = self.acc.tool_call(index)?;
+                let i = self.calls.len();
+                self.calls.insert(index, i);
+                ToolCallEvent {
+                    kind: ToolCallEventKind::Start,
+                    index: i,
+                    id: call.id,
+                    name: self.names.original(&call.name).to_string(),
+                    arguments_delta: String::new(),
+                    call: None,
+                }
+            }
+            "content_block_delta" => {
+                let i = *self.calls.get(&index)?;
+                let d = &ev["delta"];
+                let part = d["partial_json"].as_str().unwrap_or_default();
+                if d["type"] != "input_json_delta" || part.is_empty() {
+                    return None;
+                }
+                ToolCallEvent {
+                    kind: ToolCallEventKind::Delta,
+                    index: i,
+                    id: String::new(),
+                    name: String::new(),
+                    arguments_delta: part.to_string(),
+                    call: None,
+                }
+            }
+            "content_block_stop" => {
+                let i = *self.calls.get(&index)?;
+                let mut call = self.acc.tool_call(index)?;
+                call.name = self.names.original(&call.name).to_string();
+                ToolCallEvent {
+                    kind: ToolCallEventKind::End,
+                    index: i,
+                    id: call.id.clone(),
+                    name: call.name.clone(),
+                    arguments_delta: String::new(),
+                    call: Some(call),
+                }
+            }
+            _ => return None,
+        };
+        Some(Token {
+            tool_call: Some(tool_call),
+            ..Token::default()
+        })
     }
 
     async fn next_token(&mut self) -> Result<Option<Token>, LlmError> {
