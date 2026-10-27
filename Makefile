@@ -498,7 +498,7 @@ test-parity-llm: ## llm-v1 conformance corpus (Go, Rust, Python and TypeScript r
 	cd sdk/experimental/rs && cargo test --features llm-anthropic --test llm_conformance --locked
 	@echo "==> llm-v1 conformance: Python"
 	cd sdk/py && uv run pytest -q -rs tests/test_llm_conformance.py
-	@echo "==> llm-v1 conformance: TypeScript (anthropic_*, credential_headers, redact_uri, usage_cost, bus_*, tool_names, media_fetch)"
+	@echo "==> llm-v1 conformance: TypeScript (every section)"
 	cd sdk/ts && pnpm vitest run src/llm-anthropic.conformance.test.ts src/llm-toolnames.conformance.test.ts src/llm-media.conformance.test.ts
 
 # Cross-process kv storage-binding gate over contracts/kv-v1/keys.json.
