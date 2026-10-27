@@ -1,33 +1,21 @@
 # reference
 
-Exact details per API: signatures, flags, exit codes, config shapes, wire formats. Concepts and how-tos live in the sibling sections.
+Exact details per API: signatures, flags, exit codes, config shapes, wire formats. Concepts and how-tos live in the sibling sections. Each page opens with the package it documents and who it is for; [`go-primitives`](go-primitives.md) indexes every Go primitive by task.
 
 ## Contents
 
-| Path | What it is | Start here when |
-|------|------------|-----------------|
-| [`alias-api.md`](alias-api.md) | YAML-backed command aliases, Go and TypeScript | you map short names to longer command paths |
-| [`bus-api.md`](bus-api.md) | types, methods and sinks of `go/runtime/bus` | you have read the bus concept and need signatures |
-| [`cli-api-reference.md`](cli-api-reference.md) | Go CLI factory, `go/console/cli` | you build a CLI in Go |
-| [`completion-api.md`](completion-api.md) | dynamic flag and positional completion for cobra, Commander, Click/Typer | you add value completion to a flag |
-| [`flag-enums.md`](flag-enums.md) | flag value enums, parse-time flag errors and suggestions, `go/console/cli` | a mistyped or value-less flag should come back with a fix |
-| [`compliance-api.md`](compliance-api.md) | static + runtime checker against the 12-factor AI CLI spec | you run or extend `compliance check` |
-| [`domain-events.md`](domain-events.md) | `<app>.<entity>.<action>` topic catalog and wildcard rules | you subscribe with `*` or `#` patterns |
-| [`engine-protocol.md`](engine-protocol.md) | HTTP/WS wire format shared by Go-native and engine-backed peers | you implement or debug a peer |
-| [`engine-security.md`](engine-security.md) | identity, trust mesh and encryption model | you reason about what the engine protects |
-| [`engine-sync.md`](engine-sync.md) | peer-to-peer sync between a Go app and an engine | you add a remote and want to know what replicates |
-| [`go-primitives.md`](go-primitives.md) | index of every Go primitive kit ships, grouped by task | you would otherwise hand-roll something |
-| [`help-rendering.md`](help-rendering.md) | standard help layout across the three languages | you customise or verify help output |
-| [`log-api.md`](log-api.md) | themed logger reading `quiet` and `no-color` from config | you log from a kit-built CLI |
-| [`php-sdk.md`](php-sdk.md) | PHP SDK long-form surfaces: URI facade, output rules, MCP over PSR-15, offline enforcement, telemetry | you require the experimental package and need the detail behind its README |
-| [`py-api-reference.md`](py-api-reference.md) | Python CLI factory, `hop_top_kit.cli` | you build a CLI with Typer |
-| [`py-sdk.md`](py-sdk.md) | Python SDK long-form surfaces: MCP mount, URI facade, output rules, offline enforcement, telemetry envelope | you have `hop-top-kit` installed and need the detail behind its README |
-| [`qmochi-charts.md`](qmochi-charts.md) | every qmochi chart type with options and worked examples, SVG output, automatic selection | you pick a terminal chart type or reach for one of its options |
-| [`rs-sdk.md`](rs-sdk.md) | Rust SDK long-form surfaces: serve, output, MCP, storage, httpcache wire contract, offline enforcement, telemetry, bus | you depend on the experimental crate and need the detail behind its README |
-| [`served-middleware.md`](served-middleware.md) | every `services.<svc>` middleware key, its default and reach, the order, and each refusal per surface | you configure auth or limits on a served tool, or map a refusal |
-| [`served-observability.md`](served-observability.md) | tracing and metrics for served commands: propagation, keys, spans, instruments | you trace or measure the api, socket or RPC services |
-| [`setflag-textflag-api.md`](setflag-textflag-api.md) | multi-value flags with prefix operators, Go, TS, Python | you replace `--add-X` / `--remove-X` pairs |
-| [`telemetry-compliance.md`](telemetry-compliance.md) | F13 `ConsentingTelemetry` checklist for binaries opting into telemetry | your toolspec sets `telemetry.enabled: true` |
-| [`toolspec-api.md`](toolspec-api.md) | `go/ai/toolspec` data types and BFS lookup | you read or emit tool manifests in Go |
-| [`ts-api-reference.md`](ts-api-reference.md) | TypeScript CLI factory, `@hop-top/kit/cli` | you build a CLI with Commander |
-| [`wizard-api.md`](wizard-api.md) | headless sequential wizard engine with pluggable frontends | you build an interactive multi-step flow in Go |
+- **CLI factory:** [`cli-api-reference`](cli-api-reference.md) · [`ts-api-reference`](ts-api-reference.md) · [`py-api-reference`](py-api-reference.md) · [`help-rendering`](help-rendering.md)
+- **Flags and completion:** [`flag-enums`](flag-enums.md) · [`completion-api`](completion-api.md) · [`alias-api`](alias-api.md) · [`setflag-textflag-api`](setflag-textflag-api.md)
+- **Console:** [`output`](output.md) · [`log-api`](log-api.md) · [`hay`](hay.md) · [`wizard-api`](wizard-api.md) · [`ps`](ps.md)
+- **Config and paths:** [`config`](config.md) · [`xdg`](xdg.md)
+- **Command surfaces (REST, RPC, socket wire, transports):** [`cmdsurface`](cmdsurface.md) · [`cmdreflect`](cmdreflect.md) · [`transport-api`](transport-api.md) · [`transportsvc`](transportsvc.md) · [`socket-wire`](socket-wire.md)
+- **MCP:** [`mcpsdk`](mcpsdk.md) · [`mcp-tasks`](mcp-tasks.md)
+- **Served middleware:** [`served-middleware`](served-middleware.md) · [`served-observability`](served-observability.md)
+- **Guardrails (paths, rate, egress, dry-run, mode, provenance):** [`scope`](scope.md) · [`breaker`](breaker.md) · [`redact`](redact.md) · [`sideeffect`](sideeffect.md) · [`stage`](stage.md) · [`provenance`](provenance.md)
+- **Conformance and parity:** [`conformance`](conformance.md) · [`compliance-api`](compliance-api.md) · [`parity-contract`](parity-contract.md)
+- **Telemetry:** [`telemetry`](telemetry.md) · [`telemetry-compliance`](telemetry-compliance.md)
+- **AI and agents:** [`llm`](llm.md) · [`toolspec-api`](toolspec-api.md) · [`uxp`](uxp.md)
+- **Bus and events:** [`bus-api`](bus-api.md) · [`domain-events`](domain-events.md) · [`notify-sinks`](notify-sinks.md)
+- **Engine:** [`engine-protocol`](engine-protocol.md) · [`engine-security`](engine-security.md) · [`engine-sync`](engine-sync.md)
+- **SDK long-form (detail behind each SDK README):** [`py-sdk`](py-sdk.md) · [`rs-sdk`](rs-sdk.md) · [`php-sdk`](php-sdk.md)
+- **Catalogs:** [`go-primitives`](go-primitives.md) · [`qmochi-charts`](qmochi-charts.md)

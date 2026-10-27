@@ -2,7 +2,7 @@
 	clients-php clients-rs clients-test clients-ts job-integration-hatchet job-integration-restate \
 	job-integration-temporal job-test lint lint-config lint-docs lint-go lint-links lint-lock-php \
 	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
-	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules release-as \
+	preflight promote promote-beta promote-rc promote-open-line proto proto-check refresh-pii-rules release-as \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
 	completion-regen test-parity test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-rs-wasm test-templates test-ts \
@@ -706,7 +706,8 @@ lint-templates: ## Run shellcheck lint via bats
 	bats templates/tests/lint.bats
 
 test-workflow: ## Run bats unit tests for workflow shell logic
-	bats .github/tests/cli-demo-media.bats .github/tests/changelog-rewrite.bats
+	bats .github/tests/cli-demo-media.bats .github/tests/changelog-rewrite.bats \
+		.github/tests/release-promote-gate.bats
 
 test-hook: ## Run bats tests for pre-push hook
 	bats .github/tests/pre-push-hook.bats
@@ -743,20 +744,24 @@ test-release: ## Run e2e tests for release scripts
 	bash scripts/test-release-e2e.sh
 	bats .github/tests/release-lib.bats .github/tests/release-as.bats .github/tests/release-bump.bats
 
-promote: ## Interactive release promotion
-	@./scripts/promote-release.sh
+# Target-versioning steps (RELEASING.md), recorded in the release-please
+# config by hop-top/.github's promote.js and committed on the current branch
+# (push it to next). DRY_RUN=1 prints only; NO_COMMIT=1 writes, no commit.
+#   make promote-beta PACKAGE='kit qmochi'     (paths or components)
+#   make promote-rc GROUP=kit DRY_RUN=1
+#   make promote-open-line LINE=1.0.0 GROUP=kit
+#   make promote ARGS='clear channel --package kit'
+PROMOTE_SELECT = $(foreach p,$(PACKAGE),--package $(p)) $(foreach g,$(GROUP),--group $(g)) \
+	$(if $(DRY_RUN),--dry-run) $(if $(NO_COMMIT),--no-commit)
 
-promote-alpha: ## Promote main to alpha
-	./scripts/promote-release.sh alpha
+promote: ## Run promote.js with ARGS (channel | open-line | clear; see RELEASING.md)
+	@scripts/promote-release.sh $(ARGS)
 
-promote-beta: ## Promote alpha to beta
-	./scripts/promote-release.sh beta
+promote-beta promote-rc: ## Promote PACKAGE / GROUP to the next channel on its current line
+	@scripts/promote-release.sh channel $(subst promote-,,$@) $(PROMOTE_SELECT)
 
-promote-rc: ## Promote beta to rc
-	./scripts/promote-release.sh rc
-
-promote-release: ## Promote rc to stable release
-	./scripts/promote-release.sh release
+promote-open-line: ## Open line LINE (x.y.z) for PACKAGE / GROUP
+	@scripts/promote-release.sh open-line $(LINE) $(PROMOTE_SELECT)
 
 release-as: ## Pin the next release of one component (COMPONENT=qmochi VERSION=0.3.0-alpha.0)
 	@if [ -z "$(COMPONENT)" ] || [ -z "$(VERSION)" ]; then \

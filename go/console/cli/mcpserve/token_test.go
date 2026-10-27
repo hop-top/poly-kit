@@ -3,8 +3,10 @@ package mcpserve_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -101,6 +103,60 @@ func TestMCPOnlyRootIssuesAPIKeys(t *testing.T) {
 	list := runTokenOn(t, newServeRoot(t, mcpserve.With(mcpserve.Config{}), keys),
 		"key", "list", "--service", mcpserve.ServiceName, "--format", "json")
 	assert.Contains(t, list, `"alice"`)
+}
+
+// TestTokenKeyWritesTheStoreTheMCPServiceReads pins the case of a
+// daemon running mcp under auth.mode: apikey beside an api that is
+// not: services.mcp.auth.apikey names the store from configuration —
+// a config file, or -c — and `token key`, given no --service, writes
+// that store, not the api's. A key it issues authenticates against the
+// mcp service reading the same configuration; `token key revoke`
+// denies it at once.
+func TestTokenKeyWritesTheStoreTheMCPServiceReads(t *testing.T) {
+	for _, source := range []string{"config file", "-c"} {
+		t.Run(source, func(t *testing.T) {
+			testhome.Isolate(t)
+			path := filepath.Join(t.TempDir(), "mcp", "apikeys.db")
+			codeDefault := filepath.Join(t.TempDir(), "default", "apikeys.db")
+			keys := service.WithAPIKeys(service.APIKeysConfig{Path: codeDefault})
+			var cargs []string
+			switch source {
+			case "config file":
+				dir := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "test")
+				require.NoError(t, os.MkdirAll(dir, 0o700))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(
+					"services:\n  mcp:\n    auth:\n      mode: apikey\n      apikey:\n        path: "+path+"\n"), 0o600))
+			case "-c":
+				cargs = []string{"-c", "services.mcp.auth.mode=apikey", "-c", "services.mcp.auth.apikey.path=" + path}
+			}
+			issuer := func() *cli.Root {
+				return newServeRoot(t, service.WithAPI(service.APIConfig{}), mcpserve.With(mcpserve.Config{}), keys)
+			}
+
+			created := runTokenOn(t, issuer(), append([]string{"key", "create", "--sub", "alice", "--format", "json"}, cargs...)...)
+			var doc struct {
+				Key string `json:"key"`
+				ID  string `json:"id"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(created), &doc), created)
+			assert.FileExists(t, path, "the key went to the store services.mcp.auth.apikey names")
+			assert.NoFileExists(t, codeDefault, "not to the api's")
+
+			_, endpoint := startMCP(t, mcpserve.Config{},
+				append([]string{"mcp", "--mcp-addr", "127.0.0.1:0"}, cargs...), keys)
+			sess, err := connectWith(t, endpoint, doc.Key)
+			require.NoError(t, err, "the mcp service reads the store the key went to")
+			text, isErr := callTool(t, sess, "secret", nil)
+			require.False(t, isErr, text)
+			assert.Equal(t, "unlocked", text)
+
+			list := runTokenOn(t, issuer(), append([]string{"key", "list", "--format", "json"}, cargs...)...)
+			assert.Contains(t, list, doc.ID)
+			runTokenOn(t, issuer(), append([]string{"key", "revoke", doc.ID}, cargs...)...)
+			_, err = connectWith(t, endpoint, doc.Key)
+			require.Error(t, err, "a revoked key opens no session")
+		})
+	}
 }
 
 // TestMCPOnlyRootSignsTokensForJWTMode pins the same for auth.mode:

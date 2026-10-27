@@ -1,58 +1,67 @@
 name: release-please
 
-# Runs on both integration branches with ONE committed config:
-#   next → prereleases (*-alpha|beta|rc.N)
-#   main → same prerelease config; stable x.y.z is cut deliberately, never
-#          derived from the branch name
+# The branch decides the version (target versioning, see RELEASING.md):
+#   next         → prereleases; counter on the line, new line at alpha.0
+#   main         → stable: rc packages cut to their target, stable ones
+#                  patch-only, alpha/beta skipped
+#   release/x.y  → LTS: patches only
+# One committed config on every branch; nothing is patched per branch, so
+# next → main merges stay conflict-free.
 #
-# Every package carries the prerelease triple (prerelease: true,
-# prerelease-type, versioning: prerelease), so on either branch a plain merge
-# advances the counter (alpha.N → alpha.N+1). To cut stable, pin the version
-# on main with scripts/release-as.sh (a release-as pin), the only thing besides
-# a Release-As footer that moves a version off a prerelease track. Keeping the
-# config byte-identical on both branches is what keeps next → main promotion
-# merges conflict-free. The one exception is temporary: a pending pin (and a
-# linked release's plugin entry) lives only on the branch that cuts it, until
-# that release PR drops it. See RELEASING.md, "Pins and the main/next window".
+# googleapis/release-please-action does not know `versioning: "target"`: the
+# shared workflow runs release-please with hop-top/.github's extension. It
+# also carries the per-branch concurrency guard and the release-bot App token
+# (release PRs by release-bot[bot] trigger downstream workflows and sidestep
+# the CODEOWNERS self-approval block). Labels come from the config.
+#
+# Pin: a full commit SHA on hop-top/.github main that carries the
+# target-versioning extension (v0 does not yet, so `tooling-ref` names the
+# same commit). scripts/promote-release.sh and release-promote-gate.yml read
+# the pin from the `uses:` line and accept only a full SHA;
+# release-please-preflight.yml carries the same pin. Move all three together.
 
 on:
   push:
-    branches: [main, next]
+    # release/<major>.<minor> only: the extension's maintenance role
+    # (^release/\d+\.\d+$). Any other release/* branch has no role and would
+    # fall back to prereleases. Filter globs: `+` repeats the preceding
+    # character class, `.` is literal.
+    branches: [main, next, 'release/[0-9]+.[0-9]+']
   workflow_dispatch: {}
 
-# One run per branch at a time, newest push wins. A run that started before
-# a release PR merged still sees the old latest release; if it finishes after
-# the merge it no longer finds that PR open and re-opens a release PR for the
-# version just tagged. Cancelling it on the next push closes that window.
-concurrency:
-  group: release-please-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
-  release-please:
+  # workflow_dispatch runs on whatever branch it is started from, and a branch
+  # without a role falls back to prereleases: release only from main, next or
+  # release/<major>.<minor> (the push filter above, as a regex, which a job
+  # `if:` cannot express).
+  branch-role:
     runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.role.outputs.release }}
     steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
+      - id: role
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [[ "$REF" =~ ^refs/heads/(main|next|release/[0-9]+\.[0-9]+)$ ]]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::$REF has no release role (main, next, release/<major>.<minor>): not releasing"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      # Mint a short-lived installation token from the hop-top release-bot
-      # GitHub App so the release PRs are opened by `release-bot[bot]`
-      # rather than the human owner — sidesteps the CODEOWNERS
-      # self-approval block on `.release-please-manifest.json`.
-      - uses: actions/create-github-app-token@v3
-        id: app-token
-        with:
-          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-
-      - uses: googleapis/release-please-action@v5
-        with:
-          config-file: .github/release-please-config.json
-          manifest-file: .github/.release-please-manifest.json
-          target-branch: ${{ github.ref_name }}
-          token: ${{ steps.app-token.outputs.token }}
+  release-please:
+    needs: branch-role
+    if: needs.branch-role.outputs.release == 'true'
+    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@c6261e6832cbc71e72574433fb1a8650ae2e6616
+    secrets:
+      RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
+      RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+    with:
+      config-file: .github/release-please-config.json
+      manifest-file: .github/.release-please-manifest.json
+      versioning-extension: true
+      tooling-ref: c6261e6832cbc71e72574433fb1a8650ae2e6616

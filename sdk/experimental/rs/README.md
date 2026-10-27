@@ -6,10 +6,10 @@ Experimental Rust client SDK for hop-top kit.
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.5", features = ["cli", "output"] }
+hop-top-kit = { version = "0.5.0-alpha.2", features = ["cli", "output"] }
 ```
 
-Nothing is on by default: name the features you use. Runnable crate examples live in [`examples/`](examples/).
+Nothing is on by default: name the features you use. The version names a prerelease on purpose: a bare `"0.5"` cannot resolve one. Runnable crate examples live in [`examples/`](examples/).
 
 ## Modules
 

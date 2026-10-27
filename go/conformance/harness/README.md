@@ -38,7 +38,7 @@ compose.
 
 ## Contract
 
-- The harness depends on **xrr** (`hop.top/xrr`, `v0.1.0-alpha.3`) to capture side effects. xrr does *not* auto-instrument: the adopter wraps each adapter call site once.
+- The harness depends on **xrr** (`hop.top/xrr`, `v0.1.0-alpha.5`) to capture side effects. xrr does *not* auto-instrument: the adopter wraps each adapter call site once.
 - `XRR_MODE` and `XRR_CASSETTE_DIR` are exported before each invocation, so `xrr.SessionFromEnv` picks them up; `harness.WithCassetteDir` and `harness.WithMode` are the in-process equivalents.
 - Every primitive operates on `*cobra.Command` unless `WithInvoker` replaces the surface.
 - Annotations read: `kit/side-effect` (every primitive; required for the dry-run and destructive assertions), `kit/exit-codes`, `kit/output-schema`, `kit/output-schema-version`, `kit/format-flag` (default `--format=json`), `kit/destructive-token`.

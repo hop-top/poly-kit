@@ -10,12 +10,17 @@
 //
 // # Scope
 //
-// This package declares the contract only. It does not supervise
-// goroutines, bind listeners, install signal handlers, or mount a
-// cobra command. Everything here is pure: [Resolve] is a function of
-// its inputs, [ExitCodeFor] is a lookup, and [Registry] is a map with
-// a stability guarantee. The supervisor that consumes these types
-// lands separately.
+// This package declares the contract and runs it. The [Supervisor]
+// starts a resolved set of services in order, waits for readiness,
+// reacts to failure by policy and stops in reverse order, recording
+// the run in a [RunStatus] a status surface reads ([WithRunObserver]
+// hands it over as the run begins). It binds no listeners and mounts
+// no cobra command (that lives in hop.top/kit/go/console/cli); the
+// Supervisor installs no signal handlers itself, [SignalContext]
+// turns SIGINT/SIGTERM into the cancellation and escalation it takes.
+// The rest is pure: [Resolve] is a function of its inputs,
+// [ExitCodeFor] is a lookup, and [Registry] is a map with a stability
+// guarantee.
 //
 // # Hierarchy
 //

@@ -327,10 +327,10 @@ func TestGather_DefaultCopyrightsWhenAuthorAbsent(t *testing.T) {
 	in, err := kitinit.Gather(
 		context.Background(), nil, nil, tmpl.Manifest{}, kitinit.Defaults{}, nil)
 	require.NoError(t, err)
-	require.Len(t, in.Copyrights, 4)
+	require.Len(t, in.Copyrights, 2)
 	assert.Equal(t, "Idea Crafters LLC", in.Copyrights[0].Holder)
-	assert.Equal(t, "https://ideacrafters.com", in.Copyrights[0].URL)
-	assert.Equal(t, "@monaam", in.Copyrights[3].Holder)
+	assert.Equal(t, "open@ideacrafters.com", in.Copyrights[0].URL)
+	assert.Equal(t, "Jad Bitar", in.Copyrights[1].Holder)
 }
 
 func TestGather_EmptyAuthorFlagFallsThroughToDefault(t *testing.T) {
@@ -352,7 +352,7 @@ func TestGather_EmptyAuthorFlagFallsThroughToDefault(t *testing.T) {
 			in, err := kitinit.Gather(
 				context.Background(), nil, flags, tmpl.Manifest{}, kitinit.Defaults{}, nil)
 			require.NoError(t, err)
-			require.Len(t, in.Copyrights, 4, "expected canonical 4-holder default")
+			require.Len(t, in.Copyrights, 2, "expected canonical 2-holder default")
 			assert.Equal(t, "Idea Crafters LLC", in.Copyrights[0].Holder)
 			assert.NotEmpty(t, in.Author, "Author projection must be non-empty")
 		})

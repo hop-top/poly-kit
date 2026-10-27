@@ -135,7 +135,13 @@ func tokenVerifyCmd(r *cli.Root) *cobra.Command {
 
 // tokenVerifier is the verifier token verify uses for svc: the one its
 // auth.mode configures, else the tool's identity key; and the mode.
+// The services.* keys are layered from the config files, -c and the
+// environment first, as `service start` layers them, so the verdict is
+// the one the running service would reach.
 func tokenVerifier(r *cli.Root, svc string) (*authn.Verifier, string, error) {
+	if err := loadServiceConfig(r); err != nil {
+		return nil, "", err
+	}
 	res, mode, _, err := resolveAuthMode(svcconfig.New(r.Viper), svc)
 	if err != nil {
 		return nil, "", output.WrapError(err, output.CodeUsage, output.ExitUsage)

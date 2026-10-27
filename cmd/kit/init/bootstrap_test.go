@@ -17,6 +17,7 @@ package kitinit
 import (
 	"context"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,8 +44,10 @@ func builtinAvailable(t *testing.T, name string) bool {
 // into t.TempDir(). Returns the resulting target directory. Inputs prefilled
 // with everything templates need: Name, Module, Author, Email, License,
 // NameUpper, Year, Description; AccountType=none + NoPush=true so no GitHub
-// or remote operations exercise stubs unintentionally.
-func runBootstrapFor(t *testing.T, template string) (string, Summary) {
+// or remote operations exercise stubs unintentionally. extra adds
+// template-specific vars (a manifest variable's resolved default, say),
+// which kit init's input resolution supplies before runBootstrap.
+func runBootstrapFor(t *testing.T, template string, extra ...map[string]any) (string, Summary) {
 	t.Helper()
 	if !builtinAvailable(t, template) {
 		t.Skipf("template not yet shipped: %s", template)
@@ -98,6 +101,10 @@ func runBootstrapFor(t *testing.T, template string) (string, Summary) {
 			"org":           "example",
 			"DefaultBranch": "main",
 		},
+	}
+
+	for _, vars := range extra {
+		maps.Copy(in.Vars, vars)
 	}
 
 	summary, err := runBootstrap(context.Background(), deps, in)

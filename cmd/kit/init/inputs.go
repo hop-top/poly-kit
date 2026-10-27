@@ -230,7 +230,7 @@ func Gather(
 	//   2. KIT_AUTHOR env (single legacy holder)
 	//   3. defaults.yaml author field (single legacy holder)
 	//   4. git config user.name (single legacy holder)
-	//   5. canonical 4-holder default block (only when nothing above applies)
+	//   5. canonical 2-holder default block (only when nothing above applies)
 	//
 	// The single-string in.Author is kept as a derived value for the
 	// templates that still reference {{.Author}} (README.md, package.json,
@@ -270,7 +270,7 @@ func Gather(
 	}
 	// Fall through to the canonical block when the chosen source parsed
 	// to zero holders (e.g. `--author=` or `--author=';'`). Matches the
-	// flag help contract: "Empty defaults to the canonical 4-holder block".
+	// flag help contract: "Empty defaults to the canonical 2-holder block".
 	if len(in.Copyrights) == 0 {
 		in.Copyrights = DefaultCopyrights(year)
 	}

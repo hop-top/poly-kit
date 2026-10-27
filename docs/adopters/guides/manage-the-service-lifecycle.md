@@ -28,8 +28,10 @@ flags. `--policy` given to it names the policy the services enforce on
 the calls they carry; it does not gate starting them.
 
 `service list` prints, per registered service, whether it is
-configured, enabled for a bare `service start`, and ready in this
-process.
+configured, enabled for a bare `service start`, ready in this
+process, and optional (`services.<name>.optional`: the run survives
+its failure). `OPTIONAL` is the last column, so a script that reads
+the earlier ones keeps working.
 
 ## Status and stop
 
@@ -40,12 +42,26 @@ it.
 
 ```sh
 $ mytool service status
-SERVICE  READY  ADDR            PID
-api      true   127.0.0.1:8080  41237
+SERVICE  READY  ADDR            PID    STATE  OPTIONAL  REASON  ERROR
+api      true   127.0.0.1:8080  41237  ready  false
 ```
 
 `--format json` prints `{"services": [...], "sections": [...]}`; the
 sections are your tool's (see below).
+
+`STATE`, `OPTIONAL`, `REASON` and `ERROR` are the supervisor's record
+of the run: `state` is `starting`, `ready`, `stopped` or `failed`, and a
+failed service carries the failure's kind and text. A failed or stopped
+service reads `ready` false, whatever its own `Ready` said. A daemon whose
+optional `mcp` service could not bind its port keeps serving and says
+why:
+
+```sh
+$ mytool service status
+SERVICE  READY  ADDR            PID    STATE   OPTIONAL  REASON  ERROR
+api      true   127.0.0.1:8080  41237  ready   false
+mcp      false                  41237  failed  true      start   bind: listen: listen tcp 127.0.0.1:8081: bind: address already in use
+```
 
 | Situation | `service status` | `service stop` |
 |---|---|---|
@@ -134,8 +150,8 @@ root.RegisterServiceStatusProvider("queue", func(ctx context.Context) (cli.Statu
 
 ```sh
 $ mytool service status
-SERVICE  READY  ADDR            PID
-api      true   127.0.0.1:8080  41237
+SERVICE  READY  ADDR            PID    STATE  OPTIONAL  REASON  ERROR
+api      true   127.0.0.1:8080  41237  ready  false
 
 SECTION  STATUS  DETAIL
 queue    ok      depth=12
@@ -143,7 +159,8 @@ queue    ok      depth=12
 
 ```sh
 $ mytool service status --format json
-{"services":[{"service":"api","ready":true,"addr":"127.0.0.1:8080","pid":41237}],
+{"services":[{"service":"api","ready":true,"addr":"127.0.0.1:8080","pid":41237,
+   "state":"ready","optional":false}],
  "sections":[{"title":"queue","data":{"depth":12},"status":"ok","priority":1000}]}
 ```
 
@@ -167,8 +184,8 @@ without the service manager seeing the process go away:
 
 ```sh
 $ mytool service restart
-SERVICE  READY  ADDR            PID
-api      true   127.0.0.1:8080  41237
+SERVICE  READY  ADDR            PID    STATE  OPTIONAL  REASON  ERROR
+api      true   127.0.0.1:8080  41237  ready  false
 ```
 
 The instance drains exactly as `service stop` makes it, releases what
@@ -177,11 +194,16 @@ the run held, then replaces its own process image: the binary
 with, from the directory it was launched in. The pid stays the same,
 so systemd or launchd sees no exit. The new run reads configuration
 and flags afresh. The client waits for the new instance to answer with
-every service ready and prints its status.
+every required service ready and prints its status. An optional service
+that failed in the new run is not waited for: it shows in that status
+as `failed`, with its reason and error. Nor is a one-shot service that
+reported ready and returned cleanly: it shows as `stopped`.
 
 | Situation | `service restart` |
 |---|---|
 | An instance is running | drains, re-executes, waits for readiness, prints the new status, exit 0 |
+| A required service fails in the new run | exit 1 (`GENERIC`) at once, naming it with its reason and error |
+| No service of the new run is left running (all failed optional or stopped) | exit 1 (`GENERIC`) at once: the run is over |
 | No instance is running | `mytool is not running`, exit 3 (`NOT_FOUND`), like `service status`: restart does not start one |
 | A `service stop` is already draining | exit 4 (`CONFLICT`) |
 | A signal or `service stop` arrives during the drain | the instance exits as a stop; the client reports `not restarted`, exit 1 |

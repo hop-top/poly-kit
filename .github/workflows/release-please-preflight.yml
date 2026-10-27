@@ -1,26 +1,19 @@
 name: release-please-preflight
 
 # Catches release config drift at PR time instead of tag-push time.
-# Delegates to the shared hop-top/.github workflow; pinned to @v0, never
-# @main. Paths cover this repo's release config plus every shipping
-# component's manifest.
+# Delegates to the shared hop-top/.github workflow. Runs on every PR (no
+# `paths:` filter) so it can be a required check: a required check whose
+# workflow is filtered out never reports and leaves the PR pending.
+#
+# Pinned with release-please.yml to the same hop-top/.github commit: v0's
+# preflight does not know `versioning: "target"` and fails the config. Move
+# the pin together with release-please.yml's.
 on:
   pull_request:
-    paths:
-      - '.github/release-please-config.json'
-      - '.github/.release-please-manifest.json'
-      - '.github/workflows/release-please.yml'
-      - '.github/workflows/publish.yml'
-      - 'go.mod'
-      - 'sdk/ts/package.json'
-      - 'sdk/py/pyproject.toml'
-      - 'sdk/experimental/rs/Cargo.toml'
-      - 'sdk/experimental/php/composer.json'
-      - 'incubator/qmochi/go.mod'
   workflow_dispatch: {}
 
 jobs:
   preflight:
     permissions:
       contents: read
-    uses: hop-top/.github/.github/workflows/release-please-preflight.yml@v0
+    uses: hop-top/.github/.github/workflows/release-please-preflight.yml@c6261e6832cbc71e72574433fb1a8650ae2e6616

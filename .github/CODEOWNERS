@@ -3,8 +3,9 @@
 # so code-owner review here is the release brake: a release PR merges
 # only after explicit release-team approval, and the nightly auto-cut can
 # only time a merge that is already approved. The release-please config
-# and manifest are deliberately NOT listed: promotions and counter reseeds
-# are human edits to those files and must stay review-free.
+# and manifest are deliberately NOT listed: promotions are human edits to
+# the config and must stay review-free; the manifest is written by release
+# PRs only (release-promote-gate.yml).
 # Anchored to the release-please-managed changelogs: a basename rule
 # would also gate the scaffold changelogs under templates/ and
 # internal/template/, which release-please never writes.

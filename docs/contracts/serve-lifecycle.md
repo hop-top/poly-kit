@@ -22,7 +22,7 @@ authority for behavior; the package is the authority for signatures.
 | `<tool> service start`          | supervisor | every service that is **configured** AND **enabled**        |
 | `<tool> service start <service>`| selector   | exactly the named service, subject to validation            |
 | `<tool> service list`           | inspection | registered services with configured / enabled / ready state |
-| `<tool> service status`         | inspection | the running instance's services, readiness and addresses    |
+| `<tool> service status`         | inspection | the running instance's services: readiness, address, state  |
 | `<tool> service stop`           | control    | asks the running instance to drain and exit                 |
 | `<tool> service restart`        | control    | asks the running instance to drain and re-execute in place  |
 
@@ -105,11 +105,28 @@ default socket.
 #### `service status` output
 
 `service status` prints an object: `services`, kit's fixed rows (one
-per service the instance started, with `service`, `ready`, `addr`,
-`pid`), and `sections`, the tool's own sections about the running
-instance, in the root status's `StatusSection` shape. `sections` is
-`[]` when the tool registers none. `service restart` prints the same
-object for the new run.
+per service the instance runs, with `service`, `ready`, `addr`, `pid`,
+`state`, `optional`, and for a failed service `reason` and `error`),
+and `sections`, the tool's own sections about the running instance, in
+the root status's `StatusSection` shape. `sections` is `[]` when the
+tool registers none. `service restart` prints the same object for the
+new run.
+
+- `state`, `optional`, `reason` and `error` are the supervisor's record
+  of the run ([§"Optional services"](#optional-services)), under the
+  lifecycle event payload's keys and words. `state` is `starting`,
+  `ready`, `stopped` or `failed`, or `not_in_run` for a selected
+  service the start sequence has not reached. `optional` is the
+  resolved `services.<name>.optional`. A `failed` row carries `reason`,
+  the failure's kind (`start`, `ready_timeout`, `runtime`, ...), and
+  `error`, its text; other rows carry neither key.
+- `ready` is the service's own report, except that a service the
+  supervisor recorded `failed` or `stopped` reads `false`: one that
+  crashed under `isolate`, or returned on its own, may never reset its
+  own readiness.
+- A daemon whose optional `mcp` could not bind its port answers with
+  its core service `ready` and `mcp` `failed`, `optional: true`,
+  `reason: start`, and the bind error as `error`.
 
 - Sections come from providers the tool registers with
   `RegisterServiceStatusProvider`. The **instance** runs them, all at
@@ -122,8 +139,9 @@ object for the new run.
   `sensitive` are redacted with the root status's patterns before they
   leave the instance; `service status` has no flag that reveals them.
 - json and yaml carry the whole object. The tabular formats print
-  kit's rows, then, when there are sections, a blank line and one
-  `SECTION`/`STATUS`/`DETAIL` row per section.
+  kit's rows (`SERVICE`, `READY`, `ADDR`, `PID`, then `STATE`,
+  `OPTIONAL`, `REASON`, `ERROR`), then, when there are sections, a
+  blank line and one `SECTION`/`STATUS`/`DETAIL` row per section.
 - These providers do not feed the root `status`, and the root
   `status` providers do not feed `service status`.
 
@@ -154,13 +172,28 @@ a new run of the same process.
   start the tool again.
 - The client waits, bounded by `--wait`, for the old image to go
   (re-execution closes its connection) and for the new instance's
-  control socket to answer with every service ready, then prints that
-  status (the `service status` rows) and exits 0. A drain or readiness
-  that outlasts `--wait` is `TRANSIENT`, exit 6; an instance that
-  reports it did not re-execute is `GENERIC`, exit 1, with its reason.
-  A new run that exits instead of coming up (a configuration it
-  refuses) is `GENERIC`, exit 1, reported as soon as the process is
-  gone rather than at `--wait`.
+  control socket to answer with every required service ready or
+  `stopped` (one that returned cleanly on its own, a one-shot: a clean
+  return is no failure); failed optional rows are reported, not waited
+  for, as the supervisor's readiness leaves them out
+  ([§"Optional services"](#optional-services)), while an optional row
+  still `starting` is waited on until it is ready, or failed once its
+  readiness budget ends. It then prints that
+  status (the `service status` rows, a stopped or failed optional
+  service's among them) and exits 0. A row is ready when its `ready`
+  and its `state` agree; a row without a `state`, from an instance
+  that predates it, is read by its `ready` alone. At least one row
+  must be ready: a new run whose every row has ended, failed or
+  `stopped`, has nothing left running and is over, so it is
+  `GENERIC`, exit 1, at once, naming each service and its state. A
+  required service the new run
+  recorded `failed` will not come up, since nothing is restarted, so
+  it is `GENERIC`, exit 1, at once, naming the service, its `reason`
+  and its `error`. A drain, or a new run whose services have not all
+  settled, that outlasts `--wait` is `TRANSIENT`, exit 6; an instance that reports it did not re-execute
+  is `GENERIC`, exit 1, with its reason. A new run that exits instead
+  of coming up (a configuration it refuses) is `GENERIC`, exit 1,
+  reported as soon as the process is gone rather than at `--wait`.
 - With no instance running, `service restart` MUST exit 3
   (`NOT_FOUND`), as `service status` does. Unlike `service stop`, whose
   goal — nothing running — already holds, restart's goal — a fresh
@@ -598,8 +631,11 @@ payload uses: `service`, `state`, `optional`, `reason`, `error`,
 `elapsed_ms`. In Go that record is `Result.Services` when the run ends
 and `RunStatus.Services()` on the run view every `Start` receives while
 it runs, so a status surface a tool serves reads what the supervisor
-saw. Go's `service list` also shows each registered service's resolved
-optional value, in an `OPTIONAL` column after `READY`.
+saw; `serve.WithRunObserver` hands the same record to a surface outside
+the services, which is how `service status` reports it
+([§"`service status` output"](#service-status-output)). Go's
+`service list` also shows each registered service's resolved optional
+value, in an `OPTIONAL` column after `READY`.
 
 ### Re-execution
 
@@ -2286,7 +2322,9 @@ its name under `services.<svc>.auth` or `services.all.auth`:
   `auth.jwt.public_key_files` and accepts them. Both sign through
   `identity.Keypair.SignJWT`, as peer challenges do, so a token one
   tool mints verifies byte for byte on the other. `token verify
-  <token>` checks one as `--service` (default `api`) would: exit `0`
+  <token>` checks one as `--service` (default `api`) would, its
+  `auth` block read from the same `services.*` sources `service start`
+  reads (the config files, `-c`, the environment): exit `0`
   valid, `5` refused, `6` key set unreachable, `2` nothing to verify
   with. The `token` command is never served: no transport — api, mcp,
   rpc, socket — lists or runs any of its leaves.
@@ -2380,9 +2418,19 @@ kit HTTP listeners, sent as `X-API-Key: <key>` or
   <id>` (exit `3` for an unknown id), whether or not the tool has
   `WithAPI`: a tool serving only `mcp` or `rpc` under `auth.mode:
   apikey` issues its own keys without registering a REST api. Each
-  verb opens the store of `--service` (default `api`; such a tool
-  names its service, `--service mcp`, when that service's
-  `auth.apikey` names a store of its own). Revocation is immediate: the service
+  verb opens the store `--service`'s `auth.apikey` resolves to, read
+  from the same `services.*` sources `service start` reads (the config
+  files, `-c`, the environment) and resolved the way the service
+  resolves it, so the verbs write the store the running service reads.
+  Without `--service`, the store is the one every registered service
+  under `auth.mode: apikey` reads (the socket, which has no HTTP
+  listener, never counts). No such service, or two reading different
+  stores, is refused `USAGE` (exit `2`), naming the services to choose
+  from. A `--service` the registry does not hold, or naming the
+  socket, which never uses API keys, is refused the same way; one that
+  is not under `auth.mode: apikey` is served, with a
+  warning on stderr (and in a dry run's plan) that it does not accept
+  the store's keys yet. Revocation is immediate: the service
   reads the store on every request. A revoked key stays listed.
 - The key's principal, tenant and scopes are the call's `Caller`,
   `Tenant` and `Meta.Extra["scopes"]`; `Established` is `verified`.
@@ -2992,7 +3040,7 @@ transport surfaces them unchanged.
 | Class        | Reason            | Which commands                                                              | Lifted by     |
 |--------------|-------------------|-----------------------------------------------------------------------------|---------------|
 | interactive  | `interactive`     | `kit/side-effect: interactive` — a shell, a TUI, anything needing a terminal | the CLI only  |
-| self-hosting | `self-hosting`    | `service start` and everything under it; `kit/network: ingress`; `kit/self-hosting: true` | nothing       |
+| self-hosting | `self-hosting`    | `kit/self-hosting: true` (kit's `service start`, `service stop`, `service restart`); a command named `serve` or under one; `kit/network: ingress` | nothing       |
 | management   | `management-only` | kit's reserved verbs (`spec`, `status`, …) and their children; any tree marked `kit/reserved`, and its children | `AllowReserved` |
 
 Rules:
@@ -3007,14 +3055,15 @@ Rules:
   surface, and no reflection option lifts the reason. Running it
   inside a served invocation would start a server inside the server,
   or replace the binary that is serving. Any one of three signals
-  marks it: the name `service start`, or a position under one, at any depth
-  — the depth-1 verb the hierarchy above gives to exactly one
-  command, and any nested `service start` that starts a server of its own; a
+  marks it: the name `serve`, or a position under one, at any depth
+  — the legacy spelling of the supervisor, and any nested `serve` that
+  starts a server of its own; a
   declared
   `kit/network: ingress`, because accepting connections is what a
   server does; or the explicit `kit/self-hosting: true`, which is how
-  kit marks its own self-modifying commands and how an adopter marks
-  theirs. None of the three consults the reserved-verb list, so a
+  kit marks `service start`, `service stop` and `service restart` (each
+  would start or take down the server answering it) and how an adopter
+  marks theirs. None of the three consults the reserved-verb list, so a
   bare cobra tree withholds its server too. A bridge never discovers
   such a command as a leaf, so a call answers "unknown command" and
   discovery answers `self-hosting`; the runner refuses it as well.
@@ -3058,8 +3107,8 @@ Rules:
   own surface, which `kit service start` projects on purpose, behind
   its gates. Any other command an adopter mounts after `cli.New` is
   not reserved and is served like any other, whatever its name.
-- Kit's own `service start` is both reserved and self-hosting. It reports
-  `self-hosting`, the answer that says why calling it through a
+- Kit's own `service start`, `service stop` and `service restart` are both
+  reserved and self-hosting. Each reports `self-hosting`, the answer that says why calling it through a
   transport can never work rather than merely who owns the word.
 
 Forced remote execution of an interactive or self-hosting command is

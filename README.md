@@ -60,7 +60,7 @@ benchmarks — not flag parsers and output renderers.
   [`kit telemetry disable|enable|inspect|reset|status`](docs/adopters/guides/telemetry.md).
 - **Engine.** Typed-JSON document store with versioning DAG;
   in-memory and SQLite backends.
-- **Storage abstractions.** Secret (10 backends), KV (4), blob (2).
+- **Storage abstractions.** Secret (9 backends), KV (5), blob (2).
 - **Conformance harness.** xrr-backed cassette grading, story DSL,
   scenario DSL.
 - **Three SDKs at parity.** [`go/`](go/), [`sdk/ts/`](sdk/ts/),

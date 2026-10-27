@@ -6,7 +6,7 @@ completion candidates, and generates OS handler metadata.
 
 ## Relationship to cite
 
-This package delegates to `hop.top/cite` (`v0.1.0`); it does not
+This package delegates to `hop.top/cite` (`v0.1.1`); it does not
 reimplement the URI contract. Go is the reference consumer and uses the
 widest surface of the four runtimes:
 

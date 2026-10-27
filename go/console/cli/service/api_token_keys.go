@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,11 +20,18 @@ import (
 
 // tokenKeyCmd is `token key`: issue, list and revoke the API keys a
 // service under auth.mode: apikey accepts. Each verb opens the store
-// services.<--service>.auth.apikey names.
+// services.<--service>.auth.apikey names, or, without --service, the
+// one store the registered services under auth.mode: apikey read.
 func tokenKeyCmd(r *cli.Root) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "key",
 		Short: "Issue, list and revoke API keys",
+		Long: "Issue, list and revoke the API keys a service under auth.mode: apikey\n" +
+			"accepts. Each verb opens the store the service reads, resolved from the\n" +
+			"same services.* configuration `service start` reads: the config files,\n" +
+			"-c, and the environment. --service names the service; without it, the\n" +
+			"store is the one the registered services under auth.mode: apikey share,\n" +
+			"and naming one is required when there is none or more than one.",
 	}
 	cmd.AddCommand(tokenKeyCreateCmd(r), tokenKeyListCmd(r), tokenKeyRevokeCmd(r))
 	return cmd
@@ -31,9 +40,12 @@ func tokenKeyCmd(r *cli.Root) *cobra.Command {
 // withAPIKeys opens the key store of the --service flag's service and
 // runs fn over it.
 func withAPIKeys(cmd *cobra.Command, r *cli.Root, fn func(context.Context, *authn.APIKeys) error) error {
-	cfg, err := apiKeyStoreFor(cmd, r)
+	cfg, warnings, err := apiKeyStoreFor(cmd, r)
 	if err != nil {
 		return err
+	}
+	for _, w := range warnings {
+		fmt.Fprintln(cmd.ErrOrStderr(), "warning: "+w)
 	}
 	ctx := cmd.Context()
 	store, err := openAPIKeyStore(ctx, cfg)
@@ -44,35 +56,141 @@ func withAPIKeys(cmd *cobra.Command, r *cli.Root, fn func(context.Context, *auth
 	return fn(ctx, authn.NewAPIKeys(store, nil))
 }
 
-// apiKeyStoreFor resolves the store config of the --service whose
-// keys cmd manages, without opening it.
-func apiKeyStoreFor(cmd *cobra.Command, r *cli.Root) (kv.Config, error) {
+// apiKeyStoreFor resolves the store config of the service whose keys
+// cmd manages, without opening it: --service's, else the one store
+// the registered services under auth.mode: apikey read. The services.*
+// keys are layered from the config files, -c and the environment
+// first, as `service start` layers them, so the verbs write the store
+// the running service reads.
+//
+// --service must name a registered service that can hold API keys
+// (not kit's socket) when the tool has a registry. One that is not
+// under auth.mode: apikey is still served — its mode may be set next —
+// with a warning that it does not accept the store's keys yet.
+func apiKeyStoreFor(cmd *cobra.Command, r *cli.Root) (kv.Config, []string, error) {
+	if err := loadServiceConfig(r); err != nil {
+		return kv.Config{}, nil, err
+	}
+	cfg := svcconfig.New(r.Viper)
 	svc, _ := cmd.Flags().GetString("service")
-	res := tlsResolver{cfg: svcconfig.New(r.Viper), svc: svc}
-	if err := res.cfg.ValidateBlock(authAPIKeyBlock, svc, svcconfig.Shared); err != nil {
-		return kv.Config{}, output.WrapError(err, output.CodeUsage, output.ExitUsage)
+	if svc == "" {
+		store, err := defaultAPIKeyStore(cmd, r, cfg)
+		return store, nil, err
 	}
-	cfg, err := res.apiKeyStoreConfig(r)
+	verb := "token key " + cmd.Name()
+	if reg := stateOf(r).serveReg; reg != nil {
+		var refusal string
+		if _, ok := reg.Lookup(svc); !ok {
+			refusal = fmt.Sprintf("%s: unknown service %q", verb, svc)
+		} else if !slices.Contains(apiKeyCandidates(r), svc) {
+			refusal = fmt.Sprintf("%s: the %s service does not use API keys: it has no HTTP listener "+
+				"and never reads auth.mode: %s", verb, svc, AuthModeAPIKey)
+		}
+		if refusal != "" {
+			e := output.UsageError(refusal)
+			e.SuggestedFix = "pass --service naming one of " + strings.Join(apiKeyCandidates(r), ", ")
+			return kv.Config{}, nil, e
+		}
+	}
+	res := tlsResolver{cfg: cfg, svc: svc}
+	if err := cfg.ValidateBlock(authAPIKeyBlock, svc, svcconfig.Shared); err != nil {
+		return kv.Config{}, nil, output.WrapError(err, output.CodeUsage, output.ExitUsage)
+	}
+	store, err := res.apiKeyStoreConfig(r)
 	if err != nil {
-		return kv.Config{}, output.WrapError(err, output.CodeUsage, output.ExitUsage)
+		return kv.Config{}, nil, output.WrapError(err, output.CodeUsage, output.ExitUsage)
 	}
-	return cfg, nil
+	var warnings []string
+	if mode, key := res.str(authBlock, "mode"); !strings.EqualFold(mode, AuthModeAPIKey) {
+		warnings = append(warnings, fmt.Sprintf(
+			"%s: %s is not %q; the %s service does not accept the keys in this store until it is",
+			verb, key, AuthModeAPIKey, svc))
+	}
+	return store, warnings, nil
+}
+
+// apiKeyCandidates is the registered services that can hold API keys:
+// every one but kit's socket, which has no HTTP listener and never
+// reads auth.mode: apikey, services.all's included.
+func apiKeyCandidates(r *cli.Root) []string {
+	st := stateOf(r)
+	if st.serveReg == nil {
+		return nil
+	}
+	var out []string
+	for _, name := range st.serveReg.Names() {
+		if name != SocketServiceName || st.socketCfg == nil {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// defaultAPIKeyStore is the store the verbs open without --service:
+// the one every registered service under auth.mode: apikey reads,
+// each resolved as the service resolves it when it starts. No such
+// service, or two reading different stores, is a usage error naming
+// the services to choose from.
+func defaultAPIKeyStore(cmd *cobra.Command, r *cli.Root, cfg svcconfig.Resolver) (kv.Config, error) {
+	verb := "token key " + cmd.Name()
+	eligible := apiKeyCandidates(r)
+	var users []string
+	var store kv.Config
+	shared := true
+	for _, name := range eligible {
+		res, mode, _, err := resolveAuthMode(cfg, name)
+		if err != nil {
+			return kv.Config{}, output.WrapError(err, output.CodeUsage, output.ExitUsage)
+		}
+		if mode != AuthModeAPIKey {
+			continue
+		}
+		s, err := res.apiKeyStoreConfig(r)
+		if err != nil {
+			return kv.Config{}, output.WrapError(err, output.CodeUsage, output.ExitUsage)
+		}
+		if len(users) > 0 && (s.Backend != store.Backend || filepath.Clean(s.Path) != filepath.Clean(store.Path)) {
+			shared = false
+		}
+		users = append(users, name)
+		store = s
+	}
+	switch {
+	case len(users) > 0 && shared:
+		return store, nil
+	case len(users) > 0:
+		e := output.UsageError(fmt.Sprintf(
+			"%s: services %s use auth.mode: %s with different stores; name one with --service",
+			verb, strings.Join(users, ", "), AuthModeAPIKey))
+		e.SuggestedFix = "pass --service " + strings.Join(users, " or --service ")
+		return kv.Config{}, e
+	}
+	e := output.UsageError(fmt.Sprintf(
+		"%s: no service uses auth.mode: %s, so there is no store to default to; name one with --service",
+		verb, AuthModeAPIKey))
+	e.SuggestedFix = "set services.<service>.auth.mode: " + AuthModeAPIKey + ", or pass --service"
+	if len(eligible) > 0 {
+		e.SuggestedFix += " naming one of " + strings.Join(eligible, ", ")
+	}
+	return kv.Config{}, e
 }
 
 // planAPIKey is token key create and revoke under --dry-run: the
 // store's configuration resolves as for the real run, but the store
 // is not opened — opening a store that does not exist yet creates it.
 func planAPIKey(cmd *cobra.Command, r *cli.Root, args map[string]any, effect cli.Effect, warnings ...string) error {
-	cfg, err := apiKeyStoreFor(cmd, r)
+	cfg, advisories, err := apiKeyStoreFor(cmd, r)
 	if err != nil {
 		return err
 	}
+	warnings = append(advisories, warnings...)
 	effect.Detail = strings.TrimSpace(effect.Detail + " in " + cfg.Path)
 	return cli.RenderPlan(cmd, cli.Plan{Args: args, Effects: []cli.Effect{effect}, Warnings: warnings})
 }
 
 func addServiceFlag(cmd *cobra.Command) {
-	cmd.Flags().String("service", APIServiceName, "Service whose auth.apikey store holds the keys")
+	cmd.Flags().String("service", "",
+		"Service whose auth.apikey store holds the keys (default: the store the services under auth.mode: apikey share)")
 }
 
 // apiKeyCreated is what token key create renders under a data format

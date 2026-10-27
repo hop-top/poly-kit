@@ -57,7 +57,7 @@ fmt.Println(resp.Message.Content)
   tiebreaks alphabetically on `(Provider, ID)`; `ErrNoProviderMatches` +
   `*NoMatchError`; `LLM_PICKER_TRACE` gates one `slog` event per call:
   [Picker](../../../docs/adopters/reference/llm.md#picker).
-- Model metadata comes from `hop.top/aim` `v0.1.0-alpha.0` via `llm.Default(ctx)`; inject with `llm.SetDefaultRegistry`.
+- Model metadata comes from `hop.top/aim` `v0.1.0-alpha.6` via `llm.Default(ctx)`; inject with `llm.SetDefaultRegistry`.
 - License: MIT.
 
 ## Neighbours
@@ -77,4 +77,4 @@ fmt.Println(resp.Message.Content)
   topics, registry, picker, pool, tracing, interfaces
 - [Go primitives](../../../docs/adopters/reference/go-primitives.md)
 
-<!-- release: track hop.top/aim v0.1.0-alpha.0 -->
+<!-- release: track hop.top/aim v0.1.0-alpha.6 -->

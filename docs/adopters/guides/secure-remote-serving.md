@@ -277,7 +277,10 @@ it adds `token verify`, which checks a token the way a service would
 (`--service rpc` for another one; exit `5` when refused). `token
 verify` and `token key` need `go/transport/authn`, so only a binary
 that imports `go/console/cli/service` has them; bare `cli` and `peers`
-deliberately do not link it:
+deliberately do not link it. `token verify` reads the `services.*`
+configuration from the sources `service start` does (the config files,
+`-c` and the environment), so its verdict is the one the running
+service reaches:
 
 ```console
 $ export TOKEN=$(mytool token create --sub ci-bot --tenant acme --scopes widgets:read --expires 1h)
@@ -321,7 +324,16 @@ token to authenticate its bus connections.
 (`_ "hop.top/kit/go/storage/kv/sqlite"`); then
 `mytool token key create --sub ci-bot --scopes widgets:read` prints a
 key once, callers send it as `X-API-Key`, `token key list` shows every
-key's state, and `token key revoke <id>` stops one at once. The
+key's state, and `token key revoke <id>` stops one at once. `token
+key` reads the same `services.*` configuration `service start` does
+and opens the store the service under `auth.mode: apikey` reads; when
+no service is under it yet, or two read different stores, name one
+with `--service mcp`. `--service` must name a registered service other
+than kit's `socket` (no HTTP listener, never reads `auth.mode:
+apikey`): an unregistered name and `socket` are refused with a usage
+error (exit `2`) that lists the services to choose from. A registered service whose `auth.mode` is not `apikey`
+is accepted, with a warning on stderr that it does not accept the
+store's keys until it is. The
 default `sqlite` store is created owner-only (`0600`) and can be
 written while the service runs; a `badger` store is locked by the
 running service, so stop it before running `token key`.

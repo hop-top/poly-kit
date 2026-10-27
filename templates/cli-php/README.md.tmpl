@@ -67,11 +67,12 @@ Conformance proof: [`docs/12-factor-conformance.md`](docs/12-factor-conformance.
 
 ## Getting started
 
-Toolchain is pinned in `mise.toml`. Install everything in one go:
+Install PHP and Composer first (see [Tool versions](#tool-versions));
+the rest of the toolchain is pinned in `mise.toml`:
 
 ```sh
-mise install                # installs PHP/Composer (and other pinned tools)
-mise run install            # installs ecosystem deps (composer install)
+mise install                # installs the pinned tools
+make setup                  # installs ecosystem deps (composer install)
 cp .env.example .env        # adapter defaults (telemetry, storage, queue, log, config)
 ```
 
@@ -84,15 +85,18 @@ open http://localhost:16686 # Jaeger UI for traces
 
 ## Tool versions
 
-PHP, Composer, and release tooling are pinned in `mise.toml`
-inside a kit-managed block. Refresh procedure
+Release tooling is pinned in `mise.toml` inside a kit-managed
+block. PHP is not: mise would build it from source, so install the
+PHP `composer.json` requires (`require.php`) yourself; CI installs
+it with `shivammathur/setup-php`. Refresh procedure
 (`kit init --check` / `kit init --update`) is documented in
 poly-kit's
 [templates/RUNBOOK-UPGRADE.md](https://github.com/hop-top/poly-kit/blob/main/templates/RUNBOOK-UPGRADE.md).
 
 ## Development
 
-Prerequisites: `mise` (installs the pinned PHP + Composer toolchain).
+Prerequisites: PHP and Composer at the version `composer.json`
+requires, plus `mise` (installs the pinned release tooling).
 
 ```sh
 make setup       # install deps

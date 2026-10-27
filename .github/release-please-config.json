@@ -2,7 +2,6 @@
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "separate-pull-requests": true,
   "pull-request-title-pattern": "chore(release): ${component} ${version}",
-  "group-pull-request-title-pattern": "chore${scope}: release ${component} libraries",
   "component-no-space": true,
   "include-component-in-tag": true,
   "tag-separator": "/",
@@ -52,18 +51,22 @@
       "hidden": true
     }
   ],
-  "x-linked-groups": [
+  "plugins": [
     {
-      "group": "kit",
+      "type": "target-context",
+      "stableBranches": ["main"],
+      "prereleaseBranches": ["next"]
+    },
+    {
+      "type": "conditional-linked-versions",
+      "groupName": "kit",
       "components": ["kit", "kit-php", "kit-py", "kit-rs", "kit-ts"]
     }
   ],
-  "plugins": [{"type": "linked-versions", "groupName": "kit", "components": ["kit", "kit-php", "kit-py", "kit-rs", "kit-ts"]}],
   "packages": {
     ".": {
       "release-type": "go",
       "component": "kit",
-      "release-as": "0.6.0-alpha.0",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "exclude-paths": [
@@ -103,35 +106,34 @@
       ],
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
-      "initial-version": "0.5.0-alpha.0"
+      "versioning": "target",
+      "initial-version": "0.5.0-alpha.0",
+      "x-channel": {"line": "0.5.0", "channel": "beta"}
     },
     "extensions/mcp-tasks": {
       "release-type": "go",
       "component": "mcp-tasks",
-      "release-as": "0.2.0-alpha.0",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
+      "versioning": "target",
       "initial-version": "0.1.0-alpha.0"
     },
     "incubator/qmochi": {
       "release-type": "go",
       "component": "qmochi",
-      "release-as": "0.3.0-alpha.0",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
-      "initial-version": "0.1.0-alpha.0"
+      "versioning": "target",
+      "initial-version": "0.1.0-alpha.0",
+      "x-channel": {"line": "0.2.0", "channel": "beta"}
     },
     "sdk/experimental/php": {
       "release-type": "php",
       "component": "kit-php",
-      "release-as": "0.6.0-alpha.0",
       "package-name": "hop-top/kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
@@ -140,41 +142,64 @@
           "type": "json",
           "path": "composer.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "generic",
+          "path": "/templates/cli-php/composer.json.tmpl"
+        },
+        {
+          "type": "generic",
+          "path": "/internal/template/builtins/cli-php/composer.json.tmpl"
         }
       ],
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
+      "versioning": "target",
       "initial-version": "0.5.0-alpha.0"
     },
     "sdk/experimental/rs": {
       "release-type": "rust",
       "component": "kit-rs",
-      "release-as": "0.6.0-alpha.0",
       "package-name": "hop-top-kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "/templates/cli-rs/Cargo.toml.tmpl"
+        },
+        {
+          "type": "generic",
+          "path": "/internal/template/builtins/cli-rs/Cargo.toml.tmpl"
+        },
+        {
+          "type": "generic",
+          "path": "/docs/adopters/reference/rs-sdk.md"
+        },
+        {
+          "type": "generic",
+          "path": "/docs/adopters/guides/serve-mcp-from-any-sdk.md"
+        }
+      ],
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
+      "versioning": "target",
       "initial-version": "0.5.0-alpha.0"
     },
     "sdk/py": {
       "release-type": "python",
       "component": "kit-py",
-      "release-as": "0.6.0-alpha.0",
       "package-name": "hop-top-kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
+      "versioning": "target",
       "initial-version": "0.5.0-alpha.0"
     },
     "sdk/ts": {
       "release-type": "node",
       "component": "kit-ts",
-      "release-as": "0.6.0-alpha.0",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "extra-files": [
@@ -189,7 +214,7 @@
       ],
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
+      "versioning": "target",
       "initial-version": "0.5.0-alpha.0"
     }
   }

@@ -206,7 +206,7 @@ for them.
   task, acceptable only where the server itself is unauthenticated
   anyway. Set it whenever an `Authorization` header, or any caller
   identity, exists.
-- **Client SDK support.** The Go SDK client (v1.7.0) unmarshals tool
+- **Client SDK support.** The Go SDK client (v1.8.0) unmarshals tool
   results into `CallToolResult`, which drops `CreateTaskResult`
   fields. Clients consuming tasks from Go currently need to speak the
   wire directly (the module's test suite shows how).

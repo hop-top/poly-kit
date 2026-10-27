@@ -903,14 +903,14 @@ c := llm.NewClient(provider,
 
 ```mermaid
 flowchart TD
-    A[Developer merges PR to main] --> B{release-please runs}
+    A["Developer merges PR to next, main or release/x.y"] --> B{release-please runs}
     B --> C[Creates/updates release PR]
     C --> D{Release PR open}
 
-    D --> E[More PRs merged to main]
+    D --> E[More PRs merged to that branch]
     E --> B
 
-    D --> F{Nightly cron\nCI green?}
+    D --> F{Nightly cron, main and next only\nCI green?}
     F -- no --> D
     F -- yes --> G[Auto-merge release PR]
 
@@ -930,14 +930,14 @@ flowchart TD
     M --> O
     N --> O
 
-    subgraph Stage promotion - manual
-        P[make promote-alpha] --> Q[alpha.1 → alpha.N]
+    subgraph Channel promotion on next - manual
+        P[new line: alpha.0] --> Q[alpha.1 → alpha.N]
         Q --> R[make promote-beta]
-        R --> S[beta.1 → beta.N]
+        R --> S[beta.0 → beta.N]
         S --> T[make promote-rc]
-        T --> U[rc.1 → rc.N]
-        U --> V[make promote-release]
-        V --> W[stable release]
+        T --> U[rc.0 → rc.N]
+        U --> V[merge next into main]
+        V --> W[stable release of the rc target]
     end
 ```
 
@@ -956,7 +956,9 @@ flowchart TD
 
 ## How releases work
 
-1. Conventional commits on `main` trigger release-please
+1. Conventional commits on `next`, `main` or `release/x.y` trigger
+   release-please with the target-versioning extension (see
+   [RELEASING.md](../../RELEASING.md))
 2. release-please creates/updates a release PR with version
    bumps + changelog
 3. Merging the release PR creates GitHub Releases + tags
@@ -965,39 +967,34 @@ flowchart TD
 
 ## Bump policy
 
-Pre-1.0 (current): every `feat:`, `fix:`, `perf:` produces a minor
-bump (`0.x → 0.x+1`). `feat!:` / `BREAKING CHANGE` also bumps minor
-(downgraded from major via `bump-minor-pre-major`) so the framework
-does not silently promote itself to `1.0.0`.
+Pre-1.0 (current): `feat:` and `feat!:` / `BREAKING CHANGE` bump the
+minor (`0.x → 0.x+1`), so the framework does not silently promote
+itself to `1.0.0`; anything else bumps the patch.
 
 Post-1.0: standard semver. `feat:` → minor, `fix:`/`perf:` → patch,
 `feat!:`/`BREAKING CHANGE` → major.
 
-Rationale: pre-1.0 the API is in flux; adopters pin exact versions
-and read the changelog, so the version stream records forward motion
-rather than fix / feature / breaking distinctions. The knob is
-`bump-minor-pre-major: true` on every package in
-`.github/release-please-config.json` (no
-`bump-patch-for-minor-pre-major`). Retire it in a deliberate,
-reviewed change when `1.0.0` is tagged; leaving it for the first
-post-1.0 breaking change would silently re-enable major bumps.
+The bump decides a line's target; on `next` the line is previewed as
+prereleases, on `main` only the rc target is cut (see
+[RELEASING.md](../../RELEASING.md)). Every package keeps
+`bump-minor-pre-major: true` and no `bump-patch-for-minor-pre-major`:
+target versioning requires exactly that and applies the post-1.0 rules
+itself from `1.0.0`. Reaching `1.0.0` is a deliberate step: open the
+line with `make promote-open-line LINE=1.0.0 GROUP=kit`.
 
 ## Promoting a release stage
 
-Interactive:
+Channels move per package or per group, one step at a time, and are
+recorded on `next` (RELEASING.md, "Channels"):
 
 ```bash
-make promote
+make promote-beta PACKAGE='kit qmochi'   # alpha -> beta (feature-complete)
+make promote-rc GROUP=kit                # beta -> rc (no known blockers)
+make promote-open-line LINE=1.0.0 GROUP=kit
 ```
 
-Explicit:
-
-```bash
-make promote-alpha    # initialize alpha (new version cycle)
-make promote-beta     # alpha -> beta (feature-complete)
-make promote-rc       # beta -> rc (no known blockers)
-make promote-release  # rc -> release (bake period passed)
-```
+Every new line starts on alpha by itself; stable is cut on `main` when
+`next`, with the package at rc, is merged into it.
 
 ### Transition criteria
 
@@ -1010,8 +1007,10 @@ make promote-release  # rc -> release (bake period passed)
 
 ### Who can promote
 
-Repo admins or members of the `release` team. Enforced via
-CODEOWNERS + CI gate on release-please-config.json changes.
+Anyone whose PR merges under the repo's ordinary PR policy; the
+config is not code-owned. The promotion gate
+(`release-promote-gate.yml`) validates the recorded steps and refuses
+manifest edits outside release PRs.
 
 ## Nightly auto-release
 
@@ -1028,32 +1027,28 @@ time triggers the same publish flow.
 ## Version synchronization
 
 The polyglot packages (`kit`, `kit-php`, `kit-py`, `kit-rs`,
-`kit-ts`) form the linked group `kit`, listed under
-`x-linked-groups` in the release-please config. Each versions on
-its own, except in a linked release: when a member's proposed
-version starts a new major, or a new minor with a prerelease
-suffix, every member releases at that version, the highest across
-the group, in one PR, members without changes included. Patches,
-prerelease counters and stable minors stay per package.
+`kit-ts`) form the `conditional-linked-versions` group `kit` in the
+release-please config. Each versions on its own until one member opens
+a new major, or a new minor line while the family is before 1.0: then
+every member moves to that target in one release PR, each keeping its
+channel. Patches, counters and stable minors after 1.0 stay per
+package.
 
 ```
 Go  0.5.0-alpha.26  TS  0.5.0-alpha.3  Py  0.5.0-alpha.5  ← counters differ, ok
-Go  0.6.0-alpha.0   TS  0.6.0-alpha.0  Py  0.6.0-alpha.0  ← new minor in pre-release: linked
-Go  0.6.1           TS  0.6.0          Py  0.6.2          ← patches differ, ok
+Go  0.6.0-alpha.0   TS  0.6.0-alpha.0  Py  0.6.0-alpha.0   ← new pre-1.0 minor: linked
 ```
 
-`scripts/release-as.sh --group kit <version>` sets a linked
-release up, and the `breaking-bump` check fails a member's
-release PR that would skip it; RELEASING.md, "Linked releases",
-has the mechanics. Standalone projects scaffolded from this
-monorepo follow their own version progression.
+A linked cut on `main` (a major, or a minor while pre-1.0) happens only
+with every member, experimental ones included, at an rc of it. Standalone projects scaffolded from
+this monorepo follow their own version progression.
 
 ## LTS policy
 
 - Pre-1.0: single release stream, no LTS
 - Post-1.0: current + 1 LTS (previous major)
 - LTS receives security + critical fixes for 12 months
-- LTS branches named `v1.x`, `v2.x`
+- LTS branches named `release/<major>.<minor>` (patch releases only)
 
 ## Changelog format
 

@@ -88,6 +88,15 @@ else
     PUSH_INPUT=$(cat)
 fi
 
+# --- Chain to the global pre-push (attribution guard) ---
+# A local core.hooksPath replaces the global hooks directory instead of adding
+# to it, so the global hook would silently stop running. Feed it the captured
+# ref list; skip when there is none (nothing to inspect).
+GLOBAL_HOOKS=$(git config --global --type=path core.hooksPath 2>/dev/null || true)
+if [ -n "$PUSH_INPUT" ] && [ -n "$GLOBAL_HOOKS" ] && [ -x "$GLOBAL_HOOKS/pre-push" ]; then
+    printf '%s\n' "$PUSH_INPUT" | "$GLOBAL_HOOKS/pre-push" "$@" || exit 1
+fi
+
 # --- Nothing to push, or only deletions: no content to check ---
 # A deletion line carries the zero SHA as its LOCAL sha ($2); its remote sha
 # ($4) is the live commit being removed, so letting it reach the diff below

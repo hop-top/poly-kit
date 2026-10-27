@@ -78,18 +78,18 @@ binary that is serving. Any one of three signals marks it:
 
 | Signal | Example |
 |--------|---------|
-| it is named `service start`, or sits under one, at any depth | `mytool service start`, `mytool service start socket`, `mytool svc serve` |
+| it is named `serve`, or sits under one, at any depth | the hidden legacy `mytool serve`, a nested `mytool svc serve` |
 | it declares `kit/network: ingress` | a `listen` command that accepts connections |
-| it carries `kit/self-hosting: true` | an `upgrade` that replaces the binary |
+| it carries `kit/self-hosting: true` | an `upgrade` that replaces the binary; kit's own `service start`, `service stop` and `service restart` |
 
 None of the three consults the reserved-verb lookup, so a bare cobra
 tree withholds its server too. **No option lifts `self-hosting`**:
 the relaxations below exist so a consumer can reflect for the surface
 it has — a terminal lifts `interactive`, the spec lifts
 `management-only` — and no projected surface ever has "is the process
-itself". Kit's own `service start` is both reserved and self-hosting; it
-reports `self-hosting`, the answer that says why calling it through a
-transport can never work.
+itself". Kit's own `service start`, `service stop` and `service restart`
+are both reserved and self-hosting; each reports `self-hosting`, the
+answer that says why calling it through a transport can never work.
 
 Mark your own self-modifying commands with the annotation:
 

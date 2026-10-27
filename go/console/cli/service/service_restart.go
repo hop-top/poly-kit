@@ -124,8 +124,10 @@ func serviceRestartCmd(root *cli.Root) *cobra.Command {
 			"`service stop` does and then re-execute itself in place: the same\n" +
 			"binary, arguments and environment, under the same pid, so a service\n" +
 			"manager sees no exit. The new run reads its configuration and flags\n" +
-			"afresh. Waits for the new instance to answer with every service ready\n" +
-			"and prints its status.\n\n" +
+			"afresh. Waits for the new instance to answer with every required service\n" +
+			"ready or stopped and prints its status, a failed optional service among\n" +
+			"it. A required service that failed fails the restart at once, exit 1, as\n" +
+			"does a new run with nothing left running.\n\n" +
 			"Exits 3 (NOT_FOUND) when no instance is running, like `service status`:\n" +
 			"there is nothing to restart, and restart does not start one.",
 		Args: cobra.NoArgs,
@@ -212,17 +214,40 @@ func runServiceRestart(cmd *cobra.Command, root *cli.Root) error {
 }
 
 // awaitRestarted polls the control socket at path until the new
-// instance answers with every service ready. It gives up when deadline
-// passes, or as soon as pid, the re-executed process, is gone: a new
-// run that refused to start (a bad configuration change) exits rather
-// than answering.
+// instance answers with every service settled: each required service
+// ready or stopped, at least one service ready; an optional service
+// that failed is not waited for, and is reported in the status restart
+// prints, while one still starting is waited on until its readiness
+// budget ends. It gives up when deadline passes; at once, exit 1, when
+// a required service failed (the supervisor restarts nothing, so it
+// will not come up) or nothing is left running (every service failed
+// or stopped: the run is over); or as soon as pid, the re-executed
+// process, is gone: a new run that refused to start (a bad
+// configuration change) exits rather than answering.
 func awaitRestarted(root *cli.Root, path string, pid int, deadline time.Time, wait time.Duration) error {
 	name := root.Config.Name
 	answered := false
 	for {
 		if got, ok := pollStatus(path); ok {
 			answered = true
-			if allReady(got) {
+			settled, failed := restartSettled(got)
+			if failed != nil {
+				e := output.GenericError(fmt.Sprintf(
+					"%s restarted, but its required service %s failed (%s): %s",
+					name, failed.Service, failed.Reason, failed.Error))
+				e.SuggestedFix = "read its stderr or service log for the cause; `" +
+					name + " " + ServiceCommandName + " status` shows the instance"
+				return e
+			}
+			if ended := restartEnded(got); ended != "" {
+				e := output.GenericError(fmt.Sprintf(
+					"%s drained and re-executed, but the new run has nothing left running (%s); the run is over",
+					name, ended))
+				e.SuggestedFix = "read its stderr or service log for the reason, then start it with `" +
+					name + " " + ServiceCommandName + " start`"
+				return e
+			}
+			if settled {
 				return nil
 			}
 		} else if pid > 0 && !processAlive(pid) {
@@ -237,7 +262,8 @@ func awaitRestarted(root *cli.Root, path string, pid int, deadline time.Time, wa
 				return output.TransientError(fmt.Sprintf("%s did not come back within %s", name, wait))
 			}
 			return output.TransientError(fmt.Sprintf(
-				"%s restarted but not every service was ready within %s", name, wait))
+				"%s restarted but not every service settled within %s (required ready or stopped; optional still starting)",
+				name, wait))
 		}
 		time.Sleep(restartPollInterval)
 	}
@@ -251,11 +277,53 @@ func pollStatus(path string) ([]serviceStatusRow, bool) {
 	return out.Services, true
 }
 
-func allReady(rows []serviceStatusRow) bool {
-	for _, r := range rows {
-		if !r.Ready {
-			return false
+// restartSettled reads one status answer of the new run: settled when
+// every row is ready, stopped (a clean return is no failure), or
+// optional and failed, and at least one is ready — a run with nothing
+// serving is down, not degraded; failed is the first required service
+// the supervisor recorded failed, nil when none is. A row is ready
+// when it says so and its state agrees: an answer without a state (an
+// instance that predates it) is taken at its ready.
+func restartSettled(rows []serviceStatusRow) (settled bool, failed *serviceStatusRow) {
+	settled = true
+	serving := false
+	for i, r := range rows {
+		switch {
+		case r.State == string(serve.StateFailed) && !r.Optional:
+			return false, &rows[i]
+		case restartRowEnded(r):
+		case !r.Ready || (r.State != "" && r.State != string(serve.StateReady)):
+			settled = false
+		default:
+			serving = true
 		}
 	}
-	return true
+	return settled && serving, nil
+}
+
+// restartEnded describes the new run when every row of its answer has
+// ended — failed or stopped — so nothing serves and the run is over;
+// "" otherwise.
+func restartEnded(rows []serviceStatusRow) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(rows))
+	for _, r := range rows {
+		if !restartRowEnded(r) {
+			return ""
+		}
+		part := r.Service + " " + r.State
+		if r.Reason != "" {
+			part += " (" + r.Reason + ")"
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// restartRowEnded reports whether r's service is over for this run:
+// failed or stopped, neither of which the supervisor undoes.
+func restartRowEnded(r serviceStatusRow) bool {
+	return r.State == string(serve.StateFailed) || r.State == string(serve.StateStopped)
 }

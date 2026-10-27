@@ -13,8 +13,9 @@ The cobra command and the `services.*` config block belong to
   Start, Ready, Stop); register via `service.WithService`
 - start order, config validation, policy class, or bound address matter →
   also implement `Dependent`, `Validator`, `Classified`, or `Addressed`
-- the run must survive this service failing → `Optional` (`services.<name>.optional`);
-  its per-service record → `RunStatus.Services()` in the run, `Result.Services` after
+- the run must survive this service failing → `Optional` (`services.<name>.optional`); its
+  record → `RunStatus.Services()` in the run, `Result.Services` after
+- a status surface outside the run reads it live → `WithRunObserver(fn)` hands `fn` each run's `RunStatus`
 - you need the runnable set without starting anything → `Resolve(reg, Request)`
 - you need the exit code for an outcome → `ExitCodeFor`, `CodeFor`, `WorstOutcome`
 - you are the supervisor → `NewSupervisor(reg, cfg, opts...).Run(ctx,
@@ -57,19 +58,18 @@ this package is the authority for signatures only. Points a caller gets wrong:
   deterministically. Nil after cancellation is a clean stop; an error is a failure.
 - `Config.Enabled` defaults to false. The selector form ignores enablement;
   the supervisor form resolving to zero services exits 2, not 0.
-- Exit codes: clean stop 0; invalid selection, config invalid, no services 2;
-  unknown service 3; policy denied 5; start failed, runtime crash, shutdown
-  timeout 1. An outcome missing from the table exits 1. An optional service's
-  failure (`optional: true`) trips neither fail-fast nor the code unless all fail; no retry.
+- Exit codes: clean stop 0; invalid selection, config invalid, no services 2; unknown service 3;
+  policy denied 5; start failed, runtime crash, shutdown timeout 1. An outcome missing from the table
+  exits 1. An optional service's failure (`optional: true`) trips neither fail-fast nor the code unless all fail; no retry.
+- `WithRunObserver`'s `fn` runs on `Run`'s goroutine before any service starts: it must not
+  block. Each `Run` hands it a fresh record, live and safe for concurrent use.
 - Ports reproduce [contracts/parity/serve.json](../../../contracts/parity/serve.json).
 
 ## Neighbours
 
-- `hop.top/kit/go/console/cli/service`: `service start` command, `WithService`,
-  `WithServiceOverride`, `WithServicePolicy`, `services.*` resolution
-  (`WithOwnServiceConfig` hands it to a tool with its own loader)
-- kit-shipped services: `api` (`service.WithAPI`), `socket` (`service.WithSocket`),
-  `mcp` (`mcpserve.With`), `rpc` (`rpcserve.With`), all under `go/console/cli`
+- `hop.top/kit/go/console/cli/service`: `service start` command, `WithService`, `WithServiceOverride`, `WithServicePolicy`,
+  `services.*` resolution (`WithOwnServiceConfig` hands it to a tool with its own loader)
+- kit-shipped services, all under `go/console/cli`: `api` (`service.WithAPI`), `socket` (`service.WithSocket`), `mcp` (`mcpserve.With`), `rpc` (`rpcserve.With`)
 - `hop.top/kit/go/transport/transportsvc`: transport-backed `Service` implementations
 - `hop.top/kit/go/runtime/bus`: `Event`, `TopicMap`, `ValidateTopic`
 
