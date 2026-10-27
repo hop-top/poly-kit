@@ -324,7 +324,8 @@ STUB
             # ever writing a byte: exactly the hang condition.
             sh -c "sleep $((cap + 5))" > "$fifo" &
             HOLDER=$!
-            PATH="$stub:$PATH" "$HOOK" origin file:///dev/null <"$fifo" \
+            # shellcheck disable=SC2086 # HOOK_SHELL: optional interpreter word.
+            PATH="$stub:$PATH" ${HOOK_SHELL:-} "$HOOK" origin file:///dev/null <"$fifo" \
                 >"$BATS_TEST_TMPDIR/out" 2>&1 &
             ;;
         lines)
@@ -371,6 +372,16 @@ STUB
 @test "deletion: stdin open with no data exits 0 and does not hang" {
     # THE HANG. Without a cap this wedges the suite rather than failing.
     run_hook_capped 20 open
+    [ "$HOOK_STATUS" != "TIMEOUT" ]
+    [ "$HOOK_STATUS" = "0" ]
+    [ -z "$HOOK_INVOKED" ]
+}
+
+@test "deletion: open stdin with no data does not hang under dash" {
+    # dash, /bin/sh on Debian and Ubuntu, has no `read -t`; the hook's
+    # timed first read must not degrade to a blocking one there.
+    command -v dash >/dev/null 2>&1 || skip "dash not installed"
+    HOOK_SHELL=dash run_hook_capped 20 open
     [ "$HOOK_STATUS" != "TIMEOUT" ]
     [ "$HOOK_STATUS" = "0" ]
     [ -z "$HOOK_INVOKED" ]
