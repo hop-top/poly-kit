@@ -8,6 +8,14 @@ import pytest
 
 from hop_top_kit import llm
 
+
+@pytest.fixture(autouse=True)
+def _no_router_env(monkeypatch):
+    """No ambient RouteLLM server: these tests run in-process mode."""
+    for k in ("ROUTELLM_BASE_URL", "LLM_BASE_URL"):
+        monkeypatch.delenv(k, raising=False)
+
+
 # ------------------------------------------------------------------
 # URI parsing
 # ------------------------------------------------------------------
@@ -34,17 +42,23 @@ class TestParseRouterThreshold:
         _, thresh = parse_router_threshold("sw_ranking:1.0")
         assert thresh == 1.0
 
-    def test_missing_colon_raises(self):
+    def test_missing_colon_is_a_tier(self):
         from hop_top_kit.routellm_adapter import parse_router_threshold
 
-        with pytest.raises(llm.LLMError, match="router:threshold"):
+        with pytest.raises(llm.LLMError, match="is a tier name, not router_name:threshold"):
             parse_router_threshold("mf0.7")
 
-    def test_invalid_float_raises(self):
+    def test_non_numeric_suffix_is_a_tier(self):
         from hop_top_kit.routellm_adapter import parse_router_threshold
 
-        with pytest.raises(llm.LLMError, match="not a valid float"):
+        with pytest.raises(llm.LLMError, match='"mf:abc" is a tier name'):
             parse_router_threshold("mf:abc")
+
+    def test_empty_raises(self):
+        from hop_top_kit.routellm_adapter import parse_router_threshold
+
+        with pytest.raises(llm.LLMError, match=r"^model field is required"):
+            parse_router_threshold("")
 
     def test_out_of_range_raises(self):
         from hop_top_kit.routellm_adapter import parse_router_threshold

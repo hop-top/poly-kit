@@ -56,7 +56,7 @@ Runners are strict: unknown fields, a `version` other than `v1` and a file no ru
 ### Known differences
 
 Not vectored. A `retry-after` HTTP date: Go and TypeScript honor one within 60s, Rust and Python back off.
-Python keeps `LLM_API_KEY` ahead of llm.yaml and `<SCHEME>_API_KEY` (Go: llm.yaml, then the provider variable, then `LLM_API_KEY`) and has no secret store. TypeScript resolves keys in Go's order with no secret store. Both find an llm.yaml block by scheme name only (Go also reads the block of a provider alias). Rust has no URL media sources (media are bytes the caller read): `media_fetch` is not applicable, and `anthropic_request` vectors with a `url` part are skipped by name.
+Python keeps `LLM_API_KEY` ahead of llm.yaml and `<SCHEME>_API_KEY` (Go: llm.yaml, then the provider variable, then `LLM_API_KEY`) and has no secret store. TypeScript resolves keys in Go's order with no secret store. Both find an llm.yaml block by scheme name only (Go also reads the block of a provider alias). Rust has no URL media sources (media are bytes the caller read): `media_fetch` is not applicable, and `anthropic_request` vectors with a `url` part are skipped by name. `routellm` is not vectored: every port parses the model field alike (router pair or tier name) and sends it over the openai adapter when a RouteLLM base URL is set; with none, Go and TypeScript use `http://localhost:6060` while Python routes in-process through the `routellm` Controller, which takes no tier name.
 
 ## Tool names
 

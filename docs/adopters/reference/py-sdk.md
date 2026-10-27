@@ -793,8 +793,9 @@ for tok in client.stream_with_tools(req, tools):
 adapter, told by `ResolvedConfig.hermetic`, ignores `ANTHROPIC_BASE_URL`,
 `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_WORKSPACE_ID`, `LLM_BASE_URL` and
 llm.yaml. `llm.parse_router_config(extras, hermetic=True)` ignores the
-`ROUTELLM_*` variables. The `routellm` Controller library may still read
-its own environment.
+`ROUTELLM_*` variables, and so does the `routellm` adapter in both
+modes. In in-process mode the `routellm` Controller library may still
+read its own environment.
 
 The Python `Client` publishes no bus events: `on_request` and
 `on_response` run in process with the full request and response.
@@ -842,11 +843,59 @@ Transport rules, every adapter:
   limits, 5xx and transport failures. Every credential sent is
   `REDACTED` in error text.
 
+### RouteLLM modes and model field
+
+`routellm://` takes either model shape a RouteLLM server advertises on
+`/v1/models`, classified as in Go and TypeScript
+(`routellm_adapter.parse_model_field()`):
+
+- `router_name:threshold` (`routellm://mf:0.7`): the text after the
+  last colon parses as a finite float in Go `ParseFloat` syntax
+  (decimal, hex mantissa with `p` exponent, `_` between digits). The
+  threshold must lie in [0, 1]: `routellm: threshold 1.5000 out of
+  range [0, 1]` (`llm.ThresholdInvalidError`).
+- tier name (`routellm://private`): anything else non-empty, colons
+  included (`mf:abc`, `a:b`, `mf:NaN` are tiers). The server resolves
+  router and threshold from its tier config; an unknown tier fails at
+  the server (`llm.ModelError`).
+
+The adapter runs in one of two modes (`adapter.mode`):
+
+| Mode | When | Routes | Models |
+|------|------|--------|--------|
+| `http` | a RouteLLM server base URL is configured | the server's OpenAI-compatible `/v1` API through `llm_openai.OpenAIAdapter` | router pair as `router-<name>-<threshold>` (Go `FormatFloat 'f' -1`: `mf:5e-1` → `router-mf-0.5`); tier verbatim |
+| `in_process` | no base URL | RouteLLM's `Controller` in this process (`pip install routellm`) | router pair only; a tier raises `llm.LLMError` naming the base URL settings |
+
+Base URL, first non-empty wins (Go's order): the provider's `base_url`
+(URI `?base_url=` or host form `routellm://host:6060/private`,
+`LLM_BASE_URL`, llm.yaml `base_url`), then `ROUTELLM_BASE_URL`, then
+extras `routellm.base_url`. `/v1` is appended unless present. Unlike Go
+and TypeScript, an unset base URL does not fall back to
+`http://localhost:6060`; it selects in-process mode. A hermetic config
+ignores `ROUTELLM_BASE_URL` in both modes.
+
+HTTP mode is the openai adapter end to end: streaming, `stream_events`,
+tool calling, tool names (`?tool_names=`), `max_body_bytes` /
+`max_event_bytes`, retries, the credential guard (a key goes over plain
+http only to loopback) and its errors, labelled `routellm`. The key
+(`?api_key=`, `LLM_API_KEY` or `ROUTELLM_API_KEY`) is sent as a bearer
+token when set. In-process mode keeps the extras `strong_model`,
+`weak_model`, `routers` and `router_config`; extras `api_base` sets the
+Controller's upstream model API base (formerly the provider
+`base_url`, which now selects HTTP mode). Extras `eva` validation runs
+after `complete` in both modes.
+
+```python
+llm.resolve("routellm://private?base_url=http://localhost:6060")  # tier, HTTP
+llm.resolve("routellm://mf:0.7?base_url=http://localhost:6060")   # router-mf-0.7, HTTP
+llm.resolve("routellm://mf:0.7")                                  # in-process Controller
+```
+
 ### RouteLLM wire mapping
 
 `hop_top_kit.routellm_adapter` sends the OpenAI chat shape, the same
-mapping as the Go `openai` adapter; `map_messages()` returns the list it
-sends:
+mapping as the Go `openai` adapter; in in-process mode `map_messages()`
+returns the list it hands the Controller:
 
 | Message | Wire |
 |---------|------|
@@ -913,5 +962,6 @@ goes back verbatim: `routellm://mf:0.7` sends `pane.open` as
 `pane_open`, `routellm://mf:0.7?tool_names=strict` as given.
 
 `routellm` calls tools through the OpenAI wire mapping
-(`hop_top_kit.llm_openai`): the Controller gets the mapped `tools`, and
-the routed model's calls come back under the caller's names.
+(`hop_top_kit.llm_openai`): the server (HTTP mode) or the Controller
+(in-process mode) gets the mapped `tools`, and the routed model's calls
+come back under the caller's names.
