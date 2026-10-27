@@ -71,6 +71,8 @@ func (s State) String() string {
 
 // Stats is a point-in-time snapshot of breaker activity.
 type Stats struct {
+	// Trips counts every open: manual Trip calls and automatic opens
+	// (LastTripReason "circuit").
 	Trips          uint64
 	LastTripAt     time.Time
 	LastTripReason string
@@ -235,12 +237,7 @@ func (b *breakerImpl) Reset() {
 }
 
 func (b *breakerImpl) Trip(reason string) {
-	b.mu.Lock()
-	b.stats.Trips++
-	b.stats.LastTripAt = b.cfg.clock.Now()
-	b.stats.LastTripReason = reason
-	b.mu.Unlock()
-
+	b.countTrip(reason)
 	b.logTrip(reason)
 	b.emitTransitions(b.circ.open(true))
 }

@@ -111,3 +111,27 @@ func TestAllow_PreflightRejectionsDoNotFeedCircuit(t *testing.T) {
 	}
 	assert.Equal(t, breaker.Closed, b.State(), "budget rejections are not downstream failures")
 }
+
+func TestTripsTotal_CountsAutomaticOpens(t *testing.T) {
+	lg, buf := newCaptureLogger()
+	b, clk := newClocked(t, "reg-trips-auto", 1, 1, breaker.Logger(lg))
+	clk.Advance(time.Minute)
+	b.Record(false, 0) // closed -> open
+	st := b.Stats()
+	assert.Equal(t, uint64(1), st.Trips)
+	assert.Equal(t, clk.Now(), st.LastTripAt)
+	assert.Equal(t, "circuit", st.LastTripReason)
+	assert.Contains(t, buf.String(), `"breaker.prev_state":"closed","breaker.policy":"circuit","breaker.trips_total":1`)
+
+	clk.Advance(10 * time.Second)
+	b.Record(false, 0) // half_open -> open
+	assert.Equal(t, uint64(2), b.Stats().Trips)
+}
+
+func TestTripsTotal_ManualTripCountsOnce(t *testing.T) {
+	b, _ := newClocked(t, "reg-trips-manual", 1, 1)
+	b.Trip("ops")
+	st := b.Stats()
+	assert.Equal(t, uint64(1), st.Trips, "the manual open is not also counted as automatic")
+	assert.Equal(t, "ops", st.LastTripReason)
+}

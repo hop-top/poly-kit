@@ -82,6 +82,18 @@ func (b *breakerImpl) logReset() {
 	)
 }
 
+// autoTripReason is the Stats.LastTripReason of an automatic open.
+const autoTripReason = "circuit"
+
+// countTrip records one trip in Stats.
+func (b *breakerImpl) countTrip(reason string) {
+	b.mu.Lock()
+	b.stats.Trips++
+	b.stats.LastTripAt = b.cfg.clock.Now()
+	b.stats.LastTripReason = reason
+	b.mu.Unlock()
+}
+
 func (b *breakerImpl) tripsSnapshot() uint64 {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -113,8 +125,14 @@ func transitionLevel(prev, next State) log.Level {
 // trigger covers every transition of the circuit, including the one a
 // manual Trip or Reset causes; the dedicated logTrip path adds the
 // manual-only TrippedPayload event for operator audit on top.
+//
+// An automatic open counts as a trip (reason "circuit"), so
+// trips_total covers both paths; Trip has counted its own.
 func (b *breakerImpl) emitTransitions(ts []transition) {
 	for _, t := range ts {
+		if t.to == Open && !t.manual {
+			b.countTrip(autoTripReason)
+		}
 		b.logger().Log(transitionLevel(t.from, t.to), "breaker state transition",
 			"breaker.name", b.name,
 			"breaker.state", t.to.String(),
