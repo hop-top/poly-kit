@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -161,8 +162,12 @@ func TestRateLimitSurface_WS(t *testing.T) {
 	c := f.dialOK(t, "/ws/cmd", nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	// Each call gets its own correlation id: the server releases an id
+	// only after its terminal frame is written, so reusing "r" races the
+	// second invoke against that release ("id already in flight").
 	for i, want := range []string{"result", "error"} {
-		wsWriteJSON(t, ctx, c, wsRawFrame{Op: "invoke", ID: "r", Invocation: &cmdsurface.Invocation{Path: []string{"open"}}})
+		id := fmt.Sprintf("r%d", i+1)
+		wsWriteJSON(t, ctx, c, wsRawFrame{Op: "invoke", ID: id, Invocation: &cmdsurface.Invocation{Path: []string{"open"}}})
 		frame := readFirstResultOrError(t, ctx, c)
 		if frame.Op != want {
 			t.Fatalf("call %d: frame %+v, want %s", i+1, frame, want)
