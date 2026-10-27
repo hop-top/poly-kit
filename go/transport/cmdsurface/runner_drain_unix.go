@@ -16,7 +16,9 @@ import (
 // child wrote is in the pipe by then, so the first empty read after
 // exit proves the child's output is fully read, and only an orphan
 // can still write. From that point the reader waits at most
-// orphanGrace for EOF before giving up with errOrphanCut.
+// orphanGrace for EOF before giving up with errOrphanCut. An orphan
+// that keeps the pipe from ever reading empty is stopped instead by
+// orphanByteCap on what is read after exit.
 //
 // The proof does not depend on timing: however late this goroutine
 // is scheduled, it never stops while the child's output is unread.
@@ -28,6 +30,8 @@ type drainReader struct {
 	gone  bool // the child has exited
 	grace bool // drained after exit; the orphan deadline is armed
 	cut   bool
+
+	afterExit int // bytes read since the child was seen gone
 }
 
 func newDrainReader(f *os.File) (*drainReader, error) {
@@ -62,10 +66,11 @@ func (d *drainReader) Read(p []byte) (int, error) {
 	for {
 		var n int
 		var rerr error
-		drained := false
+		drained, gone := false, false
 		err := d.rc.Read(func(fd uintptr) bool {
+			var grace bool
 			d.mu.Lock()
-			gone, grace := d.gone, d.grace
+			gone, grace = d.gone, d.grace
 			d.mu.Unlock()
 			for {
 				n, rerr = syscall.Read(int(fd), p)
@@ -104,6 +109,16 @@ func (d *drainReader) Read(p []byte) (int, error) {
 			return 0, rerr
 		case n == 0:
 			return 0, io.EOF
+		case gone:
+			d.mu.Lock()
+			d.afterExit += n
+			if d.afterExit > orphanByteCap {
+				d.cut = true
+				d.mu.Unlock()
+				return 0, errOrphanCut
+			}
+			d.mu.Unlock()
+			return n, nil
 		default:
 			return n, nil
 		}

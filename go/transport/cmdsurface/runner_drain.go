@@ -15,6 +15,15 @@ import (
 // such a process from holding the invocation open indefinitely.
 const orphanGrace = 100 * time.Millisecond
 
+// orphanByteCap bounds what the drain reads from a pipe once the child
+// has exited. The child's own unread output is at most what the pipe
+// holds (64KiB by default, 1MiB at most where a process may enlarge
+// it), so anything past the cap was written by an orphan. It ends the
+// drain of an orphan that writes without pause: its pipe never reads
+// empty, so orphanGrace never starts. Bytes, not time, so a slow
+// consumer of the child's own output is never cut.
+const orphanByteCap = 4 << 20
+
 // childPipes carries a child's stdout and stderr through OS pipes the
 // runner reads itself. Handing exec.Cmd *os.File ends means os/exec
 // starts no copying goroutines of its own, so Cmd.WaitDelay cannot
