@@ -1,26 +1,61 @@
 """
 hop_top_kit.routellm_adapter — RouteLLM provider for the ``routellm://`` scheme.
 
-Parses URIs of the form ``routellm://router:threshold`` (e.g.
-``routellm://mf:0.7``), creates a RouteLLM Controller, and delegates
-completions through its routing logic.
+The model field takes either shape a RouteLLM server advertises on
+``/v1/models`` (:func:`parse_model_field`, as Go and TS):
 
-Optional Eva contract validation runs post-completion when configured.
+- ``router_name:threshold`` — ``routellm://mf:0.7``. The client picks
+  the router and the threshold (in [0, 1]).
+- tier name — ``routellm://private``. The server resolves router and
+  threshold from its own tier config.
 
-:attr:`~hop_top_kit.llm.Request.tool_choice` goes to the Controller in
-the OpenAI shape (:func:`hop_top_kit.llm_openai.tool_choice`); a choice
-without tools, or an invalid one, is refused before routing.
+Two modes, chosen by whether a RouteLLM server base URL is configured,
+first non-empty wins (Go's order):
+
+1. the provider's ``base_url`` (URI ``base_url`` param or host form,
+   ``LLM_BASE_URL``, llm.yaml ``base_url``);
+2. ``ROUTELLM_BASE_URL``, then extras ``routellm.base_url``
+   (:func:`hop_top_kit.llm.parse_router_config`; a hermetic config reads
+   no ``ROUTELLM_*`` variable).
+
+HTTP mode (a base URL is configured): completions go through
+:class:`hop_top_kit.llm_openai.OpenAIAdapter` pointed at the server's
+OpenAI-compatible ``/v1`` API, so streaming, stream events, tool calling,
+tool names (openai rule, ``?tool_names=``), ``max_body_bytes`` /
+``max_event_bytes``, retries and the credential guard are the openai
+adapter's. A router pair goes out as the server's
+``router-<name>-<threshold>`` model; a tier goes out verbatim.
+
+In-process mode (no base URL): a RouteLLM ``Controller`` routes in this
+process (``pip install routellm``). Only ``router_name:threshold``
+works: a tier needs the server's tier config, so it raises
+:class:`~hop_top_kit.llm.LLMError`. Go's default server URL
+(``http://localhost:6060``) does not select HTTP mode here. Extras
+``api_base`` sets the Controller's upstream model API base.
+
+Optional Eva contract validation (extras ``eva``) runs after
+:meth:`RouteLLMAdapter.complete` in both modes.
+
+:attr:`~hop_top_kit.llm.Request.tool_choice` goes out in the OpenAI
+shape (:func:`hop_top_kit.llm_openai.tool_choice`); a choice without
+tools, or an invalid one, is refused before routing.
 """
 
 from __future__ import annotations
 
 import logging
+import math
+import os
+import re
 from collections.abc import Iterator
+from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 from hop_top_kit import llm, llm_openai
 from hop_top_kit.llm_toolnames import (
     OPENAI_TOOL_NAMES,
+    TOOL_NAMES_PARAM,
     ToolNameMode,
     ToolNames,
     tool_name_mode_of,
@@ -40,28 +75,159 @@ except ImportError:
 
 
 # ------------------------------------------------------------------
-# URI helpers
+# Model field
 # ------------------------------------------------------------------
+
+_MODEL_REQUIRED = "model field is required (router_name:threshold or tier name)"
+
+_DECIMAL_FLOAT = re.compile(r"[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
+_HEX_FLOAT = re.compile(r"[+-]?0[xX](?:[0-9a-fA-F]+\.?[0-9a-fA-F]*|\.[0-9a-fA-F]+)[pP][+-]?[0-9]+")
+
+
+@dataclass(frozen=True)
+class ParsedModel:
+    """The model field classified. ``is_tier`` selects ``tier``;
+    otherwise ``router_name`` and ``threshold`` hold the client-selected
+    pair. The unused shape stays at ``""`` / ``0.0``."""
+
+    is_tier: bool
+    tier: str = ""
+    router_name: str = ""
+    threshold: float = 0.0
+
+
+def _underscore_ok(text: str) -> bool:
+    """Go's underscore rule for number literals: an underscore sits
+    between digits, or between a base prefix and a digit."""
+    s = text[1:] if text[:1] in "+-" else text
+    saw = "^"  # ^ start, 0 digit or prefix, _ underscore, ! other
+    i = 0
+    hexa = False
+    if len(s) >= 2 and s[0] == "0" and s[1] in "bBoOxX":
+        i, saw, hexa = 2, "0", s[1] in "xX"
+    for c in s[i:]:
+        if c in "0123456789" or (hexa and c in "abcdefABCDEF"):
+            saw = "0"
+        elif c == "_":
+            if saw != "0":
+                return False
+            saw = "_"
+        else:
+            if saw == "_":
+                return False
+            saw = "!"
+    return saw != "_"
+
+
+def _parse_finite_float(text: str) -> float | None:
+    """A finite float in the syntax Go's ``strconv.ParseFloat`` accepts
+    (decimal or hex mantissa with a binary exponent, underscores between
+    digits), else ``None``: no NaN, no infinity, no overflow, no
+    surrounding whitespace."""
+    if "_" in text:
+        if not _underscore_ok(text):
+            return None
+        text = text.replace("_", "")
+    try:
+        if _DECIMAL_FLOAT.fullmatch(text):
+            v = float(text)
+        elif _HEX_FLOAT.fullmatch(text):
+            v = float.fromhex(text)
+        else:
+            return None
+    except (OverflowError, ValueError):
+        return None
+    return v if math.isfinite(v) else None
+
+
+def parse_model_field(model: str) -> ParsedModel:
+    """Classify the model field as a ``router_name:threshold`` pair or a
+    tier name, exactly as Go ``parseModelField``.
+
+    The text after the *last* colon decides: a finite float in Go
+    ``ParseFloat`` syntax makes a router pair (so a router name may
+    contain colons); anything else is a tier, verbatim (so a tier name
+    may contain colons, and ``mf:abc`` is a tier). A leading or trailing
+    colon leaves a tier. The threshold range is not checked here; an
+    unknown tier fails at the server.
+
+    Raises :class:`~hop_top_kit.llm.LLMError` on an empty model.
+    """
+    if not model:
+        raise llm.LLMError(_MODEL_REQUIRED)
+    idx = model.rfind(":")
+    if 0 < idx < len(model) - 1:
+        threshold = _parse_finite_float(model[idx + 1 :])
+        if threshold is not None:
+            return ParsedModel(is_tier=False, router_name=model[:idx], threshold=threshold)
+    return ParsedModel(is_tier=True, tier=model)
+
+
+def format_threshold(v: float) -> str:
+    """*v* as Go ``strconv.FormatFloat(v, 'f', -1, 64)``: the shortest
+    round-tripping digits, never an exponent, ``-0`` kept."""
+    return format(Decimal(repr(v)).normalize(), "f")
+
+
+def server_model(parsed: ParsedModel) -> str:
+    """The model a RouteLLM server expects: a tier verbatim, a router
+    pair as ``router-<name>-<threshold>``."""
+    if parsed.is_tier:
+        return parsed.tier
+    return f"router-{parsed.router_name}-{format_threshold(parsed.threshold)}"
 
 
 def parse_router_threshold(model: str) -> tuple[str, float]:
-    """Extract ``(router, threshold)`` from a model string like ``mf:0.7``.
+    """Extract ``(router, threshold)`` from a model string like ``mf:0.7``,
+    classified by :func:`parse_model_field`.
 
-    Raises :class:`llm.ThresholdInvalidError` when the threshold is not
-    a float in [0, 1].
+    Raises :class:`~hop_top_kit.llm.LLMError` when *model* is empty or a
+    tier name, and :class:`~hop_top_kit.llm.ThresholdInvalidError` when
+    the threshold is outside [0, 1].
     """
-    if ":" not in model:
-        raise llm.LLMError(f"routellm model must be 'router:threshold', got {model!r}")
-    router, raw_thresh = model.rsplit(":", 1)
-    if not router.strip():
-        raise llm.LLMError("router name must not be empty")
-    try:
-        threshold = float(raw_thresh)
-    except ValueError:
-        raise llm.LLMError(f"threshold {raw_thresh!r} is not a valid float") from None
-    if not 0.0 <= threshold <= 1.0:
-        raise llm.ThresholdInvalidError(threshold)
-    return router.strip(), threshold
+    parsed = parse_model_field(model)
+    if parsed.is_tier:
+        raise llm.LLMError(_tier_needs_server(model))
+    if not 0.0 <= parsed.threshold <= 1.0:
+        raise llm.ThresholdInvalidError(parsed.threshold)
+    return parsed.router_name, parsed.threshold
+
+
+def _tier_needs_server(model: str) -> str:
+    return (
+        f"routellm model {llm._go_quote(model)} is a tier name, not router_name:threshold; "
+        "a tier resolves on a RouteLLM server: set its base URL (URI base_url param or "
+        "host form, ROUTELLM_BASE_URL, or extras routellm.base_url)"
+    )
+
+
+class _ThresholdRangeError(llm.ThresholdInvalidError):
+    """A router pair's threshold outside [0, 1], with Go ``New``'s text."""
+
+    def __init__(self, threshold: float) -> None:
+        self.threshold = threshold
+        llm.LLMError.__init__(self, f"routellm: threshold {threshold:.4f} out of range [0, 1]")
+
+
+def _router_base_url(extras: dict[str, Any], hermetic: bool) -> str:
+    """The RouteLLM server base URL the router config names, or ``""``:
+    ``ROUTELLM_BASE_URL`` (unless *hermetic*), then extras
+    ``routellm.base_url``. Go's default URL does not count."""
+    if not hermetic and (v := os.environ.get("ROUTELLM_BASE_URL", "")):
+        return v
+    raw = extras.get("routellm")
+    if isinstance(raw, dict):
+        v = raw.get("base_url")
+        if isinstance(v, str):
+            return v
+    return ""
+
+
+def server_base_url(cfg: llm.ResolvedConfig) -> str:
+    """The RouteLLM server base URL for *cfg*, ``""`` for in-process
+    mode: the provider's ``base_url``, then ``ROUTELLM_BASE_URL``
+    (unless hermetic), then extras ``routellm.base_url``."""
+    return cfg.provider.base_url or _router_base_url(cfg.provider.extras or {}, cfg.hermetic)
 
 
 # ------------------------------------------------------------------
@@ -105,29 +271,76 @@ def _plain(obj: Any) -> Any:
 
 
 class RouteLLMAdapter:
-    """Completer, Streamer, ToolCaller and ToolStreamer backed by
-    RouteLLM's Controller.
+    """Completer, Streamer, ToolCaller and ToolStreamer for RouteLLM.
 
-    Tool calling goes through the OpenAI wire mapping
-    (:mod:`hop_top_kit.llm_openai`): tools under
-    :data:`~hop_top_kit.llm_toolnames.OPENAI_TOOL_NAMES` wire names,
-    passed to the Controller as ``tools``, and the routed model's calls
-    mapped back to the caller's names.
+    HTTP mode (:attr:`mode` ``"http"``) delegates to an inner
+    :class:`~hop_top_kit.llm_openai.OpenAIAdapter` pointed at the
+    RouteLLM server (:attr:`base_url`). In-process mode
+    (``"in_process"``) routes through RouteLLM's Controller, with tool
+    calling over the OpenAI wire mapping (:mod:`hop_top_kit.llm_openai`):
+    tools under :data:`~hop_top_kit.llm_toolnames.OPENAI_TOOL_NAMES` wire
+    names, passed to the Controller as ``tools``, and the routed model's
+    calls mapped back to the caller's names.
+
+    :attr:`router_name` and :attr:`threshold` describe a client-selected
+    router pair; for a tier they stay ``""`` / ``0.0`` and :attr:`tier`
+    holds the name. Use :meth:`is_tier`, not ``threshold == 0``.
     """
 
     def __init__(self, cfg: llm.ResolvedConfig) -> None:
+        extras: dict[str, Any] = cfg.provider.extras or {}
+        # Validates the extras shape (a non-map routellm entry fails), as Go.
+        llm.parse_router_config(extras, hermetic=cfg.hermetic)
+        tool_name_mode = tool_name_mode_of(cfg.provider.params)
+
+        model = cfg.provider.model or cfg.uri.model
+        try:
+            parsed = parse_model_field(model)
+        except llm.LLMError as e:
+            raise llm.LLMError(f"routellm: {e}") from None
+        if not parsed.is_tier and not 0.0 <= parsed.threshold <= 1.0:
+            raise _ThresholdRangeError(parsed.threshold)
+
+        self.router_name = parsed.router_name
+        self.threshold = parsed.threshold
+        self.tier = parsed.tier
+        self.base_url = server_base_url(cfg)
+        self.mode = "http" if self.base_url else "in_process"
+        self._eva_cfg = extras.get("eva")
+        self._tool_name_mode: ToolNameMode = tool_name_mode
+        self._inner: llm_openai.OpenAIAdapter | None = None
+        self._controller: Any = None
+
+        if self.base_url:
+            # The inner adapter takes the params it owns.
+            params = {
+                k: cfg.provider.params[k]
+                for k in (TOOL_NAMES_PARAM, "max_body_bytes", "max_event_bytes")
+                if k in cfg.provider.params
+            }
+            wire = server_model(parsed)
+            self._inner = llm_openai.OpenAIAdapter(
+                llm.ResolvedConfig(
+                    uri=llm.URI(scheme="routellm", model=wire),
+                    provider=llm.ProviderConfig(
+                        api_key=cfg.provider.api_key,
+                        base_url=llm_openai._api_root_v1(self.base_url),
+                        model=wire,
+                        params=params,
+                    ),
+                    hermetic=cfg.hermetic,
+                )
+            )
+            return
+
+        if parsed.is_tier:
+            raise llm.LLMError(_tier_needs_server(model))
         if Controller is None:
             raise ImportError("routellm is not installed. Install it with: pip install routellm")
 
-        extras: dict[str, Any] = cfg.provider.extras
-        tool_name_mode = tool_name_mode_of(cfg.provider.params)
-        self._router_name, self._threshold = parse_router_threshold(
-            cfg.uri.model,
-        )
-
         strong = extras.get("strong_model", "gpt-4-1106-preview")
         weak = extras.get("weak_model", "mixtral-8x7b-instruct-v0.1")
-        routers = extras.get("routers", [self._router_name])
+        routers = extras.get("routers", [self.router_name])
         router_config = extras.get("router_config")
 
         self._controller = Controller(
@@ -135,16 +348,22 @@ class RouteLLMAdapter:
             strong_model=strong,
             weak_model=weak,
             config=router_config,
-            api_base=cfg.provider.base_url or None,
+            api_base=extras.get("api_base") or None,
             api_key=cfg.provider.api_key or None,
         )
 
-        self._eva_cfg = extras.get("eva")
-        self._tool_name_mode: ToolNameMode = tool_name_mode
+    def is_tier(self) -> bool:
+        """Whether the model is a server-resolved tier rather than a
+        client-selected ``router_name:threshold`` pair."""
+        return bool(self.tier)
 
     # -- Completer protocol ------------------------------------
 
     def complete(self, req: llm.Request) -> llm.Response:
+        if self._inner is not None:
+            resp = self._inner.complete(req)
+            self._validate_eva(resp)
+            return resp
         llm_openai.check_tool_choice("routellm", req, None)
         messages = map_messages(req.messages, self._history_names())
 
@@ -155,8 +374,8 @@ class RouteLLMAdapter:
             kwargs["max_tokens"] = req.max_tokens
 
         result = self._controller.completion(
-            router=self._router_name,
-            threshold=self._threshold,
+            router=self.router_name,
+            threshold=self.threshold,
             messages=messages,
             **kwargs,
         )
@@ -184,6 +403,11 @@ class RouteLLMAdapter:
     # -- Streamer protocol -------------------------------------
 
     def stream(self, req: llm.Request) -> Iterator[llm.Token]:
+        if self._inner is not None:
+            return self._inner.stream(req)
+        return self._stream_in_process(req)
+
+    def _stream_in_process(self, req: llm.Request) -> Iterator[llm.Token]:
         llm_openai.check_tool_choice("routellm", req, None)
         messages = map_messages(req.messages, self._history_names())
 
@@ -194,8 +418,8 @@ class RouteLLMAdapter:
             kwargs["max_tokens"] = req.max_tokens
 
         result = self._controller.completion(
-            router=self._router_name,
-            threshold=self._threshold,
+            router=self.router_name,
+            threshold=self.threshold,
             messages=messages,
             **kwargs,
         )
@@ -229,11 +453,13 @@ class RouteLLMAdapter:
     # -- ToolCaller protocol -----------------------------------
 
     def call_with_tools(self, req: llm.Request, tools: list[llm.ToolDef]) -> llm.ToolResponse:
+        if self._inner is not None:
+            return self._inner.call_with_tools(req, tools)
         names = self._history_names(tools)
         messages = map_messages(req.messages, names)
         result = self._controller.completion(
-            router=self._router_name,
-            threshold=self._threshold,
+            router=self.router_name,
+            threshold=self.threshold,
             messages=messages,
             tools=llm_openai.map_tools(tools, names),
             **self._tool_kwargs(req, tools, names),
@@ -248,12 +474,16 @@ class RouteLLMAdapter:
 
     # -- ToolStreamer protocol ---------------------------------
 
-    def stream_with_tools(self, req: llm.Request, tools: list[llm.ToolDef]) -> RouteLLMToolStream:
+    def stream_with_tools(
+        self, req: llm.Request, tools: list[llm.ToolDef]
+    ) -> RouteLLMToolStream | llm_openai.OpenAIStream:
+        if self._inner is not None:
+            return self._inner.stream_with_tools(req, tools)
         names = self._history_names(tools)
         messages = map_messages(req.messages, names)
         result = self._controller.completion(
-            router=self._router_name,
-            threshold=self._threshold,
+            router=self.router_name,
+            threshold=self.threshold,
             messages=messages,
             tools=llm_openai.map_tools(tools, names),
             stream=True,
@@ -287,7 +517,8 @@ class RouteLLMAdapter:
     # -- Provider protocol -------------------------------------
 
     def close(self) -> None:
-        pass
+        if self._inner is not None:
+            self._inner.close()
 
 
 class RouteLLMToolStream:

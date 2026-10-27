@@ -25,6 +25,7 @@ _ENV_VARS = (
     "LLM_BASE_URL",
     "LLM_PROVIDER",
     "LLM_FALLBACK",
+    "ROUTELLM_BASE_URL",
 )
 
 
