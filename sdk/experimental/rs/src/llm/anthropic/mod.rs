@@ -381,6 +381,7 @@ impl Adapter {
             self.scrub.clone(),
             req.thinking.is_some(),
             names,
+            req.stream_events,
         )))
     }
 }

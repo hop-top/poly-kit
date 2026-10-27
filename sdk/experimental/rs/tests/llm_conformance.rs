@@ -55,8 +55,8 @@ struct Corpus {
     anthropic_tool_choice: Vec<ToolChoiceCase>,
     #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
     anthropic_hermetic: Vec<HermeticCase>,
-    #[allow(dead_code)]
-    anthropic_stream_events: Vec<Value>,
+    #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+    anthropic_stream_events: Vec<StreamEventsCase>,
     #[allow(dead_code)]
     bus_request_started: Vec<Value>,
     #[allow(dead_code)]
@@ -111,6 +111,21 @@ struct HermeticCase {
     want_host: String,
     sent: Vec<String>,
     withheld: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+struct StreamEventsCase {
+    name: String,
+    #[serde(default)]
+    sse: String,
+    #[serde(default)]
+    sse_from: String,
+    tools: Vec<String>,
+    stream_events: bool,
+    want_events: Vec<Value>,
+    error_kind: String,
 }
 
 #[derive(Deserialize)]
@@ -1479,6 +1494,151 @@ mod anthropic {
             for h in &v.withheld {
                 assert!(!sent.contains(&h.as_str()), "{}: {h} withheld", v.name);
                 assert!(!FIXED_HEADERS.contains(&h.as_str()), "{}: {h}", v.name);
+            }
+        }
+    }
+
+    fn usage_json(u: &hop_top_kit::llm::Usage) -> Value {
+        serde_json::json!({
+            "prompt_tokens": u.prompt_tokens,
+            "completion_tokens": u.completion_tokens,
+            "cache_read_tokens": u.cache_read_tokens,
+            "cache_creation_tokens": u.cache_creation_tokens,
+            "total_tokens": u.total_tokens,
+        })
+    }
+
+    /// A token as the vectors spell it.
+    fn event_json(name: &str, t: &hop_top_kit::llm::Token) -> Value {
+        use hop_top_kit::llm::ToolCallEventKind;
+        use serde_json::json;
+        if t.done {
+            return json!({ "type": "done" });
+        }
+        if let Some(ev) = &t.tool_call {
+            let mut out =
+                json!({ "type": "tool_call", "kind": ev.kind.as_str(), "index": ev.index });
+            match ev.kind {
+                ToolCallEventKind::Start => {
+                    out["id"] = json!(ev.id);
+                    out["name"] = json!(ev.name);
+                }
+                ToolCallEventKind::Delta => out["arguments"] = json!(ev.arguments_delta),
+                ToolCallEventKind::End => {
+                    let call = ev
+                        .call
+                        .as_ref()
+                        .unwrap_or_else(|| panic!("{name}: end without call"));
+                    let args: Value = serde_json::from_str(&call.arguments)
+                        .unwrap_or_else(|e| panic!("{name}: end arguments: {e}"));
+                    out["id"] = json!(call.id);
+                    out["name"] = json!(call.name);
+                    out["arguments"] = args;
+                    assert_eq!(call.id, ev.id, "{name}: end repeats the id");
+                    assert_eq!(call.name, ev.name, "{name}: end repeats the name");
+                }
+            }
+            return out;
+        }
+        if let Some(u) = &t.usage {
+            return json!({ "type": "usage", "usage": usage_json(u) });
+        }
+        if !t.thinking.is_empty() {
+            return json!({ "type": "thinking", "thinking": t.thinking });
+        }
+        json!({ "type": "text", "text": t.content })
+    }
+
+    #[tokio::test]
+    async fn stream_events_vectors() {
+        use hop_top_kit::llm::{ToolCallEvent, ToolCallEventKind, Usage};
+        let c = load();
+        assert!(!c.anthropic_stream_events.is_empty());
+        let streams: BTreeMap<String, String> = c
+            .anthropic_stream
+            .iter()
+            .map(|s| (format!("anthropic_stream/{}", s.name), s.sse.clone()))
+            .collect();
+        for v in &c.anthropic_stream_events {
+            let sse = if v.sse_from.is_empty() {
+                v.sse.clone()
+            } else {
+                streams
+                    .get(&v.sse_from)
+                    .unwrap_or_else(|| panic!("{}: sse_from {}", v.name, v.sse_from))
+                    .clone()
+            };
+            let srv = serve(vec![Canned::sse(&sse)]).await;
+            let a = adapter(&srv.url, "m", "k");
+            let mut req = hi();
+            req.stream_events = v.stream_events;
+            let defs: Vec<ToolDef> = v.tools.iter().map(ToolDef::named).collect();
+            let mut s = if defs.is_empty() {
+                a.stream(&req).await
+            } else {
+                a.stream_with_tools(&req, &defs).await
+            }
+            .unwrap_or_else(|e| panic!("{}: {e}", v.name));
+            let mut got = Vec::new();
+            let mut ends: Vec<ToolCallEvent> = Vec::new();
+            let mut last: Option<Usage> = None;
+            let mut stream_err = None;
+            loop {
+                match s.next().await {
+                    Ok(Some(t)) => {
+                        got.push(event_json(&v.name, &t));
+                        if let Some(ev) = t
+                            .tool_call
+                            .as_ref()
+                            .filter(|e| e.kind == ToolCallEventKind::End)
+                        {
+                            ends.push(ev.clone());
+                        }
+                        if let Some(u) = t.usage {
+                            last = Some(u);
+                        }
+                        if t.done {
+                            assert!(
+                                matches!(s.next().await, Ok(None)),
+                                "{}: next after done is end",
+                                v.name
+                            );
+                            break;
+                        }
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
+                        stream_err = Some(e);
+                        break;
+                    }
+                }
+            }
+            assert_eq!(
+                numeric(Value::Array(got)),
+                numeric(Value::Array(v.want_events.clone())),
+                "{}",
+                v.name
+            );
+            let k = stream_err.as_ref().map_or("", |e| kind(e).0);
+            assert_eq!(k, v.error_kind, "{}: {stream_err:?}", v.name);
+            if defs.is_empty() || stream_err.is_some() {
+                continue;
+            }
+            // The events and the outcome tell the same story.
+            let out = s.outcome().unwrap_or_else(|| panic!("{}: outcome", v.name));
+            if v.stream_events {
+                assert_eq!(out.tool_calls.len(), ends.len(), "{}", v.name);
+                for ev in &ends {
+                    assert_eq!(
+                        Some(&out.tool_calls[ev.index]),
+                        ev.call.as_ref(),
+                        "{}: end call is outcome.tool_calls[index]",
+                        v.name
+                    );
+                }
+                if let Some(u) = last {
+                    assert_eq!(out.usage, u, "{}: the last usage is the outcome's", v.name);
+                }
             }
         }
     }
