@@ -312,20 +312,25 @@ const (
 	ackSeenErrors              = 1024
 )
 
-// seenPeer is whose dedupe memory a link uses: a digest of its verified
-// principal, or of its token when the authenticator names none, and the
-// number of streams that identity may keep (0: the overall bound). Raw
-// tokens never become keys.
+// seenPeer is whose dedupe memory a link uses. key is the identity the
+// stream bound counts under: a digest of the verified principal, or of
+// the token when the authenticator names none; max is how many streams
+// it may keep (0: the overall bound). cred is a digest of the token: a
+// dialer stream id is the dialer's own claim, so it only names a stream
+// together with the credential that presented it, and two credentials
+// can never share one. Raw tokens never become keys.
 type seenPeer struct {
-	key string
-	max int
+	key  string
+	cred string
+	max  int
 }
 
 func dedupePeer(principal, token string) seenPeer {
+	cred := digest("token", token)
 	if principal != "" {
-		return seenPeer{key: digest("principal", principal), max: ackSeenStreamsPerPrincipal}
+		return seenPeer{key: digest("principal", principal), cred: cred, max: ackSeenStreamsPerPrincipal}
 	}
-	return seenPeer{key: digest("token", token)}
+	return seenPeer{key: cred, cred: cred}
 }
 
 func digest(kind, v string) string {
@@ -357,7 +362,7 @@ type ackSeen struct {
 	maxStreams, maxErrors int
 }
 
-type seenKey struct{ peer, stream string }
+type seenKey struct{ peer, cred, stream string }
 
 type seenStream struct {
 	last     uint64
@@ -384,7 +389,7 @@ func (s *ackSeen) begin(sp seenPeer, stream string, off uint64, id string) (*ack
 	if max <= 0 {
 		max = s.maxStreams
 	}
-	k := seenKey{peer, stream}
+	k := seenKey{peer, sp.cred, stream}
 	st := s.streams[k]
 	if st == nil {
 		switch {
@@ -418,11 +423,11 @@ func (s *ackSeen) begin(sp seenPeer, stream string, off uint64, id string) (*ack
 	return r, false
 }
 
-// settle records a completed result of peer's stream.
-func (s *ackSeen) settle(peer, stream string, p pubackInfo) {
+// settle records a completed result of sp's stream.
+func (s *ackSeen) settle(sp seenPeer, stream string, p pubackInfo) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st := s.streams[seenKey{peer, stream}]
+	st := s.streams[seenKey{sp.key, sp.cred, stream}]
 	if st == nil {
 		return
 	}

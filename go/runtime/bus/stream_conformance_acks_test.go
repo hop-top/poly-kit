@@ -102,10 +102,10 @@ func TestStreamConformanceAcks(t *testing.T) {
 		t.Run("acceptor/"+tc.Name, func(t *testing.T) {
 			seen := newAckSeen()
 			seen.maxStreams, seen.maxErrors = tc.Limits.Streams, tc.Limits.Errors
-			peerOf := func(name string) seenPeer { return seenPeer{key: name, max: tc.Limits.StreamsPerPeer} }
+			peerOf := func(name string) seenPeer { return seenPeer{key: name, cred: name, max: tc.Limits.StreamsPerPeer} }
 			pending := map[seenRef]*ackResult{}
 			settle := func(r seenRef) func(pubackInfo) {
-				return func(p pubackInfo) { seen.settle(r.Peer, r.Stream, p) }
+				return func(p pubackInfo) { seen.settle(peerOf(r.Peer), r.Stream, p) }
 			}
 			for i, st := range tc.Steps {
 				switch {

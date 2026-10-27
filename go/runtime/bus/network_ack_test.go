@@ -532,6 +532,35 @@ func TestAcks_SharedTokenFloodOnlyDuplicates(t *testing.T) {
 	}
 }
 
+// TestAcks_SameStreamIDUnderTwoCredentials: two clients of one
+// principal with different tokens that claim the same dialer stream id
+// are two streams; overlapping offsets never suppress each other's
+// events.
+func TestAcks_SameStreamIDUnderTwoCredentials(t *testing.T) {
+	h := newHub(t, WithAuth(principalAuth{"tok-phone": "alice", "tok-laptop": "alice"}))
+	got := make(chan string, 8)
+	h.bus.Subscribe("acme.#", func(_ context.Context, e Event) error { got <- e.ID; return nil })
+	phone := rawDial(t, h.url, acksAuth("tok-phone", "stm_same"))
+	rawJSON(t, phone)
+	laptop := rawDial(t, h.url, acksAuth("tok-laptop", "stm_same"))
+	rawJSON(t, laptop)
+	for off := 1; off <= 2; off++ {
+		rawSend(t, phone, eventFrame(off, "phone-"+formatOffset(uint64(off)), "acme.x"))
+		rawJSON(t, phone)
+		rawSend(t, laptop, eventFrame(off, "laptop-"+formatOffset(uint64(off)), "acme.x"))
+		rawJSON(t, laptop)
+	}
+	seen := map[string]bool{}
+	for len(seen) < 4 {
+		select {
+		case id := <-got:
+			seen[id] = true
+		case <-time.After(failAfter):
+			t.Fatalf("published %v; the other credential's events were suppressed", seen)
+		}
+	}
+}
+
 // TestAcks_SharedTokenBoundIsTheOverallBound: without a principal, a
 // token's streams are bounded only by the overall bound, so dialers that
 // share it do not evict each other before that.
@@ -572,8 +601,10 @@ func TestAcks_DedupeKeysHoldNoTokens(t *testing.T) {
 	for _, n := range []*NetworkAdapter{h.n, o.n} {
 		n.ackSeen.mu.Lock()
 		for k := range n.ackSeen.streams {
-			if strings.Contains(k.peer, "s3cret") || strings.Contains(k.peer, "alice") {
-				t.Errorf("dedupe key %q holds a raw identity", k.peer)
+			for _, part := range []string{k.peer, k.cred} {
+				if strings.Contains(part, "s3cret") || strings.Contains(part, "alice") {
+					t.Errorf("dedupe key %q holds a raw identity", part)
+				}
 			}
 		}
 		if len(n.ackSeen.streams) != 1 {

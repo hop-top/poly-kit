@@ -286,7 +286,7 @@ func (l *link) onAckedEvent(data []byte) bool {
 
 // settleFn records a settled result in the dedupe memory.
 func (l *link) settleFn() func(pubackInfo) {
-	n, peer, stream := l.n, l.seenPeer.key, l.dialerStream
+	n, peer, stream := l.n, l.seenPeer, l.dialerStream
 	return func(p pubackInfo) { n.ackSeen.settle(peer, stream, p) }
 }
 

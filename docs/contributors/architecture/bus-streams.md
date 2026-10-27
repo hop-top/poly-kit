@@ -882,7 +882,17 @@ published again (a duplicate, deduplicated by event `id`), never
 answered with a false `ok`. Isolation between dialers that share a
 token needs an authenticator that names them apart.
 
-Keys are digests (SHA-256) of the principal or the token; raw tokens
+**What names a stream.** A dialer stream id is the dialer's own
+claim, so the acceptor keys its memory by the identity, the credential
+(the token) and the stream id together. Two clients of one principal
+with different tokens that claim the same stream id are two streams:
+neither's offsets can suppress the other's events. The per-principal
+bound still counts all of a principal's streams. Two processes that
+present the same token and the same stream id are, by definition, one
+dialer stream: they must not share a stream id (the ring log mints a
+fresh one per process).
+
+Keys are digests (SHA-256) of the principal and the token; raw tokens
 never become map keys.
 
 `unknown` resolves the dialer's wait like any failure: its
@@ -900,8 +910,9 @@ which backpressures the dialer through TCP.
 ### 13.5 Ordering, idempotency and limits
 
 - publish order is unchanged: the event enters the log as any other
-- at least once per acks link, deduplicated by `(peer, dialer stream,
-  offset)` while the acceptor runs, by event `id` across restarts
+- at least once per acks link, deduplicated by `(principal or token,
+  token, dialer stream, offset)` while the acceptor runs, by event `id`
+  across restarts
 - `WithMaxPendingAcks(n)` (default 1 024) bounds unresolved
   acknowledged publishes per address; `PublishAcked` blocks for a slot
   until its context ends, and the event is then not published
