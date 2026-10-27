@@ -2,6 +2,8 @@ package llm_test
 
 import (
 	"bytes"
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -12,6 +14,7 @@ import (
 
 	"hop.top/kit/go/ai/llm"
 	llmerrors "hop.top/kit/go/ai/llm/errors"
+	"hop.top/kit/go/runtime/bus"
 )
 
 // Runs the provider-neutral sections of contracts/llm-v1. The vectors
@@ -69,6 +72,25 @@ type llmConfFile struct {
 			Other  string `json:"other"`
 		} `json:"error"`
 	} `json:"tool_names"`
+	BusRequestStarted []struct {
+		Name        string          `json:"name"`
+		Op          string          `json:"op"`
+		Tools       []string        `json:"tools"`
+		Request     busConfRequest  `json:"request"`
+		WantPayload json.RawMessage `json:"want_payload"`
+	} `json:"bus_request_started"`
+	BusResponseReceived []struct {
+		Name     string `json:"name"`
+		Op       string `json:"op"`
+		Response struct {
+			Content      string           `json:"content"`
+			FinishReason string           `json:"finish_reason"`
+			Usage        busConfUsage     `json:"usage"`
+			Thinking     []busConfThought `json:"thinking"`
+		} `json:"response"`
+		ToolCalls   []busConfCall   `json:"tool_calls"`
+		WantPayload json.RawMessage `json:"want_payload"`
+	} `json:"bus_response_received"`
 	UsageCost []struct {
 		Name  string    `json:"name"`
 		Usage confUsage `json:"usage"`
@@ -205,6 +227,214 @@ func TestConformanceLLMToolNames(t *testing.T) {
 				back = append(back, names.Original(c))
 			}
 			assert.Equal(t, v.WantCalls, back)
+		})
+	}
+}
+
+type busConfThought struct {
+	Thinking  string `json:"thinking"`
+	Signature string `json:"signature"`
+}
+
+type busConfCall struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+type busConfUsage struct {
+	PromptTokens        int `json:"prompt_tokens"`
+	CompletionTokens    int `json:"completion_tokens"`
+	CacheReadTokens     int `json:"cache_read_tokens"`
+	CacheCreationTokens int `json:"cache_creation_tokens"`
+	TotalTokens         int `json:"total_tokens"`
+}
+
+func (u busConfUsage) toLLM() llm.Usage {
+	return llm.Usage{
+		PromptTokens: u.PromptTokens, CompletionTokens: u.CompletionTokens,
+		CacheReadTokens: u.CacheReadTokens, CacheCreationTokens: u.CacheCreationTokens,
+		TotalTokens: u.TotalTokens,
+	}
+}
+
+type busConfRequest struct {
+	Model          string         `json:"model"`
+	MaxTokens      int            `json:"max_tokens"`
+	Temperature    *float64       `json:"temperature"`
+	StopSequences  []string       `json:"stop_sequences"`
+	ThinkingBudget int            `json:"thinking_budget"`
+	Extensions     map[string]any `json:"extensions"`
+	Messages       []struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+		Parts   []struct {
+			Type     string `json:"type"`
+			Text     string `json:"text"`
+			MimeType string `json:"mime_type"`
+			Data     string `json:"data"`
+		} `json:"parts"`
+		ToolCalls  []busConfCall    `json:"tool_calls"`
+		ToolCallID string           `json:"tool_call_id"`
+		Thinking   []busConfThought `json:"thinking"`
+	} `json:"messages"`
+}
+
+func (r busConfRequest) toLLM(t *testing.T) llm.Request {
+	t.Helper()
+	out := llm.Request{
+		Model: r.Model, MaxTokens: r.MaxTokens, Temperature: r.Temperature,
+		StopSequences: r.StopSequences, Extensions: r.Extensions,
+	}
+	if r.ThinkingBudget > 0 {
+		out.Thinking = &llm.ThinkingConfig{BudgetTokens: r.ThinkingBudget}
+	}
+	for _, m := range r.Messages {
+		msg := llm.Message{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID,
+			ToolCalls: busCalls(m.ToolCalls), Thinking: busThoughts(m.Thinking)}
+		for _, p := range m.Parts {
+			part := llm.ContentPart{Type: llm.PartType(p.Type), Text: p.Text, MimeType: p.MimeType}
+			if p.Data != "" {
+				data, err := base64.StdEncoding.DecodeString(p.Data)
+				require.NoError(t, err)
+				part.Source = llm.InlineSource(data, p.MimeType)
+			}
+			msg.Parts = append(msg.Parts, part)
+		}
+		out.Messages = append(out.Messages, msg)
+	}
+	return out
+}
+
+func busCalls(cs []busConfCall) []llm.ToolCall {
+	var out []llm.ToolCall
+	for _, c := range cs {
+		out = append(out, llm.ToolCall{ID: c.ID, Name: c.Name, Arguments: json.RawMessage(c.Arguments)})
+	}
+	return out
+}
+
+func busThoughts(ts []busConfThought) []llm.ThinkingBlock {
+	var out []llm.ThinkingBlock
+	for _, tb := range ts {
+		out = append(out, llm.ThinkingBlock{Thinking: tb.Thinking, Signature: tb.Signature})
+	}
+	return out
+}
+
+// busConfProvider serves every call kind the bus vectors make.
+type busConfProvider struct {
+	resp  llm.Response
+	tools llm.ToolResponse
+}
+
+func (*busConfProvider) Close() error { return nil }
+func (p *busConfProvider) Complete(context.Context, llm.Request) (llm.Response, error) {
+	return p.resp, nil
+}
+func (p *busConfProvider) Stream(context.Context, llm.Request) (llm.TokenIterator, error) {
+	return &busConfStream{}, nil
+}
+func (p *busConfProvider) CallWithTools(context.Context, llm.Request, []llm.ToolDef) (llm.ToolResponse, error) {
+	return p.tools, nil
+}
+func (p *busConfProvider) StreamWithTools(context.Context, llm.Request, []llm.ToolDef) (llm.ToolStream, error) {
+	return &busConfStream{}, nil
+}
+
+type busConfStream struct{}
+
+func (*busConfStream) Next() (llm.Token, error)           { return llm.Token{Done: true}, nil }
+func (*busConfStream) Close() error                       { return nil }
+func (*busConfStream) Outcome() (llm.StreamOutcome, bool) { return llm.StreamOutcome{}, true }
+
+// busPayloads runs call on a client wired to a bus and returns the JSON
+// of each payload published on topic.
+func busPayloads(t *testing.T, p llm.Provider, topic bus.Topic, call func(*llm.Client) error) []json.RawMessage {
+	t.Helper()
+	b := bus.New()
+	t.Cleanup(func() { _ = b.Close(context.Background()) })
+	var got []json.RawMessage
+	b.Subscribe(string(topic), func(_ context.Context, e bus.Event) error {
+		raw, err := json.Marshal(e.Payload)
+		require.NoError(t, err)
+		got = append(got, raw)
+		return nil
+	})
+	require.NoError(t, call(llm.NewClient(p, llm.WithBus(b))))
+	return got
+}
+
+func TestConformanceLLMBusRequestStarted(t *testing.T) {
+	f := loadLLMConf(t)
+	require.NotEmpty(t, f.BusRequestStarted)
+	for _, v := range f.BusRequestStarted {
+		t.Run(v.Name, func(t *testing.T) {
+			req := v.Request.toLLM(t)
+			var tools []llm.ToolDef
+			for _, n := range v.Tools {
+				tools = append(tools, llm.ToolDef{Name: n})
+			}
+			ctx := context.Background()
+			got := busPayloads(t, &busConfProvider{}, llm.TopicRequestStart, func(c *llm.Client) error {
+				var err error
+				switch v.Op {
+				case "complete":
+					_, err = c.Complete(ctx, req)
+				case "stream":
+					_, err = c.Stream(ctx, req)
+				case "tool_call":
+					_, err = c.CallWithTools(ctx, req, tools)
+				case "stream_tools":
+					_, err = c.StreamWithTools(ctx, req, tools)
+				default:
+					t.Fatalf("unknown op %q", v.Op)
+				}
+				return err
+			})
+			require.Len(t, got, 1)
+			assert.JSONEq(t, string(v.WantPayload), string(got[0]))
+		})
+	}
+}
+
+func TestConformanceLLMBusResponseReceived(t *testing.T) {
+	f := loadLLMConf(t)
+	require.NotEmpty(t, f.BusResponseReceived)
+	for _, v := range f.BusResponseReceived {
+		t.Run(v.Name, func(t *testing.T) {
+			r := v.Response
+			p := &busConfProvider{
+				resp: llm.Response{Content: r.Content, FinishReason: r.FinishReason,
+					Usage: r.Usage.toLLM(), Thinking: busThoughts(r.Thinking)},
+				tools: llm.ToolResponse{Content: r.Content, FinishReason: r.FinishReason,
+					Usage: r.Usage.toLLM(), Thinking: busThoughts(r.Thinking), ToolCalls: busCalls(v.ToolCalls)},
+			}
+			ctx := context.Background()
+			req := llm.Request{Messages: []llm.Message{{Role: "user", Content: "Hi"}}}
+			got := busPayloads(t, p, llm.TopicRequestEnd, func(c *llm.Client) error {
+				var err error
+				switch v.Op {
+				case "complete":
+					_, err = c.Complete(ctx, req)
+				case "tool_call":
+					_, err = c.CallWithTools(ctx, req, []llm.ToolDef{{Name: "get_weather"}})
+				default:
+					t.Fatalf("unknown op %q", v.Op)
+				}
+				return err
+			})
+			require.Len(t, got, 1)
+			var payload map[string]any
+			require.NoError(t, json.Unmarshal(got[0], &payload))
+			ms, ok := payload["duration_ms"].(float64)
+			require.True(t, ok, "duration_ms is a number: %s", got[0])
+			assert.GreaterOrEqual(t, ms, 0.0)
+			assert.Equal(t, ms, float64(int64(ms)), "duration_ms is an integer")
+			delete(payload, "duration_ms")
+			rest, err := json.Marshal(payload)
+			require.NoError(t, err)
+			assert.JSONEq(t, string(v.WantPayload), string(rest))
 		})
 	}
 }

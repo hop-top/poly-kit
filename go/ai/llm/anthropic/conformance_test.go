@@ -189,9 +189,11 @@ type anthropicConfFile struct {
 			Usage      confUsage `json:"usage"`
 		} `json:"want"`
 	} `json:"anthropic_response"`
-	UsageCost          json.RawMessage `json:"usage_cost"`
-	ToolNames          json.RawMessage `json:"tool_names"`
-	AnthropicToolNames []struct {
+	UsageCost           json.RawMessage `json:"usage_cost"`
+	BusRequestStarted   json.RawMessage `json:"bus_request_started"`
+	BusResponseReceived json.RawMessage `json:"bus_response_received"`
+	ToolNames           json.RawMessage `json:"tool_names"`
+	AnthropicToolNames  []struct {
 		Name        string            `json:"name"`
 		Call        string            `json:"call"`
 		Params      map[string]string `json:"params"`

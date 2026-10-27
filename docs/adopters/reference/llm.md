@@ -478,6 +478,10 @@ llm.NewClient(provider,
 )
 ```
 
+`OnRequest` and `OnResponse` run in process, synchronously, before the
+bus event, with the full request and response. They never go through the
+bus, so they see content the bus events leave out.
+
 ## Bus topics
 
 `Client` publishes 6 topics by default — non-uniform action
@@ -504,6 +508,51 @@ llm.NewClient(provider,
 
 Use `llm.WithTopics(llm.Topics{ ... })` to override individual
 topics; empty fields fall back to `DefaultTopics`.
+
+### Request and response payloads carry no content
+
+A bus can forward events to a network peer, a log file or a database,
+so `kit.ai.request.started` and `kit.ai.response.received` describe the
+call without its content: no message text, tool names or arguments,
+extension values, media or reply text. Every call publishes them,
+media calls included; a stream publishes no `response.received`.
+
+| `RequestStartPayload` | JSON | Value |
+|-----------------------|------|-------|
+| `Op` | `op` | `complete`, `stream`, `tool_call`, `stream_tools`, `image_gen`, `transcribe`, `synthesize`, `video_analyze`, `video_gen` |
+| `Model` | `model` | `Request.Model`, omitted when empty |
+| `Messages`, `Roles`, `Parts` | `messages`, `roles`, `parts` | message count; messages by role; multimodal parts by type |
+| `ContentBytes` | `content_bytes` | UTF-8 length of message text, text parts, tool call arguments and thinking text (media not counted) |
+| `Tools` | `tools` | tools offered |
+| `MaxTokens`, `HasTemperature`, `Thinking`, `StopSequences` | `max_tokens`, `has_temperature`, `thinking`, `stop_sequences` | settings; stop sequences counted |
+| `ExtensionKeys` | `extension_keys` | `Request.Extensions` keys, sorted, never values |
+
+| `RequestEndPayload` | JSON | Value |
+|---------------------|------|-------|
+| `Op` | `op` | as above |
+| `Duration` | `duration_ms` | call duration |
+| `FinishReason` | `finish_reason` | provider stop reason |
+| `Usage` | `usage` | `prompt_tokens`, `completion_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `total_tokens` |
+| `ContentBytes` | `content_bytes` | UTF-8 length of reply text, text output parts, tool call arguments and thinking text |
+| `ToolCalls` | `tool_calls` | calls the model made |
+
+To publish content as well, opt in when you build the client, with a
+transform you own; it gets a copy, so it may rewrite anything:
+
+```go
+r, _ := redact.NewEmbedded() // hop.top/kit/go/core/redact
+client := llm.NewClient(provider, llm.WithBus(b),
+    llm.WithRequestContent(llm.RedactRequest(r)),   // payload.Request
+    llm.WithResponseContent(llm.RedactResponse(r)), // payload.Response
+)
+```
+
+`RedactRequest` and `RedactResponse` pass every text (message content,
+text parts, tool call arguments, thinking) through the redactor and
+leave out what it cannot vouch for: `Extensions`, media bytes, thinking
+signatures, `ProviderData`. Arguments whose masked form is no longer
+JSON travel as a JSON string. A nil transform publishes content
+unchanged; only do that on a bus you control.
 
 ## Configuration
 

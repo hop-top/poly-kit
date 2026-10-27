@@ -124,7 +124,7 @@ type VideoGenRequest struct {
 // and the full hook chain (OnRequest, OnResponse, OnError, OnFallback).
 func (c *Client) GenerateImage(ctx context.Context, req ImageRequest) (ImageResponse, error) {
 	hookReq := Request{Extensions: req.Ext}
-	c.publish(ctx, TopicRequestStart, RequestStartPayload{Request: hookReq})
+	c.started(ctx, "image_gen", hookReq, 0)
 
 	chain := append([]Provider{c.primary}, c.cfg.fallbacks...)
 	var errs []error
@@ -144,10 +144,7 @@ func (c *Client) GenerateImage(ctx context.Context, req ImageRequest) (ImageResp
 		dur := time.Since(start)
 
 		if err == nil {
-			c.publish(ctx, TopicRequestEnd, RequestEndPayload{
-				Response: Response{OutputParts: resp.Images, Usage: resp.Usage},
-				Duration: dur,
-			})
+			c.ended(ctx, "image_gen", Response{OutputParts: resp.Images, Usage: resp.Usage}, nil, dur)
 			return resp, nil
 		}
 
@@ -178,7 +175,7 @@ func (c *Client) GenerateImage(ctx context.Context, req ImageRequest) (ImageResp
 // and the full hook chain.
 func (c *Client) Transcribe(ctx context.Context, req TranscribeRequest) (TranscribeResponse, error) {
 	hookReq := Request{Extensions: req.Ext}
-	c.publish(ctx, TopicRequestStart, RequestStartPayload{Request: hookReq})
+	c.started(ctx, "transcribe", hookReq, 0)
 
 	chain := append([]Provider{c.primary}, c.cfg.fallbacks...)
 	var errs []error
@@ -198,10 +195,7 @@ func (c *Client) Transcribe(ctx context.Context, req TranscribeRequest) (Transcr
 		dur := time.Since(start)
 
 		if err == nil {
-			c.publish(ctx, TopicRequestEnd, RequestEndPayload{
-				Response: Response{Content: resp.Text, Usage: resp.Usage},
-				Duration: dur,
-			})
+			c.ended(ctx, "transcribe", Response{Content: resp.Text, Usage: resp.Usage}, nil, dur)
 			return resp, nil
 		}
 
@@ -232,7 +226,7 @@ func (c *Client) Transcribe(ctx context.Context, req TranscribeRequest) (Transcr
 // and the full hook chain.
 func (c *Client) Synthesize(ctx context.Context, req SynthesizeRequest) (SynthesizeResponse, error) {
 	hookReq := Request{Extensions: req.Ext}
-	c.publish(ctx, TopicRequestStart, RequestStartPayload{Request: hookReq})
+	c.started(ctx, "synthesize", hookReq, 0)
 
 	chain := append([]Provider{c.primary}, c.cfg.fallbacks...)
 	var errs []error
@@ -252,13 +246,10 @@ func (c *Client) Synthesize(ctx context.Context, req SynthesizeRequest) (Synthes
 		dur := time.Since(start)
 
 		if err == nil {
-			c.publish(ctx, TopicRequestEnd, RequestEndPayload{
-				Response: Response{
-					OutputParts: []ContentPart{resp.Audio},
-					Usage:       resp.Usage,
-				},
-				Duration: dur,
-			})
+			c.ended(ctx, "synthesize", Response{
+				OutputParts: []ContentPart{resp.Audio},
+				Usage:       resp.Usage,
+			}, nil, dur)
 			return resp, nil
 		}
 
@@ -289,7 +280,7 @@ func (c *Client) Synthesize(ctx context.Context, req SynthesizeRequest) (Synthes
 // and the full hook chain.
 func (c *Client) AnalyzeVideo(ctx context.Context, req VideoRequest) (VideoResponse, error) {
 	hookReq := Request{Messages: req.Messages, Extensions: req.Ext}
-	c.publish(ctx, TopicRequestStart, RequestStartPayload{Request: hookReq})
+	c.started(ctx, "video_analyze", hookReq, 0)
 
 	chain := append([]Provider{c.primary}, c.cfg.fallbacks...)
 	var errs []error
@@ -309,13 +300,10 @@ func (c *Client) AnalyzeVideo(ctx context.Context, req VideoRequest) (VideoRespo
 		dur := time.Since(start)
 
 		if err == nil {
-			c.publish(ctx, TopicRequestEnd, RequestEndPayload{
-				Response: Response{
-					OutputParts: []ContentPart{resp.Video},
-					Usage:       resp.Usage,
-				},
-				Duration: dur,
-			})
+			c.ended(ctx, "video_analyze", Response{
+				OutputParts: []ContentPart{resp.Video},
+				Usage:       resp.Usage,
+			}, nil, dur)
 			return resp, nil
 		}
 
@@ -346,7 +334,7 @@ func (c *Client) AnalyzeVideo(ctx context.Context, req VideoRequest) (VideoRespo
 // and the full hook chain.
 func (c *Client) GenerateVideo(ctx context.Context, req VideoGenRequest) (VideoResponse, error) {
 	hookReq := Request{Extensions: req.Ext}
-	c.publish(ctx, TopicRequestStart, RequestStartPayload{Request: hookReq})
+	c.started(ctx, "video_gen", hookReq, 0)
 
 	chain := append([]Provider{c.primary}, c.cfg.fallbacks...)
 	var errs []error
@@ -366,13 +354,10 @@ func (c *Client) GenerateVideo(ctx context.Context, req VideoGenRequest) (VideoR
 		dur := time.Since(start)
 
 		if err == nil {
-			c.publish(ctx, TopicRequestEnd, RequestEndPayload{
-				Response: Response{
-					OutputParts: []ContentPart{resp.Video},
-					Usage:       resp.Usage,
-				},
-				Duration: dur,
-			})
+			c.ended(ctx, "video_gen", Response{
+				OutputParts: []ContentPart{resp.Video},
+				Usage:       resp.Usage,
+			}, nil, dur)
 			return resp, nil
 		}
 

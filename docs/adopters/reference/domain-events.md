@@ -28,8 +28,8 @@ Payload fields:
 
 | Struct                | Fields |
 |-----------------------|--------|
-| `RequestStartPayload` | `Request Request` |
-| `RequestEndPayload`   | `Response Response`, `Duration time.Duration` |
+| `RequestStartPayload` | metadata only: `Op`, `Model`, `Messages`, `Roles`, `Parts`, `ContentBytes`, `Tools`, `MaxTokens`, `HasTemperature`, `Thinking`, `StopSequences`, `ExtensionKeys`; `Request *Request` only with `llm.WithRequestContent` |
+| `RequestEndPayload`   | metadata only: `Op`, `Duration` (json `duration_ms`), `FinishReason`, `Usage`, `ContentBytes`, `ToolCalls`; `Response *Response` only with `llm.WithResponseContent` |
 | `RequestErrorPayload` | `Err error` (json `-`), `ErrMessage string` (json `error`) |
 | `FallbackPayload`     | `From int`, `To int`, `Err error` (json `-`), `ErrMessage string` (json `error`) |
 | `RoutePayload`        | `Router string`, `Score float64`, `Model string` |
@@ -37,6 +37,11 @@ Payload fields:
 
 `Err` is `json:"-"`: it does not cross a process boundary. Cross-process
 subscribers read `ErrMessage`.
+
+The request and response events carry no prompt or reply content by
+default, so a bus that forwards or stores events never holds it; the
+`llm.OnRequest` / `llm.OnResponse` hooks get the full values in process.
+See [LLM bus topics](llm.md#bus-topics).
 
 ## `go/runtime/domain` — Service[T] CRUD
 
