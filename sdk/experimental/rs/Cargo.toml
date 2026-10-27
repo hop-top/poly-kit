@@ -156,7 +156,7 @@ config-signal = [
 # registry and the fallback client publishing on the bus. Nothing of its
 # own beyond `config` (llm.yaml parsing, XDG paths) and `netpolicy`;
 # wasm-safe apart from reading llm.yaml from disk.
-llm = ["config", "netpolicy"]
+llm = ["config", "netpolicy", "dep:url"]
 # The Anthropic Messages API adapter, over the HTTP API (no SDK crate):
 # request shaping, SSE streaming, error mapping and retries with full
 # jitter through `util::retry`, all through the guarded `api` client.
@@ -177,6 +177,11 @@ interim = { version = "0.2", default-features = false, features = [
 # no system-proxy, which pulls macOS/Windows proxy settings and an old core-foundation.
 reqwest = { version = "0.13", default-features = false, features = ["default-tls", "charset", "http2", "json", "query"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
+# The llm endpoint guard parses base URLs with the parser reqwest sends
+# with, so the host a credential is checked against is the host it goes
+# to. Exact pin to the version reqwest resolves in Cargo.lock: the two
+# must parse alike. servo/rust-url, MIT OR Apache-2.0, no advisories.
+url = { version = "=2.5.8", optional = true }
 # No crate-wide features: `output` adds preserve_order for itself.
 serde_json = { version = "1", optional = true }
 serde_norway = { version = "0.9", optional = true }

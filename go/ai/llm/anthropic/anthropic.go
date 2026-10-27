@@ -60,6 +60,18 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		option.WithMiddleware(boundRetryAfter),
 	}
 	envBase := os.Getenv("ANTHROPIC_BASE_URL")
+	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok {
+		if err := checkBaseURL("ANTHROPIC_BASE_URL", v); err != nil {
+			return nil, err
+		}
+		opts = append(opts, option.WithBaseURL(v))
+	}
+	if cfg.Provider.BaseURL != "" {
+		if err := checkBaseURL("base URL", cfg.Provider.BaseURL); err != nil {
+			return nil, err
+		}
+		opts = append(opts, option.WithBaseURL(cfg.Provider.BaseURL))
+	}
 	base := cfg.Provider.BaseURL
 	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok && base == "" {
 		base = v
@@ -67,42 +79,42 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	if base == "" {
 		base = defaultBaseURL
 	}
-	if err := llm.CheckKeyEndpoint(scheme, cfg.Provider.APIKey, base); err != nil {
+	creds, err := credentials(cfg.Provider.APIKey, base, envBase)
+	if err != nil {
 		return nil, err
 	}
-	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok {
-		if err := checkBaseURL("ANTHROPIC_BASE_URL", v); err != nil {
-			return nil, err
-		}
-		opts = append(opts, option.WithBaseURL(v))
-	}
-	// Credentials from the environment go only where kit trusts them:
-	// every one is added here, behind the one CredentialsTrusted gate.
-	var envCreds []option.RequestOption
-	if v := os.Getenv("ANTHROPIC_AUTH_TOKEN"); strings.TrimSpace(v) != "" {
-		if err := llm.CheckKeyEndpoint(scheme, v, base); err != nil {
-			return nil, err
-		}
-		envCreds = append(envCreds, option.WithAuthToken(v))
-	}
-	if v := os.Getenv("ANTHROPIC_WORKSPACE_ID"); v != "" {
-		envCreds = append(envCreds, option.WithHeader("anthropic-workspace-id", v))
-	}
-	if llm.CredentialsTrusted(scheme, base, envBase) {
-		opts = append(opts, envCreds...)
-	}
-	opts = append(opts, option.WithAPIKey(cfg.Provider.APIKey))
-	if cfg.Provider.BaseURL != "" {
-		if err := checkBaseURL("base URL", cfg.Provider.BaseURL); err != nil {
-			return nil, err
-		}
-		opts = append(opts, option.WithBaseURL(cfg.Provider.BaseURL))
-	}
+	opts = append(opts, creds...)
 
 	return &Adapter{
 		client: anthropic.NewClient(opts...),
 		model:  cfg.Provider.Model,
 	}, nil
+}
+
+// credentials returns every credential option for base. The key is
+// the caller's; ANTHROPIC_AUTH_TOKEN and the workspace ID come from the
+// environment and go only where [llm.CredentialsTrusted] allows. None
+// goes over plain http to a remote host or to a malformed endpoint.
+// Every credential is added here, behind that one gate.
+func credentials(key, base, envBase string) ([]option.RequestOption, error) {
+	if err := llm.CheckKeyEndpoint(scheme, key, base); err != nil {
+		return nil, err
+	}
+	opts := []option.RequestOption{option.WithAPIKey(key)}
+	var env []option.RequestOption
+	if v := os.Getenv("ANTHROPIC_AUTH_TOKEN"); strings.TrimSpace(v) != "" {
+		if err := llm.CheckKeyEndpoint(scheme, v, base); err != nil {
+			return nil, err
+		}
+		env = append(env, option.WithAuthToken(v))
+	}
+	if v := os.Getenv("ANTHROPIC_WORKSPACE_ID"); v != "" {
+		env = append(env, option.WithHeader("anthropic-workspace-id", v))
+	}
+	if llm.CredentialsTrusted(scheme, base, envBase) {
+		opts = append(opts, env...)
+	}
+	return opts, nil
 }
 
 // Close is a no-op; the HTTP client does not need explicit teardown.

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"unicode"
 
 	"hop.top/kit/go/core/netpolicy"
 )
@@ -20,12 +21,20 @@ var ErrKeyEndpoint = errors.New("llm: provider key refused for endpoint")
 type KeyEndpointError struct {
 	Scheme   string
 	Endpoint string
-	// Insecure is set when the refusal is plain http to a remote host;
-	// otherwise the endpoint came from the URI and is not trusted.
+	// Insecure is set when the refusal is plain http to a remote host.
 	Insecure bool
+	// Malformed is set when the endpoint carries userinfo, a backslash,
+	// a percent-escape, whitespace or a control character, or does not
+	// parse: no credential goes to it.
+	Malformed bool
+	// Neither set: the endpoint came from the URI and is not trusted.
 }
 
 func (e *KeyEndpointError) Error() string {
+	if e.Malformed {
+		return fmt.Sprintf("llm: refusing to send the %s API key to %q: an endpoint must parse and carry "+
+			"no userinfo, backslash, percent-escape, whitespace or control character", e.Scheme, e.Endpoint)
+	}
 	if e.Insecure {
 		return fmt.Sprintf("llm: refusing to send the %s API key over plain http to %q; use https or a loopback host",
 			e.Scheme, e.Endpoint)
@@ -50,44 +59,56 @@ func uriEndpoint(u URI) string {
 	return ""
 }
 
-// origin is scheme://host:port of raw, lower case with the scheme's
-// default port filled in; ok is false when raw has no host.
-func origin(raw string) (string, bool) {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u.Host == "" {
-		return "", false
-	}
-	scheme := strings.ToLower(u.Scheme)
-	port := u.Port()
-	if port == "" {
-		switch scheme {
-		case "https":
-			port = "443"
-		case "http":
-			port = "80"
-		}
-	}
-	return scheme + "://" + net.JoinHostPort(strings.ToLower(u.Hostname()), port), true
+// endpoint is a base URL parsed as the HTTP client parses it (net/url).
+type endpoint struct {
+	scheme, host, port string
 }
 
-// insecureEndpoint reports whether a key sent to raw would cross the
-// network in clear: plain http to a host that is not loopback.
-func insecureEndpoint(raw string) bool {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return false // unparseable: the adapter rejects it
+// parseEndpoint parses raw for a credential check. ok is false, and no
+// credential may go to raw, when it does not parse, has no host, or
+// carries userinfo, a backslash, a percent-escape, whitespace or a
+// control character: forms where parsers disagree on the host.
+func parseEndpoint(raw string) (endpoint, bool) {
+	if strings.ContainsAny(raw, "\\%") || strings.IndexFunc(raw, func(r rune) bool {
+		return r <= ' ' || r == 0x7f || unicode.IsSpace(r)
+	}) >= 0 {
+		return endpoint{}, false
 	}
-	return strings.EqualFold(u.Scheme, "http") && !netpolicy.IsLoopback(u.Host)
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.User != nil || u.Hostname() == "" {
+		return endpoint{}, false
+	}
+	e := endpoint{scheme: strings.ToLower(u.Scheme), host: strings.ToLower(u.Hostname()), port: u.Port()}
+	if e.port == "" {
+		switch e.scheme {
+		case "https":
+			e.port = "443"
+		case "http":
+			e.port = "80"
+		}
+	}
+	return e, true
 }
+
+func (e endpoint) origin() string { return e.scheme + "://" + net.JoinHostPort(e.host, e.port) }
+
+func (e endpoint) loopback() bool { return netpolicy.IsLoopback(e.host) }
 
 // CheckKeyEndpoint refuses, as a [*KeyEndpointError], a non-blank key
 // over plain http to a host other than loopback. Adapters call it on
 // the base URL they settle on; [Resolve] and [LoadConfig] already do.
 func CheckKeyEndpoint(scheme, key, baseURL string) error {
-	if blankKey(key) || baseURL == "" || !insecureEndpoint(baseURL) {
+	if blankKey(key) || baseURL == "" {
 		return nil
 	}
-	return &KeyEndpointError{Scheme: scheme, Endpoint: RedactURI(baseURL), Insecure: true}
+	e, ok := parseEndpoint(baseURL)
+	if !ok {
+		return &KeyEndpointError{Scheme: scheme, Endpoint: RedactURI(baseURL), Malformed: true}
+	}
+	if e.scheme == "http" && !e.loopback() {
+		return &KeyEndpointError{Scheme: scheme, Endpoint: RedactURI(baseURL), Insecure: true}
+	}
+	return nil
 }
 
 // guardKeyEndpoint checks that a key resolved from src may go where the
@@ -124,15 +145,15 @@ func CredentialsTrusted(scheme, baseURL string, extra ...string) bool {
 }
 
 func (r *Registry) credentialsTrusted(ctx context.Context, scheme, endpoint string, extra ...string) bool {
-	if eu, err := url.Parse(strings.TrimSpace(endpoint)); err == nil && netpolicy.IsLoopback(eu.Host) {
-		return true
-	}
-	want, ok := origin(endpoint)
+	e, ok := parseEndpoint(endpoint)
 	if !ok {
 		return false
 	}
+	if e.loopback() {
+		return true
+	}
 	for _, trusted := range append(r.trustedEndpoints(ctx, scheme), extra...) {
-		if got, ok := origin(trusted); ok && got == want {
+		if t, ok := parseEndpoint(trusted); ok && t.origin() == e.origin() {
 			return true
 		}
 	}

@@ -49,7 +49,6 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `sqldb` (`kv`) | `rusqlite` (bundled SQLite), `thiserror` (`kv`: nothing of its own) | 12 (12) |
 | `bus` (`domain`, `bus-network`, `bus-network-axum`, `bus-network-webpki-roots`) | `serde`, `serde_json` (`domain`: nothing of its own, wasm-safe; + `netpolicy`, `tokio` rt/net/time/sync/macros, `tokio-tungstenite`, `futures-util`, `getrandom`, `rustls` (ring), `rustls-native-certs`; + `axum`, `hyper`, `hyper-util`; + `webpki-roots`) | 14 (14, 60, 76, 61) |
 | `config` (`config-pkl`, `config-signal`) | `bus` + `saphyr-parser`, `thiserror` (+ `regex`; + `tokio` rt, signal, sync) | 18 (22, 25) |
-| `llm` (`llm-anthropic`) | `config` + `netpolicy`, nothing of its own (+ `api`, `base64`, `tokio` time; native only) | 18 (115) |
 | `timeutil` | `chrono`, `interim`, `thiserror` | 19 |
 | `output` | `serde`, `serde_json`, `serde_norway`, `comfy-table`, `thiserror` | 22 |
 | `sqlstore` (`sqlstore-blob`) | `sqldb` + `serde`, `serde_json` (+ `blob`, nothing of its own) | 22 (22) |
@@ -59,6 +58,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `serve` | `output` + `tokio`, `serde_json` | 37 |
 | `mcp` | `rmcp` (default-features off) + `serde`, `serde_json` | 39 |
 | `uri` | `hop-top-cite` | 41 |
+| `llm` (`llm-anthropic`) | `config` + `netpolicy` + `url` (+ `api`, `base64`, `tokio` time; native only) | 46 (115) |
 | `sqlstore-encrypt` | `sqlstore` + `crypto_secretbox`, `hkdf`, `sha2` | 50 |
 | `serve-cli` | `serve` + `cli` | 50 |
 | `telemetry` | `api` + `serde_norway`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |

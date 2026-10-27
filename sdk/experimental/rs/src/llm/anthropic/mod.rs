@@ -116,13 +116,17 @@ impl Builder {
     /// trusted origin (the default endpoint, `ANTHROPIC_BASE_URL`, llm.yaml
     /// `base_url`, `LLM_BASE_URL`, loopback). None goes over plain http
     /// to a remote host. Every credential passes through here.
-    fn credentials(&self, base: &str) -> Result<Vec<(&'static str, String)>, LlmError> {
+    fn credentials(
+        &self,
+        base: &str,
+        url: &reqwest::Url,
+    ) -> Result<Vec<(&'static str, String)>, LlmError> {
         let key = self.cfg.provider.api_key.clone();
-        crate::llm::check_key_endpoint(SCHEME, &key, base)?;
+        crate::llm::check_endpoint_url(SCHEME, &key, base, url)?;
         let mut out = vec![("x-api-key", key)];
         let mut env_creds = Vec::new();
         if let Some(t) = (self.env)("ANTHROPIC_AUTH_TOKEN").filter(|t| !t.trim().is_empty()) {
-            crate::llm::check_key_endpoint(SCHEME, &t, base)?;
+            crate::llm::check_endpoint_url(SCHEME, &t, base, url)?;
             env_creds.push(("authorization", format!("Bearer {t}")));
         }
         if let Some(w) = (self.env)("ANTHROPIC_WORKSPACE_ID").filter(|w| !w.is_empty()) {
@@ -138,7 +142,7 @@ impl Builder {
         if let Some((_, b)) = file.block(&[SCHEME]) {
             trusted.push(b.base_url.clone());
         }
-        if crate::llm::credentials_trusted(base, &trusted) {
+        if crate::llm::credentials_trusted(url, &trusted) {
             out.extend(env_creds);
         }
         Ok(out)
@@ -163,7 +167,7 @@ impl Builder {
                 crate::llm::redact_uri(&base)
             ))
         })?;
-        let credentials = self.credentials(&base)?;
+        let credentials = self.credentials(&base, &url)?;
         let client = match self.client {
             Some(c) => c,
             None => GuardedClient::new(self.cfg.net_policy)

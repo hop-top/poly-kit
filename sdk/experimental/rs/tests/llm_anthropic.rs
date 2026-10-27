@@ -288,7 +288,15 @@ async fn base_url_credentials_stay_out_of_api_errors() {
         )])
         .await;
         let host = srv.url.trim_start_matches("http://");
-        let base = format!("http://user:{SECRET}@{host}/?key={SECRET}");
+        // Userinfo gets no credential: refused at build, unechoed.
+        let with_user = format!("http://user:{SECRET}@{host}/");
+        let refused = Adapter::builder(cfg(&with_user, "k"))
+            .env(|_| None)
+            .build()
+            .unwrap_err()
+            .to_string();
+        assert!(!refused.contains(SECRET), "{refused}");
+        let base = format!("{}/?key={SECRET}", srv.url);
         let a = Adapter::builder(cfg(&base, "k"))
             .env(|_| None)
             .max_retries(0)
@@ -304,7 +312,7 @@ async fn transport_errors_stay_redacted() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     drop(listener);
-    let base = format!("http://{SECRET}@{addr}/v1?key={SECRET}");
+    let base = format!("http://{addr}/v1?key={SECRET}");
     let a = Adapter::builder(cfg(&base, "k"))
         .env(|_| None)
         .max_retries(0)
@@ -424,7 +432,10 @@ fn a_key_never_goes_over_plain_http_to_a_remote_host() {
         assert!(
             matches!(
                 build(bad, None),
-                Err(LlmError::KeyEndpoint { insecure: true, .. })
+                Err(LlmError::KeyEndpoint {
+                    reason: hop_top_kit::llm::KeyEndpointReason::Insecure,
+                    ..
+                })
             ),
             "{bad}"
         );

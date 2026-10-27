@@ -38,8 +38,10 @@ pub use client::{Client, Topics};
 pub use config::{
     process_env, ConfigFile, ProviderBlock, ProviderConfig, ResolvedConfig, SecretStore, Sources,
 };
-pub use endpoint::{check_key_endpoint, credentials_trusted};
-pub use error::{LlmError, MissingKeyError};
+pub use endpoint::{
+    check_endpoint_url, check_key_endpoint, credentials_trusted, is_loopback_url, parse_endpoint,
+};
+pub use error::{KeyEndpointReason, LlmError, MissingKeyError};
 pub use keys::{KeyResolution, KeySource, KeySourceKind, FALLBACK_ENV_KEY};
 pub use provider::{BoxFuture, Capability, Provider, TokenStream};
 pub use registry::{default_registry, Declaration, Factory, ProviderKey, Registry};

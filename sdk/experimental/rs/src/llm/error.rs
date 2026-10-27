@@ -62,12 +62,11 @@ pub enum LlmError {
     },
     /// A required key resolved nowhere.
     MissingKey(MissingKeyError),
-    /// A key kit will not send to `endpoint` (masked): plain http to a
-    /// remote host (`insecure`), or a host only the URI names.
+    /// A credential kit will not send to `endpoint` (masked).
     KeyEndpoint {
         scheme: String,
         endpoint: String,
-        insecure: bool,
+        reason: KeyEndpointReason,
     },
     /// Refused by the `--offline` policy; never retried.
     Offline(OfflineError),
@@ -82,6 +81,18 @@ pub enum LlmError {
     Protocol(String),
     /// Rejected before anything was sent: a bad URI, config or request.
     Invalid(String),
+}
+
+/// Why a credential was refused for an endpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyEndpointReason {
+    /// Plain http to a host that is not loopback.
+    Insecure,
+    /// Userinfo, a backslash, a percent-escape, whitespace or a control
+    /// character, or the endpoint does not parse.
+    Malformed,
+    /// Only the URI names the endpoint, and it is not trusted.
+    Untrusted,
 }
 
 impl LlmError {
@@ -147,17 +158,21 @@ impl fmt::Display for LlmError {
             LlmError::KeyEndpoint {
                 scheme,
                 endpoint,
-                insecure: true,
-            } => write!(
-                f,
-                "llm: refusing to send the {scheme} API key over plain http to {endpoint:?}; use https or a loopback host"
-            ),
-            LlmError::KeyEndpoint {
-                scheme, endpoint, ..
-            } => write!(
-                f,
-                "llm: refusing to send the {scheme} API key to {endpoint:?}, which only the URI names; set it as llm.yaml base_url or LLM_BASE_URL, or pass api_key in the URI"
-            ),
+                reason,
+            } => match reason {
+                KeyEndpointReason::Insecure => write!(
+                    f,
+                    "llm: refusing to send the {scheme} API key over plain http to {endpoint:?}; use https or a loopback host"
+                ),
+                KeyEndpointReason::Malformed => write!(
+                    f,
+                    "llm: refusing to send the {scheme} API key to {endpoint:?}: an endpoint must parse and carry no userinfo, backslash, percent-escape, whitespace or control character"
+                ),
+                KeyEndpointReason::Untrusted => write!(
+                    f,
+                    "llm: refusing to send the {scheme} API key to {endpoint:?}, which only the URI names; set it as llm.yaml base_url or LLM_BASE_URL, or pass api_key in the URI"
+                ),
+            },
             LlmError::MissingKey(e) => e.fmt(f),
             LlmError::Offline(e) => e.fmt(f),
             LlmError::Transport { message } => f.write_str(message),

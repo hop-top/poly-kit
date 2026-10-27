@@ -38,7 +38,7 @@ let calls = &s.outcome().unwrap().tool_calls; // replay with Message::assistant_
 
 ## Contract
 
-- Feature `llm` builds on `config` and `netpolicy`, nothing else; wasm32-safe apart from
+- Feature `llm` builds on `config`, `netpolicy` and `url` (reqwest's parser); wasm32-safe apart from
   `ConfigFile::load` and the process wrappers. `llm-anthropic` adds `api`, `base64` and tokio's timer.
 - `TokenStream`: text tokens, one `done` token, then `None`; an error ends it the same way.
   Dropping a future or stream cancels it. `outcome()` (stream, tool calls, usage) is Rust-only.
