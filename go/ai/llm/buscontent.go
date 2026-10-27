@@ -40,7 +40,8 @@ func cloneResponse(resp Response) Response {
 // RedactRequest returns a [WithRequestContent] transform that passes
 // every text of the request through r: message Content, text parts,
 // tool call arguments (every JSON string, keys included, on its decoded
-// text; arguments that are not JSON become one masked JSON string) and
+// text; arguments that are not JSON, or that still match after that,
+// become the placeholder "REDACTED") and
 // thinking text. What r cannot vouch for is
 // left out: Extensions, media sources (a part keeps its type and MIME
 // type, not its bytes) and thinking signatures. Tool names, roles and
@@ -101,25 +102,20 @@ func redactCalls(r *redact.Redactor, calls []ToolCall) []ToolCall {
 //     "key":value and key=value, for rules that need the key beside the
 //     value (generic API keys, keyword-gated rules); a member r flags
 //     there gets its value replaced whole;
-//   - the result is checked once more on its wire form: if r still
-//     finds anything, or raw does not decode, the whole of raw goes out
-//     as one masked JSON string.
-//
-// Nothing passes unmasked.
+//   - if raw does not decode, or r still finds anything in the result,
+//     the whole value is the fixed placeholder "REDACTED". Nothing is
+//     ever derived from raw's wire text.
 func redactJSON(r *redact.Redactor, raw json.RawMessage) json.RawMessage {
-	fallback := func() json.RawMessage {
-		quoted, _ := json.Marshal(r.Apply(string(raw)))
-		return quoted
-	}
+	placeholder, _ := json.Marshal(redacted)
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	var v any
 	if err := dec.Decode(&v); err != nil || dec.More() {
-		return fallback()
+		return placeholder
 	}
 	out, err := json.Marshal(redactValue(r, v))
 	if err != nil || r.Apply(string(out)) != string(out) {
-		return fallback()
+		return placeholder
 	}
 	return out
 }

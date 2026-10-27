@@ -555,9 +555,9 @@ every JSON string, key and number on its decoded text (a secret needing
 `\"` or `\u` escapes on the wire still matches; a masked number
 becomes a string); each member also in key context (`"key":value`,
 `key=value`), so rules that need the key beside the value (generic API
-keys) replace that value whole; and if the result still matches on its
-wire form, or the arguments are not JSON, they travel as one masked
-JSON string. Tool results, text parts and replies are plain text,
+keys) replace that value whole; and if the result still matches, or
+the arguments are not JSON, they travel as the fixed string
+`"REDACTED"`, never derived from the original text. Tool results, text parts and replies are plain text,
 masked as written. A nil transform publishes content
 unchanged; only do that on a bus you control.
 

@@ -132,3 +132,27 @@ func numbers(v any) string {
 	}
 	return ""
 }
+
+// When the walk cannot clear the arguments (a rule spanning members),
+// or they do not decode, the arguments become the fixed placeholder:
+// nothing is derived from the raw text.
+func TestRedactRequest_ArgumentsFallbackIsPlaceholder(t *testing.T) {
+	r := redact.New()
+	_, err := r.AddRule("span", `"pin":"\d+","user":"bob"`, "")
+	require.NoError(t, err)
+	_, err = r.AddRule("pw", `hunter2`, "")
+	require.NoError(t, err)
+	for _, tc := range []struct{ name, args string }{
+		{"rule spans members", `{"user":"bob","pin":"1234"}`},
+		{"undecodable with a secret", `{"pw": hunter2`},
+		{"undecodable escaped secret", `{"pw":"hunter2"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := llm.Request{Messages: []llm.Message{{Role: "assistant", ToolCalls: []llm.ToolCall{
+				{ID: "c", Name: "t", Arguments: json.RawMessage(tc.args)},
+			}}}}
+			got := llm.RedactRequest(r)(req).Messages[0].ToolCalls[0].Arguments
+			assert.JSONEq(t, `"REDACTED"`, string(got))
+		})
+	}
+}
