@@ -38,11 +38,14 @@ pub mod breaker;
 #[cfg(feature = "config")]
 pub mod config;
 
-// Base directories for the config loader and the upgrade runner (a
-// port of go/core/xdg's home, config-home and data-home resolution).
-// Filesystem-only: off wasm32.
+#[cfg(feature = "consent")]
+pub mod consent;
+
+// Base directories for config, consent, telemetry and upgrade files (a
+// port of go/core/xdg's home, config-home, data-home and state-home
+// resolution). Filesystem-only: off wasm32.
 #[cfg(all(
-    any(feature = "config", feature = "upgrade"),
+    any(feature = "config", feature = "telemetry", feature = "upgrade"),
     not(target_arch = "wasm32")
 ))]
 pub mod xdg;

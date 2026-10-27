@@ -135,6 +135,16 @@ telemetry = [
     "dep:thiserror",
 ]
 
+# Per-capability consent grants, a port of go/core/consent: the grant
+# model, decision logic, prompter seam, audit records, refusals and the
+# in-memory store. Wasm-safe: nothing of its own beyond the bus, and no
+# clock read (inject one with `GrantsBuilder::clock` on wasm32).
+consent = ["bus"]
+# The per-tool grants file, the telemetry-consent compat records, the
+# audit log and its relay onto the bus. Native only: builds on the
+# config YAML model and on `id` for the audit log id.
+consent-file = ["consent", "config", "id"]
+
 # Layered YAML configuration, a port of go/core/config. Parsing, merge,
 # scalar resolution, overrides and precedence are pure and wasm-safe;
 # file loading, paths, Set/Unset and reload are compiled off wasm32 only.
@@ -279,6 +289,8 @@ tokio = { version = "1", features = ["full"] }
 mockito = "1"
 tempfile = "3"
 uuid = { version = "1", features = ["v7", "serde"] }
+# Reads the YAML files the consent conformance runner asserts on.
+serde_norway = "0.9"
 
 # The wasm32 smoke test (tests/bus_wasm.rs, `make test-rs-wasm`), run
 # under Node by wasm-bindgen-test-runner. Exact pins: each must match the
