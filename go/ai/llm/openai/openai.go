@@ -116,6 +116,13 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		auth = option.WithAPIKey(cfg.Provider.APIKey)
 	}
 	opts := []option.RequestOption{auth}
+	if cfg.Hermetic {
+		// The SDK reads these from OPENAI_ORG_ID and OPENAI_PROJECT_ID;
+		// a hermetic adapter sends neither.
+		opts = append(opts,
+			option.WithHeaderDel("OpenAI-Organization"),
+			option.WithHeaderDel("OpenAI-Project"))
+	}
 
 	base := cfg.Provider.BaseURL
 	if base == "" {

@@ -222,6 +222,15 @@ type anthropicConfFile struct {
 		WantToolChoice json.RawMessage `json:"want_tool_choice"`
 		Error          string          `json:"error"`
 	} `json:"anthropic_tool_choice"`
+	AnthropicHermetic []struct {
+		Name     string            `json:"name"`
+		BaseURL  string            `json:"base_url"`
+		YAML     string            `json:"yaml"`
+		Env      map[string]string `json:"env"`
+		WantHost string            `json:"want_host"`
+		Sent     []string          `json:"sent"`
+		Withheld []string          `json:"withheld"`
+	} `json:"anthropic_hermetic"`
 	KeyEndpoint []struct {
 		Name    string            `json:"name"`
 		Op      string            `json:"op"`
@@ -985,6 +994,41 @@ func TestConformanceAnthropicToolChoice(t *testing.T) {
 				return
 			}
 			assert.JSONEq(t, string(v.WantToolChoice), string(got.ToolChoice))
+		})
+	}
+}
+
+func TestConformanceAnthropicHermetic(t *testing.T) {
+	f := loadAnthropicConf(t)
+	require.NotEmpty(t, f.AnthropicHermetic)
+	for _, v := range f.AnthropicHermetic {
+		t.Run(v.Name, func(t *testing.T) {
+			_, rt, _ := isolateAnthropicEnv(t)
+			unsetenv(t, "LLM_BASE_URL")
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			if v.YAML != "" {
+				writeLLMYAML(t, v.YAML)
+			}
+			for k, val := range v.Env {
+				t.Setenv(k, val)
+			}
+			p, err := anthropic.New(llm.ResolvedConfig{
+				Provider: llm.ProviderConfig{APIKey: "kit-key", BaseURL: v.BaseURL, Model: "m"},
+				Hermetic: true,
+			})
+			require.NoError(t, err)
+			_, err = p.(llm.Completer).Complete(context.Background(), llm.Request{
+				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+			})
+			require.NoError(t, err)
+			req := rt.only(t)
+			assert.Equal(t, v.WantHost, req.URL.Host)
+			for _, h := range v.Sent {
+				assert.NotEmpty(t, req.Header.Get(h), h)
+			}
+			for _, h := range v.Withheld {
+				assert.Empty(t, req.Header.Values(h), h)
+			}
 		})
 	}
 }

@@ -81,12 +81,17 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		// host the server names.
 		option.WithHTTPClient(&http.Client{CheckRedirect: refuseRedirect}),
 	}
-	envBase := os.Getenv("ANTHROPIC_BASE_URL")
-	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok {
-		if err := checkBaseURL("ANTHROPIC_BASE_URL", v); err != nil {
+	// A hermetic adapter reads no environment variable.
+	env := os.LookupEnv
+	if cfg.Hermetic {
+		env = func(string) (string, bool) { return "", false }
+	}
+	envBase, hasEnvBase := env("ANTHROPIC_BASE_URL")
+	if hasEnvBase {
+		if err := checkBaseURL("ANTHROPIC_BASE_URL", envBase); err != nil {
 			return nil, err
 		}
-		opts = append(opts, option.WithBaseURL(v))
+		opts = append(opts, option.WithBaseURL(envBase))
 	}
 	if cfg.Provider.BaseURL != "" {
 		if err := checkBaseURL("base URL", cfg.Provider.BaseURL); err != nil {
@@ -95,13 +100,15 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		opts = append(opts, option.WithBaseURL(cfg.Provider.BaseURL))
 	}
 	base := cfg.Provider.BaseURL
-	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok && base == "" {
-		base = v
+	if base == "" && hasEnvBase {
+		base = envBase
 	}
 	if base == "" {
 		base = defaultBaseURL
 	}
-	creds, err := credentials(cfg.Provider.APIKey, base, envBase)
+	authToken, _ := env("ANTHROPIC_AUTH_TOKEN")
+	workspace, _ := env("ANTHROPIC_WORKSPACE_ID")
+	creds, err := credentials(cfg.Provider.APIKey, base, envBase, authToken, workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +117,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	return &Adapter{
 		client:    anthropic.NewClient(opts...),
 		model:     cfg.Provider.Model,
-		secrets:   secretsOf(cfg.Provider.APIKey, os.Getenv("ANTHROPIC_AUTH_TOKEN")),
+		secrets:   secretsOf(cfg.Provider.APIKey, authToken),
 		toolNames: toolNames,
 	}, nil
 }
@@ -120,22 +127,27 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 // environment and go only where [llm.CredentialsTrusted] allows. None
 // goes over plain http to a remote host or to a malformed endpoint.
 // Every credential is added here, behind that one gate.
-func credentials(key, base, envBase string) ([]option.RequestOption, error) {
+//
+// authToken and workspace are ANTHROPIC_AUTH_TOKEN and
+// ANTHROPIC_WORKSPACE_ID as read (empty when hermetic). With neither,
+// [llm.CredentialsTrusted], which reads llm.yaml and LLM_BASE_URL, is
+// not asked.
+func credentials(key, base, envBase, authToken, workspace string) ([]option.RequestOption, error) {
 	if err := llm.CheckKeyEndpoint(scheme, key, base); err != nil {
 		return nil, err
 	}
 	opts := []option.RequestOption{option.WithAPIKey(key)}
 	var env []option.RequestOption
-	if v := os.Getenv("ANTHROPIC_AUTH_TOKEN"); strings.TrimSpace(v) != "" {
-		if err := llm.CheckKeyEndpoint(scheme, v, base); err != nil {
+	if strings.TrimSpace(authToken) != "" {
+		if err := llm.CheckKeyEndpoint(scheme, authToken, base); err != nil {
 			return nil, err
 		}
-		env = append(env, option.WithAuthToken(v))
+		env = append(env, option.WithAuthToken(authToken))
 	}
-	if v := os.Getenv("ANTHROPIC_WORKSPACE_ID"); v != "" {
-		env = append(env, option.WithHeader("anthropic-workspace-id", v))
+	if workspace != "" {
+		env = append(env, option.WithHeader("anthropic-workspace-id", workspace))
 	}
-	if llm.CredentialsTrusted(scheme, base, envBase) {
+	if len(env) > 0 && llm.CredentialsTrusted(scheme, base, envBase) {
 		opts = append(opts, env...)
 	}
 	return opts, nil

@@ -70,7 +70,7 @@ var (
 // (validating the threshold is in [0,1]) or a tier name, and creates an
 // inner openai adapter pointed at the RouteLLM server's base_url.
 func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
-	rcfg, err := ParseRouterConfig(cfg.Provider.Extras)
+	rcfg, err := parseRouterConfig(cfg.Provider.Extras, cfg.Hermetic)
 	if err != nil {
 		return nil, fmt.Errorf("routellm: %w", err)
 	}
@@ -122,6 +122,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 			BaseURL: baseURL,
 			Model:   serverModel,
 		},
+		Hermetic: cfg.Hermetic,
 	}
 	// The inner adapter applies the tool-name mode the URI asks for.
 	if v, ok := cfg.Provider.Params[llm.ToolNamesParam]; ok {

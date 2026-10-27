@@ -43,6 +43,12 @@ type ResolvedConfig struct {
 	URI       URI
 	Provider  ProviderConfig
 	Fallbacks []string
+	// Hermetic, set by [Hermetic], tells the adapter to read nothing
+	// ambient while it builds and runs: no environment variable (the
+	// anthropic adapter's ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN and
+	// ANTHROPIC_WORKSPACE_ID, the openai SDK's OPENAI_ORG_ID and
+	// OPENAI_PROJECT_ID) and no file (llm.yaml). Only this config counts.
+	Hermetic bool
 }
 
 // configFile mirrors the on-disk YAML structure.
@@ -267,6 +273,9 @@ func LoadConfig(uri string) (ResolvedConfig, error) {
 	}, nil
 }
 
+// readConfigFile reads llm.yaml; a seam for tests counting reads.
+var readConfigFile = os.ReadFile
+
 // loadConfigFile reads {xdg.ConfigDir("hop")}/llm.yaml.
 // Returns an empty configFile if the file does not exist or cannot be read.
 func loadConfigFile() configFile {
@@ -275,7 +284,7 @@ func loadConfigFile() configFile {
 		return configFile{}
 	}
 
-	data, err := os.ReadFile(filepath.Join(dir, "llm.yaml"))
+	data, err := readConfigFile(filepath.Join(dir, "llm.yaml"))
 	if err != nil {
 		return configFile{}
 	}

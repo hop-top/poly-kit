@@ -70,7 +70,32 @@ func Register(scheme string, f Factory, decl ...Declaration) {
 }
 
 // Resolve looks up and creates a provider via [DefaultRegistry].
-func Resolve(uri string) (Provider, error) { return DefaultRegistry.Resolve(uri) }
+func Resolve(uri string, opts ...ResolveOption) (Provider, error) {
+	return DefaultRegistry.Resolve(uri, opts...)
+}
+
+// ResolveOption configures one [Resolve] call.
+type ResolveOption func(*resolveOptions)
+
+type resolveOptions struct {
+	hermetic bool
+}
+
+// Hermetic makes [Resolve] and the adapter it builds read nothing
+// ambient: the provider comes from the URI alone. Resolve then reaches
+// only a scheme registered by name or curated alias (the aim catalog
+// cache is not read, so a catalog-only provider is not found), and the
+// adapter gets [ResolvedConfig.Hermetic], so it reads no environment
+// variable and no llm.yaml either: credentials and endpoints come only
+// from the URI (api_key, base_url, host). For embedding kit in an app
+// that owns its configuration.
+//
+// [LoadConfig], [ApplyAPIKey], [ResolveAPIKey] and [SecretFor] exist to
+// read llm.yaml and the environment; a hermetic caller does not call
+// them.
+func Hermetic() ResolveOption {
+	return func(o *resolveOptions) { o.hermetic = true }
+}
 
 // Schemes returns the list of registered schemes in [DefaultRegistry].
 func Schemes() []string { return DefaultRegistry.Schemes() }
@@ -174,13 +199,9 @@ func (r *Registry) registered(name string) (string, bool) {
 // alias, then (from the cached catalog only) by the catalog provider's
 // protocol.
 func (r *Registry) route(ctx context.Context, scheme string) (route, bool) {
-	r.mu.RLock()
-	if s, ok := r.registered(scheme); ok {
-		rt := route{scheme: s, factory: r.factories[s], decl: r.decls[s]}
-		r.mu.RUnlock()
+	if rt, ok := r.registeredRoute(scheme); ok {
 		return rt, true
 	}
-	r.mu.RUnlock()
 
 	p, ok := catalogProvider(ctx, scheme)
 	if !ok {
@@ -194,6 +215,18 @@ func (r *Registry) route(ctx context.Context, scheme string) (route, bool) {
 		return route{}, false
 	}
 	return route{scheme: s, factory: r.factories[s], catalog: &p}, true
+}
+
+// registeredRoute is [Registry.route] without the catalog: a scheme
+// registered by name or curated alias.
+func (r *Registry) registeredRoute(scheme string) (route, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	s, ok := r.registered(scheme)
+	if !ok {
+		return route{}, false
+	}
+	return route{scheme: s, factory: r.factories[s], decl: r.decls[s]}, true
 }
 
 // baseURL is the default base URL a route supplies when the URI names
@@ -226,13 +259,25 @@ func (rt route) baseURL(uriScheme string) (string, error) {
 // catalog's base URL with its ${VAR} placeholders expanded. A catalog
 // provider without a usable base URL is an error, never a fallback to
 // another host.
-func (r *Registry) Resolve(uri string) (Provider, error) {
+//
+// [Hermetic] limits it to what the URI says; see there.
+func (r *Registry) Resolve(uri string, opts ...ResolveOption) (Provider, error) {
+	var o resolveOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	parsed, err := ParseURI(uri)
 	if err != nil {
 		return nil, fmt.Errorf("llm: invalid URI %q: %w", RedactURI(uri), err)
 	}
 
-	rt, ok := r.route(context.Background(), parsed.Scheme)
+	var rt route
+	var ok bool
+	if o.hermetic {
+		rt, ok = r.registeredRoute(parsed.Scheme)
+	} else {
+		rt, ok = r.route(context.Background(), parsed.Scheme)
+	}
 	if !ok {
 		return nil, llmerrors.NewProviderNotFound(parsed.Scheme)
 	}
@@ -245,6 +290,7 @@ func (r *Registry) Resolve(uri string) (Provider, error) {
 		Provider: ProviderConfig{
 			Model: parsed.Model,
 		},
+		Hermetic: o.hermetic,
 	}
 	if parsed.Host != "" {
 		cfg.Provider.BaseURL = "http://" + parsed.Host
