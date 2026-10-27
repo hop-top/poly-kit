@@ -755,6 +755,54 @@ a prompt-cache breakpoint. `Usage` carries `cache_read_tokens` and
 `cache_creation_tokens`; `usage.cost(llm.Price(input=, output=,
 cache_read=, cache_write=))` prices it per million tokens.
 
+`Request.tool_choice=llm.ToolChoice(mode, name="")` constrains tool use
+on `call_with_tools` and `stream_with_tools`; `None` leaves the provider
+default. Modes (`llm.ToolChoiceMode`): `auto`, `any` (at least one
+call; `"required"` on the OpenAI wire), `none`, and `tool` with `name`,
+the tool as defined (sent under its wire name). `anthropic`, `openai`
+(and OpenAI-compatible) and `routellm` raise `llm.LLMError` before
+sending for an unknown mode, a name missing with `tool` or set with
+another mode, a name no tool has, or any choice on `complete` / `stream`
+(no tools); `llm.check_tool_choice(choice, tools)` returns the reason.
+
+`Request.stream_events=True` (anthropic) adds two kinds of token to a
+stream; unset, a stream yields exactly what it always has. Each token
+carries one thing:
+
+| Field | When | Holds |
+|-------|------|-------|
+| `tool_call` | a `tool_use` block starts, gets argument JSON, stops | `llm.ToolCallEvent`: `kind` `start` (`index`, `id`, `name`), `delta` (`arguments_delta`, a raw fragment), `end` (`call`, exactly `outcome().tool_calls[index]`) |
+| `usage` | the provider reports usage (`message_start`, `message_delta`) | the turn's usage so far: cumulative, never a delta; the last equals `outcome().usage` |
+
+`name` is the tool's name as defined. Parallel calls interleave, told
+apart by `index`. A call open when the stream fails gets no `end`.
+
+```python
+req = llm.Request(messages=msgs, stream_events=True)
+for tok in client.stream_with_tools(req, tools):
+    if tok.usage and tok.usage.total_tokens > budget:
+        break  # enforce a budget mid-stream
+```
+
+`llm.resolve(uri, hermetic=True)` (also `llm.load_config` and
+`llm.create_llm`) reads nothing ambient: the config is the URI alone
+(`api_key`, `base_url`, host form; no fallbacks unless passed), and the
+adapter, told by `ResolvedConfig.hermetic`, ignores `ANTHROPIC_BASE_URL`,
+`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_WORKSPACE_ID`, `LLM_BASE_URL` and
+llm.yaml. `llm.parse_router_config(extras, hermetic=True)` ignores the
+`ROUTELLM_*` variables. The `routellm` Controller library may still read
+its own environment.
+
+The Python `Client` publishes no bus events: `on_request` and
+`on_response` run in process with the full request and response.
+`hop_top_kit.llm_events` builds the metadata-only payloads Go publishes
+as `kit.ai.request.started` and `kit.ai.response.received`
+(`request_start_payload(op, req, tools=n)`,
+`request_end_payload(op, resp, tool_calls, duration=s)`, each with
+`to_dict()`): counts, sizes, settings and usage, never content. Python
+has no secret store; keys come from the URI, the environment or
+llm.yaml.
+
 Transport rules, every adapter:
 
 - **Keys**: `api_key` URI param, `LLM_API_KEY`, llm.yaml
@@ -768,7 +816,8 @@ Transport rules, every adapter:
 - **Anthropic env**: `ANTHROPIC_BASE_URL` (below a configured base URL),
   `ANTHROPIC_AUTH_TOKEN` (bearer, when not blank) and
   `ANTHROPIC_WORKSPACE_ID`; the token and workspace go only to a trusted
-  origin. The openai adapter reads no environment credential.
+  origin, and a hermetic adapter reads none of them. The openai adapter
+  reads no environment credential.
 - **Retries**: two more attempts on 408, 409, 429, 5xx and transport
   failures (`x-should-retry` overrides); a server wait
   (`retry-after-ms`, `retry-after` seconds) is honored only within
