@@ -16,6 +16,28 @@ setup() {
   mkdir -p "$PROJ"
 }
 
+# expect_pin <key>: assert the emitted mise.toml pins <key> to the
+# value the sibling tool-versions.toml declares. The manifest is the
+# source of truth, so pins are read from it rather than hardcoded;
+# a bump there needs no test edit. The lookup is a plain grep/sed
+# independent of emit-mise.sh's awk parser, and fails when the key
+# is missing from the manifest so an empty expectation never passes.
+expect_pin() {
+  local key="$1" quoted want
+  quoted="$key"
+  [[ "$key" == *:* ]] && quoted="\"$key\""
+  want="$(grep -E "^${quoted}[[:space:]]*=" "$SCRIPT_DIR/tool-versions.toml" |
+    head -n1 | sed -E 's/^[^=]*=[[:space:]]*"([^"]*)".*/\1/')"
+  if [[ -z "$want" ]]; then
+    echo "tool-versions.toml has no pin for $key" >&2
+    return 1
+  fi
+  grep -qxF "$quoted = \"$want\"" "$PROJ/mise.toml" || {
+    echo "mise.toml lacks: $quoted = \"$want\"" >&2
+    return 1
+  }
+}
+
 teardown() {
   [[ -n "${TMP:-}" ]] && rm -rf "$TMP"
 }
@@ -26,18 +48,18 @@ teardown() {
 
 @test "emit_mise go: includes go runtime + golangci-lint" {
   emit_mise "$PROJ" "go"
-  grep -qE '^go = "1\.26\.1"$'            "$PROJ/mise.toml"
-  grep -qE '^golangci-lint = "2\.11\.4"$' "$PROJ/mise.toml"
+  expect_pin go
+  expect_pin golangci-lint
 }
 
 @test "emit_mise go: includes cross-cutting workflow tools" {
   emit_mise "$PROJ" "go"
-  grep -qE '^lychee = "0\.24\.2"$'     "$PROJ/mise.toml"
-  grep -qE '^hadolint = "2\.12"$'   "$PROJ/mise.toml"
-  grep -qE '^actionlint = "1\.7"$'  "$PROJ/mise.toml"
-  grep -qE '^shellcheck = "0\.10"$' "$PROJ/mise.toml"
-  grep -qE '^shfmt = "3\.10"$'      "$PROJ/mise.toml"
-  grep -qE '^"npm:release-please" = "17"$' "$PROJ/mise.toml"
+  expect_pin lychee
+  expect_pin hadolint
+  expect_pin actionlint
+  expect_pin shellcheck
+  expect_pin shfmt
+  expect_pin npm:release-please
 }
 
 @test "emit_mise: kit's own CI tools (buf, markdownlint-cli2) stay out of scaffolds" {
@@ -90,9 +112,9 @@ teardown() {
 
 @test "emit_mise py: includes python, uv, ruff" {
   emit_mise "$PROJ" "py"
-  grep -qE '^python = "3\.13"$' "$PROJ/mise.toml"
-  grep -qE '^uv = "0\.12"$'     "$PROJ/mise.toml"
-  grep -qE '^ruff = "0\.15\.11"$' "$PROJ/mise.toml"
+  expect_pin python
+  expect_pin uv
+  expect_pin ruff
 }
 
 @test "emit_mise py: excludes golangci-lint and other runtimes" {
