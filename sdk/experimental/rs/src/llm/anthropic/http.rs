@@ -168,7 +168,11 @@ fn classify(
     model: &str,
 ) -> LlmError {
     match status {
-        401 | 403 => LlmError::Auth {
+        401 => LlmError::Auth {
+            provider: SCHEME.into(),
+            message: format!("{error_type}: {message}"),
+        },
+        403 => LlmError::PermissionDenied {
             provider: SCHEME.into(),
             message: format!("{error_type}: {message}"),
         },

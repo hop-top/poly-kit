@@ -21,8 +21,24 @@ pub enum LlmError {
         capability: String,
         provider: String,
     },
-    /// 401 or 403.
+    /// 401: the credential was rejected. A 403 is the narrower
+    /// [`PermissionDenied`](LlmError::PermissionDenied); match both
+    /// with [`LlmError::is_auth`].
     Auth {
+        provider: String,
+        message: String,
+    },
+    /// 403, or a `permission_error` stream event: the credential was
+    /// accepted but may not do what was asked (no access to the model,
+    /// workspace or feature). Retrying with the same key will not help.
+    /// Not fallbackable.
+    ///
+    /// It is an auth error too: [`LlmError::is_auth`] is true for it, as
+    /// Go's `errors.As(err, new(*ErrAuth))` matches its
+    /// `ErrPermissionDenied`. Before this variant a 403 was
+    /// [`Auth`](LlmError::Auth); code matching `LlmError::Auth { .. }`
+    /// to mean "any auth failure" should call `is_auth()` instead.
+    PermissionDenied {
         provider: String,
         message: String,
     },
@@ -158,6 +174,16 @@ impl LlmError {
         }
     }
 
+    /// Whether the credential failed: [`Auth`](LlmError::Auth) (401)
+    /// or [`PermissionDenied`](LlmError::PermissionDenied) (403). Match
+    /// `PermissionDenied` first to tell the two apart.
+    pub fn is_auth(&self) -> bool {
+        matches!(
+            self,
+            LlmError::Auth { .. } | LlmError::PermissionDenied { .. }
+        )
+    }
+
     pub(crate) fn invalid(msg: impl Into<String>) -> Self {
         LlmError::Invalid(msg.into())
     }
@@ -178,6 +204,9 @@ impl fmt::Display for LlmError {
             ),
             LlmError::Auth { provider, message } => {
                 write!(f, "auth error (provider {provider:?}): {message}")
+            }
+            LlmError::PermissionDenied { provider, message } => {
+                write!(f, "permission denied (provider {provider:?}): {message}")
             }
             LlmError::RateLimit {
                 provider,
