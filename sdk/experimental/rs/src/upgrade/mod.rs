@@ -21,14 +21,18 @@ mod backup;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod configfile;
 #[cfg(not(target_arch = "wasm32"))]
+mod events;
+#[cfg(not(target_arch = "wasm32"))]
 mod fs_util;
 #[cfg(not(target_arch = "wasm32"))]
 mod migrator;
 
 #[cfg(not(target_arch = "wasm32"))]
+pub use events::{MigrationPublisher, MigrationTopics};
+#[cfg(not(target_arch = "wasm32"))]
 pub use migrator::{
-    default_data_dir, read_version_file, read_version_file_in, AppliedMigration, MigrateError,
-    Migrator, SchemaStatus,
+    default_data_dir, read_version_file, read_version_file_in, AppliedMigration, FinalVerifyFn,
+    MigrateError, Migrator, SchemaStatus, StepKind, WarnFn,
 };
 
 /// Error a migration step or a driver returns.

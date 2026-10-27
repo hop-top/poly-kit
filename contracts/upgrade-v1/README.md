@@ -45,7 +45,8 @@ Deliberate, kept from Go: history keeps migrations a later failure rolled back; 
 nothing back (no `down`, no restore); the version file is written before the driver's `set_version`, so a
 refused `set_version` leaves the file at the new version.
 
-Equal versions have no defined order (Go sorts unstably), so no vector holds a tie. Runners are strict:
+Rust has no default registry, so its runner treats every scenario as `registry: own`. Equal versions have
+no defined order (Go sorts unstably), so no vector holds a tie. Runners are strict:
 unknown fields, a `version` other than `v1` and a corpus file no runner consumes all fail the run.
 
 ## Runners

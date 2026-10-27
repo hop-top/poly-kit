@@ -20,12 +20,12 @@ fn default_data_dir_follows_xdg_data_home() {
     );
 
     let mut m = Migrator::new("mytool", "1.0.0");
-    m.register(Migration::new("1.0.0", "config", || Ok(())));
+    m.register(Migration::new("1.0.0", "config", |_| Ok(())));
     m.add_driver(
         hop_top_kit::upgrade::configfile::ConfigFileDriver::new(["/nonexistent"])
             .with_tool("mytool"),
     );
-    m.run().unwrap();
+    m.run(&hop_top_kit::bus::Context::background()).unwrap();
     assert_eq!(read_version_file("mytool", "config").unwrap(), "1.0.0");
     assert!(tmp
         .path()

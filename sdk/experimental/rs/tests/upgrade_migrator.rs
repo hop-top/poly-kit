@@ -8,13 +8,18 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use hop_top_kit::bus::{validate_topic, Context, Event, SharedBus};
 use hop_top_kit::upgrade::configfile::{backup_file_name, ConfigFileDriver};
 use hop_top_kit::upgrade::{
-    default_data_dir, read_version_file_in, BoxError, MigrateError, Migration, Migrator,
-    SchemaDriver,
+    default_data_dir, read_version_file_in, BoxError, MigrateError, Migration, MigrationTopics,
+    Migrator, SchemaDriver, StepKind,
 };
 
 type Log = Arc<Mutex<Vec<String>>>;
+
+fn bg() -> Context {
+    Context::background()
+}
 
 /// In-memory driver, as Go's `mockDriver`.
 #[derive(Default)]
@@ -58,15 +63,15 @@ impl SchemaDriver for Mock {
     }
 }
 
-fn step(log: &Log, entry: &'static str) -> impl Fn() -> Result<(), BoxError> + Send + Sync {
+fn step(log: &Log, entry: &'static str) -> impl Fn(&Context) -> Result<(), BoxError> + Send + Sync {
     let log = log.clone();
-    move || {
+    move |_| {
         log.lock().unwrap().push(entry.into());
         Ok(())
     }
 }
 
-fn boom() -> Result<(), BoxError> {
+fn boom(_: &Context) -> Result<(), BoxError> {
     Err("boom".into())
 }
 
@@ -83,7 +88,7 @@ fn run_applies_pending_in_order_and_backs_up_first() {
     m.register(Migration::new("1.1.0", "testdb", step(&log, "up 1.1.0")));
     m.add_driver(Mock::new("testdb", "1.0.0", &log));
 
-    m.run().unwrap();
+    m.run(&bg()).unwrap();
 
     let backup = tmp.path().join("backups/testdb/pre-1.1.0");
     assert_eq!(
@@ -108,9 +113,9 @@ fn run_is_idempotent() {
     m.register(Migration::new("1.1.0", "testdb", step(&log, "up")));
     m.add_driver(Mock::new("testdb", "1.0.0", &log));
 
-    m.run().unwrap();
-    m.run().unwrap();
-    m.run().unwrap();
+    m.run(&bg()).unwrap();
+    m.run(&bg()).unwrap();
+    m.run(&bg()).unwrap();
 
     let ups = entries(&log).iter().filter(|e| *e == "up").count();
     assert_eq!(ups, 1, "a migration runs once");
@@ -123,7 +128,7 @@ fn run_without_pending_does_not_back_up() {
     let log = Log::default();
     let mut m = Migrator::new("testapp", "2.0.0").data_dir(tmp.path());
     m.add_driver(Mock::new("testdb", "2.0.0", &log));
-    m.run().unwrap();
+    m.run(&bg()).unwrap();
     assert!(entries(&log).is_empty());
     assert!(!tmp.path().join("backups").exists());
 }
@@ -140,10 +145,12 @@ fn failure_runs_down_of_applied_migrations() {
     m.register(Migration::new("1.2.0", "testdb", boom));
     m.add_driver(Mock::new("testdb", "1.0.0", &log));
 
-    let err = m.run().unwrap_err();
+    let err = m.run(&bg()).unwrap_err();
 
     assert!(err.to_string().contains("boom"), "{err}");
-    assert!(matches!(err, MigrateError::Up { ref version, .. } if version == "1.2.0"));
+    assert!(
+        matches!(err, MigrateError::Step { kind: StepKind::Up, ref version, .. } if version == "1.2.0")
+    );
     let log = entries(&log);
     assert_eq!(&log[1..], ["up 1.1.0", "down 1.1.0"]);
     assert_eq!(read_version_file_in(tmp.path(), "testdb").unwrap(), "");
@@ -154,11 +161,11 @@ fn failure_without_down_restores_backup() {
     let tmp = tempfile::tempdir().unwrap();
     let log = Log::default();
     let mut m = Migrator::new("testapp", "1.2.0").data_dir(tmp.path());
-    m.register(Migration::new("1.1.0", "testdb", || Ok(())));
-    m.register(Migration::new("1.2.0", "testdb", || Err("fail".into())));
+    m.register(Migration::new("1.1.0", "testdb", |_| Ok(())));
+    m.register(Migration::new("1.2.0", "testdb", |_| Err("fail".into())));
     m.add_driver(Mock::new("testdb", "1.0.0", &log));
 
-    assert!(m.run().is_err());
+    assert!(m.run(&bg()).is_err());
     assert!(entries(&log).contains(&"restore".to_string()));
 }
 
@@ -169,10 +176,10 @@ fn manual_mode_does_not_roll_back() {
     let mut m = Migrator::new("testapp", "1.1.0")
         .data_dir(tmp.path())
         .manual_rollback();
-    m.register(Migration::new("1.1.0", "testdb", || Err("fail".into())));
+    m.register(Migration::new("1.1.0", "testdb", |_| Err("fail".into())));
     m.add_driver(Mock::new("testdb", "1.0.0", &log));
 
-    assert!(m.run().is_err());
+    assert!(m.run(&bg()).is_err());
     assert!(!entries(&log).contains(&"restore".to_string()));
     m.rollback_latest().unwrap();
     assert!(entries(&log).contains(&"restore".to_string()));
@@ -298,9 +305,9 @@ fn rewrite(
     path: &Path,
     from: &'static str,
     to: &'static str,
-) -> impl Fn() -> Result<(), BoxError> + Send + Sync {
+) -> impl Fn(&Context) -> Result<(), BoxError> + Send + Sync {
     let path = path.to_path_buf();
-    move || {
+    move |_| {
         let s = fs::read_to_string(&path)?;
         fs::write(&path, s.replace(from, to))?;
         Ok(())
@@ -335,13 +342,13 @@ fn e2e_lifecycle_upgrades_once_then_extends() {
     write_doc(&doc, "{\"v\":1}");
 
     let mut m = file_migrator(&data, &doc, "1.2.0");
-    m.run().unwrap();
+    m.run(&bg()).unwrap();
     assert_eq!(fs::read_to_string(&doc).unwrap(), "{\"v\":3}");
     assert_eq!(read_version_file_in(&data, "layout").unwrap(), "1.2.0");
 
     // A fresh process at the same version applies nothing.
     let mut again = file_migrator(&data, &doc, "1.2.0");
-    again.run().unwrap();
+    again.run(&bg()).unwrap();
     assert!(again.history().is_empty());
     assert_eq!(fs::read_to_string(&doc).unwrap(), "{\"v\":3}");
 
@@ -352,7 +359,7 @@ fn e2e_lifecycle_upgrades_once_then_extends() {
         "layout",
         rewrite(&doc, "\"v\":3", "\"v\":4"),
     ));
-    next.run().unwrap();
+    next.run(&bg()).unwrap();
     let h: Vec<_> = next.history().iter().map(|a| a.version.as_str()).collect();
     assert_eq!(h, ["1.3.0"]);
     assert_eq!(fs::read_to_string(&doc).unwrap(), "{\"v\":4}");
@@ -366,7 +373,7 @@ fn e2e_first_time_user_runs_everything() {
     write_doc(&doc, "{\"v\":1}");
     let mut m = file_migrator(&data, &doc, "1.2.0");
     assert_eq!(m.status()[0].pending, 2);
-    m.run().unwrap();
+    m.run(&bg()).unwrap();
     assert_eq!(m.history().len(), 2);
 }
 
@@ -377,11 +384,11 @@ fn e2e_multi_step_failure_restores_the_file() {
     let doc = tmp.path().join("layout.json");
     write_doc(&doc, "{\"v\":1}");
     let mut m = file_migrator(&data, &doc, "1.3.0");
-    m.register(Migration::new("1.3.0", "layout", || {
+    m.register(Migration::new("1.3.0", "layout", |_| {
         Err("boom at 1.3.0".into())
     }));
 
-    let err = m.run().unwrap_err();
+    let err = m.run(&bg()).unwrap_err();
 
     assert_eq!(
         err.to_string(),
@@ -405,8 +412,8 @@ fn e2e_manual_rollback_restores_the_file() {
         .data_dir(&data)
         .manual_rollback();
     let half = rewrite(&doc, "\"v\":1", "\"v\":2");
-    m.register(Migration::new("1.1.0", "layout", move || {
-        half()?;
+    m.register(Migration::new("1.1.0", "layout", move |ctx: &Context| {
+        half(ctx)?;
         Err("simulated failure after change".into())
     }));
     m.add_driver(
@@ -415,7 +422,7 @@ fn e2e_manual_rollback_restores_the_file() {
             .with_data_dir(&data),
     );
 
-    assert!(m.run().is_err());
+    assert!(m.run(&bg()).is_err());
     assert_eq!(
         fs::read_to_string(&doc).unwrap(),
         "{\"v\":2}",
@@ -443,13 +450,144 @@ fn e2e_prune_keeps_retention_backups() {
     let mut m = Migrator::new("myapp", "3.0.0")
         .data_dir(&data)
         .backup_retention(3);
-    m.register(Migration::new("3.0.0", "db", || Ok(())));
+    m.register(Migration::new("3.0.0", "db", |_| Ok(())));
     m.add_driver(Mock::new("db", "2.0.0", &log));
-    m.run().unwrap();
+    m.run(&bg()).unwrap();
     let mut names: Vec<_> = fs::read_dir(data.join("backups/db"))
         .unwrap()
         .map(|e| e.unwrap().file_name().into_string().unwrap())
         .collect();
     names.sort();
     assert_eq!(names, ["pre-1.3.0", "pre-2.0.0", "pre-3.0.0"]);
+}
+
+// ---- verify, cancellation, events, warnings -------------------------------
+
+#[test]
+fn verify_and_cancel_have_their_own_kinds() {
+    let tmp = tempfile::tempdir().unwrap();
+    let log = Log::default();
+    let mut m = Migrator::new("k", "1.1.0").data_dir(tmp.path());
+    m.register(Migration::new("1.1.0", "db", |_| Ok(())).with_verify(|_| Err("bad".into())));
+    m.add_driver(Mock::new("db", "1.0.0", &log));
+    let err = m.run(&bg()).unwrap_err();
+    assert!(err.is_verify() && !err.is_canceled(), "{err}");
+
+    let (ctx, cancel) = bg().with_cancel();
+    cancel.cancel();
+    let mut m = Migrator::new("k", "1.1.0").data_dir(tmp.path().join("2"));
+    m.register(Migration::new("1.1.0", "db", |_| Ok(())));
+    m.add_driver(Mock::new("db", "1.0.0", &log));
+    let err = m.run(&ctx).unwrap_err();
+    assert!(err.is_canceled() && !err.is_verify(), "{err}");
+    assert_eq!(
+        err.to_string(),
+        "migrate db: up 1.1.0 canceled: context canceled"
+    );
+
+    let mut m = Migrator::new("k", "1.1.0")
+        .data_dir(tmp.path().join("3"))
+        .verify(|_, _, _| Err("x".into()));
+    m.register(Migration::new("1.1.0", "db", |_| Ok(())));
+    m.add_driver(Mock::new("db", "1.0.0", &log));
+    let err = m.run(&bg()).unwrap_err();
+    assert_eq!(err.step_kind(), Some(StepKind::FinalVerify));
+}
+
+#[test]
+fn steps_see_the_run_context() {
+    let tmp = tempfile::tempdir().unwrap();
+    #[derive(Clone)]
+    struct Marker(&'static str);
+    let seen = Arc::new(Mutex::new(None));
+    let s = seen.clone();
+    let mut m = Migrator::new("k", "1.1.0").data_dir(tmp.path());
+    m.register(Migration::new("1.1.0", "db", move |ctx| {
+        *s.lock().unwrap() = ctx.value::<Marker>().map(|m| m.0);
+        Ok(())
+    }));
+    m.add_driver(Mock::new("db", "1.0.0", &Log::default()));
+    m.run(&bg().with_value(Marker("mine"))).unwrap();
+    assert_eq!(*seen.lock().unwrap(), Some("mine"));
+}
+
+#[test]
+fn default_topics_validate_and_prefix_rebrands() {
+    let d = MigrationTopics::default();
+    for t in [
+        &d.run_started,
+        &d.run_completed,
+        &d.run_failed,
+        &d.started,
+        &d.applied,
+        &d.verified,
+        &d.failed,
+        &d.reverted,
+    ] {
+        validate_topic(t).unwrap();
+    }
+    assert_eq!(d.applied.as_str(), "kit.core.migration.applied");
+    let p = MigrationTopics::from_prefix("myapp.core.migration");
+    assert_eq!(p.run_started.as_str(), "myapp.core.migration.run_started");
+    assert!(std::panic::catch_unwind(|| MigrationTopics::from_prefix("too.short")).is_err());
+}
+
+#[test]
+fn events_reach_a_kit_bus_in_order() {
+    let tmp = tempfile::tempdir().unwrap();
+    let bus = SharedBus::new(hop_top_kit::bus::Bus::new());
+    let got = Arc::new(Mutex::new(Vec::new()));
+    let g = got.clone();
+    bus.subscribe("kit.core.migration.*", move |e: &Event| {
+        g.lock()
+            .unwrap()
+            .push((e.topic.as_str().to_string(), e.source.clone()));
+        Ok(())
+    });
+    let mut m = Migrator::new("k", "1.1.0")
+        .data_dir(tmp.path())
+        .publisher(bus.clone());
+    m.register(Migration::new("1.1.0", "db", |_| Ok(())));
+    m.add_driver(Mock::new("db", "1.0.0", &Log::default()));
+    m.run(&bg()).unwrap();
+    let topics: Vec<String> = got.lock().unwrap().iter().map(|(t, _)| t.clone()).collect();
+    assert_eq!(
+        topics,
+        [
+            "kit.core.migration.run_started",
+            "kit.core.migration.started",
+            "kit.core.migration.applied",
+            "kit.core.migration.run_completed"
+        ]
+    );
+    assert!(got.lock().unwrap().iter().all(|(_, s)| s == "core.upgrade"));
+}
+
+#[cfg(unix)]
+#[test]
+fn prune_failure_goes_to_the_warning_hook() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = tempfile::tempdir().unwrap();
+    let locked = tmp.path().join("backups/db/pre-0.1.0/locked");
+    fs::create_dir_all(&locked).unwrap();
+    fs::write(locked.join("f"), "").unwrap();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o500)).unwrap();
+    let warnings = Arc::new(Mutex::new(Vec::new()));
+    let w = warnings.clone();
+    let mut m = Migrator::new("k", "1.1.0")
+        .data_dir(tmp.path())
+        .backup_retention(1)
+        .on_warning(move |s| w.lock().unwrap().push(s.to_string()));
+    m.register(Migration::new("1.1.0", "db", |_| Ok(())));
+    m.add_driver(Mock::new("db", "1.0.0", &Log::default()));
+    let result = m.run(&bg());
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o750)).unwrap();
+    result.unwrap();
+    let w = warnings.lock().unwrap();
+    assert_eq!(w.len(), 1);
+    assert!(
+        w[0].starts_with("warning: prune old backups for db: "),
+        "{}",
+        w[0]
+    );
 }
