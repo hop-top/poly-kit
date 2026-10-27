@@ -3,12 +3,13 @@
 //! honoured. Env-mutating: one lock, XDG vars unset, HOME a temp dir.
 #![cfg(feature = "telemetry")]
 
+#[cfg(target_os = "macos")]
 use std::path::Path;
 use std::sync::Mutex;
 
-use hop_top_kit::telemetry::{
-    consent_path, get_install_id, install_id_path, legacy_consent_path, load_consent,
-};
+use hop_top_kit::telemetry::{consent_path, install_id_path, legacy_consent_path};
+#[cfg(target_os = "macos")]
+use hop_top_kit::telemetry::{get_install_id, load_consent};
 use hop_top_kit::xdg;
 
 static ENV: Mutex<()> = Mutex::new(());
@@ -22,6 +23,7 @@ fn bare_home() -> (std::sync::MutexGuard<'static, ()>, tempfile::TempDir) {
     (g, tmp)
 }
 
+#[cfg(target_os = "macos")]
 fn write(p: &Path, body: &[u8]) {
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(p, body).unwrap();
