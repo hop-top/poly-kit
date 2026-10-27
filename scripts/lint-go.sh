@@ -119,15 +119,20 @@ for mod in $(printf '%s\n' "$targets" | cut -f1 | sort -u); do
     fi
     # Keep directories that still hold Go files the build sees; one whose
     # files are all excluded by build tags is not a loadable package.
+    # golangci-lint takes directories, not import paths: relativise.
+    abs=$(cd "$mod" && pwd -P)
     # shellcheck disable=SC2086 # $dirs: one directory per word.
     pkgs=$(cd "$mod" && go list -e -find \
-        -f '{{if or .GoFiles .CgoFiles .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' \
-        $dirs 2>/dev/null | sed '/^$/d')
+        -f '{{if or .GoFiles .CgoFiles .TestGoFiles .XTestGoFiles}}{{.Dir}}{{end}}' \
+        $dirs 2>/dev/null | while IFS= read -r d; do
+            [ -n "$d" ] || continue
+            if [ "$d" = "$abs" ]; then printf './\n'; else printf './%s\n' "${d#"$abs"/}"; fi
+        done)
     if [ -z "$pkgs" ]; then
         echo "==> lint-go ($mod): changed directories hold no buildable Go package, skipped"
         continue
     fi
-    # shellcheck disable=SC2086 # $pkgs: one import path per word.
+    # shellcheck disable=SC2086 # $pkgs: one directory per word.
     run_lint "$mod" $pkgs || status=1
 done
 exit "$status"
