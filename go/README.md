@@ -10,10 +10,10 @@ Go implementations of the polyglot kit library, grouped by concern.
 | [`bridge/`](bridge/README.md) | kit/bridge payload types and manifest loader | a non-Go shell hands data to a kit tool |
 | [`conformance/`](conformance/README.md) | 12-factor adopter conformance helpers | you grade or record a CLI against the spec |
 | [`console/`](console/README.md) | human-facing CLI and TUI behaviour | you build commands, output, or screens |
-| [`core/`](core/README.md) | operational primitives: config, redact, scope, breaker, identity | you need a building block with no I/O of its own |
-| [`integrations/`](integrations/README.md) | cross-cutting adapters; repo-host SPI | you talk to GitHub, GitLab, Gitea or Bitbucket |
+| [`core/`](core/README.md) | operational primitives: config, identity, guardrails (scope, redact, breaker, netpolicy), upgrades, agent-CLI awareness | you need a primitive every kit tool shares |
+| [`integrations/`](integrations/README.md) | cross-cutting adapters; repo-host SPI over go-scm | you talk to GitHub, GitLab, Gitea, Gitee or Bitbucket |
 | [`runtime/`](runtime/README.md) | execution logic: bus, jobs, policy, provenance, side effects | a command does work that must be observed or replayed |
-| [`security/`](security/README.md) | tamper-evident audit log; artifact signing, sandboxed exec and SARIF pinned as gaps in `gaps_test.go` | you need to trust an artifact or an execution |
+| [`security/`](security/README.md) | tamper-evident audit log; artifact verification, sandboxed exec, signed log head and SARIF pinned as gaps in `gaps_test.go` | you need to trust an artifact or an execution |
 | [`storage/`](storage/README.md) | persistence layers: blob, kv, secret, sql, httpcache | data must outlive the process |
 | [`tools/`](tools/README.md) | static-analysis helpers for adopters | you lint a kit-based codebase |
 | [`transport/`](transport/README.md) | network exposure: REST, RPC, MCP, sockets, command surfaces | a command must be reachable from outside the process |
