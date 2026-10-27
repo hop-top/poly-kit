@@ -13,7 +13,14 @@ Credentials: the key comes from the resolved config and is required.
 ``ANTHROPIC_AUTH_TOKEN`` (sent as a bearer token when not blank) and
 ``ANTHROPIC_WORKSPACE_ID`` go only to a trusted origin: the default
 endpoint, ``ANTHROPIC_BASE_URL``, llm.yaml ``base_url``, ``LLM_BASE_URL``
-or loopback. No credential goes over plain http to a remote host.
+or loopback. No credential goes over plain http to a remote host. A
+hermetic config (:attr:`~hop_top_kit.llm.ResolvedConfig.hermetic`) reads
+none of these, nor ``LLM_BASE_URL`` or llm.yaml: only the config counts.
+
+:attr:`~hop_top_kit.llm.Request.tool_choice` maps to the body's
+``tool_choice`` (a named tool by its sent name);
+:attr:`~hop_top_kit.llm.Request.stream_events` adds tool-call and usage
+tokens to a stream (see :class:`AnthropicStream`).
 
 Provider params: ``tool_names`` (``sanitize``, the default, or
 ``strict``; see :mod:`hop_top_kit.llm_toolnames`), ``max_body_bytes``
@@ -84,7 +91,8 @@ class AnthropicAdapter:
     *config_file* is the llm.yaml data whose
     ``providers.anthropic.base_url`` counts as trusted (default: read
     from disk), *sleep* waits between retries (``None`` disables
-    retries), *max_retries* counts retries after the first attempt.
+    retries), *max_retries* counts retries after the first attempt. A
+    hermetic *cfg* ignores *env* and *config_file*: it reads neither.
     """
 
     def __init__(
@@ -98,6 +106,9 @@ class AnthropicAdapter:
         timeout: float = 600.0,
     ) -> None:
         p = cfg.provider
+        if cfg.hermetic:
+            # A hermetic adapter reads no environment variable and no file.
+            env, config_file = (lambda _k: None), {}
         env = env or os.environ.get
         if is_blank(p.api_key):
             raise _invalid("API key required")
@@ -123,16 +134,19 @@ class AnthropicAdapter:
         workspace = env("ANTHROPIC_WORKSPACE_ID") or ""
         if workspace:
             env_creds["anthropic-workspace-id"] = workspace
-        file = config_file if config_file is not None else llm_config._load_yaml_config()
-        section = ((file or {}).get("providers") or {}).get(SCHEME) or {}
-        trusted = [
-            DEFAULT_BASE_URL,
-            env_base or "",
-            env("LLM_BASE_URL") or "",
-            str(section.get("base_url") or ""),
-        ]
-        if credentials_trusted(base, trusted):
-            creds.update(env_creds)
+        # Without env credentials, what is trusted (llm.yaml,
+        # LLM_BASE_URL) is not asked.
+        if env_creds:
+            file = config_file if config_file is not None else llm_config._load_yaml_config()
+            section = ((file or {}).get("providers") or {}).get(SCHEME) or {}
+            trusted = [
+                DEFAULT_BASE_URL,
+                env_base or "",
+                env("LLM_BASE_URL") or "",
+                str(section.get("base_url") or ""),
+            ]
+            if credentials_trusted(base, trusted):
+                creds.update(env_creds)
         self._credentials = creds
         self._model = p.model
         self._transport = Transport(
@@ -185,6 +199,7 @@ class AnthropicAdapter:
             scrub=self._transport.scrub,
             thinking=req.thinking is not None,
             names=names,
+            events=req.stream_events,
         )
 
     # -- Completer / Streamer / ToolCaller / ToolStreamer ---------------
@@ -233,6 +248,8 @@ def build_body(
     calls go out under their *names* wire names. Raises
     :class:`~hop_top_kit.llm.LLMError` for a request the API cannot
     express, before anything is sent."""
+    if (why := llm.check_tool_choice(req.tool_choice, tools)) is not None:
+        raise _invalid(why)
     system, messages = _messages(req.messages, names)
     max_tokens = req.max_tokens if req.max_tokens > 0 else DEFAULT_MAX_TOKENS
     b: dict[str, Any] = {
@@ -259,9 +276,19 @@ def build_body(
         b["stop_sequences"] = list(req.stop_sequences)
     if tools is not None:
         b["tools"] = [_tool_def(d, names) for d in tools]
+    if (c := req.tool_choice) is not None:
+        b["tool_choice"] = _tool_choice(c, names)
     if stream:
         b["stream"] = True
     return b
+
+
+def _tool_choice(c: llm.ToolChoice, names: ToolNames) -> dict[str, Any]:
+    """A checked choice as the body's ``tool_choice``; a named tool goes
+    by the name the request sends for it."""
+    if c.mode == llm.ToolChoiceMode.TOOL:
+        return {"type": "tool", "name": names.wire(c.name)}
+    return {"type": str(c.mode)}
 
 
 def _text_block(text: str) -> dict[str, Any]:
@@ -637,7 +664,13 @@ class AnthropicStream:
     is the folded turn once the ``done`` token was yielded.
 
     Text deltas yield :attr:`Token.content`; thinking deltas yield
-    :attr:`Token.thinking` when the request enabled thinking. The body
+    :attr:`Token.thinking` when the request enabled thinking. With
+    :attr:`~hop_top_kit.llm.Request.stream_events`, ``message_start`` and
+    ``message_delta`` also yield a cumulative :attr:`Token.usage` snapshot,
+    and each ``tool_use`` block a start, its argument deltas and an end
+    :attr:`Token.tool_call` event (see
+    :class:`~hop_top_kit.llm.ToolCallEvent`); a call still open when the
+    stream fails gets no end. The body
     ending without ``message_stop`` raises
     :class:`~hop_top_kit.llm.StreamTruncatedError`; an SSE ``error``
     event raises the error its type maps to (``overloaded_error`` an
@@ -652,12 +685,16 @@ class AnthropicStream:
         scrub: Callable[[str], str],
         thinking: bool,
         names: ToolNames,
+        events: bool = False,
     ) -> None:
         self._reader = reader
         self._model = model
         self._scrub = scrub
         self._thinking = thinking
         self._names = names
+        self._events = events
+        # A tool_use block's content index to its call index.
+        self._calls: dict[int, int] = {}
         self._acc = _Accumulator()
         self._finished = False
         self._outcome: llm.StreamOutcome | None = None
@@ -711,12 +748,56 @@ class AnthropicStream:
                 if self._thinking:
                     return llm.Token(thinking=text)
                 continue
+            if self._events and (tok := self._event(ev.event, data)) is not None:
+                return tok
             if ev.event == "message_stop":
                 out = self._acc.outcome()
                 out.tool_calls = self._names.calls(out.tool_calls)
                 self._outcome = out
                 self.close()
                 return llm.Token(done=True)
+
+    def _event(self, kind: str, data: Any) -> llm.Token | None:
+        """An accumulated event as a tool-call or usage token, if it is one."""
+        if kind in ("message_start", "message_delta"):
+            return llm.Token(usage=_total(llm.Usage(**vars(self._acc.usage))))
+        index = data.get("index") if isinstance(data, dict) else None
+        if kind == "content_block_start":
+            b = self._acc.blocks[-1]
+            if b.kind != "tool_use":
+                return None
+            i = self._calls[index] = len(self._calls)
+            return llm.Token(
+                tool_call=llm.ToolCallEvent(
+                    kind=llm.ToolCallEventKind.START,
+                    index=i,
+                    id=b.id,
+                    name=self._names.original(b.name),
+                )
+            )
+        if kind == "content_block_delta":
+            d = data.get("delta") or {}
+            part = _s(d.get("partial_json"))
+            if index not in self._calls or d.get("type") != "input_json_delta" or not part:
+                return None
+            return llm.Token(
+                tool_call=llm.ToolCallEvent(
+                    kind=llm.ToolCallEventKind.DELTA, index=self._calls[index], arguments_delta=part
+                )
+            )
+        if kind == "content_block_stop" and index in self._calls:
+            b = self._acc.blocks[index]
+            call = llm.ToolCall(id=b.id, name=self._names.original(b.name), arguments=b.input)
+            return llm.Token(
+                tool_call=llm.ToolCallEvent(
+                    kind=llm.ToolCallEventKind.END,
+                    index=self._calls[index],
+                    id=call.id,
+                    name=call.name,
+                    call=call,
+                )
+            )
+        return None
 
 
 # ---------------------------------------------------------------------------

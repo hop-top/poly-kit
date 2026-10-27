@@ -50,6 +50,11 @@ __all__ = [  # noqa: RUF022 — grouped by category
     "ThinkingConfig",
     "CacheControl",
     "StreamOutcome",
+    "ToolChoiceMode",
+    "ToolChoice",
+    "check_tool_choice",
+    "ToolCallEventKind",
+    "ToolCallEvent",
     # URI + config
     "URI",
     "ProviderConfig",
@@ -120,8 +125,9 @@ class ToolCaller(Protocol):
 class ToolStream(Protocol):
     """A token iterator whose finished turn can be read back.
 
-    Iterating yields text (and, with :attr:`Request.thinking`, thinking)
-    tokens, then one ``done`` token, then stops. :meth:`outcome` returns
+    Iterating yields text (and, with :attr:`Request.thinking`, thinking;
+    with :attr:`Request.stream_events`, tool-call and usage) tokens, then
+    one ``done`` token, then stops. :meth:`outcome` returns
     the folded turn once the ``done`` token was yielded, else ``None``;
     after an error it stays ``None``.
     """
@@ -337,6 +343,15 @@ class Request:
     ``0.0`` included, is sent. ``max_tokens`` 0 means the provider
     default. ``thinking`` enables extended thinking where the provider
     has it; thinking deltas then stream as :attr:`Token.thinking`.
+
+    ``stream_events``, when true, makes a stream also yield incremental
+    tool-call events (:attr:`Token.tool_call`) and usage snapshots
+    (:attr:`Token.usage`); false, a stream yields exactly the tokens it
+    always has. Ignored by ``complete`` and ``call_with_tools``.
+
+    ``tool_choice``, when set, constrains tool use on a tool-calling
+    request (``call_with_tools``, ``stream_with_tools``); ``None`` leaves
+    the provider default. See :class:`ToolChoice`.
     """
 
     messages: list[Message]
@@ -346,6 +361,59 @@ class Request:
     stop_sequences: list[str] = field(default_factory=list)
     extensions: dict[str, Any] = field(default_factory=dict)
     thinking: ThinkingConfig | None = None
+    stream_events: bool = False
+    tool_choice: ToolChoice | None = None
+
+
+class ToolChoiceMode(StrEnum):
+    """Whether the model must call a tool."""
+
+    # The model decides (the providers' default).
+    AUTO = "auto"
+    # The model calls at least one tool, its pick.
+    ANY = "any"
+    # No tool call although tools are defined.
+    NONE = "none"
+    # The model calls the tool :attr:`ToolChoice.name`.
+    TOOL = "tool"
+
+
+@dataclass(frozen=True)
+class ToolChoice:
+    """Constrains tool use on a tool-calling request.
+
+    ``name`` is the tool's :attr:`ToolDef.name` as defined (before any
+    provider name mapping), set with mode ``tool`` only. Adapters reject
+    an invalid choice (see :func:`check_tool_choice`) before sending, and
+    so does a call without tools (``complete``, ``stream``).
+    """
+
+    mode: ToolChoiceMode | str
+    name: str = ""
+
+
+def check_tool_choice(c: ToolChoice | None, tools: list[ToolDef] | None) -> str | None:
+    """Why *c* cannot go with *tools*, or ``None`` when it can: a mode
+    that is not a :class:`ToolChoiceMode`, no tools, a name missing with
+    mode ``tool`` or set with another mode, or naming no tool in *tools*.
+    ``None`` is valid. Adapters raise :class:`LLMError` with the reason,
+    prefixed with their scheme. Go ``CheckToolChoice``."""
+    if c is None:
+        return None
+    mode = str(c.mode)
+    if mode not in {m.value for m in ToolChoiceMode}:
+        return f"unknown tool_choice mode {_go_quote(mode)}"
+    if not tools:
+        return f"tool_choice {_go_quote(mode)} needs tools"
+    if mode != ToolChoiceMode.TOOL:
+        if c.name:
+            return f"tool_choice {_go_quote(mode)} takes no tool name"
+        return None
+    if not c.name:
+        return f"tool_choice {_go_quote(mode)} needs a tool name"
+    if any(t.name == c.name for t in tools):
+        return None
+    return f"tool_choice names unknown tool {_go_quote(c.name)}"
 
 
 @dataclass
@@ -396,13 +464,60 @@ class Usage:
 
 @dataclass
 class Token:
-    """A streaming chunk. ``thinking`` is a thinking delta, sent only when
-    the request enabled :attr:`Request.thinking`; ``content`` is then
-    empty."""
+    """A streaming chunk. A token carries one thing: a text delta
+    (``content``), a thinking delta (``thinking``), a tool-call event
+    (``tool_call``), a usage snapshot (``usage``), or the end (``done``).
+
+    ``thinking`` is sent only when the request enabled
+    :attr:`Request.thinking`. ``tool_call`` and ``usage`` are sent only
+    when the request set :attr:`Request.stream_events`; ``usage`` is the
+    turn's usage so far, each time the provider reports it: a cumulative
+    snapshot, never a delta, whose last value equals the finished turn's
+    :attr:`StreamOutcome.usage`.
+    """
 
     content: str = ""
     done: bool = False
     thinking: str = ""
+    tool_call: ToolCallEvent | None = None
+    usage: Usage | None = None
+
+
+class ToolCallEventKind(StrEnum):
+    """The step of a streamed tool call."""
+
+    # Opens a call: index, id and name are set.
+    START = "start"
+    # A fragment of the call's JSON arguments.
+    DELTA = "delta"
+    # Closes a call: ``call`` holds it complete.
+    END = "end"
+
+
+@dataclass(frozen=True)
+class ToolCallEvent:
+    """One step of a tool call as it streams.
+
+    For each call: one start, then any deltas, then one end, in that
+    order; events of parallel calls may interleave and are told apart by
+    ``index``, the call's position in :attr:`StreamOutcome.tool_calls`. A
+    call that started but never ended (the stream failed or was closed)
+    did not complete: no end event is made up for it.
+
+    ``id`` and ``name`` are set on start and end; ``name`` is the tool's
+    name as the caller defined it, whatever name went over the wire.
+    ``arguments_delta`` is a raw fragment of the arguments' JSON, on
+    delta only; fragments concatenate to the complete arguments and are
+    not valid JSON alone. ``call`` is the complete call, on end only:
+    exactly the entry at ``index`` in :attr:`StreamOutcome.tool_calls`.
+    """
+
+    kind: ToolCallEventKind
+    index: int
+    id: str = ""
+    name: str = ""
+    arguments_delta: str = ""
+    call: ToolCall | None = None
 
 
 @dataclass
@@ -478,9 +593,20 @@ class ProviderConfig:
 
 @dataclass
 class ResolvedConfig:
+    """A provider's resolved configuration.
+
+    ``hermetic``, set by :func:`resolve` and :func:`load_config` with
+    ``hermetic=True``, tells the adapter to read nothing ambient while it
+    builds and runs: no environment variable (the anthropic adapter's
+    ``ANTHROPIC_BASE_URL``, ``ANTHROPIC_AUTH_TOKEN``,
+    ``ANTHROPIC_WORKSPACE_ID`` and ``LLM_BASE_URL``) and no file
+    (llm.yaml). Only this config counts.
+    """
+
     uri: URI
     provider: ProviderConfig
     fallbacks: list[str] = field(default_factory=list)
+    hermetic: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -825,9 +951,17 @@ def declared_endpoints(scheme: str) -> tuple[str, ...]:
     return _endpoints.get(scheme, ())
 
 
-def resolve(uri: str) -> Any:
-    """Resolve a URI to a provider instance via the registry."""
-    return _resolve_from_config(load_config(uri))
+def resolve(uri: str, *, hermetic: bool = False) -> Any:
+    """Resolve a URI to a provider instance via the registry.
+
+    *hermetic* reads nothing ambient: the provider comes from the URI
+    alone (see :func:`load_config`), and the adapter gets
+    :attr:`ResolvedConfig.hermetic`, so it reads no environment variable
+    and no llm.yaml either; credentials and endpoints come only from the
+    URI (``api_key``, ``base_url``, host form). For embedding kit in an
+    app that owns its configuration. Go ``Resolve(uri, Hermetic())``.
+    """
+    return _resolve_from_config(load_config(uri, hermetic=hermetic))
 
 
 # ---------------------------------------------------------------------------
@@ -994,11 +1128,12 @@ def default_router_config() -> RouterConfig:
     return RouterConfig()
 
 
-def parse_router_config(extras: dict[str, Any]) -> RouterConfig:
+def parse_router_config(extras: dict[str, Any], *, hermetic: bool = False) -> RouterConfig:
     """Extract RouteLLM config from a provider's *extras* map.
 
     Looks for a ``routellm`` key in *extras*. Missing keys fall back
-    to defaults. Environment variables override all other sources:
+    to defaults. Environment variables override all other sources,
+    unless *hermetic*, which reads none:
 
     - ``ROUTELLM_BASE_URL``
     - ``ROUTELLM_STRONG_MODEL``
@@ -1027,6 +1162,9 @@ def parse_router_config(extras: dict[str, Any]) -> RouterConfig:
                 enforce=bool(eva_raw.get("enforce", False)),
             )
 
+    if hermetic:
+        return cfg
+
     # Environment variable overrides.
     if v := os.environ.get("ROUTELLM_BASE_URL"):
         cfg.base_url = v
@@ -1050,6 +1188,7 @@ def create_llm(
     on_fallback: Callable[[int, int, Exception], None] | None = None,
     on_route: Callable[[str, float, str], None] | None = None,
     on_eva_result: Callable[[str, bool, list[str]], None] | None = None,
+    hermetic: bool = False,
 ) -> Client:
     """Create a :class:`Client` from a provider URI with optional fallbacks.
 
@@ -1062,17 +1201,19 @@ def create_llm(
         on_fallback: Hook called when falling back ``(from_idx, to_idx, error)``.
         on_route: Hook called after a routing decision ``(router, score, model)``.
         on_eva_result: Hook called after eva evaluation ``(contract, passed, violations)``.
+        hermetic: Read nothing ambient, for the primary and each fallback
+            (see :func:`resolve`); fallbacks then come from *fallback* only.
 
     Returns:
         A configured :class:`Client`.
     """
-    cfg = load_config(uri)
+    cfg = load_config(uri, hermetic=hermetic)
     primary = _resolve_from_config(cfg)
 
     fallback_uris = cfg.fallbacks if fallback is None else fallback
     fallback_providers = []
     for fb_uri in fallback_uris:
-        fb_cfg = load_config(fb_uri)
+        fb_cfg = load_config(fb_uri, hermetic=hermetic)
         fallback_providers.append(_resolve_from_config(fb_cfg))
 
     return Client(

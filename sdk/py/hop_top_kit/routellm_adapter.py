@@ -6,6 +6,10 @@ Parses URIs of the form ``routellm://router:threshold`` (e.g.
 completions through its routing logic.
 
 Optional Eva contract validation runs post-completion when configured.
+
+:attr:`~hop_top_kit.llm.Request.tool_choice` goes to the Controller in
+the OpenAI shape (:func:`hop_top_kit.llm_openai.tool_choice`); a choice
+without tools, or an invalid one, is refused before routing.
 """
 
 from __future__ import annotations
@@ -141,6 +145,7 @@ class RouteLLMAdapter:
     # -- Completer protocol ------------------------------------
 
     def complete(self, req: llm.Request) -> llm.Response:
+        llm_openai.check_tool_choice("routellm", req, None)
         messages = map_messages(req.messages, self._history_names())
 
         kwargs: dict[str, Any] = {}
@@ -179,6 +184,7 @@ class RouteLLMAdapter:
     # -- Streamer protocol -------------------------------------
 
     def stream(self, req: llm.Request) -> Iterator[llm.Token]:
+        llm_openai.check_tool_choice("routellm", req, None)
         messages = map_messages(req.messages, self._history_names())
 
         kwargs: dict[str, Any] = {"stream": True}
@@ -205,8 +211,13 @@ class RouteLLMAdapter:
         so tool definitions and replayed calls follow the openai rule."""
         return ToolNames.build(OPENAI_TOOL_NAMES, self._tool_name_mode, tools or [])
 
-    def _tool_kwargs(self, req: llm.Request) -> dict[str, Any]:
+    def _tool_kwargs(
+        self, req: llm.Request, tools: list[llm.ToolDef], names: ToolNames
+    ) -> dict[str, Any]:
+        llm_openai.check_tool_choice("routellm", req, tools)
         kwargs: dict[str, Any] = {}
+        if req.tool_choice is not None:
+            kwargs["tool_choice"] = llm_openai.tool_choice(req.tool_choice, names)
         if req.temperature is not None:
             kwargs["temperature"] = req.temperature
         if req.max_tokens:
@@ -225,7 +236,7 @@ class RouteLLMAdapter:
             threshold=self._threshold,
             messages=messages,
             tools=llm_openai.map_tools(tools, names),
-            **self._tool_kwargs(req),
+            **self._tool_kwargs(req, tools, names),
         )
         c = llm_openai.parse_completion(_plain(result), names)
         return llm.ToolResponse(
@@ -246,7 +257,7 @@ class RouteLLMAdapter:
             messages=messages,
             tools=llm_openai.map_tools(tools, names),
             stream=True,
-            **self._tool_kwargs(req),
+            **self._tool_kwargs(req, tools, names),
         )
         return RouteLLMToolStream(iter(result), names)
 
