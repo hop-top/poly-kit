@@ -2269,6 +2269,11 @@ its name under `services.<svc>.auth` or `services.all.auth`:
   `WithAPIKeys` adds `token key`. The leaves merge into the one
   command, and a tool with a `token` command of its own, mounted
   through an option to `cli.New`, gets them grafted into it.
+  `verify` and `key` need serve authentication (`go/transport/authn`),
+  so they live in `go/console/cli/service`: a binary that imports it
+  registers them, including for `peers.With`, and bare `cli` and
+  `peers` deliberately do not link it. A peers tool built without the
+  service package has `create`, `decode` and `claims` only.
 - `token create` signs a token `jwt` accepts: EdDSA, the keypair's
   `kid` in the header, `sub`, `iat`, `exp`, and optionally `tenant`,
   `aud`, `iss` and the scopes, written as `scope` (space-delimited) and

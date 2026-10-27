@@ -61,10 +61,12 @@ func With(cfg Config) func(*cli.Root) {
 		p := cli.Extend(r, key, func(*cli.Root) *Peers { return &Peers{} })
 		p.cfg = cfg
 		// The mesh puts the Root in front of other processes: for the
-		// kit token command it counts as a serve option, so with the
-		// serve plane linked, token verify mounts beside the signing
-		// leaves. Peer challenges sign with the same identity keypair
-		// (identity.SignJWT); nothing about peer trust changes.
+		// kit token command it counts as a serve option. token verify
+		// needs authn, so it mounts beside the signing leaves only in a
+		// binary that imports go/console/cli/service, which registers
+		// it; peers deliberately links no serve plane. Peer challenges
+		// sign with the same identity keypair (identity.SignJWT);
+		// nothing about peer trust changes.
 		serving.Mark(r)
 	}
 }

@@ -274,7 +274,10 @@ keypair (`cli.WithIdentity`) and any keys in
 which signs with the keypair, on any tool, serving or not; with any
 serve option (`WithAPI`, or only mcp, rpc or socket) or `peers.With`
 it adds `token verify`, which checks a token the way a service would
-(`--service rpc` for another one; exit `5` when refused):
+(`--service rpc` for another one; exit `5` when refused). `token
+verify` and `token key` need `go/transport/authn`, so only a binary
+that imports `go/console/cli/service` has them; bare `cli` and `peers`
+deliberately do not link it:
 
 ```console
 $ export TOKEN=$(mytool token create --sub ci-bot --tenant acme --scopes widgets:read --expires 1h)
