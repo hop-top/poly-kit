@@ -8,6 +8,7 @@
  */
 
 import { KeyEndpointError } from "./llm-errors";
+import { providerBlock, readLLMFile } from "./llm-file";
 import { isLoopback } from "./netpolicy";
 
 // ─── Redaction ───────────────────────────────────────────────────────────────
@@ -137,7 +138,8 @@ function origin(e: Endpoint): string {
   return `${e.scheme}://${e.host}:${e.port}`;
 }
 
-function blankKey(key: string | undefined): boolean {
+/** @internal A key that is empty or only whitespace: no key. */
+export function blankKey(key: string | undefined): boolean {
   return (key ?? "").trim() === "";
 }
 
@@ -164,23 +166,39 @@ export function checkKeyEndpoint(
 // ─── Declarations ────────────────────────────────────────────────────────────
 
 /**
+ * A scheme's credential: the variables holding its key, highest
+ * precedence first. `optional` marks a key a provider runs without
+ * (a local runtime): `LLM_API_KEY` is then not lent to it. No
+ * `envVars` and `optional` is a scheme that takes no key at all.
+ */
+export interface ProviderKey {
+  envVars: string[];
+  optional?: boolean;
+}
+
+/**
  * What an adapter states about its scheme: the endpoints credentials
- * kit resolved itself may go to (see {@link credentialsTrusted}).
+ * kit resolved itself may go to (see {@link credentialsTrusted}), and
+ * its credential when the `<SCHEME>_API_KEY` convention does not fit.
  */
 export interface Declaration {
   endpoints?: string[];
+  key?: ProviderKey;
 }
 
 const declarations = new Map<string, Declaration>();
+const registered = new Set<string>();
 
-/** @internal Records `scheme`'s declaration; `register` calls it. */
-export function setDeclaration(scheme: string, decl: Declaration): void {
-  declarations.set(scheme, decl);
+/** @internal Records that `scheme` has an adapter; `register` calls it. */
+export function setDeclaration(scheme: string, decl?: Declaration): void {
+  registered.add(scheme);
+  if (decl) declarations.set(scheme, decl);
 }
 
 /** @internal */
 export function clearDeclarations(): void {
   declarations.clear();
+  registered.clear();
 }
 
 /** The declaration `scheme` registered with, if any. */
@@ -188,36 +206,47 @@ export function declarationOf(scheme: string): Declaration | undefined {
   return declarations.get(scheme);
 }
 
+/** @internal Whether an adapter is registered for `scheme`. */
+export function isRegistered(scheme: string): boolean {
+  return registered.has(scheme);
+}
+
 /**
  * Reports whether credentials kit resolved itself, not taken from the
- * URI (an env key, a bearer token, a workspace header), may go to
- * `baseURL` for `scheme`: it is loopback, or shares an origin with the
- * scheme's declared endpoints, `LLM_BASE_URL` or one of `extra` (the
- * adapter's default endpoint and its own base URL variable).
+ * URI (an env or llm.yaml key, a bearer token, a workspace header), may
+ * go to `baseURL` for `scheme`: it is loopback, or shares an origin
+ * with the scheme's declared endpoints, its llm.yaml `base_url`,
+ * `LLM_BASE_URL` or one of `extra` (the adapter's default endpoint and
+ * its own base URL variable). Every credential path decides here.
  */
 export function credentialsTrusted(
   scheme: string,
   baseURL: string,
   ...extra: string[]
 ): boolean {
-  return trustedOrigin(scheme, baseURL, extra, process.env["LLM_BASE_URL"]);
+  return trustedOrigin(scheme, baseURL, extra, true);
 }
 
 /**
- * @internal {@link credentialsTrusted} with `LLM_BASE_URL` passed in:
- * a hermetic adapter passes none.
+ * @internal {@link credentialsTrusted}; `ambient` false (hermetic)
+ * consults neither `LLM_BASE_URL` nor llm.yaml.
  */
 export function trustedOrigin(
   scheme: string,
   baseURL: string,
   extra: readonly string[],
-  llmBaseURL: string | undefined
+  ambient: boolean
 ): boolean {
   const e = parseEndpoint(baseURL);
   if (!e) return false;
   if (isLoopback(e.host)) return true;
   const trusted = [...(declarations.get(scheme)?.endpoints ?? []), ...extra];
-  if (llmBaseURL) trusted.push(llmBaseURL);
+  if (ambient) {
+    const file = providerBlock(readLLMFile(), scheme)?.baseURL;
+    if (file) trusted.push(file);
+    const env = process.env["LLM_BASE_URL"];
+    if (env) trusted.push(env);
+  }
   return trusted.some((t) => {
     const te = t ? parseEndpoint(t) : undefined;
     return te !== undefined && origin(te) === origin(e);

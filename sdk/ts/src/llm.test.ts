@@ -90,16 +90,35 @@ describe("parseURI", () => {
     expect(uri.model).toBe("ns/model-v2");
   });
 
-  it("throws on missing scheme", () => {
-    expect(() => parseURI("gpt-4")).toThrow();
+  it("throws on missing scheme, masking credentials", () => {
+    expect(() => parseURI("gpt-4?api_key=sk-secret")).toThrow(
+      'missing scheme in URI "gpt-4?api_key=REDACTED"'
+    );
   });
 
-  it("throws on empty model", () => {
-    expect(() => parseURI("openai://")).toThrow();
+  it("throws on empty scheme", () => {
+    expect(() => parseURI("://gpt-4")).toThrow('empty scheme in URI "://gpt-4"');
+  });
+
+  it("accepts an empty model", () => {
+    const uri = parseURI("openai://");
+    expect(uri.scheme).toBe("openai");
+    expect(uri.model).toBe("");
   });
 
   it("throws on empty string", () => {
-    expect(() => parseURI("")).toThrow();
+    expect(() => parseURI("")).toThrow("empty URI");
+  });
+
+  it("keeps param values as written: no percent-decoding", () => {
+    const uri = parseURI("openai://gpt-4?base_url=https%3A%2F%2Fx.test&flag");
+    expect(uri.params).toEqual({ base_url: "https%3A%2F%2Fx.test", flag: "" });
+  });
+
+  it("takes an IPv6 host form", () => {
+    const uri = parseURI("ollama://[::1]:11434/llama3");
+    expect(uri.host).toBe("[::1]:11434");
+    expect(uri.model).toBe("llama3");
   });
 });
 
@@ -137,14 +156,16 @@ describe("loadConfig", () => {
     expect(cfg.provider.model).toBe("gpt-4");
   });
 
-  it("applies env var overrides", () => {
+  it("applies env vars where the URI names nothing", () => {
+    register("kitenv", () => mockProvider());
     process.env["LLM_API_KEY"] = "sk-test";
     process.env["LLM_BASE_URL"] = "https://custom.api.com";
     process.env["LLM_FALLBACK"] = "anthropic://claude-3,ollama://llama3";
 
-    const cfg = loadConfig("openai://gpt-4");
+    const cfg = loadConfig("kitenv://gpt-4");
     expect(cfg.provider.apiKey).toBe("sk-test");
     expect(cfg.provider.baseURL).toBe("https://custom.api.com");
+    clearRegistry();
     expect(cfg.fallbacks).toEqual([
       "anthropic://claude-3",
       "ollama://llama3",
@@ -180,9 +201,7 @@ describe("loadConfig", () => {
   });
 
   it("extracts base_url from URI params", () => {
-    const cfg = loadConfig(
-      "openai://gpt-4?base_url=https%3A%2F%2Fcustom.api.com"
-    );
+    const cfg = loadConfig("openai://gpt-4?base_url=https://custom.api.com");
     expect(cfg.provider.baseURL).toBe("https://custom.api.com");
   });
 
@@ -191,16 +210,25 @@ describe("loadConfig", () => {
     expect(cfg.provider.baseURL).toBe("http://localhost:11434");
   });
 
-  it("env LLM_API_KEY overrides URI api_key param", () => {
+  it("URI api_key param outranks LLM_API_KEY", () => {
     process.env["LLM_API_KEY"] = "env-key";
     const cfg = loadConfig("openai://gpt-4?api_key=uri-key");
-    expect(cfg.provider.apiKey).toBe("env-key");
+    expect(cfg.provider.apiKey).toBe("uri-key");
   });
 
-  it("env LLM_BASE_URL overrides host-derived baseURL", () => {
+  it("URI host outranks LLM_BASE_URL, base_url param outranks the host", () => {
     process.env["LLM_BASE_URL"] = "https://override.com";
-    const cfg = loadConfig("ollama://localhost:11434/llama3");
-    expect(cfg.provider.baseURL).toBe("https://override.com");
+    expect(loadConfig("ollama://localhost:11434/llama3").provider.baseURL).toBe(
+      "http://localhost:11434"
+    );
+    expect(
+      loadConfig("ollama://localhost:11434/llama3?base_url=http://127.0.0.1:9").provider.baseURL
+    ).toBe("http://127.0.0.1:9");
+  });
+
+  it("lends LLM_API_KEY to no scheme without an adapter", () => {
+    process.env["LLM_API_KEY"] = "env-key";
+    expect(loadConfig("nosuchscheme://m").provider.apiKey).toBeUndefined();
   });
 });
 

@@ -12,8 +12,9 @@
  * as given. `lmstudio` defaults to `http://localhost:1234/v1` and
  * appends `/v1` to any base URL that lacks it. Params: `tool_names`
  * (`sanitize` | `strict`), `max_body_bytes`, `max_event_bytes`. The key
- * is the URI's `api_key`, `LLM_API_KEY` or `<SCHEME>_API_KEY`
- * (`lmstudio` sends none unless given); a blank key sends no
+ * resolves as `loadConfig` resolves it (the URI's `api_key`, llm.yaml,
+ * `<SCHEME>_API_KEY`, then `LLM_API_KEY`; `lmstudio` sends none unless
+ * the URI or llm.yaml gives one); a blank key sends no
  * Authorization header.
  *
  * @example
@@ -69,7 +70,6 @@ import {
   type Limits,
   type TransportOptions,
 } from "./llm-http";
-import { envKeyName, withResolvedKey } from "./llm-keys";
 
 /** Schemes this adapter registers. */
 export const OPENAI_SCHEMES = [
@@ -596,24 +596,22 @@ function mapErrorResponse(
 
 // ─── Registration ────────────────────────────────────────────────────────────
 
-function factoryFor(scheme: string) {
-  return (cfg: ResolvedConfig): Provider => {
-    const base = OPENAI_BASE_URLS[scheme] ?? OPENAI_DEFAULT_BASE_URL;
-    // LM Studio's local server takes no key: none is read from the env.
-    const envVar = scheme === "lmstudio" ? undefined : envKeyName(scheme);
-    const a = new OpenAIAdapter(withResolvedKey(cfg, envVar, [base]));
-    return {
-      complete: (req) => a.complete(req),
-      stream: (req) => a.stream(req),
-      callWithTools: (req, tools) => a.callWithTools(req, tools),
-      streamWithTools: (req, tools) => a.streamWithTools(req, tools),
-      close: () => a.close(),
-    };
+function openaiFactory(cfg: ResolvedConfig): Provider {
+  // loadConfig resolved and guarded the key.
+  const a = new OpenAIAdapter(cfg);
+  return {
+    complete: (req) => a.complete(req),
+    stream: (req) => a.stream(req),
+    callWithTools: (req, tools) => a.callWithTools(req, tools),
+    streamWithTools: (req, tools) => a.streamWithTools(req, tools),
+    close: () => a.close(),
   };
 }
 
 for (const s of OPENAI_SCHEMES) {
-  register(s, factoryFor(s), {
+  register(s, openaiFactory, {
     endpoints: [OPENAI_BASE_URLS[s] ?? OPENAI_DEFAULT_BASE_URL],
+    // LM Studio's local server takes no key: none is resolved for it.
+    ...(s === "lmstudio" ? { key: { envVars: [], optional: true } } : {}),
   });
 }

@@ -1,14 +1,12 @@
 // Runs contracts/llm-v1/vectors.json against this SDK: every
 // anthropic_* section through AnthropicAdapter and loopback fake
-// servers, credential_headers, redact_uri, usage_cost, and the bus_*
-// payloads through the pure builders (this client publishes no bus
-// events). Go is
-// canonical; a failure means this SDK drifted, not that a vector
-// should change. tool_names runs in llm-toolnames.conformance.test.ts,
-// media_fetch in llm-media.conformance.test.ts.
-//
-// Sections this SDK does not run are listed in NOT_RUN with the reason;
-// a section in neither list fails the run, so none is skipped silently.
+// servers, credential_headers, key_endpoint, parse_uri, redact_uri,
+// usage_cost, and the bus_* payloads through the pure builders (this
+// client publishes no bus events). Go is canonical; a failure means
+// this SDK drifted, not that a vector should change. tool_names runs
+// in llm-toolnames.conformance.test.ts, media_fetch in
+// llm-media.conformance.test.ts. A section in neither list fails the
+// run, so none is skipped silently.
 
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   APIError,
   AuthError,
+  LLMError,
   HTTPStatusError,
   KeyEndpointError,
   ModelError,
@@ -27,8 +26,12 @@ import {
   StreamTruncatedError,
   ToolNameError,
   inlineSource,
+  applyAPIKey,
   isFallbackable,
+  loadConfig,
+  parseURI,
   redactURI,
+  resolve,
   requestStartedPayload,
   responseReceivedPayload,
   usageCost,
@@ -97,9 +100,9 @@ interface File {
   [section: string]: unknown;
 }
 
-/** Sections run here, by sibling runners, and not at all (with why). */
+/** Sections run here and by sibling runners. */
 const RUN = [
-  "redact_uri", "usage_cost", "credential_headers",
+  "redact_uri", "parse_uri", "usage_cost", "credential_headers", "key_endpoint",
   "anthropic_request", "anthropic_request_error", "anthropic_headers",
   "anthropic_stream", "anthropic_accumulate", "anthropic_error",
   "anthropic_limits", "anthropic_response", "anthropic_tool_names",
@@ -107,16 +110,6 @@ const RUN = [
   "bus_request_started", "bus_response_received",
 ];
 const SIBLING = ["tool_names", "media_fetch"];
-const NOT_RUN: Record<string, string> = {
-  parse_uri:
-    "core parseURI keeps its own error texts and rejects an empty model; adapters are unaffected",
-  key_endpoint:
-    "core has no llm.yaml, ApplyAPIKey or Resolve-time key guard; adapters guard keys instead",
-};
-/** Single vectors not run, with why. */
-const NOT_RUN_VECTORS: Record<string, string> = {
-  "credential_headers/llm.yaml base_url": "core has no llm.yaml layer",
-};
 
 const file = loadVectors<File>();
 const section = (name: string): Section => file[name] as Section;
@@ -128,7 +121,7 @@ describe("llm-v1 conformance file", () => {
     for (const k of Object.keys(file)) {
       if (k === "version" || k === "description") continue;
       expect(
-        RUN.includes(k) || SIBLING.includes(k) || k in NOT_RUN,
+        RUN.includes(k) || SIBLING.includes(k),
         `section ${k} has no runner`
       ).toBe(true);
     }
@@ -292,6 +285,28 @@ async function server(
 const sseServer = (body: string) =>
   server((_h, res) => reply(res, "text/event-stream", body));
 
+/**
+ * Points XDG_CONFIG_HOME at a fresh dir holding `yaml` as hop/llm.yaml
+ * (none when empty), where Go reads it. Restored after each test.
+ */
+function useLLMYaml(yaml: string): void {
+  const xdg = mkdtempSync(join(tmpdir(), "kit-llm-conf-"));
+  const restore = isolateEnv(["XDG_CONFIG_HOME"]);
+  process.env["XDG_CONFIG_HOME"] = xdg;
+  if (yaml !== "") {
+    mkdirSync(join(xdg, "hop"), { recursive: true });
+    writeFileSync(join(xdg, "hop", "llm.yaml"), yaml);
+  }
+  cleanups.push(() => {
+    restore();
+    rmSync(xdg, { recursive: true, force: true });
+  });
+}
+const cleanups: (() => void)[] = [];
+afterEach(() => {
+  for (const c of cleanups.splice(0).reverse()) c();
+});
+
 // ─── Provider-neutral sections ───────────────────────────────────────────────
 
 describe("llm-v1 conformance: redact_uri", () => {
@@ -299,6 +314,84 @@ describe("llm-v1 conformance: redact_uri", () => {
     it(v.name, () => {
       strictKeys(v, ["name", "in", "want"], v.name);
       expect(redactURI(v.in)).toBe(v.want);
+    });
+  }
+});
+
+describe("llm-v1 conformance: parse_uri", () => {
+  type V = {
+    name: string;
+    uri: string;
+    scheme?: string;
+    model?: string;
+    host?: string;
+    params?: Record<string, string> | null;
+    error: string;
+  };
+  for (const v of section("parse_uri") as V[]) {
+    it(v.name, () => {
+      strictKeys(v, ["name", "uri", "scheme", "model", "host", "params", "error"], v.name);
+      if (v.error) {
+        let err: unknown;
+        try {
+          parseURI(v.uri);
+        } catch (e) {
+          err = e;
+        }
+        expect(err).toBeInstanceOf(LLMError);
+        expect((err as Error).message).toBe(v.error);
+        return;
+      }
+      const u = parseURI(v.uri);
+      expect(u.scheme).toBe(v.scheme);
+      expect(u.model).toBe(v.model);
+      expect(u.host ?? "").toBe(v.host);
+      expect(u.params ?? {}).toEqual(v.params ?? {});
+    });
+  }
+});
+
+describe("llm-v1 conformance: key_endpoint", () => {
+  type V = {
+    name: string;
+    op: string;
+    uri: string;
+    yaml: string;
+    env: Record<string, string>;
+    want_uri: string;
+    refused: boolean;
+  };
+  for (const v of section("key_endpoint") as V[]) {
+    it(v.name, () => {
+      strictKeys(v, ["name", "op", "uri", "yaml", "env", "want_uri", "refused"], v.name);
+      useLLMYaml(v.yaml);
+      Object.assign(process.env, v.env);
+      let got: string | undefined;
+      let err: unknown;
+      try {
+        switch (v.op) {
+          case "apply":
+            got = applyAPIKey(v.uri);
+            break;
+          case "load":
+            loadConfig(v.uri);
+            break;
+          case "resolve":
+            resolve(v.uri);
+            break;
+          default:
+            throw new Error(`unknown op ${JSON.stringify(v.op)}`);
+        }
+      } catch (e) {
+        err = e;
+      }
+      if (v.refused) {
+        expect(err).toBeInstanceOf(KeyEndpointError);
+        expect((err as Error).message).not.toContain("fake-env-key");
+        return;
+      }
+      expect(err).toBeUndefined();
+      if (v.op === "apply") expect(got).toBe(v.want_uri);
     });
   }
 });
@@ -405,17 +498,9 @@ describe("llm-v1 conformance: credential_headers", () => {
     refused: boolean;
   };
   for (const v of section("credential_headers") as V[]) {
-    const skip = NOT_RUN_VECTORS[`credential_headers/${v.name}`];
-    if (skip) {
-      it(v.name, () => {
-        // Stated, not silent: the vector needs a layer this SDK lacks.
-        expect(v.yaml, skip).not.toBe("");
-      });
-      continue;
-    }
     it(v.name, async () => {
       strictKeys(v, ["name", "base_url", "yaml", "env", "sent", "withheld", "refused"], v.name);
-      expect(v.yaml, "yaml vectors are listed in NOT_RUN_VECTORS").toBe("");
+      useLLMYaml(v.yaml);
       Object.assign(process.env, v.env);
       // Intercept fetch: the vectors name hosts no test may reach.
       const sent: Headers[] = [];
@@ -834,8 +919,7 @@ describe("llm-v1 conformance: anthropic_hermetic", () => {
   for (const v of section("anthropic_hermetic") as V[]) {
     it(v.name, async () => {
       strictKeys(v, ["name", "base_url", "yaml", "env", "want_host", "sent", "withheld"], v.name);
-      // This SDK reads no llm.yaml at all; the file is written anyway,
-      // where Go would find it, so the vector runs as given.
+      // Written where llm.yaml is read; a hermetic adapter must not.
       const xdg = mkdtempSync(join(tmpdir(), "kit-llm-hermetic-"));
       const restore = isolateEnv(["XDG_CONFIG_HOME"]);
       process.env["XDG_CONFIG_HOME"] = xdg;

@@ -56,7 +56,7 @@ Runners are strict: unknown fields, a `version` other than `v1` and a file no ru
 ### Known differences
 
 Not vectored. A `retry-after` HTTP date: Go and TypeScript honor one within 60s, Rust and Python back off.
-Python keeps `LLM_API_KEY` ahead of llm.yaml and `<SCHEME>_API_KEY` (Go: llm.yaml, then the provider variable, then `LLM_API_KEY`) and has no secret store. Rust has no URL media sources (media are bytes the caller read): `media_fetch` is not applicable, and `anthropic_request` vectors with a `url` part are skipped by name.
+Python keeps `LLM_API_KEY` ahead of llm.yaml and `<SCHEME>_API_KEY` (Go: llm.yaml, then the provider variable, then `LLM_API_KEY`) and has no secret store. TypeScript resolves keys in Go's order with no secret store. Both find an llm.yaml block by scheme name only (Go also reads the block of a provider alias). Rust has no URL media sources (media are bytes the caller read): `media_fetch` is not applicable, and `anthropic_request` vectors with a `url` part are skipped by name.
 
 ## Tool names
 
@@ -73,7 +73,7 @@ carry the original name.
 | Go | `go/ai/llm/conformance_test.go` (provider-neutral sections, `media_fetch`), `go/ai/llm/anthropic/conformance_test.go` (`TestConformance*`) |
 | Rust | `sdk/experimental/rs/tests/llm_conformance.rs` (anthropic sections, including `anthropic_tool_names`, need feature `llm-anthropic`; `anthropic_tool_choice`, `anthropic_hermetic`, `anthropic_stream_events`, `bus_request_started`, `bus_response_received` and the vectors in `PENDING_RUST_PORT` skipped, pending the Rust port; `media_fetch` checked present, not applicable) |
 | Python | `sdk/py/tests/test_llm_conformance.py`: every section, anthropic ones and served `media_fetch` vectors against a loopback server; `bus_*` against the `hop_top_kit.llm_events` payload builders (the Python client publishes no bus events) |
-| TypeScript | `sdk/ts/src/llm-anthropic.conformance.test.ts` (every `anthropic_*` section, `credential_headers`, `redact_uri`, `usage_cost`; `bus_request_started` and `bus_response_received` against the pure payload builders `requestStartedPayload` / `responseReceivedPayload`, as the TS client publishes no bus events) and `sdk/ts/src/llm-toolnames.conformance.test.ts` (`tool_names`) and `sdk/ts/src/llm-media.conformance.test.ts` (`media_fetch`); not run: `parse_uri`, `key_endpoint` and the llm.yaml `credential_headers` vector (the TS core has no llm.yaml or Resolve-time key guard), each listed with its reason in the runner. `anthropic_hermetic` runs its llm.yaml vector as given: TS reads no config file |
+| TypeScript | `sdk/ts/src/llm-anthropic.conformance.test.ts` (every `anthropic_*` section, `credential_headers`, `key_endpoint`, `parse_uri`, `redact_uri`, `usage_cost`; `bus_request_started` and `bus_response_received` against the pure payload builders `requestStartedPayload` / `responseReceivedPayload`, as the TS client publishes no bus events) and `sdk/ts/src/llm-toolnames.conformance.test.ts` (`tool_names`) and `sdk/ts/src/llm-media.conformance.test.ts` (`media_fetch`); every vector runs. `key_endpoint`'s `resolve` op runs `resolve`, which in TS is `loadConfig` plus the adapter |
 
 ## See also
 

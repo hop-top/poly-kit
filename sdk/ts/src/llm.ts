@@ -26,6 +26,7 @@ import {
   APIError,
   HTTPStatusError,
   KeyEndpointError,
+  MissingKeyError,
   ResponseTooLargeError,
   StreamTruncatedError,
 } from "./llm-errors";
@@ -44,6 +45,7 @@ export {
   APIError,
   HTTPStatusError,
   KeyEndpointError,
+  MissingKeyError,
   ResponseTooLargeError,
   StreamTruncatedError,
 };
@@ -53,11 +55,16 @@ import {
   setDeclaration,
   type Declaration,
 } from "./llm-endpoint";
+import { loadConfig, type LoadOptions } from "./llm-config";
+import { parseURI } from "./llm-uri";
 export {
   checkKeyEndpoint,
   credentialsTrusted,
   redactURI,
+  type ProviderKey,
 } from "./llm-endpoint";
+export { loadConfig, parseURI, type LoadOptions };
+export { applyAPIKey } from "./llm-keys";
 export {
   requestStartedPayload,
   responseReceivedPayload,
@@ -458,7 +465,7 @@ export interface ResolvedConfig {
    * reads nothing ambient while it builds and runs, no environment
    * variable (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`,
    * `ANTHROPIC_WORKSPACE_ID`, `<SCHEME>_API_KEY`, `ROUTELLM_*`,
-   * `LLM_BASE_URL`). Only this config counts.
+   * `LLM_BASE_URL`) and no llm.yaml. Only this config counts.
    */
   hermetic?: boolean;
 }
@@ -708,154 +715,6 @@ export function fileSource(path: string): MediaSource {
   };
 }
 
-// ─── URI parsing ─────────────────────────────────────────────────────────────
-
-/**
- * Parses an LLM URI string into its components.
- *
- * Format: `scheme://[host[:port]/]model[?params]`
- *
- * When the path portion contains a host:port prefix (detected by the
- * presence of a numeric port), the first segment is treated as host.
- * Otherwise the entire path is the model name.
- */
-export function parseURI(raw: string): URI {
-  const sep = "://";
-  const idx = raw.indexOf(sep);
-  if (idx < 0) {
-    throw new LLMError(`invalid LLM URI (missing "://"): ${raw}`);
-  }
-
-  const scheme = raw.slice(0, idx);
-  if (!scheme) {
-    throw new LLMError(`invalid LLM URI (empty scheme): ${raw}`);
-  }
-
-  let rest = raw.slice(idx + sep.length);
-  if (!rest) {
-    throw new LLMError(`invalid LLM URI (empty model): ${raw}`);
-  }
-
-  // Extract query params
-  let params: Record<string, string> | undefined;
-  const qIdx = rest.indexOf("?");
-  if (qIdx >= 0) {
-    const qs = rest.slice(qIdx + 1);
-    rest = rest.slice(0, qIdx);
-    params = {};
-    for (const pair of qs.split("&")) {
-      const eqIdx = pair.indexOf("=");
-      if (eqIdx > 0) {
-        params[pair.slice(0, eqIdx)] = decodeURIComponent(
-          pair.slice(eqIdx + 1)
-        );
-      }
-    }
-  }
-
-  if (!rest) {
-    throw new LLMError(`invalid LLM URI (empty model): ${raw}`);
-  }
-
-  // Detect host:port pattern.
-  // If first segment matches `word:digits`, treat it as host.
-  let host: string | undefined;
-  let model: string;
-
-  const hostPortMatch = rest.match(/^([^/]+:\d+)\/(.+)$/);
-  if (hostPortMatch) {
-    host = hostPortMatch[1];
-    model = hostPortMatch[2];
-  } else {
-    model = rest;
-  }
-
-  const uri: URI = { scheme, model };
-  if (host) uri.host = host;
-  if (params && Object.keys(params).length > 0) uri.params = params;
-  return uri;
-}
-
-// ─── Config loading ──────────────────────────────────────────────────────────
-
-/** Options for {@link loadConfig}, {@link resolve} and {@link createLLM}. */
-export interface LoadOptions {
-  /**
-   * Reads nothing ambient: the provider comes from the URI alone
-   * (`api_key`, `base_url`, host). No `LLM_PROVIDER`, `LLM_FALLBACK`,
-   * `LLM_API_KEY` or `LLM_BASE_URL`, and the adapter gets
-   * {@link ResolvedConfig.hermetic}, so it reads no environment
-   * variable either. For embedding kit in an app that owns its
-   * configuration.
-   */
-  hermetic?: boolean;
-}
-
-/**
- * Builds a {@link ResolvedConfig} from a URI string + env vars.
- *
- * When `uriStr` is empty/undefined, falls back to `LLM_PROVIDER`
- * env var as a full default URI. If neither is provided, throws.
- *
- * URI query params `api_key` and `base_url` populate provider
- * config. If `uri.host` is set, it derives a baseURL. Env vars
- * `LLM_API_KEY` and `LLM_BASE_URL` override last.
- *
- * Env vars (none read with `opts.hermetic`):
- * - `LLM_PROVIDER` — full default URI when no arg provided
- * - `LLM_API_KEY` — overrides provider API key
- * - `LLM_BASE_URL` — overrides provider base URL
- * - `LLM_FALLBACK` — comma-separated fallback URIs
- */
-export function loadConfig(uriStr?: string, opts: LoadOptions = {}): ResolvedConfig {
-  const hermetic = opts.hermetic === true;
-  const env = (k: string): string | undefined =>
-    hermetic ? undefined : process.env[k] || undefined;
-  const effective = uriStr || env("LLM_PROVIDER");
-  if (!effective) {
-    throw new LLMError(
-      hermetic
-        ? "no LLM URI provided (hermetic: LLM_PROVIDER is not read)"
-        : "no LLM URI provided and LLM_PROVIDER env var is not set"
-    );
-  }
-
-  const uri = parseURI(effective);
-
-  const fallbackEnv = env("LLM_FALLBACK");
-  const fallbacks = fallbackEnv
-    ? fallbackEnv.split(",").map((s) => s.trim()).filter(Boolean)
-    : [];
-
-  const provider: ProviderConfig = {
-    model: uri.model,
-  };
-  if (uri.params) provider.params = { ...uri.params };
-
-  // Extract api_key and base_url from URI query params
-  if (uri.params?.api_key) {
-    provider.apiKey = uri.params.api_key;
-  }
-  if (uri.params?.base_url) {
-    provider.baseURL = uri.params.base_url;
-  }
-
-  // Derive baseURL from host if present
-  if (uri.host) {
-    provider.baseURL = `http://${uri.host}`;
-  }
-
-  // Env var overrides apply LAST
-  const envApiKey = env("LLM_API_KEY");
-  const envBaseURL = env("LLM_BASE_URL");
-  if (envApiKey) provider.apiKey = envApiKey;
-  if (envBaseURL) provider.baseURL = envBaseURL;
-
-  const cfg: ResolvedConfig = { uri, provider, fallbacks };
-  if (hermetic) cfg.hermetic = true;
-  return cfg;
-}
-
 // ─── Registry ────────────────────────────────────────────────────────────────
 
 export type Factory = (cfg: ResolvedConfig) => Provider;
@@ -879,7 +738,7 @@ export function register(
     throw new LLMError(`provider already registered for scheme: ${scheme}`);
   }
   registry.set(scheme, factory);
-  if (decl) setDeclaration(scheme, decl);
+  setDeclaration(scheme, decl);
 }
 
 export { declarationOf };

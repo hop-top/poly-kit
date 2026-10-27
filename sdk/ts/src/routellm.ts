@@ -393,4 +393,8 @@ function routellmFactory(cfg: ResolvedConfig): Provider {
   };
 }
 
-register("routellm", routellmFactory);
+// A local router: ROUTELLM_API_KEY is sent when set and never
+// required, so LLM_API_KEY is not lent to it.
+register("routellm", routellmFactory, {
+  key: { envVars: ["ROUTELLM_API_KEY"], optional: true },
+});
