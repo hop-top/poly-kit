@@ -3,11 +3,16 @@
  *
  * RouteLLM adapter — registers the `routellm` URI scheme.
  *
- * URI format: `routellm://router_name:threshold` (e.g. `routellm://mf:0.7`).
+ * The model field takes either shape a RouteLLM server advertises on
+ * `/v1/models`, as in Go:
+ *
+ * - `router_name:threshold` — `routellm://mf:0.7`, sent as the server's
+ *   `router-[name]-[threshold]` model. The client picks both.
+ * - tier name — `routellm://private`, sent verbatim. The server resolves
+ *   router and threshold from its own tier config.
  *
  * Delegates to the openai adapter (`@hop-top/kit/openai`) pointed
- * at the RouteLLM server's OpenAI-compatible endpoint, translating the
- * model field into the server's `router-[name]-[threshold]` format.
+ * at the RouteLLM server's OpenAI-compatible endpoint.
  * Importing this module registers the openai schemes too.
  */
 
@@ -143,46 +148,130 @@ export function parseRouterConfig(
 
 // ─── Model field parsing ──────────────────────────────────────────────────────
 
+/**
+ * The model field classified. `isTier` selects `tier`; otherwise
+ * `routerName` and `threshold` hold the client-selected pair. The
+ * unused shape stays at `""` / `0`.
+ */
 export interface ParsedModel {
+  isTier: boolean;
+  tier: string;
   routerName: string;
   threshold: number;
 }
 
+const MODEL_REQUIRED =
+  "model field is required (router_name:threshold or tier name)";
+
+const DECIMAL_FLOAT = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
+const HEX_FLOAT =
+  /^([+-]?)0[xX]([0-9a-fA-F]*)(?:\.([0-9a-fA-F]*))?[pP]([+-]?\d+)$/;
+
 /**
- * Split a model string of the form `router_name:threshold` into its
- * components.
+ * Go's underscore rule for float literals: an underscore must sit
+ * between digits, or between a base prefix and a digit.
+ */
+function underscoreOK(text: string): boolean {
+  let s = text;
+  if (s[0] === "+" || s[0] === "-") s = s.slice(1);
+  let saw = "^"; // ^ start, 0 digit or prefix, _ underscore, ! other
+  let i = 0;
+  let hex = false;
+  const p = s[1]?.toLowerCase();
+  if (s.length >= 2 && s[0] === "0" && (p === "b" || p === "o" || p === "x")) {
+    i = 2;
+    saw = "0";
+    hex = p === "x";
+  }
+  for (; i < s.length; i++) {
+    const c = s[i]!;
+    if ((c >= "0" && c <= "9") || (hex && /[a-fA-F]/.test(c))) {
+      saw = "0";
+      continue;
+    }
+    if (c === "_") {
+      if (saw !== "0") return false;
+      saw = "_";
+      continue;
+    }
+    if (saw === "_") return false;
+    saw = "!";
+  }
+  return saw !== "_";
+}
+
+/**
+ * A finite float in the syntax Go's `strconv.ParseFloat` accepts
+ * (decimal or hex mantissa, underscores between digits), else
+ * `undefined`. Infinities, NaN and out-of-range values are not.
+ */
+function parseFiniteFloat(text: string): number | undefined {
+  if (text.includes("_")) {
+    if (!underscoreOK(text)) return undefined;
+    text = text.replace(/_/g, "");
+  }
+  let v: number;
+  if (DECIMAL_FLOAT.test(text)) {
+    v = Number(text);
+  } else {
+    const m = HEX_FLOAT.exec(text);
+    if (!m) return undefined;
+    const [, sign, int = "", frac = "", exp = "0"] = m;
+    if (!int && !frac) return undefined;
+    v = parseInt(int + frac || "0", 16) * 2 ** (Number(exp) - 4 * frac.length);
+    if (sign === "-") v = -v;
+  }
+  return Number.isFinite(v) ? v : undefined;
+}
+
+/**
+ * Format a float as Go's `strconv.FormatFloat(f, 'f', -1, 64)`: the
+ * shortest round-tripping digits, never an exponent, `-0` kept.
+ */
+function formatFloat(v: number): string {
+  if (Object.is(v, -0)) return "-0";
+  const sign = v < 0 ? "-" : "";
+  const repr = String(Math.abs(v));
+  const e = repr.indexOf("e");
+  if (e < 0) return sign + repr;
+  const exp = Number(repr.slice(e + 1));
+  const digits = repr.slice(0, e).replace(".", "");
+  const point = 1 + exp; // position of the decimal point in digits
+  if (point <= 0) return `${sign}0.${"0".repeat(-point)}${digits}`;
+  if (point >= digits.length) {
+    return sign + digits + "0".repeat(point - digits.length);
+  }
+  return `${sign}${digits.slice(0, point)}.${digits.slice(point)}`;
+}
+
+/**
+ * Classify the model field as a `router_name:threshold` pair or a tier
+ * name, exactly as Go does.
+ *
+ * The shapes are told apart by the text after the last colon: when it
+ * parses as a finite float (Go `ParseFloat` syntax) the model is a
+ * router pair, else a tier sent verbatim — so a tier name may contain
+ * colons and `mf:abc` is a tier. A leading or trailing colon leaves a
+ * tier. The threshold range is checked by the adapter, not here; an
+ * unknown tier fails at the server.
  */
 export function parseModelField(model: string): ParsedModel {
-  if (!model) {
-    throw new LLMError(
-      "model field is required (format: router_name:threshold)"
-    );
+  if (!model) throw new LLMError(MODEL_REQUIRED);
+
+  const idx = model.lastIndexOf(":");
+  if (idx > 0 && idx < model.length - 1) {
+    const threshold = parseFiniteFloat(model.slice(idx + 1));
+    if (threshold !== undefined) {
+      return {
+        isTier: false,
+        tier: "",
+        routerName: model.slice(0, idx),
+        threshold,
+      };
+    }
   }
 
-  const idx = model.indexOf(":");
-  if (idx < 0) {
-    throw new LLMError(
-      `invalid model "${model}": expected format ` +
-        "router_name:threshold (e.g. mf:0.7)"
-    );
-  }
-
-  const routerName = model.slice(0, idx);
-  const rawThreshold = model.slice(idx + 1);
-
-  if (!routerName || !rawThreshold) {
-    throw new LLMError(
-      `invalid model "${model}": expected format ` +
-        "router_name:threshold (e.g. mf:0.7)"
-    );
-  }
-
-  const threshold = Number(rawThreshold);
-  if (Number.isNaN(threshold)) {
-    throw new LLMError(`invalid threshold "${rawThreshold}": not a number`);
-  }
-
-  return { routerName, threshold };
+  return { isTier: true, tier: model, routerName: "", threshold: 0 };
 }
 
 // ─── Adapter ──────────────────────────────────────────────────────────────────
@@ -199,8 +288,12 @@ export class RouteLLMAdapter
   implements Completer, Streamer, ToolCaller, ToolStreamer
 {
   readonly config: RouterConfig;
+  /** Client-selected router; `""` for a tier. */
   readonly routerName: string;
+  /** Client-selected threshold; `0` for a tier (see {@link isTier}). */
   readonly threshold: number;
+  /** Server-resolved tier name; `""` for a router pair. */
+  readonly tier: string;
 
   private readonly inner: OpenAIAdapter;
 
@@ -211,14 +304,22 @@ export class RouteLLMAdapter
     toolNameModeOf(cfg.provider.params);
 
     const model = cfg.provider.model || cfg.uri.model;
+    if (!model) throw new LLMError(`routellm: ${MODEL_REQUIRED}`);
     const parsed = parseModelField(model);
     this.routerName = parsed.routerName;
     this.threshold = parsed.threshold;
+    this.tier = parsed.tier;
 
-    if (this.threshold < 0 || this.threshold > 1) {
-      throw new LLMError(
-        `routellm: threshold ${this.threshold} out of range [0, 1]`
-      );
+    // A tier travels verbatim; a router pair becomes
+    // router-[name]-[threshold].
+    let serverModel = parsed.tier;
+    if (!parsed.isTier) {
+      if (this.threshold < 0 || this.threshold > 1) {
+        throw new LLMError(
+          `routellm: threshold ${this.threshold.toFixed(4)} out of range [0, 1]`
+        );
+      }
+      serverModel = `router-${this.routerName}-${formatFloat(this.threshold)}`;
     }
 
     // Resolve base URL: config > provider > default.
@@ -239,8 +340,7 @@ export class RouteLLMAdapter
         provider: {
           apiKey: cfg.provider.apiKey,
           baseURL: apiRootV1(baseUrl),
-          // Server model name: router-[name]-[threshold]
-          model: `router-${this.routerName}-${this.threshold}`,
+          model: serverModel,
           params,
         },
         fallbacks: [],
@@ -248,6 +348,15 @@ export class RouteLLMAdapter
       },
       { label: "routellm" }
     );
+  }
+
+  /**
+   * Whether the adapter targets a server-resolved tier rather than a
+   * client-selected pair; use it instead of `threshold === 0`, which is
+   * also a valid client threshold.
+   */
+  isTier(): boolean {
+    return this.tier !== "";
   }
 
   complete(req: Request): Promise<Response> {

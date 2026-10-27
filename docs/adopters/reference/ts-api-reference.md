@@ -859,6 +859,15 @@ The URI's `api_key` or `LLM_API_KEY` outranks the env key.
   `http://host:port/v1`; a `base_url` param is used as given. A blank
   key sends no `Authorization` header.
 - `routellm` delegates to the openai adapter at the RouteLLM server.
+  The model field takes either shape the server advertises, as in Go:
+  `routellm://mf:0.7` (router and threshold, sent as `router-mf-0.7`)
+  or a tier name, `routellm://private`, sent verbatim for the server to
+  resolve from its tier config. The text after the last colon decides:
+  a finite float (Go `ParseFloat` syntax) makes a router pair, whose
+  threshold must be in `[0, 1]`; anything else is a tier, colons
+  included (`mf:abc` is a tier). An unknown tier fails at the server.
+  `parseModelField()` returns `{ isTier, tier, routerName, threshold }`;
+  `RouteLLMAdapter` exposes `tier` and `isTier()`.
 
 Params on any adapter URI: `tool_names` (`sanitize` | `strict`),
 `max_body_bytes` (default 32 MiB) and `max_event_bytes` (one SSE event,
