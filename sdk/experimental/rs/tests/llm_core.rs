@@ -909,3 +909,137 @@ fn content_opt_in_transforms_a_copy() {
     assert_eq!(seen[0].1["request"]["messages"][1]["content"], "[cut]");
     assert_eq!(seen[1].1["response"]["content"], "answer hunter2");
 }
+
+/// An async store: answers from memory after yielding once, failing
+/// the names in `fail`, recording every name asked.
+struct AsyncMem {
+    data: BTreeMap<String, String>,
+    fail: Vec<String>,
+    asked: Mutex<Vec<String>>,
+}
+
+impl AsyncMem {
+    fn new(data: &[(&str, &str)], fail: &[&str]) -> Self {
+        AsyncMem {
+            data: data
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            fail: fail.iter().map(|s| s.to_string()).collect(),
+            asked: Mutex::default(),
+        }
+    }
+
+    fn asked(&self) -> Vec<String> {
+        self.asked.lock().unwrap().clone()
+    }
+}
+
+impl hop_top_kit::llm::AsyncSecretStore for AsyncMem {
+    fn get<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<Option<String>, String>> {
+        Box::pin(async move {
+            tokio::task::yield_now().await;
+            self.asked.lock().unwrap().push(name.to_string());
+            if self.fail.iter().any(|f| f == name) {
+                return Err("vault sealed".into());
+            }
+            Ok(self.data.get(name).cloned())
+        })
+    }
+}
+
+impl SecretStore for AsyncMem {
+    fn get(&self, name: &str) -> Result<Option<String>, String> {
+        if self.fail.iter().any(|f| f == name) {
+            return Err("vault sealed".into());
+        }
+        Ok(self.data.get(name).cloned())
+    }
+}
+
+#[test]
+fn async_store_resolves_as_the_sync_one() {
+    let r = registry();
+    let file = ConfigFile::default();
+    let env = env_of(&[("GOOGLE_API_KEY", "fake-env")]);
+    for (name, data, fail, uri, want_asked) in [
+        (
+            "second name from the store",
+            vec![("GEMINI_API_KEY", "fake-store")],
+            vec![],
+            "google://gemini",
+            vec!["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+        ),
+        (
+            "first name found stops the walk",
+            vec![("GOOGLE_API_KEY", "fake-store"), ("GEMINI_API_KEY", "x")],
+            vec![],
+            "google://gemini",
+            vec!["GOOGLE_API_KEY"],
+        ),
+        (
+            "store failure counts as absent and is reported",
+            vec![("GEMINI_API_KEY", "fake-store")],
+            vec!["GOOGLE_API_KEY"],
+            "google://gemini",
+            vec!["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+        ),
+        (
+            "nothing stored falls to the environment",
+            vec![],
+            vec![],
+            "google://gemini",
+            vec!["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+        ),
+        (
+            "a URI key asks no store",
+            vec![("GOOGLE_API_KEY", "fake-store")],
+            vec![],
+            "google://gemini?api_key=fake-uri",
+            vec![],
+        ),
+    ] {
+        let store = AsyncMem::new(&data, &fail);
+        let sync_src = Sources {
+            file: &file,
+            env: &env,
+            store: Some(&store),
+        };
+        let src = Sources {
+            store: None,
+            ..sync_src
+        };
+        let want = r.resolve_api_key(&sync_src, uri).unwrap();
+        let got = block_on(r.resolve_api_key_async(&src, &store, uri)).unwrap();
+        assert_eq!(got, want, "{name}");
+        assert_eq!(store.asked(), want_asked, "{name}");
+        assert_eq!(
+            block_on(r.apply_api_key_async(&src, &store, uri)).unwrap(),
+            r.apply_api_key(&sync_src, uri).unwrap(),
+            "{name}"
+        );
+        assert_eq!(
+            block_on(r.load_config_async(&src, &store, uri)).unwrap(),
+            r.load_config(&sync_src, uri).unwrap(),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn async_store_missing_key_reports_the_failure() {
+    let r = registry();
+    let file = ConfigFile::default();
+    let env = env_of(&[]);
+    let src = Sources {
+        file: &file,
+        env: &env,
+        store: None,
+    };
+    let store = AsyncMem::new(&[], &["GOOGLE_API_KEY"]);
+    let err = block_on(r.resolve_api_key_async(&src, &store, "google://gemini")).unwrap_err();
+    let LlmError::MissingKey(m) = &err else {
+        panic!("want MissingKey, got {err:?}");
+    };
+    assert!(m.store_err.as_deref().unwrap().contains("vault sealed"));
+}

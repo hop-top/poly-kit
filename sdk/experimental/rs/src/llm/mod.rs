@@ -55,7 +55,7 @@ pub use endpoint::{
 };
 pub use error::{KeyEndpointReason, LlmError, MissingKeyError, ToolNameReason};
 pub use events::{RequestEndPayload, RequestStartPayload};
-pub use keys::{KeyResolution, KeySource, KeySourceKind, FALLBACK_ENV_KEY};
+pub use keys::{AsyncSecretStore, KeyResolution, KeySource, KeySourceKind, FALLBACK_ENV_KEY};
 pub use provider::{BoxFuture, Capability, Provider, TokenStream};
 pub use registry::{default_registry, Declaration, Factory, ProviderKey, Registry, ResolveOptions};
 pub use toolchoice::{check_tool_choice, ToolChoice, ToolChoiceMode};

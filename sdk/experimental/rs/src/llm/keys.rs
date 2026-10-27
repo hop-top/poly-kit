@@ -8,8 +8,9 @@
 
 use std::fmt;
 
-use super::config::{ProviderConfig, ResolvedConfig, Sources};
+use super::config::{ProviderConfig, ResolvedConfig, SecretStore, Sources};
 use super::error::{LlmError, MissingKeyError};
+use super::provider::BoxFuture;
 use super::registry::{ProviderKey, Registry};
 use super::uri::{is_blank, parse_uri, strip_param, Uri};
 
@@ -227,17 +228,7 @@ impl Registry {
     /// Model: the URI's, else the block's. Fallbacks: `LLM_FALLBACK`
     /// (comma-separated), else llm.yaml `fallback`.
     pub fn load_config(&self, src: &Sources<'_>, uri: &str) -> Result<ResolvedConfig, LlmError> {
-        let effective = if !uri.is_empty() {
-            uri.to_string()
-        } else if let Some(p) = src.env("LLM_PROVIDER") {
-            p
-        } else if !src.file.default.is_empty() {
-            src.file.default.clone()
-        } else {
-            return Err(LlmError::invalid(
-                "no URI provided and no default configured",
-            ));
-        };
+        let effective = effective_uri(src, uri)?;
         let mut parsed = parse_uri(&effective)?;
         parsed.drop_blank_key();
 
@@ -282,6 +273,132 @@ impl Registry {
             net_policy: self.policy(),
             hermetic: false,
         })
+    }
+}
+
+/// The URI [`Registry::load_config`] works on: `uri`, else
+/// `LLM_PROVIDER`, else llm.yaml `default`.
+fn effective_uri(src: &Sources<'_>, uri: &str) -> Result<String, LlmError> {
+    if !uri.is_empty() {
+        Ok(uri.to_string())
+    } else if let Some(p) = src.env("LLM_PROVIDER") {
+        Ok(p)
+    } else if !src.file.default.is_empty() {
+        Ok(src.file.default.clone())
+    } else {
+        Err(LlmError::invalid(
+            "no URI provided and no default configured",
+        ))
+    }
+}
+
+/// A secret store whose lookups are asynchronous (a vault over the
+/// network, a keyring behind IPC), for the `*_async` key functions:
+/// [`Registry::resolve_api_key_async`], [`Registry::apply_api_key_async`]
+/// and [`Registry::load_config_async`]. `Err` reports a backend failure;
+/// it names the key asked for, never a value.
+///
+/// Names are asked one at a time, in precedence order, stopping at the
+/// first non-blank value, exactly as [`SecretStore`] is; dropping the
+/// returned future cancels the lookup (Go: the caller's `ctx`). Bound a
+/// slow backend with a timeout around that future, or inside `get`
+/// (an elapsed timeout reported as `Err` counts that name as absent).
+pub trait AsyncSecretStore: Send + Sync {
+    fn get<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<Option<String>, String>>;
+}
+
+/// The answers an [`AsyncSecretStore`] gave, replayed to the sync
+/// resolution, which asks the same names in the same order.
+struct Replay(Vec<(String, Result<Option<String>, String>)>);
+
+impl SecretStore for Replay {
+    fn get(&self, name: &str) -> Result<Option<String>, String> {
+        self.0
+            .iter()
+            .find(|(n, _)| n == name)
+            .map_or(Ok(None), |(_, r)| r.clone())
+    }
+}
+
+impl Registry {
+    /// The store names resolving `uri`'s key would ask, in order: none
+    /// when the URI or llm.yaml holds the key.
+    fn store_names(&self, src: &Sources<'_>, uri: &Uri) -> Vec<String> {
+        let plan = self.plan(src, &uri.scheme);
+        if uri.key().is_some() || !is_blank(&plan.literal) {
+            return Vec::new();
+        }
+        plan.key.env_vars
+    }
+
+    /// Ask `store` what the sync resolution of `uri` would, in its order:
+    /// stop at the first non-blank value.
+    async fn ask(&self, src: &Sources<'_>, store: &dyn AsyncSecretStore, uri: &Uri) -> Replay {
+        let mut answers = Vec::new();
+        for name in self.store_names(src, uri) {
+            let r = store.get(&name).await;
+            let found = matches!(&r, Ok(Some(v)) if !is_blank(v));
+            answers.push((name, r));
+            if found {
+                break;
+            }
+        }
+        Replay(answers)
+    }
+
+    /// [`Registry::resolve_api_key`] with an [`AsyncSecretStore`] in
+    /// place of `src.store`.
+    pub async fn resolve_api_key_async(
+        &self,
+        src: &Sources<'_>,
+        store: &dyn AsyncSecretStore,
+        uri: &str,
+    ) -> Result<KeyResolution, LlmError> {
+        let replay = match parse_uri(uri) {
+            Ok(parsed) => self.ask(src, store, &parsed).await,
+            Err(_) => Replay(Vec::new()),
+        };
+        self.resolve_api_key(&with_store(src, &replay), uri)
+    }
+
+    /// [`Registry::apply_api_key`] with an [`AsyncSecretStore`] in place
+    /// of `src.store`.
+    pub async fn apply_api_key_async(
+        &self,
+        src: &Sources<'_>,
+        store: &dyn AsyncSecretStore,
+        uri: &str,
+    ) -> Result<String, LlmError> {
+        let replay = match parse_uri(uri) {
+            Ok(parsed) => self.ask(src, store, &parsed).await,
+            Err(_) => Replay(Vec::new()),
+        };
+        self.apply_api_key(&with_store(src, &replay), uri)
+    }
+
+    /// [`Registry::load_config`] with an [`AsyncSecretStore`] in place
+    /// of `src.store`.
+    pub async fn load_config_async(
+        &self,
+        src: &Sources<'_>,
+        store: &dyn AsyncSecretStore,
+        uri: &str,
+    ) -> Result<ResolvedConfig, LlmError> {
+        let replay = match effective_uri(src, uri).and_then(|u| Ok(parse_uri(&u)?)) {
+            Ok(mut parsed) => {
+                parsed.drop_blank_key();
+                self.ask(src, store, &parsed).await
+            }
+            Err(_) => Replay(Vec::new()),
+        };
+        self.load_config(&with_store(src, &replay), uri)
+    }
+}
+
+fn with_store<'a>(src: &Sources<'a>, store: &'a Replay) -> Sources<'a> {
+    Sources {
+        store: Some(store),
+        ..*src
     }
 }
 
