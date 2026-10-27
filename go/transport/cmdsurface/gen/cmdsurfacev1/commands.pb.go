@@ -230,7 +230,11 @@ type Result struct {
 	Data *structpb.Value `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
 	// The payload as compact JSON, every number spelled with the digits
 	// the command wrote. Empty when data is unset.
-	DataJson      string `protobuf:"bytes,5,opt,name=data_json,proto3" json:"data_json,omitempty"`
+	DataJson string `protobuf:"bytes,5,opt,name=data_json,proto3" json:"data_json,omitempty"`
+	// Set when stdout, stderr, or both exceeded the server's per-stream
+	// output cap: each such stream holds the output up to the cap
+	// followed by a truncation marker line, and data is unset.
+	Truncated     bool `protobuf:"varint,6,opt,name=truncated,proto3" json:"truncated,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -298,6 +302,13 @@ func (x *Result) GetDataJson() string {
 		return x.DataJson
 	}
 	return ""
+}
+
+func (x *Result) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
 }
 
 // Event is one frame of InvokeStream.
@@ -400,13 +411,14 @@ const file_commands_proto_rawDesc = "" +
 	"\n" +
 	"ExtraEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb3\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd1\x01\n" +
 	"\x06Result\x12!\n" +
 	"\texit_code\x18\x01 \x01(\x05H\x00R\texit_code\x88\x01\x01\x12\x16\n" +
 	"\x06stdout\x18\x02 \x01(\tR\x06stdout\x12\x16\n" +
 	"\x06stderr\x18\x03 \x01(\tR\x06stderr\x12*\n" +
 	"\x04data\x18\x04 \x01(\v2\x16.google.protobuf.ValueR\x04data\x12\x1c\n" +
-	"\tdata_json\x18\x05 \x01(\tR\tdata_jsonB\f\n" +
+	"\tdata_json\x18\x05 \x01(\tR\tdata_json\x12\x1c\n" +
+	"\ttruncated\x18\x06 \x01(\bR\ttruncatedB\f\n" +
 	"\n" +
 	"_exit_code\"\xa2\x01\n" +
 	"\x05Event\x12\x12\n" +

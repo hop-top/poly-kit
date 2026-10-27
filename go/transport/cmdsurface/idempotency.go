@@ -203,6 +203,7 @@ type idemRecord struct {
 	Stdout      string          `json:"stdout,omitempty"`
 	Stderr      string          `json:"stderr,omitempty"`
 	Data        json.RawMessage `json:"data,omitempty"`
+	Truncated   bool            `json:"truncated,omitempty"`
 }
 
 // admitIdempotency is slot 8's idempotency half. It returns nil for a
@@ -369,7 +370,10 @@ func idempotencyFingerprint(inv Invocation) string {
 }
 
 func encodeIdemRecord(fp string, res Result) ([]byte, error) {
-	rec := idemRecord{Fingerprint: fp, ExitCode: res.ExitCode, Stdout: res.Stdout, Stderr: res.Stderr}
+	rec := idemRecord{
+		Fingerprint: fp, ExitCode: res.ExitCode, Stdout: res.Stdout, Stderr: res.Stderr,
+		Truncated: res.Truncated,
+	}
 	if res.Data != nil {
 		raw, err := json.Marshal(res.Data)
 		if err != nil {
@@ -391,7 +395,7 @@ func decodeIdemRecord(raw []byte) (Result, string, error) {
 	if rec.Fingerprint == "" {
 		return Result{}, "", errors.New("cmdsurface: idempotency record without fingerprint")
 	}
-	res := Result{ExitCode: rec.ExitCode, Stdout: rec.Stdout, Stderr: rec.Stderr}
+	res := Result{ExitCode: rec.ExitCode, Stdout: rec.Stdout, Stderr: rec.Stderr, Truncated: rec.Truncated}
 	if len(rec.Data) > 0 {
 		dec := json.NewDecoder(bytes.NewReader(rec.Data))
 		dec.UseNumber()

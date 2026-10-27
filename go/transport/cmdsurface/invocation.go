@@ -154,6 +154,11 @@ type Result struct {
 	// (when the command writes typed output, e.g. via output.JSON).
 	// Surfaces that prefer typed responses prefer Data over Stdout.
 	Data any `json:"data,omitempty"`
+	// Truncated reports that Stdout, Stderr, or both exceeded the
+	// runner's per-stream output cap ([DefaultOutputCap], or the bound
+	// [WithOutputCap] sets): each such stream holds the output up to
+	// the cap followed by a truncation marker line, and Data is unset.
+	Truncated bool `json:"truncated,omitempty"`
 	// Replayed marks a Result answered from the idempotency ledger
 	// rather than by a run (see [WithIdempotency]). Each transport
 	// renders it as its own replay marker; it is not part of the

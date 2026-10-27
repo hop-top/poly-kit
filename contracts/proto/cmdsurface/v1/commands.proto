@@ -93,6 +93,10 @@ message Result {
   // The payload as compact JSON, every number spelled with the digits
   // the command wrote. Empty when data is unset.
   string data_json = 5 [json_name = "data_json"];
+  // Set when stdout, stderr, or both exceeded the server's per-stream
+  // output cap: each such stream holds the output up to the cap
+  // followed by a truncation marker line, and data is unset.
+  bool truncated = 6;
 }
 
 // Event is one frame of InvokeStream.
