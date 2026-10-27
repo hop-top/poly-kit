@@ -864,7 +864,7 @@ reloads with an immutability veto and bus events.
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.5.0-alpha.0", features = ["config"] }
+hop-top-kit = { version = "0.5.0-alpha.2", features = ["config"] } # x-release-please-version
 ```
 
 | Feature | Adds |
