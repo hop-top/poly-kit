@@ -225,7 +225,7 @@ func TestLegacy_SkipsAreCounted(t *testing.T) {
 	blocked := make(chan struct{}, 1)
 	skips := make(chan uint64, 1)
 	first := true
-	accepted := make(chan string, 1)
+	accepted := make(chan string, 16)
 	h := newHub(t, WithStreamLog(2), withHook(accepted),
 		WithSkipFunc(func(_ string, n uint64) { skips <- n }),
 		WithLinkFilter(func(_ Peer, e Event) bool {
@@ -237,7 +237,7 @@ func TestLegacy_SkipsAreCounted(t *testing.T) {
 			return true
 		}))
 	c := rawDial(t, h.url, "")
-	<-accepted
+	waitHook(t, accepted, "accepted")
 	publish(t, h.bus, "acme.crm.deal.created", "")
 	<-blocked
 	for i := 0; i < 5; i++ {

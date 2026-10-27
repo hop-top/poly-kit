@@ -94,12 +94,12 @@ func TestFrameFormat_NegotiatedPerPeer(t *testing.T) {
 		t.Errorf("legacy handshake peer got %v", m)
 	}
 
-	accepted := make(chan string, 1)
+	// The link can report "drained:N" before "accepted"; the hook drops
+	// events once the channel is full, so buffer and wait by name.
+	accepted := make(chan string, 16)
 	noAuth := newHub(t, WithFrameFormat(FrameCloudEvents), withHook(accepted))
 	c := rawDial(t, noAuth.url, "")
-	if ev := <-accepted; ev != "accepted" {
-		t.Fatal(ev)
-	}
+	waitHook(t, accepted, "accepted")
 	publish(t, noAuth.bus, "acme.crm.deal.created", "")
 	if m := rawJSON(t, c); m["specversion"] != "1.0" {
 		t.Errorf("no-handshake peer got %v, want the configured format", m)
