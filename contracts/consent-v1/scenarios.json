@@ -1,0 +1,1681 @@
+{
+  "version": "v1",
+  "description": "Decision semantics: grant, deny, expiry, session end, revoke, fail-closed refusal, subject specificity, once consumption and the audit trail, including `refused` records and their per-session debounce. Each scenario starts from the given files, a fixed clock and env, and one fresh session of tool `mytool`; steps run in order against it.",
+  "scenarios": [
+    {
+      "name": "allow always persists across sessions and every use is audited",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": true,
+            "reason": "allowed"
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "reopen"
+        },
+        {
+          "op": "advance",
+          "seconds": 60
+        },
+        {
+          "op": "use",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "ok": true
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "used",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "used",
+          "at": "2026-03-01T00:01:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
+      ],
+      "grants_file": {
+        "version": 1,
+        "grants": [
+          {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decided_at": "2026-03-01T00:00:00Z",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        ]
+      },
+      "config_file": null
+    },
+    {
+      "name": "a standing deny is a no: request does not prompt and the refusal is permanent",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.camera.capture",
+            "subject": "app:dek",
+            "decision": "deny",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.camera.capture",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "denied"
+          }
+        },
+        {
+          "op": "request",
+          "capability": "io.camera.capture",
+          "subject": "app:dek",
+          "answer": {
+            "decision": "allow",
+            "duration": "always"
+          },
+          "expect": {
+            "ok": false,
+            "prompted": false,
+            "refused": {
+              "reason": "denied",
+              "code": "UNAUTHORIZED",
+              "exit_code": 5,
+              "transience": "permanent"
+            }
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.camera.capture",
+          "subject": "app:dek",
+          "expect": {
+            "ok": false,
+            "refused": {
+              "reason": "denied",
+              "code": "UNAUTHORIZED",
+              "exit_code": 5,
+              "transience": "permanent"
+            }
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "denied",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.camera.capture",
+          "subject": "app:dek",
+          "decision": "deny",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "refused",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.camera.capture",
+          "subject": "app:dek",
+          "decision_source": "prompt",
+          "reason": "standing-deny"
+        }
+      ]
+    },
+    {
+      "name": "no grant and no prompter fails closed",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "check",
+          "capability": "io.microphone.capture",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "unset"
+          }
+        },
+        {
+          "op": "request",
+          "capability": "io.microphone.capture",
+          "subject": "app:dek",
+          "prompter": "none",
+          "expect": {
+            "ok": false,
+            "prompted": false,
+            "refused": {
+              "reason": "unset",
+              "code": "CONSENT_REFUSED",
+              "exit_code": 7,
+              "transience": "transient"
+            }
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.microphone.capture",
+          "subject": "app:dek",
+          "expect": {
+            "ok": false,
+            "refused": {
+              "reason": "unset",
+              "code": "CONSENT_REFUSED",
+              "exit_code": 7,
+              "transience": "transient"
+            }
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "refused",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.microphone.capture",
+          "subject": "app:dek",
+          "decision_source": "config",
+          "reason": "no-prompter"
+        }
+      ],
+      "grants_file": null,
+      "config_file": null
+    },
+    {
+      "name": "a failing prompter fails closed and records only the refusal",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "request",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "prompter": "error",
+          "expect": {
+            "ok": false,
+            "prompted": true,
+            "refused": {
+              "reason": "unset",
+              "code": "CONSENT_REFUSED",
+              "exit_code": 7,
+              "transience": "transient"
+            }
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "unset"
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "refused",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "decision_source": "config",
+          "reason": "prompter-error"
+        }
+      ],
+      "grants_file": null,
+      "config_file": null
+    },
+    {
+      "name": "declined once is refused now and asked again; allow once is consumed by one use",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "request",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "answer": {
+            "decision": "deny",
+            "duration": "once"
+          },
+          "expect": {
+            "ok": false,
+            "prompted": true,
+            "refused": {
+              "reason": "declined",
+              "code": "CONSENT_REFUSED",
+              "exit_code": 7,
+              "transience": "transient"
+            }
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "unset"
+          }
+        },
+        {
+          "op": "request",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "answer": {
+            "decision": "allow",
+            "duration": "once"
+          },
+          "expect": {
+            "ok": true,
+            "prompted": true
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "expect": {
+            "ok": false,
+            "refused": {
+              "reason": "unset",
+              "code": "CONSENT_REFUSED",
+              "exit_code": 7,
+              "transience": "transient"
+            }
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "denied",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "decision": "deny",
+          "duration": "once",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "once",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "used",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "once",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "refused",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "decision_source": "config",
+          "reason": "no-prompter"
+        }
+      ],
+      "grants_file": null,
+      "config_file": null
+    },
+    {
+      "name": "a prompt answered allow always is persisted with the prompt version",
+      "now": "2026-03-01T00:00:00Z",
+      "prompt_version": 3,
+      "steps": [
+        {
+          "op": "request",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "answer": {
+            "decision": "allow",
+            "duration": "always"
+          },
+          "expect": {
+            "ok": true,
+            "prompted": true
+          }
+        },
+        {
+          "op": "request",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "answer": {
+            "decision": "deny",
+            "duration": "always"
+          },
+          "expect": {
+            "ok": true,
+            "prompted": false
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 3
+        }
+      ],
+      "grants_file": {
+        "version": 1,
+        "grants": [
+          {
+            "capability": "io.files.read",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decided_at": "2026-03-01T00:00:00Z",
+            "decision_source": "prompt",
+            "prompt_version": 3
+          }
+        ]
+      },
+      "config_file": null
+    },
+    {
+      "name": "an until grant expires at expires_at and is then refused as expired",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "until",
+            "expires_at": "2026-03-01T01:00:00Z",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": true,
+            "reason": "allowed"
+          }
+        },
+        {
+          "op": "advance",
+          "seconds": 3599
+        },
+        {
+          "op": "check",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": true,
+            "reason": "allowed"
+          }
+        },
+        {
+          "op": "advance",
+          "seconds": 1
+        },
+        {
+          "op": "check",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "expired"
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "ok": false,
+            "refused": {
+              "reason": "expired",
+              "code": "CONSENT_REFUSED",
+              "exit_code": 7,
+              "transience": "transient"
+            }
+          }
+        },
+        {
+          "op": "request",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "prompter": "none",
+          "expect": {
+            "ok": false,
+            "prompted": false,
+            "refused": {
+              "reason": "expired",
+              "code": "CONSENT_REFUSED",
+              "exit_code": 7,
+              "transience": "transient"
+            }
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "until",
+          "expires_at": "2026-03-01T01:00:00Z",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "refused",
+          "at": "2026-03-01T01:00:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision_source": "prompt",
+          "reason": "expired"
+        }
+      ],
+      "grants_file": {
+        "version": 1,
+        "grants": [
+          {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "until",
+            "decided_at": "2026-03-01T00:00:00Z",
+            "expires_at": "2026-03-01T01:00:00Z",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        ]
+      },
+      "config_file": null
+    },
+    {
+      "name": "an expired deny lets the prompt ask again",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "deny",
+            "duration": "until",
+            "expires_at": "2026-03-01T00:10:00Z",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "request",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "answer": {
+            "decision": "allow",
+            "duration": "session"
+          },
+          "expect": {
+            "ok": false,
+            "prompted": false,
+            "refused": {
+              "reason": "denied",
+              "code": "UNAUTHORIZED",
+              "exit_code": 5,
+              "transience": "permanent"
+            }
+          }
+        },
+        {
+          "op": "advance",
+          "seconds": 600
+        },
+        {
+          "op": "request",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "answer": {
+            "decision": "allow",
+            "duration": "session"
+          },
+          "expect": {
+            "ok": true,
+            "prompted": true
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "denied",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision": "deny",
+          "duration": "until",
+          "expires_at": "2026-03-01T00:10:00Z",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "refused",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision_source": "prompt",
+          "reason": "standing-deny"
+        },
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:10:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "session",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
+      ]
+    },
+    {
+      "name": "a session grant ends with the session and never reaches disk",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.clipboard.read",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "session",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": true,
+            "reason": "allowed"
+          }
+        },
+        {
+          "op": "list",
+          "expect": {
+            "grants": [
+              {
+                "capability": "io.clipboard.read",
+                "subject": "app:dek",
+                "decision": "allow",
+                "duration": "session",
+                "decided_at": "2026-03-01T00:00:00Z",
+                "decision_source": "prompt",
+                "prompt_version": 1
+              }
+            ]
+          }
+        },
+        {
+          "op": "end_session"
+        },
+        {
+          "op": "check",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "unset"
+          }
+        },
+        {
+          "op": "list",
+          "expect": {
+            "grants": []
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "session",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
+      ],
+      "grants_file": null,
+      "config_file": null
+    },
+    {
+      "name": "a session deny shadows a persisted allow until the session ends",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "app:dek",
+            "decision": "deny",
+            "duration": "session",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "denied"
+          }
+        },
+        {
+          "op": "reopen"
+        },
+        {
+          "op": "check",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": true,
+            "reason": "allowed"
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "denied",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "decision": "deny",
+          "duration": "session",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
+      ]
+    },
+    {
+      "name": "a persisted decision replaces a session one for the same key",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "app:dek",
+            "decision": "deny",
+            "duration": "session",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": true,
+            "reason": "allowed"
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "denied",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "decision": "deny",
+          "duration": "session",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
+      ]
+    },
+    {
+      "name": "revoke removes the grant and the next use is refused",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "advance",
+          "seconds": 5
+        },
+        {
+          "op": "revoke",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "source": "prompt",
+          "expect": {
+            "removed": true
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "unset"
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "ok": false,
+            "refused": {
+              "reason": "unset",
+              "code": "CONSENT_REFUSED",
+              "exit_code": 7,
+              "transience": "transient"
+            }
+          }
+        },
+        {
+          "op": "reopen"
+        },
+        {
+          "op": "check",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "unset"
+          }
+        },
+        {
+          "op": "revoke",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "source": "prompt",
+          "expect": {
+            "removed": false
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "used",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "revoked",
+          "at": "2026-03-01T00:00:05Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision_source": "prompt"
+        },
+        {
+          "v": 1,
+          "event": "refused",
+          "at": "2026-03-01T00:00:05Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision_source": "config",
+          "reason": "no-prompter"
+        }
+      ],
+      "grants_file": {
+        "version": 1,
+        "grants": []
+      },
+      "config_file": null
+    },
+    {
+      "name": "revoke clears a session grant and a persisted grant for the same key",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "session",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "revoke",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "source": "flag",
+          "expect": {
+            "removed": true
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "unset"
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "session",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "revoked",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "decision_source": "flag"
+        }
+      ]
+    },
+    {
+      "name": "a subject grant beats the any-subject grant; the any-subject grant covers the rest",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "config",
+            "prompt_version": 0
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "app:untrusted",
+            "decision": "deny",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": true,
+            "reason": "allowed"
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.files.read",
+          "subject": "app:untrusted",
+          "expect": {
+            "allowed": false,
+            "reason": "denied"
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.files.read",
+          "subject": "",
+          "expect": {
+            "allowed": true,
+            "reason": "allowed"
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "unset"
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "",
+          "decision": "allow",
+          "duration": "always",
+          "decision_source": "config",
+          "prompt_version": 0
+        },
+        {
+          "v": 1,
+          "event": "denied",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:untrusted",
+          "decision": "deny",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
+      ],
+      "grants_file": {
+        "version": 1,
+        "grants": [
+          {
+            "capability": "io.files.read",
+            "subject": "",
+            "decision": "allow",
+            "duration": "always",
+            "decided_at": "2026-03-01T00:00:00Z",
+            "decision_source": "config",
+            "prompt_version": 0
+          },
+          {
+            "capability": "io.files.read",
+            "subject": "app:untrusted",
+            "decision": "deny",
+            "duration": "always",
+            "decided_at": "2026-03-01T00:00:00Z",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        ]
+      },
+      "config_file": null
+    },
+    {
+      "name": "an expired subject grant falls through to the any-subject grant",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "",
+            "decision": "deny",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "until",
+            "expires_at": "2026-03-01T00:00:30Z",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": true,
+            "reason": "allowed"
+          }
+        },
+        {
+          "op": "advance",
+          "seconds": 30
+        },
+        {
+          "op": "check",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "denied"
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "denied",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "",
+          "decision": "deny",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "until",
+          "expires_at": "2026-03-01T00:00:30Z",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
+      ]
+    },
+    {
+      "name": "invalid input is rejected and records nothing",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "screen",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "error_kind": "invalid_capability"
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.screen.capture",
+            "subject": "app dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "error_kind": "invalid_subject"
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "maybe",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "error_kind": "invalid_decision"
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "forever",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "error_kind": "invalid_duration"
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "until",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "error_kind": "invalid_expiry"
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "until",
+            "expires_at": "2026-03-01T00:00:00Z",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "error_kind": "invalid_expiry"
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "expires_at": "2026-03-02T00:00:00Z",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "error_kind": "invalid_expiry"
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "agent",
+            "prompt_version": 1
+          },
+          "expect": {
+            "error_kind": "invalid_source"
+          }
+        },
+        {
+          "op": "check",
+          "capability": "Screen",
+          "subject": "app:dek",
+          "expect": {
+            "error_kind": "invalid_capability"
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.screen.capture",
+          "subject": "app\tdek",
+          "expect": {
+            "error_kind": "invalid_subject"
+          }
+        },
+        {
+          "op": "revoke",
+          "capability": "io",
+          "subject": "",
+          "source": "prompt",
+          "expect": {
+            "error_kind": "invalid_capability"
+          }
+        }
+      ],
+      "audit": [],
+      "grants_file": null,
+      "config_file": null
+    },
+    {
+      "name": "a malformed store fails closed on every path",
+      "now": "2026-03-01T00:00:00Z",
+      "grants_yaml": "version: 2\ngrants: []\n",
+      "steps": [
+        {
+          "op": "check",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "error_kind": "malformed_store"
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "error_kind": "malformed_store"
+          }
+        },
+        {
+          "op": "request",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "answer": {
+            "decision": "allow",
+            "duration": "always"
+          },
+          "expect": {
+            "error_kind": "malformed_store",
+            "prompted": false
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "error_kind": "malformed_store"
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "refused",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision_source": "config",
+          "reason": "store-unreadable"
+        }
+      ]
+    },
+    {
+      "name": "refusals are debounced per capability, subject and reason within a session",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "deny",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "ok": false,
+            "refused": {
+              "reason": "denied",
+              "code": "UNAUTHORIZED",
+              "exit_code": 5,
+              "transience": "permanent"
+            }
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "ok": false,
+            "refused": {
+              "reason": "denied",
+              "code": "UNAUTHORIZED",
+              "exit_code": 5,
+              "transience": "permanent"
+            }
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.screen.capture",
+          "subject": "app:other",
+          "expect": {
+            "ok": false,
+            "refused": {
+              "reason": "unset",
+              "code": "CONSENT_REFUSED",
+              "exit_code": 7,
+              "transience": "transient"
+            }
+          }
+        },
+        {
+          "op": "use",
+          "capability": "io.screen.capture",
+          "subject": "app:other",
+          "expect": {
+            "ok": false,
+            "refused": {
+              "reason": "unset",
+              "code": "CONSENT_REFUSED",
+              "exit_code": 7,
+              "transience": "transient"
+            }
+          }
+        },
+        {
+          "op": "advance",
+          "seconds": 1
+        },
+        {
+          "op": "end_session"
+        },
+        {
+          "op": "use",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "expect": {
+            "ok": false,
+            "refused": {
+              "reason": "denied",
+              "code": "UNAUTHORIZED",
+              "exit_code": 5,
+              "transience": "permanent"
+            }
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "denied",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision": "deny",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "refused",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision_source": "prompt",
+          "reason": "standing-deny"
+        },
+        {
+          "v": 1,
+          "event": "refused",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.screen.capture",
+          "subject": "app:other",
+          "decision_source": "config",
+          "reason": "no-prompter"
+        },
+        {
+          "v": 1,
+          "event": "refused",
+          "at": "2026-03-01T00:00:01Z",
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision_source": "prompt",
+          "reason": "standing-deny"
+        }
+      ]
+    },
+    {
+      "name": "deny wins between a session grant and a stored grant for the same key",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "app:dek",
+            "decision": "deny",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "session",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "denied"
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "denied",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "decision": "deny",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "session",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
+      ]
+    }
+  ]
+}

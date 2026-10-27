@@ -12,6 +12,8 @@ Corpora bind every port, Go included; detail lives in each corpus README.
   qualifiers, enforcement modes, event envelope JSON. Go and Rust runners.
 - [completion-v1/](completion-v1/README.md): kit/console/cli shell completion: completers, `__complete`
   output, `completion <shell>` scripts byte for byte. Go and Rust runners.
+- [consent-v1/](consent-v1/README.md): kit/core/consent grants: records, decisions, refusals, audit,
+  telemetry migration.
 - [config-v1/](config-v1/README.md): kit/core/config scalar parsing and typing, overrides, precedence, layered
   load, set/unset. Go and Rust.
 - [netpolicy-v1/](netpolicy-v1/README.md): kit/core/netpolicy `--offline`: loopback, dial decision, URL guard,

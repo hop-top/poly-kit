@@ -29,6 +29,7 @@ package consent_test
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -44,6 +45,7 @@ func withMatrixXDG(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "_state"))
 	// Defensive: clear DO_NOT_TRACK + KIT_TELEMETRY_MODE so the test's
 	// own t.Setenv calls drive the precedence chain, not whatever the
 	// host shell has set. t.Setenv auto-restores at cleanup.
