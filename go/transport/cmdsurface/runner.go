@@ -1,7 +1,6 @@
 package cmdsurface
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -60,10 +59,11 @@ func (r *inProcessRunner) Run(ctx context.Context, inv Invocation) (Result, erro
 }
 
 // Stream implements Runner. It produces one Event per output line
-// (Kind="stdout"/"stderr") followed by a terminal Event{Kind:"done"}
-// carrying the same Result Run would have returned, Data included.
-// out is closed when streaming completes. Cancellation is reported
-// the way Run reports it, after the done event.
+// (Kind="stdout"/"stderr"; a line longer than [MaxEventLineBytes]
+// spans several) followed by a terminal Event{Kind:"done"} carrying
+// the same Result Run would have returned, Data included. out is
+// closed when streaming completes. Cancellation is reported the way
+// Run reports it, after the done event.
 func (r *inProcessRunner) Stream(ctx context.Context, inv Invocation, out chan<- Event) error {
 	if out == nil {
 		return errors.New("cmdsurface: nil event channel")
@@ -84,34 +84,24 @@ func (r *inProcessRunner) Stream(ctx context.Context, inv Invocation, out chan<-
 	stdoutBuf, stderrBuf := r.newCapture(), r.newCapture()
 	ex.attach(io.MultiWriter(outW, stdoutBuf), io.MultiWriter(errW, stderrBuf))
 
-	// Scanners drain each pipe and forward one Event per line.
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go scanLines(outR, "stdout", out, &wg)
-	go scanLines(errR, "stderr", out, &wg)
+	// Readers drain each pipe and forward one Event per line.
+	var lines streamReaders
+	lines.start(outR, "stdout", out)
+	lines.start(errR, "stderr", out)
 
 	execErr := ex.root.ExecuteContext(ctx)
-	// Closing the writers tells the scanners to drain remaining
+	// Closing the writers tells the readers to drain remaining
 	// bytes and exit cleanly.
 	_ = outW.Close()
 	_ = errW.Close()
-	wg.Wait()
+	readErr := lines.wait()
 
 	res := ex.result(execErr, stdoutBuf, stderrBuf)
 	out <- Event{Kind: "done", Data: &res, At: time.Now()}
-	return canceled(ctx, execErr)
-}
-
-// scanLines reads r line-by-line and forwards each line as an Event
-// of the named kind. Exits when r returns EOF or any read error.
-func scanLines(r io.Reader, kind string, out chan<- Event, wg *sync.WaitGroup) {
-	defer wg.Done()
-	sc := bufio.NewScanner(r)
-	// Allow long lines (cobra help text + JSON payloads).
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for sc.Scan() {
-		out <- Event{Kind: kind, Data: sc.Text(), At: time.Now()}
+	if err := canceled(ctx, execErr); err != nil {
+		return err
 	}
+	return readErr
 }
 
 // resolveLeaf walks the cobra tree from root following path and
@@ -320,8 +310,9 @@ func (r *subprocessRunner) Run(ctx context.Context, inv Invocation) (Result, err
 }
 
 // Stream executes the binary and emits one Event per line of stdout
-// or stderr, followed by a terminal Event{Kind:"done"} carrying a
-// *Result. The output channel is closed by Stream when streaming
+// or stderr (a line longer than [MaxEventLineBytes] spans several),
+// followed by a terminal Event{Kind:"done"} carrying the *Result Run
+// would have returned. The output channel is closed by Stream when streaming
 // completes; callers must not close it.
 func (r *subprocessRunner) Stream(ctx context.Context, inv Invocation, out chan<- Event) error {
 	if out == nil {
@@ -359,16 +350,15 @@ func (r *subprocessRunner) Stream(ctx context.Context, inv Invocation, out chan<
 
 	// Tee each pipe so we keep a copy for the terminal Result while
 	// emitting one Event per line live. Events carry every line; the
-	// copy is capped as Run's is.
+	// copy holds the bytes as read, capped as Run's is.
 	stdoutBuf, stderrBuf := r.newCapture(), r.newCapture()
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go scanLinesTee(pipes.stdout, stdoutBuf, "stdout", out, &wg)
-	go scanLinesTee(pipes.stderr, stderrBuf, "stderr", out, &wg)
+	var lines streamReaders
+	lines.start(io.TeeReader(pipes.stdout, stdoutBuf), "stdout", out)
+	lines.start(io.TeeReader(pipes.stderr, stderrBuf), "stderr", out)
 
 	waitErr := cmd.Wait()
 	pipes.exited()
-	wg.Wait()
+	readErr := lines.wait()
 	waitErr = pipes.waitErr(waitErr)
 
 	res := &Result{
@@ -390,6 +380,10 @@ func (r *subprocessRunner) Stream(ctx context.Context, inv Invocation, out chan<
 		if !errors.As(waitErr, &exitErr) {
 			return fmt.Errorf("cmdsurface: subprocess wait: %w", waitErr)
 		}
+	}
+	// An orphan cut is reported through waitErr above.
+	if readErr != nil && !errors.Is(readErr, errOrphanCut) {
+		return readErr
 	}
 	return nil
 }
@@ -428,22 +422,6 @@ func childEnv(meta Meta) []string {
 		}
 	}
 	return env
-}
-
-// scanLinesTee is the streaming sibling of scanLines: it also copies
-// every line into buf so the terminal "done" Event can carry the
-// captured stream, up to buf's cap. Newline is restored when teeing
-// because the scanner strips it.
-func scanLinesTee(r io.Reader, buf *capturedOutput, kind string, out chan<- Event, wg *sync.WaitGroup) {
-	defer wg.Done()
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for sc.Scan() {
-		_, _ = buf.Write(sc.Bytes())
-		_, _ = buf.Write([]byte{'\n'})
-		line := sc.Text()
-		out <- Event{Kind: kind, Data: line, At: time.Now()}
-	}
 }
 
 // cliError is the conversion interface kit's structured errors
