@@ -831,6 +831,7 @@ dependencies = [
  "interim",
  "mockito",
  "regex",
+ "regex-syntax",
  "reqwest",
  "rmcp",
  "rusqlite",

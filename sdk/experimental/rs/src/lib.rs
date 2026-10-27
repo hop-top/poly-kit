@@ -41,6 +41,10 @@ pub mod config;
 #[cfg(feature = "consent")]
 pub mod consent;
 
+// Secret and PII redaction (a port of go/core/redact). No I/O.
+#[cfg(feature = "redact")]
+pub mod redact;
+
 // Base directories for config, consent, telemetry and upgrade files (a
 // port of go/core/xdg's home, config-home, data-home and state-home
 // resolution). Filesystem-only: off wasm32.

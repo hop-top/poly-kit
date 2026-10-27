@@ -25,6 +25,7 @@ Corpora bind every port, Go included; detail lives in each corpus README.
 - [breaker-v1/](breaker-v1/README.md): kit/core/breaker on a fake clock.
 - [retry-v1/](retry-v1/README.md): kit/core/util retry backoff corpus: delay table, full-jitter bounds, stop
   rule. Go and Rust runners.
+- [redact-v1/](redact-v1/README.md): kit/core/redact policy dump, spans, output. Go, Rust.
 - [upgrade-v1/](upgrade-v1/README.md): kit/core/upgrade versioned state migrations: version order, pending
   range, run, rollback, prune and error texts. Go and Rust runners.
 - [kv-v1/](kv-v1/README.md): kit/storage/kv keys bind to SQLite as TEXT; one SDK writes, another reads.
@@ -36,5 +37,4 @@ Corpora bind every port, Go included; detail lives in each corpus README.
 - [ts/](ts/README.md): TypeScript copy of the `crud.v1` protobuf and Connect stubs; the SDK builds against
   `sdk/ts/src/gen/`.
 - [parity/](parity/README.md): TUI constants shared across Go/TS/Py.
-- [bridge.proto](bridge.proto): kit/bridge wire payload schema; the JSON schema for non-Go shells is
-  `bridge.schema.json`.
+- [bridge.proto](bridge.proto): kit/bridge wire payload (JSON: `bridge.schema.json`).

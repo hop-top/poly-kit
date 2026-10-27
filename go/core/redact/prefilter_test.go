@@ -115,15 +115,22 @@ func samples(pattern string, rnd *rand.Rand, n int) []string {
 	return out
 }
 
+// candidateRules is the full screen (keyword gates and literals).
+func candidateRules(r *Redactor, s string, _ []uint64) []uint64 {
+	return r.candidates(s, nil, detect)
+}
+
 // assertSound fails for every rule of r that matches s while the
 // prefilter excludes it.
 func assertSound(t *testing.T, r *Redactor, s string, only ...int) bool {
 	t.Helper()
 	cand := candidateRules(r, s, nil)
+	lower, _ := keywordText(s)
 	check := func(i int) bool {
-		if r.rules[i].re.MatchString(s) && !has(cand, i) {
+		gated := keywordGate(r.rules[i].spec.Keywords, lower)
+		if r.rules[i].re.MatchString(s) && gated && !has(cand, i) {
 			t.Errorf("rule %s matches %q but the prefilter skipped it (screen %+v)",
-				r.rules[i].id, s, screenFor(r.rules[i].re.String()))
+				r.rules[i].spec.ID, s, screenFor(r.rules[i].re.String()))
 			return false
 		}
 		return true
@@ -180,7 +187,7 @@ func TestPrefilter_DefaultCorpusIsScreened(t *testing.T) {
 	r := corpus(t, true)
 	for _, rule := range r.rules {
 		if len(screenFor(rule.re.String()).clauses) == 0 {
-			unscreened = append(unscreened, rule.id)
+			unscreened = append(unscreened, rule.spec.ID)
 		}
 	}
 	if len(unscreened) > maxUnscreened {
@@ -244,7 +251,7 @@ func TestPrefilter_SkipsRulesThatCannotMatch(t *testing.T) {
 	}
 	idx := map[string]int{}
 	for i, rule := range r.rules {
-		idx[rule.id] = i
+		idx[rule.spec.ID] = i
 	}
 	for _, c := range []struct {
 		in   string
@@ -271,10 +278,11 @@ func TestPrefilter_SkipsRulesThatCannotMatch(t *testing.T) {
 	}
 }
 
-// A replacement can create text a later rule matches. The prefilter
-// screens the rewritten input again, so the chain behaves as it does
-// with every rule running.
-func TestPrefilter_ReplacementFeedsLaterRule(t *testing.T) {
+// A replacement is never scanned again: the placeholder the first
+// rule writes looks like the second rule's secret, and must stay as
+// written, with or without the prefilter. (This test used to pin the
+// opposite, the chained re-scan.)
+func TestPrefilter_ReplacementIsNotRescanned(t *testing.T) {
 	build := func(prefiltered bool) *Redactor {
 		r := New()
 		r.noPrefilter = !prefiltered
@@ -289,16 +297,14 @@ func TestPrefilter_ReplacementFeedsLaterRule(t *testing.T) {
 		}
 		return r
 	}
-	const in = "door pin-1234 opened"
-	want := build(false).Apply(in)
-	if want != "door zz_<second> opened" {
-		t.Fatalf("reference = %q; fixture no longer chains", want)
-	}
-	if got := build(true).Apply(in); got != want {
-		t.Errorf("prefiltered Apply = %q, want %q", got, want)
-	}
-	if got := string(build(true).ApplyBytes([]byte(in))); got != want {
-		t.Errorf("prefiltered ApplyBytes = %q, want %q", got, want)
+	const in, want = "door pin-1234 opened", "door zz_tok_ABCDEFGH opened"
+	for _, pf := range []bool{false, true} {
+		if got := build(pf).Apply(in); got != want {
+			t.Errorf("prefiltered=%v Apply = %q, want %q", pf, got, want)
+		}
+		if got := string(build(pf).ApplyBytes([]byte(in))); got != want {
+			t.Errorf("prefiltered=%v ApplyBytes = %q, want %q", pf, got, want)
+		}
 	}
 }
 

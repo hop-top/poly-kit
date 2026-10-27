@@ -144,6 +144,11 @@ consent = ["bus"]
 # audit log and its relay onto the bus. Native only: builds on the
 # config YAML model and on `id` for the audit log id.
 consent-file = ["consent", "config", "id"]
+# Secret and PII redaction, a port of go/core/redact: gitleaks rule
+# semantics over Go RE2 patterns, with the default policy embedded.
+# regex-syntax rewrites Go-only pattern meanings before compiling;
+# sha2 backs the Hash strategy. No I/O, wasm-safe.
+redact = ["dep:regex", "dep:regex-syntax", "dep:serde", "dep:serde_json", "dep:sha2"]
 
 # Layered YAML configuration, a port of go/core/config. Parsing, merge,
 # scalar resolution, overrides and precedence are pure and wasm-safe;
@@ -238,6 +243,12 @@ dirs = { version = "7", optional = true }
 # stack) never reaches a consumer through this crate.
 tokio = { version = "1", optional = true }
 regex = { version = "1", optional = true }
+# redact: the AST rewrite of Go RE2 syntax (Perl classes, word
+# boundaries, \Q..\E). Exact pin: the printer's output is what gets
+# compiled. Same repo and release train as regex (rust-lang/regex),
+# MIT OR Apache-2.0, already in the tree under regex at this version
+# (0.8.11, published 2026-06-09).
+regex-syntax = { version = "=0.8.11", optional = true }
 thiserror = { version = "2", optional = true }
 rmcp = { version = "3.1.4", default-features = false, optional = true }
 clap = { version = "4", features = ["derive", "string"], optional = true }

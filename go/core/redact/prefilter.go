@@ -437,9 +437,26 @@ type prefilter struct {
 	twoBits [1 << 10]uint64
 }
 
-// add indexes the next rule, compiled from pattern.
-func (p *prefilter) add(pattern string) {
-	sc := screenFor(pattern)
+// keywordScreen is the keyword gate as a screen: one clause of
+// literals, no length bound. No keywords means the rule always passes.
+func keywordScreen(keywords []string) ruleScreen {
+	var sc ruleScreen
+	if len(keywords) > 0 {
+		sc.clauses = [][]string{dedup(append([]string(nil), keywords...))}
+	}
+	return sc
+}
+
+// withKeywords adds the keyword clause to a pattern screen. On ASCII
+// input the scanner's fold equals lower-casing, so one scan decides
+// both.
+func (sc ruleScreen) withKeywords(keywords []string) ruleScreen {
+	sc.clauses = append(append([][]string(nil), sc.clauses...), keywordScreen(keywords).clauses...)
+	return sc
+}
+
+// addScreen indexes the next rule's screen.
+func (p *prefilter) addScreen(sc ruleScreen) {
 	lo := int32(p.nclauses)
 	for _, clause := range sc.clauses {
 		cid := int32(p.nclauses)

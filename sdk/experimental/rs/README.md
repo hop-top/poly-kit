@@ -30,6 +30,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`httpcache/`](src/httpcache/README.md) | HTTP response cache over a `kv` TTL store (feature `httpcache`) | responses must be reused across runs |
 | [`blob/`](src/blob/README.md) | object storage over a backend trait, local filesystem only (feature `blob`) | you store opaque files or artifacts |
 | [`id/`](src/id/README.md) | TypeID primitive (feature `id`) | you mint or parse prefixed identifiers |
+| [`redact/`](src/redact/README.md) | secret and PII redaction with gitleaks rule semantics and the default corpus embedded, a port of `go/core/redact` (feature `redact`, wasm-safe) | text may carry credentials before it is logged, sent or shown |
 | [`telemetry/`](src/telemetry/README.md) | consent-gated usage events, redaction, sinks (feature `telemetry`) | you record usage under user consent |
 | [`timeutil/`](src/timeutil/README.md) | `since` and `until` relative-date parsing (feature `timeutil`) | a flag takes a human time expression |
 | [`upgrade/`](src/upgrade/README.md) | versioned state migrations: semver-ordered steps per schema, backup, rollback, version files (feature `upgrade`) | stored data must move forward when a new build ships |
@@ -54,17 +55,16 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `upgrade`; `consent` (`consent-file`) | `bus` + `thiserror` (wasm-safe core; runner off wasm32); `bus` — nothing of its own, wasm-safe (+ `config`, `id`; native only) | 16; 11 (27) |
 | `config` (`config-pkl`, `config-signal`) | `bus` + `saphyr-parser`, `thiserror` (+ `regex`; + `tokio` rt, signal, sync) | 18 (22, 25) |
 | `timeutil` | `chrono`, `interim`, `thiserror` | 19 |
+| `redact` | `regex`, `regex-syntax`, `serde`, `serde_json`, `sha2` | 25 |
 | `output` | `serde`, `serde_json`, `serde_norway`, `comfy-table`, `thiserror` | 22 |
-| `sqlstore` (`sqlstore-blob`) | `sqldb` + `serde`, `serde_json` (+ `blob`, nothing of its own) | 22 (22) |
+| `sqlstore` (`sqlstore-blob`, `sqlstore-encrypt`) | `sqldb` + `serde`, `serde_json` (+ `blob`, nothing of its own; + `crypto_secretbox`, `hkdf`, `sha2`) | 22 (22, 50) |
 | `id` | `type-safe-id`, `uuid`, `serde`, `thiserror` | 25 |
 | `httpcache` | `kv` + `serde`, `serde_json`, `sha2`, `base64` | 33 |
 | `cli` | `output` + `clap` | 35 |
-| `serve` | `output` + `tokio`, `serde_json` | 37 |
+| `serve` (`serve-cli`) | `output` + `tokio`, `serde_json` (+ `cli`) | 37 (50) |
 | `mcp` | `rmcp` (default-features off) + `serde`, `serde_json` | 39 |
 | `uri` | `hop-top-cite` | 41 |
 | `llm` (`llm-anthropic`) | `config` + `netpolicy` + `url` (+ `api`, `base64`, `tokio` time; native only) | 46 (115) |
-| `sqlstore-encrypt` | `sqlstore` + `crypto_secretbox`, `hkdf`, `sha2` | 50 |
-| `serve-cli` | `serve` + `cli` | 50 |
 | `telemetry` | `api` + `serde_norway`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
 
 Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`. `api` and `telemetry` are heaviest (`reqwest` brings `tokio` and TLS); bundled `rusqlite` builds SQLite from source (needs a C compiler). `llm-anthropic` is native only and retries on tokio's timer unless given a `Sleeper`. `bus-network` runs one shared current-thread tokio runtime on its own thread, where its blocking methods panic (use the `_async` variants); `ring` needs a C compiler for the target; `wss://` on Android needs `NetworkOptions::tls_config` or `bus-network-webpki-roots`.

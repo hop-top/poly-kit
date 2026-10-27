@@ -388,6 +388,13 @@ jobs:
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features llm --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
+      # redact has no I/O: the default policy is embedded, so the
+      # redactor runs in a browser or worker as it does natively.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features redact
+      - name: clippy (wasm32, redact)
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features redact --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
       - name: netpolicy pulls no reqwest or tokio
         run: |
           tree=$(cargo tree --locked -e normal --no-default-features --features netpolicy)
