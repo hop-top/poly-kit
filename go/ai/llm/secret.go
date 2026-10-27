@@ -286,6 +286,10 @@ func ApplyAPIKey(ctx context.Context, store secret.Store, uri string) (string, e
 		return "", err // a *MissingKeyError, carrying any store failure
 	}
 	warnStoreError(ctx, parsed.Scheme, res.StoreErr)
+	// The key goes only where kit trusts it to (see guardKeyEndpoint).
+	if err := DefaultRegistry.guardKeyEndpoint(ctx, parsed, res.Source, res.Value); err != nil {
+		return "", err
+	}
 	if res.Source.Kind == KeySourceURI || res.Value == "" {
 		return uri, nil
 	}

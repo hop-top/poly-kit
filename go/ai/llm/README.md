@@ -18,6 +18,7 @@ or a provider-specific wire detail (the adapter sub-packages below).
 - you pick a model by capability and budget → `llm.PickProvider(ctx, reg, profile, llm.BudgetBalanced)`; restrict with `llm.LoadPool()` + `PickProviderInPool`
 - you observe calls → `llm.OnRequest`/`OnResponse`/`OnError`/`OnRoute`/`OnEvaResult`, or `llm.WithBus(bus)`
 - a URI-form model needs its provider key → `llm.ApplyAPIKey(ctx, store, uri)`; `errors.Is(err, llm.ErrMissingKey)` when none is set; `llm.ResolveAPIKey` also says where it came from; a blank key (empty or whitespace, `?api_key=` included) counts as unset: [Provider keys](../../../docs/adopters/reference/llm.md#provider-keys), [Blank keys](../../../docs/adopters/reference/llm.md#blank-keys)
+- a URI names its own endpoint (`base_url` or host form) → a resolved key goes there only when loopback or a trusted origin (provider default, `Declaration.Endpoints`, llm.yaml `base_url`, `LLM_BASE_URL`), never over plain http to a remote host; else `errors.Is(err, llm.ErrKeyEndpoint)`: [Where a key may go](../../../docs/adopters/reference/llm.md#where-a-key-may-go)
 - you add a provider → `llm.Register("myscheme", factory, llm.Declaration{...})`: [Custom adapters](../../../docs/adopters/reference/llm.md#custom-adapters)
 - you print or log a model URI or base URL → `llm.RedactURI(uri)`, `llm.RedactURLError(err)`; kit's own errors already mask them: [Credentials in errors](../../../docs/adopters/reference/llm.md#credentials-in-errors)
 

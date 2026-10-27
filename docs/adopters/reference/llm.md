@@ -491,6 +491,37 @@ a blank key and does not send a blank `ANTHROPIC_AUTH_TOKEN`,
 
 A non-blank key is used as written, surrounding whitespace included.
 
+### Where a key may go
+
+A key kit resolved from `llm.yaml`, a secret store or the environment
+goes to an endpoint the URI names (its `base_url` param or host form)
+only when that endpoint is loopback or shares an origin with the
+provider's default (`Declaration.BaseURL`, `Declaration.Endpoints`, the
+catalog's base URL), `llm.yaml` `base_url` or `LLM_BASE_URL`. To use
+another host, configure it in one of those, or pass `api_key` in the
+URI: a key the URI carries itself is the caller's choice. Any other
+case is a `*KeyEndpointError` (`errors.Is(err, llm.ErrKeyEndpoint)`)
+from `ApplyAPIKey` and `LoadConfig`.
+
+Whatever its source, a key never goes over plain `http` to a host other
+than loopback: `Resolve`, `LoadConfig` and the `anthropic` adapter
+refuse it (`llm.CheckKeyEndpoint`). Local servers on `localhost` or
+`127.0.0.1` keep working over http. `ResolveAPIKey` and `SecretFor`
+send nothing and do not check.
+
+An endpoint that carries userinfo (`user:pass@`), a backslash, a
+percent-escape, whitespace or a control character, or does not parse,
+gets no credential at all (`KeyEndpointError.Malformed`). Origins are
+compared on the parsed URL: scheme, lower-cased host, port (or the
+scheme's default).
+
+Credentials kit takes from the environment rather than the caller
+(`ANTHROPIC_AUTH_TOKEN`, the `anthropic-workspace-id` header) follow
+the same rule through `llm.CredentialsTrusted`: the `anthropic` adapter
+sends them only to loopback, the default endpoint, `ANTHROPIC_BASE_URL`,
+`llm.yaml` `base_url` or `LLM_BASE_URL`, and refuses the token over
+plain `http` to a remote host.
+
 ### Where a key came from
 
 `llm.ResolveAPIKey(ctx, store, uri)` runs the same resolution as
