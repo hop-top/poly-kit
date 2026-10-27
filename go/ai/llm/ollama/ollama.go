@@ -279,6 +279,10 @@ func (s *streamIterator) Close() error {
 // ---------------------------------------------------------------------------
 
 func (a *Adapter) buildBody(ctx context.Context, req llm.Request, stream bool) ([]byte, error) {
+	// No tool calls go out from here: a tool choice has no tools.
+	if err := llm.CheckToolChoice(req.ToolChoice, nil); err != nil {
+		return nil, fmt.Errorf("ollama: %w", err)
+	}
 	msgs := make([]chatMessage, 0, len(req.Messages))
 	// callNames resolves a tool result's ToolCallID to the tool_name
 	// Ollama also accepts.

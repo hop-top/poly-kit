@@ -125,6 +125,17 @@ type generateRequest struct {
 	SystemInstruction *content          `json:"systemInstruction,omitempty"`
 	GenerationConfig  *generationConfig `json:"generationConfig,omitempty"`
 	Tools             []toolDecl        `json:"tools,omitempty"`
+	ToolConfig        *toolConfig       `json:"toolConfig,omitempty"`
+}
+
+// toolConfig carries the request's tool choice.
+type toolConfig struct {
+	FunctionCallingConfig functionCallingConfig `json:"functionCallingConfig"`
+}
+
+type functionCallingConfig struct {
+	Mode                 string   `json:"mode"`
+	AllowedFunctionNames []string `json:"allowedFunctionNames,omitempty"`
 }
 
 type content struct {
@@ -440,6 +451,9 @@ func (a *Adapter) buildBody(
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := llm.CheckToolChoice(req.ToolChoice, tools); err != nil {
+		return nil, nil, fmt.Errorf("gemini: %w", err)
+	}
 	contents := make([]content, 0, len(req.Messages))
 	var systemParts []part
 	// callNames resolves a tool result's ToolCallID to the function
@@ -516,6 +530,9 @@ func (a *Adapter) buildBody(
 			})
 		}
 		gr.Tools = []toolDecl{{FunctionDeclarations: decls}}
+	}
+	if c := req.ToolChoice; c != nil {
+		gr.ToolConfig = toolChoice(c, names)
 	}
 
 	out, err := json.Marshal(gr)
@@ -914,4 +931,22 @@ var declaration = llm.Declaration{
 func init() {
 	llm.Register("gemini", New, declaration)
 	llm.Register("google", New, declaration)
+}
+
+// toolChoice maps a checked c to Gemini's function calling mode; a
+// named tool is mode ANY limited to that function, by its sent name.
+func toolChoice(c *llm.ToolChoice, names *llm.ToolNames) *toolConfig {
+	fc := functionCallingConfig{}
+	switch c.Mode {
+	case llm.ToolChoiceAuto:
+		fc.Mode = "AUTO"
+	case llm.ToolChoiceAny:
+		fc.Mode = "ANY"
+	case llm.ToolChoiceNone:
+		fc.Mode = "NONE"
+	case llm.ToolChoiceTool:
+		fc.Mode = "ANY"
+		fc.AllowedFunctionNames = []string{names.Wire(c.Name)}
+	}
+	return &toolConfig{FunctionCallingConfig: fc}
 }

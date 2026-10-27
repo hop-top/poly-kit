@@ -32,3 +32,19 @@ func TestError_Forbidden403IsPermissionDenied(t *testing.T) {
 		assert.ErrorAs(t, err, new(*llmerrors.ErrAuth))
 	}
 }
+
+func TestToolChoice_RejectedWithoutTools(t *testing.T) {
+	sent := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { sent++ }))
+	defer srv.Close()
+	p := mustNew(t, srv.URL, "llama3")
+	req := llm.Request{
+		Messages:   []llm.Message{{Role: "user", Content: "hi"}},
+		ToolChoice: &llm.ToolChoice{Mode: llm.ToolChoiceAny},
+	}
+	_, err := p.(llm.Completer).Complete(context.Background(), req)
+	assert.EqualError(t, err, `ollama: tool_choice "any" needs tools`)
+	_, err = p.(llm.Streamer).Stream(context.Background(), req)
+	assert.EqualError(t, err, `ollama: tool_choice "any" needs tools`)
+	assert.Zero(t, sent)
+}

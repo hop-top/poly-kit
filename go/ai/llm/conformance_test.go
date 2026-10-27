@@ -52,6 +52,7 @@ type llmConfFile struct {
 	AnthropicLimits       json.RawMessage `json:"anthropic_limits"`
 	AnthropicResponse     json.RawMessage `json:"anthropic_response"`
 	AnthropicToolNames    json.RawMessage `json:"anthropic_tool_names"`
+	AnthropicToolChoice   json.RawMessage `json:"anthropic_tool_choice"`
 	ToolNames             []struct {
 		Name      string   `json:"name"`
 		Rule      string   `json:"rule"`

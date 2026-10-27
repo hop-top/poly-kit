@@ -69,6 +69,9 @@ struct Corpus {
     tool_names: Vec<ToolNamesCase>,
     #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
     anthropic_tool_names: Vec<AnthropicToolNamesCase>,
+    // Sections below are pending Rust port: decoded loosely, not run.
+    #[allow(dead_code)]
+    anthropic_tool_choice: Vec<Value>,
 }
 
 #[derive(Deserialize)]
