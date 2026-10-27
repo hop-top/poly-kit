@@ -115,6 +115,15 @@ fn scalar(v: &Value) -> String {
 
 /// A secret store a key may sit in (keychain, vault). `Err` reports a
 /// backend failure; it names the key asked for, never a value.
+///
+/// Blocking (Go's `secret.Store` is too): key resolution calls `get` on
+/// the caller's thread, one name at a time in precedence order, and
+/// returns when it does; a failure counts that name as absent and is
+/// reported in `store_err`. Do not block an async runtime's worker on
+/// a slow backend: implement [`AsyncSecretStore`](super::AsyncSecretStore)
+/// and call the `*_async` key functions, or resolve keys before the hot
+/// path and hand [`Registry::resolve`](super::Registry::resolve) the
+/// resulting URI.
 pub trait SecretStore: Send + Sync {
     fn get(&self, name: &str) -> Result<Option<String>, String>;
 }
