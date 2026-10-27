@@ -12,7 +12,6 @@ HOOK=".githooks/pre-push"
 # so the push path stays short enough to finish before the remote hangs up.
 # Assertions about which packages get tested target it; assertions about what
 # the push gate does still target $HOOK.
-TEST_AFFECTED="scripts/test-affected.sh"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -221,13 +220,6 @@ go/runtime/bus/bus.go")
 # ---------------------------------------------------------------------------
 # Empty-package filtering
 # ---------------------------------------------------------------------------
-
-@test "affected-test selection filters directories with no direct .go files" {
-    # Guards against `go test` on a parent that only holds subpackages, or
-    # on a directory whose only .go file was deleted: both fail with
-    # "[setup failed]".
-    grep -q 'for f in "$d"/\*.go' "$TEST_AFFECTED"
-}
 
 @test "go_dirs: skips directory with no direct .go files" {
     tmp="$BATS_TEST_TMPDIR/nogo"
