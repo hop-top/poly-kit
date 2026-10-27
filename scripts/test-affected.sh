@@ -112,6 +112,11 @@ fi
 [ -n "$HAS_TS" ] && { echo "  ts..."; make test-ts; }
 [ -n "$HAS_PY" ] && { echo "  py..."; make test-py; }
 
+# bats suites cover shell: template scripts, hooks, workflow run: blocks,
+# repo lint scripts. Any change to those, or to a suite, runs them all.
+HAS_SHELL=$(echo "$CHANGED" | grep -E '\.(sh|bash|bats)$|^templates/|^internal/template/builtins/|^\.githooks/|^\.github/workflows/|^scripts/' || true)
+[ -n "$HAS_SHELL" ] && { echo "  bats..."; make test-bats; }
+
 # Parity tests when CLI or contracts change.
 HAS_CLI=$(echo "$CHANGED" | grep -E '^go/console/cli/' || true)
 if [ -n "$HAS_CLI" ] || [ -n "$HAS_CONTRACTS" ]; then

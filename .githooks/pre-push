@@ -1,6 +1,16 @@
 #!/bin/sh
 set -e
 
+# The stdin guard below needs `read -t`, which dash (/bin/sh on Debian and
+# Ubuntu) lacks; there the guard degraded to a blocking `cat` and an open,
+# silent stdin wedged the push. Re-run under bash when the shell has no
+# `read -t` and bash is present. bash has it, so this cannot loop.
+# shellcheck disable=SC3045 # Probe: rc 2 means -t is unsupported.
+if ! { read -t 0 _probe </dev/null 2>/dev/null || [ $? -ne 2 ]; } &&
+    command -v bash >/dev/null 2>&1; then
+    exec bash "$0" "$@"
+fi
+
 # --- Never let a KILLED gate look like a passing one ---
 # The failure this guards against: the remote closes the connection while the
 # hook is still working, the signal lands on a child, and a wrapper (make, a

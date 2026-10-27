@@ -411,3 +411,30 @@ go 1.30.0'
     [ "$status" -eq 1 ]
     has "templates/shared/tool-versions.toml:11: buf is pinned only for this repo"
 }
+
+# --- pin lookup reads its whole input --------------------------------------
+
+# Looking a pin up by piping the list into an awk that exits on the first
+# match let printf hit a closed pipe; under pipefail that failed the
+# lookup, and under load it did so at random. Pins past a pipe buffer's
+# worth of text make the closed pipe certain, not a race.
+pad_pins() {
+    local i
+    for i in $(seq 1 4000); do
+        printf 'filler-tool-%04d = "1.0.%d"\n' "$i" "$i"
+    done >> "$REPO/.config/mise.toml"
+    git -C "$REPO" add -A
+}
+
+@test "pins: a lookup ahead of a long pin list still succeeds" {
+    pad_pins
+    run_pins go
+    [ "$status" -eq 0 ]
+    [ "$output" = "1.26.1" ]
+}
+
+@test "agreeing tree with a long pin list passes" {
+    pad_pins
+    run_check
+    [ "$status" -eq 0 ]
+}

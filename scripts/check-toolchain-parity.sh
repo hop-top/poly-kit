@@ -79,7 +79,9 @@ managed_pins=$(TOOLCHAIN_PINS_FILES=mise.toml "$pins_script") || exit 2
 required="go node pnpm python uv rust golangci-lint ruff lychee buf markdownlint-cli2"
 
 pin() {
-    printf '%s\n' "$pins" | awk -F= -v want="$1" '$1 == want { print $2; exit }'
+    # A here-string, not a pipe: awk exits on the first match, and under
+    # pipefail a writer still feeding a pipe awk has closed fails the lookup.
+    awk -F= -v want="$1" '$1 == want { print $2; exit }' <<<"$pins"
 }
 
 findings=0
@@ -295,7 +297,7 @@ fi
 
 # --- scaffold manifest ----------------------------------------------------
 managed_pin() {
-    printf '%s\n' "$managed_pins" | awk -F= -v want="$1" '$1 == want { print $2; exit }'
+    awk -F= -v want="$1" '$1 == want { print $2; exit }' <<<"$managed_pins"
 }
 for manifest in templates/shared/tool-versions.toml cmd/kit/init/managed_assets/tool-versions.toml; do
     [ -f "$manifest" ] || continue

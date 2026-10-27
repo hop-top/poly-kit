@@ -155,6 +155,24 @@ jobs:
           persist-credentials: false
       - run: make check-toolchain-parity
 
+  # Every *.bats suite (make test-bats): template scripts and their embed
+  # mirror, workflow and hook shell logic, repo lint and sync scripts.
+  # mise installs go (the conform and bootstrap suites build kit), bats and
+  # shellcheck at the pins a local `mise install` gets.
+  bats-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The pre-push hook suite diffs HEAD against earlier commits.
+          fetch-depth: 0
+      - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+        with:
+          version: 2026.10.8
+          install_args: go bats shellcheck
+      - run: make test-bats
+
   proto-check:
     runs-on: ubuntu-latest
     steps:

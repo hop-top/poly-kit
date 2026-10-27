@@ -17,6 +17,10 @@ DOGFOOD_WF=".github/workflows/dogfood-grade.yml"
 
 setup() {
     TMP="$(mktemp -d)"
+    # The bootstrap commits as the caller. Give it an identity so the
+    # suite does not depend on the host's git config (CI runners have none).
+    export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com
+    export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
     cd "$BATS_TEST_DIRNAME/../.."
     REPO_ROOT="$(pwd)"
 }
@@ -74,12 +78,11 @@ teardown() {
 
 @test "bootstrap template passes verify-no-leak" {
     "$REPO_ROOT/$BOOTSTRAP" "$TMP/target" >/dev/null
-    # Build the kit binary if not already present at /tmp/kit-dog-bin.
-    bin="/tmp/kit-dog-bin"
-    if [ ! -x "$bin" ]; then
-        cd "$REPO_ROOT"
-        go build -buildvcs=false -o "$bin" ./cmd/kit
-    fi
+    # Build kit from this checkout into the per-file tmpdir: a binary
+    # cached at a fixed path outlives the run and would test whatever
+    # tree built it first.
+    bin="$BATS_FILE_TMPDIR/kit"
+    (cd "$REPO_ROOT" && go build -buildvcs=false -o "$bin" ./cmd/kit)
     cd "$TMP/target"
     run "$bin" conformance verify-no-leak --paths=.
     [ "$status" -eq 0 ]

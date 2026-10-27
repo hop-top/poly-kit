@@ -50,6 +50,14 @@ EOF
   )
 }
 
+# mtime <file>: modification time in epoch seconds, GNU or BSD stat.
+# GNU stat first: BSD rejects -c with no output, but GNU reads `-f` as
+# "filesystem status" and prints volume stats (free blocks and all) before
+# failing, which a BSD-first chain would capture as the "mtime".
+mtime() {
+  stat -c '%Y' "$1" 2>/dev/null || stat -f '%m' "$1"
+}
+
 init_git_repo() {
   local dir="$1"
   (
@@ -232,9 +240,7 @@ Makefile .gitignore"
     local target="$d/$f"
     if [ -f "$target" ]; then
       local mt
-      mt="$(stat -f '%m' "$target" 2>/dev/null \
-        || stat -c '%Y' "$target" 2>/dev/null \
-        || echo 0)"
+      mt="$(mtime "$target")"
       echo "$f $mt" >> "$mtime_snap"
     fi
   done
@@ -249,9 +255,7 @@ Makefile .gitignore"
     local target="$d/$f"
     if [ -f "$target" ]; then
       local mt_after
-      mt_after="$(stat -f '%m' "$target" 2>/dev/null \
-        || stat -c '%Y' "$target" 2>/dev/null \
-        || echo 0)"
+      mt_after="$(mtime "$target")"
       if [ "$mt_after" != "$mt_before" ]; then
         modified=$((modified + 1))
       fi
