@@ -601,11 +601,14 @@ leave out what it cannot vouch for: `Extensions`, media bytes, thinking
 signatures, `ProviderData`. Tool call arguments are masked fail-closed:
 every JSON string, key and number on its decoded text (a secret needing
 `\"` or `\u` escapes on the wire still matches; a masked number
-becomes a string); each member also in key context (`"key":value`,
-`key=value`), so rules that need the key beside the value (generic API
-keys) replace that value whole; and if the result still matches, or
-the arguments are not JSON, they travel as the fixed string
-`"REDACTED"`, never derived from the original text. Tool results, text parts and replies are plain text,
+becomes a string); each member always also in key context
+(`"key":value`, `key=value`), even when the key or value alone matches,
+so rules that need the key beside the value (generic API keys) replace
+that value whole; members keep their order. The arguments travel as the
+fixed string `"REDACTED"`, never derived from the original text, when
+they are not JSON, a member still matches in key context with its value
+replaced, a match in the input spans more than one token (other than a
+member replaced whole), or the result still matches. Tool results, text parts and replies are plain text,
 masked as written. A nil transform publishes content
 unchanged; only do that on a bus you control.
 

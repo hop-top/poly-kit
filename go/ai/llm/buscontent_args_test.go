@@ -143,7 +143,7 @@ func TestRedactRequest_ArgumentsFallbackIsPlaceholder(t *testing.T) {
 	_, err = r.AddRule("pw", `hunter2`, "")
 	require.NoError(t, err)
 	for _, tc := range []struct{ name, args string }{
-		{"rule spans members", `{"user":"bob","pin":"1234"}`},
+		{"rule spans members", `{"pin":"1234","user":"bob"}`},
 		{"undecodable with a secret", `{"pw": hunter2`},
 		{"undecodable escaped secret", `{"pw":"hunter2"`},
 	} {
@@ -155,4 +155,56 @@ func TestRedactRequest_ArgumentsFallbackIsPlaceholder(t *testing.T) {
 			assert.JSONEq(t, `"REDACTED"`, string(got))
 		})
 	}
+}
+
+func redactedArgs(r *redact.Redactor, args string) string {
+	req := llm.Request{Messages: []llm.Message{{Role: "assistant", ToolCalls: []llm.ToolCall{
+		{ID: "c", Name: "t", Arguments: json.RawMessage(args)},
+	}}}}
+	return string(llm.RedactRequest(r)(req).Messages[0].ToolCalls[0].Arguments)
+}
+
+// A value another rule already masks in part is still checked in key
+// context: the context rule replaces it whole, no tail survives.
+func TestRedactRequest_KeyContextRunsWhenValueAloneMatches(t *testing.T) {
+	r := redact.New()
+	_, err := r.AddRule("abc", `abc`, "")
+	require.NoError(t, err)
+	_, err = r.AddRule("gated", `secret_token"?\s*[:=]\s*"?[A-Za-z0-9]{12}`, "")
+	require.NoError(t, err)
+	got := redactedArgs(r, `{"secret_token":"abcDEF123456","city":"NYC"}`)
+	assert.NotContains(t, got, "DEF123456")
+	assert.JSONEq(t, `{"secret_token":"REDACTED","city":"NYC"}`, got)
+}
+
+// A key that matches alone is no reason to skip its member's context
+// check; when the context still matches with the value replaced, the
+// whole arguments become the placeholder.
+func TestRedactRequest_KeyContextRunsWhenKeyAloneMatches(t *testing.T) {
+	r := redact.New()
+	_, err := r.AddRule("key", `hunter2`, "")
+	require.NoError(t, err)
+	assert.Equal(t, `"REDACTED"`, redactedArgs(r, `{"hunter2":"x","ok":1}`))
+}
+
+// Members keep their order: a rule that needs the input's adjacency
+// still sees it in the result, so a secret it guards cannot pass.
+func TestRedactRequest_KeepsMemberOrder(t *testing.T) {
+	r := redact.New()
+	_, err := r.AddRule("span", `"zz":"\d+","aa":"x"`, "")
+	require.NoError(t, err)
+	assert.Equal(t, `"REDACTED"`, redactedArgs(r, `{"zz":"1234","aa":"x"}`))
+	assert.Equal(t, `{"zz":3,"aa":2}`, redactedArgs(redact.New(), `{"zz":1,"aa":2,"zz":3}`),
+		"order kept, the later duplicate wins")
+}
+
+// A match across members in the input that masking another member
+// would break up fails closed: nothing of it survives.
+func TestRedactRequest_CrossMemberMatchFailsClosed(t *testing.T) {
+	r := redact.New()
+	_, err := r.AddRule("span", `"pin":"\d+","user":"bob"`, "")
+	require.NoError(t, err)
+	_, err = r.AddRule("bob", `bob`, "")
+	require.NoError(t, err)
+	assert.Equal(t, `"REDACTED"`, redactedArgs(r, `{"pin":"1234","user":"bob"}`))
 }
