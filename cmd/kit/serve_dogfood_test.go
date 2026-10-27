@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -149,7 +150,7 @@ func TestKitServe_PortBindsLoopbackAndShutdownIsClean(t *testing.T) {
 	cmd.Env = append(os.Environ(), "XDG_DATA_HOME="+dataDir, "HOME="+t.TempDir())
 	stdout, err := cmd.StdoutPipe()
 	require.NoError(t, err)
-	var stderr strings.Builder
+	var stderr lockedBuffer
 	cmd.Stderr = &stderr
 	require.NoError(t, cmd.Start())
 
@@ -199,7 +200,7 @@ func TestKitServe_SocketServesKitCommands(t *testing.T) {
 	cmd := exec.CommandContext(ctx, bin, "serve", "socket", "--socket", sock)
 	cmd.Env = append(os.Environ(), "HOME="+t.TempDir())
 	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
-	var stderr strings.Builder
+	var stderr lockedBuffer
 	cmd.Stderr = &stderr
 	require.NoError(t, cmd.Start())
 	defer func() {
@@ -243,4 +244,25 @@ func TestKitServe_SocketServesKitCommands(t *testing.T) {
 	require.NoError(t, json.NewDecoder(conn).Decode(&refused))
 	assert.False(t, refused.Ok)
 	assert.Equal(t, "NOT_FOUND", refused.Error.Code)
+}
+
+// lockedBuffer is a strings.Builder the child's stderr copier and the
+// test can share: exec copies a non-*os.File Stderr on its own
+// goroutine for as long as the child runs, so every read the test makes
+// before Wait returns races that copier without the lock.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
 }

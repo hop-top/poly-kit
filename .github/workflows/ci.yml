@@ -245,9 +245,9 @@ jobs:
   # Runs alongside go-test, not after it: the race detector roughly
   # doubles wall time, and go-test is already the long pole of the test
   # stage. As a sibling job the race gate costs the pipeline nothing it
-  # was not already spending. Scope and the go/core/projects exclusion
-  # are documented on the `test-go-race` target in the Makefile — CI and
-  # a developer's local run share the one command.
+  # was not already spending. Scope (go/, cmd/, internal/) is
+  # documented on the `test-go-race` target in the Makefile — CI and a
+  # developer's local run share the one command.
   go-race:
     needs: [go-lint]
     runs-on: ubuntu-latest
