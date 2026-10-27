@@ -7,12 +7,13 @@
  *
  * URI: `anthropic://<model>[?params]`. Params: `tool_names`
  * (`sanitize` | `strict`), `max_body_bytes`, `max_event_bytes`. The key
- * is the URI's `api_key`, `LLM_API_KEY` or `ANTHROPIC_API_KEY`;
+ * resolves as `loadConfig` resolves it (the URI's `api_key`, llm.yaml,
+ * `ANTHROPIC_API_KEY`, then `LLM_API_KEY`);
  * `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` and
  * `ANTHROPIC_WORKSPACE_ID` are read from the environment. The token and
  * workspace header go only to a trusted origin (the default endpoint,
- * `ANTHROPIC_BASE_URL`, `LLM_BASE_URL`, loopback); no credential goes
- * over plain http to a remote host. A hermetic config
+ * `ANTHROPIC_BASE_URL`, llm.yaml `base_url`, `LLM_BASE_URL`, loopback);
+ * no credential goes over plain http to a remote host. A hermetic config
  * ({@link ResolvedConfig.hermetic}) reads none of these variables.
  *
  * @example
@@ -75,7 +76,6 @@ import {
   type Limits,
   type TransportOptions,
 } from "./llm-http";
-import { withResolvedKey } from "./llm-keys";
 
 const SCHEME = "anthropic";
 /** The Messages API's default endpoint. */
@@ -926,11 +926,8 @@ function classify(status: number, type: string, message: string, model: string):
 // ─── Registration ────────────────────────────────────────────────────────────
 
 function anthropicFactory(cfg: ResolvedConfig): Provider {
-  const envBase = envReader(cfg)("ANTHROPIC_BASE_URL");
-  const trusted = [ANTHROPIC_DEFAULT_BASE_URL, ...(envBase ? [envBase] : [])];
-  const a = new AnthropicAdapter(
-    withResolvedKey(cfg, "ANTHROPIC_API_KEY", trusted)
-  );
+  // loadConfig resolved and guarded the key.
+  const a = new AnthropicAdapter(cfg);
   return {
     complete: (req) => a.complete(req),
     stream: (req) => a.stream(req),

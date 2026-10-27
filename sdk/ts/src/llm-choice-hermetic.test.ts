@@ -5,12 +5,13 @@
  * in the llm-v1 conformance runner.
  */
 
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import "./llm-anthropic";
 import {
   AuthError,
-  KeyEndpointError,
   LLMError,
   PermissionDeniedError,
   checkToolChoice,
@@ -24,7 +25,6 @@ import {
   type ToolChoice,
   type ToolDef,
 } from "./llm";
-import { withResolvedKey } from "./llm-keys";
 import { OpenAIAdapter } from "./llm-openai";
 import { RouteLLMAdapter, parseRouterConfig } from "./routellm";
 import { fakeServer, isolateEnv, reply, type FakeServer } from "../test/llm/conformance-helpers";
@@ -33,6 +33,7 @@ const ENV = [
   "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_WORKSPACE_ID",
   "OPENAI_API_KEY", "LLM_API_KEY", "LLM_BASE_URL", "LLM_PROVIDER", "LLM_FALLBACK",
   "ROUTELLM_BASE_URL", "ROUTELLM_STRONG_MODEL", "ROUTELLM_WEAK_MODEL", "ROUTELLM_ROUTERS",
+  "ROUTELLM_API_KEY", "LMSTUDIO_API_KEY",
 ];
 
 let restoreEnv: () => void;
@@ -196,6 +197,21 @@ describe("401/403 split", () => {
   });
 });
 
+describe("local runtimes' keys", () => {
+  it("routellm takes ROUTELLM_API_KEY when set, never LLM_API_KEY", () => {
+    process.env["LLM_API_KEY"] = "env-key";
+    expect(loadConfig("routellm://m").provider.apiKey).toBeUndefined();
+    process.env["ROUTELLM_API_KEY"] = "router-key";
+    expect(loadConfig("routellm://m").provider.apiKey).toBe("router-key");
+  });
+
+  it("lmstudio takes no key from the environment", () => {
+    process.env["LLM_API_KEY"] = "env-key";
+    process.env["LMSTUDIO_API_KEY"] = "lms-key";
+    expect(loadConfig("lmstudio://m").provider.apiKey).toBeUndefined();
+  });
+});
+
 describe("hermetic", () => {
   it("loadConfig reads no LLM_* variable", () => {
     process.env["LLM_PROVIDER"] = "openai://ambient";
@@ -257,19 +273,21 @@ describe("hermetic", () => {
     expect(f.sent[0]!.headers.get("authorization")).toBeNull();
   });
 
-  it("the key gate's trust check reads no LLM_BASE_URL", () => {
-    // A key not from the URI, bound for an endpoint only the URI names:
-    // trusted only through LLM_BASE_URL, which hermetic does not read.
+  it("the key gate reads no LLM_BASE_URL and no llm.yaml", () => {
+    // An endpoint only the URI names, trusted through LLM_BASE_URL or
+    // llm.yaml: hermetic, the URI's key goes there, nothing else does.
     process.env["LLM_BASE_URL"] = "https://gw.corp.test";
-    const cfg: ResolvedConfig = {
-      uri: { scheme: "openai", model: "m", params: { base_url: "https://gw.corp.test" } },
-      provider: { apiKey: "caller-key", baseURL: "https://gw.corp.test", model: "m" },
-      fallbacks: [],
-    };
-    expect(() => withResolvedKey({ ...cfg, hermetic: true }, undefined, [])).toThrow(
-      KeyEndpointError
-    );
-    expect(() => withResolvedKey(cfg, undefined, [])).not.toThrow();
+    process.env["OPENAI_API_KEY"] = "env-key";
+    const dir = join(process.env["XDG_CONFIG_HOME"]!, "hop");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "llm.yaml"), "providers:\n  openai:\n    api_key: file-key\n");
+    try {
+      const uri = "openai://m?base_url=https://gw.corp.test";
+      expect(loadConfig(uri, { hermetic: true }).provider.apiKey).toBeUndefined();
+      expect(loadConfig(uri).provider.apiKey).toBe("file-key");
+    } finally {
+      rmSync(join(dir, "llm.yaml"));
+    }
   });
 
   it("routellm reads no ROUTELLM_* variable", () => {

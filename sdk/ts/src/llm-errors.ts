@@ -7,6 +7,7 @@
  */
 
 import { LLMError } from "./llm-error";
+import { goQuote } from "./llm-quote";
 
 /**
  * An HTTP error response kit classifies by status: a 5xx (fallbackable)
@@ -114,7 +115,7 @@ function keyEndpointMessage(
   endpoint: string,
   opts: { insecure?: boolean; malformed?: boolean }
 ): string {
-  const q = JSON.stringify(endpoint);
+  const q = goQuote(endpoint);
   if (opts.malformed) {
     return (
       `llm: refusing to send the ${scheme} API key to ${q}: an endpoint must parse and carry ` +
@@ -126,6 +127,26 @@ function keyEndpointMessage(
   }
   return (
     `llm: refusing to send the ${scheme} API key to ${q}, which only the URI names; ` +
-    "set it as LLM_BASE_URL, or pass api_key in the URI"
+    "set it as llm.yaml base_url or LLM_BASE_URL, or pass api_key in the URI"
   );
+}
+
+/**
+ * No key was found for a scheme whose adapter requires one. Carries
+ * names only, never a value: `envVars` lists every variable consulted,
+ * highest precedence first, ending with `LLM_API_KEY`.
+ */
+export class MissingKeyError extends LLMError {
+  readonly scheme: string;
+  readonly model: string;
+  readonly envVars: string[];
+
+  constructor(scheme: string, model: string, envVars: string[]) {
+    const m = model !== "" ? ` (model ${goQuote(model)})` : "";
+    super(`llm: no API key for provider ${goQuote(scheme)}${m}: set ${envVars.join(" or ")}`);
+    this.name = "MissingKeyError";
+    this.scheme = scheme;
+    this.model = model;
+    this.envVars = envVars;
+  }
 }

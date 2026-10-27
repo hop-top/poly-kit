@@ -834,12 +834,42 @@ const turn = st.outcome(); // content, thinking, toolCalls, finishReason, usage
 |--------|---------|------------------|---------|
 | `@hop-top/kit/anthropic` | `anthropic` | `https://api.anthropic.com` | `ANTHROPIC_API_KEY` |
 | `@hop-top/kit/openai` | `openai`, `openrouter`, `xai`, `groq`, `together`, `fireworks`, `deepseek`, `mistral`, `lmstudio` | per scheme, as in Go | `<SCHEME>_API_KEY` (`lmstudio`: none) |
-| `@hop-top/kit/routellm` | `routellm` | `http://localhost:6060/v1` | URI or `LLM_API_KEY` |
+| `@hop-top/kit/routellm` | `routellm` | `http://localhost:6060/v1` | `ROUTELLM_API_KEY`, optional |
 
 Each provider has `complete`, `stream`, `callWithTools` and
 `streamWithTools`. `stream` and `streamWithTools` return a `ToolStream`:
 text tokens, then one `{ done: true }`; `outcome()` is defined after it.
-The URI's `api_key` or `LLM_API_KEY` outranks the env key.
+
+### URIs, keys and llm.yaml
+
+Same as Go ([`llm.md`](llm.md)), pinned by `contracts/llm-v1`
+(`parse_uri`, `key_endpoint`):
+
+- `parseURI('scheme://[host:port/]model[?params]')`: the model may be
+  empty; a first segment that splits as `host:port` is the host
+  (`ollama://[::1]:11434/llama3`). The query splits on `&` and is not
+  percent-decoded; `?flag` is `flag: ""`. Errors (`LLMError`): `empty
+  URI`, `missing scheme in URI "..."`, `empty scheme in URI "..."`,
+  quoting the input with credentials masked.
+- `loadConfig(uri?)` reads `{configDir('hop')}/llm.yaml` (`default`,
+  `fallback`, `providers.<scheme>`: `api_key`, `api_key_env`,
+  `base_url`, `model`; other keys become `provider.extras`) on each
+  call. Missing or malformed, it counts as empty.
+- Key, highest first: the URI's `api_key`; llm.yaml `api_key`, then the
+  variable `api_key_env` names; the scheme's variable (table above);
+  `LLM_API_KEY` for a scheme whose adapter requires a key. Blank is
+  unset everywhere. A scheme no adapter serves gets only its own
+  llm.yaml key. No secret store.
+- Base URL: the URI's `base_url`; its host (`http://host:port`);
+  `LLM_BASE_URL`; llm.yaml `base_url`. URI: the argument;
+  `LLM_PROVIDER`; llm.yaml `default`. Fallbacks: `LLM_FALLBACK`;
+  llm.yaml `fallback`.
+- `resolve(uri)` is `loadConfig` plus the adapter, so it resolves the
+  key too (Go: `ApplyAPIKey`, then `Resolve`).
+- `applyAPIKey(uri)` returns `uri` with the resolved key appended as
+  `api_key` (unchanged when it has one or the scheme takes none); a
+  required key found nowhere throws `MissingKeyError` (`envVars` lists
+  every variable consulted).
 
 - Anthropic: `Request.thinking` (`budgetTokens` ≥ 1024 and below
   `maxTokens`) streams thinking deltas as `Token.thinking`; replay
@@ -877,11 +907,13 @@ Transport guarantees, the same as Go:
 
 - A key goes over plain http only to loopback, and never to an endpoint
   with userinfo, a backslash, a percent-escape, whitespace or a control
-  character (`KeyEndpointError`). A key from the environment reaches an
-  endpoint only the URI names only when it is loopback or shares an
-  origin with the scheme's default, `LLM_BASE_URL` or the adapter's own
-  base URL variable; the Anthropic bearer token and workspace header
-  follow the same rule.
+  character (`KeyEndpointError`). A key not from the URI (llm.yaml or
+  environment) reaches an endpoint only the URI names only when it is
+  loopback or shares an origin with the scheme's default, its llm.yaml
+  `base_url` or `LLM_BASE_URL`; `loadConfig`, `resolve` and
+  `applyAPIKey` refuse it otherwise. The Anthropic bearer token and
+  workspace header follow the same rule, `ANTHROPIC_BASE_URL` trusted
+  too.
 - Redirects are not followed (`HTTPStatusError`, status 3xx).
 - Two retries for connection failures, 408, 409, 429 and 5xx
   (`x-should-retry` overrides); a `retry-after-ms` / `retry-after` wait
@@ -962,8 +994,8 @@ nothing ambient: the provider comes from the URI alone (`api_key`,
 `base_url`, host). No `LLM_PROVIDER`, `LLM_FALLBACK`, `LLM_API_KEY`,
 `LLM_BASE_URL`, `<SCHEME>_API_KEY` (`ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`, ...), `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`,
-`ANTHROPIC_WORKSPACE_ID` or `ROUTELLM_*`; the TypeScript SDK reads no
-config file either way. Built directly, an adapter takes
+`ANTHROPIC_WORKSPACE_ID` or `ROUTELLM_*`, and no llm.yaml. Built
+directly, an adapter takes
 `ResolvedConfig.hermetic`. Go: [Hermetic mode](llm.md#hermetic-mode).
 
 ```ts
