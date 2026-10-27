@@ -36,7 +36,7 @@ output = [
     "dep:comfy-table",
 ]
 cli = ["output", "dep:clap"]
-id = ["dep:mti", "dep:uuid", "dep:serde", "dep:thiserror"]
+id = ["dep:type-safe-id", "dep:uuid", "dep:serde", "dep:thiserror"]
 bus = ["dep:serde", "dep:serde_json"]
 # The bus network adapter: Go's NetworkAdapter over a native WebSocket
 # (tokio-tungstenite), TLS through rustls on the ring provider with the
@@ -204,7 +204,10 @@ thiserror = { version = "2", optional = true }
 rmcp = { version = "3.1.4", default-features = false, optional = true }
 clap = { version = "4", features = ["derive", "string"], optional = true }
 comfy-table = { version = "8", default-features = false, optional = true }
-mti = { version = "1.1.1", features = ["serde"], optional = true }
+# TypeID codec. Exact pin: the wire form is a cross-language contract
+# (contracts/typeid-v1). Needs only uuid's `v7`; the previous codec
+# enabled v1-v7, and v3 pulled md-5 and block-buffer 0.10.
+type-safe-id = { version = "=0.3.3", optional = true }
 uuid = { version = "1", features = ["v7", "serde"], optional = true }
 # `bundled` compiles SQLite from source: no libsqlite3 on the build host,
 # and a pinned engine version so pragma/WAL behaviour is identical across

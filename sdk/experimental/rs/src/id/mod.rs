@@ -1,4 +1,4 @@
-//! TypeID primitive — thin wrapper around the [`mti`] crate.
+//! TypeID primitive — thin wrapper around the [`type_safe_id`] crate.
 //!
 //! Implements the cross-language kit API SHAPE defined in
 //! `docs/announcements/2026-05-typeid-primitive.md` for Rust:
@@ -22,16 +22,22 @@
 //! Wraps the Jetify TypeID specification **v0.3.0** (UUIDv7 by default,
 //! 26-char Crockford base32 suffix). See the document above for the rationale.
 //!
+//! The wrapper validates the prefix itself before delegating: the error
+//! messages stay independent of the backing crate, and the backing crate's
+//! error path is never reached with input it cannot slice safely (an
+//! over-long prefix whose 63rd byte sits inside a multi-byte character).
+//! Base32 encoding and decoding stay upstream.
+//!
 //! # Bus-factor warning
 //!
-//! The upstream [`mti`](https://github.com/Govcraft/mti) crate currently has
-//! a **single active contributor** and is the only actively-maintained
-//! Jetify-spec-compliant Rust implementation. Kit accepts this risk
-//! with the following mitigations:
+//! The upstream [`type-safe-id`](https://github.com/conradludgate/type-safe-id)
+//! crate is small, has a handful of contributors and releases rarely. Kit
+//! accepts this risk with the following mitigations:
 //!
-//! 1. The dependency surface in this module is small and isolated; if the
-//!    crate goes unmaintained we can vendor it or swap to a replacement
-//!    without touching adopters.
+//! 1. The dependency surface in this module is small and isolated, and no
+//!    upstream type appears in this module's public API; if the crate goes
+//!    unmaintained we can vendor it or swap to a replacement without
+//!    touching adopters.
 //! 2. Upstream activity is reviewed at every kit release. If there is no
 //!    commit for 12 months and an open critical bug, the kit maintainers
 //!    will publish a fork under the kit org (dual Apache-2.0 / MIT
@@ -56,9 +62,9 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::str::FromStr;
 
-use mti::prelude::{MagicTypeId, MagicTypeIdError, MagicTypeIdExt, TypeIdSuffix, V7};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
+use type_safe_id::{DynamicType, TypeSafeId};
 use uuid::Uuid;
 
 /// Errors produced by the kit typeid primitive.
@@ -69,8 +75,8 @@ use uuid::Uuid;
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum IdError {
     /// The prefix did not match the Jetify TypeID grammar
-    /// (`^[a-z]([a-z0-9_]*[a-z0-9])?$`, max 63 chars), or was rejected by the
-    /// upstream parser for any other prefix-related reason.
+    /// (lowercase ASCII letters and underscores, starting and ending with a
+    /// letter, max 63 bytes).
     #[error("invalid typeid prefix: {0}")]
     InvalidPrefix(String),
 
@@ -90,13 +96,64 @@ pub enum IdError {
     },
 }
 
-impl From<MagicTypeIdError> for IdError {
-    fn from(err: MagicTypeIdError) -> Self {
-        match err {
-            MagicTypeIdError::Prefix(e) => Self::InvalidPrefix(e.to_string()),
-            MagicTypeIdError::Suffix(e) => Self::InvalidSuffix(e.to_string()),
+const MAX_PREFIX_LEN: usize = 63;
+const SUFFIX_LEN: usize = 26;
+const BASE32_ALPHABET: &[u8] = b"0123456789abcdefghjkmnpqrstvwxyz";
+
+/// Validate a non-empty prefix against the TypeID grammar, in byte terms,
+/// before any of it reaches the backing crate.
+fn check_prefix(prefix: &str) -> Result<(), IdError> {
+    let bytes = prefix.as_bytes();
+    let reason = if bytes.len() > MAX_PREFIX_LEN {
+        Some("Input exceeds 63 characters")
+    } else {
+        match (bytes.first(), bytes.last()) {
+            (Some(b'_'), _) => Some("Input cannot start with an underscore"),
+            (Some(b), _) if !b.is_ascii_lowercase() => {
+                Some("Input must start with a lowercase alphabetic character")
+            }
+            (None, _) => Some("Input must start with a lowercase alphabetic character"),
+            (_, Some(b'_')) => Some("Input cannot end with an underscore"),
+            (_, Some(b)) if !b.is_ascii_lowercase() => {
+                Some("Input must end with a lowercase alphabetic character")
+            }
+            _ if bytes.iter().any(|&b| !(b.is_ascii_lowercase() || b == b'_')) => Some(
+                "Input contains invalid characters: only lowercase ASCII letters and underscores are allowed",
+            ),
+            _ => None,
         }
+    };
+    reason.map_or(Ok(()), |r| Err(IdError::InvalidPrefix(r.to_owned())))
+}
+
+/// Explain why the backing crate rejected `suffix`.
+fn suffix_error(suffix: &str) -> IdError {
+    let reason = if suffix.len() != SUFFIX_LEN {
+        "Suffix must be exactly 26 characters long"
+    } else if suffix.bytes().any(|b| !BASE32_ALPHABET.contains(&b)) {
+        "Suffix contains characters not in the base32 alphabet"
+    } else {
+        "First character of suffix must be '7' or less"
+    };
+    IdError::InvalidSuffix(format!("Invalid `TypeID` suffix: {reason}"))
+}
+
+/// The backing crate's prefix type for a prefix [`check_prefix`] accepted
+/// (or the empty prefix).
+fn dynamic_type(prefix: &str) -> Result<DynamicType, IdError> {
+    if !prefix.is_empty() {
+        check_prefix(prefix)?;
     }
+    DynamicType::new(prefix).map_err(|e| IdError::InvalidPrefix(e.to_string()))
+}
+
+fn require_prefix(prefix: &str) -> Result<(), IdError> {
+    if prefix.is_empty() {
+        return Err(IdError::InvalidPrefix(
+            "prefix must not be empty".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 /// Result of parsing a canonical typeid string.
@@ -121,10 +178,9 @@ pub struct Parsed {
 /// # Errors
 ///
 /// Returns [`IdError::InvalidPrefix`] if `prefix` does not match the Jetify
-/// TypeID grammar `^[a-z]([a-z0-9_]*[a-z0-9])?$` (max 63 chars). The empty
-/// prefix is **rejected** here so callers always get a self-describing ID;
-/// if you genuinely want a suffix-only typeid, build it through the upstream
-/// crate.
+/// TypeID grammar (lowercase ASCII letters and underscores, starting and
+/// ending with a letter, max 63 bytes). The empty prefix is **rejected**
+/// here so callers always get a self-describing ID.
 ///
 /// # Example
 ///
@@ -136,13 +192,8 @@ pub struct Parsed {
 /// assert_eq!(id.len(), "invoice_".len() + 26);
 /// ```
 pub fn new(prefix: &str) -> Result<String, IdError> {
-    if prefix.is_empty() {
-        return Err(IdError::InvalidPrefix(
-            "prefix must not be empty".to_owned(),
-        ));
-    }
-    let id = prefix.try_create_type_id::<V7>()?;
-    Ok(id.to_string())
+    require_prefix(prefix)?;
+    Ok(TypeSafeId::new_with_type(dynamic_type(prefix)?).to_string())
 }
 
 /// Parse a canonical typeid string into its prefix and UUID components.
@@ -164,10 +215,23 @@ pub fn new(prefix: &str) -> Result<String, IdError> {
 /// assert_eq!(parsed.prefix, "user");
 /// ```
 pub fn parse(s: &str) -> Result<Parsed, IdError> {
-    let mti = MagicTypeId::from_str(s)?;
+    let (prefix, suffix) = match s.rsplit_once('_') {
+        Some((prefix, suffix)) => {
+            check_prefix(prefix)?;
+            (prefix, suffix)
+        }
+        None => ("", s),
+    };
+    let id = TypeSafeId::<DynamicType>::from_str(s).map_err(|e| match e {
+        type_safe_id::Error::InvalidType | type_safe_id::Error::IncorrectType { .. } => {
+            IdError::InvalidPrefix(e.to_string())
+        }
+        _ => suffix_error(suffix),
+    })?;
+    debug_assert_eq!(id.type_prefix(), prefix);
     Ok(Parsed {
-        prefix: mti.prefix().as_str().to_owned(),
-        uuid: mti.suffix().to_uuid(),
+        prefix: id.type_prefix().to_owned(),
+        uuid: id.uuid(),
     })
 }
 
@@ -359,14 +423,8 @@ impl<'de, T: Prefix> Deserialize<'de> for Typed<T> {
 /// assert_eq!(parsed.uuid, uuid);
 /// ```
 pub fn from_uuid(prefix: &str, uuid: Uuid) -> Result<String, IdError> {
-    if prefix.is_empty() {
-        return Err(IdError::InvalidPrefix(
-            "prefix must not be empty".to_owned(),
-        ));
-    }
-    let suffix = TypeIdSuffix::from(uuid);
-    let id = prefix.try_create_type_id_with_suffix::<V7>(suffix)?;
-    Ok(id.to_string())
+    require_prefix(prefix)?;
+    __test_only_from_uuid(prefix, uuid)
 }
 
 /// Internal helper retained for parity fixture verification.
@@ -375,9 +433,7 @@ pub fn from_uuid(prefix: &str, uuid: Uuid) -> Result<String, IdError> {
 /// site without needing two crates' worth of test plumbing.
 #[doc(hidden)]
 pub(crate) fn __test_only_from_uuid(prefix: &str, uuid: Uuid) -> Result<String, IdError> {
-    let suffix = TypeIdSuffix::from(uuid);
-    let id = prefix.try_create_type_id_with_suffix::<V7>(suffix)?;
-    Ok(id.to_string())
+    Ok(TypeSafeId::from_type_and_uuid(dynamic_type(prefix)?, uuid).to_string())
 }
 
 #[cfg(test)]
@@ -430,8 +486,7 @@ mod tests {
         assert_eq!(parsed.prefix, "invoice");
         assert_eq!(parsed.uuid.get_version_num(), 7);
         // Recompose: prefix_<26-base32> should equal `id`.
-        let suffix = TypeIdSuffix::from(parsed.uuid);
-        assert_eq!(format!("invoice_{suffix}"), id);
+        assert_eq!(from_uuid("invoice", parsed.uuid).unwrap(), id);
     }
 
     #[test]
@@ -468,8 +523,8 @@ mod tests {
 
     // ------------------------------------------------------------------
     // Pinned canonical wire-form fixtures. The expected strings below are
-    // the literal output of `mti` v1.1.x for the three pinned UUID inputs;
-    // they were captured once by calling `__test_only_from_uuid` and pasted
+    // the literal output of `mti` v1.1.x (the previous backing crate) for
+    // the three pinned UUID inputs; they were captured once by calling `__test_only_from_uuid` and pasted
     // here verbatim. If an upstream change ever shifts the base32 encoding
     // (or anything else in the canonical form) this assertion fails loudly
     // and the cross-language parity matrix must be reviewed.
@@ -563,6 +618,132 @@ mod tests {
         let json = serde_json::to_string(&id).unwrap();
         let round: Typed<Task> = serde_json::from_str(&json).unwrap();
         assert_eq!(round, id);
+    }
+
+    // ------------------------------------------------------------------
+    // Grammar edge cases the contract fixtures do not cover. Accept and
+    // reject sets, error kinds and message text match the wrapper's
+    // behaviour before the backing crate changed.
+    // ------------------------------------------------------------------
+    const SUFFIX: &str = "01jg000000e008000000000000";
+
+    fn prefix_err(input: &str) -> String {
+        match parse(&format!("{input}_{SUFFIX}")) {
+            Err(IdError::InvalidPrefix(msg)) => msg,
+            other => panic!("{input:?}: expected InvalidPrefix, got {other:?}"),
+        }
+    }
+
+    fn suffix_err(suffix: &str) -> String {
+        match parse(&format!("task_{suffix}")) {
+            Err(IdError::InvalidSuffix(msg)) => msg,
+            other => panic!("{suffix:?}: expected InvalidSuffix, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn prefix_grammar_accepts_spec_forms() {
+        let max = "a".repeat(63);
+        for prefix in ["task", "my_app", "a__b", "x", max.as_str()] {
+            let s = from_uuid(prefix, fixture_uuid(FIXTURE_TASK_UUID)).unwrap();
+            assert_eq!(s, format!("{prefix}_{SUFFIX}"));
+            assert_eq!(parse(&s).unwrap().prefix, prefix);
+            assert!(new(prefix).is_ok(), "new({prefix:?})");
+        }
+    }
+
+    #[test]
+    fn parse_accepts_bare_suffix_as_empty_prefix() {
+        let parsed = parse(SUFFIX).unwrap();
+        assert_eq!(parsed.prefix, "");
+        assert_eq!(parsed.uuid, fixture_uuid(FIXTURE_TASK_UUID));
+    }
+
+    #[test]
+    fn prefix_grammar_rejections_and_messages() {
+        let start = "Input must start with a lowercase alphabetic character";
+        let end = "Input must end with a lowercase alphabetic character";
+        let invalid =
+            "Input contains invalid characters: only lowercase ASCII letters and underscores are allowed";
+        let cases = [
+            ("Task", start),
+            ("", start),
+            ("_task", "Input cannot start with an underscore"),
+            ("1task", start),
+            ("task2", end),
+            ("task!", end),
+            ("task_", "Input cannot end with an underscore"),
+            ("t2a", invalid),
+            ("tAsk", invalid),
+            ("t\u{e2}sk", invalid),
+        ];
+        for (input, want) in cases {
+            assert_eq!(prefix_err(input), want, "parse prefix {input:?}");
+        }
+        assert_eq!(
+            new("Task").unwrap_err().to_string(),
+            format!("invalid typeid prefix: {start}")
+        );
+        assert_eq!(
+            new("task_").unwrap_err(),
+            IdError::InvalidPrefix("Input cannot end with an underscore".to_owned())
+        );
+    }
+
+    #[test]
+    fn prefix_over_63_bytes_is_rejected() {
+        let too_long = "Input exceeds 63 characters";
+        assert_eq!(prefix_err(&"a".repeat(64)), too_long);
+        assert!(matches!(
+            new(&"a".repeat(64)),
+            Err(IdError::InvalidPrefix(_))
+        ));
+    }
+
+    #[test]
+    fn prefix_with_multibyte_char_at_byte_63_is_rejected_not_panicking() {
+        // 62 ASCII bytes then a 2-byte char: byte 63 falls inside it. The
+        // backing crate slices `prefix[..63]` on its error path, which
+        // panics on a non-char boundary unless the wrapper rejects first.
+        let prefix = format!("{}\u{e9}", "a".repeat(62));
+        assert_eq!(prefix.len(), 64);
+        assert!(!prefix.is_char_boundary(63));
+        assert_eq!(prefix_err(&prefix), "Input exceeds 63 characters");
+        assert!(matches!(new(&prefix), Err(IdError::InvalidPrefix(_))));
+        assert!(matches!(
+            from_uuid(&prefix, fixture_uuid(FIXTURE_TASK_UUID)),
+            Err(IdError::InvalidPrefix(_))
+        ));
+    }
+
+    #[test]
+    fn suffix_rejections_and_messages() {
+        let length = "Invalid `TypeID` suffix: Suffix must be exactly 26 characters long";
+        let alphabet =
+            "Invalid `TypeID` suffix: Suffix contains characters not in the base32 alphabet";
+        let first = "Invalid `TypeID` suffix: First character of suffix must be '7' or less";
+        let cases = [
+            ("", length),
+            ("not-a-real-typeid", length),
+            ("01jg000000e0080000000000000", length),
+            ("01JG000000E008000000000000", alphabet),
+            ("01jg000000e00800000000000u", alphabet),
+            ("01jg000000e00800000000000l", alphabet),
+            ("81jg000000e008000000000000", first),
+            ("zzzzzzzzzzzzzzzzzzzzzzzzzz", first),
+        ];
+        for (suffix, want) in cases {
+            assert_eq!(suffix_err(suffix), want, "suffix {suffix:?}");
+        }
+        assert_eq!(
+            parse("task_not-a-real-typeid").unwrap_err().to_string(),
+            format!("invalid typeid suffix: {length}")
+        );
+        // The largest valid suffix decodes to the all-ones UUID.
+        assert_eq!(
+            parse("task_7zzzzzzzzzzzzzzzzzzzzzzzzz").unwrap().uuid,
+            Uuid::from_u128(u128::MAX)
+        );
     }
 
     #[test]

@@ -3,7 +3,7 @@
 // Loads `contracts/typeid-v1/fixtures.json` from the repo root and
 // asserts that the Rust SDK's `id::from_uuid` and `id::parse` agree with
 // the canonical wire form shared by go/ts/py/php. A divergence here
-// means either the upstream `mti` crate drifted or the contract was
+// means either the upstream `type-safe-id` crate drifted or the contract was
 // edited without updating all five SDKs.
 //
 // The whole file is gated on the `id` feature because `tests/` is
