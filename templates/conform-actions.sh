@@ -162,7 +162,7 @@ to $_py_dir/." S P1
         "Would generate version package (dry run)"
     else
       ensure_dir "internal/version"
-      cat > "internal/version/version.go" <<'GOVEOF'
+      cat >"internal/version/version.go" <<'GOVEOF'
 package version
 
 var (
@@ -211,14 +211,14 @@ run_generated_actions() {
       {
         echo "version: 2"
         echo "updates:"
-      } > "$dbot"
+      } >"$dbot"
 
-      has_lang go && _dependabot_block "gomod" >> "$dbot"
-      has_lang py && _dependabot_block "pip"   >> "$dbot"
-      has_lang ts && _dependabot_block "npm"   >> "$dbot"
+      has_lang go && _dependabot_block "gomod" >>"$dbot"
+      has_lang py && _dependabot_block "pip" >>"$dbot"
+      has_lang ts && _dependabot_block "npm" >>"$dbot"
 
       # always include github-actions
-      _dependabot_block "github-actions" >> "$dbot"
+      _dependabot_block "github-actions" >>"$dbot"
 
       log_applied "$dbot" \
         "Generated from detected languages"
@@ -226,17 +226,17 @@ run_generated_actions() {
   else
     # Check for missing ecosystems
     local missing=()
-    has_lang go \
-      && ! grep -q "gomod" "$dbot" \
-      && missing+=("gomod")
-    has_lang py \
-      && ! grep -q "pip" "$dbot" \
-      && missing+=("pip")
-    has_lang ts \
-      && ! grep -q "npm" "$dbot" \
-      && missing+=("npm")
-    ! grep -q "github-actions" "$dbot" \
-      && missing+=("github-actions")
+    has_lang go &&
+      ! grep -q "gomod" "$dbot" &&
+      missing+=("gomod")
+    has_lang py &&
+      ! grep -q "pip" "$dbot" &&
+      missing+=("pip")
+    has_lang ts &&
+      ! grep -q "npm" "$dbot" &&
+      missing+=("npm")
+    ! grep -q "github-actions" "$dbot" &&
+      missing+=("github-actions")
 
     if [ ${#missing[@]} -gt 0 ]; then
       if [ "$DRY_RUN" = true ]; then
@@ -244,7 +244,7 @@ run_generated_actions() {
           "Would append: ${missing[*]} (dry run)"
       else
         for eco in "${missing[@]}"; do
-          _dependabot_block "$eco" >> "$dbot"
+          _dependabot_block "$eco" >>"$dbot"
         done
         log_applied "$dbot" \
           "Appended ecosystems: ${missing[*]}"
@@ -287,7 +287,7 @@ _merge_makefile() {
         "Would create with kit targets (dry run)"
       return 0
     fi
-    cat > "$mkfile" <<'MKEOF'
+    cat >"$mkfile" <<'MKEOF'
 APP_NAME := $(shell basename $(CURDIR))
 
 # --- kit conform targets ---
@@ -352,9 +352,9 @@ MKEOF
   {
     echo ""
     echo "$marker"
-  } >> "$mkfile"
+  } >>"$mkfile"
 
-  _append_kit_targets "${missing[@]}" >> "$mkfile"
+  _append_kit_targets "${missing[@]}" >>"$mkfile"
   log_applied "$mkfile" "Appended missing: ${missing[*]}"
 }
 
@@ -404,7 +404,7 @@ EOF
 _merge_gitignore() {
   local gi=".gitignore"
   local marker="# kit conform"
-  local entries=("bin/" "dist/" "*.db" \
+  local entries=("bin/" "dist/" "*.db"
     "coverage.out" "coverage_e2e.out")
 
   if [ -f "$gi" ] && grep -qF "$marker" "$gi"; then
@@ -414,8 +414,8 @@ _merge_gitignore() {
 
   local missing=()
   for e in "${entries[@]}"; do
-    if [ ! -f "$gi" ] \
-        || ! grep -qxF "$e" "$gi"; then
+    if [ ! -f "$gi" ] ||
+      ! grep -qxF "$e" "$gi"; then
       missing+=("$e")
     fi
   done
@@ -437,7 +437,7 @@ _merge_gitignore() {
     for e in "${missing[@]}"; do
       echo "$e"
     done
-  } >> "$gi"
+  } >>"$gi"
 
   log_applied "$gi" "Appended: ${missing[*]}"
 }
@@ -464,8 +464,8 @@ _review_agents_md() {
   }
   has_lang py && pyd="$(find . -name '__init__.py' \
     ! -path '*/.git/*' ! -path '*/node_modules/*' \
-    -exec dirname {} \; 2>/dev/null \
-    | head -10 | tr '\n' ',')"
+    -exec dirname {} \; 2>/dev/null |
+    head -10 | tr '\n' ',')"
   td="$(find . -type d -name '*test*' \
     ! -path '*/.git/*' ! -path '*/node_modules/*' \
     2>/dev/null | head -10 | tr '\n' ',')"
@@ -540,7 +540,8 @@ _review_py_requirements() {
   local py_dir="."
   for entry in "${DETECTED_LANG_PATHS[@]}"; do
     case "$entry" in py:*)
-      py_dir="${entry#py:}" ;;
+      py_dir="${entry#py:}"
+      ;;
     esac
   done
 
