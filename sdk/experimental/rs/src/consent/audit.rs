@@ -14,12 +14,17 @@ use crate::bus::{Bus, BusError, DynBus, Event, SharedBus};
 macro_rules! wire_enum {
     ($(#[$m:meta])* $name:ident { $($v:ident => $s:literal),+ $(,)? }) => {
         $(#[$m])*
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-        pub enum $name { $($v),+ }
+        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+        pub enum $name {
+            $($v,)+
+            /// A value this version does not know, kept as read (a newer
+            /// writer's).
+            Other(String),
+        }
 
         impl $name {
-            pub fn as_str(self) -> &'static str {
-                match self { $($name::$v => $s),+ }
+            pub fn as_str(&self) -> &str {
+                match self { $($name::$v => $s,)+ $name::Other(s) => s }
             }
         }
 
@@ -30,12 +35,13 @@ macro_rules! wire_enum {
         }
 
         impl FromStr for $name {
-            type Err = String;
-            fn from_str(s: &str) -> Result<Self, String> {
-                match s {
-                    $($s => Ok($name::$v),)+
-                    _ => Err(format!("unknown {} {s:?}", stringify!($name))),
-                }
+            type Err = std::convert::Infallible;
+            /// Known values map to their variant; any other is `Other`.
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                Ok(match s {
+                    $($s => $name::$v,)+
+                    other => $name::Other(other.to_string()),
+                })
             }
         }
     };
@@ -58,6 +64,25 @@ wire_enum!(
     }
 );
 
+/// `kit.core.consent.<event>`.
+fn event_topic(event: &str) -> String {
+    format!("kit.core.consent.{event}")
+}
+
+/// A newer writer's event is accepted only when its topic passes the bus
+/// grammar: `validate` (four `^[a-z][a-z0-9_]*$` segments, <= 128 bytes)
+/// and `validate_topic` (a past-tense action), as Go checks with
+/// `bus.Validate` and `bus.ValidateTopic`. Otherwise the record is
+/// malformed, so a hostile line cannot invent a topic.
+fn check_event_name(k: &AuditKind) -> Result<(), String> {
+    let AuditKind::Other(name) = k else {
+        return Ok(());
+    };
+    let t = crate::bus::Topic::from(event_topic(name));
+    crate::bus::validate(&t).map_err(|e| format!("audit record event {name:?}: {e}"))?;
+    crate::bus::validate_topic(&t).map_err(|e| format!("audit record event {name:?}: {e}"))
+}
+
 /// One audit record. `log` and `seq` are stamped by a durable auditor
 /// (`FileAuditor`); `<log>:<seq>` is the idempotency key. `revoked`
 /// carries only `decision_source` (who revoked); `refused` carries
@@ -77,6 +102,9 @@ pub struct AuditEvent {
     pub decision_source: Option<DecisionSource>,
     pub prompt_version: i64,
     pub reason: Option<RefusalCause>,
+    /// The line as read from the log: a record read back is written as
+    /// read, so fields and values a newer writer added reach the bus.
+    raw: Option<String>,
 }
 
 impl AuditEvent {
@@ -95,6 +123,7 @@ impl AuditEvent {
             decision_source: None,
             prompt_version: 0,
             reason: None,
+            raw: None,
         }
     }
 
@@ -141,6 +170,7 @@ impl AuditEvent {
             prompt_version: carries_version.then_some(self.prompt_version),
             reason: self
                 .reason
+                .as_ref()
                 .map(|r| r.as_str().to_string())
                 .unwrap_or_default(),
         }
@@ -149,12 +179,18 @@ impl AuditEvent {
     /// The record as one JSON line (no newline), the
     /// `contracts/consent-v1` audit shape.
     pub fn to_json(&self) -> String {
-        serde_json::to_string(&self.wire()).expect("audit record serializes")
+        match &self.raw {
+            Some(raw) => raw.clone(),
+            None => serde_json::to_string(&self.wire()).expect("audit record serializes"),
+        }
     }
 
     /// The record as a JSON value (the bus payload).
     pub fn to_value(&self) -> serde_json::Value {
-        serde_json::to_value(self.wire()).expect("audit record serializes")
+        match &self.raw {
+            Some(raw) => serde_json::from_str(raw).expect("raw record was parsed"),
+            None => serde_json::to_value(self.wire()).expect("audit record serializes"),
+        }
     }
 
     /// Reads one record back.
@@ -172,26 +208,24 @@ impl AuditEvent {
             Some(s) => Some(parse_rfc3339(&s).ok_or_else(|| format!("expires_at {s:?}"))?),
             None => None,
         };
-        let parse_err = |e: super::error::GrantError| e.to_string();
+        let event: AuditKind = w.event.parse().unwrap_or_else(|e| match e {});
+        check_event_name(&event)?;
         Ok(AuditEvent {
             log: w.log,
             seq: w.seq,
-            event: w.event.parse()?,
+            event,
             at,
             capability: w.capability,
             subject: w.subject,
-            decision: opt(&w.decision)
-                .map(|s| s.parse())
-                .transpose()
-                .map_err(parse_err)?,
-            duration: opt(&w.duration)
-                .map(|s| s.parse())
-                .transpose()
-                .map_err(parse_err)?,
+            // Go keeps any string here; a value this version cannot
+            // type stays in `raw`, which is what gets published.
+            decision: w.decision.parse().ok(),
+            duration: w.duration.parse().ok(),
             expires_at,
             decision_source: opt(&w.decision_source).map(|s| DecisionSource::from_wire(&s)),
             prompt_version: w.prompt_version.unwrap_or(0),
-            reason: opt(&w.reason).map(|s| s.parse()).transpose()?,
+            reason: opt(&w.reason).map(|s| s.parse().unwrap_or_else(|e| match e {})),
+            raw: Some(line.to_string()),
         })
     }
 }
@@ -280,14 +314,16 @@ impl Default for Topics {
 }
 
 impl Topics {
-    /// The topic of `kind`.
-    pub fn topic(&self, kind: AuditKind) -> &str {
+    /// The topic of `kind`; a newer writer's event (checked when read)
+    /// has its own, `kit.core.consent.<event>`.
+    pub fn topic(&self, kind: &AuditKind) -> String {
         match kind {
-            AuditKind::Granted => &self.granted,
-            AuditKind::Denied => &self.denied,
-            AuditKind::Revoked => &self.revoked,
-            AuditKind::Used => &self.used,
-            AuditKind::Refused => &self.refused,
+            AuditKind::Granted => self.granted.clone(),
+            AuditKind::Denied => self.denied.clone(),
+            AuditKind::Revoked => self.revoked.clone(),
+            AuditKind::Used => self.used.clone(),
+            AuditKind::Refused => self.refused.clone(),
+            AuditKind::Other(name) => event_topic(name),
         }
     }
 
@@ -361,7 +397,12 @@ impl<P: Publisher> BusAuditor<P> {
 
 impl<P: Publisher> Auditor for BusAuditor<P> {
     fn record(&self, e: &AuditEvent) -> Result<(), String> {
-        let ev = Event::new_at(self.topics.topic(e.event), EVENT_SOURCE, e.to_value(), e.at);
+        let ev = Event::new_at(
+            self.topics.topic(&e.event),
+            EVENT_SOURCE,
+            e.to_value(),
+            e.at,
+        );
         self.publisher.publish(&ev).map_err(|err| err.to_string())
     }
 }

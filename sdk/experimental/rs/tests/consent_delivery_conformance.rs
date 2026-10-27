@@ -55,14 +55,20 @@ struct Step {
     op: String,
     record: Option<Record>,
     fail_seq: Option<u64>,
+    /// Appended to the log as is (`$LOG`: the log id), as a newer
+    /// writer would.
+    line: Option<String>,
     expect: Option<Expect>,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Deserialize, Debug, PartialEq, Clone)]
 #[serde(deny_unknown_fields)]
 struct Published {
     seq: u64,
     topic: String,
+    /// Compared as a JSON value where the corpus lists one.
+    #[serde(default)]
+    payload: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -182,6 +188,7 @@ fn run(sc: &Scenario) {
             got.lock().unwrap().push(Published {
                 seq,
                 topic: e.topic.as_str().into(),
+                payload: Some(e.payload.clone()),
             });
             if seq == fail_seq.load(Ordering::SeqCst) {
                 return Err(BusError::handler(format!("subscriber refuses seq {seq}")));
@@ -227,6 +234,19 @@ fn run(sc: &Scenario) {
                     "{where_}"
                 );
             }
+            "append" => {
+                let line = st
+                    .line
+                    .as_ref()
+                    .unwrap()
+                    .replace("$LOG", &a.log_id().unwrap());
+                let mut f = fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&log_path)
+                    .unwrap();
+                std::io::Write::write_all(&mut f, format!("{line}\n").as_bytes()).unwrap();
+            }
             "subscriber" => fail_seq.store(st.fail_seq.unwrap(), Ordering::SeqCst),
             "crash_after_publish" => crash.armed.store(true, Ordering::SeqCst),
             "restart" => (a, r) = open(),
@@ -249,7 +269,27 @@ fn run(sc: &Scenario) {
             other => panic!("{where_}: unknown op {other:?}"),
         }
     }
-    assert_eq!(*got.lock().unwrap(), sc.published, "{}: published", sc.name);
+    let log_id = a.log_id().unwrap();
+    let got = got.lock().unwrap().clone();
+    assert_eq!(
+        got.len(),
+        sc.published.len(),
+        "{}: published {got:?}",
+        sc.name
+    );
+    for (g, w) in got.iter().zip(&sc.published) {
+        assert_eq!(
+            (g.seq, &g.topic),
+            (w.seq, &w.topic),
+            "{}: published",
+            sc.name
+        );
+        if let Some(want) = &w.payload {
+            let want: serde_json::Value =
+                serde_json::from_str(&want.to_string().replace("$LOG", &log_id)).unwrap();
+            assert_eq!(g.payload.as_ref(), Some(&want), "{}: payload", sc.name);
+        }
+    }
     if let Some(want) = &sc.cursor_file {
         check_cursor(&sc.name, &cursor, want.seq, &a.log_id().unwrap());
     }

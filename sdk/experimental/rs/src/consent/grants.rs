@@ -218,7 +218,7 @@ impl Grants {
     ) {
         if !s
             .refused
-            .insert((capability.to_string(), subject.to_string(), cause))
+            .insert((capability.to_string(), subject.to_string(), cause.clone()))
         {
             return;
         }
@@ -228,8 +228,9 @@ impl Grants {
             .unwrap_or(DecisionSource::Config);
         let mut e = AuditEvent::new(AuditKind::Refused, self.now(), capability, subject);
         e.decision_source = Some(source);
+        let audit_failed = cause == RefusalCause::AuditFailed;
         e.reason = Some(cause);
-        if cause == RefusalCause::AuditFailed {
+        if audit_failed {
             if let Some(d) = &self.delivery {
                 d.publish_unrecorded(&e);
             }

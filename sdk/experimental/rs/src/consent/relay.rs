@@ -134,7 +134,7 @@ impl Relay {
     }
 
     fn event(&self, e: &AuditEvent) -> Event {
-        let mut ev = Event::new(self.topics.topic(e.event), EVENT_SOURCE, e.to_value())
+        let mut ev = Event::new(self.topics.topic(&e.event), EVENT_SOURCE, e.to_value())
             .with_subject(e.capability.clone());
         if let Some(k) = e.key() {
             ev.id = k;

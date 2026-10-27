@@ -48,7 +48,8 @@ g.use_grant("io.screen.capture", "app:dek")?; // audited before the tap
 - Events `kit.core.consent.{granted,denied,revoked,used,refused}`, source `core.consent`, id
   `<log>:<seq>`; the cursor moves only after every sync subscriber returned `Ok`; redelivery
   after an error or restart. `refused` is recorded once per (capability, subject, reason) per
-  session.
+  session. A newer writer's event goes out as read under `kit.core.consent.<event>`; a name
+  outside the bus topic grammar makes the log unreadable.
 - Parity: `contracts/consent-v1` (`make test-parity-consent`).
 
 ## Neighbours
