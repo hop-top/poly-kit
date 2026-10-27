@@ -179,24 +179,27 @@ test-go-integration: ## Go tests including testcontainer integration
 # without this target a concurrency regression reaches the default
 # branch unnoticed.
 #
-# Scope is the whole of go/, cmd/ and internal/ rather than a curated
-# package list: a list goes stale the first time someone adds a
+# Scope is the whole of go/, cmd/, internal/ and examples/ rather than a
+# curated package list: a list goes stale the first time someone adds a
 # concurrent test somewhere nobody thought to enumerate, and the failure
 # mode is silent. cmd/ is in because kit's own binary tests drive a
 # served child and share its output with the test goroutine — a race
 # there stayed invisible while the gate stopped at go/. Whole-repo
-# ./... was measured and rejected — it pulls in sdk, examples, engine,
-# incubator and contracts, whose testcontainer and cross-language suites
+# ./... was measured and rejected — it pulls in sdk, engine, incubator
+# and contracts, whose testcontainer and cross-language suites
 # dominate the run and carry no concurrency guards. Cold, with an empty
 # build cache, go/ takes ~2m40s under -race; ./... did not finish inside
 # 25 minutes. Warm, cmd/ and internal/ add under a minute on top of go/
 # (4m25s -> 5m15s on a laptop): cmd/kit/init and cmd/kit are the two
 # slowest packages, but they run beside go/'s rather than after them.
 #
-# examples/ stays out for now: examples/served runs every transport over
-# one shared cobra tree, and its startup reflection and flag-bound
-# config reads still race served invocations on that tree. It joins the
-# gate once those are fixed in the library, not by exclusion here.
+# examples/ is in: examples/served runs every transport over one shared
+# cobra tree, the setup the serve prepare phase exists for — a service
+# that read the tree or its flag-bound configuration while another
+# served calls would show up here first. Every example package is in
+# the root module, so ./examples/... is all of them. Warm, the examples
+# take ~30s under -race on a laptop (examples/served ~23s), alongside
+# go/'s packages rather than after them.
 #
 # -buildvcs=false keeps the build off the git index: the VCS stamp
 # fails ("error obtaining VCS status") when another checkout or hook
@@ -222,8 +225,8 @@ test-go-integration: ## Go tests including testcontainer integration
 # go/core/xdg now serializes those resolves, so the gate covers the
 # whole of go/. Keep it that way — reach for a fix in the racing
 # package before reaching for an exclusion here.
-test-go-race: ## Go tests under the race detector (go/, cmd/, internal/; concurrency guards)
-	@pkgs=$$(go list -buildvcs=false ./go/... ./cmd/... ./internal/...) || { \
+test-go-race: ## Go tests under the race detector (go/, cmd/, internal/, examples/; concurrency guards)
+	@pkgs=$$(go list -buildvcs=false ./go/... ./cmd/... ./internal/... ./examples/...) || { \
 		echo "go list failed; refusing to run a partial race gate"; \
 		exit 1; \
 	}; \
