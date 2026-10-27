@@ -83,9 +83,10 @@ fn network_adapter_online_reconnect_root_stays_clean() {
 /// One reconnect loop per address, however many times it is started.
 #[test]
 fn reconnect_loops_are_deduplicated() {
-    let probe = TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("ws://{}/", probe.local_addr().unwrap());
-    drop(probe);
+    // Held to the end: every dial fails, and no other listener can take
+    // the port, as one can a port freed by dropping a probe listener.
+    let (port, _held) = bus_listener();
+    let url = format!("ws://127.0.0.1:{port}/");
     let n = NetworkAdapter::new(
         DynBus::new(),
         NetworkOptions::new().backoff(Duration::from_millis(50), Duration::from_millis(50)),

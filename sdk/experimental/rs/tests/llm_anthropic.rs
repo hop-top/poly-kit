@@ -309,9 +309,16 @@ async fn base_url_credentials_stay_out_of_api_errors() {
 
 #[tokio::test]
 async fn transport_errors_stay_redacted() {
+    // A listener held for the whole test that closes every connection
+    // before answering: a transport failure each time, on a port no
+    // other listener can take, as one can a port freed by dropping it.
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
-    drop(listener);
+    std::thread::spawn(move || {
+        for conn in listener.incoming() {
+            drop(conn);
+        }
+    });
     let base = format!("http://{addr}/v1?key={SECRET}");
     let a = Adapter::builder(cfg(&base, "k"))
         .env(|_| None)

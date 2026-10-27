@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -180,9 +181,7 @@ func TestURLSource_ErrorRedactsCredentials(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	closed := httptest.NewServer(http.NotFoundHandler())
-	closedURL := closed.URL
-	closed.Close() // nothing listens any more: connection refused
+	closedURL := "http://" + refusingHost(t)
 
 	for name, raw := range map[string]string{
 		"bad status":  srv.URL + "/a.png?X-Amz-Signature=" + fakeSecret,
@@ -198,4 +197,25 @@ func TestURLSource_ErrorRedactsCredentials(t *testing.T) {
 			assert.NotContains(t, err.Error(), fakeSecret)
 		})
 	}
+}
+
+// refusingHost returns a loopback host:port held for the whole test
+// that closes every connection before answering: each request fails in
+// transport, and no other listener can take the port, as one can the
+// port of a closed server.
+func refusingHost(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	return ln.Addr().String()
 }

@@ -3,6 +3,7 @@ package google_test
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,9 +63,7 @@ func newLeakAdapter(t *testing.T, baseURL string) llm.Provider {
 // A transport failure surfaces net/http's *url.Error, which quotes the
 // request URL; the key must not be part of that URL.
 func TestKeyLeak_TransportError(t *testing.T) {
-	srv := httptest.NewServer(http.NotFoundHandler())
-	base := srv.URL
-	srv.Close() // nothing listens on base any more: connection refused
+	base := "http://" + refusingHost(t)
 
 	p := newLeakAdapter(t, base)
 	for name, call := range callers {
@@ -131,9 +130,7 @@ const baseURLSecret = "fake-base-url-secret-must-not-leak"
 // Transport and request-build failures quote the request URL, which
 // starts with the base URL; credentials in it come back masked.
 func TestKeyLeak_BaseURLCredentials(t *testing.T) {
-	srv := httptest.NewServer(http.NotFoundHandler())
-	host := strings.TrimPrefix(srv.URL, "http://")
-	srv.Close() // nothing listens on host any more: connection refused
+	host := refusingHost(t)
 
 	bases := map[string]string{
 		"userinfo token": "http://" + baseURLSecret + "@" + host + "/v1beta",
@@ -152,4 +149,25 @@ func TestKeyLeak_BaseURLCredentials(t *testing.T) {
 			})
 		}
 	}
+}
+
+// refusingHost returns a loopback host:port held for the whole test
+// that closes every connection before answering: each request fails in
+// transport, and no other listener can take the port, as one can the
+// port of a closed server.
+func refusingHost(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	return ln.Addr().String()
 }
