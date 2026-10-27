@@ -109,7 +109,7 @@ const RUN = [
   "anthropic_tool_choice", "anthropic_hermetic", "anthropic_stream_events",
   "bus_request_started", "bus_response_received",
 ];
-const SIBLING = ["tool_names", "media_fetch"];
+const SIBLING = ["tool_names", "media_fetch", "gemini_stream_events"];
 
 const file = loadVectors<File>();
 const section = (name: string): Section => file[name] as Section;

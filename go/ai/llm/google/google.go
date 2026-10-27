@@ -4,7 +4,7 @@
 // Schemes: gemini, google
 // Default base URL: https://generativelanguage.googleapis.com/v1beta
 // Implements: [llm.Provider], [llm.Completer], [llm.Streamer],
-// [llm.ToolCaller]
+// [llm.ToolCaller], [llm.ToolStreamer]
 //
 // # Thought signatures
 //
@@ -54,7 +54,8 @@ var (
 )
 
 // Adapter is the Google Gemini provider. It implements [llm.Provider],
-// [llm.Completer], [llm.Streamer], and [llm.ToolCaller].
+// [llm.Completer], [llm.Streamer], [llm.ToolCaller] and
+// [llm.ToolStreamer].
 type Adapter struct {
 	baseURL string
 	model   string
@@ -203,9 +204,15 @@ type functionDecl struct {
 }
 
 type generateResponse struct {
-	Candidates    []candidate    `json:"candidates"`
-	UsageMetadata *usageMetadata `json:"usageMetadata,omitempty"`
-	Error         *apiError      `json:"error,omitempty"`
+	Candidates     []candidate     `json:"candidates"`
+	PromptFeedback *promptFeedback `json:"promptFeedback,omitempty"`
+	UsageMetadata  *usageMetadata  `json:"usageMetadata,omitempty"`
+	Error          *apiError       `json:"error,omitempty"`
+}
+
+// promptFeedback is set, without candidates, on a blocked prompt.
+type promptFeedback struct {
+	BlockReason string `json:"blockReason,omitempty"`
 }
 
 type candidate struct {
@@ -290,39 +297,29 @@ func (a *Adapter) Complete(
 // ---------------------------------------------------------------------------
 
 // Stream sends a streaming generateContent request and returns a
-// [llm.TokenIterator].
+// [llm.TokenIterator]. With [llm.Request.StreamEvents] it streams as
+// [Adapter.StreamWithTools] does without tools: usage snapshots, and a
+// body ending before a finish reason is truncated.
 func (a *Adapter) Stream(
 	ctx context.Context, req llm.Request,
 ) (llm.TokenIterator, error) {
+	if req.StreamEvents {
+		return a.openToolStream(ctx, req, nil)
+	}
 	model := a.effectiveModel(req)
 	body, _, err := a.buildBody(ctx, req, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	httpReq, err := a.newRequest(
-		ctx, model, "streamGenerateContent?alt=sse", body,
-	)
+	rc, err := a.openSSE(ctx, model, body)
 	if err != nil {
 		return nil, err
 	}
-
-	resp, err := a.client.Do(httpReq)
-	if err != nil {
-		return nil, llm.RedactURLError(err)
-	}
-
-	if err := a.checkStatus(resp, model); err != nil {
-		resp.Body.Close()
-		return nil, err
-	}
-
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	return &streamIterator{
-		scanner: scanner,
-		body:    resp.Body,
+		scanner: newSSEScanner(rc),
+		body:    rc,
 		model:   model,
 	}, nil
 }
@@ -740,14 +737,18 @@ func (a *Adapter) parseResponse(gr generateResponse) llm.Response {
 	}
 
 	if gr.UsageMetadata != nil {
-		resp.Usage = llm.Usage{
-			PromptTokens:     gr.UsageMetadata.PromptTokenCount,
-			CompletionTokens: gr.UsageMetadata.CandidatesTokenCount,
-			TotalTokens:      gr.UsageMetadata.TotalTokenCount,
-		}
+		resp.Usage = usageOf(gr.UsageMetadata)
 	}
 
 	return resp
+}
+
+func usageOf(u *usageMetadata) llm.Usage {
+	return llm.Usage{
+		PromptTokens:     u.PromptTokenCount,
+		CompletionTokens: u.CandidatesTokenCount,
+		TotalTokens:      u.TotalTokenCount,
+	}
 }
 
 // parseToolResponse maps gr; each call carries the name the caller

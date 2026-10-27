@@ -90,6 +90,9 @@ struct Corpus {
     /// URL media fetch guard. Not applicable: this port has no URL media
     /// sources, so nothing is fetched (README, Known differences).
     media_fetch: Vec<Value>,
+    /// Gemini stream events. Not applicable: this port has no gemini
+    /// adapter (README, Known differences).
+    gemini_stream_events: Vec<Value>,
 }
 
 #[derive(Deserialize)]

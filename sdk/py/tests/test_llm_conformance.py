@@ -62,6 +62,8 @@ CONSUMED = {
     "bus_request_started",
     "bus_response_received",
     "media_fetch",
+    # Not applicable: Python has no gemini adapter (README, Known differences).
+    "gemini_stream_events",
 }
 
 _META = {"version", "description"}

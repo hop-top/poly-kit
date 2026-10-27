@@ -12,7 +12,7 @@ or a provider-specific wire detail (the adapter sub-packages below).
 ## Use it when
 
 - you call a model without hard-coding a vendor → `llm.Resolve("anthropic://...")` then `llm.NewClient(provider).Chat(ctx, messages)`
-- you stream tokens → `client.Stream(ctx, req)` and call `Next()` until `Done`; set `req.StreamEvents` for tool-call events and usage snapshots mid-stream (anthropic): [Streaming](../../../docs/adopters/reference/llm.md#streaming)
+- you stream tokens → `client.Stream(ctx, req)` and call `Next()` until `Done`; set `req.StreamEvents` for tool-call events and usage snapshots mid-stream (anthropic, gemini): [Streaming](../../../docs/adopters/reference/llm.md#streaming)
 - you expose tools → `client.CallWithTools(ctx, req, []llm.ToolDef{...})` and read `resp.ToolCalls`; constrain with `req.ToolChoice`
 - one provider may fail → `llm.WithFallback(secondary)`, `llm.OnFallback(fn)`
 - you pick a model by capability and budget → `llm.PickProvider(ctx, reg, profile, llm.BudgetBalanced)`; restrict with `llm.LoadPool()` + `PickProviderInPool`
