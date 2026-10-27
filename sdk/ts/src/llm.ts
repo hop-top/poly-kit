@@ -30,8 +30,16 @@ import {
   StreamTruncatedError,
 } from "./llm-errors";
 import { ToolNameError } from "./llm-toolnames";
+import {
+  DEFAULT_MAX_MEDIA_BYTES,
+  MediaTooLargeError,
+  MediaURLRefusedError,
+  fetchMedia,
+  isPublicAddress,
+} from "./llm-media";
 
 export * from "./llm-toolnames";
+export { DEFAULT_MAX_MEDIA_BYTES, MediaTooLargeError, MediaURLRefusedError, isPublicAddress };
 export {
   APIError,
   HTTPStatusError,
@@ -644,20 +652,31 @@ export function inlineSource(data: Uint8Array, mimeType: string): MediaSource {
   };
 }
 
-/** URL-backed media; `read()` downloads lazily. */
-export function urlSource(url: string): MediaSource {
+/** Options for {@link urlSource}. */
+export interface URLSourceOptions {
+  /** Body cap in bytes (default {@link DEFAULT_MAX_MEDIA_BYTES}). */
+  maxBytes?: number;
+}
+
+/**
+ * URL-backed media; `read()` downloads lazily.
+ *
+ * The download is guarded against server-side request forgery: http or
+ * https only, public addresses only (checked on what is dialed, so DNS
+ * rebinding cannot redirect it), no redirects, no proxy, at most
+ * `maxBytes` (32 MiB by default; {@link MediaTooLargeError} past it),
+ * 30s, and `--offline`. Refusals are {@link MediaURLRefusedError}.
+ * Adapters whose provider accepts a URL (Anthropic images and PDFs,
+ * OpenAI images) send the URL and never read it. Local or private
+ * media: read it yourself and pass {@link inlineSource} or
+ * {@link fileSource}.
+ */
+export function urlSource(url: string, opts: URLSourceOptions = {}): MediaSource {
+  const maxBytes = opts.maxBytes && opts.maxBytes > 0 ? opts.maxBytes : DEFAULT_MAX_MEDIA_BYTES;
   return {
     url: () => url,
     mimeType: () => "",
-    read: async () => {
-      const resp = await fetch(url);
-      if (!resp.ok) {
-        throw new LLMError(
-          `url source: unexpected status ${resp.status} fetching ${url}`
-        );
-      }
-      return new Uint8Array(await resp.arrayBuffer());
-    },
+    read: () => fetchMedia(url, maxBytes),
   };
 }
 
