@@ -54,10 +54,10 @@ Non-directory subpaths: `cli` (CLI factory), `serve` (serve hierarchy
 and service lifecycle), `netpolicy` (`--offline` enforcement, guards
 `globalThis.fetch`), `xdg` (base directory paths), `config`
 (config-file loading), `sqlstore` (embedded SQLite key/value store),
-`upgrade` (semver upgrade detection), `llm` / `routellm`, `alias`,
-`uri` (facade over `@hop-top/cite`), `api`, `rpc`, `aim`, `scope`,
-`safety`, `provenance`, `stream`, `progress`, `auth`, `errcorrect`.
-See `package.json` `exports` for the full list.
+`upgrade` (semver upgrade detection), `llm`, `anthropic`, `openai`,
+`routellm`, `alias`, `uri` (facade over `@hop-top/cite`), `api`,
+`rpc`, `aim`, `scope`, `safety`, `provenance`, `stream`, `progress`,
+`auth`, `errcorrect`. See `package.json` `exports` for the full list.
 
 ## Contract
 
@@ -72,7 +72,7 @@ See `package.json` `exports` for the full list.
 - [TypeScript API reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/ts-api-reference.md):
   every module in depth, output formatting rules and worked examples,
   serve lifecycle, the MCP surface, the URI facade, telemetry envelope
-  and redactor, LLM tool calling (`toolCalls` / `toolCallId`)
+  and redactor, LLM adapters and tool calling (`toolCalls` / `toolCallId`)
 - [Serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md), [serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md)
 
 MIT.

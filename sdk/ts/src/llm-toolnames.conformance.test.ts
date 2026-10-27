@@ -2,10 +2,9 @@
 // contracts/llm-v1/vectors.json. Go is canonical; a failure here means
 // this SDK drifted, not that a vector should change.
 //
-// The other sections pin URI parsing and the anthropic adapter. This
-// SDK has no anthropic adapter, so `anthropic_tool_names` has no
-// subject here; the routellm adapter's share of the spec (history
-// mapped forward, the tool_names param) is covered in
+// The anthropic sections, `anthropic_tool_names` among them, run in
+// llm-anthropic.conformance.test.ts; the openai and routellm adapters'
+// share of the spec is covered in llm-openai.test.ts and
 // routellm.toolcall.test.ts.
 
 import { existsSync, readFileSync } from "node:fs";

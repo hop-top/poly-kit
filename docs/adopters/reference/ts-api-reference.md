@@ -228,8 +228,10 @@ Subpath imports follow the package's `exports` map (see
   peer dependency) or type-checking with `skipLibCheck: false` fails with
   TS7016.
 - `@hop-top/kit/upgrade` — semver upgrade detection.
-- `@hop-top/kit/llm` / `routellm` — LLM client + routing helpers (see
-  [LLM tool calling](#llm-tool-calling)).
+- `@hop-top/kit/llm` — LLM client, registry, fallback and typed errors;
+  `@hop-top/kit/anthropic`, `@hop-top/kit/openai` and
+  `@hop-top/kit/routellm` register their URI schemes on import (see
+  [LLM adapters](#llm-adapters) and [LLM tool calling](#llm-tool-calling)).
 - `@hop-top/kit/alias` — alias resolution + completion.
 - `@hop-top/kit/uri` — thin facade over `@hop-top/cite` for URI parsing,
   action resolution, completions, registries, and OS handler metadata.
@@ -812,6 +814,83 @@ for the cross-language contract.
 The harness at `sdk/tests/cross-lang/` diffs envelopes across SDKs. The
 TS telemetry runner is not wired into it as of this revision.
 
+## LLM adapters
+
+Import an adapter once for its side effect, then resolve a URI:
+
+```ts
+import '@hop-top/kit/anthropic';
+import { createLLM } from '@hop-top/kit/llm';
+
+const llm = createLLM('anthropic://claude-sonnet-4-5', {
+  fallback: ['openai://gpt-4.1-mini'],
+});
+const st = llm.streamWithTools({ messages, maxTokens: 4096, thinking: { budgetTokens: 2048 } }, tools);
+for await (const tok of st) process.stdout.write(tok.content);
+const turn = st.outcome(); // content, thinking, toolCalls, finishReason, usage
+```
+
+| Import | Schemes | Default endpoint | Env key |
+|--------|---------|------------------|---------|
+| `@hop-top/kit/anthropic` | `anthropic` | `https://api.anthropic.com` | `ANTHROPIC_API_KEY` |
+| `@hop-top/kit/openai` | `openai`, `openrouter`, `xai`, `groq`, `together`, `fireworks`, `deepseek`, `mistral`, `lmstudio` | per scheme, as in Go | `<SCHEME>_API_KEY` (`lmstudio`: none) |
+| `@hop-top/kit/routellm` | `routellm` | `http://localhost:6060/v1` | URI or `LLM_API_KEY` |
+
+Each provider has `complete`, `stream`, `callWithTools` and
+`streamWithTools`. `stream` and `streamWithTools` return a `ToolStream`:
+text tokens, then one `{ done: true }`; `outcome()` is defined after it.
+The URI's `api_key` or `LLM_API_KEY` outranks the env key.
+
+- Anthropic: `Request.thinking` (`budgetTokens` ≥ 1024 and below
+  `maxTokens`) streams thinking deltas as `Token.thinking`; replay
+  `thinking` blocks on the assistant message unchanged.
+  `cacheControl: { ttl }` (`""`, `"5m"`, `"1h"`) on a message or
+  `ToolDef` marks a prompt-cache breakpoint. `Usage` carries
+  `cacheReadTokens` / `cacheCreationTokens`; `usageCost(usage, price)`
+  prices each kind per million tokens. `ANTHROPIC_BASE_URL`,
+  `ANTHROPIC_AUTH_TOKEN` (bearer) and `ANTHROPIC_WORKSPACE_ID` are read
+  from the environment.
+- OpenAI: a host form (`openai://host:port/model`) reaches
+  `http://host:port/v1`; a `base_url` param is used as given. A blank
+  key sends no `Authorization` header.
+- `routellm` delegates to the openai adapter at the RouteLLM server.
+
+Params on any adapter URI: `tool_names` (`sanitize` | `strict`),
+`max_body_bytes` (default 32 MiB) and `max_event_bytes` (one SSE event,
+default 8 MiB).
+
+Transport guarantees, the same as Go:
+
+- A key goes over plain http only to loopback, and never to an endpoint
+  with userinfo, a backslash, a percent-escape, whitespace or a control
+  character (`KeyEndpointError`). A key from the environment reaches an
+  endpoint only the URI names only when it is loopback or shares an
+  origin with the scheme's default, `LLM_BASE_URL` or the adapter's own
+  base URL variable; the Anthropic bearer token and workspace header
+  follow the same rule.
+- Redirects are not followed (`HTTPStatusError`, status 3xx).
+- Two retries for connection failures, 408, 409, 429 and 5xx
+  (`x-should-retry` overrides); a `retry-after-ms` / `retry-after` wait
+  is honored within (0, 60s], else exponential backoff from 0.5s.
+- A body or event over its cap is `ResponseTooLargeError`, not retried.
+  A stream that ends before its terminal event (`message_stop`;
+  `[DONE]` or a finished choice on OpenAI) is `StreamTruncatedError`.
+- Errors never carry a credential: keys are scrubbed from messages,
+  causes and stacks.
+
+| Error | When | `isFallbackable` |
+|-------|------|------------------|
+| `AuthError` | 401, 403 | no |
+| `ModelError` | 404 | no |
+| `RateLimitError` | 429 | yes |
+| `HTTPStatusError` | 5xx, overloaded stream event (529), a redirect | 5xx only |
+| `APIError` | any other error response or stream event (`statusCode`, `type`) | no |
+| `StreamTruncatedError`, `ResponseTooLargeError`, `KeyEndpointError`, `ToolNameError` | as above | no |
+
+Bundles share one registry and one set of error classes, so
+`instanceof` and `isFallbackable` hold across entry points.
+`redactURI(uri)` masks credentials in a URI before you log it.
+
 ## LLM tool calling
 
 `@hop-top/kit/llm` mirrors the Go `llm.Message`: `role`, `content`,
@@ -838,9 +917,13 @@ for (const call of resp.toolCalls) {
   result with `parts`; call it first in a custom adapter.
 - Media for a part comes from `inlineSource(bytes, mime)`,
   `urlSource(url)` or `fileSource(path)`.
-- `routellm` sends `tool_calls` (`id`, `type: "function"`, `function`
-  with string `arguments`) and `role: "tool"` + `tool_call_id`, the
-  OpenAI shape the Go adapters use. It throws `LLMError` instead of
+- Returned calls carry `arguments` parsed (raw text when the provider
+  sent invalid JSON).
+- The openai adapter (and `routellm` through it) sends `tool_calls`
+  (`id`, `type: "function"`, `function` with string `arguments`) and
+  `role: "tool"` + `tool_call_id`. The anthropic adapter sends
+  `tool_use` / `tool_result` blocks and merges consecutive results into
+  one user turn. Both throw `LLMError` instead of
   sending plain text for: either field on the wrong role, a tool result
   without `toolCallId` or with `parts`, a call without an `id`,
   arguments that are not valid JSON, `parts` on a non-`user` role, and
@@ -860,7 +943,7 @@ Providers restrict tool names; ids such as `pane.open` are fine as
 | Rule | Accepted names |
 |------|----------------|
 | `ANTHROPIC_TOOL_NAMES` | `^[a-zA-Z0-9_-]{1,128}$` |
-| `OPENAI_TOOL_NAMES` (`routellm`) | `^[a-zA-Z0-9_-]{1,64}$` |
+| `OPENAI_TOOL_NAMES` (openai schemes, `routellm`) | `^[a-zA-Z0-9_-]{1,64}$` |
 | `GEMINI_TOOL_NAMES` | `^[a-zA-Z_][a-zA-Z0-9_.:-]{0,127}$` |
 
 ```ts
@@ -884,8 +967,10 @@ names.calls(resp.toolCalls) // calls back under the original names
 - `?tool_names=strict` (`toolNameModeOf(params)`) sends names as given
   and fails an invalid one before sending; `sanitize` is the default;
   any other value throws when the adapter is built.
-- `routellm` has no tool-calling entry point; it maps the names of
-  replayed `toolCalls` with the OpenAI rule and honours `tool_names`.
+- Every entry point of the anthropic, openai and `routellm` adapters
+  applies the mode: tool definitions and replayed `toolCalls` go out
+  under wire names; returned calls, streamed outcomes and history come
+  back under the original names.
 
 ## Related pages
 
