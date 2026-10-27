@@ -27,6 +27,8 @@ const (
 	defaultMaxTokens = 1024
 	scheme           = "anthropic"
 	defaultBaseURL   = "https://api.anthropic.com"
+	// minThinkingBudget is the API's least thinking budget.
+	minThinkingBudget = 1024
 )
 
 // Adapter wraps an anthropic-sdk-go client.
@@ -175,7 +177,7 @@ func (a *Adapter) openStream(ctx context.Context, params anthropic.MessageNewPar
 		_ = stream.Close()
 		return nil, a.mapError(err, a.effectiveModel(req))
 	}
-	return &streamIter{stream: stream, a: a, model: a.effectiveModel(req)}, nil
+	return &streamIter{stream: stream, a: a, model: a.effectiveModel(req), thinking: req.Thinking != nil}, nil
 }
 
 // StreamWithTools streams a tool-use request: text deltas as tokens,
@@ -187,7 +189,9 @@ func (a *Adapter) StreamWithTools(
 	if err != nil {
 		return nil, err
 	}
-	params.Tools = mapTools(tools)
+	if params.Tools, err = mapTools(tools); err != nil {
+		return nil, err
+	}
 	return a.openStream(ctx, params, req)
 }
 
@@ -200,7 +204,9 @@ func (a *Adapter) CallWithTools(
 	if err != nil {
 		return llm.ToolResponse{}, err
 	}
-	params.Tools = mapTools(tools)
+	if params.Tools, err = mapTools(tools); err != nil {
+		return llm.ToolResponse{}, err
+	}
 	msg, err := a.client.Messages.New(ctx, params)
 	if err != nil {
 		return llm.ToolResponse{}, a.mapError(err, a.effectiveModel(req))
@@ -225,7 +231,7 @@ func (a *Adapter) buildParams(
 		maxTokens = defaultMaxTokens
 	}
 
-	system, msgs, err := extractSystem(ctx, req.Messages)
+	system, systemCC, msgs, err := extractSystem(ctx, req.Messages)
 	if err != nil {
 		return anthropic.MessageNewParams{}, err
 	}
@@ -237,9 +243,27 @@ func (a *Adapter) buildParams(
 	}
 
 	if system != "" {
-		p.System = []anthropic.TextBlockParam{
-			{Text: system},
+		sp := anthropic.TextBlockParam{Text: system}
+		cc, ok, err := cacheParam(systemCC)
+		if err != nil {
+			return anthropic.MessageNewParams{}, err
 		}
+		if ok {
+			sp.CacheControl = cc
+		}
+		p.System = []anthropic.TextBlockParam{sp}
+	}
+
+	if t := req.Thinking; t != nil {
+		if t.BudgetTokens < minThinkingBudget {
+			return anthropic.MessageNewParams{}, fmt.Errorf(
+				"anthropic: thinking budget_tokens must be at least %d, got %d", minThinkingBudget, t.BudgetTokens)
+		}
+		if int64(t.BudgetTokens) >= maxTokens {
+			return anthropic.MessageNewParams{}, fmt.Errorf(
+				"anthropic: thinking budget_tokens (%d) must be less than max_tokens (%d)", t.BudgetTokens, maxTokens)
+		}
+		p.Thinking = anthropic.ThinkingConfigParamOfEnabled(int64(t.BudgetTokens))
 	}
 
 	if req.Temperature != nil {
@@ -253,28 +277,32 @@ func (a *Adapter) buildParams(
 	return p, nil
 }
 
-// extractSystem separates any leading system message from the
-// conversation. Anthropic requires system as a top-level field.
+// extractSystem separates any system message from the conversation
+// (the last one wins). Anthropic requires system as a top-level field.
 func extractSystem(
 	ctx context.Context, msgs []llm.Message,
-) (string, []anthropic.MessageParam, error) {
+) (string, *llm.CacheControl, []anthropic.MessageParam, error) {
 	var system string
+	var systemCC *llm.CacheControl
 	out := make([]anthropic.MessageParam, 0, len(msgs))
 
 	for i, m := range msgs {
 		if m.Role == "system" {
-			system = m.Content
+			system, systemCC = m.Content, m.CacheControl
 			continue
 		}
 
 		if err := checkLinkageRole(m); err != nil {
-			return "", nil, err
+			return "", nil, nil, err
 		}
 
 		if m.Role == "tool" {
 			block, err := toolResultBlock(m)
 			if err != nil {
-				return "", nil, err
+				return "", nil, nil, err
+			}
+			if err := setCache(&block, m.CacheControl); err != nil {
+				return "", nil, nil, err
 			}
 			// Consecutive results answer one assistant turn and belong
 			// in a single user message.
@@ -290,48 +318,77 @@ func extractSystem(
 			continue
 		}
 
-		if len(m.ToolCalls) > 0 {
-			var blocks []anthropic.ContentBlockParamUnion
-			var err error
-			if len(m.Parts) > 0 {
-				blocks, err = mapAnthropicParts(ctx, m.Parts)
-				if err != nil {
-					return "", nil, err
-				}
-			} else if m.Content != "" {
-				blocks = append(blocks, anthropic.NewTextBlock(m.Content))
-			}
-			uses, err := toolUseBlocks(m.ToolCalls)
+		var blocks []anthropic.ContentBlockParamUnion
+		var err error
+		switch {
+		case len(m.Parts) > 0:
+			blocks, err = mapAnthropicParts(ctx, m.Parts)
 			if err != nil {
-				return "", nil, err
+				return "", nil, nil, err
 			}
-			out = append(out, anthropic.MessageParam{
-				Role:    anthropic.MessageParamRoleAssistant,
-				Content: append(blocks, uses...),
-			})
-			continue
+		case len(m.ToolCalls) == 0 || m.Content != "":
+			blocks = append(blocks, anthropic.NewTextBlock(m.Content))
 		}
-
-		if len(m.Parts) == 0 {
-			out = append(out, anthropic.MessageParam{
-				Role:    anthropic.MessageParamRole(m.Role),
-				Content: []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(m.Content)},
-			})
-			continue
-		}
-
-		// Multimodal path.
-		blocks, err := mapAnthropicParts(ctx, m.Parts)
+		uses, err := toolUseBlocks(m.ToolCalls)
 		if err != nil {
-			return "", nil, err
+			return "", nil, nil, err
 		}
+		blocks = append(blocks, uses...)
+		if len(blocks) > 0 {
+			if err := setCache(&blocks[len(blocks)-1], m.CacheControl); err != nil {
+				return "", nil, nil, err
+			}
+		}
+		// Thinking blocks lead the turn, unchanged and in order.
+		blocks = append(replayThinking(m.Thinking), blocks...)
 		out = append(out, anthropic.MessageParam{
 			Role:    anthropic.MessageParamRole(m.Role),
 			Content: blocks,
 		})
 	}
 
-	return system, out, nil
+	return system, systemCC, out, nil
+}
+
+// replayThinking maps thinking blocks back to request blocks.
+func replayThinking(tbs []llm.ThinkingBlock) []anthropic.ContentBlockParamUnion {
+	out := make([]anthropic.ContentBlockParamUnion, 0, len(tbs))
+	for _, tb := range tbs {
+		if tb.Redacted != "" {
+			out = append(out, anthropic.NewRedactedThinkingBlock(tb.Redacted))
+			continue
+		}
+		out = append(out, anthropic.NewThinkingBlock(tb.Signature, tb.Thinking))
+	}
+	return out
+}
+
+// cacheParam maps a breakpoint; ok is false for none.
+func cacheParam(cc *llm.CacheControl) (anthropic.CacheControlEphemeralParam, bool, error) {
+	if cc == nil {
+		return anthropic.CacheControlEphemeralParam{}, false, nil
+	}
+	p := anthropic.NewCacheControlEphemeralParam()
+	switch cc.TTL {
+	case "":
+	case "5m", "1h":
+		p.TTL = anthropic.CacheControlEphemeralTTL(cc.TTL)
+	default:
+		return p, false, fmt.Errorf("anthropic: cache_control ttl must be \"5m\" or \"1h\", got %q", cc.TTL)
+	}
+	return p, true, nil
+}
+
+// setCache puts cc on block, when block can carry one.
+func setCache(block *anthropic.ContentBlockParamUnion, cc *llm.CacheControl) error {
+	p, ok, err := cacheParam(cc)
+	if err != nil || !ok {
+		return err
+	}
+	if dst := block.GetCacheControl(); dst != nil {
+		*dst = p
+	}
+	return nil
 }
 
 // checkLinkageRole rejects tool-call linkage on a role that cannot carry
@@ -339,6 +396,9 @@ func extractSystem(
 func checkLinkageRole(m llm.Message) error {
 	if len(m.ToolCalls) > 0 && m.Role != "assistant" {
 		return fmt.Errorf("anthropic: ToolCalls are valid only on role assistant, got %q", m.Role)
+	}
+	if len(m.Thinking) > 0 && m.Role != "assistant" {
+		return fmt.Errorf("anthropic: Thinking is valid only on role assistant, got %q", m.Role)
 	}
 	if m.ToolCallID != "" && m.Role != "tool" {
 		return fmt.Errorf("anthropic: ToolCallID is valid only on role tool, got %q", m.Role)
@@ -444,7 +504,7 @@ func anthropicReadBase64(ctx context.Context, src llm.MediaSource) (string, erro
 }
 
 // mapTools converts llm.ToolDef slice to Anthropic tool params.
-func mapTools(defs []llm.ToolDef) []anthropic.ToolUnionParam {
+func mapTools(defs []llm.ToolDef) ([]anthropic.ToolUnionParam, error) {
 	out := make([]anthropic.ToolUnionParam, 0, len(defs))
 	for _, d := range defs {
 		// The API requires input_schema: a tool without parameters, or
@@ -453,15 +513,21 @@ func mapTools(defs []llm.ToolDef) []anthropic.ToolUnionParam {
 		if len(d.Parameters) == 0 || json.Unmarshal(d.Parameters, &schema) != nil {
 			schema = anthropic.ToolInputSchemaParam{Properties: map[string]any{}}
 		}
-		out = append(out, anthropic.ToolUnionParam{
-			OfTool: &anthropic.ToolParam{
-				Name:        d.Name,
-				Description: param.NewOpt(d.Description),
-				InputSchema: schema,
-			},
-		})
+		tp := &anthropic.ToolParam{
+			Name:        d.Name,
+			Description: param.NewOpt(d.Description),
+			InputSchema: schema,
+		}
+		cc, ok, err := cacheParam(d.CacheControl)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			tp.CacheControl = cc
+		}
+		out = append(out, anthropic.ToolUnionParam{OfTool: tp})
 	}
-	return out
+	return out, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -479,12 +545,20 @@ func responseFromMessage(msg *anthropic.Message) llm.Response {
 		Content:      text,
 		Role:         "assistant",
 		FinishReason: string(msg.StopReason),
-		Usage: llm.Usage{
-			PromptTokens:     int(msg.Usage.InputTokens),
-			CompletionTokens: int(msg.Usage.OutputTokens),
-			TotalTokens:      int(msg.Usage.InputTokens + msg.Usage.OutputTokens),
-		},
+		Usage:        usageOf(msg.Usage),
+		Thinking:     thinkingBlocks(msg),
 	}
+}
+
+func usageOf(u anthropic.Usage) llm.Usage {
+	out := llm.Usage{
+		PromptTokens:        int(u.InputTokens),
+		CompletionTokens:    int(u.OutputTokens),
+		CacheReadTokens:     int(u.CacheReadInputTokens),
+		CacheCreationTokens: int(u.CacheCreationInputTokens),
+	}
+	out.TotalTokens = out.PromptTokens + out.CompletionTokens + out.CacheReadTokens + out.CacheCreationTokens
+	return out
 }
 
 func toolResponseFromMessage(msg *anthropic.Message) llm.ToolResponse {
@@ -505,8 +579,11 @@ func toolResponseFromMessage(msg *anthropic.Message) llm.ToolResponse {
 	}
 
 	return llm.ToolResponse{
-		Content:   text,
-		ToolCalls: calls,
+		Content:      text,
+		ToolCalls:    calls,
+		Thinking:     thinkingBlocks(msg),
+		FinishReason: string(msg.StopReason),
+		Usage:        usageOf(msg.Usage),
 	}
 }
 
@@ -519,6 +596,8 @@ type streamIter struct {
 	a      *Adapter
 	model  string
 	done   bool
+	// thinking streams thinking deltas as tokens.
+	thinking bool
 	// msg folds every event, as the SDK's Message.Accumulate does.
 	msg     anthropic.Message
 	outcome *llm.StreamOutcome
@@ -552,8 +631,11 @@ func (s *streamIter) Next() (llm.Token, error) {
 		}
 		switch evt.Type {
 		case "content_block_delta":
-			if evt.Delta.Type == "text_delta" {
+			switch {
+			case evt.Delta.Type == "text_delta":
 				return llm.Token{Content: evt.Delta.Text}, nil
+			case evt.Delta.Type == "thinking_delta" && s.thinking:
+				return llm.Token{Thinking: evt.Delta.Thinking}, nil
 			}
 		case "message_stop":
 			s.done = true
@@ -666,6 +748,6 @@ func outcomeFromMessage(msg *anthropic.Message) llm.StreamOutcome {
 		Thinking:     thinkingBlocks(msg),
 		ToolCalls:    tr.ToolCalls,
 		FinishReason: string(msg.StopReason),
-		Usage:        responseFromMessage(msg).Usage,
+		Usage:        usageOf(msg.Usage),
 	}
 }

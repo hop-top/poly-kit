@@ -149,6 +149,28 @@ type Message struct {
 	ToolCalls []ToolCall
 	// ToolCallID links a role "tool" result to the ToolCall it answers.
 	ToolCallID string
+
+	// Thinking replays an assistant turn's thinking blocks, exactly as
+	// the provider returned them (in [Response.Thinking],
+	// [ToolResponse.Thinking] or [StreamOutcome.Thinking]). Required
+	// with tool use when thinking is enabled. Assistant only.
+	Thinking []ThinkingBlock
+
+	// CacheControl marks a prompt-cache breakpoint after this message:
+	// on a system message its text, otherwise its last content block.
+	CacheControl *CacheControl
+}
+
+// CacheControl is a prompt-cache breakpoint. TTL is "" (the provider
+// default, five minutes on Anthropic), "5m" or "1h".
+type CacheControl struct {
+	TTL string
+}
+
+// ThinkingConfig enables extended thinking with a token budget, which
+// must be below the request's max tokens.
+type ThinkingConfig struct {
+	BudgetTokens int
 }
 
 // Request carries all parameters for a completion call.
@@ -166,6 +188,9 @@ type Request struct {
 	MaxTokens     int
 	StopSequences []string
 	Extensions    map[string]any
+	// Thinking, when set, enables extended thinking; thinking deltas
+	// then stream as [Token.Thinking].
+	Thinking *ThinkingConfig
 }
 
 // Response is the result of a completion call.
@@ -176,19 +201,42 @@ type Response struct {
 	FinishReason string
 	// OutputParts holds non-text results from hooks or multimodal responses.
 	OutputParts []ContentPart
+	// Thinking holds the turn's thinking blocks, to replay unchanged.
+	Thinking []ThinkingBlock
 }
 
 // Usage reports token consumption.
 type Usage struct {
 	PromptTokens     int
 	CompletionTokens int
-	TotalTokens      int
+	// CacheReadTokens and CacheCreationTokens are input tokens read
+	// from or written to the prompt cache, apart from PromptTokens.
+	CacheReadTokens     int
+	CacheCreationTokens int
+	// TotalTokens is every input and output token, cache ones included.
+	TotalTokens int
+}
+
+// Price is a model's rate per million tokens, by kind.
+type Price struct {
+	Input, Output, CacheRead, CacheWrite float64
+}
+
+// Cost is u's cost at p, cache reads and writes at their own rates.
+func (u Usage) Cost(p Price) float64 {
+	return (float64(u.PromptTokens)*p.Input +
+		float64(u.CompletionTokens)*p.Output +
+		float64(u.CacheReadTokens)*p.CacheRead +
+		float64(u.CacheCreationTokens)*p.CacheWrite) / 1e6
 }
 
 // Token is a single streaming chunk.
 type Token struct {
 	Content string
-	Done    bool
+	// Thinking is a thinking delta, sent only when the request enabled
+	// [Request.Thinking]; Content is then empty.
+	Thinking string
+	Done     bool
 }
 
 // TokenIterator yields streaming tokens.
@@ -207,6 +255,8 @@ type ToolDef struct {
 	Name        string
 	Description string
 	Parameters  json.RawMessage
+	// CacheControl marks a prompt-cache breakpoint after this tool.
+	CacheControl *CacheControl
 }
 
 // ToolCall is a single tool invocation returned by the model.
@@ -242,6 +292,10 @@ type ProviderData map[string]json.RawMessage
 type ToolResponse struct {
 	Content   string
 	ToolCalls []ToolCall
+	// Thinking holds the turn's thinking blocks, to replay unchanged.
+	Thinking     []ThinkingBlock
+	FinishReason string
+	Usage        Usage
 }
 
 // ---------------------------------------------------------------------------

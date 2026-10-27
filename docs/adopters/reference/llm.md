@@ -245,6 +245,25 @@ Wire mapping per adapter:
 - A tool error travels as result text; no adapter sets a provider
   error flag such as Anthropic's `is_error`.
 
+### Thinking and prompt caching
+
+`Request.Thinking = &llm.ThinkingConfig{BudgetTokens: n}` enables
+extended thinking (`anthropic`: at least 1024, below `MaxTokens`).
+Thinking deltas stream as `Token.Thinking`; the blocks come back in
+`Response.Thinking`, `ToolResponse.Thinking` and
+`StreamOutcome.Thinking`. Replay them unchanged on the assistant
+message (`Message.Thinking`) in the next turn; tool use with thinking
+requires it.
+
+`Message.CacheControl` and `ToolDef.CacheControl` mark prompt-cache
+breakpoints (`TTL` "", "5m" or "1h"): on a system message its text,
+otherwise its last content block. `Usage.CacheReadTokens` and
+`CacheCreationTokens` report cache traffic, included in `TotalTokens`;
+`Usage.Cost(llm.Price{...})` prices each kind at its own rate.
+
+`StreamWithTools` (`llm.ToolStreamer`) streams text, then the whole
+turn from `ToolStream.Outcome()`.
+
 ## Fallback chains
 
 ```go
