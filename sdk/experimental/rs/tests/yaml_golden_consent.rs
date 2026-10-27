@@ -187,11 +187,13 @@ fn golden_legacy_layout() {
     assert_eq!(legacy(body), granted(1, "prompt", None));
 }
 
+// Was "falls through to legacy": that pinned a lenient read Go never
+// had. Go reads both records and fails closed when either is unreadable.
 #[test]
-fn golden_corrupt_canonical_falls_through_to_legacy() {
+fn golden_corrupt_canonical_fails_closed_over_a_legacy_grant() {
     let corrupt = "kit: [unterminated\n";
     let good = "telemetry:\n  consent:\n    state: granted\n";
-    assert_eq!(load(Some(corrupt), Some(good)), granted(0, "config", None));
+    assert_eq!(load(Some(corrupt), Some(good)), denied());
 }
 
 #[test]

@@ -2,13 +2,13 @@
 //!
 //! The Rust SDK is READ-ONLY against the telemetry consent file. The
 //! canonical location is `<XDG_CONFIG_HOME>/kit/config.yaml` at the
-//! `kit.telemetry.consent` partition. A pre-refactor layout at
-//! `<XDG_CONFIG_HOME>/kit/telemetry.yaml` (bare `telemetry.consent` at
-//! the top level) is honored as a read-only fallback for installs that
-//! have not yet been migrated.
+//! `kit.telemetry.consent` partition; a pre-refactor layout at
+//! `<XDG_CONFIG_HOME>/kit/telemetry.yaml` (bare `telemetry.consent`) is
+//! read too, and the two are combined deny-wins, as Go does.
 //!
-//! The Go-side `kit-consent` tool owns writes; SDKs simply load and
-//! respect the decision. Any I/O or parse failure falls through to a
+//! Writes belong to Go's consent store and, in this crate, to
+//! `consent::FileStore` (feature `consent-file`), which mirror every
+//! telemetry decision into both records. Any I/O or parse failure is a
 //! default-deny `Consent` so an upgrade can never start a telemetry
 //! stream by surprise.
 
@@ -100,32 +100,54 @@ pub fn legacy_consent_path() -> PathBuf {
 /// `Consent::denied()` so callers don't need to distinguish "file
 /// missing" from "file corrupt" — both must default-deny.
 ///
-/// Read order: canonical `config.yaml` (`kit.telemetry.consent`) is
-/// preferred; the legacy `telemetry.yaml` (`telemetry.consent`) is
-/// consulted only when the canonical file is absent or lacks the
-/// consent block.
+/// Both records are read and combined deny-wins, as Go's consent store
+/// does: canonical `config.yaml` (`kit.telemetry.consent`) and the legacy
+/// `telemetry.yaml` (`telemetry.consent`). Any deny is the answer (the
+/// canonical one first), whatever the timestamps; allow needs one allow
+/// and no deny. A file that exists but cannot be read or parsed fails
+/// closed.
 pub fn load_consent() -> Consent {
-    if let Some(c) = read_canonical(&consent_path()) {
-        return c;
-    }
-    if let Some(c) = read_legacy(&legacy_consent_path()) {
-        return c;
-    }
-    Consent::denied()
+    let (Ok(canonical), Ok(legacy)) = (
+        read_record(&consent_path(), canonical_block),
+        read_record(&legacy_consent_path(), legacy_block),
+    ) else {
+        return Consent::denied();
+    };
+    let records = [canonical, legacy];
+    let pick = |allowed: bool| records.iter().flatten().find(|c| c.allowed == allowed);
+    pick(false)
+        .or_else(|| pick(true))
+        .cloned()
+        .unwrap_or_else(Consent::denied)
 }
 
-fn read_canonical(p: &std::path::Path) -> Option<Consent> {
-    let content = fs::read_to_string(p).ok()?;
-    let parsed: CanonicalWrapper = serde_norway::from_str(&content).ok()?;
-    let raw = parsed.kit?.telemetry?.consent?;
-    consent_from_raw(raw)
+/// Unreadable: the file exists but does not read or parse.
+struct Unreadable;
+
+/// One file's record: `Ok(None)` when the file, the block or a valid
+/// state is missing.
+fn read_record<W: serde::de::DeserializeOwned>(
+    p: &std::path::Path,
+    block: fn(W) -> Option<ConsentRaw>,
+) -> Result<Option<Consent>, Unreadable> {
+    let content = match fs::read_to_string(p) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(Unreadable),
+    };
+    if content.trim().is_empty() {
+        return Ok(None);
+    }
+    let parsed: W = serde_norway::from_str(&content).map_err(|_| Unreadable)?;
+    Ok(block(parsed).and_then(consent_from_raw))
 }
 
-fn read_legacy(p: &std::path::Path) -> Option<Consent> {
-    let content = fs::read_to_string(p).ok()?;
-    let parsed: LegacyWrapper = serde_norway::from_str(&content).ok()?;
-    let raw = parsed.telemetry?.consent?;
-    consent_from_raw(raw)
+fn canonical_block(w: CanonicalWrapper) -> Option<ConsentRaw> {
+    w.kit?.telemetry?.consent
+}
+
+fn legacy_block(w: LegacyWrapper) -> Option<ConsentRaw> {
+    w.telemetry?.consent
 }
 
 fn consent_from_raw(c: ConsentRaw) -> Option<Consent> {

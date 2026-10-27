@@ -29,7 +29,7 @@ fn write_legacy_consent(content: &str) {
 
 #[test]
 fn path_lives_under_xdg_config_home() {
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _tmp = isolated_config_dir();
     let p = consent_path();
     let s = p.to_string_lossy();
@@ -44,7 +44,7 @@ fn path_lives_under_xdg_config_home() {
 
 #[test]
 fn missing_file_returns_denied() {
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _tmp = isolated_config_dir();
     let c = load_consent();
     assert!(!c.allowed);
@@ -55,7 +55,7 @@ fn missing_file_returns_denied() {
 
 #[test]
 fn granted_state_is_allowed() {
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _tmp = isolated_config_dir();
     write_consent(
         r#"
@@ -77,7 +77,7 @@ kit:
 
 #[test]
 fn denied_state_is_not_allowed_but_metadata_preserved() {
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _tmp = isolated_config_dir();
     write_consent(
         r#"
@@ -96,7 +96,7 @@ kit:
 
 #[test]
 fn unknown_state_defaults_to_denied() {
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _tmp = isolated_config_dir();
     write_consent(
         r#"
@@ -116,7 +116,7 @@ kit:
 
 #[test]
 fn missing_consent_block_defaults_to_denied() {
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _tmp = isolated_config_dir();
     write_consent(
         r#"
@@ -131,7 +131,7 @@ kit:
 
 #[test]
 fn malformed_yaml_defaults_to_denied() {
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _tmp = isolated_config_dir();
     write_consent("kit:\n  telemetry:\n    consent: [this is not a map\n");
     let c = load_consent();
@@ -143,7 +143,7 @@ fn legacy_telemetry_yaml_is_read_as_fallback() {
     // Pre-refactor layout: bare telemetry.consent in
     // <XDG_CONFIG_HOME>/kit/telemetry.yaml. Loader must honor it when
     // the canonical config.yaml is absent.
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _tmp = isolated_config_dir();
     write_legacy_consent(
         r#"
@@ -163,7 +163,7 @@ telemetry:
 
 #[test]
 fn canonical_config_yaml_wins_over_legacy_telemetry_yaml() {
-    let _g = ENV_LOCK.lock().unwrap();
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _tmp = isolated_config_dir();
     // Legacy says granted; canonical says denied. Canonical must win.
     write_legacy_consent(
@@ -189,4 +189,46 @@ kit:
     assert!(!c.allowed);
     assert_eq!(c.prompt_version, 2);
     assert_eq!(c.decision_source, "flag");
+}
+
+#[test]
+fn config_yes_and_telemetry_yaml_no_is_deny() {
+    // Go combines both records deny-wins: a refusal recorded in either
+    // file sticks, whatever the timestamps.
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _tmp = isolated_config_dir();
+    write_consent(
+        r#"
+kit:
+  telemetry:
+    consent:
+      state: granted
+      decided_at: "2026-03-01T00:00:00Z"
+      prompt_version: 2
+      decision_source: prompt
+"#,
+    );
+    write_legacy_consent(
+        r#"
+telemetry:
+  consent:
+    state: denied
+    decided_at: "2025-01-01T00:00:00Z"
+    prompt_version: 1
+    decision_source: flag
+"#,
+    );
+    let c = load_consent();
+    assert!(!c.allowed);
+    assert_eq!(c.decision_source, "flag");
+    assert_eq!(c.prompt_version, 1);
+}
+
+#[test]
+fn config_unset_and_telemetry_yaml_yes_is_allow() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _tmp = isolated_config_dir();
+    write_consent("kit:\n  telemetry: {}\n");
+    write_legacy_consent("telemetry:\n  consent:\n    state: granted\n");
+    assert!(load_consent().allowed);
 }
