@@ -23,6 +23,9 @@ const PENDING_RUST_PORT: &[(&str, &str)] = &[
     ("anthropic_error", "403 permission denied"),
     ("anthropic_error", "stream: 403 before any event"),
     ("anthropic_stream", "permission error event mid-stream"),
+    ("anthropic_request", "system messages join in order"),
+    ("anthropic_request", "empty system messages are skipped"),
+    ("anthropic_request", "system cache breakpoints split the joined text"),
 ];
 
 /// Whether a vector waits for the Rust port; see [`PENDING_RUST_PORT`].
@@ -728,6 +731,9 @@ mod anthropic {
         let c = load();
         assert!(!c.anthropic_request.is_empty());
         for v in &c.anthropic_request {
+            if pending("anthropic_request", &v.name) {
+                continue;
+            }
             let srv = serve(vec![ok_message()]).await;
             let a = adapter(&srv.url, &v.adapter_model, "k");
             let req = to_request(&v.request);

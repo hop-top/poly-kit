@@ -265,7 +265,7 @@ func (a *Adapter) buildParams(
 		maxTokens = defaultMaxTokens
 	}
 
-	system, systemCC, msgs, err := extractSystem(ctx, req.Messages, names)
+	system, msgs, err := extractSystem(ctx, req.Messages, names)
 	if err != nil {
 		return anthropic.MessageNewParams{}, err
 	}
@@ -274,18 +274,7 @@ func (a *Adapter) buildParams(
 		Model:     anthropic.Model(model),
 		MaxTokens: maxTokens,
 		Messages:  msgs,
-	}
-
-	if system != "" {
-		sp := anthropic.TextBlockParam{Text: system}
-		cc, ok, err := cacheParam(systemCC)
-		if err != nil {
-			return anthropic.MessageNewParams{}, err
-		}
-		if ok {
-			sp.CacheControl = cc
-		}
-		p.System = []anthropic.TextBlockParam{sp}
+		System:    system,
 	}
 
 	if t := req.Thinking; t != nil {
@@ -311,32 +300,36 @@ func (a *Adapter) buildParams(
 	return p, nil
 }
 
-// extractSystem separates any system message from the conversation
-// (the last one wins). Anthropic requires system as a top-level field.
+// systemSeparator joins consecutive system messages into one text.
+const systemSeparator = "\n\n"
+
+// extractSystem separates the system messages from the conversation:
+// Anthropic takes system as a top-level field. See [systemBlocks].
 func extractSystem(
 	ctx context.Context, msgs []llm.Message, names *llm.ToolNames,
-) (string, *llm.CacheControl, []anthropic.MessageParam, error) {
-	var system string
-	var systemCC *llm.CacheControl
+) ([]anthropic.TextBlockParam, []anthropic.MessageParam, error) {
+	system, err := systemBlocks(msgs)
+	if err != nil {
+		return nil, nil, err
+	}
 	out := make([]anthropic.MessageParam, 0, len(msgs))
 
 	for i, m := range msgs {
 		if m.Role == "system" {
-			system, systemCC = m.Content, m.CacheControl
 			continue
 		}
 
 		if err := checkLinkageRole(m); err != nil {
-			return "", nil, nil, err
+			return nil, nil, err
 		}
 
 		if m.Role == "tool" {
 			block, err := toolResultBlock(m)
 			if err != nil {
-				return "", nil, nil, err
+				return nil, nil, err
 			}
 			if err := setCache(&block, m.CacheControl); err != nil {
-				return "", nil, nil, err
+				return nil, nil, err
 			}
 			// Consecutive results answer one assistant turn and belong
 			// in a single user message.
@@ -358,19 +351,19 @@ func extractSystem(
 		case len(m.Parts) > 0:
 			blocks, err = mapAnthropicParts(ctx, m.Parts)
 			if err != nil {
-				return "", nil, nil, err
+				return nil, nil, err
 			}
 		case len(m.ToolCalls) == 0 || m.Content != "":
 			blocks = append(blocks, anthropic.NewTextBlock(m.Content))
 		}
 		uses, err := toolUseBlocks(m.ToolCalls, names)
 		if err != nil {
-			return "", nil, nil, err
+			return nil, nil, err
 		}
 		blocks = append(blocks, uses...)
 		if len(blocks) > 0 {
 			if err := setCache(&blocks[len(blocks)-1], m.CacheControl); err != nil {
-				return "", nil, nil, err
+				return nil, nil, err
 			}
 		}
 		// Thinking blocks lead the turn, unchanged and in order.
@@ -381,7 +374,42 @@ func extractSystem(
 		})
 	}
 
-	return system, systemCC, out, nil
+	return system, out, nil
+}
+
+// systemBlocks maps every system message, wherever it sits, to the
+// system field: their Content joined in order with a blank line
+// ([systemSeparator]), empty ones skipped. A CacheControl on a system
+// message ends a text block there and carries that breakpoint, so each
+// breakpoint caches exactly the text up to it; the next system
+// message starts a new block. No system text yields nil.
+func systemBlocks(msgs []llm.Message) ([]anthropic.TextBlockParam, error) {
+	var out []anthropic.TextBlockParam
+	var text strings.Builder
+	for _, m := range msgs {
+		if m.Role != "system" {
+			continue
+		}
+		if m.Content != "" {
+			if text.Len() > 0 {
+				text.WriteString(systemSeparator)
+			}
+			text.WriteString(m.Content)
+		}
+		if m.CacheControl == nil || text.Len() == 0 {
+			continue
+		}
+		cc, _, err := cacheParam(m.CacheControl)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, anthropic.TextBlockParam{Text: text.String(), CacheControl: cc})
+		text.Reset()
+	}
+	if text.Len() > 0 {
+		out = append(out, anthropic.TextBlockParam{Text: text.String()})
+	}
+	return out, nil
 }
 
 // replayThinking maps thinking blocks back to request blocks.
