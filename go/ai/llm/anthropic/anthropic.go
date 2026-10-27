@@ -164,6 +164,9 @@ func (a *Adapter) Complete(
 	if err != nil {
 		return llm.Response{}, err
 	}
+	if params.ToolChoice, err = toolChoice(req.ToolChoice, nil, names); err != nil {
+		return llm.Response{}, err
+	}
 	msg, err := a.client.Messages.New(ctx, params)
 	if err != nil {
 		return llm.Response{}, a.mapError(err, a.effectiveModel(req))
@@ -181,6 +184,9 @@ func (a *Adapter) Stream(
 	}
 	params, err := a.buildParams(ctx, req, names)
 	if err != nil {
+		return nil, err
+	}
+	if params.ToolChoice, err = toolChoice(req.ToolChoice, nil, names); err != nil {
 		return nil, err
 	}
 	return a.openStream(ctx, params, req, names)
@@ -216,6 +222,9 @@ func (a *Adapter) StreamWithTools(
 	if params.Tools, err = mapTools(names.Defs(tools)); err != nil {
 		return nil, err
 	}
+	if params.ToolChoice, err = toolChoice(req.ToolChoice, tools, names); err != nil {
+		return nil, err
+	}
 	return a.openStream(ctx, params, req, names)
 }
 
@@ -233,6 +242,9 @@ func (a *Adapter) CallWithTools(
 		return llm.ToolResponse{}, err
 	}
 	if params.Tools, err = mapTools(names.Defs(tools)); err != nil {
+		return llm.ToolResponse{}, err
+	}
+	if params.ToolChoice, err = toolChoice(req.ToolChoice, tools, names); err != nil {
 		return llm.ToolResponse{}, err
 	}
 	msg, err := a.client.Messages.New(ctx, params)
@@ -564,6 +576,32 @@ func anthropicReadBase64(ctx context.Context, src llm.MediaSource) (string, erro
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(raw), nil
+}
+
+// toolChoice maps c, checked against tools, to the request's
+// tool_choice; a named tool goes by the name the request sends for it.
+// A nil c sends none.
+func toolChoice(
+	c *llm.ToolChoice, tools []llm.ToolDef, names *llm.ToolNames,
+) (anthropic.ToolChoiceUnionParam, error) {
+	var out anthropic.ToolChoiceUnionParam
+	if err := llm.CheckToolChoice(c, tools); err != nil {
+		return out, fmt.Errorf("anthropic: %w", err)
+	}
+	if c == nil {
+		return out, nil
+	}
+	switch c.Mode {
+	case llm.ToolChoiceAuto:
+		out.OfAuto = &anthropic.ToolChoiceAutoParam{}
+	case llm.ToolChoiceAny:
+		out.OfAny = &anthropic.ToolChoiceAnyParam{}
+	case llm.ToolChoiceNone:
+		out.OfNone = &anthropic.ToolChoiceNoneParam{}
+	case llm.ToolChoiceTool:
+		out.OfTool = &anthropic.ToolChoiceToolParam{Name: names.Wire(c.Name)}
+	}
+	return out, nil
 }
 
 // mapTools converts llm.ToolDef slice to Anthropic tool params.

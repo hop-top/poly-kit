@@ -191,6 +191,10 @@ type Request struct {
 	// Thinking, when set, enables extended thinking; thinking deltas
 	// then stream as [Token.Thinking].
 	Thinking *ThinkingConfig
+	// ToolChoice, when set, constrains tool use on a tool-calling
+	// request (CallWithTools, StreamWithTools); nil leaves the provider
+	// default. See [ToolChoice].
+	ToolChoice *ToolChoice
 }
 
 // Response is the result of a completion call.

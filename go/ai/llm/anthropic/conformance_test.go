@@ -211,6 +211,17 @@ type anthropicConfFile struct {
 		} `json:"error"`
 		Refused bool `json:"refused"`
 	} `json:"anthropic_tool_names"`
+	AnthropicToolChoice []struct {
+		Name       string   `json:"name"`
+		Call       string   `json:"call"`
+		Tools      []string `json:"tools"`
+		ToolChoice *struct {
+			Mode string `json:"mode"`
+			Name string `json:"name"`
+		} `json:"tool_choice"`
+		WantToolChoice json.RawMessage `json:"want_tool_choice"`
+		Error          string          `json:"error"`
+	} `json:"anthropic_tool_choice"`
 	KeyEndpoint []struct {
 		Name    string            `json:"name"`
 		Op      string            `json:"op"`
@@ -904,6 +915,76 @@ func TestConformanceAnthropicToolNames(t *testing.T) {
 				assert.Equal(t, want.ID, calls[i].ID)
 				assert.Equal(t, want.Name, calls[i].Name)
 			}
+		})
+	}
+}
+
+// minimalSSE is a complete, empty streamed turn.
+const minimalSSE = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n" +
+	"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+
+func TestConformanceAnthropicToolChoice(t *testing.T) {
+	f := loadAnthropicConf(t)
+	require.NotEmpty(t, f.AnthropicToolChoice)
+	for _, v := range f.AnthropicToolChoice {
+		t.Run(v.Name, func(t *testing.T) {
+			clearAnthropicEnv(t)
+			var body []byte
+			var sent atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				sent.Add(1)
+				body, _ = io.ReadAll(r.Body)
+				if v.Call == "stream" || v.Call == "stream_tools" {
+					w.Header().Set("Content-Type", "text/event-stream")
+					_, _ = io.WriteString(w, minimalSSE)
+					return
+				}
+				okMessage(w)
+			}))
+			t.Cleanup(srv.Close)
+			p := newConfAdapter(t, srv.URL, "m", "k")
+			req := llm.Request{Messages: []llm.Message{{Role: "user", Content: "Hi"}}}
+			if c := v.ToolChoice; c != nil {
+				req.ToolChoice = &llm.ToolChoice{Mode: llm.ToolChoiceMode(c.Mode), Name: c.Name}
+			}
+			var tools []llm.ToolDef
+			for _, n := range v.Tools {
+				tools = append(tools, llm.ToolDef{Name: n})
+			}
+			var err error
+			switch v.Call {
+			case "complete":
+				_, err = p.(llm.Completer).Complete(context.Background(), req)
+			case "stream":
+				var it llm.TokenIterator
+				if it, err = p.(llm.Streamer).Stream(context.Background(), req); err == nil {
+					_ = it.Close()
+				}
+			case "tools":
+				_, err = p.(llm.ToolCaller).CallWithTools(context.Background(), req, tools)
+			case "stream_tools":
+				var st llm.ToolStream
+				if st, err = p.(llm.ToolStreamer).StreamWithTools(context.Background(), req, tools); err == nil {
+					_ = st.Close()
+				}
+			default:
+				t.Fatalf("unknown call %q", v.Call)
+			}
+			if v.Error != "" {
+				require.EqualError(t, err, v.Error)
+				assert.Zero(t, sent.Load(), "a rejected request is never sent")
+				return
+			}
+			require.NoError(t, err)
+			var got struct {
+				ToolChoice json.RawMessage `json:"tool_choice"`
+			}
+			require.NoError(t, json.Unmarshal(body, &got))
+			if string(v.WantToolChoice) == "null" || len(v.WantToolChoice) == 0 {
+				assert.Empty(t, got.ToolChoice, "no tool_choice sent")
+				return
+			}
+			assert.JSONEq(t, string(v.WantToolChoice), string(got.ToolChoice))
 		})
 	}
 }

@@ -201,7 +201,7 @@ func (a *Adapter) Complete(
 	if err != nil {
 		return llm.Response{}, err
 	}
-	params, err := a.buildParams(ctx, req, names)
+	params, err := a.buildParams(ctx, req, names, nil)
 	if err != nil {
 		return llm.Response{}, err
 	}
@@ -221,7 +221,7 @@ func (a *Adapter) Stream(
 	if err != nil {
 		return nil, err
 	}
-	params, err := a.buildParams(ctx, req, names)
+	params, err := a.buildParams(ctx, req, names, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +242,7 @@ func (a *Adapter) CallWithTools(
 	if err != nil {
 		return llm.ToolResponse{}, err
 	}
-	params, err := a.buildParams(ctx, req, names)
+	params, err := a.buildParams(ctx, req, names, tools)
 	if err != nil {
 		return llm.ToolResponse{}, err
 	}
@@ -264,9 +264,14 @@ func (a *Adapter) toolNameMap(tools []llm.ToolDef) (*llm.ToolNames, error) {
 
 // ---------- param building ----------
 
+// buildParams maps req; tools are the call's tools, which
+// req.ToolChoice is checked against (nil for a call without tools).
 func (a *Adapter) buildParams(
-	ctx context.Context, req llm.Request, names *llm.ToolNames,
+	ctx context.Context, req llm.Request, names *llm.ToolNames, tools []llm.ToolDef,
 ) (oai.ChatCompletionNewParams, error) {
+	if err := llm.CheckToolChoice(req.ToolChoice, tools); err != nil {
+		return oai.ChatCompletionNewParams{}, fmt.Errorf("%s: %w", a.scheme, err)
+	}
 	model := a.model
 	if req.Model != "" {
 		model = req.Model
@@ -292,7 +297,24 @@ func (a *Adapter) buildParams(
 			OfStringArray: req.StopSequences,
 		}
 	}
+	if c := req.ToolChoice; c != nil {
+		p.ToolChoice = toolChoice(c, names)
+	}
 	return p, nil
+}
+
+// toolChoice maps a checked c: any is "required", a named tool goes by
+// the name the request sends for it.
+func toolChoice(c *llm.ToolChoice, names *llm.ToolNames) oai.ChatCompletionToolChoiceOptionUnionParam {
+	switch c.Mode {
+	case llm.ToolChoiceAny:
+		return oai.ChatCompletionToolChoiceOptionUnionParam{OfAuto: param.NewOpt("required")}
+	case llm.ToolChoiceTool:
+		return oai.ChatCompletionToolChoiceOptionParamOfChatCompletionNamedToolChoice(
+			oai.ChatCompletionNamedToolChoiceFunctionParam{Name: names.Wire(c.Name)})
+	default: // auto, none
+		return oai.ChatCompletionToolChoiceOptionUnionParam{OfAuto: param.NewOpt(string(c.Mode))}
+	}
 }
 
 func mapMessages(

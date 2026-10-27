@@ -261,6 +261,29 @@ Wire mapping per adapter:
 - A tool error travels as result text; no adapter sets a provider
   error flag such as Anthropic's `is_error`.
 
+### Tool choice
+
+`Request.ToolChoice` constrains tool use on `CallWithTools` and
+`StreamWithTools`; nil leaves the provider default.
+
+```go
+req.ToolChoice = &llm.ToolChoice{Mode: llm.ToolChoiceTool, Name: "pane.open"}
+```
+
+| Mode | `anthropic` | `openai`, `routellm` | `gemini` / `google` |
+|------|-------------|----------------------|---------------------|
+| `ToolChoiceAuto` | `{"type":"auto"}` | `"auto"` | `AUTO` |
+| `ToolChoiceAny` (call at least one) | `{"type":"any"}` | `"required"` | `ANY` |
+| `ToolChoiceNone` | `{"type":"none"}` | `"none"` | `NONE` |
+| `ToolChoiceTool` + `Name` | `{"type":"tool","name":…}` | `{"type":"function","function":{"name":…}}` | `ANY` + `allowedFunctionNames` |
+
+`Name` is the tool's `ToolDef.Name` as you defined it; the adapter sends
+the provider-safe form ([Tool names](#tool-names)). Before any network
+call, a request fails when `llm.CheckToolChoice` does: an unknown mode,
+a choice on a call without tools (`Complete`, `Stream`, every `ollama`
+call), `ToolChoiceTool` without a `Name`, a `Name` with another mode,
+or a `Name` no tool has.
+
 ### Tool names
 
 Providers restrict tool names; ids such as `pane.open` or
