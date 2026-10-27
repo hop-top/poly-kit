@@ -142,3 +142,72 @@ impl Drop for Peer {
         let _ = within(move || n.close());
     }
 }
+
+/// A loopback address every WebSocket dial fails against, held for as
+/// long as the value lives. It accepts each connection and closes it
+/// before the upgrade, so a dial fails as one to a closed port does,
+/// while the port stays bound: no other listener can take it, as one
+/// can a port freed by dropping a probe listener. Counts the
+/// connections it closed.
+pub struct Refuser {
+    pub addr: String,
+    accepts: Arc<AtomicUsize>,
+    stop: Arc<AtomicBool>,
+    thread: Option<thread::JoinHandle<()>>,
+}
+
+impl Refuser {
+    pub fn start() -> Refuser {
+        let ln = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        ln.set_nonblocking(true).expect("nonblocking");
+        let addr = ln.local_addr().expect("local addr").to_string();
+        let accepts = Arc::new(AtomicUsize::new(0));
+        let stop = Arc::new(AtomicBool::new(false));
+        let (n, s) = (Arc::clone(&accepts), Arc::clone(&stop));
+        let thread = thread::spawn(move || {
+            while !s.load(Ordering::SeqCst) {
+                match ln.accept() {
+                    Ok((conn, _)) => {
+                        n.fetch_add(1, Ordering::SeqCst);
+                        drop(conn);
+                    }
+                    Err(_) => thread::sleep(Duration::from_millis(2)),
+                }
+            }
+        });
+        Refuser {
+            addr,
+            accepts,
+            stop,
+            thread: Some(thread),
+        }
+    }
+
+    pub fn url(&self) -> String {
+        format!("ws://{}/", self.addr)
+    }
+
+    /// The connections closed so far.
+    pub fn accepts(&self) -> usize {
+        self.accepts.load(Ordering::SeqCst)
+    }
+
+    /// Closes the listener, freeing the port, and returns its address.
+    pub fn release(mut self) -> String {
+        self.shutdown();
+        std::mem::take(&mut self.addr)
+    }
+
+    fn shutdown(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+impl Drop for Refuser {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}

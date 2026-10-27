@@ -66,15 +66,15 @@ fn a_dropped_outbound_link_reconnects() {
 
 #[test]
 fn dial_keeps_trying_until_the_peer_appears() {
-    let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = probe.local_addr().unwrap().to_string();
-    drop(probe);
-    let url = format!("ws://{addr}/");
+    let gate = Refuser::start();
+    let url = gate.url();
     let b = Peer::new(fast().origin_id("B"));
     b.net.dial(&url);
     sleep_ms(150);
     assert!(b.net.link_state(&url).is_some_and(|s| !s.connected));
+    assert!(gate.accepts() > 0, "the dial reached the address");
 
+    let addr = gate.release();
     let (bus2, net2) = hub_at(&addr, "late");
     assert!(
         eventually(Duration::from_secs(5), || b
@@ -118,9 +118,8 @@ fn disconnect_forgets_the_address() {
 
 #[test]
 fn close_stops_reconnecting() {
-    let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("ws://{}/", probe.local_addr().unwrap());
-    drop(probe);
+    let gate = Refuser::start();
+    let url = gate.url();
     let b = NetworkAdapter::new(DynBus::new(), fast());
     b.dial(&url);
     sleep_ms(100);
@@ -153,12 +152,16 @@ fn a_second_connect_to_a_linked_address_adds_no_link() {
 
 #[test]
 fn a_failed_connect_starts_no_reconnect_loop() {
-    let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = probe.local_addr().unwrap().to_string();
-    drop(probe);
-    let url = format!("ws://{addr}/");
+    // The address stays bound for the whole test: no other listener can
+    // take it between the failed connect and the check for redials.
+    let gate = Refuser::start();
+    assert!(
+        std::net::TcpListener::bind(&gate.addr).is_err(),
+        "the address is the test's own"
+    );
+    let url = gate.url();
     let b = Peer::new(fast().origin_id("B"));
-    let err = b.connect(&url).expect_err("nothing listens");
+    let err = b.connect(&url).expect_err("every dial is refused");
     assert!(
         err.to_string().starts_with("failed to WebSocket dial: "),
         "{err}"
@@ -167,14 +170,11 @@ fn a_failed_connect_starts_no_reconnect_loop() {
         b.net.link_state(&url).is_none(),
         "a failed dial registers nothing"
     );
+    assert_eq!(gate.accepts(), 1, "one dial");
 
-    let (_bus2, net2) = hub_at(&addr, "late");
     sleep_ms(400);
-    assert!(
-        b.net.link_state(&url).is_none(),
-        "Go: only dial and dropped links retry"
-    );
-    within(move || net2.close()).unwrap();
+    assert_eq!(gate.accepts(), 1, "Go: only dial and dropped links retry");
+    assert!(b.net.link_state(&url).is_none(), "no redial registered");
 }
 
 /// An acceptor that upgrades every connection and closes it with 1000
