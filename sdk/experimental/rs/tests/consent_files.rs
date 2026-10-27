@@ -229,3 +229,50 @@ fn telemetry_loader_sees_grant_writes() {
     assert!(!hop_top_kit::telemetry::load_consent().allowed);
     assert!(!g.check(CAP_TELEMETRY, "").unwrap().allowed);
 }
+
+/// Go's yaml.v3 Node round-trip keeps comments in config.yaml and
+/// telemetry.yaml; so does a telemetry write or revoke here.
+#[test]
+fn telemetry_writes_keep_comments_in_the_legacy_files() {
+    use hop_top_kit::consent::CAP_TELEMETRY;
+    let tmp = tempfile::tempdir().unwrap();
+    let s = FileStore::at(
+        tmp.path().join("g/grants.yaml"),
+        tmp.path().join("c/config.yaml"),
+        tmp.path().join("c/telemetry.yaml"),
+    );
+    std::fs::create_dir_all(tmp.path().join("c")).unwrap();
+    std::fs::write(s.config_path(), "# kit app config\nother: 1 # keep me\nkit:\n  # telemetry section\n  telemetry:\n    mode: anon\n").unwrap();
+    std::fs::write(
+        s.legacy_path(),
+        "# legacy file\ntelemetry:\n  consent:\n    state: denied\n  # after consent\n",
+    )
+    .unwrap();
+    let g = Grants::builder(Arc::new(s)).env(|_| String::new()).build();
+    g.decide(allow_always(CAP_TELEMETRY, "")).unwrap();
+    let cfg = std::fs::read_to_string(tmp.path().join("c/config.yaml")).unwrap();
+    for c in ["# kit app config", "# keep me", "# telemetry section"] {
+        assert!(cfg.contains(c), "{c:?} lost after a write:\n{cfg}");
+    }
+    let legacy = std::fs::read_to_string(tmp.path().join("c/telemetry.yaml")).unwrap();
+    assert!(
+        legacy.contains("# legacy file") && legacy.contains("state: granted"),
+        "{legacy}"
+    );
+    assert!(g.check(CAP_TELEMETRY, "").unwrap().allowed);
+
+    assert!(g.revoke(CAP_TELEMETRY, "", DecisionSource::Flag).unwrap());
+    let cfg = std::fs::read_to_string(tmp.path().join("c/config.yaml")).unwrap();
+    for c in ["# kit app config", "# keep me", "# telemetry section"] {
+        assert!(cfg.contains(c), "{c:?} lost after a revoke:\n{cfg}");
+    }
+    let v: serde_json::Value = serde_norway::from_str(&cfg).unwrap();
+    assert_eq!(
+        v,
+        serde_json::json!({"other": 1, "kit": {"telemetry": {"mode": "anon"}}})
+    );
+    let legacy = std::fs::read_to_string(tmp.path().join("c/telemetry.yaml")).unwrap();
+    assert!(legacy.contains("# legacy file"), "{legacy}");
+    let v: serde_json::Value = serde_norway::from_str(&legacy).unwrap();
+    assert_eq!(v, serde_json::json!({"telemetry": {}}));
+}

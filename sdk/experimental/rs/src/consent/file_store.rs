@@ -13,8 +13,9 @@ use super::paths::{state_file, write_file_atomic, GRANTS_FILE};
 use super::store::GrantStore;
 use super::telemetry::{deny_wins, TelemetryDecision};
 use super::yaml_doc::{
-    consent_block, decode_consent, decode_grants, encode_grants, parse_doc, remove_consent, render,
-    replace_legacy_consent, upsert_consent,
+    consent_block, consent_node, decode_consent, decode_grants, edit_or_render, encode_grants,
+    parse_doc, remove_consent, render, replace_legacy_consent, splice_remove, splice_set,
+    upsert_consent,
 };
 
 /// The [`GrantStore`] over `<XDG_STATE_HOME>/<tool>/consent/grants.yaml`.
@@ -27,8 +28,10 @@ use super::yaml_doc::{
 /// deny-wins; any source that cannot be read fails the check closed. A
 /// telemetry write lands in the grants file and is mirrored into
 /// config.yaml (and telemetry.yaml when it holds a record); revoking
-/// telemetry clears all three. config.yaml is re-emitted whole, every
-/// other key kept (comments are not).
+/// telemetry clears all three. Edits of config.yaml and telemetry.yaml
+/// keep every other key and the comments, as Go's yaml.v3 Node
+/// round-trip does: only the consent block is spliced, and a file the
+/// splicer cannot edit in place is re-emitted whole.
 pub struct FileStore {
     grants_path: PathBuf,
     config_path: PathBuf,
@@ -64,9 +67,15 @@ impl From<Error> for DocError {
 
 /// Reads a legacy file: `Ok(None)` when it is absent or empty.
 fn read_doc(path: &Path) -> Result<Option<Node>, DocError> {
+    Ok(read_text_doc(path)?.map(|(_, n)| n))
+}
+
+/// A legacy file's text and document.
+fn read_text_doc(path: &Path) -> Result<Option<(String, Node)>, DocError> {
     match fs::read_to_string(path) {
-        Ok(s) => parse_doc(&s)
-            .map_err(|e| DocError::Parse(format!("consent: parse {}: {e}", path.display()))),
+        Ok(s) => Ok(parse_doc(&s)
+            .map_err(|e| DocError::Parse(format!("consent: parse {}: {e}", path.display())))?
+            .map(|n| (s, n))),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(DocError::Other(io_err("read", path, e))),
     }
@@ -196,22 +205,29 @@ impl FileStore {
     }
 
     fn mirror_legacy(&self, d: &TelemetryDecision) -> Result<(), DocError> {
-        let mut doc = read_doc(&self.config_path)?.unwrap_or_else(|| Node::map(Vec::new()));
+        let (src, mut doc) = match read_text_doc(&self.config_path)? {
+            Some((s, n)) => (Some(s), n),
+            None => (None, Node::map(Vec::new())),
+        };
         upsert_consent(&mut doc, d).map_err(Error::Io)?;
-        write_file_atomic(&self.config_path, render(&doc).as_bytes())?;
+        let node = consent_node(d);
+        let text = edit_or_render(src.as_deref(), &doc, &|s| {
+            splice_set(s, "kit.telemetry.consent", &node)
+        });
+        write_file_atomic(&self.config_path, text.as_bytes())?;
         // A record left in telemetry.yaml would deny forever under
         // deny-wins; rewrite it so a re-grant converges.
-        let Some(mut legacy) = read_doc(&self.legacy_path)? else {
+        let Some((src, mut legacy)) = read_text_doc(&self.legacy_path)? else {
             return Ok(());
         };
         if consent_block(&legacy, false).is_none() {
             return Ok(());
         }
         replace_legacy_consent(&mut legacy, d);
-        Ok(write_file_atomic(
-            &self.legacy_path,
-            render(&legacy).as_bytes(),
-        )?)
+        let text = edit_or_render(Some(&src), &legacy, &|s| {
+            splice_set(s, "telemetry.consent", &node)
+        });
+        Ok(write_file_atomic(&self.legacy_path, text.as_bytes())?)
     }
 
     /// Removes telemetry from the grants file and both legacy files. A
@@ -221,18 +237,24 @@ impl FileStore {
         if gs.iter().any(|g| g.capability == CAP_TELEMETRY) {
             self.write_grants(remove_key(gs, &(CAP_TELEMETRY.to_string(), String::new())))?;
         }
-        if let Some(mut doc) = read_doc(&self.config_path)? {
+        if let Some((src, mut doc)) = read_text_doc(&self.config_path)? {
             remove_consent(&mut doc, true);
-            write_file_atomic(&self.config_path, render(&doc).as_bytes())?;
+            let text = edit_or_render(Some(&src), &doc, &|s| {
+                splice_remove(s, "kit.telemetry.consent", "kit.telemetry")
+            });
+            write_file_atomic(&self.config_path, text.as_bytes())?;
         }
-        let Some(mut legacy) = read_doc(&self.legacy_path)? else {
+        let Some((src, mut legacy)) = read_text_doc(&self.legacy_path)? else {
             return Ok(());
         };
         if consent_block(&legacy, false).is_none() {
             return Ok(());
         }
         remove_consent(&mut legacy, false);
-        write_file_atomic(&self.legacy_path, render(&legacy).as_bytes())
+        let text = edit_or_render(Some(&src), &legacy, &|s| {
+            splice_remove(s, "telemetry.consent", "telemetry")
+        });
+        write_file_atomic(&self.legacy_path, text.as_bytes())
     }
 }
 

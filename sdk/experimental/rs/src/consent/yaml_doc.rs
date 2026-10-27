@@ -32,6 +32,52 @@ pub(crate) fn parse_doc(src: &str) -> Result<Option<Node>, String> {
     parse(src).map_err(|e| e.to_string())
 }
 
+/// The new text for a legacy file whose values must become `expected`
+/// (Go's tree edit): `src` itself when nothing changes, else `edit(src)`
+/// when it keeps comments and reads back as `expected`, else `expected`
+/// re-emitted whole. yaml.v3 keeps comments on its Node round-trip;
+/// the splice is how this port does too.
+pub(crate) fn edit_or_render(
+    src: Option<&str>,
+    expected: &Node,
+    edit: &dyn Fn(&str) -> Option<String>,
+) -> String {
+    use crate::config::getter::node_to_value;
+    if let Some(src) = src.filter(|s| !s.trim().is_empty()) {
+        let want = node_to_value(expected);
+        let same =
+            |t: &str| parse_doc(t).ok().flatten().map(|n| node_to_value(&n)) == Some(want.clone());
+        if same(src) {
+            return src.to_string();
+        }
+        if let Some(t) = edit(src).filter(|t| same(t)) {
+            return t;
+        }
+    }
+    render(expected)
+}
+
+/// Splices `key` out of `src`; when that prunes `parent` (Go leaves the
+/// emptied mapping), puts `parent: {}` back.
+pub(crate) fn splice_remove(src: &str, key: &str, parent: &str) -> Option<String> {
+    use crate::config::edit;
+    let t = edit::unset(src, key).ok()?;
+    let has_parent = parse_doc(&t)
+        .ok()
+        .flatten()
+        .is_some_and(|n| parent.split('.').try_fold(&n, |m, k| child(m, k)).is_some());
+    if has_parent {
+        Some(t)
+    } else {
+        edit::set(&t, parent, &Node::map(Vec::new())).ok()
+    }
+}
+
+/// Splices `key: value` into `src`.
+pub(crate) fn splice_set(src: &str, key: &str, value: &Node) -> Option<String> {
+    crate::config::edit::set(src, key, value).ok()
+}
+
 /// Renders a document as yaml.v3's `Marshal` lays it out (4 spaces).
 pub(crate) fn render(doc: &Node) -> String {
     emit::document(doc, 4)

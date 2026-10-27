@@ -44,7 +44,7 @@ g.use_grant("io.screen.capture", "app:dek")?; // audited before the tap
 - Telemetry: grants file, `kit.telemetry.consent` (`kit/config.yaml`) and `kit/telemetry.yaml`
   combined deny-wins; writes mirrored into the legacy records (what `telemetry::load_consent`
   reads), revoke clears all three; `DO_NOT_TRACK` and `KIT_TELEMETRY_MODE=off` are a standing
-  deny. A config.yaml rewrite keeps every key but not comments.
+  deny. Edits keep every other key and the comments, as yaml.v3 does.
 - Events `kit.core.consent.{granted,denied,revoked,used,refused}`, source `core.consent`, id
   `<log>:<seq>`; the cursor moves only after every sync subscriber returned `Ok`; redelivery
   after an error or restart. `refused` is recorded once per (capability, subject, reason) per

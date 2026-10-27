@@ -74,11 +74,11 @@
 
 mod bus_getter;
 #[cfg(not(target_arch = "wasm32"))]
-mod edit;
+pub(crate) mod edit;
 mod env;
 mod error;
 #[cfg(not(target_arch = "wasm32"))]
-mod getter;
+pub(crate) mod getter;
 mod goquote;
 #[cfg(not(target_arch = "wasm32"))]
 mod loader;
