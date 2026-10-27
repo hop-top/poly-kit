@@ -18,6 +18,7 @@ set -euo pipefail
 # -------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TMPDIR_BASE="$(mktemp -d)"
 PASS=0
 FAIL=0
@@ -123,7 +124,9 @@ assert_file_excludes() {
 #   - .devcontainer/docker-compose.yml telemetry + opted-in services
 #   - .devcontainer/otel-config.yaml receivers/exporters
 #   - .env.example five kit-managed blocks + queue driver
-#   - .github/workflows/*.yml use mise-action, no legacy setup-*
+#   - .github/workflows/*.yml use mise-action, no legacy setup-*,
+#     every uses: ref SHA-pinned (scripts/lint-actions-pinned.sh)
+#   - .github/dependabot.yml carries a github-actions entry
 #
 # <project-name> defaults to basename(<project-dir>). Tests that
 # scaffold with --output pointing to a different basename than the
@@ -510,7 +513,7 @@ assert_managed_files() {
       local wf
       while IFS= read -r wf; do
         [ -z "$wf" ] && continue
-        if grep -q 'jdx/mise-action@v2' "$wf"; then
+        if grep -Eq 'jdx/mise-action@[0-9a-f]{40} # v2\.' "$wf"; then
           has_mise_action=true
         fi
         for pat in 'actions/setup-go@' 'actions/setup-node@' \
@@ -523,9 +526,18 @@ assert_managed_files() {
       done <<< "$wf_files"
 
       if $has_mise_action; then
-        pass "$tag CI workflows use jdx/mise-action@v2"
+        pass "$tag CI workflows use jdx/mise-action (SHA-pinned, v2)"
       else
-        fail "$tag CI workflows use jdx/mise-action@v2: not found under $wf_dir"
+        fail "$tag CI workflows use jdx/mise-action (SHA-pinned, v2): not found under $wf_dir"
+      fi
+      local lint_out wf_list=()
+      while IFS= read -r wf; do
+        [ -n "$wf" ] && wf_list+=("$wf")
+      done <<< "$wf_files"
+      if lint_out="$("$REPO_ROOT/scripts/lint-actions-pinned.sh" "${wf_list[@]}" 2>&1)"; then
+        pass "$tag CI workflows pin every uses: ref to a commit SHA"
+      else
+        fail "$tag CI workflows pin every uses: ref to a commit SHA: $lint_out"
       fi
       if $had_legacy; then
         fail "$tag CI workflows omit legacy setup-* actions: found${legacy_hits}"
@@ -536,6 +548,11 @@ assert_managed_files() {
   else
     skip "$tag CI workflows (no .github/workflows dir)"
   fi
+
+  # ---------- i. Dependabot keeps the action pins current ----------
+  assert_file_contains "$proj/.github/dependabot.yml" \
+    'package-ecosystem: github-actions' \
+    "$tag dependabot.yml has a github-actions entry"
 }
 
 # assert_license_file <project-dir> <expected-spdx> [<expected-author>]

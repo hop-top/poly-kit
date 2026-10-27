@@ -33,11 +33,22 @@ import (
 	"time"
 )
 
-// workflowCallerRef is the default git ref for `uses:` lines pointing at
-// hop-top/.github reusable workflows. Pinned to `v0` to match the rest of
-// the poly-kit consumers (see .github/workflows/publish.yml). Adopters
-// can rebump by editing the rendered caller files.
-const workflowCallerRef = "v0"
+// workflowCallerRef is the commit every generated `uses:` line pointing at
+// a hop-top/.github reusable workflow is pinned to; workflowCallerVersion
+// is the tag it stands for, rendered as the trailing comment. A tag can be
+// moved to new code, a commit SHA cannot. Matches the pin in poly-kit's
+// own .github/workflows/publish.yml. Bump both together: a refresh then
+// rewrites unedited callers in place.
+const (
+	workflowCallerRef     = "5ce6680ccde9878428ed6cfa24e0e8f635d829a1"
+	workflowCallerVersion = "v0.15.0"
+)
+
+// workflowCallerUses is the pinned `uses:` value (with its version
+// comment) for the hop-top/.github reusable workflow file.
+func workflowCallerUses(file string) string {
+	return "hop-top/.github/.github/workflows/" + file + "@" + workflowCallerRef + " # " + workflowCallerVersion
+}
 
 // manifestRelPath is the canonical location of the kit-init manifest in
 // every adopter repo, per Section 6 of the contract.
@@ -324,10 +335,8 @@ func renderWorkflowCaller(spec workflowSpec) string {
 	b.WriteString("  ")
 	b.WriteString(strings.ReplaceAll(spec.Trigger, "_", "-"))
 	b.WriteString(":\n")
-	b.WriteString("    uses: hop-top/.github/.github/workflows/")
-	b.WriteString(spec.Upstream)
-	b.WriteString("@")
-	b.WriteString(workflowCallerRef)
+	b.WriteString("    uses: ")
+	b.WriteString(workflowCallerUses(spec.Upstream))
 	b.WriteString("\n")
 	// Secrets pass-through for release callers — adopters typically need
 	// at least one publish token. Use `inherit` so individual secret names

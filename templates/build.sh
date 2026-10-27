@@ -26,18 +26,22 @@ copy_ci_single() {
   ecosystem="$(dependabot_ecosystem "$lang")"
   if [ -z "$ecosystem" ]; then
     echo "Warning: no dependabot ecosystem for lang=$lang" >&2
-  else
-    cat >"$dest/.github/dependabot.yml" <<DEPEOF
-version: 2
-updates:
+  fi
+  {
+    printf 'version: 2\nupdates:\n'
+    if [ -n "$ecosystem" ]; then
+      cat <<DEPEOF
   - package-ecosystem: $ecosystem
     directory: "/"
     schedule:
       interval: weekly
     commit-message:
       prefix: "build(deps):"
+
 DEPEOF
-  fi
+    fi
+    dependabot_actions_entry
+  } >"$dest/.github/dependabot.yml"
 
   local src
   src="$(ci_workflow_src "$lang")"
