@@ -62,7 +62,7 @@ mytool list -o out.csv      # extension infers the formatter
 Non-directory modules: `hop_top_kit.cli` (CLI factory), `hop_top_kit.serve`
 (serve hierarchy and service lifecycle, cross-language, see [the
 contract](../../docs/contracts/serve-lifecycle.md)), `hop_top_kit.uri` (facade
-over `hop-top-cite`), `hop_top_kit.safety` (the Factor 10 `--force` TTY check), `hop_top_kit.llm` (LLM types, client, `routellm://` adapter; see [LLM messages](../../docs/adopters/reference/py-sdk.md#llm-messages)), `hop_top_kit.netpolicy` (the `--offline` guard beneath `urllib`; see [Offline enforcement](../../docs/adopters/reference/py-sdk.md#offline-enforcement)).
+over `hop-top-cite`), `hop_top_kit.safety` (the Factor 10 `--force` TTY check), `hop_top_kit.llm` (LLM types, client, `routellm://` adapter; see [LLM messages](../../docs/adopters/reference/py-sdk.md#llm-messages)), `hop_top_kit.llm_toolnames` (provider tool-name rules and the reversible sanitizer; see [Tool names](../../docs/adopters/reference/py-sdk.md#tool-names)), `hop_top_kit.netpolicy` (the `--offline` guard beneath `urllib`; see [Offline enforcement](../../docs/adopters/reference/py-sdk.md#offline-enforcement)).
 
 ## Contract
 

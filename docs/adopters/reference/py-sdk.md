@@ -730,3 +730,50 @@ without `tool_call_id`, a tool result with `parts` or `tool_calls`,
 assistant tool calls with `parts`, a call without an `id`, arguments
 that are not valid JSON, `parts` on a role other than `user`, an image
 without a MIME type or source, and `audio` or `video` parts.
+
+### Tool names
+
+Providers restrict tool names; `hop_top_kit.llm_toolnames` holds each
+provider's rule and the sanitizer every kit SDK shares
+([contracts/llm-v1/tool-names.md](../../../contracts/llm-v1/tool-names.md)):
+
+| Rule | Accepted names |
+|------|----------------|
+| `ANTHROPIC_TOOL_NAMES` | `^[a-zA-Z0-9_-]{1,128}$` |
+| `OPENAI_TOOL_NAMES` (OpenAI-compatible, `routellm`) | `^[a-zA-Z0-9_-]{1,64}$` |
+| `GEMINI_TOOL_NAMES` | `^[a-zA-Z_][a-zA-Z0-9_.:-]{0,127}$` |
+
+```python
+from hop_top_kit.llm_toolnames import OPENAI_TOOL_NAMES, ToolNameMode, ToolNames
+
+OPENAI_TOOL_NAMES.sanitize("pane.open")  # "pane_open"
+names = ToolNames.build(OPENAI_TOOL_NAMES, ToolNameMode.SANITIZE, tools)
+wire_tools = names.defs(tools)            # send these
+calls = names.calls(wire_calls)           # original names back
+```
+
+A valid name goes out unchanged. Otherwise each run of other characters
+becomes one `_` (Gemini also gets a leading `_` when the name does not
+start with a letter or `_`), and a name still too long, or with no ASCII
+letter or digit left, is cut and ends in `_` plus 8 hex digits of its
+SHA-256: a 65-character name to OpenAI goes out as 55 characters +
+`_635361c4`.
+
+`ToolNames.build` raises `llm.ToolNameError` (an `llm.LLMError`, not
+fallbackable; `provider`, `reason`, `name`, `other`) for the first tool
+whose name is empty (`empty`), not UTF-8, such as a lone surrogate
+(`invalid_utf8`), defined twice (`duplicate`), or mapped to the same
+wire name as an earlier tool (`collision`, e.g. `pane.open` and
+`pane:open`; `other` is the earlier one). `llm.ToolNameReason` lists
+the reasons.
+
+Opt out of rewriting with the `tool_names` provider param:
+`?tool_names=strict` sends names as given and fails a name the provider
+rejects with reason `invalid`; `sanitize` is the default; any other
+value fails adapter construction with `llm.LLMError`.
+
+The `routellm` adapter has no tool-definition entry point; it applies
+`OPENAI_TOOL_NAMES` to the calls replayed in history (`complete` and
+`stream`), so a `resp.tool_calls` list from another adapter goes back
+verbatim: `routellm://mf:0.7` sends `pane.open` as `pane_open`,
+`routellm://mf:0.7?tool_names=strict` as given.

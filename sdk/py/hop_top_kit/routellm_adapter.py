@@ -17,6 +17,12 @@ from collections.abc import Iterator
 from typing import Any
 
 from hop_top_kit import llm
+from hop_top_kit.llm_toolnames import (
+    OPENAI_TOOL_NAMES,
+    ToolNameMode,
+    ToolNames,
+    tool_name_mode_of,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -61,7 +67,9 @@ def parse_router_threshold(model: str) -> tuple[str, float]:
 # ------------------------------------------------------------------
 
 
-def map_messages(messages: list[llm.Message]) -> list[dict[str, Any]]:
+def map_messages(
+    messages: list[llm.Message], tool_names: ToolNames | None = None
+) -> list[dict[str, Any]]:
     """Map :class:`llm.Message` values to OpenAI chat messages.
 
     RouteLLM speaks the OpenAI chat shape. An assistant turn carrying
@@ -70,12 +78,15 @@ def map_messages(messages: list[llm.Message]) -> list[dict[str, Any]]:
     ``tool_call_id``; ``parts`` become a user content array. Messages
     without those fields map to ``{"role", "content"}`` as before.
 
+    With *tool_names*, a replayed call's name goes out as its wire name
+    (:meth:`ToolNames.wire`); without, names go out as given.
+
     Raises :class:`llm.LLMError` for linkage or parts the wire cannot
     express instead of degrading them to plain text.
     """
     out: list[dict[str, Any]] = []
     for m in messages:
-        linked = _map_tool_linkage(m)
+        linked = _map_tool_linkage(m, tool_names)
         if linked is not None:
             out.append(linked)
             continue
@@ -89,7 +100,7 @@ def map_messages(messages: list[llm.Message]) -> list[dict[str, Any]]:
     return out
 
 
-def _map_tool_linkage(m: llm.Message) -> dict[str, Any] | None:
+def _map_tool_linkage(m: llm.Message, tool_names: ToolNames | None) -> dict[str, Any] | None:
     """Map the tool-call half of a conversation, or return None."""
     if m.role == "tool":
         if not m.tool_call_id:
@@ -113,7 +124,10 @@ def _map_tool_linkage(m: llm.Message) -> dict[str, Any] | None:
         {
             "id": _require_call_id(tc),
             "type": "function",
-            "function": {"name": tc.name, "arguments": _arguments_json(tc)},
+            "function": {
+                "name": tool_names.wire(tc.name) if tool_names else tc.name,
+                "arguments": _arguments_json(tc),
+            },
         }
         for tc in m.tool_calls
     ]
@@ -183,6 +197,7 @@ class RouteLLMAdapter:
             raise ImportError("routellm is not installed. Install it with: pip install routellm")
 
         extras: dict[str, Any] = cfg.provider.extras
+        tool_name_mode = tool_name_mode_of(cfg.provider.params)
         self._router_name, self._threshold = parse_router_threshold(
             cfg.uri.model,
         )
@@ -202,11 +217,12 @@ class RouteLLMAdapter:
         )
 
         self._eva_cfg = extras.get("eva")
+        self._tool_name_mode: ToolNameMode = tool_name_mode
 
     # -- Completer protocol ------------------------------------
 
     def complete(self, req: llm.Request) -> llm.Response:
-        messages = map_messages(req.messages)
+        messages = map_messages(req.messages, self._history_names())
 
         kwargs: dict[str, Any] = {}
         if req.temperature is not None:
@@ -244,7 +260,7 @@ class RouteLLMAdapter:
     # -- Streamer protocol -------------------------------------
 
     def stream(self, req: llm.Request) -> Iterator[llm.Token]:
-        messages = map_messages(req.messages)
+        messages = map_messages(req.messages, self._history_names())
 
         kwargs: dict[str, Any] = {"stream": True}
         if req.temperature is not None:
@@ -264,6 +280,12 @@ class RouteLLMAdapter:
             content = getattr(delta, "content", "") or ""
             done = chunk.choices[0].finish_reason is not None
             yield llm.Token(content=content, done=done)
+
+    def _history_names(self) -> ToolNames:
+        """The request's name table: RouteLLM speaks the OpenAI chat shape,
+        so replayed calls follow the openai rule. No entry point here sends
+        tool definitions, so the table holds none."""
+        return ToolNames.build(OPENAI_TOOL_NAMES, self._tool_name_mode, [])
 
     # -- Eva validation ----------------------------------------
 
