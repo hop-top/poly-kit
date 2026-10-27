@@ -1,0 +1,2355 @@
+{
+  "version": "v1",
+  "description": "redact-v1: rules applied to text. Each vector runs one policy (inline `rules`, else rules.json) under one strategy; `findings` are Scan results before merging, `spans` the merged regions Apply replaces, `output` the redacted text. Offsets are UTF-8 byte offsets. `pad` wraps input and output in `text` repeated `times` times; offsets exclude it.",
+  "vectors": [
+    {
+      "name": "overlap-earliest-start-wins",
+      "rules": [
+        {
+          "id": "short",
+          "regex": "abcd"
+        },
+        {
+          "id": "long",
+          "regex": "abcdef"
+        },
+        {
+          "id": "tail",
+          "regex": "defgh"
+        }
+      ],
+      "strategy": "tag",
+      "input": "x abcdefgh y",
+      "findings": [
+        {
+          "rule": "short",
+          "start": 2,
+          "end": 6
+        },
+        {
+          "rule": "long",
+          "start": 2,
+          "end": 8
+        },
+        {
+          "rule": "tail",
+          "start": 5,
+          "end": 10
+        }
+      ],
+      "spans": [
+        {
+          "rule": "long",
+          "start": 2,
+          "end": 10
+        }
+      ],
+      "output": "x <long> y"
+    },
+    {
+      "name": "same-start-longest-wins",
+      "rules": [
+        {
+          "id": "short",
+          "regex": "abcd"
+        },
+        {
+          "id": "long",
+          "regex": "abcdef"
+        }
+      ],
+      "strategy": "tag",
+      "input": "x abcdef y",
+      "findings": [
+        {
+          "rule": "short",
+          "start": 2,
+          "end": 6
+        },
+        {
+          "rule": "long",
+          "start": 2,
+          "end": 8
+        }
+      ],
+      "spans": [
+        {
+          "rule": "long",
+          "start": 2,
+          "end": 8
+        }
+      ],
+      "output": "x <long> y"
+    },
+    {
+      "name": "tie-goes-to-first-rule",
+      "rules": [
+        {
+          "id": "one",
+          "regex": "k[0-9]{4}"
+        },
+        {
+          "id": "two",
+          "regex": "k[0-9]+"
+        }
+      ],
+      "strategy": "tag",
+      "input": "k1234",
+      "findings": [
+        {
+          "rule": "one",
+          "start": 0,
+          "end": 5
+        },
+        {
+          "rule": "two",
+          "start": 0,
+          "end": 5
+        }
+      ],
+      "spans": [
+        {
+          "rule": "one",
+          "start": 0,
+          "end": 5
+        }
+      ],
+      "output": "<one>"
+    },
+    {
+      "name": "adjacent-spans-merge",
+      "rules": [
+        {
+          "id": "a",
+          "regex": "A{3}"
+        },
+        {
+          "id": "b",
+          "regex": "B{3}"
+        }
+      ],
+      "strategy": "tag",
+      "input": "AAABBB BBB",
+      "findings": [
+        {
+          "rule": "a",
+          "start": 0,
+          "end": 3
+        },
+        {
+          "rule": "b",
+          "start": 3,
+          "end": 6
+        },
+        {
+          "rule": "b",
+          "start": 7,
+          "end": 10
+        }
+      ],
+      "spans": [
+        {
+          "rule": "a",
+          "start": 0,
+          "end": 6
+        },
+        {
+          "rule": "b",
+          "start": 7,
+          "end": 10
+        }
+      ],
+      "output": "<a> <b>"
+    },
+    {
+      "name": "nested-span-absorbed",
+      "rules": [
+        {
+          "id": "outer",
+          "regex": "id=[A-Z0-9a-z]{10}"
+        },
+        {
+          "id": "inner",
+          "regex": "Y99"
+        }
+      ],
+      "strategy": "tag",
+      "input": "id=QWERTY99zz",
+      "findings": [
+        {
+          "rule": "outer",
+          "start": 0,
+          "end": 13
+        },
+        {
+          "rule": "inner",
+          "start": 8,
+          "end": 11
+        }
+      ],
+      "spans": [
+        {
+          "rule": "outer",
+          "start": 0,
+          "end": 13
+        }
+      ],
+      "output": "<outer>"
+    },
+    {
+      "name": "chain-of-overlaps",
+      "rules": [
+        {
+          "id": "ab",
+          "regex": "a+-b+"
+        },
+        {
+          "id": "bc",
+          "regex": "b+-c+"
+        }
+      ],
+      "strategy": "tag",
+      "input": "aaaa-bbbb-cccc",
+      "findings": [
+        {
+          "rule": "ab",
+          "start": 0,
+          "end": 9
+        },
+        {
+          "rule": "bc",
+          "start": 5,
+          "end": 14
+        }
+      ],
+      "spans": [
+        {
+          "rule": "ab",
+          "start": 0,
+          "end": 14
+        }
+      ],
+      "output": "<ab>"
+    },
+    {
+      "name": "replacement-not-rescanned",
+      "note": "the first rule's label looks like the second rule's secret; it is written once and never scanned",
+      "rules": [
+        {
+          "id": "first",
+          "regex": "pin-[0-9]{4}",
+          "replacement": "zz_tok_ABCDEFGH"
+        },
+        {
+          "id": "second",
+          "regex": "tok_[A-Z]{8}",
+          "replacement": "<second>"
+        }
+      ],
+      "strategy": "tag",
+      "input": "door pin-1234 opened",
+      "findings": [
+        {
+          "rule": "first",
+          "start": 5,
+          "end": 13
+        }
+      ],
+      "spans": [
+        {
+          "rule": "first",
+          "start": 5,
+          "end": 13
+        }
+      ],
+      "output": "door zz_tok_ABCDEFGH opened"
+    },
+    {
+      "name": "mask-strategy",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "k=([A-Z0-9]{8})",
+          "secret_group": 1
+        }
+      ],
+      "strategy": "mask",
+      "input": "k=QWERTY99 and k=ZXCVBN11",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 2,
+          "end": 10
+        },
+        {
+          "rule": "k",
+          "start": 17,
+          "end": 25
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 2,
+          "end": 10
+        },
+        {
+          "rule": "k",
+          "start": 17,
+          "end": 25
+        }
+      ],
+      "output": "k=***REDACTED*** and k=***REDACTED***"
+    },
+    {
+      "name": "hash-strategy-hashes-merged-region",
+      "rules": [
+        {
+          "id": "short",
+          "regex": "abcd"
+        },
+        {
+          "id": "long",
+          "regex": "abcdef"
+        },
+        {
+          "id": "tail",
+          "regex": "defgh"
+        }
+      ],
+      "strategy": "hash",
+      "input": "x abcdefgh y",
+      "findings": [
+        {
+          "rule": "short",
+          "start": 2,
+          "end": 6
+        },
+        {
+          "rule": "long",
+          "start": 2,
+          "end": 8
+        },
+        {
+          "rule": "tail",
+          "start": 5,
+          "end": 10
+        }
+      ],
+      "spans": [
+        {
+          "rule": "long",
+          "start": 2,
+          "end": 10
+        }
+      ],
+      "output": "x sha256:9c56cc51 y"
+    },
+    {
+      "name": "tag-uses-rule-label",
+      "rules": [
+        {
+          "id": "pin",
+          "regex": "pin-[0-9]{4}",
+          "replacement": "<PIN>"
+        }
+      ],
+      "strategy": "tag",
+      "input": "pin-1234",
+      "findings": [
+        {
+          "rule": "pin",
+          "start": 0,
+          "end": 8
+        }
+      ],
+      "spans": [
+        {
+          "rule": "pin",
+          "start": 0,
+          "end": 8
+        }
+      ],
+      "output": "<PIN>"
+    },
+    {
+      "name": "empty-match-never-redacted",
+      "rules": [
+        {
+          "id": "e",
+          "regex": "x*"
+        }
+      ],
+      "strategy": "tag",
+      "input": "abc",
+      "findings": [],
+      "spans": [],
+      "output": "abc"
+    },
+    {
+      "name": "secret-group-keeps-context",
+      "rules": [
+        {
+          "id": "kv",
+          "regex": "token=([a-z0-9]{8})(?:;|$)",
+          "secret_group": 1
+        }
+      ],
+      "strategy": "tag",
+      "input": "token=ab12cd34; rest",
+      "findings": [
+        {
+          "rule": "kv",
+          "start": 6,
+          "end": 14
+        }
+      ],
+      "spans": [
+        {
+          "rule": "kv",
+          "start": 6,
+          "end": 14
+        }
+      ],
+      "output": "token=<kv>; rest"
+    },
+    {
+      "name": "secret-group-second",
+      "rules": [
+        {
+          "id": "up",
+          "regex": "user=([a-z]+) pass=([A-Za-z0-9]{8})",
+          "secret_group": 2
+        }
+      ],
+      "strategy": "tag",
+      "input": "user=bob pass=Zq9Lm2Wx end",
+      "findings": [
+        {
+          "rule": "up",
+          "start": 14,
+          "end": 22
+        }
+      ],
+      "spans": [
+        {
+          "rule": "up",
+          "start": 14,
+          "end": 22
+        }
+      ],
+      "output": "user=bob pass=<up> end"
+    },
+    {
+      "name": "secret-group-not-participating-falls-back-to-match",
+      "rules": [
+        {
+          "id": "alt",
+          "regex": "k=(?:([a-z]{4})|[0-9]{4})",
+          "secret_group": 1
+        }
+      ],
+      "strategy": "tag",
+      "input": "k=1234",
+      "findings": [
+        {
+          "rule": "alt",
+          "start": 0,
+          "end": 6
+        }
+      ],
+      "spans": [
+        {
+          "rule": "alt",
+          "start": 0,
+          "end": 6
+        }
+      ],
+      "output": "<alt>"
+    },
+    {
+      "name": "secret-group-zero-is-whole-match",
+      "rules": [
+        {
+          "id": "kv",
+          "regex": "token=([a-z0-9]{8})"
+        }
+      ],
+      "strategy": "tag",
+      "input": "token=ab12cd34 rest",
+      "findings": [
+        {
+          "rule": "kv",
+          "start": 0,
+          "end": 14
+        }
+      ],
+      "spans": [
+        {
+          "rule": "kv",
+          "start": 0,
+          "end": 14
+        }
+      ],
+      "output": "<kv> rest"
+    },
+    {
+      "name": "newlines-trimmed-from-match",
+      "rules": [
+        {
+          "id": "nl",
+          "regex": "\nkey:[A-Z]{6}\n"
+        }
+      ],
+      "strategy": "mask",
+      "input": "a\nkey:QWERTY\nb",
+      "findings": [
+        {
+          "rule": "nl",
+          "start": 2,
+          "end": 12
+        }
+      ],
+      "spans": [
+        {
+          "rule": "nl",
+          "start": 2,
+          "end": 12
+        }
+      ],
+      "output": "a\n***REDACTED***\nb"
+    },
+    {
+      "name": "group-clipped-to-trimmed-match",
+      "rules": [
+        {
+          "id": "g",
+          "regex": "x=(\n[A-Z]{6}\n)",
+          "secret_group": 1
+        }
+      ],
+      "strategy": "mask",
+      "input": "x=\nQWERTY\n",
+      "findings": [
+        {
+          "rule": "g",
+          "start": 2,
+          "end": 9
+        }
+      ],
+      "spans": [
+        {
+          "rule": "g",
+          "start": 2,
+          "end": 9
+        }
+      ],
+      "output": "x=***REDACTED***\n"
+    },
+    {
+      "name": "entropy-at-floor-dropped",
+      "note": "eight distinct runes: exactly 3 bits; the floor is inclusive",
+      "rules": [
+        {
+          "id": "e",
+          "regex": "[a-h]{8}",
+          "entropy": 3
+        }
+      ],
+      "strategy": "tag",
+      "input": "abcdefgh",
+      "findings": [],
+      "spans": [],
+      "output": "abcdefgh"
+    },
+    {
+      "name": "entropy-above-floor-kept",
+      "rules": [
+        {
+          "id": "e",
+          "regex": "[a-h]{8}",
+          "entropy": 2.9
+        }
+      ],
+      "strategy": "tag",
+      "input": "abcdefgh",
+      "findings": [
+        {
+          "rule": "e",
+          "start": 0,
+          "end": 8
+        }
+      ],
+      "spans": [
+        {
+          "rule": "e",
+          "start": 0,
+          "end": 8
+        }
+      ],
+      "output": "<e>"
+    },
+    {
+      "name": "entropy-low-dropped",
+      "rules": [
+        {
+          "id": "e",
+          "regex": "[a-h]{8}",
+          "entropy": 0.5
+        }
+      ],
+      "strategy": "tag",
+      "input": "aaaaaaaa",
+      "findings": [],
+      "spans": [],
+      "output": "aaaaaaaa"
+    },
+    {
+      "name": "entropy-divides-by-bytes",
+      "note": "runes a,b,é,é over 6 bytes score 1.39 bits; a per-rune count would give 1.5",
+      "rules": [
+        {
+          "id": "e",
+          "regex": "[a-zé]{4}",
+          "entropy": 1.45
+        }
+      ],
+      "strategy": "tag",
+      "input": "abéé",
+      "findings": [],
+      "spans": [],
+      "output": "abéé"
+    },
+    {
+      "name": "entropy-on-secret-group",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "k=([A-Za-z0-9]{8})",
+          "secret_group": 1,
+          "entropy": 2
+        }
+      ],
+      "strategy": "tag",
+      "input": "k=aaaaaaaa k=Zq9Lm2Wx",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 13,
+          "end": 21
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 13,
+          "end": 21
+        }
+      ],
+      "output": "k=aaaaaaaa k=<k>"
+    },
+    {
+      "name": "keyword-absent-skips-rule",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "[0-9a-f]{12}",
+          "keywords": [
+            "KEY"
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "0123456789ab",
+      "findings": [],
+      "spans": [],
+      "output": "0123456789ab"
+    },
+    {
+      "name": "keyword-case-insensitive",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "[0-9a-f]{12}",
+          "keywords": [
+            "KEY"
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "Key: 0123456789ab",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 5,
+          "end": 17
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 5,
+          "end": 17
+        }
+      ],
+      "output": "Key: <k>"
+    },
+    {
+      "name": "keyword-kelvin-sign-lowers-to-k",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "[0-9a-f]{12}",
+          "keywords": [
+            "KEY"
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "Key: 0123456789ab",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 7,
+          "end": 19
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 7,
+          "end": 19
+        }
+      ],
+      "output": "Key: <k>"
+    },
+    {
+      "name": "keyword-dotted-capital-i-lowers-to-i",
+      "note": "Go strings.ToLower maps U+0130 to a plain i; a full Unicode lower-casing adds U+0307 after it",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "[0-9a-f]{12}",
+          "keywords": [
+            "info"
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "İnfo 0123456789ab",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 6,
+          "end": 18
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 6,
+          "end": 18
+        }
+      ],
+      "output": "İnfo <k>"
+    },
+    {
+      "name": "keyword-any-of",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "[0-9a-f]{12}",
+          "keywords": [
+            "token",
+            "secret"
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "secret 0123456789ab",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 7,
+          "end": 19
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 7,
+          "end": 19
+        }
+      ],
+      "output": "secret <k>"
+    },
+    {
+      "name": "allowlist-secret-regex",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "regexes": [
+                "^EXAMPL"
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=EXAMPL key=Q1w2E3",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 15,
+          "end": 21
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 15,
+          "end": 21
+        }
+      ],
+      "output": "key=EXAMPL key=<k>"
+    },
+    {
+      "name": "allowlist-match-target",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "regex_target": "match",
+              "regexes": [
+                "key=Q.*"
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=Q1w2E3 key=Z9x8Y7",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 15,
+          "end": 21
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 15,
+          "end": 21
+        }
+      ],
+      "output": "key=Q1w2E3 key=<k>"
+    },
+    {
+      "name": "allowlist-match-target-partial",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "regex_target": "match",
+              "regexes": [
+                "^key="
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=Q1w2E3",
+      "findings": [],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 10
+        }
+      ],
+      "output": "key=<k>"
+    },
+    {
+      "name": "allowlist-line-target",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "regex_target": "line",
+              "regexes": [
+                ".*# fixture"
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "a\nkey=Q1w2E3 # fixture\nkey=Z9x8Y7\nb",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 27,
+          "end": 33
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 27,
+          "end": 33
+        }
+      ],
+      "output": "a\nkey=Q1w2E3 # fixture\nkey=<k>\nb"
+    },
+    {
+      "name": "allowlist-line-target-partial",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "regex_target": "line",
+              "regexes": [
+                "# fixture"
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "a\nkey=Q1w2E3 # fixture\nb",
+      "findings": [],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 6,
+          "end": 12
+        }
+      ],
+      "output": "a\nkey=<k> # fixture\nb"
+    },
+    {
+      "name": "allowlist-stopword-case-insensitive",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "stopwords": [
+                "DUMMY"
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=dummy1 key=Q1w2E3",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 15,
+          "end": 21
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 10
+        },
+        {
+          "rule": "k",
+          "start": 15,
+          "end": 21
+        }
+      ],
+      "output": "key=<k> key=<k>"
+    },
+    {
+      "name": "allowlist-and-needs-every-check",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "condition": "AND",
+              "regexes": [
+                "^d"
+              ],
+              "stopwords": [
+                "zz"
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=dummy1 key=dzz111",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 10
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 10
+        },
+        {
+          "rule": "k",
+          "start": 15,
+          "end": 21
+        }
+      ],
+      "output": "key=<k> key=<k>"
+    },
+    {
+      "name": "allowlist-and-with-paths-never-exempts",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "condition": "AND",
+              "regexes": [
+                "."
+              ],
+              "paths": [
+                "."
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=dummy1",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 10
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 10
+        }
+      ],
+      "output": "key=<k>"
+    },
+    {
+      "name": "allowlist-or-ignores-paths",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "regexes": [
+                "dummy[0-9]"
+              ],
+              "paths": [
+                "\\.go$"
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=dummy1",
+      "findings": [],
+      "spans": [],
+      "output": "key=dummy1"
+    },
+    {
+      "name": "allowlist-empty-regex-match-is-no-hit",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "regexes": [
+                "x*"
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=Q1w2E3",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 10
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 10
+        }
+      ],
+      "output": "key=<k>"
+    },
+    {
+      "name": "allowlist-each-regex-on-its-own",
+      "note": "regexes are not joined, so the first one's (?i) does not reach the second",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "regexes": [
+                "(?i)q.*",
+                "[a-z]+"
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=abcdef key=ABCDEF",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 15,
+          "end": 21
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 15,
+          "end": 21
+        }
+      ],
+      "output": "key=abcdef key=<k>"
+    },
+    {
+      "name": "allowlist-global",
+      "rules": [
+        {
+          "id": "a",
+          "regex": "a-[a-z]{7}"
+        },
+        {
+          "id": "b",
+          "regex": "b-[a-z]{7}"
+        }
+      ],
+      "allowlists": [
+        {
+          "regexes": [
+            "[a-z]-example"
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "a-example b-example a-zqwerty",
+      "findings": [
+        {
+          "rule": "a",
+          "start": 20,
+          "end": 29
+        }
+      ],
+      "spans": [
+        {
+          "rule": "a",
+          "start": 20,
+          "end": 29
+        }
+      ],
+      "output": "a-example b-example <a>"
+    },
+    {
+      "name": "allowlist-exact-global-secret",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1
+        }
+      ],
+      "allowlist_exact": [
+        "Q1w2E3"
+      ],
+      "strategy": "tag",
+      "input": "key=Q1w2E3 key=Z9x8Y7",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 15,
+          "end": 21
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 15,
+          "end": 21
+        }
+      ],
+      "output": "key=Q1w2E3 key=<k>"
+    },
+    {
+      "name": "allowlist-exact-rule-whole-match",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1,
+          "allowlist_exact": [
+            "key=Z9x8Y7"
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=Q1w2E3 key=Z9x8Y7",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 10
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 10
+        }
+      ],
+      "output": "key=<k> key=Z9x8Y7"
+    },
+    {
+      "name": "allowlist-exact-no-extension",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6,7})",
+          "secret_group": 1
+        }
+      ],
+      "allowlist_exact": [
+        "Q1w2E3"
+      ],
+      "strategy": "tag",
+      "input": "key=Q1w2E3x",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 11
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 11
+        }
+      ],
+      "output": "key=<k>"
+    },
+    {
+      "name": "allowlist-exempt-span-still-covered-by-other-rule",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{6})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "stopwords": [
+                "q1w2"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "all",
+          "regex": "key=\\S+"
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=Q1w2E3",
+      "findings": [
+        {
+          "rule": "all",
+          "start": 0,
+          "end": 10
+        }
+      ],
+      "spans": [
+        {
+          "rule": "all",
+          "start": 0,
+          "end": 10
+        }
+      ],
+      "output": "<all>"
+    },
+    {
+      "name": "failclosed-stopword-still-redacted",
+      "note": "findings is empty: detection exempts the stopword; the redactor does not",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{8})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "stopwords": [
+                "test"
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=Zq9TEST7",
+      "findings": [],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 12
+        }
+      ],
+      "output": "key=<k>"
+    },
+    {
+      "name": "failclosed-partial-regex-still-redacted",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{8})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "regexes": [
+                "^EXAMPL"
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=EXAMPLzz",
+      "findings": [],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 12
+        }
+      ],
+      "output": "key=<k>"
+    },
+    {
+      "name": "failclosed-whole-secret-regex-exempts",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{8})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "regexes": [
+                "EXAMPL[A-Z]{2}"
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=EXAMPLZZ key=EXAMPLZz",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 17,
+          "end": 25
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 17,
+          "end": 25
+        }
+      ],
+      "output": "key=EXAMPLZZ key=<k>"
+    },
+    {
+      "name": "failclosed-and-with-stopword-never-exempts",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "key=([A-Za-z0-9]{8})",
+          "secret_group": 1,
+          "allowlists": [
+            {
+              "condition": "AND",
+              "regexes": [
+                ".+"
+              ],
+              "stopwords": [
+                "zz"
+              ]
+            }
+          ]
+        }
+      ],
+      "strategy": "tag",
+      "input": "key=abczz123",
+      "findings": [],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 4,
+          "end": 12
+        }
+      ],
+      "output": "key=<k>"
+    },
+    {
+      "name": "default-generic-stopword-still-redacted",
+      "strategy": "tag",
+      "input": "api_token = Z\u00719Lm2client7Rt4Vb8",
+      "findings": [],
+      "spans": [
+        {
+          "rule": "generic-api-key",
+          "start": 12,
+          "end": 31
+        }
+      ],
+      "output": "api_token = <generic-api-key>"
+    },
+    {
+      "name": "multibyte-offsets-are-bytes",
+      "rules": [
+        {
+          "id": "u",
+          "regex": "é[a-z]{4}ü"
+        }
+      ],
+      "strategy": "tag",
+      "input": "日本 éabcdü 語",
+      "findings": [
+        {
+          "rule": "u",
+          "start": 7,
+          "end": 15
+        }
+      ],
+      "spans": [
+        {
+          "rule": "u",
+          "start": 7,
+          "end": 15
+        }
+      ],
+      "output": "日本 <u> 語"
+    },
+    {
+      "name": "dot-is-one-rune",
+      "rules": [
+        {
+          "id": "d",
+          "regex": "a.b"
+        }
+      ],
+      "strategy": "tag",
+      "input": "aéb a😀b",
+      "findings": [
+        {
+          "rule": "d",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "rule": "d",
+          "start": 5,
+          "end": 11
+        }
+      ],
+      "spans": [
+        {
+          "rule": "d",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "rule": "d",
+          "start": 5,
+          "end": 11
+        }
+      ],
+      "output": "<d> <d>"
+    },
+    {
+      "name": "negated-class-is-one-rune",
+      "rules": [
+        {
+          "id": "n",
+          "regex": "x[^a]y"
+        }
+      ],
+      "strategy": "tag",
+      "input": "xéy",
+      "findings": [
+        {
+          "rule": "n",
+          "start": 0,
+          "end": 4
+        }
+      ],
+      "spans": [
+        {
+          "rule": "n",
+          "start": 0,
+          "end": 4
+        }
+      ],
+      "output": "<n>"
+    },
+    {
+      "name": "re2-digit-is-ascii",
+      "note": "Go \\d is [0-9]; Rust's Unicode \\d also matches Arabic-Indic digits",
+      "rules": [
+        {
+          "id": "d",
+          "regex": "pin \\d{4}"
+        }
+      ],
+      "strategy": "tag",
+      "input": "pin ٣٤٥٦ pin 3456",
+      "findings": [
+        {
+          "rule": "d",
+          "start": 13,
+          "end": 21
+        }
+      ],
+      "spans": [
+        {
+          "rule": "d",
+          "start": 13,
+          "end": 21
+        }
+      ],
+      "output": "pin ٣٤٥٦ <d>"
+    },
+    {
+      "name": "re2-space-is-ascii",
+      "note": "Go \\s is [\\t\\n\\f\\r ]: no NBSP, no em space, no vertical tab",
+      "rules": [
+        {
+          "id": "s",
+          "regex": "k\\sv"
+        }
+      ],
+      "strategy": "tag",
+      "input": "k v k v k\u000bv k v",
+      "findings": [
+        {
+          "rule": "s",
+          "start": 15,
+          "end": 18
+        }
+      ],
+      "spans": [
+        {
+          "rule": "s",
+          "start": 15,
+          "end": 18
+        }
+      ],
+      "output": "k v k v k\u000bv <s>"
+    },
+    {
+      "name": "re2-word-is-ascii",
+      "rules": [
+        {
+          "id": "w",
+          "regex": "\\w{2,}"
+        }
+      ],
+      "strategy": "tag",
+      "input": "été ab_9",
+      "findings": [
+        {
+          "rule": "w",
+          "start": 6,
+          "end": 10
+        }
+      ],
+      "spans": [
+        {
+          "rule": "w",
+          "start": 6,
+          "end": 10
+        }
+      ],
+      "output": "été <w>"
+    },
+    {
+      "name": "re2-word-boundary-is-ascii",
+      "note": "under Unicode rules é is a word character and the first abc has no boundary",
+      "rules": [
+        {
+          "id": "b",
+          "regex": "\\babc\\b"
+        }
+      ],
+      "strategy": "tag",
+      "input": "éabc abc",
+      "findings": [
+        {
+          "rule": "b",
+          "start": 2,
+          "end": 5
+        },
+        {
+          "rule": "b",
+          "start": 6,
+          "end": 9
+        }
+      ],
+      "spans": [
+        {
+          "rule": "b",
+          "start": 2,
+          "end": 5
+        },
+        {
+          "rule": "b",
+          "start": 6,
+          "end": 9
+        }
+      ],
+      "output": "é<b> <b>"
+    },
+    {
+      "name": "re2-nonword-boundary",
+      "rules": [
+        {
+          "id": "B",
+          "regex": "\\Babc"
+        }
+      ],
+      "strategy": "tag",
+      "input": "xabc abc",
+      "findings": [
+        {
+          "rule": "B",
+          "start": 1,
+          "end": 4
+        }
+      ],
+      "spans": [
+        {
+          "rule": "B",
+          "start": 1,
+          "end": 4
+        }
+      ],
+      "output": "x<B> abc"
+    },
+    {
+      "name": "re2-negated-perl-classes",
+      "rules": [
+        {
+          "id": "D",
+          "regex": "[a-c]\\D"
+        },
+        {
+          "id": "S",
+          "regex": "c\\S"
+        }
+      ],
+      "strategy": "tag",
+      "input": "a1 b٣ c ",
+      "findings": [
+        {
+          "rule": "D",
+          "start": 3,
+          "end": 6
+        },
+        {
+          "rule": "D",
+          "start": 7,
+          "end": 10
+        },
+        {
+          "rule": "S",
+          "start": 7,
+          "end": 10
+        }
+      ],
+      "spans": [
+        {
+          "rule": "D",
+          "start": 3,
+          "end": 6
+        },
+        {
+          "rule": "D",
+          "start": 7,
+          "end": 10
+        }
+      ],
+      "output": "a1 <D> <D>"
+    },
+    {
+      "name": "re2-perl-class-inside-class",
+      "rules": [
+        {
+          "id": "c",
+          "regex": "#[\\w\\d]{1,2}"
+        }
+      ],
+      "strategy": "tag",
+      "input": "#a٣ #b9 #é",
+      "findings": [
+        {
+          "rule": "c",
+          "start": 0,
+          "end": 2
+        },
+        {
+          "rule": "c",
+          "start": 5,
+          "end": 8
+        }
+      ],
+      "spans": [
+        {
+          "rule": "c",
+          "start": 0,
+          "end": 2
+        },
+        {
+          "rule": "c",
+          "start": 5,
+          "end": 8
+        }
+      ],
+      "output": "<c>٣ <c> #é"
+    },
+    {
+      "name": "re2-fold-kelvin",
+      "rules": [
+        {
+          "id": "k",
+          "regex": "(?i)k1"
+        }
+      ],
+      "strategy": "tag",
+      "input": "K1 k1 K1",
+      "findings": [
+        {
+          "rule": "k",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "rule": "k",
+          "start": 5,
+          "end": 7
+        },
+        {
+          "rule": "k",
+          "start": 8,
+          "end": 10
+        }
+      ],
+      "spans": [
+        {
+          "rule": "k",
+          "start": 0,
+          "end": 4
+        },
+        {
+          "rule": "k",
+          "start": 5,
+          "end": 7
+        },
+        {
+          "rule": "k",
+          "start": 8,
+          "end": 10
+        }
+      ],
+      "output": "<k> <k> <k>"
+    },
+    {
+      "name": "re2-fold-class",
+      "rules": [
+        {
+          "id": "c",
+          "regex": "(?i)[r-t]|(?i)[j-l]"
+        }
+      ],
+      "strategy": "tag",
+      "input": "ſ K s",
+      "findings": [
+        {
+          "rule": "c",
+          "start": 0,
+          "end": 2
+        },
+        {
+          "rule": "c",
+          "start": 3,
+          "end": 6
+        },
+        {
+          "rule": "c",
+          "start": 7,
+          "end": 8
+        }
+      ],
+      "spans": [
+        {
+          "rule": "c",
+          "start": 0,
+          "end": 2
+        },
+        {
+          "rule": "c",
+          "start": 3,
+          "end": 6
+        },
+        {
+          "rule": "c",
+          "start": 7,
+          "end": 8
+        }
+      ],
+      "output": "<c> <c> <c>"
+    },
+    {
+      "name": "re2-posix-classes-ascii",
+      "rules": [
+        {
+          "id": "p",
+          "regex": "[[:alpha:]]+|[[:digit:]]"
+        }
+      ],
+      "strategy": "tag",
+      "input": "é ٣ Ab 7",
+      "findings": [
+        {
+          "rule": "p",
+          "start": 6,
+          "end": 8
+        },
+        {
+          "rule": "p",
+          "start": 9,
+          "end": 10
+        }
+      ],
+      "spans": [
+        {
+          "rule": "p",
+          "start": 6,
+          "end": 8
+        },
+        {
+          "rule": "p",
+          "start": 9,
+          "end": 10
+        }
+      ],
+      "output": "é ٣ <p> <p>"
+    },
+    {
+      "name": "re2-quote-meta",
+      "rules": [
+        {
+          "id": "q",
+          "regex": "\\Qa.b*c\\E"
+        }
+      ],
+      "strategy": "tag",
+      "input": "a.b*c axbxc",
+      "findings": [
+        {
+          "rule": "q",
+          "start": 0,
+          "end": 5
+        }
+      ],
+      "spans": [
+        {
+          "rule": "q",
+          "start": 0,
+          "end": 5
+        }
+      ],
+      "output": "<q> axbxc"
+    },
+    {
+      "name": "re2-unicode-classes",
+      "rules": [
+        {
+          "id": "l",
+          "regex": "\\pL+"
+        },
+        {
+          "id": "n",
+          "regex": "\\p{Nd}"
+        }
+      ],
+      "strategy": "tag",
+      "input": "été ٣",
+      "findings": [
+        {
+          "rule": "l",
+          "start": 0,
+          "end": 5
+        },
+        {
+          "rule": "n",
+          "start": 6,
+          "end": 8
+        }
+      ],
+      "spans": [
+        {
+          "rule": "l",
+          "start": 0,
+          "end": 5
+        },
+        {
+          "rule": "n",
+          "start": 6,
+          "end": 8
+        }
+      ],
+      "output": "<l> <n>"
+    },
+    {
+      "name": "re2-end-of-text",
+      "rules": [
+        {
+          "id": "e",
+          "regex": "abc$"
+        }
+      ],
+      "strategy": "tag",
+      "input": "abc\nabc",
+      "findings": [
+        {
+          "rule": "e",
+          "start": 4,
+          "end": 7
+        }
+      ],
+      "spans": [
+        {
+          "rule": "e",
+          "start": 4,
+          "end": 7
+        }
+      ],
+      "output": "abc\n<e>"
+    },
+    {
+      "name": "re2-multiline-flag",
+      "rules": [
+        {
+          "id": "e",
+          "regex": "(?m)abc$"
+        }
+      ],
+      "strategy": "tag",
+      "input": "abc\nabc",
+      "findings": [
+        {
+          "rule": "e",
+          "start": 0,
+          "end": 3
+        },
+        {
+          "rule": "e",
+          "start": 4,
+          "end": 7
+        }
+      ],
+      "spans": [
+        {
+          "rule": "e",
+          "start": 0,
+          "end": 3
+        },
+        {
+          "rule": "e",
+          "start": 4,
+          "end": 7
+        }
+      ],
+      "output": "<e>\n<e>"
+    },
+    {
+      "name": "re2-dotall-flag",
+      "rules": [
+        {
+          "id": "e",
+          "regex": "(?s)a.b"
+        }
+      ],
+      "strategy": "tag",
+      "input": "a\nb",
+      "findings": [
+        {
+          "rule": "e",
+          "start": 0,
+          "end": 3
+        }
+      ],
+      "spans": [
+        {
+          "rule": "e",
+          "start": 0,
+          "end": 3
+        }
+      ],
+      "output": "<e>"
+    },
+    {
+      "name": "re2-hex-escape",
+      "rules": [
+        {
+          "id": "h",
+          "regex": "x\\x{e9}y"
+        }
+      ],
+      "strategy": "tag",
+      "input": "xéy",
+      "findings": [
+        {
+          "rule": "h",
+          "start": 0,
+          "end": 4
+        }
+      ],
+      "spans": [
+        {
+          "rule": "h",
+          "start": 0,
+          "end": 4
+        }
+      ],
+      "output": "<h>"
+    },
+    {
+      "name": "re2-ungreedy-flag",
+      "rules": [
+        {
+          "id": "u",
+          "regex": "(?U)a+"
+        }
+      ],
+      "strategy": "tag",
+      "input": "aaaa",
+      "findings": [
+        {
+          "rule": "u",
+          "start": 0,
+          "end": 1
+        },
+        {
+          "rule": "u",
+          "start": 1,
+          "end": 2
+        },
+        {
+          "rule": "u",
+          "start": 2,
+          "end": 3
+        },
+        {
+          "rule": "u",
+          "start": 3,
+          "end": 4
+        }
+      ],
+      "spans": [
+        {
+          "rule": "u",
+          "start": 0,
+          "end": 4
+        }
+      ],
+      "output": "<u>"
+    },
+    {
+      "name": "large-input",
+      "rules": [
+        {
+          "id": "kv",
+          "regex": "token=([a-z0-9]{8})(?:;|$)",
+          "secret_group": 1
+        }
+      ],
+      "strategy": "tag",
+      "input": "token=ab12cd34; rest",
+      "pad": {
+        "text": "lorem ipsum dolor sit amet, ",
+        "times": 2400
+      },
+      "findings": [
+        {
+          "rule": "kv",
+          "start": 6,
+          "end": 14
+        }
+      ],
+      "spans": [
+        {
+          "rule": "kv",
+          "start": 6,
+          "end": 14
+        }
+      ],
+      "output": "token=<kv>; rest"
+    },
+    {
+      "name": "default-github-pat",
+      "strategy": "tag",
+      "input": "token g\u0068p_Zq9Lm2Wx7Rt4Vb8Nc1Kd3Fs0Ga5Qe2Mu8Zo4 end",
+      "findings": [
+        {
+          "rule": "github-pat",
+          "start": 6,
+          "end": 46
+        }
+      ],
+      "spans": [
+        {
+          "rule": "github-pat",
+          "start": 6,
+          "end": 46
+        }
+      ],
+      "output": "token <github-pat> end"
+    },
+    {
+      "name": "default-secret-group-keeps-key-name",
+      "strategy": "tag",
+      "input": "ADAFRUIT_KEY=q\u0038x2lm4p9z7wr3t6vb1nc5kd0fs8ga2q\n",
+      "findings": [
+        {
+          "rule": "adafruit-api-key",
+          "start": 13,
+          "end": 45
+        },
+        {
+          "rule": "generic-api-key",
+          "start": 13,
+          "end": 45
+        }
+      ],
+      "spans": [
+        {
+          "rule": "adafruit-api-key",
+          "start": 13,
+          "end": 45
+        }
+      ],
+      "output": "ADAFRUIT_KEY=<adafruit-api-key>\n"
+    },
+    {
+      "name": "default-aws-credentials-file",
+      "strategy": "tag",
+      "input": "[default]\naws_access_key_id = A\u004bIAQX7MZ2LP4RT6VB3N\naws_secret_access_key = w\u004aalrXUtnFEMI/K7MDENG/bPxRfiCYzq8Lw3Hd\n",
+      "findings": [
+        {
+          "rule": "aws-access-token",
+          "start": 30,
+          "end": 50
+        },
+        {
+          "rule": "generic-api-key",
+          "start": 75,
+          "end": 113
+        }
+      ],
+      "spans": [
+        {
+          "rule": "aws-access-token",
+          "start": 30,
+          "end": 50
+        },
+        {
+          "rule": "generic-api-key",
+          "start": 75,
+          "end": 113
+        }
+      ],
+      "output": "[default]\naws_access_key_id = <aws-access-token>\naws_secret_access_key = <generic-api-key>\n"
+    },
+    {
+      "name": "default-aws-example-allowlisted",
+      "strategy": "tag",
+      "input": "id A\u004bIAIOSFODNN7EXAMPLE",
+      "findings": [],
+      "spans": [],
+      "output": "id A\u004bIAIOSFODNN7EXAMPLE"
+    },
+    {
+      "name": "default-low-entropy-dropped",
+      "strategy": "tag",
+      "input": "k s\u006b-aaaaaaaaaaaaaaaaaaaaT3BlbkFJbbbbbbbbbbbbbbbbbbbb e",
+      "findings": [],
+      "spans": [],
+      "output": "k s\u006b-aaaaaaaaaaaaaaaaaaaaT3BlbkFJbbbbbbbbbbbbbbbbbbbb e"
+    },
+    {
+      "name": "default-global-false-anchored",
+      "strategy": "tag",
+      "input": "token g\u0068p_falseQ8xZ2LmN4pR7tV1wY3kB6dF9hJ0sA5c",
+      "findings": [
+        {
+          "rule": "github-pat",
+          "start": 6,
+          "end": 46
+        }
+      ],
+      "spans": [
+        {
+          "rule": "github-pat",
+          "start": 6,
+          "end": 46
+        }
+      ],
+      "output": "token <github-pat>"
+    },
+    {
+      "name": "default-generic-primary-key",
+      "strategy": "tag",
+      "input": "primary_key = Z\u00789Qm2Lp7Wv4Rt8K",
+      "findings": [
+        {
+          "rule": "generic-api-key",
+          "start": 14,
+          "end": 30
+        }
+      ],
+      "spans": [
+        {
+          "rule": "generic-api-key",
+          "start": 14,
+          "end": 30
+        }
+      ],
+      "output": "primary_key = <generic-api-key>"
+    },
+    {
+      "name": "default-generic-template-allowlisted",
+      "strategy": "tag",
+      "input": "api_key = ${API_KEY}",
+      "findings": [],
+      "spans": [],
+      "output": "api_key = ${API_KEY}"
+    },
+    {
+      "name": "default-keyword-gates-airtable-pat",
+      "strategy": "tag",
+      "input": "a p\u0061tZq9Lm2Wx7Rt4Vb.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef b",
+      "findings": [],
+      "spans": [],
+      "output": "a p\u0061tZq9Lm2Wx7Rt4Vb.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef b"
+    },
+    {
+      "name": "default-keyword-present-airtable-pat",
+      "strategy": "tag",
+      "input": "airtable a p\u0061tZq9Lm2Wx7Rt4Vb.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef b",
+      "findings": [
+        {
+          "rule": "airtable-personnal-access-token",
+          "start": 11,
+          "end": 93
+        }
+      ],
+      "spans": [
+        {
+          "rule": "airtable-personnal-access-token",
+          "start": 11,
+          "end": 93
+        }
+      ],
+      "output": "airtable a <airtable-personnal-access-token> b"
+    },
+    {
+      "name": "default-pii-email-and-ip",
+      "strategy": "mask",
+      "input": "mail dev@example.com from 192.168.1.42",
+      "findings": [
+        {
+          "rule": "email",
+          "start": 5,
+          "end": 20
+        },
+        {
+          "rule": "ipv4",
+          "start": 26,
+          "end": 38
+        }
+      ],
+      "spans": [
+        {
+          "rule": "email",
+          "start": 5,
+          "end": 20
+        },
+        {
+          "rule": "ipv4",
+          "start": 26,
+          "end": 38
+        }
+      ],
+      "output": "mail ***REDACTED*** from ***REDACTED***"
+    }
+  ]
+}

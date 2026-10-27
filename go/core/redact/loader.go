@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/BurntSushi/toml"
@@ -19,69 +20,203 @@ var embeddedPresidio []byte
 // LoadGitleaks knows to read from the embed.
 const embedSentinel = "embed:"
 
-// gitleaksFile mirrors the subset of the gitleaks TOML schema we care
-// about. Per-rule [[rules.allowlists]] are intentionally NOT modeled —
-// gitleaks allowlists are regex-based and the redact engine's allowlists
-// are literal by design (see AllowExact + Rule.exactAllowlist). Dropping
-// them loads the corpus stricter than upstream intends: documented
-// samples like AKIAIOSFODNN7EXAMPLE are redacted rather than exempted.
-// Tools that need those fixtures readable opt in via
-// Redactor.AllowExact().
+// gitleaksFile mirrors the gitleaks config schema the engine honors:
+// rules with keywords, secretGroup, entropy and allowlists, plus the
+// global [allowlist] / [[allowlists]] (targetRules included). Composite
+// rules ([[rules.required]]) and skipReport are not modeled.
 type gitleaksFile struct {
-	Rules []gitleaksRule `toml:"rules"`
+	Allowlist  *gitleaksAllowlist  `toml:"allowlist"`
+	Allowlists []gitleaksAllowlist `toml:"allowlists"`
+	Rules      []gitleaksRule      `toml:"rules"`
+}
+
+type gitleaksAllowlist struct {
+	Description string   `toml:"description"`
+	Condition   string   `toml:"condition"`
+	RegexTarget string   `toml:"regexTarget"`
+	Regexes     []string `toml:"regexes"`
+	StopWords   []string `toml:"stopwords"`
+	Paths       []string `toml:"paths"`
+	Commits     []string `toml:"commits"`
+	TargetRules []string `toml:"targetRules"`
+}
+
+func (a gitleaksAllowlist) spec() AllowlistSpec {
+	return AllowlistSpec{
+		Description: a.Description, Condition: a.Condition, RegexTarget: a.RegexTarget,
+		Regexes: a.Regexes, StopWords: a.StopWords, Paths: a.Paths, Commits: a.Commits,
+	}
 }
 
 type gitleaksRule struct {
-	ID          string  `toml:"id"`
-	Description string  `toml:"description"`
-	Regex       string  `toml:"regex"`
-	Entropy     float64 `toml:"entropy"`
-	// Path is set on path-allowlist rules upstream. We ignore those:
-	// they belong to kit/scope, not content matching.
-	Path string `toml:"path"`
+	ID          string   `toml:"id"`
+	Description string   `toml:"description"`
+	Regex       string   `toml:"regex"`
+	SecretGroup int      `toml:"secretGroup"`
+	Entropy     float64  `toml:"entropy"`
+	Keywords    []string `toml:"keywords"`
+	Tags        []string `toml:"tags"`
+	// Path scopes a rule to files. Path-only rules are dropped; on
+	// regex rules it is kept as data and never consulted.
+	Path       string              `toml:"path"`
+	Allowlist  *gitleaksAllowlist  `toml:"allowlist"`
+	Allowlists []gitleaksAllowlist `toml:"allowlists"`
 }
 
-// LoadGitleaks parses the vendored gitleaks TOML at path and returns the
-// converted []Rule. When path == embedSentinel the embedded copy is
-// parsed instead. Rules whose regex fails to compile under RE2 are
-// skipped silently (the corpus is RE2-clean in practice; verify in test).
-//
-// Replacement template defaults to "<{rule-id}>" so the Tag strategy
-// produces diagnosable output (e.g. "<openai-api-key>").
-func LoadGitleaks(path string) ([]Rule, error) {
-	var data []byte
-	if path == embedSentinel {
-		data = scoperules.GitleaksContent
-	} else {
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("redact: read gitleaks rules %q: %w", path, err)
-		}
-		data = b
-	}
+// corpusPatch is a kit-side fix to the vendored corpus, applied at
+// load time so the vendored file stays verbatim. rule "" targets the
+// global allowlists.
+type corpusPatch struct {
+	rule, old, new string
+}
 
+// gitleaksPatches close upstream allowlist entries that exempt live
+// secrets. A patch whose text is absent (a custom corpus, a refreshed
+// upstream) is skipped; TestGitleaksPatchesApply pins the vendored one.
+var gitleaksPatches = []corpusPatch{
+	// The alternation escaped its anchors: any secret containing
+	// "false" anywhere was exempt.
+	{"", `(?i)^true|false|null$`, `(?i)^(?:true|false|null)$`},
+	// "author" also matches "Authorization"; "primary key" names real
+	// credentials (Azure storage PrimaryKey).
+	{"generic-api-key", `|author|X-MS-Exchange-Organization-Auth|`, `|X-MS-Exchange-Organization-Auth|`},
+	{"generic-api-key", `|natural|primary|pub(?:lic)?|`, `|natural|pub(?:lic)?|`},
+}
+
+// applyPatches rewrites allowlist regexes in place and returns how
+// many patches found their text.
+func applyPatches(global []AllowlistSpec, rules []RuleSpec, patches []corpusPatch) int {
+	applied := 0
+	for _, p := range patches {
+		lists := global
+		if p.rule != "" {
+			lists = nil
+			for i := range rules {
+				if rules[i].ID == p.rule {
+					lists = rules[i].Allowlists
+				}
+			}
+		}
+		hit := false
+		for i := range lists {
+			for j, re := range lists[i].Regexes {
+				if strings.Contains(re, p.old) {
+					lists[i].Regexes[j] = strings.Replace(re, p.old, p.new, 1)
+					hit = true
+				}
+			}
+		}
+		if hit {
+			applied++
+		}
+	}
+	return applied
+}
+
+func readRules(path string, embedded []byte, kind string) ([]byte, error) {
+	if path == embedSentinel {
+		return embedded, nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("redact: read %s rules %q: %w", kind, path, err)
+	}
+	return b, nil
+}
+
+// LoadGitleaksPolicy parses the gitleaks TOML at path (the embedded
+// copy when path is the embed sentinel) into a Policy: its rules and
+// its global allowlists, with the kit corpus patches applied. Rules
+// whose regex does not compile under RE2 are skipped; the vendored
+// corpus is RE2-clean (verified in test). An unset secretGroup
+// resolves to 1 when the pattern has exactly one capture group, and to
+// the whole match otherwise.
+func LoadGitleaksPolicy(path string) (Policy, error) {
+	data, err := readRules(path, scoperules.GitleaksContent, "gitleaks")
+	if err != nil {
+		return Policy{}, err
+	}
+	p, err := parseGitleaks(data)
+	if err != nil {
+		return Policy{}, err
+	}
+	applyPatches(p.Allowlists, p.Rules, gitleaksPatches)
+	return p, nil
+}
+
+// parseGitleaks converts gitleaks TOML to a Policy, unpatched.
+func parseGitleaks(data []byte) (Policy, error) {
 	var f gitleaksFile
 	if _, err := toml.Decode(string(data), &f); err != nil {
-		return nil, fmt.Errorf("redact: parse gitleaks rules: %w", err)
+		return Policy{}, fmt.Errorf("redact: parse gitleaks rules: %w", err)
 	}
-
-	out := make([]Rule, 0, len(f.Rules))
+	p := Policy{Version: PolicyVersion}
+	targeted := map[string][]AllowlistSpec{}
+	globals := f.Allowlists
+	if f.Allowlist != nil {
+		globals = append([]gitleaksAllowlist{*f.Allowlist}, globals...)
+	}
+	for _, a := range globals {
+		if len(a.TargetRules) == 0 {
+			p.Allowlists = append(p.Allowlists, a.spec())
+			continue
+		}
+		for _, id := range a.TargetRules {
+			targeted[id] = append(targeted[id], a.spec())
+		}
+	}
 	for _, gr := range f.Rules {
 		if gr.ID == "" || gr.Regex == "" {
 			continue // path-only entries or malformed
 		}
 		re, err := regexp.Compile(gr.Regex)
 		if err != nil {
-			// RE2-incompatible upstream rule. Skip rather than fail —
-			// loss of one rule beats refusing to load the corpus.
-			continue
+			continue // RE2-incompatible upstream rule
 		}
-		out = append(out, Rule{
-			id:          gr.ID,
-			description: gr.Description,
-			re:          re,
-			replacement: "<" + gr.ID + ">",
-		})
+		spec := RuleSpec{
+			ID: gr.ID, Description: gr.Description, Regex: gr.Regex,
+			SecretGroup: gr.SecretGroup, Entropy: gr.Entropy,
+			Keywords: gr.Keywords, Tags: gr.Tags, Path: gr.Path,
+		}
+		if spec.SecretGroup == 0 && re.NumSubexp() == 1 {
+			spec.SecretGroup = 1
+		}
+		if gr.Allowlist != nil {
+			spec.Allowlists = append(spec.Allowlists, gr.Allowlist.spec())
+		}
+		for _, a := range gr.Allowlists {
+			spec.Allowlists = append(spec.Allowlists, a.spec())
+		}
+		spec.Allowlists = append(spec.Allowlists, targeted[gr.ID]...)
+		p.Rules = append(p.Rules, spec)
+	}
+	return p, nil
+}
+
+// LoadGitleaks returns the compiled rules of the gitleaks TOML at
+// path; see LoadGitleaksPolicy. The global allowlists are not part of
+// the result: install them with Redactor.AddAllowlists, or build from
+// the whole policy with NewFromPolicy.
+func LoadGitleaks(path string) ([]Rule, error) {
+	p, err := LoadGitleaksPolicy(path)
+	if err != nil {
+		return nil, err
+	}
+	return compileSpecs(p.Rules, true)
+}
+
+// compileSpecs compiles specs; lenient skips the ones that fail.
+func compileSpecs(specs []RuleSpec, lenient bool) ([]Rule, error) {
+	out := make([]Rule, 0, len(specs))
+	for _, s := range specs {
+		rule, err := CompileRule(s)
+		if err != nil {
+			if lenient {
+				continue
+			}
+			return nil, err
+		}
+		out = append(out, rule)
 	}
 	return out, nil
 }
@@ -115,48 +250,39 @@ type presidioRule struct {
 	MinConfidence  float64  `toml:"min_confidence"`
 }
 
-// LoadPresidio parses the vendored Presidio PII TOML at path. Same
-// semantics as LoadGitleaks. RE2-incompatible patterns are skipped
-// silently (the corpus is curated to be RE2-clean).
-func LoadPresidio(path string) ([]Rule, error) {
-	var data []byte
-	if path == embedSentinel {
-		data = embeddedPresidio
-	} else {
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("redact: read presidio rules %q: %w", path, err)
-		}
-		data = b
+// loadPresidioSpecs parses the Presidio TOML at path. Presidio rules
+// redact the whole match.
+func loadPresidioSpecs(path string) ([]RuleSpec, error) {
+	data, err := readRules(path, embeddedPresidio, "presidio")
+	if err != nil {
+		return nil, err
 	}
-
 	var f presidioFile
 	if _, err := toml.Decode(string(data), &f); err != nil {
 		return nil, fmt.Errorf("redact: parse presidio rules: %w", err)
 	}
-
-	out := make([]Rule, 0, len(f.Rule))
+	out := make([]RuleSpec, 0, len(f.Rule))
 	for _, pr := range f.Rule {
 		if pr.ID == "" || pr.Pattern == "" {
 			continue
 		}
-		re, err := regexp.Compile(pr.Pattern)
-		if err != nil {
-			continue
-		}
-		repl := pr.Replacement
-		if repl == "" {
-			repl = "<" + pr.ID + ">"
-		}
-		out = append(out, Rule{
-			id:             pr.ID,
-			description:    pr.Description,
-			re:             re,
-			replacement:    repl,
-			exactAllowlist: pr.AllowlistExact,
+		out = append(out, RuleSpec{
+			ID: pr.ID, Description: pr.Description, Regex: pr.Pattern,
+			Replacement: pr.Replacement, AllowlistExact: pr.AllowlistExact,
 		})
 	}
 	return out, nil
+}
+
+// LoadPresidio parses the vendored Presidio PII TOML at path. Same
+// semantics as LoadGitleaks. RE2-incompatible patterns are skipped
+// silently (the corpus is curated to be RE2-clean).
+func LoadPresidio(path string) ([]Rule, error) {
+	specs, err := loadPresidioSpecs(path)
+	if err != nil {
+		return nil, err
+	}
+	return compileSpecs(specs, true)
 }
 
 // DefaultPresidioPath returns the path LoadPresidio should read by
@@ -176,8 +302,10 @@ var (
 )
 
 // Default returns the package-singleton Redactor. First call eagerly loads
-// the vendored gitleaks rule corpus and the Presidio PII pack.
-// Subsequent calls return the same instance.
+// the vendored gitleaks rule corpus, its global allowlists and the
+// Presidio PII pack, honoring KIT_REDACT_RULES_PATH and
+// KIT_REDACT_PII_RULES_PATH. Subsequent calls return the same instance.
+// NewEmbedded builds the same policy from the embedded corpora only.
 //
 // Rule-id collision policy: gitleaks loads first and wins. Conflicting
 // Presidio rule ids get the suffix "-pii" appended at load time.
@@ -186,33 +314,46 @@ var (
 // not a runtime decision.
 func Default() *Redactor {
 	defaultOnce.Do(func() {
-		r := New()
-		gl, err := LoadGitleaks(DefaultGitleaksPath())
+		p, err := buildPolicy(DefaultGitleaksPath(), DefaultPresidioPath())
 		if err != nil {
-			panic(fmt.Sprintf("redact.Default: load gitleaks rules: %v", err))
+			panic(fmt.Sprintf("redact.Default: %v", err))
 		}
-		r.AddRules(gl...)
-
-		seen := make(map[string]bool, len(gl))
-		for _, rule := range gl {
-			seen[rule.id] = true
-		}
-
-		pii, err := LoadPresidio(DefaultPresidioPath())
+		r, err := NewFromPolicy(p)
 		if err != nil {
-			panic(fmt.Sprintf("redact.Default: load presidio rules: %v", err))
+			panic(fmt.Sprintf("redact.Default: %v", err))
 		}
-		for i := range pii {
-			if seen[pii[i].id] {
-				pii[i].id += "-pii"
-				if pii[i].replacement == "<"+pii[i].id[:len(pii[i].id)-4]+">" {
-					pii[i].replacement = "<" + pii[i].id + ">"
-				}
-			}
-			seen[pii[i].id] = true
-		}
-		r.AddRules(pii...)
 		defaultRdc = r
 	})
 	return defaultRdc
+}
+
+// buildPolicy assembles the default policy: gitleaks rules and global
+// allowlists, then Presidio rules with colliding ids suffixed "-pii".
+func buildPolicy(gitleaksPath, presidioPath string) (Policy, error) {
+	p, err := LoadGitleaksPolicy(gitleaksPath)
+	if err != nil {
+		return Policy{}, fmt.Errorf("load gitleaks rules: %w", err)
+	}
+	seen := make(map[string]bool, len(p.Rules))
+	for _, s := range p.Rules {
+		seen[s.ID] = true
+	}
+	pii, err := loadPresidioSpecs(presidioPath)
+	if err != nil {
+		return Policy{}, fmt.Errorf("load presidio rules: %w", err)
+	}
+	for _, s := range pii {
+		if _, err := regexp.Compile(s.Regex); err != nil {
+			continue
+		}
+		if seen[s.ID] {
+			if s.Replacement == "<"+s.ID+">" {
+				s.Replacement = ""
+			}
+			s.ID += "-pii"
+		}
+		seen[s.ID] = true
+		p.Rules = append(p.Rules, s)
+	}
+	return p, nil
 }

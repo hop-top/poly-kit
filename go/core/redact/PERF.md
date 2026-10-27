@@ -33,6 +33,15 @@ fields, secrets in most) went from 2.6ms to 45µs with output and
 27µs output-blind, against a 100µs target. A short field costs a few
 microseconds.
 
+Single-pass spans with gitleaks semantics (2026-10-27, same machine,
+old and new binaries interleaved): ApplyClean 1.58ms to 1.40ms (60KB/22
+allocs to under 0.3KB/1), ApplyDirty 2.38ms to 2.35ms, ApplyLargePayload
+580ms to 545ms (27MB to 2.2MB), Scan 2.49ms to 2.30ms. One screen pass
+on ASCII input covers literals and keyword gates; a secret-group rule
+runs one submatch pass. The audit hot path grew from 27µs to 34µs
+output-blind and 44µs to 49µs with output: each finding now meets the
+corpus allowlists, still under the 100µs target.
+
 `BenchmarkRuleAdd` grew because adding a rule now also derives its
 screen (a parse of the pattern) and the first rule allocates the
 Redactor's literal index (~60KB). Rules are added once; still far

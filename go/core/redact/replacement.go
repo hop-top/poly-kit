@@ -8,10 +8,10 @@ import (
 // format dispatches to the active strategy and renders a replacement for m.
 // Custom panics are recovered and degrade to Mask so a buggy formatter
 // can't take down a log path.
-func (r *Redactor) format(m Match) string {
+func (r *Redactor) format(rule *Rule, m Match) string {
 	switch r.strategy {
 	case Tag:
-		return tag(m, r.rules)
+		return tag(rule)
 	case Hash:
 		return hash(m)
 	case Custom:
@@ -27,15 +27,13 @@ func (r *Redactor) format(m Match) string {
 func mask(_ Match) string { return "***REDACTED***" }
 
 // tag returns the rule's preferred replacement template if non-empty, else
-// "<rule-id>". Looks up the rule by id from rules so it can honor the
-// per-rule label loaded from gitleaks/Presidio TOML.
-func tag(m Match, rules []Rule) string {
-	for i := range rules {
-		if rules[i].id == m.RuleID && rules[i].replacement != "" {
-			return rules[i].replacement
-		}
+// "<rule-id>", honoring the per-rule label loaded from gitleaks/Presidio
+// TOML.
+func tag(rule *Rule) string {
+	if rule.spec.Replacement != "" {
+		return rule.spec.Replacement
 	}
-	return "<" + m.RuleID + ">"
+	return "<" + rule.spec.ID + ">"
 }
 
 // hash returns sha256:<first-8-hex-bytes-of-original>. Stable across runs.
