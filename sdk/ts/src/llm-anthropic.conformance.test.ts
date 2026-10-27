@@ -5,7 +5,8 @@
 // client publishes no bus events). Go is canonical; a failure means
 // this SDK drifted, not that a vector should change. tool_names runs
 // in llm-toolnames.conformance.test.ts, media_fetch in
-// llm-media.conformance.test.ts. A section in neither list fails the
+// llm-media.conformance.test.ts, openai_* in
+// llm-openai.conformance.test.ts. A section in neither list fails the
 // run, so none is skipped silently.
 
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -109,7 +110,12 @@ const RUN = [
   "anthropic_tool_choice", "anthropic_hermetic", "anthropic_stream_events",
   "bus_request_started", "bus_response_received",
 ];
-const SIBLING = ["tool_names", "media_fetch", "gemini_stream_events"];
+const SIBLING = [
+  "tool_names", "media_fetch", "gemini_stream_events",
+  // llm-openai.conformance.test.ts
+  "openai_request", "openai_stream", "openai_stream_events",
+  "openai_accumulate", "openai_error", "openai_limits",
+];
 
 const file = loadVectors<File>();
 const section = (name: string): Section => file[name] as Section;

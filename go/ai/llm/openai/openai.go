@@ -11,7 +11,15 @@
 // provider in the aim catalog that no adapter registers by name, and
 // whose protocol is one of them ("openai-compatible" for most), resolves
 // here with the catalog's base URL.
-// Implements [llm.Completer], [llm.Streamer], [llm.ToolCaller].
+// Implements [llm.Completer], [llm.Streamer], [llm.ToolCaller] and
+// [llm.ToolStreamer].
+//
+// Provider params: tool_names ([llm.ToolNameModeOf]), max_body_bytes
+// (a whole response body, default 32 MiB) and max_event_bytes (one SSE
+// event of a stream, default 8 MiB); a response past either fails with
+// an [llmerrors.ErrResponseTooLarge]. A stream is finished at
+// data: [DONE] or, when the body ends without it, once a choice carried
+// a finish_reason; any other end is an [llmerrors.ErrStreamTruncated].
 package openai
 
 import (
@@ -26,11 +34,11 @@ import (
 	oai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
-	"github.com/openai/openai-go/packages/ssestream"
 	"github.com/openai/openai-go/shared"
 
 	"hop.top/kit/go/ai/llm"
 	llmerrors "hop.top/kit/go/ai/llm/errors"
+	"hop.top/kit/go/ai/llm/internal/bodylimit"
 )
 
 // schemes registered by this adapter.
@@ -100,10 +108,11 @@ type Adapter struct {
 
 // compile-time interface checks.
 var (
-	_ llm.Provider   = (*Adapter)(nil)
-	_ llm.Completer  = (*Adapter)(nil)
-	_ llm.Streamer   = (*Adapter)(nil)
-	_ llm.ToolCaller = (*Adapter)(nil)
+	_ llm.Provider     = (*Adapter)(nil)
+	_ llm.Completer    = (*Adapter)(nil)
+	_ llm.Streamer     = (*Adapter)(nil)
+	_ llm.ToolCaller   = (*Adapter)(nil)
+	_ llm.ToolStreamer = (*Adapter)(nil)
 )
 
 // New creates an Adapter from the resolved config.
@@ -115,7 +124,15 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	if strings.TrimSpace(cfg.Provider.APIKey) != "" {
 		auth = option.WithAPIKey(cfg.Provider.APIKey)
 	}
-	opts := []option.RequestOption{auth}
+	provider := cfg.URI.Scheme
+	if provider == "" {
+		provider = "openai"
+	}
+	lim, err := bodylimit.FromParams(provider, cfg.Provider.Params)
+	if err != nil {
+		return nil, err
+	}
+	opts := []option.RequestOption{auth, option.WithMiddleware(lim.Middleware)}
 	if cfg.Hermetic {
 		// The SDK reads these from OPENAI_ORG_ID and OPENAI_PROJECT_ID;
 		// a hermetic adapter sends neither.
@@ -223,7 +240,6 @@ func (a *Adapter) Complete(
 func (a *Adapter) Stream(
 	ctx context.Context, req llm.Request,
 ) (llm.TokenIterator, error) {
-	model := a.effectiveModel(req)
 	names, err := a.toolNameMap(nil)
 	if err != nil {
 		return nil, err
@@ -232,13 +248,25 @@ func (a *Adapter) Stream(
 	if err != nil {
 		return nil, err
 	}
-	stream := a.client.Chat.Completions.NewStreaming(ctx, params)
-	// Check for immediate errors (e.g. connection refused).
-	if err := stream.Err(); err != nil {
-		_ = stream.Close()
-		return nil, mapError(err, a.scheme, model)
+	return a.openStream(ctx, params, req, names)
+}
+
+// StreamWithTools streams a tool-calling request: text deltas as
+// tokens, then the calls, finish reason and usage from Outcome. With
+// [llm.Request.StreamEvents] it also yields tool-call events and usage.
+func (a *Adapter) StreamWithTools(
+	ctx context.Context, req llm.Request, tools []llm.ToolDef,
+) (llm.ToolStream, error) {
+	names, err := a.toolNameMap(tools)
+	if err != nil {
+		return nil, err
 	}
-	return &streamIter{stream: stream, scheme: a.scheme, model: model}, nil
+	params, err := a.buildParams(ctx, req, names, tools)
+	if err != nil {
+		return nil, err
+	}
+	params.Tools = mapTools(names.Defs(tools))
+	return a.openStream(ctx, params, req, names)
 }
 
 // CallWithTools maps ToolDefs to OpenAI function tools and returns tool calls.
@@ -550,40 +578,6 @@ func mapToolResponse(c *oai.ChatCompletion, names *llm.ToolNames) llm.ToolRespon
 		}
 	}
 	return resp
-}
-
-// ---------- streaming ----------
-
-type streamIter struct {
-	stream *ssestream.Stream[oai.ChatCompletionChunk]
-	scheme string
-	model  string
-	done   bool
-}
-
-func (s *streamIter) Next() (llm.Token, error) {
-	if s.done {
-		return llm.Token{}, io.EOF
-	}
-	if !s.stream.Next() {
-		s.done = true
-		err := s.stream.Err()
-		if err != nil {
-			return llm.Token{}, mapError(err, s.scheme, s.model)
-		}
-		return llm.Token{Done: true}, nil
-	}
-
-	chunk := s.stream.Current()
-	var content string
-	if len(chunk.Choices) > 0 {
-		content = chunk.Choices[0].Delta.Content
-	}
-	return llm.Token{Content: content}, nil
-}
-
-func (s *streamIter) Close() error {
-	return s.stream.Close()
 }
 
 // ---------- error mapping ----------

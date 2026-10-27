@@ -64,7 +64,14 @@ type llmConfFile struct {
 	AnthropicToolChoice   json.RawMessage `json:"anthropic_tool_choice"`
 	AnthropicHermetic     json.RawMessage `json:"anthropic_hermetic"`
 	AnthropicStreamEvents json.RawMessage `json:"anthropic_stream_events"`
-	ToolNames             []struct {
+	// Consumed by the openai runner (go/ai/llm/openai).
+	OpenAIRequest      json.RawMessage `json:"openai_request"`
+	OpenAIStream       json.RawMessage `json:"openai_stream"`
+	OpenAIStreamEvents json.RawMessage `json:"openai_stream_events"`
+	OpenAIAccumulate   json.RawMessage `json:"openai_accumulate"`
+	OpenAIError        json.RawMessage `json:"openai_error"`
+	OpenAILimits       json.RawMessage `json:"openai_limits"`
+	ToolNames          []struct {
 		Name      string   `json:"name"`
 		Rule      string   `json:"rule"`
 		Mode      string   `json:"mode"`

@@ -5,7 +5,8 @@ section: the provider-neutral core (``redact_uri``, ``parse_uri``,
 ``key_endpoint``, ``usage_cost``, ``tool_names``), the bus payloads
 (``bus_*``, against :mod:`hop_top_kit.llm_events`' builders: the Python
 client publishes no bus events) and the anthropic adapter
-(``anthropic_*``, ``credential_headers``) against a loopback server. The vectors are the source of truth: a failure means this port
+(``anthropic_*``, ``credential_headers``) against a loopback server; the
+``openai_*`` sections run in ``tests/test_llm_openai_conformance.py``. The vectors are the source of truth: a failure means this port
 drifted from Go. Strict: a section the runner does not consume, or a
 vector field it does not know, fails the run.
 """
@@ -64,6 +65,13 @@ CONSUMED = {
     "media_fetch",
     # Not applicable: Python has no gemini adapter (README, Known differences).
     "gemini_stream_events",
+    # Run by tests/test_llm_openai_conformance.py.
+    "openai_request",
+    "openai_stream",
+    "openai_stream_events",
+    "openai_accumulate",
+    "openai_error",
+    "openai_limits",
 }
 
 _META = {"version", "description"}
