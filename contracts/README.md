@@ -20,6 +20,7 @@ Corpora bind every port, Go included; detail lives in each corpus README.
   tree, byte for byte. Go and Rust runners.
 - [statemachine-v1/](statemachine-v1/README.md): kit/runtime/domain state machine transitions, error texts,
   veto wrap, payload JSON. Go and Rust.
+- [breaker-v1/](breaker-v1/README.md): kit/core/breaker on a fake clock.
 - [retry-v1/](retry-v1/README.md): kit/core/util retry backoff corpus: delay table, full-jitter bounds, stop
   rule. Go and Rust runners.
 - [upgrade-v1/](upgrade-v1/README.md): kit/core/upgrade versioned state migrations: version order, pending

@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"charm.land/log/v2"
-	"github.com/failsafe-go/failsafe-go/circuitbreaker"
 	"github.com/spf13/viper"
 
 	kitlog "hop.top/kit/go/console/log"
@@ -31,8 +30,7 @@ func (b *breakerImpl) logger() *log.Logger {
 // to the bus when a publisher is configured (best-effort, fire-and-
 // forget; matches the post-transition pattern in
 // runtime/domain.StateMachine).
-func (b *breakerImpl) logTrip(reason string) {
-	prev := b.State()
+func (b *breakerImpl) logTrip(reason string, prev State) {
 	b.logger().Error("breaker tripped manually",
 		"breaker.name", b.name,
 		"breaker.state", Open.String(),
@@ -73,6 +71,17 @@ func (b *breakerImpl) publishTransition(prev, next State, trigger string) {
 	}()
 }
 
+// logWouldReject records an Allow that OnTrip(Warn) let through
+// although policy refused it.
+func (b *breakerImpl) logWouldReject(policy string) {
+	b.logger().Warn("breaker would reject",
+		"breaker.name", b.name,
+		"breaker.state", b.State().String(),
+		"breaker.policy", policy,
+		"breaker.action", Warn.String(),
+	)
+}
+
 // logReset records a manual Reset call. INFO — the operator chose
 // to recover the breaker.
 func (b *breakerImpl) logReset() {
@@ -81,6 +90,18 @@ func (b *breakerImpl) logReset() {
 		"breaker.state", Closed.String(),
 		"breaker.policy", "manual",
 	)
+}
+
+// autoTripReason is the Stats.LastTripReason of an automatic open.
+const autoTripReason = "circuit"
+
+// countTrip records one trip in Stats.
+func (b *breakerImpl) countTrip(reason string) {
+	b.mu.Lock()
+	b.stats.Trips++
+	b.stats.LastTripAt = b.cfg.clock.Now()
+	b.stats.LastTripReason = reason
+	b.mu.Unlock()
 }
 
 func (b *breakerImpl) tripsSnapshot() uint64 {
@@ -106,44 +127,29 @@ func transitionLevel(prev, next State) log.Level {
 	}
 }
 
-// installCircuitListeners wires OnOpen/OnClose/OnHalfOpen on the
-// circuitbreaker builder so all automatic transitions emit (1) a log
-// event and (2) a bus event when a publisher is configured. Called
-// from buildCircuitBreaker.
+// emitTransitions logs and, when a publisher is configured, publishes
+// each circuit transition, in order. Called with no lock held.
 //
-// Emission order is log-first then bus: the existing log channel
-// is the primary record; bus emission is opt-in and best-effort.
-// "auto" trigger covers everything routed through the underlying
-// circuit's state machine — including the listener fired by manual
-// Trip → cb.Open() and Reset → cb.Close(); the dedicated logTrip
-// path adds the manual-only TrippedPayload event for operator
-// audit on top of those.
-func installCircuitListeners(
-	bldr circuitbreaker.Builder[any],
-	b *breakerImpl,
-) circuitbreaker.Builder[any] {
-	emit := func(level log.Level, prev, next State) {
-		b.logger().Log(level, "breaker state transition",
+// Emission order is log-first then bus: the log channel is the
+// primary record; bus emission is opt-in and best-effort. "auto"
+// trigger covers every transition of the circuit, including the one a
+// manual Trip or Reset causes; the dedicated logTrip path adds the
+// manual-only TrippedPayload event for operator audit on top.
+//
+// An automatic open counts as a trip (reason "circuit"), so
+// trips_total covers both paths; Trip has counted its own.
+func (b *breakerImpl) emitTransitions(ts []transition) {
+	for _, t := range ts {
+		if t.to == Open && !t.manual {
+			b.countTrip(autoTripReason)
+		}
+		b.logger().Log(transitionLevel(t.from, t.to), "breaker state transition",
 			"breaker.name", b.name,
-			"breaker.state", next.String(),
-			"breaker.prev_state", prev.String(),
+			"breaker.state", t.to.String(),
+			"breaker.prev_state", t.from.String(),
 			"breaker.policy", "circuit",
 			"breaker.trips_total", b.tripsSnapshot(),
 		)
-		b.publishTransition(prev, next, "auto")
+		b.publishTransition(t.from, t.to, "auto")
 	}
-
-	return bldr.
-		OnOpen(func(e circuitbreaker.StateChangedEvent) {
-			prev := mapState(e.OldState)
-			emit(transitionLevel(prev, Open), prev, Open)
-		}).
-		OnClose(func(e circuitbreaker.StateChangedEvent) {
-			prev := mapState(e.OldState)
-			emit(transitionLevel(prev, Closed), prev, Closed)
-		}).
-		OnHalfOpen(func(e circuitbreaker.StateChangedEvent) {
-			prev := mapState(e.OldState)
-			emit(transitionLevel(prev, HalfOpen), prev, HalfOpen)
-		})
 }

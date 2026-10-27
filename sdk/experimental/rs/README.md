@@ -22,6 +22,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`output/builtins/`](src/output/builtins/README.md) | the shipped formatters and their `--format-opt` keys | you need a formatter option or a custom formatter |
 | [`bus/`](src/bus/README.md) | in-process event bus with topic grammar (feature `bus`); peers over WebSocket in [`bus/network/`](src/bus/network/README.md) (feature `bus-network`) | components publish or subscribe to named events, across processes too |
 | [`domain/`](src/domain/README.md) | state machine with veto-able pre and fire-and-forget post transition events (feature `domain`) | an entity has a lifecycle others react to |
+| [`breaker/`](src/breaker/README.md) | circuit breaker, MaxOps/MaxBytes budgets, bursty rate limiter (feature `breaker`) | a tool must stop itself after failures, a budget or a rate |
 | [`config/`](src/config/README.md) | layered YAML config: load, get/set/unset keeping comments, hot reload (feature `config`; `config-signal`, `config-pkl`) | a CLI reads or writes its config files |
 | [`mcp/`](src/mcp/README.md) | dual-spec MCP surface over a bridged command tree (feature `mcp`) | MCP clients must call your commands as tools |
 | [`sqlstore/`](src/sqlstore/README.md) | typed JSON store over `sqldb` with backup and encryption (feature `sqlstore`) | a CLI keeps typed records locally |
@@ -47,7 +48,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `netpolicy` (`api`) | nothing (+ `reqwest`, `serde`, `serde_json`, `thiserror`) | 0 (113) |
 | `blob` | `thiserror` | 6 |
 | `sqldb` (`kv`) | `rusqlite` (bundled SQLite), `thiserror` (`kv`: nothing of its own) | 12 (12) |
-| `bus` (`domain`, `bus-network`, `bus-network-axum`, `bus-network-webpki-roots`) | `serde`, `serde_json` (`domain`: nothing of its own, wasm-safe; + `netpolicy`, `tokio` rt/net/time/sync/macros, `tokio-tungstenite`, `futures-util`, `getrandom`, `rustls` (ring), `rustls-native-certs`; + `axum`, `hyper`, `hyper-util`; + `webpki-roots`) | 14 (14, 60, 76, 61) |
+| `bus` (`domain`, `breaker`, `bus-network`, `bus-network-axum`, `bus-network-webpki-roots`) | `serde`, `serde_json` (`domain`, `breaker`: nothing of their own, wasm-safe; + `netpolicy`, `tokio` rt/net/time/sync/macros, `tokio-tungstenite`, `futures-util`, `getrandom`, `rustls` (ring), `rustls-native-certs`; + `axum`, `hyper`, `hyper-util`; + `webpki-roots`) | 14 (14, 14, 60, 76, 61) |
 | `upgrade` | `bus` + `thiserror` (wasm-safe core; runner off wasm32) | 16 |
 | `config` (`config-pkl`, `config-signal`) | `bus` + `saphyr-parser`, `thiserror` (+ `regex`; + `tokio` rt, signal, sync) | 18 (22, 25) |
 | `timeutil` | `chrono`, `interim`, `thiserror` | 19 |
@@ -69,8 +70,7 @@ Counts are non-dev crates, root excluded, from `cargo tree --no-default-features
 ## Contract
 
 - `serve <service>` runs a named service even when disabled; a `serve` the clap root already owned is replaced, never doubled.
-- `output` ships `table`, `json` and `yaml` only; `csv` and `text` are not implemented in Rust.
-- Column order comes from an explicit `ColumnSpec` list; `--cols` reorders as well as selects; `header` must equal `key`.
+- `output` ships `table`, `json` and `yaml` only (no `csv`, `text`); column order comes from an explicit `ColumnSpec` list; `--cols` reorders as well as selects; `header` must equal `key`.
 - MCP exposure is default-closed: the default policy blocks every destructive leaf on every remote surface.
 - Telemetry is default-denied: nothing emits without both a granted consent decision and a non-`off` mode.
 

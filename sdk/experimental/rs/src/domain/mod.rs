@@ -33,7 +33,7 @@
 //! );
 //! ```
 
-mod quote;
+pub(crate) mod quote;
 pub mod statemachine;
 pub mod topics;
 

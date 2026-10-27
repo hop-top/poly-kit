@@ -30,8 +30,8 @@ are implemented natively under
 | Cumulative op cap (file writes, LLM calls, exec spawns) | `MaxOps(n)` | Kit-side Count policy; reads via `Record(_, _)` |
 | Trip after N consecutive failures | `WithCircuit(CircuitOpts{FailureThreshold: N})` | Default 5; uses failsafe CircuitBreaker |
 | Recover after delay | `ResetAfter(d)` or `WithCircuit{Delay: d}` | Default 30s; HalfOpen probe after delay |
-| Route to alternate path on trip | `OnTrip(Degrade)` + `Fallback(fn)` | Without `Fallback`, Degrade silently behaves like Halt |
-| Log-only (migration mode) | `OnTrip(Warn)` | Discouraged outside migration / known soft-failure modes |
+| Route to alternate path on trip | `OnTrip(Degrade)` + `Fallback(fn)` | Without `Fallback`, Degrade behaves like Halt; under Halt or Warn a `Fallback` is ignored |
+| Log-only (migration mode) | `OnTrip(Warn)` | `Allow` logs `breaker would reject` at WARN and returns nil; discouraged outside migration / known soft-failure modes |
 | Custom kit/log destination | `Logger(l)` | Accepts `*charm.land/log/v2.Logger`; defaults to `kitlog.New(viper.GetViper())` |
 
 ## API surface
@@ -272,9 +272,10 @@ ceremony instead of a flat `Allow` / `Record`), and `afex/hystrix-go`
 - **No `kit breaker watch` subcommand yet.** Use `watch -n 1 'kit
   breaker list'` in a shell. A bubbletea-driven live tail is
   follow-up.
-- **`Allow()` runs a noop fn through the executor.** Per-call cost
-  is one failsafe executor pass (~50–100 ns + kit wrapper
-  overhead). Acceptable for any op that does real I/O downstream.
+- **`Allow()` runs a noop fn through the pre-flight policies.**
+  Bulkhead, rate limiter and the Volume/Count caps see it; the
+  circuit only grants or refuses a permit and records nothing, so
+  only `Record` (or a real `Executor()` run) moves the state machine.
 
 ## Related pages
 

@@ -7,7 +7,6 @@ import (
 	"charm.land/log/v2"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/bulkhead"
-	"github.com/failsafe-go/failsafe-go/circuitbreaker"
 	"github.com/failsafe-go/failsafe-go/fallback"
 	"github.com/failsafe-go/failsafe-go/ratelimiter"
 	"github.com/failsafe-go/failsafe-go/timeout"
@@ -58,6 +57,7 @@ type config struct {
 	fallback FallbackFn
 
 	logger *log.Logger
+	clock  Clock
 
 	publisher domain.EventPublisher
 	topics    Topics
@@ -75,6 +75,7 @@ func newConfig(opts ...Option) *config {
 		circSuccessThreshold: 1,
 		circDelay:            30 * time.Second,
 		topics:               DefaultTopics,
+		clock:                wallClock{},
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -82,67 +83,50 @@ func newConfig(opts ...Option) *config {
 	return c
 }
 
-// buildCircuitBreaker constructs the base circuit policy. We always
-// build one so callers get a real state machine + listeners even
-// without explicit tuning. Listeners close over b so their log
-// events carry the breaker name + live trip count.
-func buildCircuitBreaker(b *breakerImpl, c *config) circuitbreaker.CircuitBreaker[any] {
-	bldr := circuitbreaker.NewBuilder[any]().
-		WithFailureThreshold(c.circFailureThreshold).
-		WithSuccessThreshold(c.circSuccessThreshold).
-		WithDelay(c.circDelay)
-	bldr = installCircuitListeners(bldr, b)
-	return bldr.Build()
-}
-
-// assemblePolicies returns the policy slice in failsafe.With order:
-// OUTERMOST first. failsafe.With(p1, p2, p3) composes as
-// p1(p2(p3(fn))), so we list Fallback first (so it can catch all
-// inner failures), then CircuitBreaker (observes everything inner),
-// then Bulkhead, then RateLimiter, then Volume/Count last (cheapest
-// pre-flight, runs first against fn).
-func assemblePolicies(b *breakerImpl, cb circuitbreaker.CircuitBreaker[any], c *config) []failsafe.Policy[any] {
-	out := []failsafe.Policy[any]{}
-
-	if c.fallback != nil {
+// assemblePolicies returns the policy slices in failsafe.With order,
+// OUTERMOST first: failsafe.With(p1, p2, p3) composes as p1(p2(p3(fn))).
+// outer is Fallback (catches every inner failure) then the circuit
+// (observes everything inner); inner is Timeout, Bulkhead,
+// RateLimiter, then Volume/Count last (cheapest pre-flight, runs first
+// against fn). Allow runs inner alone, behind its own circuit check.
+func assemblePolicies(b *breakerImpl, cb failsafe.Policy[any], c *config) (outer, inner []failsafe.Policy[any]) {
+	if c.fallback != nil && c.action == Degrade {
 		fb := c.fallback
-		out = append(out, fallback.NewBuilderWithFunc[any](
+		outer = append(outer, fallback.NewBuilderWithFunc[any](
 			func(_ failsafe.Execution[any]) (any, error) {
 				return nil, fb(context.Background())
 			},
 		).Build())
 	}
-
-	out = append(out, cb)
+	outer = append(outer, cb)
 
 	if c.hasTimeout {
-		out = append(out, timeout.NewBuilder[any](c.timeoutDuration).Build())
+		inner = append(inner, timeout.NewBuilder[any](c.timeoutDuration).Build())
 	}
 	if c.hasBulkhead {
-		out = append(out, bulkhead.NewBuilder[any](c.maxConcurrent).Build())
+		inner = append(inner, bulkhead.NewBuilder[any](c.maxConcurrent).Build())
 	}
 	if c.rateLimit != nil {
 		// Bursty (period-windowed) rather than Smooth (equally-spaced):
 		// users asking for "100 per minute" expect to be able to fire
 		// 100 within the first second, not be paced to one per 600ms.
-		out = append(out, ratelimiter.NewBurstyBuilder[any](
+		inner = append(inner, ratelimiter.NewBurstyBuilder[any](
 			c.rateLimit.max, c.rateLimit.period,
 		).Build())
 	}
 	if c.hasBytes {
-		out = append(out, bpolicy.NewVolume[any]().
+		inner = append(inner, bpolicy.NewVolume[any]().
 			WithMaxBytes(c.maxBytes).
 			WithReader(func() int64 { return b.counterValue("bytes") }).
 			Build())
 	}
 	if c.hasOps {
-		out = append(out, bpolicy.NewCount[any]().
+		inner = append(inner, bpolicy.NewCount[any]().
 			WithMaxOps(c.maxOps).
 			WithReader(func() int64 { return b.counterValue("ops") }).
 			Build())
 	}
-
-	return out
+	return outer, inner
 }
 
 // OnTrip selects the action taken when the circuit opens. Halt is
@@ -223,9 +207,9 @@ func ResetAfter(d time.Duration) Option {
 	return func(c *config) { c.circDelay = d }
 }
 
-// Fallback attaches a function to run when the breaker degrades.
-// Pair with OnTrip(Degrade); without a Fallback, Degrade silently
-// behaves like Halt.
+// Fallback attaches a function to run when the breaker degrades. Only
+// OnTrip(Degrade) runs it; under Halt or Warn it is ignored, and
+// Degrade without a Fallback behaves like Halt.
 func Fallback(fn FallbackFn) Option {
 	return func(c *config) { c.fallback = fn }
 }
@@ -239,4 +223,15 @@ func Fallback(fn FallbackFn) Option {
 // must build a charm/log logger instead (see kit/console/log).
 func Logger(l *log.Logger) Option {
 	return func(c *config) { c.logger = l }
+}
+
+// WithClock sets the time source the circuit reads for cooldown expiry
+// and trip timestamps. Defaults to the wall clock. The rate limiter,
+// bulkhead and timeout keep failsafe-go's own clock.
+func WithClock(clk Clock) Option {
+	return func(c *config) {
+		if clk != nil {
+			c.clock = clk
+		}
+	}
 }

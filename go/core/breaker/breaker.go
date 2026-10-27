@@ -1,17 +1,23 @@
 package breaker
 
 import (
+	"context"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/failsafe-go/failsafe-go"
-	"github.com/failsafe-go/failsafe-go/circuitbreaker"
+	"github.com/failsafe-go/failsafe-go/bulkhead"
+	"github.com/failsafe-go/failsafe-go/ratelimiter"
+	"github.com/failsafe-go/failsafe-go/timeout"
 )
 
-// Action is what the breaker does on trip. Halt is the safe default
-// (fail closed). Degrade requires a Fallback to be configured. Warn
-// turns Allow into a no-op + log only — for migration / known
-// soft-failure modes only.
+// Action is what Allow does when a policy refuses. Halt is the safe
+// default (fail closed). Degrade answers with the configured Fallback
+// (Halt without one; Executor() installs the Fallback only under
+// Degrade). Warn logs "breaker would reject" at WARN and allows — for
+// migration / known soft-failure modes only; it applies to Allow and
+// the wrap helpers, not to Executor().
 type Action int
 
 const (
@@ -40,8 +46,7 @@ func (a Action) String() string {
 	}
 }
 
-// State is the lifecycle of a breaker. 1:1 with failsafe's
-// circuitbreaker.State.
+// State is the lifecycle of a breaker's circuit.
 type State int
 
 const (
@@ -72,6 +77,8 @@ func (s State) String() string {
 
 // Stats is a point-in-time snapshot of breaker activity.
 type Stats struct {
+	// Trips counts every open: manual Trip calls and automatic opens
+	// (LastTripReason "circuit").
 	Trips          uint64
 	LastTripAt     time.Time
 	LastTripReason string
@@ -115,15 +122,18 @@ type Breaker interface {
 	Executor() failsafe.Executor[any]
 }
 
-// breakerImpl is the concrete Breaker. The failsafe executor + cb
-// give us the state machine and listeners; mu protects stats and
-// the kit-side Volume/Count counters.
+// breakerImpl is the concrete Breaker. circ is the kit-side circuit
+// state machine; the failsafe executor composes it with the other
+// policies. mu protects stats and the kit-side Volume/Count counters.
 type breakerImpl struct {
 	name string
 
 	cfg      *config
 	executor failsafe.Executor[any]
-	cb       circuitbreaker.CircuitBreaker[any]
+	// preflight runs Allow's no-op through the policies inside the
+	// circuit (bulkhead, rate, volume, count); nil when none is set.
+	preflight failsafe.Executor[any]
+	circ      *circuit
 
 	mu       sync.Mutex
 	stats    Stats
@@ -146,23 +156,78 @@ func New(name string, opts ...Option) Breaker {
 		stats:    Stats{Counters: map[string]int64{}},
 		counters: map[string]int64{},
 	}
-	// Build the cb after b exists so its listeners can close over
-	// b's logger + tripsSnapshot. Then assemble policies (Volume/
-	// Count closures also need b for counterValue access).
-	b.cb = buildCircuitBreaker(b, cfg)
-	b.executor = failsafe.With(assemblePolicies(b, b.cb, cfg)...)
+	b.circ = newCircuit(cfg.clock, cfg.circFailureThreshold, cfg.circSuccessThreshold, cfg.circDelay)
+	// The circuit policy and the Volume/Count closures need b.
+	outer, inner := assemblePolicies(b, &circuitPolicy{b: b}, cfg)
+	b.executor = failsafe.With(append(outer, inner...)...)
+	if len(inner) > 0 {
+		b.preflight = failsafe.With(inner...)
+	}
 
 	registerOrPanic(name, b)
 	return b
 }
 
-// Allow runs the executor's no-op and maps any failure to the single
-// ErrBrokenCircuit sentinel.
+// Allow asks the circuit for a permit, then runs a no-op through the
+// pre-flight policies. Neither outcome is recorded on the circuit:
+// only Record (or a real execution through Executor) feeds it. A
+// permit the circuit granted is returned when a pre-flight policy
+// rejects.
 func (b *breakerImpl) Allow() error {
-	if err := b.executor.Run(noopFn); err != nil {
-		return ErrBrokenCircuit
+	if !b.acquire() {
+		return b.reject(policyCircuit)
+	}
+	if b.preflight != nil {
+		if err := b.preflight.Run(noopFn); err != nil {
+			b.circ.release()
+			return b.reject(b.rejectingPolicy(err))
+		}
 	}
 	return nil
+}
+
+// Policy names Allow reports a rejection under (log attr
+// breaker.policy).
+const (
+	policyCircuit  = "circuit"
+	policyBulkhead = "bulkhead"
+	policyRate     = "rate"
+	policyBytes    = "bytes"
+	policyOps      = "ops"
+	policyTimeout  = "timeout"
+)
+
+// rejectingPolicy names the pre-flight policy behind err. Volume runs
+// before Count, so a spent byte budget wins when both are spent.
+func (b *breakerImpl) rejectingPolicy(err error) string {
+	switch {
+	case errors.Is(err, ratelimiter.ErrExceeded):
+		return policyRate
+	case errors.Is(err, bulkhead.ErrFull):
+		return policyBulkhead
+	case errors.Is(err, timeout.ErrExceeded):
+		return policyTimeout
+	case b.cfg.hasBytes && b.counterValue("bytes") >= b.cfg.maxBytes:
+		return policyBytes
+	default:
+		return policyOps
+	}
+}
+
+// reject applies the OnTrip action once policy refused: Warn logs and
+// allows, Degrade answers with the Fallback (Halt without one), Halt
+// returns ErrBrokenCircuit.
+func (b *breakerImpl) reject(policy string) error {
+	switch b.cfg.action {
+	case Warn:
+		b.logWouldReject(policy)
+		return nil
+	case Degrade:
+		if fb := b.cfg.fallback; fb != nil && fb(context.Background()) == nil {
+			return nil
+		}
+	}
+	return ErrBrokenCircuit
 }
 
 // Record updates the kit-side cumulative counters and forwards the
@@ -177,15 +242,27 @@ func (b *breakerImpl) Record(success bool, n int64) {
 	b.stats.Counters["ops"] = b.counters["ops"]
 	b.mu.Unlock()
 
-	if success {
-		b.cb.RecordSuccess()
-		return
-	}
-	b.cb.RecordFailure()
+	b.recordCircuit(success)
 }
 
 func (b *breakerImpl) State() State {
-	return mapState(b.cb.State())
+	s, ts := b.circ.current()
+	b.emitTransitions(ts)
+	return s
+}
+
+// acquire asks the circuit to admit one execution and emits any
+// transition that took.
+func (b *breakerImpl) acquire() bool {
+	ok, ts := b.circ.tryAcquire()
+	b.emitTransitions(ts)
+	return ok
+}
+
+// recordCircuit feeds one outcome to the circuit and emits any
+// transition it caused.
+func (b *breakerImpl) recordCircuit(success bool) {
+	b.emitTransitions(b.circ.record(success))
 }
 
 func (b *breakerImpl) Reset() {
@@ -195,18 +272,14 @@ func (b *breakerImpl) Reset() {
 	b.mu.Unlock()
 
 	b.logReset()
-	b.cb.Close()
+	b.emitTransitions(b.circ.reset())
 }
 
 func (b *breakerImpl) Trip(reason string) {
-	b.mu.Lock()
-	b.stats.Trips++
-	b.stats.LastTripAt = time.Now()
-	b.stats.LastTripReason = reason
-	b.mu.Unlock()
-
-	b.logTrip(reason)
-	b.cb.Open()
+	prev := b.State() // cooldown expiry first, so it logs before the count
+	b.countTrip(reason)
+	b.logTrip(reason, prev)
+	b.emitTransitions(b.circ.open(true))
 }
 
 func (b *breakerImpl) Stats() Stats {
@@ -235,18 +308,6 @@ func (b *breakerImpl) counterValue(name string) int64 {
 	return b.counters[name]
 }
 
-// noopFn is the function we hand to the executor for Allow checks —
-// it succeeds; the policies decide whether to short-circuit.
+// noopFn is the function Allow hands to the pre-flight executor; it
+// succeeds, the policies decide whether to short-circuit.
 func noopFn() error { return nil }
-
-// mapState converts the failsafe state enum to the kit/breaker enum.
-func mapState(s circuitbreaker.State) State {
-	switch s {
-	case circuitbreaker.OpenState:
-		return Open
-	case circuitbreaker.HalfOpenState:
-		return HalfOpen
-	default:
-		return Closed
-	}
-}

@@ -69,6 +69,10 @@ bus-network-webpki-roots = ["bus-network", "dep:webpki-roots"]
 # veto-able pre-transition and fire-and-forget post-transition events.
 # Nothing of its own; wasm-safe.
 domain = ["bus"]
+# Circuit breaker, MaxOps/MaxBytes budgets and bursty rate limiter, a
+# port of go/core/breaker. Builds on `domain` for the event publisher;
+# nothing of its own, wasm-safe given a caller clock.
+breaker = ["domain"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
 httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
 # Dual-spec MCP surface. `rmcp` supplies the protocol vocabulary (version

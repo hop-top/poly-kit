@@ -240,6 +240,12 @@ fn go_json(value: &impl Serialize) -> String {
 pub enum Payload {
     /// A state machine transition.
     Transition(TransitionPayload),
+    /// A breaker's manual trip.
+    #[cfg(feature = "breaker")]
+    BreakerTripped(crate::breaker::TrippedPayload),
+    /// A breaker's state change.
+    #[cfg(feature = "breaker")]
+    BreakerTransition(crate::breaker::TransitionPayload),
 }
 
 impl Payload {
@@ -247,6 +253,10 @@ impl Payload {
     pub fn to_json(&self) -> String {
         match self {
             Payload::Transition(p) => p.to_json(),
+            #[cfg(feature = "breaker")]
+            Payload::BreakerTripped(p) => go_json(p),
+            #[cfg(feature = "breaker")]
+            Payload::BreakerTransition(p) => go_json(p),
         }
     }
 }
