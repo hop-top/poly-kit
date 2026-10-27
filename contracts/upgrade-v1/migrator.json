@@ -1,0 +1,436 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/upgrade-v1/migrator.json",
+  "version": "v1",
+  "description": "The migration runner (Go `core/upgrade.Migrator`) against a recording driver. Each scenario registers `migrations`, adds `drivers` in order and runs `steps` on one migrator with target `target`. A driver reports `version` until `set_version` succeeds; a `*_fail` field makes that driver call fail with that message. A migration with `fail` fails its Up with that message; `down` gives it a Down, `down_fail` a failing one. `backups` creates backup directories before the first step. `calls` is what the step did, in order: `<schema> backup|restore <backup dir name>`, `<schema> up|down <version>`, `<schema> set_version <version>`. `history` is cumulative; `versions` is each schema's version file (`\"\"` when absent); `backups` lists each schema's backup directories by name after the step. `error` is the exact error text, or null.",
+  "scenarios": [
+    {
+      "name": "applies pending in order, then a re-run is a no-op",
+      "target": "1.2.0",
+      "drivers": [{ "name": "db", "version": "1.0.0" }],
+      "migrations": [
+        { "schema": "db", "version": "1.1.0" },
+        { "schema": "db", "version": "1.2.0" }
+      ],
+      "steps": [
+        {
+          "op": "run", "error": null,
+          "calls": ["db backup pre-1.1.0", "db up 1.1.0", "db up 1.2.0", "db set_version 1.2.0"],
+          "history": [{ "schema": "db", "version": "1.1.0" }, { "schema": "db", "version": "1.2.0" }],
+          "versions": { "db": "1.2.0" },
+          "backups": { "db": ["pre-1.1.0"] }
+        },
+        {
+          "op": "run", "error": null, "calls": [],
+          "history": [{ "schema": "db", "version": "1.1.0" }, { "schema": "db", "version": "1.2.0" }],
+          "versions": { "db": "1.2.0" },
+          "backups": { "db": ["pre-1.1.0"] }
+        },
+        {
+          "op": "status", "error": null,
+          "status": [{ "schema": "db", "current": "1.2.0", "target": "1.2.0", "pending": 0, "error": null }]
+        }
+      ]
+    },
+    {
+      "name": "nothing pending touches nothing",
+      "target": "2.0.0",
+      "drivers": [{ "name": "db", "version": "2.0.0" }],
+      "migrations": [{ "schema": "db", "version": "1.1.0" }],
+      "steps": [
+        { "op": "run", "error": null, "calls": [], "history": [], "versions": { "db": "" }, "backups": { "db": [] } }
+      ]
+    },
+    {
+      "name": "records the last applied version, not the target",
+      "target": "3.0.0",
+      "drivers": [{ "name": "db", "version": "1.0.0" }],
+      "migrations": [
+        { "schema": "db", "version": "1.2.0" },
+        { "schema": "db", "version": "1.0.1" },
+        { "schema": "db", "version": "1.1.0" }
+      ],
+      "steps": [
+        {
+          "op": "run", "error": null,
+          "calls": ["db backup pre-1.0.1", "db up 1.0.1", "db up 1.1.0", "db up 1.2.0", "db set_version 1.2.0"],
+          "versions": { "db": "1.2.0" }
+        },
+        {
+          "op": "status", "error": null,
+          "status": [{ "schema": "db", "current": "1.2.0", "target": "3.0.0", "pending": 0, "error": null }]
+        }
+      ]
+    },
+    {
+      "name": "the target bounds the run and loses its v",
+      "target": "v1.2.0",
+      "drivers": [{ "name": "db", "version": "1.0.0" }],
+      "migrations": [
+        { "schema": "db", "version": "1.1.0" },
+        { "schema": "db", "version": "1.2.0" },
+        { "schema": "db", "version": "1.3.0" }
+      ],
+      "steps": [
+        {
+          "op": "status", "error": null,
+          "status": [{ "schema": "db", "current": "1.0.0", "target": "1.2.0", "pending": 2, "error": null }]
+        },
+        {
+          "op": "run", "error": null,
+          "calls": ["db backup pre-1.1.0", "db up 1.1.0", "db up 1.2.0", "db set_version 1.2.0"],
+          "versions": { "db": "1.2.0" }
+        },
+        {
+          "op": "status", "error": null,
+          "status": [{ "schema": "db", "current": "1.2.0", "target": "1.2.0", "pending": 0, "error": null }]
+        }
+      ]
+    },
+    {
+      "name": "each driver runs in order with its own schema",
+      "target": "1.1.0",
+      "drivers": [{ "name": "db", "version": "1.0.0" }, { "name": "config", "version": "" }],
+      "migrations": [
+        { "schema": "config", "version": "1.0.0" },
+        { "schema": "db", "version": "1.1.0" },
+        { "schema": "other", "version": "1.1.0" },
+        { "schema": "config", "version": "0.1.0" }
+      ],
+      "steps": [
+        {
+          "op": "run", "error": null,
+          "calls": [
+            "db backup pre-1.1.0", "db up 1.1.0", "db set_version 1.1.0",
+            "config backup pre-0.1.0", "config up 0.1.0", "config up 1.0.0", "config set_version 1.0.0"
+          ],
+          "history": [
+            { "schema": "db", "version": "1.1.0" },
+            { "schema": "config", "version": "0.1.0" },
+            { "schema": "config", "version": "1.0.0" }
+          ],
+          "versions": { "db": "1.1.0", "config": "1.0.0", "other": "" },
+          "backups": { "db": ["pre-1.1.0"], "config": ["pre-0.1.0"], "other": [] }
+        },
+        {
+          "op": "status", "error": null,
+          "status": [
+            { "schema": "db", "current": "1.1.0", "target": "1.1.0", "pending": 0, "error": null },
+            { "schema": "config", "current": "1.0.0", "target": "1.1.0", "pending": 0, "error": null }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pre-releases run in semver order",
+      "target": "1.0.0",
+      "drivers": [{ "name": "db", "version": "0.9.0" }],
+      "migrations": [
+        { "schema": "db", "version": "1.0.0" },
+        { "schema": "db", "version": "1.0.0-rc.1" },
+        { "schema": "db", "version": "1.0.0-alpha.1" },
+        { "schema": "db", "version": "1.0.0-beta.1" }
+      ],
+      "steps": [
+        {
+          "op": "run", "error": null,
+          "calls": [
+            "db backup pre-1.0.0-alpha.1", "db up 1.0.0-alpha.1", "db up 1.0.0-beta.1",
+            "db up 1.0.0-rc.1", "db up 1.0.0", "db set_version 1.0.0"
+          ],
+          "versions": { "db": "1.0.0" }
+        }
+      ]
+    },
+    {
+      "name": "the version file keeps the version as registered",
+      "target": "1.1.0",
+      "drivers": [{ "name": "db", "version": "1.0.0" }],
+      "migrations": [{ "schema": "db", "version": "v1.1.0" }],
+      "steps": [
+        {
+          "op": "run", "error": null,
+          "calls": ["db backup pre-v1.1.0", "db up v1.1.0", "db set_version v1.1.0"],
+          "versions": { "db": "v1.1.0" },
+          "backups": { "db": ["pre-v1.1.0"] }
+        },
+        { "op": "run", "error": null, "calls": [] }
+      ]
+    },
+    {
+      "name": "a failure rolls back through Down",
+      "target": "1.2.0",
+      "drivers": [{ "name": "db", "version": "1.0.0" }],
+      "migrations": [
+        { "schema": "db", "version": "1.1.0", "down": true },
+        { "schema": "db", "version": "1.2.0", "fail": "boom" }
+      ],
+      "steps": [
+        {
+          "op": "run", "error": "migrate db: up 1.2.0 failed: boom",
+          "calls": ["db backup pre-1.1.0", "db up 1.1.0", "db up 1.2.0", "db down 1.1.0"],
+          "history": [{ "schema": "db", "version": "1.1.0" }],
+          "versions": { "db": "" }
+        },
+        {
+          "op": "status", "error": null,
+          "status": [{ "schema": "db", "current": "1.0.0", "target": "1.2.0", "pending": 2, "error": null }]
+        }
+      ]
+    },
+    {
+      "name": "Down runs newest first",
+      "target": "1.3.0",
+      "drivers": [{ "name": "db", "version": "1.0.0" }],
+      "migrations": [
+        { "schema": "db", "version": "1.1.0", "down": true },
+        { "schema": "db", "version": "1.2.0", "down": true },
+        { "schema": "db", "version": "1.3.0", "fail": "boom" }
+      ],
+      "steps": [
+        {
+          "op": "run", "error": "migrate db: up 1.3.0 failed: boom",
+          "calls": [
+            "db backup pre-1.1.0", "db up 1.1.0", "db up 1.2.0", "db up 1.3.0",
+            "db down 1.2.0", "db down 1.1.0"
+          ],
+          "history": [{ "schema": "db", "version": "1.1.0" }, { "schema": "db", "version": "1.2.0" }]
+        }
+      ]
+    },
+    {
+      "name": "a missing Down restores the backup and runs no older Down",
+      "target": "1.3.0",
+      "drivers": [{ "name": "db", "version": "1.0.0" }],
+      "migrations": [
+        { "schema": "db", "version": "1.1.0", "down": true },
+        { "schema": "db", "version": "1.2.0" },
+        { "schema": "db", "version": "1.3.0", "fail": "boom" }
+      ],
+      "steps": [
+        {
+          "op": "run", "error": "migrate db: up 1.3.0 failed: boom",
+          "calls": [
+            "db backup pre-1.1.0", "db up 1.1.0", "db up 1.2.0", "db up 1.3.0", "db restore pre-1.1.0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a failing Down restores the backup",
+      "target": "1.3.0",
+      "drivers": [{ "name": "db", "version": "1.0.0" }],
+      "migrations": [
+        { "schema": "db", "version": "1.1.0", "down": true },
+        { "schema": "db", "version": "1.2.0", "down_fail": "nope" },
+        { "schema": "db", "version": "1.3.0", "fail": "boom" }
+      ],
+      "steps": [
+        {
+          "op": "run", "error": "migrate db: up 1.3.0 failed: boom",
+          "calls": [
+            "db backup pre-1.1.0", "db up 1.1.0", "db up 1.2.0", "db up 1.3.0",
+            "db down 1.2.0", "db restore pre-1.1.0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a failed rollback is reported after the cause",
+      "target": "1.2.0",
+      "drivers": [{ "name": "db", "version": "1.0.0", "restore_fail": "disk gone" }],
+      "migrations": [
+        { "schema": "db", "version": "1.1.0" },
+        { "schema": "db", "version": "1.2.0", "fail": "boom" }
+      ],
+      "steps": [
+        {
+          "op": "run", "error": "migrate db: up 1.2.0 failed: boom (rollback also failed: disk gone)",
+          "calls": ["db backup pre-1.1.0", "db up 1.1.0", "db up 1.2.0", "db restore pre-1.1.0"],
+          "versions": { "db": "" }
+        }
+      ]
+    },
+    {
+      "name": "a failing first migration rolls nothing back",
+      "target": "1.2.0",
+      "drivers": [{ "name": "db", "version": "1.0.0" }],
+      "migrations": [
+        { "schema": "db", "version": "1.1.0", "fail": "early", "down": true },
+        { "schema": "db", "version": "1.2.0" }
+      ],
+      "steps": [
+        {
+          "op": "run", "error": "migrate db: up 1.1.0 failed: early",
+          "calls": ["db backup pre-1.1.0", "db up 1.1.0"],
+          "history": [],
+          "versions": { "db": "" }
+        }
+      ]
+    },
+    {
+      "name": "manual mode leaves the state for rollback_latest",
+      "target": "1.2.0",
+      "manual_rollback": true,
+      "drivers": [{ "name": "db", "version": "1.0.0" }],
+      "migrations": [
+        { "schema": "db", "version": "1.1.0", "down": true },
+        { "schema": "db", "version": "1.2.0", "fail": "boom" }
+      ],
+      "steps": [
+        {
+          "op": "run", "error": "migrate db: up 1.2.0 failed: boom",
+          "calls": ["db backup pre-1.1.0", "db up 1.1.0", "db up 1.2.0"],
+          "history": [{ "schema": "db", "version": "1.1.0" }],
+          "versions": { "db": "" }
+        },
+        { "op": "rollback_latest", "error": null, "calls": ["db restore pre-1.1.0"], "versions": { "db": "" } }
+      ]
+    },
+    {
+      "name": "rollback_latest needs manual mode",
+      "target": "1.0.0",
+      "drivers": [{ "name": "db", "version": "1.0.0" }],
+      "migrations": [],
+      "backups": { "db": ["pre-1.0.0"] },
+      "steps": [
+        { "op": "rollback_latest", "error": "rollback: only available in manual rollback mode", "calls": [] }
+      ]
+    },
+    {
+      "name": "rollback_latest picks the highest version and restores every driver",
+      "target": "2.0.0",
+      "manual_rollback": true,
+      "drivers": [{ "name": "a", "version": "1.0.0" }, { "name": "b", "version": "1.0.0" }],
+      "migrations": [],
+      "backups": { "a": ["pre-1.10.0", "pre-1.9.0", "pre-v1.11.0", "other"], "b": ["pre-2.0.0-rc.1", "pre-2.0.0"] },
+      "steps": [
+        { "op": "rollback_latest", "error": null, "calls": ["a restore pre-v1.11.0", "b restore pre-2.0.0"] }
+      ]
+    },
+    {
+      "name": "rollback_latest without a backup",
+      "target": "1.0.0",
+      "manual_rollback": true,
+      "drivers": [{ "name": "db", "version": "1.0.0" }],
+      "migrations": [],
+      "backups": { "db": [] },
+      "steps": [
+        { "op": "rollback_latest", "error": "rollback db: no backups found for db", "calls": [] }
+      ]
+    },
+    {
+      "name": "prune keeps the newest retention backups",
+      "target": "2.0.0",
+      "retention": 2,
+      "drivers": [{ "name": "db", "version": "1.2.0" }],
+      "migrations": [{ "schema": "db", "version": "2.0.0" }],
+      "backups": { "db": ["pre-1.0.0", "pre-1.1.0", "pre-1.2.0"] },
+      "steps": [
+        {
+          "op": "run", "error": null,
+          "calls": ["db backup pre-2.0.0", "db up 2.0.0", "db set_version 2.0.0"],
+          "backups": { "db": ["pre-1.2.0", "pre-2.0.0"] }
+        }
+      ]
+    },
+    {
+      "name": "prune orders by semver",
+      "target": "1.11.0",
+      "retention": 2,
+      "drivers": [{ "name": "db", "version": "1.10.0" }],
+      "migrations": [{ "schema": "db", "version": "1.11.0" }],
+      "backups": { "db": ["pre-1.10.0", "pre-1.9.0"] },
+      "steps": [
+        { "op": "run", "error": null, "backups": { "db": ["pre-1.10.0", "pre-1.11.0"] } }
+      ]
+    },
+    {
+      "name": "zero retention keeps five",
+      "target": "2.0.0",
+      "drivers": [{ "name": "db", "version": "1.5.0" }],
+      "migrations": [{ "schema": "db", "version": "2.0.0" }],
+      "backups": { "db": ["pre-1.0.0", "pre-1.1.0", "pre-1.2.0", "pre-1.3.0", "pre-1.4.0", "pre-1.5.0"] },
+      "steps": [
+        {
+          "op": "run", "error": null,
+          "backups": { "db": ["pre-1.2.0", "pre-1.3.0", "pre-1.4.0", "pre-1.5.0", "pre-2.0.0"] }
+        }
+      ]
+    },
+    {
+      "name": "a failed run prunes nothing",
+      "target": "2.0.0",
+      "retention": 1,
+      "drivers": [{ "name": "db", "version": "1.1.0" }],
+      "migrations": [{ "schema": "db", "version": "2.0.0", "fail": "boom" }],
+      "backups": { "db": ["pre-1.0.0", "pre-1.1.0"] },
+      "steps": [
+        {
+          "op": "run", "error": "migrate db: up 2.0.0 failed: boom",
+          "calls": ["db backup pre-2.0.0", "db up 2.0.0"],
+          "backups": { "db": ["pre-1.0.0", "pre-1.1.0", "pre-2.0.0"] }
+        }
+      ]
+    },
+    {
+      "name": "a failed backup applies nothing",
+      "target": "1.1.0",
+      "drivers": [{ "name": "db", "version": "1.0.0", "backup_fail": "read-only" }],
+      "migrations": [{ "schema": "db", "version": "1.1.0" }],
+      "steps": [
+        {
+          "op": "run", "error": "migrate db: backup: read-only",
+          "calls": ["db backup pre-1.1.0"],
+          "history": [],
+          "versions": { "db": "" },
+          "backups": { "db": ["pre-1.1.0"] }
+        }
+      ]
+    },
+    {
+      "name": "an unreadable version stops the run; status counts from empty",
+      "target": "1.1.0",
+      "drivers": [{ "name": "db", "version": "1.0.0", "version_fail": "corrupt" }],
+      "migrations": [{ "schema": "db", "version": "0.5.0" }, { "schema": "db", "version": "1.1.0" }],
+      "steps": [
+        {
+          "op": "status", "error": null,
+          "status": [{ "schema": "db", "current": "", "target": "1.1.0", "pending": 2, "error": "corrupt" }]
+        },
+        { "op": "run", "error": "migrate db: read version: corrupt", "calls": [], "backups": { "db": [] } }
+      ]
+    },
+    {
+      "name": "a failed set_version comes after the version file is written",
+      "target": "1.1.0",
+      "drivers": [{ "name": "db", "version": "1.0.0", "set_version_fail": "locked" }],
+      "migrations": [{ "schema": "db", "version": "1.1.0" }],
+      "steps": [
+        {
+          "op": "run", "error": "migrate db: set version: locked",
+          "calls": ["db backup pre-1.1.0", "db up 1.1.0", "db set_version 1.1.0"],
+          "history": [{ "schema": "db", "version": "1.1.0" }],
+          "versions": { "db": "1.1.0" }
+        }
+      ]
+    },
+    {
+      "name": "a failing driver stops the run",
+      "target": "1.1.0",
+      "drivers": [
+        { "name": "a", "version": "1.0.0", "backup_fail": "full" },
+        { "name": "b", "version": "1.0.0" }
+      ],
+      "migrations": [{ "schema": "a", "version": "1.1.0" }, { "schema": "b", "version": "1.1.0" }],
+      "steps": [
+        {
+          "op": "run", "error": "migrate a: backup: full",
+          "calls": ["a backup pre-1.1.0"],
+          "versions": { "a": "", "b": "" },
+          "backups": { "a": ["pre-1.1.0"], "b": [] }
+        }
+      ]
+    }
+  ]
+}

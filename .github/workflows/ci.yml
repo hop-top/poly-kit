@@ -352,6 +352,13 @@ jobs:
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features bus,netpolicy,domain --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
+      # Version order, the migration registry and the driver trait of
+      # `upgrade` are pure; the runner is compiled off wasm32.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features upgrade
+      - name: clippy (wasm32, upgrade)
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features upgrade --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
       - name: netpolicy pulls no reqwest or tokio
         run: |
           tree=$(cargo tree --locked -e normal --no-default-features --features netpolicy)

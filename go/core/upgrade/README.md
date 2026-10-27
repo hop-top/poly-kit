@@ -35,6 +35,14 @@ c := upgrade.New(
 the default. Publishing is best-effort, fire-and-forget on a
 goroutine — it never blocks or fails the upgrade flow.
 
+## Parity
+
+Migration order, the pending range and the `Migrator` run, rollback
+and prune sequence are pinned by
+[`contracts/upgrade-v1`](../../../contracts/upgrade-v1/README.md)
+(`make test-parity-upgrade`); the Rust port is
+`hop_top_kit::upgrade`.
+
 ## Sub-packages
 
 - [`driver/`](driver/README.md): `upgrade.SchemaDriver` backends, which store holds the schema version and how it is backed up.
