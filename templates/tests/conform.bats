@@ -85,6 +85,28 @@ init_git_repo() {
   assert_file_exists "$d/docs/RELEASING.md"
 }
 
+@test "conform: .tmpl sources render tokens like scaffold" {
+  local d="$TEST_DIR/t1tok"
+  create_go_project "$d"
+
+  run "$SCRIPT_DIR/conform.sh" --path "$d" --no-tlc
+  [ "$status" -eq 2 ]
+
+  assert_file_contains "$d/.github/workflows/ci.yml" "go build -o testapp"
+  assert_file_not_contains "$d/.github/workflows/ci.yml" "{{.Name}}"
+
+  assert_file_contains "$d/.goreleaser.yaml" 'binary: "testapp"'
+  assert_file_contains "$d/.goreleaser.yaml" \
+    "hop.top/testapp/internal/version.ver={{ .Version }}"
+  assert_file_not_contains "$d/.goreleaser.yaml" '{{.Module}}'
+  assert_file_not_contains "$d/.goreleaser.yaml" '{{`'
+
+  assert_file_contains "$d/CONTRIBUTING.md" "testapp"
+  assert_file_not_contains "$d/CONTRIBUTING.md" "{{.Name}}"
+  assert_file_contains "$d/SECURITY.md" "test@test.com"
+  assert_file_not_contains "$d/SECURITY.md" "{{.Email}}"
+}
+
 @test "conform: fresh go project merges Makefile targets" {
   local d="$TEST_DIR/t1mk"
   create_go_project "$d"

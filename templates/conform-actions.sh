@@ -29,9 +29,17 @@ has_lang() {
 
 # Copy a template file if target is missing.
 # Usage: copy_template_if_missing <target> <source> [tok=val ...]
+# <source> may omit the `.tmpl` suffix: the plain path wins,
+# else `<source>.tmpl` is used (same resolution as
+# ci_workflow_src in lib.sh). Tokens use the Go dot-notation
+# placeholders that init.sh renders (e.g. {{.Name}}).
 copy_template_if_missing() {
   local target="$1" source="$2"
   shift 2
+
+  if [ ! -f "$source" ] && [ -f "${source}.tmpl" ]; then
+    source="${source}.tmpl"
+  fi
 
   if [ -f "$target" ]; then
     log_skipped "$target" "Already exists"
@@ -64,6 +72,7 @@ copy_template_if_missing() {
 
 run_copy_actions() {
   local tpl="$SCRIPT_DIR"
+  local module="${MODULE_PREFIX:+${MODULE_PREFIX}/}${APP_NAME}"
 
   # --- Go-only files ---
   if has_lang go; then
@@ -78,13 +87,15 @@ run_copy_actions() {
     copy_template_if_missing \
       ".goreleaser.yaml" \
       "$tpl/cli-go/.goreleaser.yml" \
-      "{{app_name}}=$APP_NAME" \
-      "{{module_prefix}}=$MODULE_PREFIX"
+      "{{.Module}}=$module" \
+      "{{.Name}}=$APP_NAME" \
+      '{{`=' \
+      '`}}='
 
     copy_template_if_missing \
       ".github/workflows/ci.yml" \
       "$tpl/shared/ci/ci-go.yml" \
-      "{{app_name}}=$APP_NAME"
+      "{{.Name}}=$APP_NAME"
   fi
 
   # --- Python-only files ---
@@ -118,12 +129,12 @@ to $_py_dir/." S P1
   copy_template_if_missing \
     "CONTRIBUTING.md" \
     "$tpl/shared/CONTRIBUTING.md" \
-    "{{app_name}}=$APP_NAME"
+    "{{.Name}}=$APP_NAME"
 
   copy_template_if_missing \
     "SECURITY.md" \
     "$tpl/shared/SECURITY.md" \
-    "{{author_email}}=$EMAIL"
+    "{{.Email}}=$EMAIL"
 
   copy_template_if_missing \
     "docs/RELEASING.md" \
