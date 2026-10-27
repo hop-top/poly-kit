@@ -111,9 +111,25 @@ impl StreamClient {
         if l.closing {
             return None;
         }
-        let b = self.writer.next_batch(log, &l.peer_origin)?;
+        let acks = l.acks;
+        let before = self.writer.cursor().at;
+        let mut b = self.writer.next_batch(log, &l.peer_origin)?;
         self.outbox_dropped += b.outbox_dropped;
         self.skipped += b.skipped;
+        let gap = b.outbox_dropped + b.skipped;
+        if gap > 0 {
+            // Offsets are dense: the batch starts right after the gap.
+            b.acks.extend(self.acks.on_gap(before, before + gap + 1));
+        }
+        let mut settled = Vec::new();
+        for off in &b.filtered {
+            settled.extend(self.acks.on_skip(*off));
+        }
+        for e in &b.send {
+            settled.extend(self.acks.on_send(e.offset, acks));
+        }
+        settled.sort_by_key(|r| r.offset);
+        b.acks.extend(settled);
         Some(b)
     }
 

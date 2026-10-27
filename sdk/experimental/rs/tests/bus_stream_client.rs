@@ -65,6 +65,7 @@ fn handshake_no_hook_advertises_zero() {
     let caps = StreamCaps {
         streams: 0,
         frames: vec![FrameFormat::Kit, FrameFormat::CloudEvents],
+        acks: 0,
     };
     let mut c = client(ClientConfig { caps, ..cfg() }, &log);
     let (id, f) = auth_frame(&mut c);
@@ -81,6 +82,7 @@ fn handshake_no_hook_dialer_connects_to_ordered_hub() {
     let caps = StreamCaps {
         streams: 0,
         frames: vec![FrameFormat::Kit, FrameFormat::CloudEvents],
+        acks: 0,
     };
     let mut c = client(ClientConfig { caps, ..cfg() }, &log);
     let up = connect(&mut c, &log, &ack(1, 0, None));

@@ -76,6 +76,12 @@ pub enum ProtocolKind {
     PositionMalformed,
     /// Reset or position naming another stream.
     ForeignStream,
+    /// Puback offset, status or code missing or malformed.
+    PubackMalformed,
+    /// Puback offset beyond the last frame sent on the link.
+    PubackAhead,
+    /// Puback id differs from the event sent at that offset.
+    PubackId,
 }
 
 impl ProtocolKind {
@@ -94,6 +100,9 @@ impl ProtocolKind {
             ProtocolKind::ResetMalformed => "reset_malformed",
             ProtocolKind::PositionMalformed => "position_malformed",
             ProtocolKind::ForeignStream => "foreign_stream",
+            ProtocolKind::PubackMalformed => "puback_malformed",
+            ProtocolKind::PubackAhead => "puback_ahead",
+            ProtocolKind::PubackId => "puback_id",
         }
     }
 }

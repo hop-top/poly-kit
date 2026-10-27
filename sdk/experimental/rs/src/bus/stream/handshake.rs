@@ -53,6 +53,10 @@ fn format_names<S: serde::Serializer>(fs: &[FrameFormat], s: S) -> Result<S::Ok,
     s.collect_seq(fs.iter().map(|f| format_name(*f)))
 }
 
+fn is_zero(v: &u64) -> bool {
+    *v == 0
+}
+
 /// The capability advertisement in the handshake.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct StreamCaps {
@@ -61,6 +65,11 @@ pub struct StreamCaps {
     /// Frame formats this side decodes, in its order.
     #[serde(serialize_with = "format_names")]
     pub frames: Vec<FrameFormat>,
+    /// Acknowledged-publish version
+    /// ([`ACKS_VERSION`](super::ACKS_VERSION)); 0 is absent from the
+    /// wire, so peers that do not ask for acks keep their bytes.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub acks: u64,
 }
 
 impl StreamCaps {
@@ -74,13 +83,15 @@ impl StreamCaps {
 /// unknown frame names are dropped.
 pub fn parse_caps(raw: Option<&Value>) -> Option<StreamCaps> {
     let m = raw?.as_object()?;
-    // Go reads streams with Atoi on the raw JSON: an integer literal
+    // Go reads versions with Atoi on the raw JSON: an integer literal
     // without fraction or exponent, at most the platform int.
-    let streams = m
-        .get("streams")
-        .and_then(Value::as_u64)
-        .filter(|v| *v <= i64::MAX as u64)
-        .unwrap_or(0);
+    let version = |key: &str| {
+        m.get(key)
+            .and_then(Value::as_u64)
+            .filter(|v| *v <= i64::MAX as u64)
+            .unwrap_or(0)
+    };
+    let (streams, acks) = (version("streams"), version("acks"));
     let frames = m
         .get("frames")
         .and_then(Value::as_array)
@@ -90,7 +101,11 @@ pub fn parse_caps(raw: Option<&Value>) -> Option<StreamCaps> {
                 .collect()
         })
         .unwrap_or_default();
-    Some(StreamCaps { streams, frames })
+    Some(StreamCaps {
+        streams,
+        frames,
+        acks,
+    })
 }
 
 /// A dialer's request to resume after `after` on stream `stream`.
@@ -124,6 +139,10 @@ pub struct AuthFrame {
     pub origin: String,
     /// The session request, if any.
     pub session: Option<SessionReq>,
+    /// The dialer's own stream id, sent with `caps.acks` so the acceptor
+    /// can recognize frames sent again after a reconnect; empty
+    /// otherwise.
+    pub stream: String,
 }
 
 /// Why an auth frame is unusable.
@@ -161,12 +180,32 @@ pub fn parse_auth_frame(data: &[u8]) -> Result<AuthFrame, AuthFrameError> {
     let Some(token) = member_str(&m, "auth").filter(|t| !t.is_empty()) else {
         return Err(invalid("auth must be a non-empty string"));
     };
-    let frame = AuthFrame {
+    let mut frame = AuthFrame {
         token: token.to_string(),
         caps: parse_caps(m.get("caps")),
         origin: member_str(&m, "origin").unwrap_or("").to_string(),
         session: None,
+        stream: String::new(),
     };
+    if frame.caps.as_ref().is_some_and(|c| c.acks >= 1) {
+        let id = m
+            .get("stream")
+            .and_then(Value::as_object)
+            .and_then(|s| member_str(s, "id"))
+            .filter(|id| valid_stream_id(id));
+        match id {
+            Some(id) => frame.stream = id.to_string(),
+            None => {
+                return Err(AuthFrameError::Session {
+                    frame: Box::new(frame),
+                    error: StreamError::new(
+                        CODE_BAD_REQUEST,
+                        "caps.acks needs the dialer's stream id",
+                    ),
+                })
+            }
+        }
+    }
     if is_null(m.get("session")) {
         return Ok(frame);
     }
@@ -217,13 +256,19 @@ fn parse_session(raw: &Value) -> Result<SessionReq, StreamError> {
 }
 
 /// Encodes the dialer's first frame. Without caps it is the legacy
-/// `{"auth": token}`.
+/// `{"auth": token}`. `stream` is the dialer's own stream id, sent only
+/// with `caps.acks`.
 pub fn encode_auth_frame(
     token: &str,
     caps: Option<&StreamCaps>,
     origin: &str,
+    stream: &str,
     session: Option<&SessionReq>,
 ) -> Vec<u8> {
+    #[derive(Serialize)]
+    struct Stream<'a> {
+        id: &'a str,
+    }
     #[derive(Serialize)]
     struct Resume<'a> {
         after: String,
@@ -247,6 +292,8 @@ pub fn encode_auth_frame(
         origin: Option<&'a str>,
         #[serde(skip_serializing_if = "Option::is_none")]
         session: Option<Session<'a>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        stream: Option<Stream<'a>>,
     }
     let session = caps.and(session).map(|s| Session {
         resume: s.resume.as_ref().map(|r| Resume {
@@ -261,6 +308,7 @@ pub fn encode_auth_frame(
         caps,
         origin: caps.map(|_| origin),
         session,
+        stream: caps.filter(|c| c.acks > 0).map(|_| Stream { id: stream }),
     };
     serde_json::to_vec(&f).expect("auth frames always encode")
 }

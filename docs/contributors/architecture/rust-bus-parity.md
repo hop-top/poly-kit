@@ -41,6 +41,10 @@ In scope:
 - netpolicy core, without `reqwest`
 - CloudEvents shaping
 - stream semantics: remote subscribe, resume offsets, offline buffering
+- acknowledged publishes, dialer side: `caps.acks`, the `puback` frame,
+  the ack tracker and the rewind on reconnect. The acceptor side
+  (pubacks, the dedupe memory and its principal bound) waits for a
+  stream acceptor, as the stream wire transcripts do
 - domain state machine
 - full config (not a bus-only subset)
 - a browser WebSocket transport

@@ -34,12 +34,14 @@ use super::cursor::{DialerCursor, LinkResume};
 use super::error::{ProtocolError, StreamError};
 use super::handshake::{negotiate, ResumeReq};
 use super::log::{OutboundWriter, StreamLog};
+use super::puback::{negotiate_acks, parse_puback, AckResolution, AckTracker};
 use super::subs::SubState;
 use super::types::{
     ClientConfig, CloseFrame, Delivery, DeliveryMarker, Disconnected, EventFrame, HandshakeError,
     HandshakeFailure, HandshakeId, Inbound, LinkDown, LinkFailure, LinkState, LinkUp, RequestError,
     StreamPosition, CLOSE_GOING_AWAY, CLOSE_PROTOCOL, DEAD_AFTER_HEARTBEATS,
 };
+use super::wire::member_str;
 use super::{classify_frame, is_reserved_topic};
 use crate::bus::Context;
 
@@ -47,6 +49,7 @@ use crate::bus::Context;
 #[derive(Debug)]
 pub(super) struct Link {
     pub(super) stream: bool,
+    pub(super) acks: bool,
     pub(super) peer_origin: String,
     pub(super) pending: BTreeMap<String, CtlRequest>,
     pub(super) next_id: u64,
@@ -82,6 +85,7 @@ pub struct StreamClient {
     pub(super) outbox_dropped: u64,
     pub(super) skipped: u64,
     pub(super) forgotten: bool,
+    pub(super) acks: AckTracker,
 }
 
 impl StreamClient {
@@ -101,8 +105,10 @@ impl StreamClient {
             },
             None => DialerCursor::default(),
         };
+        let writer = OutboundWriter::new(log, cfg.outbox);
         StreamClient {
-            writer: OutboundWriter::new(log, cfg.outbox),
+            acks: AckTracker::new(writer.cursor().at),
+            writer,
             cfg,
             cursor,
             subs,
@@ -204,6 +210,13 @@ impl StreamClient {
         self.connected_once = true;
         self.writer.link_up(log);
         let stream = ack.as_ref().and_then(|a| a.stream.as_ref());
+        let acks = negotiate_acks(
+            self.cfg.caps.acks,
+            ack.as_ref().and_then(|a| a.caps.as_ref()),
+            stream.is_some(),
+        );
+        let (rewind, settled) = self.acks.link_up(acks, self.writer.cursor().at);
+        self.writer.rewind(rewind);
         self.state = LinkState {
             connected: true,
             streams: stream.is_some(),
@@ -215,6 +228,7 @@ impl StreamClient {
         };
         self.phase = Phase::Up(Link {
             stream: stream.is_some(),
+            acks,
             peer_origin: ack.as_ref().map(|a| a.origin.clone()).unwrap_or_default(),
             pending: BTreeMap::new(),
             next_id: 0,
@@ -229,6 +243,8 @@ impl StreamClient {
             state: self.state.clone(),
             invalidated,
             heartbeat_ms: stream.map(|s| s.heartbeat_ms),
+            acks,
+            settled,
         })
     }
 
@@ -270,6 +286,12 @@ impl StreamClient {
             (FrameKind::Control, Some(m)) => m,
             (kind, Some(members)) => return Ok(Inbound::Event(EventFrame { kind, members })),
         };
+        if l.acks && member_str(&members, "type") == Some("puback") {
+            return match parse_puback(&members).and_then(|p| self.acks.on_puback(&p)) {
+                Ok(rs) => Ok(Inbound::Acked(rs)),
+                Err(p) => Err(self.broke(p)),
+            };
+        }
         let dc = match dialer_control(&members) {
             Ok(dc) => dc,
             Err(p) => return Err(self.broke(p)),
@@ -405,6 +427,42 @@ impl StreamClient {
     /// The link negotiated streams.
     pub fn is_stream(&self) -> bool {
         matches!(&self.phase, Phase::Up(l) if l.stream)
+    }
+
+    // Acknowledged publishes.
+
+    /// Registers an acknowledged publish appended to the send log at
+    /// `offset` with event `id` (empty when none). Call it before the
+    /// writer's next batch can send the entry. Its outcome arrives as an
+    /// [`AckResolution`] for `offset`: in [`Inbound::Acked`],
+    /// [`LinkUp::settled`](super::LinkUp::settled), a
+    /// [`Batch`](super::Batch)'s `acks`, or [`StreamClient::fail_acks`].
+    /// Deadlines are the transport's: on one, call
+    /// [`StreamClient::forget_ack`].
+    pub fn expect_ack(&mut self, offset: u64, id: &str) {
+        self.acks.register(offset, id);
+    }
+
+    /// Drops the wait at `offset` (its deadline passed): the frame may
+    /// still be acknowledged later, which settles nothing.
+    pub fn forget_ack(&mut self, offset: u64) {
+        self.acks.forget(offset);
+    }
+
+    /// Fails every wait with `code`: `unavailable` after
+    /// [`StreamClient::disconnect`] or when the adapter closes.
+    pub fn fail_acks(&mut self, code: &str) -> Vec<AckResolution> {
+        self.acks.fail_all(code)
+    }
+
+    /// The last offset the peer acknowledged.
+    pub fn acked(&self) -> u64 {
+        self.acks.acked()
+    }
+
+    /// Whether the live link negotiated pubacks.
+    pub fn is_acks(&self) -> bool {
+        matches!(&self.phase, Phase::Up(l) if l.acks)
     }
 
     /// The resume request the next handshake sends.

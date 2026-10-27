@@ -35,6 +35,7 @@ fn caps_of(v: &VCaps) -> StreamCaps {
     StreamCaps {
         streams: v.streams,
         frames: v.frames.iter().map(|f| format(f)).collect(),
+        acks: 0,
     }
 }
 
