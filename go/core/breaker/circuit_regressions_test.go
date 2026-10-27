@@ -135,3 +135,37 @@ func TestTripsTotal_ManualTripCountsOnce(t *testing.T) {
 	assert.Equal(t, uint64(1), st.Trips, "the manual open is not also counted as automatic")
 	assert.Equal(t, "ops", st.LastTripReason)
 }
+
+func TestReset_ClearsFailureWindowWhenClosed(t *testing.T) {
+	b, _ := newClocked(t, "reg-reset-window", 3, 1)
+	b.Record(false, 0)
+	b.Record(false, 0)
+	b.Reset()
+	b.Record(false, 0)
+	assert.Equal(t, breaker.Closed, b.State(), "Reset starts a fresh window")
+	b.Record(false, 0)
+	b.Record(false, 0)
+	assert.Equal(t, breaker.Open, b.State())
+}
+
+func TestReset_ClosesFromHalfOpen(t *testing.T) {
+	b, clk := newClocked(t, "reg-reset-half", 1, 1)
+	b.Record(false, 0)
+	clk.Advance(10 * time.Second)
+	require.NoError(t, b.Allow())
+	b.Reset()
+	assert.Equal(t, breaker.Closed, b.State())
+	require.NoError(t, b.Allow())
+	require.NoError(t, b.Allow(), "closed: no probe limit")
+}
+
+// Guard, green before this change too: Trip reads State() first.
+func TestTrip_AfterExpiredCooldownRestartsIt(t *testing.T) {
+	b, clk := newClocked(t, "reg-trip-expired", 1, 1)
+	b.Trip("first")
+	clk.Advance(10 * time.Second)
+	b.Trip("second")
+	assert.Equal(t, breaker.Open, b.State(), "a trip holds for a full cooldown")
+	clk.Advance(10 * time.Second)
+	assert.Equal(t, breaker.HalfOpen, b.State())
+}

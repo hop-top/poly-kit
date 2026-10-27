@@ -233,7 +233,7 @@ func (b *breakerImpl) Reset() {
 	b.mu.Unlock()
 
 	b.logReset()
-	b.emitTransitions(b.circ.close())
+	b.emitTransitions(b.circ.reset())
 }
 
 func (b *breakerImpl) Trip(reason string) {

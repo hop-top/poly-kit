@@ -133,24 +133,29 @@ func (c *circuit) record(success bool) []transition {
 	return out
 }
 
-// open forces Open; a no-op when already Open.
+// open forces Open; a no-op while Open within its cooldown. An Open
+// whose cooldown elapsed goes through HalfOpen, restarting it.
 func (c *circuit) open(manual bool) []transition {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	out := c.expire()
 	if c.state == Open {
-		return nil
+		return out
 	}
-	return []transition{c.moveTo(Open, manual)}
+	return append(out, c.moveTo(Open, manual))
 }
 
-// close forces Closed; a no-op when already Closed.
-func (c *circuit) close() []transition {
+// reset forces Closed with a fresh failure window, in every state.
+// Emits a transition only when the state changes.
+func (c *circuit) reset() []transition {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	out := c.expire()
 	if c.state == Closed {
-		return nil
+		c.failures = 0
+		return out
 	}
-	return []transition{c.moveTo(Closed, true)}
+	return append(out, c.moveTo(Closed, true))
 }
 
 // moveTo enters next with fresh per-state counters. Requires c.mu.
