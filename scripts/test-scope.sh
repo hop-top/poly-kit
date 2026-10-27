@@ -74,7 +74,7 @@ test-parity-retry go/core/util $RS
 test-parity-completion go/console/cli/completion $RS
 test-parity-completion-spec go/console/cli/completionspec $RS
 test-parity-netpolicy go/core/netpolicy $RS
-test-parity-llm go/ai/llm,go/ai/llm/anthropic $RS,$PY,$TS
+test-parity-llm go/ai/llm,go/ai/llm/anthropic,go/ai/llm/openai $RS,$PY,$TS
 test-parity-kv go/storage/kv/sqlite/... $RS
 test-parity-mcp go/transport/cmdsurface $RS,$TS,$PY,$PHP
 test-parity-taxonomy go/console/output/envelope $RS,$TS,$PY,$PHP
