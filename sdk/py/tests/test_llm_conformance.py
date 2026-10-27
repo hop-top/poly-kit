@@ -56,6 +56,16 @@ CONSUMED = {
     "anthropic_tool_names",
 }
 
+# Sections Go pins that this port does not implement yet: each is
+# reported as an explicit skip with its reason, pending the Python port.
+PENDING_PY_PORT: dict[str, str] = {
+    "anthropic_tool_choice": "Request.tool_choice not ported yet",
+    "anthropic_hermetic": "hermetic adapter mode not ported yet",
+    "anthropic_stream_events": "Request.stream_events (tool-call and usage stream events) not ported yet",
+    "bus_request_started": "metadata-only request bus payload not ported yet",
+    "bus_response_received": "metadata-only response bus payload not ported yet",
+}
+
 _META = {"version", "description"}
 _TOOL_NAMES_FIELDS = {"name", "rule", "mode", "tools", "want", "error", "calls", "want_calls"}
 _ERROR_FIELDS = {"reason", "name", "other"}
@@ -110,9 +120,16 @@ def test_version_is_v1() -> None:
 
 def test_every_section_is_consumed() -> None:
     sections = set(_VECTORS) - _META
-    assert sections == CONSUMED, (
-        f"not consumed: {sorted(sections - CONSUMED)}; gone: {sorted(CONSUMED - sections)}"
+    known = CONSUMED | set(PENDING_PY_PORT)
+    assert sections == known, (
+        f"not consumed: {sorted(sections - known)}; gone: {sorted(known - sections)}"
     )
+    assert not CONSUMED & set(PENDING_PY_PORT)
+
+
+@pytest.mark.parametrize("section", sorted(PENDING_PY_PORT))
+def test_pending_python_port(section: str) -> None:
+    pytest.skip(f"{section} ({len(_VECTORS[section])} vectors): {PENDING_PY_PORT[section]}")
 
 
 def test_no_unconsumed_files() -> None:
@@ -321,6 +338,12 @@ def _kind(e: BaseException) -> tuple[str, int]:
         return "truncated", 0
     if isinstance(e, llm.ResponseTooLargeError):
         return "too_large", 0
+    if isinstance(e, llm.PermissionDeniedError):
+        return (
+            "permission_denied"
+            if isinstance(e, llm.AuthError)
+            else "permission_denied without auth"
+        ), 0
     if isinstance(e, llm.AuthError):
         return "auth", 0
     if isinstance(e, llm.RateLimitError):
