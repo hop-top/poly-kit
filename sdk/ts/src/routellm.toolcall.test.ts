@@ -340,3 +340,71 @@ describe("routellm content parts on the wire", () => {
     );
   });
 });
+
+// ─── Tool names ─────────────────────────────────────────────────────────────
+
+describe("routellm tool names (openai rule)", () => {
+  const history = (name: string): Message[] => [
+    { role: "user", content: "Hi" },
+    {
+      role: "assistant",
+      content: "",
+      toolCalls: [{ id: "call_0", name, arguments: "{}" }],
+    },
+    { role: "tool", content: "opened", toolCallId: "call_0" },
+  ];
+
+  function withParams(params?: Record<string, string>): ResolvedConfig {
+    return { ...cfg, provider: { ...cfg.provider, params } };
+  }
+
+  function sentNames(): string[] {
+    const msgs = bodies[0]?.messages ?? [];
+    return msgs.flatMap((m) =>
+      ((m["tool_calls"] as { function: { name: string } }[] | undefined) ?? [])
+        .map((tc) => tc.function.name)
+    );
+  }
+
+  it("maps history names forward by default", async () => {
+    await new RouteLLMAdapter(cfg).complete({ messages: history("pane.open") });
+    expect(sentNames()).toEqual(["pane_open"]);
+  });
+
+  it("maps an overlong history name to 64 bytes with a hash", async () => {
+    await new RouteLLMAdapter(cfg).complete({
+      messages: history("a".repeat(65)),
+    });
+    expect(sentNames()).toEqual(["a".repeat(55) + "_635361c4"]);
+  });
+
+  it("maps history names forward when streaming", async () => {
+    globalThis.fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new globalThis.Response("data: [DONE]\n\n", { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const adapter = new RouteLLMAdapter(cfg);
+    for await (const _tok of adapter.stream({ messages: history("ns/tool") })) {
+      // drain
+    }
+    expect(sentNames()).toEqual(["ns_tool"]);
+  });
+
+  it("sends history names unchanged in strict mode", async () => {
+    const adapter = new RouteLLMAdapter(withParams({ tool_names: "strict" }));
+    await adapter.complete({ messages: history("pane.open") });
+    expect(sentNames()).toEqual(["pane.open"]);
+  });
+
+  it("accepts an explicit sanitize mode", async () => {
+    const adapter = new RouteLLMAdapter(withParams({ tool_names: "sanitize" }));
+    await adapter.complete({ messages: history("pane.open") });
+    expect(sentNames()).toEqual(["pane_open"]);
+  });
+
+  it("refuses an unknown mode at construction", () => {
+    expect(
+      () => new RouteLLMAdapter(withParams({ tool_names: "loose" }))
+    ).toThrow(/tool_names/);
+  });
+});

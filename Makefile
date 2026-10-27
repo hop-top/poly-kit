@@ -467,6 +467,8 @@ test-parity-llm: ## llm-v1 conformance corpus (Go and Rust runners)
 	go test ./go/ai/llm/ ./go/ai/llm/anthropic/ -run '^TestConformance' -count=1
 	@echo "==> llm-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --features llm-anthropic --test llm_conformance --locked
+	@echo "==> llm-v1 conformance: TypeScript (tool_names)"
+	cd sdk/ts && pnpm vitest run src/llm-toolnames.conformance.test.ts
 
 # Cross-process kv storage-binding gate over contracts/kv-v1/keys.json.
 # The Go test drives the Rust half as a `cargo test` subprocess, so this
