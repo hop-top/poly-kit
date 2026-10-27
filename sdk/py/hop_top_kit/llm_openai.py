@@ -19,6 +19,8 @@ none goes over plain http to a remote host. Provider params:
 ``tool_names`` (:mod:`hop_top_kit.llm_toolnames`, rule
 :data:`~hop_top_kit.llm_toolnames.OPENAI_TOOL_NAMES`),
 ``max_body_bytes`` and ``max_event_bytes``.
+:attr:`~hop_top_kit.llm.Request.tool_choice` maps by :func:`tool_choice`
+(``any`` is ``"required"``).
 
 The wire mapping (:func:`map_messages`, :func:`map_tools`,
 :func:`parse_completion`, :class:`ChunkAccumulator`) is shared with
@@ -208,6 +210,23 @@ def _read_base64(src: llm.MediaSource | None, provider: str) -> str:
     if src is None:
         raise llm.LLMError(f"{provider}: content part has no media source")
     return base64.b64encode(src.read()).decode("ascii")
+
+
+def check_tool_choice(provider: str, req: llm.Request, tools: list[llm.ToolDef] | None) -> None:
+    """Raise :class:`~hop_top_kit.llm.LLMError` when the request's
+    tool_choice cannot go with *tools* (``None`` for a call without)."""
+    if (why := llm.check_tool_choice(req.tool_choice, tools)) is not None:
+        raise llm.LLMError(f"{provider}: {why}")
+
+
+def tool_choice(c: llm.ToolChoice, names: ToolNames) -> Any:
+    """A checked choice on the wire: ``any`` is ``"required"``, a named
+    tool goes by the name the request sends for it."""
+    if c.mode == llm.ToolChoiceMode.ANY:
+        return "required"
+    if c.mode == llm.ToolChoiceMode.TOOL:
+        return {"type": "function", "function": {"name": names.wire(c.name)}}
+    return str(c.mode)
 
 
 def map_tools(defs: list[llm.ToolDef], names: ToolNames) -> list[dict[str, Any]]:
@@ -420,6 +439,7 @@ class OpenAIAdapter:
         stream: bool,
         names: ToolNames,
     ) -> dict[str, Any]:
+        check_tool_choice(self.scheme, req, tools)
         b: dict[str, Any] = {
             "model": req.model or self._model,
             "messages": map_messages(req.messages, names, provider=self.scheme),
@@ -432,6 +452,8 @@ class OpenAIAdapter:
             b["stop"] = list(req.stop_sequences)
         if tools is not None:
             b["tools"] = map_tools(tools, names)
+        if req.tool_choice is not None:
+            b["tool_choice"] = tool_choice(req.tool_choice, names)
         if stream:
             b["stream"] = True
         return b

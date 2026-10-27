@@ -2,9 +2,10 @@
 
 Loads ``contracts/llm-v1/vectors.json`` from the repo root and runs every
 section: the provider-neutral core (``redact_uri``, ``parse_uri``,
-``key_endpoint``, ``usage_cost``, ``tool_names``) and the anthropic
-adapter (``anthropic_*``, ``credential_headers``) against a loopback
-server. The vectors are the source of truth: a failure means this port
+``key_endpoint``, ``usage_cost``, ``tool_names``), the bus payloads
+(``bus_*``, against :mod:`hop_top_kit.llm_events`' builders: the Python
+client publishes no bus events) and the anthropic adapter
+(``anthropic_*``, ``credential_headers``) against a loopback server. The vectors are the source of truth: a failure means this port
 drifted from Go. Strict: a section the runner does not consume, or a
 vector field it does not know, fails the run.
 """
@@ -14,13 +15,14 @@ from __future__ import annotations
 import base64
 import json
 import os
+import urllib.request
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
 
-from hop_top_kit import llm
+from hop_top_kit import llm, llm_events
 from hop_top_kit.llm_anthropic import AnthropicAdapter
 from hop_top_kit.llm_endpoint import redact_uri
 from hop_top_kit.llm_toolnames import (
@@ -54,16 +56,11 @@ CONSUMED = {
     "usage_cost",
     "tool_names",
     "anthropic_tool_names",
-}
-
-# Sections Go pins that this port does not implement yet: each is
-# reported as an explicit skip with its reason, pending the Python port.
-PENDING_PY_PORT: dict[str, str] = {
-    "anthropic_tool_choice": "Request.tool_choice not ported yet",
-    "anthropic_hermetic": "hermetic adapter mode not ported yet",
-    "anthropic_stream_events": "Request.stream_events (tool-call and usage stream events) not ported yet",
-    "bus_request_started": "metadata-only request bus payload not ported yet",
-    "bus_response_received": "metadata-only response bus payload not ported yet",
+    "anthropic_tool_choice",
+    "anthropic_hermetic",
+    "anthropic_stream_events",
+    "bus_request_started",
+    "bus_response_received",
 }
 
 _META = {"version", "description"}
@@ -120,16 +117,9 @@ def test_version_is_v1() -> None:
 
 def test_every_section_is_consumed() -> None:
     sections = set(_VECTORS) - _META
-    known = CONSUMED | set(PENDING_PY_PORT)
-    assert sections == known, (
-        f"not consumed: {sorted(sections - known)}; gone: {sorted(known - sections)}"
+    assert sections == CONSUMED, (
+        f"not consumed: {sorted(sections - CONSUMED)}; gone: {sorted(CONSUMED - sections)}"
     )
-    assert not CONSUMED & set(PENDING_PY_PORT)
-
-
-@pytest.mark.parametrize("section", sorted(PENDING_PY_PORT))
-def test_pending_python_port(section: str) -> None:
-    pytest.skip(f"{section} ({len(_VECTORS[section])} vectors): {PENDING_PY_PORT[section]}")
 
 
 def test_no_unconsumed_files() -> None:
@@ -302,6 +292,7 @@ def _request(r: dict[str, Any]) -> llm.Request:
         temperature=r.get("temperature"),
         max_tokens=r.get("max_tokens", 0),
         stop_sequences=r.get("stop_sequences", []),
+        extensions=dict(r.get("extensions") or {}),
         thinking=llm.ThinkingConfig(budget) if budget else None,
     )
 
@@ -639,6 +630,236 @@ def test_anthropic_tool_names(v: dict[str, Any], clean_env) -> None:
     assert history == v.get("want_history", [])
     want_calls = [(c["id"], c["name"]) for c in v.get("want_calls", [])]
     assert [(c.id, c.name) for c in calls] == want_calls
+
+
+# A complete, empty streamed turn.
+_MINIMAL_SSE = (
+    "event: message_start\n"
+    'data: {"type":"message_start","message":{"id":"msg_1","type":"message",'
+    '"role":"assistant","content":[],"model":"m","stop_reason":null,'
+    '"usage":{"input_tokens":1,"output_tokens":0}}}\n\n'
+    "event: message_stop\n"
+    'data: {"type":"message_stop"}\n\n'
+)
+
+_TOOL_CHOICE_FIELDS = {"name", "call", "tools", "tool_choice", "want_tool_choice", "error"}
+
+
+@pytest.mark.parametrize("v", _cases("anthropic_tool_choice"))
+def test_anthropic_tool_choice(v: dict[str, Any], clean_env) -> None:
+    assert not set(v) - _TOOL_CHOICE_FIELDS, (
+        f"unknown fields {sorted(set(v) - _TOOL_CHOICE_FIELDS)}"
+    )
+    call = v["call"]
+    streamed = call in ("stream", "stream_tools")
+    canned = Canned.sse(_MINIMAL_SSE) if streamed else Canned.json(200, _OK_MESSAGE)
+    req = _hi()
+    if (c := v["tool_choice"]) is not None:
+        assert not set(c) - {"mode", "name"}, c
+        req.tool_choice = llm.ToolChoice(mode=c["mode"], name=c.get("name", ""))
+    defs = [llm.ToolDef(name=n, description="") for n in v["tools"]]
+    with serve(canned) as srv:
+        a = _adapter(srv.url)
+        try:
+            if call == "complete":
+                a.complete(req)
+            elif call == "stream":
+                a.stream(req).close()
+            elif call == "tools":
+                a.call_with_tools(req, defs)
+            elif call == "stream_tools":
+                a.stream_with_tools(req, defs).close()
+            else:
+                pytest.fail(f"unknown call {call!r}")
+        except llm.LLMError as e:
+            assert v.get("error"), f"unexpected {e!r}"
+            assert str(e) == v["error"]
+            assert not llm.is_fallbackable(e)
+            assert srv.attempts == 0, "a rejected request is never sent"
+            return
+        assert not v.get("error"), "want an error"
+        body = srv.only().json()
+    if v["want_tool_choice"] is None:
+        assert "tool_choice" not in body, "no tool_choice sent"
+        return
+    assert body["tool_choice"] == v["want_tool_choice"]
+
+
+class _Capture:
+    """An opener recording the request the adapter makes, answered by a
+    loopback server: the vector's host is never reached."""
+
+    def __init__(self, target: str) -> None:
+        self.target = target
+        self.requests: list[urllib.request.Request] = []
+
+    def open(self, req: urllib.request.Request, timeout: float | None = None) -> Any:
+        self.requests.append(req)
+        path = urllib.request.urlparse(req.full_url).path
+        fwd = urllib.request.Request(
+            self.target + path, data=req.data, headers=dict(req.header_items()), method="POST"
+        )
+        return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
+            fwd, timeout=timeout
+        )
+
+
+_HERMETIC_FIELDS = {"name", "base_url", "yaml", "env", "want_host", "sent", "withheld"}
+
+
+@pytest.mark.parametrize("v", _cases("anthropic_hermetic"))
+def test_anthropic_hermetic(v: dict[str, Any], clean_env, monkeypatch) -> None:
+    assert not set(v) - _HERMETIC_FIELDS, f"unknown fields {sorted(set(v) - _HERMETIC_FIELDS)}"
+    if v["yaml"]:
+        (clean_env / "hop").mkdir()
+        (clean_env / "hop" / "llm.yaml").write_text(v["yaml"])
+    for k, val in v["env"].items():
+        monkeypatch.setenv(k, val)
+    # No env or config_file override: the adapter would read the process
+    # environment and llm.yaml, were it not hermetic.
+    a = AnthropicAdapter(
+        llm.ResolvedConfig(
+            uri=llm.URI(scheme="anthropic", model="m"),
+            provider=llm.ProviderConfig(api_key="kit-key", base_url=v["base_url"], model="m"),
+            hermetic=True,
+        ),
+        sleep=None,
+    )
+    with serve(Canned.json(200, _OK_MESSAGE)) as srv:
+        cap = _Capture(srv.url)
+        a._transport._opener = cap  # type: ignore[assignment]
+        a.complete(_hi())
+    assert len(cap.requests) == 1
+    req = cap.requests[0]
+    assert urllib.request.urlparse(req.full_url).hostname == v["want_host"]
+    headers = {k.lower(): val for k, val in req.header_items()}
+    for h in v["sent"]:
+        assert headers.get(h), h
+    for h in v["withheld"]:
+        assert h not in headers, h
+
+
+def _usage_json(u: llm.Usage) -> dict[str, int]:
+    return {
+        "prompt_tokens": u.prompt_tokens,
+        "completion_tokens": u.completion_tokens,
+        "cache_read_tokens": u.cache_read_tokens,
+        "cache_creation_tokens": u.cache_creation_tokens,
+        "total_tokens": u.total_tokens,
+    }
+
+
+def _event_json(t: llm.Token) -> dict[str, Any]:
+    """One streamed token as the vectors spell it."""
+    if t.done:
+        return {"type": "done"}
+    if (ev := t.tool_call) is not None:
+        out: dict[str, Any] = {"type": "tool_call", "kind": str(ev.kind), "index": ev.index}
+        if ev.kind == llm.ToolCallEventKind.START:
+            out.update(id=ev.id, name=ev.name)
+        elif ev.kind == llm.ToolCallEventKind.DELTA:
+            out["arguments"] = ev.arguments_delta
+        else:
+            assert ev.kind == llm.ToolCallEventKind.END, ev
+            assert ev.call is not None
+            assert (ev.id, ev.name) == (ev.call.id, ev.call.name), "end repeats id and name"
+            out.update(id=ev.call.id, name=ev.call.name, arguments=json.loads(ev.call.arguments))
+        return out
+    if t.usage is not None:
+        return {"type": "usage", "usage": _usage_json(t.usage)}
+    if t.thinking:
+        return {"type": "thinking", "thinking": t.thinking}
+    return {"type": "text", "text": t.content}
+
+
+_STREAM_EVENTS_FIELDS = {
+    "name",
+    "sse",
+    "sse_from",
+    "tools",
+    "stream_events",
+    "want_events",
+    "error_kind",
+}
+
+
+@pytest.mark.parametrize("v", _cases("anthropic_stream_events"))
+def test_anthropic_stream_events(v: dict[str, Any], clean_env) -> None:
+    extra = set(v) - _STREAM_EVENTS_FIELDS
+    assert not extra, f"unknown fields {sorted(extra)}"
+    streams = {f"anthropic_stream/{s['name']}": s["sse"] for s in _VECTORS["anthropic_stream"]}
+    sse = streams[v["sse_from"]] if v.get("sse_from") else v["sse"]
+    req = _hi()
+    req.stream_events = v["stream_events"]
+    got: list[dict[str, Any]] = []
+    ends: list[llm.ToolCallEvent] = []
+    last: llm.Usage | None = None
+    err: BaseException | None = None
+    with serve(Canned.sse(sse)) as srv:
+        a = _adapter(srv.url)
+        if v["tools"]:
+            s = a.stream_with_tools(req, [llm.ToolDef(name=n, description="") for n in v["tools"]])
+        else:
+            s = a.stream(req)
+        try:
+            for t in s:
+                got.append(_event_json(t))
+                if t.tool_call is not None and t.tool_call.kind == llm.ToolCallEventKind.END:
+                    ends.append(t.tool_call)
+                if t.usage is not None:
+                    last = t.usage
+                if t.done:
+                    assert next(s, None) is None, "next after done is end"
+                    break
+        except llm.LLMError as e:
+            err = e
+    assert got == v["want_events"]
+    assert (_kind(err)[0] if err else "") == v["error_kind"], err
+    if not v["tools"] or err is not None:
+        return
+    # The events and the outcome tell the same story.
+    out = s.outcome()
+    assert out is not None
+    if v["stream_events"]:
+        assert len(out.tool_calls) == len(ends)
+        for ev in ends:
+            assert out.tool_calls[ev.index] == ev.call, "end call is outcome.tool_calls[index]"
+        if last is not None:
+            assert out.usage == last, "the last usage snapshot is outcome.usage"
+
+
+_BUS_START_FIELDS = {"name", "op", "tools", "request", "want_payload"}
+
+
+@pytest.mark.parametrize("v", _cases("bus_request_started"))
+def test_bus_request_started(v: dict[str, Any]) -> None:
+    assert not set(v) - _BUS_START_FIELDS, f"unknown fields {sorted(set(v) - _BUS_START_FIELDS)}"
+    p = llm_events.request_start_payload(v["op"], _request(v["request"]), tools=len(v["tools"]))
+    got = json.loads(json.dumps(p.to_dict()))
+    assert _numeric(got) == _numeric(v["want_payload"])
+
+
+_BUS_END_FIELDS = {"name", "op", "response", "tool_calls", "want_payload"}
+
+
+@pytest.mark.parametrize("v", _cases("bus_response_received"))
+def test_bus_response_received(v: dict[str, Any]) -> None:
+    assert not set(v) - _BUS_END_FIELDS, f"unknown fields {sorted(set(v) - _BUS_END_FIELDS)}"
+    r = v["response"]
+    resp = llm.Response(
+        content=r.get("content", ""),
+        finish_reason=r.get("finish_reason", ""),
+        usage=llm.Usage(**r["usage"]),
+        thinking=_thoughts(r.get("thinking")),
+    )
+    calls = [
+        llm.ToolCall(id=c["id"], name=c["name"], arguments=c["arguments"]) for c in v["tool_calls"]
+    ]
+    p = llm_events.request_end_payload(v["op"], resp, calls, duration=0.0123)
+    got = json.loads(json.dumps(p.to_dict()))
+    ms = got.pop("duration_ms")
+    assert isinstance(ms, int) and not isinstance(ms, bool) and ms >= 0, ms
+    assert _numeric(got) == _numeric(v["want_payload"])
 
 
 def test_runner_env_is_clean(clean_env) -> None:

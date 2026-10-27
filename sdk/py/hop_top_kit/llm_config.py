@@ -148,7 +148,7 @@ def _drop_blank_uri_key(u: URI) -> None:
         del u.params["api_key"]
 
 
-def load_config(uri: str = "") -> ResolvedConfig:
+def load_config(uri: str = "", *, hermetic: bool = False) -> ResolvedConfig:
     """Load LLM configuration from env vars, YAML file, or explicit *uri*.
 
     Resolution order (first wins per field):
@@ -160,7 +160,14 @@ def load_config(uri: str = "") -> ResolvedConfig:
 
     Raises :class:`KeyEndpointError` when the key may not go where the
     configuration points (see :func:`_guard_key_endpoint`).
+
+    *hermetic* reads nothing ambient: no environment variable and no
+    llm.yaml. The config is *uri* alone (required): its model, params,
+    ``api_key`` and ``base_url`` params and host form; no fallbacks. The
+    result carries :attr:`ResolvedConfig.hermetic` for the adapter.
     """
+    if hermetic:
+        return _hermetic_config(uri)
     yaml_data = _load_yaml_config()
 
     raw_uri = uri or os.environ.get("LLM_PROVIDER", "") or yaml_data.get("default", "")
@@ -201,6 +208,26 @@ def load_config(uri: str = "") -> ResolvedConfig:
     )
 
     return ResolvedConfig(uri=parsed, provider=provider_cfg, fallbacks=fallbacks)
+
+
+def _hermetic_config(uri: str) -> ResolvedConfig:
+    """:func:`load_config` from *uri* alone, as Go ``Resolve`` builds it."""
+    if not uri:
+        raise LLMError("no LLM provider URI (a hermetic config reads no LLM_PROVIDER or llm.yaml)")
+    parsed = parse_uri(uri)
+    _drop_blank_uri_key(parsed)
+    base_url = f"http://{parsed.host}" if parsed.host else ""
+    base_url = parsed.params.get("base_url", base_url)
+    api_key = parsed.params.get("api_key", "")
+    # A key never crosses the network in clear.
+    check_key_endpoint(parsed.scheme, api_key, base_url)
+    return ResolvedConfig(
+        uri=parsed,
+        provider=ProviderConfig(
+            api_key=api_key, base_url=base_url, model=parsed.model, params=dict(parsed.params)
+        ),
+        hermetic=True,
+    )
 
 
 def apply_api_key(uri: str) -> str:
