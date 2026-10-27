@@ -183,7 +183,7 @@ The last token has `Done` set; every `Next` after it returns `io.EOF`.
 `client.StreamWithTools(ctx, req, tools)` streams a tool-calling turn the
 same way; once `Done` arrived, `ToolStream.Outcome()` returns the whole
 turn (text, thinking blocks, tool calls, stop reason, usage). After an
-error, a cancelled `ctx` or `Close`, there is no outcome.
+error, a canceled `ctx` or `Close`, there is no outcome.
 
 ### Tool-call and usage events
 
@@ -221,7 +221,7 @@ for {
 
 Each call goes start, deltas, end; parallel calls may interleave, told
 apart by `Index`. A call that started and did not end (the stream
-failed, was cancelled or closed) did not complete: no end event is made
+failed, was canceled or closed) did not complete: no end event is made
 up for it, and `Outcome()` reports none.
 
 **Budgets.** Usage arrives only when the provider sends it. Anthropic

@@ -275,7 +275,7 @@ const (
 // For each call: one start, then any deltas, then one end, in that
 // order; events of parallel calls may interleave and are told apart by
 // Index, the call's position in [StreamOutcome.ToolCalls]. A call that
-// started but never ended (the stream failed, was cancelled or closed)
+// started but never ended (the stream failed, was canceled or closed)
 // did not complete: no end event is made up for it.
 type ToolCallEvent struct {
 	Kind  ToolCallEventKind

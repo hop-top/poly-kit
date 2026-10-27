@@ -14,9 +14,9 @@ import (
 	"hop.top/kit/go/ai/llm"
 )
 
-// A cancelled stream ends with an error after the events so far; the
+// A canceled stream ends with an error after the events so far; the
 // open call gets no end and there is no outcome.
-func TestStreamEventsCancelledMidToolCall(t *testing.T) {
+func TestStreamEventsCanceledMidToolCall(t *testing.T) {
 	clearAnthropicEnv(t)
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
