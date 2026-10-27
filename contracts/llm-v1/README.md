@@ -64,7 +64,7 @@ calls carry the original name.
 | Port | Runner |
 |------|--------|
 | Go | `go/ai/llm/conformance_test.go`, `go/ai/llm/anthropic/conformance_test.go` (`TestConformance*`) |
-| Rust | `sdk/experimental/rs/tests/llm_conformance.rs` (anthropic sections need feature `llm-anthropic`; `tool_names` and `anthropic_tool_names` decoded and skipped until the port implements them) |
+| Rust | `sdk/experimental/rs/tests/llm_conformance.rs` (anthropic sections, including `anthropic_tool_names`, need feature `llm-anthropic`) |
 | Python | `sdk/py/tests/test_llm_conformance.py`: `tool_names`; every other section skipped with its reason (no anthropic adapter in Python) |
 | TypeScript | `sdk/ts/src/llm-toolnames.conformance.test.ts`: `tool_names` only (no anthropic adapter in TypeScript) |
 
