@@ -262,9 +262,16 @@ elif [ -z "${KIT_SKIP_MISE:-}" ]; then
 fi
 
 # --- Lint affected areas only ---
-# Cross-cutting config/link/sdk-paths linters always run; per-language
-# linters gate on whether their language's files changed in this push.
-echo "Running affected linters..."
+# Per-language targets run only when their language's files changed in
+# this push. Every lint target is changed-only too: LINT_BASE/LINT_HEAD
+# hand it this push's range (scripts/changed-files.sh), so lint-go lints
+# just the packages the pushed commits touch, the docs linters just the
+# pushed docs, and so on. Uncommitted and untracked files are not part of
+# the push and are not linted here.
+LINT_BASE="$REMOTE_SHA"
+LINT_HEAD=HEAD
+export LINT_BASE LINT_HEAD
+echo "Running affected linters (changed files since $(git rev-parse --short "$REMOTE_SHA" 2>/dev/null || echo "$REMOTE_SHA"))..."
 
 if [ -n "$HAS_GO" ]; then
     echo "  lint-go..."
