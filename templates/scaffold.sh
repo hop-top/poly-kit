@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1091
+# shellcheck source-path=SCRIPTDIR
 set -euo pipefail
 
 # -------------------------------------------------------
@@ -122,18 +123,20 @@ USAGE
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    -h|--help)
+    -h | --help)
       usage
       ;;
     --output)
       require_arg "$1" "${2:-}"
-      OUTPUT="$2"; shift 2
+      OUTPUT="$2"
+      shift 2
       ;;
-    --lang|--langs)
+    --lang | --langs)
       require_arg "$1" "${2:-}"
-      LANG="$2"; shift 2
+      LANG="$2"
+      shift 2
       ;;
-    --lang=*|--langs=*)
+    --lang=* | --langs=*)
       LANG="${1#*=}"
       if [ -z "$LANG" ]; then
         echo "Error: ${1%%=*} requires a value" >&2
@@ -143,38 +146,47 @@ while [ $# -gt 0 ]; do
       ;;
     --description)
       require_arg "$1" "${2:-}"
-      DESCRIPTION="$2"; shift 2
+      DESCRIPTION="$2"
+      shift 2
       ;;
     --license)
       require_arg "$1" "${2:-}"
-      LICENSE="$2"; shift 2
+      LICENSE="$2"
+      shift 2
       ;;
     --author)
       require_arg "$1" "${2:-}"
-      AUTHOR="$2"; shift 2
+      AUTHOR="$2"
+      shift 2
       ;;
     --email)
       require_arg "$1" "${2:-}"
-      EMAIL="$2"; shift 2
+      EMAIL="$2"
+      shift 2
       ;;
     --forge)
       require_arg "$1" "${2:-}"
-      FORGE="$2"; shift 2
+      FORGE="$2"
+      shift 2
       ;;
     --private)
-      PRIVATE=true; shift
+      PRIVATE=true
+      shift
       ;;
     --homepage)
       require_arg "$1" "${2:-}"
-      HOMEPAGE="$2"; shift 2
+      HOMEPAGE="$2"
+      shift 2
       ;;
     --org)
       require_arg "$1" "${2:-}"
-      ORG="$2"; shift 2
+      ORG="$2"
+      shift 2
       ;;
     --module-prefix)
       require_arg "$1" "${2:-}"
-      MODULE_PREFIX="$2"; shift 2
+      MODULE_PREFIX="$2"
+      shift 2
       ;;
     --no-tlc)
       if [ "$HAS_TLC" = true ]; then
@@ -186,17 +198,21 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     --no-push)
-      NO_PUSH=true; shift
+      NO_PUSH=true
+      shift
       ;;
     --no-devcontainer)
-      NO_DEVCONTAINER=true; shift
+      NO_DEVCONTAINER=true
+      shift
       ;;
     --services)
       require_arg "$1" "${2:-}"
-      SERVICES="$2"; shift 2
+      SERVICES="$2"
+      shift 2
       ;;
     --no-services)
-      NO_SERVICES=true; shift
+      NO_SERVICES=true
+      shift
       ;;
     -*)
       echo "Error: unknown flag: $1" >&2
@@ -245,7 +261,7 @@ fi
 
 # Validate license
 case "$LICENSE" in
-  apache|Apache-2.0|mit|MIT) ;;
+  apache | Apache-2.0 | mit | MIT) ;;
   *)
     echo "Error: invalid license: $LICENSE (must be apache or mit)" >&2
     exit 1
@@ -253,10 +269,10 @@ case "$LICENSE" in
 esac
 
 # Validate lang values
-IFS=',' read -ra LANG_ARRAY <<< "$LANG"
+IFS=',' read -ra LANG_ARRAY <<<"$LANG"
 for l in "${LANG_ARRAY[@]}"; do
   case "$l" in
-    go|ts|py|rs|php) ;;
+    go | ts | py | rs | php) ;;
     *)
       echo "Error: invalid language: $l (must be go, ts, py, rs, or php)" >&2
       exit 1
@@ -266,12 +282,12 @@ done
 
 # Validate --services list against catalog
 if [ -n "$SERVICES" ]; then
-  IFS=',' read -ra _SVC_ARRAY <<< "$SERVICES"
+  IFS=',' read -ra _SVC_ARRAY <<<"$SERVICES"
   for s in "${_SVC_ARRAY[@]}"; do
     s_trimmed="$(echo "$s" | tr -d ' ')"
     [ -z "$s_trimmed" ] && continue
     case "$s_trimmed" in
-      postgres|redis|minio|mailpit|redpanda) ;;
+      postgres | redis | minio | mailpit | redpanda) ;;
       *)
         echo "Error: unknown service: $s_trimmed (must be one of: postgres, redis, minio, mailpit, redpanda)" >&2
         exit 1
@@ -304,7 +320,7 @@ fi
 
 # Validate forge
 case "$FORGE" in
-  github|gitlab|none|"") ;;
+  github | gitlab | none | "") ;;
   *)
     echo "Error: invalid forge: $FORGE (must be github, gitlab, or none)" >&2
     exit 1
@@ -454,8 +470,8 @@ cp -r "$TEMPLATE_SRC/"* "$OUTPUT/" 2>/dev/null || true
 # Copy hidden files
 for f in "$TEMPLATE_SRC"/.*; do
   case "$(basename "$f")" in
-    .|..) continue ;;
-    *)    cp -r "$f" "$OUTPUT/" ;;
+    . | ..) continue ;;
+    *) cp -r "$f" "$OUTPUT/" ;;
   esac
 done
 
@@ -509,8 +525,8 @@ fi
 # Map license flag to init.sh value
 INIT_LICENSE="MIT"
 case "$LICENSE" in
-  apache|Apache-2.0) INIT_LICENSE="Apache-2.0" ;;
-  mit|MIT)           INIT_LICENSE="MIT" ;;
+  apache | Apache-2.0) INIT_LICENSE="Apache-2.0" ;;
+  mit | MIT) INIT_LICENSE="MIT" ;;
 esac
 
 # Run init.sh with env var overrides
@@ -603,7 +619,7 @@ if [ "$HAS_TLC" = true ] && [ "$NO_TLC" = false ] && [ -t 0 ]; then
   read -r tracker_input
   tracker_input="${tracker_input:-1}"
 
-  IFS=',' read -ra SELECTED_NUMS <<< "$tracker_input"
+  IFS=',' read -ra SELECTED_NUMS <<<"$tracker_input"
   SELECTED_TRACKERS=()
   for num in "${SELECTED_NUMS[@]}"; do
     num="$(echo "$num" | tr -d ' ')"
@@ -629,7 +645,7 @@ if [ "$FORGE" = "github" ] && [ -n "$REPO_URL" ] && [ -t 0 ]; then
   HAS_EXTERNAL=false
   for t in "${SELECTED_TRACKERS[@]:-}"; do
     case "$t" in
-      github|gitlab|linear) HAS_EXTERNAL=true ;;
+      github | gitlab | linear) HAS_EXTERNAL=true ;;
     esac
   done
 
@@ -695,7 +711,7 @@ mkdir -p "$OUTPUT/.github"
   echo "- Build system: Make"
   echo "- Run \`make check\` before committing"
   echo "- Commits: Conventional Commits (feat|fix|refactor|...)"
-} > "$OUTPUT/.github/copilot-instructions.md"
+} >"$OUTPUT/.github/copilot-instructions.md"
 
 # --- First commit + push -------------------------------
 
@@ -706,8 +722,8 @@ mkdir -p "$OUTPUT/.github"
 
 if [ "$NO_PUSH" = false ] && [ -n "$REPO_URL" ]; then
   echo "Pushing to remote..."
-  (cd "$OUTPUT" && git push -u origin main 2>/dev/null) || \
-  (cd "$OUTPUT" && git push -u origin "$(git branch --show-current)" 2>/dev/null) || true
+  (cd "$OUTPUT" && git push -u origin main 2>/dev/null) ||
+    (cd "$OUTPUT" && git push -u origin "$(git branch --show-current)" 2>/dev/null) || true
 fi
 
 # --- Package name reservation ----------------------------

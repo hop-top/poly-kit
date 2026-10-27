@@ -29,8 +29,8 @@ _reserve_npm() {
   local pkg_name=""
   if [ -f "$ts_dir/package.json" ]; then
     pkg_name=$(
-      grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' "$ts_dir/package.json" \
-        | head -1 | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+      grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' "$ts_dir/package.json" |
+        head -1 | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
     )
   fi
 
@@ -47,8 +47,8 @@ _reserve_npm() {
   _reserve_prompt_yn "Reserve $pkg_name on npm?"
   if [ "$REPLY" = "y" ]; then
     echo "npm: publishing $pkg_name..."
-    (cd "$ts_dir" && npm publish --access public 2>&1) \
-      || echo "npm: publish failed — manual publish needed"
+    (cd "$ts_dir" && npm publish --access public 2>&1) ||
+      echo "npm: publish failed — manual publish needed"
   fi
 }
 
@@ -64,8 +64,8 @@ _reserve_pypi() {
   local py_name=""
   if [ -f "$py_dir/pyproject.toml" ]; then
     py_name=$(
-      grep '^name' "$py_dir/pyproject.toml" \
-        | head -1 | sed 's/.*= *"\(.*\)"/\1/'
+      grep '^name' "$py_dir/pyproject.toml" |
+        head -1 | sed 's/.*= *"\(.*\)"/\1/'
     )
   fi
 
@@ -82,8 +82,8 @@ _reserve_pypi() {
   _reserve_prompt_yn "Reserve $py_name on PyPI?"
   if [ "$REPLY" = "y" ]; then
     echo "PyPI: publishing $py_name..."
-    (cd "$py_dir" && uv build 2>&1 && uv publish 2>&1) \
-      || echo "PyPI: publish failed — manual publish needed"
+    (cd "$py_dir" && uv build 2>&1 && uv publish 2>&1) ||
+      echo "PyPI: publish failed — manual publish needed"
   fi
 }
 
@@ -96,9 +96,9 @@ _reserve_cratesio() {
     return 0
   fi
 
-  if [ ! -f "$HOME/.cargo/credentials.toml" ] \
-    && [ ! -f "$HOME/.cargo/credentials" ] \
-    && [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+  if [ ! -f "$HOME/.cargo/credentials.toml" ] &&
+    [ ! -f "$HOME/.cargo/credentials" ] &&
+    [ -z "$CARGO_REGISTRY_TOKEN" ]; then
     echo "crates.io: not authenticated — run 'cargo login' or set CARGO_REGISTRY_TOKEN to reserve crate name"
     return 0
   fi
@@ -106,8 +106,8 @@ _reserve_cratesio() {
   local crate_name=""
   if [ -f "$rs_dir/Cargo.toml" ]; then
     crate_name=$(
-      grep -E '^[[:space:]]*name[[:space:]]*=' "$rs_dir/Cargo.toml" \
-        | head -1 | sed 's/.*= *"\(.*\)".*/\1/'
+      grep -E '^[[:space:]]*name[[:space:]]*=' "$rs_dir/Cargo.toml" |
+        head -1 | sed 's/.*= *"\(.*\)".*/\1/'
     )
   fi
 
@@ -124,8 +124,8 @@ _reserve_cratesio() {
   _reserve_prompt_yn "Reserve $crate_name on crates.io?"
   if [ "$REPLY" = "y" ]; then
     echo "crates.io: publishing $crate_name..."
-    (cd "$rs_dir" && cargo publish --allow-dirty 2>&1) \
-      || echo "crates.io: publish failed — manual publish needed"
+    (cd "$rs_dir" && cargo publish --allow-dirty 2>&1) ||
+      echo "crates.io: publish failed — manual publish needed"
   fi
 }
 

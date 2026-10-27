@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1091
+# shellcheck source-path=SCRIPTDIR
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,7 +41,7 @@ copy_ci_single() {
 DEPEOF
     fi
     dependabot_actions_entry
-  } > "$dest/.github/dependabot.yml"
+  } >"$dest/.github/dependabot.yml"
 
   local src
   src="$(ci_workflow_src "$lang")"
@@ -63,8 +64,8 @@ overlay_lang() {
   # Hidden files (dotfiles like .golangci.yml)
   for f in "$src"/.*; do
     case "$(basename "$f")" in
-      .|..) continue ;;
-      *)    cp -r "$f" "$dest/" ;;
+      . | ..) continue ;;
+      *) cp -r "$f" "$dest/" ;;
     esac
   done
 }
@@ -89,11 +90,11 @@ done
 base="$DIST/cli-template-base"
 mkdir -p "$base"
 
-compose_gitignore "$base"        # common only, no langs
-compose_gitattributes "$base"    # common only, no langs
+compose_gitignore "$base"     # common only, no langs
+compose_gitattributes "$base" # common only, no langs
 copy_shared "$base"
 
-cat > "$base/CHANGELOG.md" << 'CLEOF'
+cat >"$base/CHANGELOG.md" <<'CLEOF'
 # Changelog
 
 All notable changes documented here.
@@ -102,7 +103,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 CLEOF
 
-cat > "$base/README.md" << 'RMEOF'
+cat >"$base/README.md" <<'RMEOF'
 # {{.Name}}
 
 > {{.Description}}

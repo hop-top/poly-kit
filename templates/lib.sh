@@ -17,12 +17,12 @@ HAS_HOP=false
 HAS_TLC=false
 
 detect_tools() {
-  command -v gh   >/dev/null 2>&1 && HAS_GH=true
+  command -v gh >/dev/null 2>&1 && HAS_GH=true
   command -v glab >/dev/null 2>&1 && HAS_GLAB=true
-  command -v git  >/dev/null 2>&1 && {
+  command -v git >/dev/null 2>&1 && {
     git hop --version >/dev/null 2>&1 && HAS_HOP=true
   }
-  command -v tlc  >/dev/null 2>&1 && HAS_TLC=true
+  command -v tlc >/dev/null 2>&1 && HAS_TLC=true
 }
 
 # ==========================================================
@@ -107,7 +107,7 @@ replace_token() {
   [ -z "$files" ] && return 0
   while IFS= read -r f; do
     sedi "s|${token}|${value}|g" "$f"
-  done <<< "$files"
+  done <<<"$files"
 }
 
 # ==========================================================
@@ -195,8 +195,8 @@ detect_project_meta() {
     MODULE_PREFIX="$(dirname "$mod")"
   elif [ -f "package.json" ]; then
     APP_NAME="$(
-      grep -m1 '"name"' package.json \
-        | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+      grep -m1 '"name"' package.json |
+        sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
     )"
     MODULE_PREFIX=""
   else
@@ -255,7 +255,8 @@ KIT_TEMPLATES_SHARED="$KIT_TEMPLATES_DIR/shared"
 # Merges common + per-lang gitignore files into dest/.gitignore.
 # Tolerates zero lang args (common only).
 compose_gitignore() {
-  local dest="$1"; shift
+  local dest="$1"
+  shift
   local parts=("$KIT_TEMPLATES_SHARED/gitignore/common.gitignore")
   for lang in "$@"; do
     parts+=("$KIT_TEMPLATES_SHARED/gitignore/${lang}.gitignore")
@@ -264,14 +265,15 @@ compose_gitignore() {
     printf '# >>> kit-managed: gitignore >>>\n'
     cat "${parts[@]}"
     printf '# <<< kit-managed: gitignore <<<\n'
-  } > "$dest/.gitignore"
+  } >"$dest/.gitignore"
 }
 
 # compose_gitattributes <dest> <lang...>
 # Merges common + per-lang gitattributes files into
 # dest/.gitattributes. Tolerates zero lang args.
 compose_gitattributes() {
-  local dest="$1"; shift
+  local dest="$1"
+  shift
   local parts=("$KIT_TEMPLATES_SHARED/gitattributes/common.gitattributes")
   for lang in "$@"; do
     parts+=("$KIT_TEMPLATES_SHARED/gitattributes/${lang}.gitattributes")
@@ -280,7 +282,7 @@ compose_gitattributes() {
     printf '# >>> kit-managed: gitattributes >>>\n'
     cat "${parts[@]}"
     printf '# <<< kit-managed: gitattributes <<<\n'
-  } > "$dest/.gitattributes"
+  } >"$dest/.gitattributes"
 }
 
 # copy_shared <dest>
@@ -318,12 +320,12 @@ copy_shared() {
 # (gomod/npm/pip/cargo/composer). Empty string for unknown.
 dependabot_ecosystem() {
   case "$1" in
-    go)  printf 'gomod' ;;
-    ts)  printf 'npm' ;;
-    py)  printf 'pip' ;;
-    rs)  printf 'cargo' ;;
+    go) printf 'gomod' ;;
+    ts) printf 'npm' ;;
+    py) printf 'pip' ;;
+    rs) printf 'cargo' ;;
     php) printf 'composer' ;;
-    *)   printf '' ;;
+    *) printf '' ;;
   esac
 }
 
@@ -381,7 +383,7 @@ overlay_lang_dir() {
     local base
     base="$(basename "$entry")"
     case "$base" in
-      .|..|CHANGELOG.md|README.md|.gitignore|.gitattributes|.github)
+      . | .. | CHANGELOG.md | README.md | .gitignore | .gitattributes | .github)
         continue
         ;;
       *)
@@ -395,7 +397,8 @@ overlay_lang_dir() {
 # Emits a polyglot dependabot.yml with one entry per lang, watching
 # each `/<lang>` subdirectory.
 compose_polyglot_dependabot() {
-  local dest="$1"; shift
+  local dest="$1"
+  shift
   mkdir -p "$dest/.github"
   local out="$dest/.github/dependabot.yml"
   {
@@ -422,13 +425,14 @@ compose_polyglot_dependabot() {
     done
     [ "$first" = true ] || printf '\n'
     dependabot_actions_entry
-  } > "$out"
+  } >"$out"
 }
 
 # copy_polyglot_ci_workflows <dest> <lang...>
 # Copies per-lang CI workflow into $dest/.github/workflows/ci-<lang>.yml.
 copy_polyglot_ci_workflows() {
-  local dest="$1"; shift
+  local dest="$1"
+  shift
   mkdir -p "$dest/.github/workflows"
   local lang src
   for lang in "$@"; do
@@ -445,7 +449,8 @@ copy_polyglot_ci_workflows() {
 # Emits a root Makefile that delegates targets to per-lang
 # subdirs ONLY for the langs in LANG_ARRAY.
 compose_polyglot_makefile() {
-  local dest="$1"; shift
+  local dest="$1"
+  shift
   local out="$dest/Makefile"
   {
     printf '.PHONY: build test lint links check setup\n\n'
@@ -464,7 +469,7 @@ compose_polyglot_makefile() {
     printf '\telse \\\n'
     printf '\t\techo "lychee not installed; skipping link check"; \\\n'
     printf '\tfi\n'
-  } > "$out"
+  } >"$out"
 }
 
 # compose_polyglot_readme_structure <readme_path> <lang...>
@@ -476,12 +481,12 @@ compose_polyglot_makefile() {
 # _lang_label <lang> — echo a human label for a lang code.
 _lang_label() {
   case "$1" in
-    go)  printf 'Go CLI source' ;;
-    ts)  printf 'TypeScript CLI source' ;;
-    py)  printf 'Python CLI source' ;;
-    rs)  printf 'Rust CLI source' ;;
+    go) printf 'Go CLI source' ;;
+    ts) printf 'TypeScript CLI source' ;;
+    py) printf 'Python CLI source' ;;
+    rs) printf 'Rust CLI source' ;;
     php) printf 'PHP CLI source' ;;
-    *)   printf '%s source' "$1" ;;
+    *) printf '%s source' "$1" ;;
   esac
 }
 
@@ -504,7 +509,8 @@ _emit_structure_block() {
 }
 
 compose_polyglot_readme_structure() {
-  local readme="$1"; shift
+  local readme="$1"
+  shift
   [ -f "$readme" ] || return 0
 
   # Write the new block to a temp file so awk can `getline` it
@@ -512,7 +518,7 @@ compose_polyglot_readme_structure() {
   # + POSIX awks.
   local block_file tmp
   block_file="$(mktemp)"
-  _emit_structure_block "$@" > "$block_file"
+  _emit_structure_block "$@" >"$block_file"
   tmp="$(mktemp)"
 
   # Strip any existing managed-structure block, then insert the
@@ -539,7 +545,7 @@ compose_polyglot_readme_structure() {
         emit_block()
       }
     }
-  ' "$readme" > "$tmp"
+  ' "$readme" >"$tmp"
   mv "$tmp" "$readme"
   rm -f "$block_file"
 }

@@ -29,9 +29,17 @@ has_lang() {
 
 # Copy a template file if target is missing.
 # Usage: copy_template_if_missing <target> <source> [tok=val ...]
+# <source> may omit the `.tmpl` suffix: the plain path wins,
+# else `<source>.tmpl` is used (same resolution as
+# ci_workflow_src in lib.sh). Tokens use the Go dot-notation
+# placeholders that init.sh renders (e.g. {{.Name}}).
 copy_template_if_missing() {
   local target="$1" source="$2"
   shift 2
+
+  if [ ! -f "$source" ] && [ -f "${source}.tmpl" ]; then
+    source="${source}.tmpl"
+  fi
 
   if [ -f "$target" ]; then
     log_skipped "$target" "Already exists"
@@ -51,11 +59,13 @@ copy_template_if_missing() {
   ensure_dir "$(dirname "$target")"
   cp "$source" "$target"
 
-  # Replace tokens: each remaining arg is token=value
+  # Replace tokens: each remaining arg is token=value.
+  # Values are sed_escape'd (& | / \) like replace_token in
+  # lib.sh, so they render literally, same as scaffold.
   local pair tok val
   for pair in "$@"; do
     tok="${pair%%=*}"
-    val="${pair#*=}"
+    val="$(sed_escape "${pair#*=}")"
     sedi "s|${tok}|${val}|g" "$target"
   done
 
@@ -64,6 +74,7 @@ copy_template_if_missing() {
 
 run_copy_actions() {
   local tpl="$SCRIPT_DIR"
+  local module="${MODULE_PREFIX:+${MODULE_PREFIX}/}${APP_NAME}"
 
   # --- Go-only files ---
   if has_lang go; then
@@ -78,13 +89,15 @@ run_copy_actions() {
     copy_template_if_missing \
       ".goreleaser.yaml" \
       "$tpl/cli-go/.goreleaser.yml" \
-      "{{app_name}}=$APP_NAME" \
-      "{{module_prefix}}=$MODULE_PREFIX"
+      "{{.Module}}=$module" \
+      "{{.Name}}=$APP_NAME" \
+      '{{`=' \
+      '`}}='
 
     copy_template_if_missing \
       ".github/workflows/ci.yml" \
       "$tpl/shared/ci/ci-go.yml" \
-      "{{app_name}}=$APP_NAME"
+      "{{.Name}}=$APP_NAME"
   fi
 
   # --- Python-only files ---
@@ -118,12 +131,12 @@ to $_py_dir/." S P1
   copy_template_if_missing \
     "CONTRIBUTING.md" \
     "$tpl/shared/CONTRIBUTING.md" \
-    "{{app_name}}=$APP_NAME"
+    "{{.Name}}=$APP_NAME"
 
   copy_template_if_missing \
     "SECURITY.md" \
     "$tpl/shared/SECURITY.md" \
-    "{{author_email}}=$EMAIL"
+    "{{.Email}}=$EMAIL"
 
   copy_template_if_missing \
     "docs/RELEASING.md" \
@@ -151,7 +164,7 @@ to $_py_dir/." S P1
         "Would generate version package (dry run)"
     else
       ensure_dir "internal/version"
-      cat > "internal/version/version.go" <<'GOVEOF'
+      cat >"internal/version/version.go" <<'GOVEOF'
 package version
 
 var (
@@ -206,14 +219,14 @@ run_generated_actions() {
       {
         echo "version: 2"
         echo "updates:"
-      } > "$dbot"
+      } >"$dbot"
 
-      has_lang go && _dependabot_block "gomod" >> "$dbot"
-      has_lang py && _dependabot_block "pip"   >> "$dbot"
-      has_lang ts && _dependabot_block "npm"   >> "$dbot"
+      has_lang go && _dependabot_block "gomod" >>"$dbot"
+      has_lang py && _dependabot_block "pip" >>"$dbot"
+      has_lang ts && _dependabot_block "npm" >>"$dbot"
 
       # always include github-actions
-      _dependabot_block "github-actions" >> "$dbot"
+      _dependabot_block "github-actions" >>"$dbot"
 
       log_applied "$dbot" \
         "Generated from detected languages"
@@ -221,17 +234,17 @@ run_generated_actions() {
   else
     # Check for missing ecosystems
     local missing=()
-    has_lang go \
-      && ! grep -q "gomod" "$dbot" \
-      && missing+=("gomod")
-    has_lang py \
-      && ! grep -q "pip" "$dbot" \
-      && missing+=("pip")
-    has_lang ts \
-      && ! grep -q "npm" "$dbot" \
-      && missing+=("npm")
-    ! grep -q "github-actions" "$dbot" \
-      && missing+=("github-actions")
+    has_lang go &&
+      ! grep -q "gomod" "$dbot" &&
+      missing+=("gomod")
+    has_lang py &&
+      ! grep -q "pip" "$dbot" &&
+      missing+=("pip")
+    has_lang ts &&
+      ! grep -q "npm" "$dbot" &&
+      missing+=("npm")
+    ! grep -q "github-actions" "$dbot" &&
+      missing+=("github-actions")
 
     if [ ${#missing[@]} -gt 0 ]; then
       if [ "$DRY_RUN" = true ]; then
@@ -239,7 +252,7 @@ run_generated_actions() {
           "Would append: ${missing[*]} (dry run)"
       else
         for eco in "${missing[@]}"; do
-          _dependabot_block "$eco" >> "$dbot"
+          _dependabot_block "$eco" >>"$dbot"
         done
         log_applied "$dbot" \
           "Appended ecosystems: ${missing[*]}"
@@ -282,7 +295,7 @@ _merge_makefile() {
         "Would create with kit targets (dry run)"
       return 0
     fi
-    cat > "$mkfile" <<'MKEOF'
+    cat >"$mkfile" <<'MKEOF'
 APP_NAME := $(shell basename $(CURDIR))
 
 # --- kit conform targets ---
@@ -347,9 +360,9 @@ MKEOF
   {
     echo ""
     echo "$marker"
-  } >> "$mkfile"
+  } >>"$mkfile"
 
-  _append_kit_targets "${missing[@]}" >> "$mkfile"
+  _append_kit_targets "${missing[@]}" >>"$mkfile"
   log_applied "$mkfile" "Appended missing: ${missing[*]}"
 }
 
@@ -399,7 +412,7 @@ EOF
 _merge_gitignore() {
   local gi=".gitignore"
   local marker="# kit conform"
-  local entries=("bin/" "dist/" "*.db" \
+  local entries=("bin/" "dist/" "*.db"
     "coverage.out" "coverage_e2e.out")
 
   if [ -f "$gi" ] && grep -qF "$marker" "$gi"; then
@@ -409,8 +422,8 @@ _merge_gitignore() {
 
   local missing=()
   for e in "${entries[@]}"; do
-    if [ ! -f "$gi" ] \
-        || ! grep -qxF "$e" "$gi"; then
+    if [ ! -f "$gi" ] ||
+      ! grep -qxF "$e" "$gi"; then
       missing+=("$e")
     fi
   done
@@ -432,7 +445,7 @@ _merge_gitignore() {
     for e in "${missing[@]}"; do
       echo "$e"
     done
-  } >> "$gi"
+  } >>"$gi"
 
   log_applied "$gi" "Appended: ${missing[*]}"
 }
@@ -459,8 +472,8 @@ _review_agents_md() {
   }
   has_lang py && pyd="$(find . -name '__init__.py' \
     ! -path '*/.git/*' ! -path '*/node_modules/*' \
-    -exec dirname {} \; 2>/dev/null \
-    | head -10 | tr '\n' ',')"
+    -exec dirname {} \; 2>/dev/null |
+    head -10 | tr '\n' ',')"
   td="$(find . -type d -name '*test*' \
     ! -path '*/.git/*' ! -path '*/node_modules/*' \
     2>/dev/null | head -10 | tr '\n' ',')"
@@ -535,7 +548,8 @@ _review_py_requirements() {
   local py_dir="."
   for entry in "${DETECTED_LANG_PATHS[@]}"; do
     case "$entry" in py:*)
-      py_dir="${entry#py:}" ;;
+      py_dir="${entry#py:}"
+      ;;
     esac
   done
 

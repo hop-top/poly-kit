@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1091,SC2329
+# shellcheck disable=SC1091
+# shellcheck source-path=SCRIPTDIR
 set -euo pipefail
 
 # -------------------------------------------------------
@@ -69,25 +70,39 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --path)
       require_arg "$1" "${2:-}"
-      PROJECT_PATH="$2"; shift 2 ;;
+      PROJECT_PATH="$2"
+      shift 2
+      ;;
     --dry-run)
-      DRY_RUN=true; shift ;;
+      DRY_RUN=true
+      shift
+      ;;
     --report)
       require_arg "$1" "${2:-}"
-      REPORT_FILE="$2"; shift 2 ;;
+      REPORT_FILE="$2"
+      shift 2
+      ;;
     --track-id)
       require_arg "$1" "${2:-}"
-      TRACK_ID="$2"; shift 2 ;;
+      TRACK_ID="$2"
+      shift 2
+      ;;
     --no-tlc)
-      NO_TLC=true; shift ;;
+      NO_TLC=true
+      shift
+      ;;
     --no-managed-refresh)
-      NO_MANAGED_REFRESH=true; shift ;;
-    -h|--help)
-      usage ;;
+      NO_MANAGED_REFRESH=true
+      shift
+      ;;
+    -h | --help)
+      usage
+      ;;
     *)
       echo "Error: unknown flag '$1'" >&2
       echo "Run 'conform.sh --help' for usage." >&2
-      exit 1 ;;
+      exit 1
+      ;;
   esac
 done
 
@@ -108,6 +123,23 @@ cd "$PROJECT_PATH" || {
 detect_tools || true
 detect_languages
 detect_project_meta
+
+# APP_NAME / MODULE_PREFIX come from repo metadata (go.mod,
+# package.json, dirname) and are rendered into YAML, shell
+# and sed scripts. Allow only a metacharacter-free charset
+# (superset of kit init's ^[a-z][a-z0-9-]{0,63}$); fail
+# before any file is written.
+if ! [[ "$APP_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Error: invalid app name '$APP_NAME'" >&2
+  echo "  must match ^[A-Za-z0-9._-]+\$ (from go.mod," >&2
+  echo "  package.json name, or directory name)" >&2
+  exit 1
+fi
+if ! [[ "$MODULE_PREFIX" =~ ^[A-Za-z0-9._~/-]*$ ]]; then
+  echo "Error: invalid module prefix '$MODULE_PREFIX'" >&2
+  echo "  must match ^[A-Za-z0-9._~/-]*\$ (from go.mod)" >&2
+  exit 1
+fi
 
 echo "Project: $APP_NAME"
 echo "Languages: ${DETECTED_LANGS[*]:-none}"
@@ -144,14 +176,14 @@ find_kit_binary() {
     return 0
   fi
   # 3. in-repo build (we're running against poly-kit itself)
-  if [ -f "$SCRIPT_DIR/scaffold.sh" ] \
-     && [ -d "$SCRIPT_DIR/../cmd/kit" ] \
-     && command -v go >/dev/null 2>&1; then
+  if [ -f "$SCRIPT_DIR/scaffold.sh" ] &&
+    [ -d "$SCRIPT_DIR/../cmd/kit" ] &&
+    command -v go >/dev/null 2>&1; then
     local tmp
     tmp="$(mktemp -d)"
-    if (cd "$SCRIPT_DIR/.." && \
-        go build -buildvcs=false -o "$tmp/kit" ./cmd/kit) \
-       >/dev/null 2>&1; then
+    if (cd "$SCRIPT_DIR/.." &&
+      go build -buildvcs=false -o "$tmp/kit" ./cmd/kit) \
+      >/dev/null 2>&1; then
       KIT_BIN="$tmp/kit"
       return 0
     fi
@@ -279,7 +311,7 @@ run_review_checks
 
 write_report() {
   local out="$1"
-  cat > "$out" <<EOF
+  cat >"$out" <<EOF
 ---
 title: "kit conformance: $APP_NAME"
 tracks:
@@ -303,34 +335,34 @@ $TASKS_YAML---
 Status: $MANAGED_STATUS$([ -n "$MANAGED_NOTE" ] && echo " — $MANAGED_NOTE")
 
 $(if [ ${#MANAGED_TOUCHED[@]} -gt 0 ]; then
-  for item in "${MANAGED_TOUCHED[@]}"; do echo "- $item"; done
-else
-  echo "_none_"
-fi)
+    for item in "${MANAGED_TOUCHED[@]}"; do echo "- $item"; done
+  else
+    echo "_none_"
+  fi)
 
 ## Applied
 
 $(if [ ${#APPLIED[@]} -gt 0 ]; then
-  for item in "${APPLIED[@]}"; do echo "- $item"; done
-else
-  echo "_none_"
-fi)
+    for item in "${APPLIED[@]}"; do echo "- $item"; done
+  else
+    echo "_none_"
+  fi)
 
 ## Skipped (already conformant)
 
 $(if [ ${#SKIPPED[@]} -gt 0 ]; then
-  for item in "${SKIPPED[@]}"; do echo "- $item"; done
-else
-  echo "_none_"
-fi)
+    for item in "${SKIPPED[@]}"; do echo "- $item"; done
+  else
+    echo "_none_"
+  fi)
 
 ## Needs Review
 
 $(if [ ${#REVIEW[@]} -gt 0 ]; then
-  for item in "${REVIEW[@]}"; do echo "- $item"; done
-else
-  echo "_none_"
-fi)
+    for item in "${REVIEW[@]}"; do echo "- $item"; done
+  else
+    echo "_none_"
+  fi)
 EOF
   echo "Report written to $out"
 }

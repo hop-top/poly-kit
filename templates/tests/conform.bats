@@ -85,6 +85,61 @@ init_git_repo() {
   assert_file_exists "$d/docs/RELEASING.md"
 }
 
+@test "conform: .tmpl sources render tokens like scaffold" {
+  local d="$TEST_DIR/t1tok"
+  create_go_project "$d"
+
+  run "$SCRIPT_DIR/conform.sh" --path "$d" --no-tlc
+  [ "$status" -eq 2 ]
+
+  assert_file_contains "$d/.github/workflows/ci.yml" 'go build -o "testapp"'
+  assert_file_not_contains "$d/.github/workflows/ci.yml" "{{.Name}}"
+
+  assert_file_contains "$d/.goreleaser.yaml" 'binary: "testapp"'
+  assert_file_contains "$d/.goreleaser.yaml" \
+    "hop.top/testapp/internal/version.ver={{ .Version }}"
+  assert_file_not_contains "$d/.goreleaser.yaml" '{{.Module}}'
+  assert_file_not_contains "$d/.goreleaser.yaml" '{{`'
+
+  assert_file_contains "$d/CONTRIBUTING.md" "testapp"
+  assert_file_not_contains "$d/CONTRIBUTING.md" "{{.Name}}"
+  assert_file_contains "$d/SECURITY.md" "test@test.com"
+  assert_file_not_contains "$d/SECURITY.md" "{{.Email}}"
+}
+
+@test "conform: rejects app name with sed/shell metacharacters" {
+  local d="$TEST_DIR/t1badname"
+  create_go_project "$d"
+  printf 'module hop.top/a|b&c\n\ngo 1.26\n' >"$d/go.mod"
+
+  run "$SCRIPT_DIR/conform.sh" --path "$d" --no-tlc
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"invalid app name"* ]] || false
+  assert_file_not_exists "$d/.github/workflows/ci.yml"
+  assert_file_not_exists "$d/.goreleaser.yaml"
+}
+
+@test "conform: rejects module prefix with sed/shell metacharacters" {
+  local d="$TEST_DIR/t1badprefix"
+  create_go_project "$d"
+  printf 'module ex|am&ple.com/testapp\n\ngo 1.26\n' >"$d/go.mod"
+
+  run "$SCRIPT_DIR/conform.sh" --path "$d" --no-tlc
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"invalid module prefix"* ]] || false
+  assert_file_not_exists "$d/.goreleaser.yaml"
+}
+
+@test "conform: token values render literally (& | \\ escaped)" {
+  local d="$TEST_DIR/t1esc"
+  create_go_project "$d"
+  git -C "$d" config user.email 'a&b|c\d@x.io'
+
+  run "$SCRIPT_DIR/conform.sh" --path "$d" --no-tlc
+  [ "$status" -eq 2 ]
+  assert_file_contains "$d/SECURITY.md" '**a&b|c\d@x.io**'
+}
+
 @test "conform: fresh go project merges Makefile targets" {
   local d="$TEST_DIR/t1mk"
   create_go_project "$d"
