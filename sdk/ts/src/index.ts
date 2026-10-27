@@ -13,6 +13,7 @@
 
 export * as aim from './aim.js';
 export * as alias from './alias.js';
+export * as anthropic from './llm-anthropic.js';
 export * as api from './api.js';
 export * as auth from './auth.js';
 export * as cli from './cli.js';
@@ -22,6 +23,7 @@ export * as id from './id/index.js';
 export * as llm from './llm.js';
 export * as mcp from './mcp/index.js';
 export * as netpolicy from './netpolicy.js';
+export * as openai from './llm-openai.js';
 export * as output from './output.js';
 export * as progress from './progress.js';
 export * as provenance from './provenance.js';
