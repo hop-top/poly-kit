@@ -2,7 +2,10 @@ package kitinit_test
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
+
+	"hop.top/kit/internal/testsandbox"
 )
 
 // TestMain scrubs GIT_* env vars from the entire test process before any
@@ -17,6 +20,10 @@ import (
 // Tests can still set their own GIT_CONFIG_GLOBAL or other GIT_* values
 // via t.Setenv — TestMain only neutralizes what was inherited at process
 // start.
+//
+// It then runs the package in a per-binary sandbox (HOME and every XDG
+// base), so the tlc and pwsh the init tests drive never open or migrate
+// the developer's own databases and caches.
 func TestMain(m *testing.M) {
 	for _, k := range []string{
 		"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
@@ -25,5 +32,11 @@ func TestMain(m *testing.M) {
 	} {
 		_ = os.Unsetenv(k)
 	}
-	os.Exit(m.Run())
+	os.Exit(testsandbox.Main(m))
+}
+
+func TestSandbox_TlcAndShellCachesStayOutOfRealHome(t *testing.T) {
+	testsandbox.RequireSandboxed(t,
+		filepath.Join(os.Getenv("XDG_DATA_HOME"), "tlc", "db.sqlite"),
+		filepath.Join(os.Getenv("XDG_CACHE_HOME"), "powershell"))
 }
