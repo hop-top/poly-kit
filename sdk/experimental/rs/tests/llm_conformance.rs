@@ -15,29 +15,6 @@ use serde_json::Value;
 #[cfg(feature = "llm-anthropic")]
 mod llm_support;
 
-/// Vectors Go pins that this port does not implement yet, by section
-/// and name: skipped, pending Rust port. Remove an entry when the port
-/// passes it.
-#[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
-const PENDING_RUST_PORT: &[(&str, &str)] = &[
-    ("anthropic_request", "system messages join in order"),
-    ("anthropic_request", "empty system messages are skipped"),
-    (
-        "anthropic_request",
-        "only empty system messages send no system",
-    ),
-    (
-        "anthropic_request",
-        "system cache breakpoints split the joined text",
-    ),
-];
-
-/// Whether a vector waits for the Rust port; see [`PENDING_RUST_PORT`].
-#[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
-fn pending(section: &str, name: &str) -> bool {
-    PENDING_RUST_PORT.contains(&(section, name))
-}
-
 fn corpus_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/llm-v1")
 }
@@ -821,9 +798,6 @@ mod anthropic {
         let c = load();
         assert!(!c.anthropic_request.is_empty());
         for v in &c.anthropic_request {
-            if pending("anthropic_request", &v.name) {
-                continue;
-            }
             if has_url_part(&v.request) {
                 eprintln!("{}: skipped, no URL media sources in this port", v.name);
                 continue;
@@ -891,9 +865,6 @@ mod anthropic {
         let c = load();
         assert!(!c.anthropic_stream.is_empty());
         for v in &c.anthropic_stream {
-            if pending("anthropic_stream", &v.name) {
-                continue;
-            }
             let srv = serve(vec![Canned::sse(&v.sse)]).await;
             let a = adapter(&srv.url, "m", "k");
             let mut req = hi();
@@ -1053,9 +1024,6 @@ mod anthropic {
         let c = load();
         assert!(!c.anthropic_error.is_empty());
         for v in &c.anthropic_error {
-            if pending("anthropic_error", &v.name) {
-                continue;
-            }
             let canned = v
                 .responses
                 .iter()
