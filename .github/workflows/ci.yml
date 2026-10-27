@@ -3,9 +3,9 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Nightly full run on the default branch: every suite whole (TEST_ALL)
-  # and the engine/store property tests at full count (see the go-test
-  # job).
+  # Nightly full run on the default branch: every suite whole (TEST_ALL),
+  # the engine/store property tests at full count (see the go-test job),
+  # and a tracking issue when it fails (the nightly-report job).
   schedule:
     - cron: '0 3 * * *'
   # A full run by hand; not a pull request, so every suite runs whole.
@@ -33,6 +33,9 @@ env:
   LINT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
   LINT_HEAD: HEAD
   TEST_ALL: ${{ github.event_name != 'pull_request' && '1' || '' }}
+
+permissions:
+  contents: read
 
 jobs:
   # ── Stage 1: Lint ──────────────────────────────────────────────
@@ -865,3 +868,77 @@ jobs:
       - run: go build -buildvcs=false -o spaced ./examples/spaced/go/
       - run: ./spaced compliance --spec examples/spaced/spaced.toolspec.yaml --format json
 
+  # ── Nightly report ─────────────────────────────────────────────
+  # Pull requests run only the tests a change reaches; the nightly run
+  # is where a coupling the scope rules miss surfaces. Job verdicts go
+  # into the run summary, and on the scheduled run one tracking issue is
+  # opened, commented on while open, or closed on the next green night.
+  # The failed jobs carry the red; this job fails only when it cannot
+  # report.
+  nightly-report:
+    needs: [go-lint, ts-lint, py-lint, rs-lint, docs-lint, sdk-paths-lint, adr-refs-lint, internal-refs-lint, actions-pinned-lint, toolchain-parity, bats-tests, proto-check, template-kit-pin, go-test, go-race, ts-test, py-test, rs-test, rs-wasm, rs-mobile, rs-features, php-test, parity, compliance]
+    if: ${{ github.event_name == 'schedule' && !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      NEEDS: ${{ toJSON(needs) }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
+      TITLE: 'CI nightly: full test suites failing on the default branch'
+      ON_DEFAULT: ${{ github.ref_name == github.event.repository.default_branch }}
+    steps:
+      - name: Summarize and track
+        run: |
+          set -euo pipefail
+          failed=$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key) (\(.value.result))"' <<<"$NEEDS")
+
+          {
+            echo "## Nightly full run (TEST_ALL=1)"
+            echo
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"' <<<"$NEEDS"
+            echo
+            echo "Reproduce one suite: \`TEST_ALL=1 scripts/test-affected.sh <suite>\` (one heavy suite at a time)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$ON_DEFAULT" != true ]; then
+            echo "Not the default branch: tracking issue left alone."
+            exit 0
+          fi
+
+          issue=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title \
+            --jq "map(select(.title == env.TITLE))[0].number // empty")
+
+          if [ -z "$failed" ]; then
+            if [ -n "$issue" ]; then
+              gh issue close "$issue" --comment "Green again at $SHA: $RUN_URL"
+            fi
+            exit 0
+          fi
+
+          body=$(cat <<EOF
+          Nightly full CI run failed at $SHA.
+
+          Run: $RUN_URL
+
+          Failed jobs:
+
+          $(printf '%s\n' "$failed" | sed 's/^/- /')
+
+          Pull requests run only the tests a change reaches, so this can be
+          a coupling the scope rules (scripts/test-scope.sh) miss, or a
+          failure no recent change touched. Reproduce with
+          \`TEST_ALL=1 scripts/test-affected.sh <suite>\`; this issue
+          closes on the next green night.
+          EOF
+          )
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body "$body"
+          else
+            gh issue create --title "$TITLE" --body "$body"
+          fi
