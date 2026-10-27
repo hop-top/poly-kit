@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bytes"
 	"encoding/json"
 	"slices"
 
@@ -38,7 +39,9 @@ func cloneResponse(resp Response) Response {
 
 // RedactRequest returns a [WithRequestContent] transform that passes
 // every text of the request through r: message Content, text parts,
-// tool call arguments and thinking text. What r cannot vouch for is
+// tool call arguments (every JSON string, keys included, on its decoded
+// text; arguments that are not JSON become one masked JSON string) and
+// thinking text. What r cannot vouch for is
 // left out: Extensions, media sources (a part keeps its type and MIME
 // type, not its bytes) and thinking signatures. Tool names, roles and
 // the model stay.
@@ -82,19 +85,50 @@ func redactCalls(r *redact.Redactor, calls []ToolCall) []ToolCall {
 	for i := range calls {
 		c := &calls[i]
 		c.ProviderData = nil
-		if len(c.Arguments) == 0 {
-			continue
+		if len(c.Arguments) > 0 {
+			c.Arguments = redactJSON(r, c.Arguments)
 		}
-		masked := r.Apply(string(c.Arguments))
-		if json.Valid([]byte(masked)) {
-			c.Arguments = json.RawMessage(masked)
-			continue
-		}
-		// A mask that broke the JSON travels as a JSON string.
-		quoted, _ := json.Marshal(masked)
-		c.Arguments = quoted
 	}
 	return calls
+}
+
+// redactJSON passes every string of raw, keys included, through r on
+// its decoded text, so a secret that needs escapes on the wire (a
+// quote, a backslash, a \u escape) still matches. Raw that does not
+// decode goes out as r's mask of the whole text, as a JSON string;
+// nothing passes unmasked.
+func redactJSON(r *redact.Redactor, raw json.RawMessage) json.RawMessage {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err == nil && !dec.More() {
+		if out, err := json.Marshal(redactValue(r, v)); err == nil {
+			return out
+		}
+	}
+	quoted, _ := json.Marshal(r.Apply(string(raw)))
+	return quoted
+}
+
+// redactValue masks every string in a decoded JSON value. Two keys
+// masked to the same text keep one value: the copy only describes.
+func redactValue(r *redact.Redactor, v any) any {
+	switch x := v.(type) {
+	case string:
+		return r.Apply(x)
+	case []any:
+		for i := range x {
+			x[i] = redactValue(r, x[i])
+		}
+		return x
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			out[r.Apply(k)] = redactValue(r, e)
+		}
+		return out
+	}
+	return v
 }
 
 func redactThinking(r *redact.Redactor, tbs []ThinkingBlock) []ThinkingBlock {
