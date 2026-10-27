@@ -8,6 +8,7 @@
 //
 //	relay pubkey > me.pub                          # this relay's public key
 //	relay listen --addr :9090 --trust peer.pub     # accept trusted peers
+//	relay listen --allow-anonymous                 # accept anyone (insecure)
 //	relay connect <addr> --auth [--topics "app.*"] # connect, signed
 //	relay publish <topic> <payload>                # publish event
 //	relay subscribe <topic>                        # subscribe and print
@@ -26,6 +27,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/runtime/bus"
 )
 
@@ -41,8 +43,18 @@ func main() {
 	addCommands(root, eventBus)
 
 	if err := root.Execute(context.Background()); err != nil {
-		os.Exit(1)
+		os.Exit(exitCode(err))
 	}
+}
+
+// exitCode is the exit status for err: the code a kit error carries
+// (2 for a usage error), else 1.
+func exitCode(err error) int {
+	var oe *output.Error
+	if errors.As(err, &oe) && oe.ExitCode != 0 {
+		return oe.ExitCode
+	}
+	return 1
 }
 
 // newRoot builds the relay's root with its identity keypair: the key
@@ -78,22 +90,27 @@ func pubkeyCmd(root *cli.Root) *cobra.Command {
 
 func listenCmd(eventBus bus.Bus) *cobra.Command {
 	var (
-		addr  string
-		trust []string
+		addr      string
+		trust     []string
+		anonymous bool
 	)
 	cmd := &cobra.Command{
 		Use:   "listen",
 		Short: "Accept incoming WebSocket bus peers",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			var opts []bus.NetworkOption
-			if len(trust) > 0 {
+			switch {
+			case len(trust) > 0:
 				keys, err := loadTrusted(trust)
 				if err != nil {
 					return err
 				}
 				opts = append(opts, bus.WithAuth(newRelayAuth(nil, keys...)))
-			} else {
-				fmt.Fprintln(os.Stderr, "warning: no --trust: accepting unauthenticated peers")
+			case anonymous:
+				fmt.Fprintln(os.Stderr, "warning: --allow-anonymous: accepting unauthenticated peers")
+			default:
+				return output.UsageError("listen: name the relays allowed to connect with --trust <pem>..., " +
+					"or pass --allow-anonymous to accept unauthenticated peers")
 			}
 			na := bus.NewNetworkAdapter(eventBus, opts...)
 
@@ -121,6 +138,8 @@ func listenCmd(eventBus bus.Bus) *cobra.Command {
 	cmd.Flags().StringSliceVar(&trust, "trust", nil,
 		"Public key files (PEM, from `relay pubkey`) of the relays allowed to connect; "+
 			"each must connect with --auth")
+	cmd.Flags().BoolVar(&anonymous, "allow-anonymous", false,
+		"Accept unauthenticated peers when no --trust is given (insecure)")
 	return cmd
 }
 

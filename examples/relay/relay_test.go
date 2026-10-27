@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"errors"
+	"io"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/core/identity"
 	"hop.top/kit/go/runtime/bus"
 	"hop.top/kit/go/transport/authn"
@@ -43,6 +45,7 @@ func TestCommandsExist(t *testing.T) {
 	listen, _, err := root.Cmd.Find([]string{"listen"})
 	require.NoError(t, err)
 	assert.NotNil(t, listen.Flags().Lookup("trust"))
+	assert.NotNil(t, listen.Flags().Lookup("allow-anonymous"))
 	connect, _, err := root.Cmd.Find([]string{"connect"})
 	require.NoError(t, err)
 	assert.NotNil(t, connect.Flags().Lookup("auth"))
@@ -186,4 +189,50 @@ func TestLoadTrustedRefusesWhatIsNotAnEd25519Key(t *testing.T) {
 	assert.Error(t, err)
 	_, err = loadTrusted([]string{filepath.Join(t.TempDir(), "gone.pub")})
 	assert.Error(t, err)
+}
+
+// runListen executes `relay listen <args>` and returns the error.
+func runListen(t *testing.T, args ...string) error {
+	t.Helper()
+	root := newTestRoot(t)
+	b := bus.New()
+	defer b.Close(context.Background())
+	addCommands(root, b)
+	root.Cmd.SetOut(io.Discard)
+	root.Cmd.SetErr(io.Discard)
+	root.SetArgs(append([]string{"listen"}, args...))
+	done := make(chan error, 1)
+	go func() { done <- root.Execute(context.Background()) }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(3 * time.Second):
+		t.Fatal("listen started serving instead of returning")
+		return nil
+	}
+}
+
+// TestListenRefusesWithoutTrust pins the secure default: listen with
+// neither --trust nor --allow-anonymous refuses to start, a usage error
+// (exit 2) naming both flags.
+func TestListenRefusesWithoutTrust(t *testing.T) {
+	err := runListen(t, "--addr", "127.0.0.1:0")
+	require.Error(t, err)
+	var oe *output.Error
+	require.ErrorAs(t, err, &oe)
+	assert.Equal(t, output.ExitUsage, oe.ExitCode)
+	assert.Equal(t, output.ExitUsage, exitCode(err), "main exits with the error's code")
+	assert.Contains(t, oe.Message, "--trust")
+	assert.Contains(t, oe.Message, "--allow-anonymous")
+}
+
+// TestListenAllowAnonymousGetsPastTheGate pins the explicit opt-out:
+// with --allow-anonymous listen goes on to bind, here an address that
+// cannot be bound, so it fails there rather than at the gate.
+func TestListenAllowAnonymousGetsPastTheGate(t *testing.T) {
+	err := runListen(t, "--allow-anonymous", "--addr", "127.0.0.1:-1")
+	require.Error(t, err)
+	var oe *output.Error
+	assert.False(t, errors.As(err, &oe) && oe.ExitCode == output.ExitUsage, "refused at the gate: %v", err)
+	assert.Equal(t, 1, exitCode(err))
 }

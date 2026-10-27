@@ -26,7 +26,9 @@ Each relay has an Ed25519 identity keypair (`cli.WithIdentity`). With
 `--auth`, `connect` signs a one-minute token with it on every dial and
 redial (EdDSA, its `kid` in the header, `sub` its key id, `iss`
 `relay`); a `listen --trust <pem>...` accepts only tokens those keys
-signed. A listener without `--trust` accepts anyone, as before.
+signed. `listen` with neither `--trust` nor `--allow-anonymous` refuses
+to start (exit 2); `--allow-anonymous` accepts unauthenticated peers,
+with a warning.
 
 The token is kit's self-signed client token: the same identity mounts
 `relay token create|decode|claims`, and a kit service under
