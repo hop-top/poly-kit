@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON; system messages, wherever they sit, join in order with a blank line (\\n\\n) into the system field, empty ones skipped, and a cache_control on one ends a text block there, carrying that breakpoint. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds (a 403 or permission_error is permission_denied, which is also an auth error; a 401 is auth), whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode). anthropic_tool_choice: Request.ToolChoice (mode auto, any, none or tool with the tool's defined name) on the call made (complete, stream, tools, stream_tools): the body's tool_choice (want_tool_choice; null: absent; a named tool by its sent name) or the exact error before any request (no tools, unknown mode, a missing, stray or undefined name). anthropic_hermetic: the adapter built hermetic (Go ResolvedConfig.Hermetic, set by llm.Hermetic()) reads no environment and no llm.yaml: with the same env and file as credential_headers, the request goes to want_host (the configured base URL, else the default endpoint) carrying the sent headers and none of the withheld ones. anthropic_stream_events: what a stream yields when Request.StreamEvents is set (tools: the defined tool names; StreamWithTools when present, else Stream): text tokens, tool_call events (start with index, id and the original name; delta with the raw partial-JSON arguments; end with the complete call, as Outcome.ToolCalls[index]), cumulative usage snapshots (prompt, completion, cache read, cache creation, total) when the provider reports usage, then done; or, after a mid-stream error, the events so far and error_kind, with no end for an open call. Not opted in, the sequence is exactly anthropic_stream's.",
+  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON; system messages, wherever they sit, join in order with a blank line (\\n\\n) into the system field, empty ones skipped, and a cache_control on one ends a text block there, carrying that breakpoint. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds (a 403 or permission_error is permission_denied, which is also an auth error; a 401 is auth), whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode). anthropic_tool_choice: Request.ToolChoice (mode auto, any, none or tool with the tool's defined name) on the call made (complete, stream, tools, stream_tools): the body's tool_choice (want_tool_choice; null: absent; a named tool by its sent name) or the exact error before any request (no tools, unknown mode, a missing, stray or undefined name). anthropic_hermetic: the adapter built hermetic (Go ResolvedConfig.Hermetic, set by llm.Hermetic()) reads no environment and no llm.yaml: with the same env and file as credential_headers, the request goes to want_host (the configured base URL, else the default endpoint) carrying the sent headers and none of the withheld ones. anthropic_stream_events: what a stream yields when Request.StreamEvents is set (tools: the defined tool names; StreamWithTools when present, else Stream): text tokens, tool_call events (start with index, id and the original name; delta with the raw partial-JSON arguments; end with the complete call, as Outcome.ToolCalls[index]), cumulative usage snapshots (prompt, completion, cache read, cache creation, total) when the provider reports usage, then done; or, after a mid-stream error, the events so far and error_kind, with no end for an open call. Not opted in, the sequence is exactly anthropic_stream's. bus_request_started: the kit.ai.request.started payload for a request and call (op complete, stream, tool_call, stream_tools; tools: the tool names offered): metadata only (op, model when set, message count, roles and multimodal part types counted, content_bytes as the UTF-8 length of message text, text parts, tool call arguments and thinking text, tools counted, max_tokens, has_temperature, thinking, stop_sequences counted, extension_keys sorted), compared as JSON; no message text, tool names, extension values or media. bus_response_received: the kit.ai.response.received payload after a completion or tool call: op, finish_reason, usage, content_bytes (text, tool call arguments, thinking text), tool_calls counted, plus duration_ms (a non-negative integer, not compared); no content. Content appears in either only when the client opts in (Go WithRequestContent, WithResponseContent), outside these vectors.",
   "redact_uri": [
     {
       "name": "api_key",
@@ -3965,6 +3965,260 @@
         }
       ],
       "error_kind": "http_status"
+    }
+  ],
+  "bus_request_started": [
+    {
+      "name": "plain completion: counts, no content",
+      "op": "complete",
+      "tools": [],
+      "request": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "system",
+            "content": "be brief"
+          },
+          {
+            "role": "user",
+            "content": "my password is hunter2"
+          }
+        ]
+      },
+      "want_payload": {
+        "op": "complete",
+        "messages": 2,
+        "content_bytes": 30,
+        "tools": 0,
+        "max_tokens": 0,
+        "has_temperature": false,
+        "thinking": false,
+        "stop_sequences": 0,
+        "model": "m",
+        "roles": {
+          "system": 1,
+          "user": 1
+        }
+      }
+    },
+    {
+      "name": "limits and settings, extension keys sorted without values",
+      "op": "stream",
+      "tools": [],
+      "request": {
+        "max_tokens": 256,
+        "temperature": 0,
+        "stop_sequences": [
+          "END",
+          "STOP"
+        ],
+        "thinking_budget": 1024,
+        "extensions": {
+          "zeta": "secret",
+          "alpha": {
+            "k": "v"
+          }
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hi"
+          }
+        ]
+      },
+      "want_payload": {
+        "op": "stream",
+        "messages": 1,
+        "content_bytes": 2,
+        "tools": 0,
+        "max_tokens": 256,
+        "has_temperature": true,
+        "thinking": true,
+        "stop_sequences": 2,
+        "roles": {
+          "user": 1
+        },
+        "extension_keys": [
+          "alpha",
+          "zeta"
+        ]
+      }
+    },
+    {
+      "name": "tool round: counts tools, not their names; arguments and thinking count as content",
+      "op": "tool_call",
+      "tools": [
+        "get_weather",
+        "pane.open"
+      ],
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Weather?"
+          },
+          {
+            "role": "assistant",
+            "content": "Checking.",
+            "tool_calls": [
+              {
+                "id": "c1",
+                "name": "get_weather",
+                "arguments": "{\"city\":\"NYC\"}"
+              }
+            ],
+            "thinking": [
+              {
+                "thinking": "hmm",
+                "signature": "sig"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c1",
+            "content": "sunny"
+          }
+        ]
+      },
+      "want_payload": {
+        "op": "tool_call",
+        "messages": 3,
+        "content_bytes": 39,
+        "tools": 2,
+        "max_tokens": 0,
+        "has_temperature": false,
+        "thinking": false,
+        "stop_sequences": 0,
+        "roles": {
+          "user": 1,
+          "assistant": 1,
+          "tool": 1
+        }
+      }
+    },
+    {
+      "name": "multimodal parts by type; media bytes not counted",
+      "op": "stream_tools",
+      "tools": [
+        "a"
+      ],
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "type": "text",
+                "text": "what is this"
+              },
+              {
+                "type": "image",
+                "mime_type": "image/png",
+                "data": "aGk="
+              },
+              {
+                "type": "text",
+                "text": "?"
+              }
+            ]
+          }
+        ]
+      },
+      "want_payload": {
+        "op": "stream_tools",
+        "messages": 1,
+        "content_bytes": 13,
+        "tools": 1,
+        "max_tokens": 0,
+        "has_temperature": false,
+        "thinking": false,
+        "stop_sequences": 0,
+        "roles": {
+          "user": 1
+        },
+        "parts": {
+          "text": 2,
+          "image": 1
+        }
+      }
+    }
+  ],
+  "bus_response_received": [
+    {
+      "name": "completion: usage and stop reason, no content",
+      "op": "complete",
+      "response": {
+        "content": "the answer is hunter2",
+        "finish_reason": "end_turn",
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5,
+          "cache_read_tokens": 100,
+          "cache_creation_tokens": 7,
+          "total_tokens": 122
+        }
+      },
+      "tool_calls": [],
+      "want_payload": {
+        "op": "complete",
+        "finish_reason": "end_turn",
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5,
+          "cache_read_tokens": 100,
+          "cache_creation_tokens": 7,
+          "total_tokens": 122
+        },
+        "content_bytes": 21,
+        "tool_calls": 0
+      }
+    },
+    {
+      "name": "tool call: counts calls; arguments and thinking count as content",
+      "op": "tool_call",
+      "response": {
+        "content": "Checking.",
+        "finish_reason": "tool_use",
+        "usage": {
+          "prompt_tokens": 3,
+          "completion_tokens": 40,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "total_tokens": 43
+        },
+        "thinking": [
+          {
+            "thinking": "hmm",
+            "signature": "sig"
+          }
+        ]
+      },
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "get_weather",
+          "arguments": "{\"city\":\"NYC\"}"
+        },
+        {
+          "id": "c2",
+          "name": "get_weather",
+          "arguments": "{\"city\":\"LA\"}"
+        }
+      ],
+      "want_payload": {
+        "op": "tool_call",
+        "finish_reason": "tool_use",
+        "usage": {
+          "prompt_tokens": 3,
+          "completion_tokens": 40,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "total_tokens": 43
+        },
+        "content_bytes": 39,
+        "tool_calls": 2
+      }
     }
   ]
 }

@@ -16,7 +16,7 @@ or a provider-specific wire detail (the adapter sub-packages below).
 - you expose tools → `client.CallWithTools(ctx, req, []llm.ToolDef{...})` and read `resp.ToolCalls`; constrain with `req.ToolChoice`
 - one provider may fail → `llm.WithFallback(secondary)`, `llm.OnFallback(fn)`
 - you pick a model by capability and budget → `llm.PickProvider(ctx, reg, profile, llm.BudgetBalanced)`; restrict with `llm.LoadPool()` + `PickProviderInPool`
-- you observe calls → `llm.OnRequest`/`OnResponse`/`OnError`/`OnRoute`/`OnEvaResult`, or `llm.WithBus(bus)`
+- you observe calls → `llm.OnRequest`/`OnResponse` (in process, full content), `OnError`/`OnRoute`/`OnEvaResult`, or `llm.WithBus(bus)` (request/response events are metadata only; opt into content with `llm.WithRequestContent(llm.RedactRequest(r))`): [Bus topics](../../../docs/adopters/reference/llm.md#bus-topics)
 - a URI-form model needs its provider key → `llm.ApplyAPIKey(ctx, store, uri)`; `errors.Is(err, llm.ErrMissingKey)` when none is set; `llm.ResolveAPIKey` also says where it came from; a blank key (empty or whitespace, `?api_key=` included) counts as unset; a key goes to a URI-named endpoint only when loopback or a trusted origin, never over plain http to a remote host (`llm.ErrKeyEndpoint`): [Provider keys](../../../docs/adopters/reference/llm.md#provider-keys), [Blank keys](../../../docs/adopters/reference/llm.md#blank-keys), [Where a key may go](../../../docs/adopters/reference/llm.md#where-a-key-may-go)
 - you embed kit in an app that owns its config → `llm.Resolve(uri, llm.Hermetic())`: no env var, no llm.yaml, no catalog cache read: [Hermetic mode](../../../docs/adopters/reference/llm.md#hermetic-mode)
 - you add a provider → `llm.Register("myscheme", factory, llm.Declaration{...})`: [Custom adapters](../../../docs/adopters/reference/llm.md#custom-adapters)
@@ -39,7 +39,7 @@ fmt.Println(resp.Content)
 - Provider URI: `scheme://model[?param=val]`; 14 schemes, aim aliases, catalog
   providers by protocol: [Provider URIs](../../../docs/adopters/reference/llm.md#provider-uris).
 - Config merge (`LoadConfig`): the URI outranks all; base URL then `LLM_BASE_URL` > llm.yaml; the key as `ApplyAPIKey` resolves it; an llm.yaml provider block also configures the provider's aliases, `llm.ProviderSettingsFor(uri)` returns it as written: [Provider blocks](../../../docs/adopters/reference/llm.md#provider-blocks-and-aliases). Pool: file < env (`LLM_POOL_DISABLE`) < CLI (`ResolvePool`).
-- Bus topics default to `kit.ai.{request.started, response.received, request.errored, fallback.applied, route.selected, eva.evaluated}`; `WithTopicPrefix` rebrands the `source.category` prefix, `WithTopics` overrides individual topics.
+- Bus topics default to `kit.ai.{request.started, response.received, request.errored, fallback.applied, route.selected, eva.evaluated}`; `WithTopicPrefix` rebrands the `source.category` prefix, `WithTopics` overrides individual topics. `request.started` and `response.received` carry counts, sizes, settings and usage, never prompt or reply content, unless `WithRequestContent` / `WithResponseContent` opt in.
 - Tool round trip: replay the model's calls as
   `{Role: "assistant", ToolCalls: resp.ToolCalls}`, then one
   `{Role: "tool", ToolCallID: call.ID, Content: result}` per call.

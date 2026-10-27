@@ -363,6 +363,14 @@ type clientConfig struct {
 	bus       bus.Bus
 	fallbacks []Provider
 	topics    Topics
+
+	// onRequest and onResponse are the in-process hooks.
+	onRequest  []func(Request)
+	onResponse []func(Response, time.Duration)
+	// requestContent and responseContent, when set, put content on the
+	// bus payloads ([WithRequestContent], [WithResponseContent]).
+	requestContent  func(Request) Request
+	responseContent func(Response) Response
 }
 
 // ensureBus lazily initializes an internal bus when an On* option is
@@ -414,35 +422,47 @@ func WithFallback(p Provider) Option {
 	}
 }
 
-// OnRequest subscribes fn to the configured RequestStart topic.
-// Multiple OnRequest calls stack (bus supports multiple subscribers).
-// Apply this AFTER [WithTopicPrefix] / [WithTopics] when overriding
-// topics so the subscription targets the renamed topic.
+// OnRequest calls fn with the full request before each call, in
+// process, synchronously; it never goes through the bus, whose
+// RequestStart event carries no content (see [RequestStartPayload]).
+// Multiple OnRequest calls stack, in order.
 func OnRequest(fn func(Request)) Option {
-	return func(c *clientConfig) {
-		c.ensureBus()
-		c.bus.Subscribe(string(c.resolveTopics().RequestStart),
-			func(_ context.Context, e bus.Event) error {
-				if p, ok := e.Payload.(RequestStartPayload); ok {
-					fn(p.Request)
-				}
-				return nil
-			})
-	}
+	return func(c *clientConfig) { c.onRequest = append(c.onRequest, fn) }
 }
 
-// OnResponse subscribes fn to the configured RequestEnd topic.
+// OnResponse calls fn with the full response and the call's duration
+// after each successful call other than a stream, in process,
+// synchronously; it never goes through the bus, whose RequestEnd event
+// carries no content (see [RequestEndPayload]). For CallWithTools the
+// response holds the turn's text, thinking, stop reason and usage.
+// Multiple OnResponse calls stack, in order.
 func OnResponse(fn func(Response, time.Duration)) Option {
-	return func(c *clientConfig) {
-		c.ensureBus()
-		c.bus.Subscribe(string(c.resolveTopics().RequestEnd),
-			func(_ context.Context, e bus.Event) error {
-				if p, ok := e.Payload.(RequestEndPayload); ok {
-					fn(p.Response, p.Duration)
-				}
-				return nil
-			})
+	return func(c *clientConfig) { c.onResponse = append(c.onResponse, fn) }
+}
+
+// WithRequestContent puts request content on the bus: the RequestStart
+// payload's Request is fn applied to a copy of the request (fn may
+// rewrite it freely; the caller's request is not touched). A nil fn
+// publishes the content as is. Without this option the payload is
+// metadata only. [RedactRequest] builds an fn that masks secrets with
+// a [redact.Redactor].
+//
+// The content then reaches every subscriber, including sinks that
+// forward or store events; publish it only to a bus you control.
+func WithRequestContent(fn func(Request) Request) Option {
+	if fn == nil {
+		fn = func(r Request) Request { return r }
 	}
+	return func(c *clientConfig) { c.requestContent = fn }
+}
+
+// WithResponseContent is [WithRequestContent] for the RequestEnd
+// payload's Response. [RedactResponse] builds a masking fn.
+func WithResponseContent(fn func(Response) Response) Option {
+	if fn == nil {
+		fn = func(r Response) Response { return r }
+	}
+	return func(c *clientConfig) { c.responseContent = fn }
 }
 
 // OnError subscribes fn to the configured RequestError topic.
@@ -532,6 +552,39 @@ func (c *Client) Provider() Provider { return c.primary }
 // from this method instead of the package-level constants.
 func (c *Client) Topics() Topics { return c.cfg.topics }
 
+// started runs the OnRequest hooks and publishes RequestStart for a
+// call of kind op offering tools tools.
+func (c *Client) started(ctx context.Context, op string, req Request, tools int) {
+	for _, fn := range c.cfg.onRequest {
+		fn(req)
+	}
+	if c.cfg.bus == nil {
+		return
+	}
+	p := requestStart(op, req, tools)
+	if c.cfg.requestContent != nil {
+		r := c.cfg.requestContent(cloneRequest(req))
+		p.Request = &r
+	}
+	c.publish(ctx, c.cfg.topics.RequestStart, p)
+}
+
+// ended runs the OnResponse hooks and publishes RequestEnd.
+func (c *Client) ended(ctx context.Context, op string, resp Response, calls []ToolCall, d time.Duration) {
+	for _, fn := range c.cfg.onResponse {
+		fn(resp, d)
+	}
+	if c.cfg.bus == nil {
+		return
+	}
+	p := requestEnd(op, resp, calls, d)
+	if c.cfg.responseContent != nil {
+		r := c.cfg.responseContent(cloneResponse(resp))
+		p.Response = &r
+	}
+	c.publish(ctx, c.cfg.topics.RequestEnd, p)
+}
+
 // publish sends an event on the bus if one is configured; nil bus is
 // a no-op. Errors are intentionally ignored — lifecycle events are
 // best-effort and must not affect LLM operations. A sync subscriber
@@ -579,7 +632,7 @@ func (c *Client) Capabilities() []string {
 // Complete delegates to the adapter's Completer. Supports fallback
 // and event hooks.
 func (c *Client) Complete(ctx context.Context, req Request) (Response, error) {
-	c.publish(ctx, c.cfg.topics.RequestStart, RequestStartPayload{Request: req})
+	c.started(ctx, "complete", req, 0)
 
 	chain := append([]Provider{c.primary}, c.cfg.fallbacks...)
 	var errs []error
@@ -599,10 +652,7 @@ func (c *Client) Complete(ctx context.Context, req Request) (Response, error) {
 		dur := time.Since(start)
 
 		if err == nil {
-			c.publish(ctx, c.cfg.topics.RequestEnd, RequestEndPayload{
-				Response: resp,
-				Duration: dur,
-			})
+			c.ended(ctx, "complete", resp, nil, dur)
 			return resp, nil
 		}
 
@@ -645,7 +695,7 @@ func allCapabilityErrors(errs []error) bool {
 // Stream delegates to the adapter's Streamer interface. Supports fallback
 // and event hooks.
 func (c *Client) Stream(ctx context.Context, req Request) (TokenIterator, error) {
-	c.publish(ctx, c.cfg.topics.RequestStart, RequestStartPayload{Request: req})
+	c.started(ctx, "stream", req, 0)
 
 	chain := append([]Provider{c.primary}, c.cfg.fallbacks...)
 	var errs []error
@@ -693,7 +743,7 @@ func (c *Client) Stream(ctx context.Context, req Request) (TokenIterator, error)
 func (c *Client) CallWithTools(
 	ctx context.Context, req Request, tools []ToolDef,
 ) (ToolResponse, error) {
-	c.publish(ctx, c.cfg.topics.RequestStart, RequestStartPayload{Request: req})
+	c.started(ctx, "tool_call", req, len(tools))
 
 	chain := append([]Provider{c.primary}, c.cfg.fallbacks...)
 	var errs []error
@@ -713,10 +763,13 @@ func (c *Client) CallWithTools(
 		dur := time.Since(start)
 
 		if err == nil {
-			c.publish(ctx, c.cfg.topics.RequestEnd, RequestEndPayload{
-				Response: Response{Content: resp.Content},
-				Duration: dur,
-			})
+			c.ended(ctx, "tool_call", Response{
+				Content:      resp.Content,
+				Role:         "assistant",
+				Usage:        resp.Usage,
+				FinishReason: resp.FinishReason,
+				Thinking:     resp.Thinking,
+			}, resp.ToolCalls, dur)
 			return resp, nil
 		}
 
@@ -746,7 +799,7 @@ func (c *Client) CallWithTools(
 // StreamWithTools delegates to the adapter's [ToolStreamer]. Fallback
 // applies to opening the stream only, as for [Client.Stream].
 func (c *Client) StreamWithTools(ctx context.Context, req Request, tools []ToolDef) (ToolStream, error) {
-	c.publish(ctx, c.cfg.topics.RequestStart, RequestStartPayload{Request: req})
+	c.started(ctx, "stream_tools", req, len(tools))
 
 	chain := append([]Provider{c.primary}, c.cfg.fallbacks...)
 	var errs []error
