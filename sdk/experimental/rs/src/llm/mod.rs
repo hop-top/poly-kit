@@ -51,7 +51,7 @@ pub use endpoint::{
 pub use error::{KeyEndpointReason, LlmError, MissingKeyError, ToolNameReason};
 pub use keys::{KeyResolution, KeySource, KeySourceKind, FALLBACK_ENV_KEY};
 pub use provider::{BoxFuture, Capability, Provider, TokenStream};
-pub use registry::{default_registry, Declaration, Factory, ProviderKey, Registry};
+pub use registry::{default_registry, Declaration, Factory, ProviderKey, Registry, ResolveOptions};
 pub use toolchoice::{check_tool_choice, ToolChoice, ToolChoiceMode};
 pub use toolnames::{
     ToolNameMode, ToolNameRule, ToolNames, ANTHROPIC_TOOL_NAMES, GEMINI_TOOL_NAMES,
@@ -96,4 +96,10 @@ pub fn apply_api_key(store: Option<&dyn SecretStore>, uri: &str) -> Result<Strin
 /// [`Registry::resolve`] on the default registry.
 pub fn resolve(uri: &str) -> Result<Box<dyn Provider>, LlmError> {
     default_registry().resolve(uri)
+}
+
+/// [`Registry::resolve_with`] on the default registry; pass
+/// [`ResolveOptions::hermetic`] to read nothing ambient.
+pub fn resolve_with(uri: &str, opts: ResolveOptions) -> Result<Box<dyn Provider>, LlmError> {
+    default_registry().resolve_with(uri, opts)
 }

@@ -177,6 +177,14 @@ pub struct ResolvedConfig {
     pub provider: ProviderConfig,
     pub fallbacks: Vec<String>,
     pub net_policy: NetPolicy,
+    /// Read nothing ambient while the adapter builds and runs (Go
+    /// `ResolvedConfig.Hermetic`): no environment variable (the
+    /// anthropic adapter's `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`,
+    /// `ANTHROPIC_WORKSPACE_ID` and `LLM_BASE_URL`) and no file
+    /// (llm.yaml). Only this config counts. Set by
+    /// [`ResolveOptions::hermetic`](super::ResolveOptions::hermetic) or
+    /// an adapter builder's `hermetic`.
+    pub hermetic: bool,
 }
 
 fn redacted(v: &str) -> &'static str {

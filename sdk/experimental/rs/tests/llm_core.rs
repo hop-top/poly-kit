@@ -781,3 +781,24 @@ fn check_tool_choice_cases() {
         }
     }
 }
+
+#[test]
+fn resolve_with_hermetic_reaches_the_factory() {
+    use hop_top_kit::llm::ResolveOptions;
+    let seen: Arc<Mutex<Vec<bool>>> = Arc::default();
+    let s = seen.clone();
+    let r = Registry::new();
+    r.register(
+        "probe",
+        Arc::new(move |cfg: ResolvedConfig| {
+            s.lock().unwrap().push(cfg.hermetic);
+            Ok(Box::new(Stub) as Box<dyn Provider>)
+        }),
+        Declaration::default(),
+    )
+    .unwrap();
+    r.resolve("probe://m").unwrap();
+    r.resolve_with("probe://m", ResolveOptions::hermetic())
+        .unwrap();
+    assert_eq!(*seen.lock().unwrap(), [false, true]);
+}
