@@ -21,6 +21,7 @@ import (
 
 	"hop.top/kit/go/ai/llm"
 	llmerrors "hop.top/kit/go/ai/llm/errors"
+	"hop.top/kit/go/ai/llm/internal/bodylimit"
 )
 
 const (
@@ -65,7 +66,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	// ANTHROPIC_WORKSPACE_ID keep their fallback role; the workspace ID
 	// is what keys not scoped to a workspace must send. A blank key or
 	// token is no credential: the key is required, the token not sent.
-	lim, err := limitsFrom(cfg.Provider.Params)
+	lim, err := bodylimit.FromParams(scheme, cfg.Provider.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +77,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	opts := []option.RequestOption{
 		option.WithoutEnvironmentDefaults(),
 		option.WithMiddleware(boundRetryAfter),
-		option.WithMiddleware(lim.middleware),
+		option.WithMiddleware(lim.Middleware),
 		// Redirects are not followed: a credential never moves to a
 		// host the server names.
 		option.WithHTTPClient(&http.Client{CheckRedirect: refuseRedirect}),
