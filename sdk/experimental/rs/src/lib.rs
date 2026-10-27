@@ -58,6 +58,9 @@ pub mod telemetry;
 #[cfg(feature = "timeutil")]
 pub mod timeutil;
 
+#[cfg(feature = "llm")]
+pub mod llm;
+
 #[cfg(feature = "mcp")]
 pub mod mcp;
 

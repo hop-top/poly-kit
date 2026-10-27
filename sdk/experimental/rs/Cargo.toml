@@ -150,6 +150,19 @@ config-signal = [
     "tokio/sync",
 ]
 
+# Provider-neutral LLM core, a port of go/ai/llm: messages, tool
+# calls, streaming tokens, the error taxonomy, provider URIs with their
+# redaction, llm.yaml < env < URI config and key resolution, the scheme
+# registry and the fallback client publishing on the bus. Nothing of its
+# own beyond `config` (llm.yaml parsing, XDG paths) and `netpolicy`;
+# wasm-safe apart from reading llm.yaml from disk.
+llm = ["config", "netpolicy"]
+# The Anthropic Messages API adapter, over the HTTP API (no SDK crate):
+# request shaping, SSE streaming, error mapping and retries with full
+# jitter through `util::retry`, all through the guarded `api` client.
+# tokio supplies only the default retry timer. Native only.
+llm-anthropic = ["llm", "api", "dep:base64", "dep:tokio", "tokio/time"]
+
 [dependencies]
 hop-top-cite = { version = "0.1.0", optional = true }
 chrono = { version = "0.4", default-features = false, features = [

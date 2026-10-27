@@ -33,6 +33,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`sqldb.rs`](src/sqldb.rs) | SQLite connection setup, pragmas, numbered migrations (feature `sqldb`) | you open a database directly |
 | [`kv.rs`](src/kv.rs) | byte-keyed `Store` / `TtlStore` traits over SQLite (feature `kv`) | you need small keyed values with expiry |
 | [`netpolicy/`](src/netpolicy/README.md) | `--offline` marker, loopback and dial checks (feature `netpolicy`, no deps, wasm-safe); the guarded reqwest client (feature `api`) | a request or a dial must honour `--offline` |
+| [`llm/`](src/llm/README.md) | provider-neutral LLM core: messages, tool calls, streaming, key resolution, registry, fallback client (feature `llm`); the Anthropic adapter in [`llm/anthropic/`](src/llm/anthropic/README.md) (feature `llm-anthropic`) | your tool calls a model by `scheme://model` URI |
 | [`api.rs`](src/api.rs) | JSON API client over the guarded client (feature `api`) | you call an HTTP API from a kit CLI |
 | [`uri.rs`](src/uri.rs) | URI facade delegating to `hop-top-cite` (feature `uri`) | you parse or format kit URIs |
 | [`cli/`](src/cli/README.md) | clap root with kit's shell completion: `completion bash\|zsh\|fish\|powershell`, `completion fig\|usage` specs, `__complete`, root aliases, flag enums, completers (feature `cli`) | your CLI must offer shell completion |
@@ -45,14 +46,13 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 |---------|----------|-------------|
 | `netpolicy` (`api`) | nothing (+ `reqwest`, `serde`, `serde_json`, `thiserror`) | 0 (113) |
 | `blob` | `thiserror` | 6 |
-| `sqldb` | `rusqlite` (bundled SQLite), `thiserror` | 12 |
-| `kv` | `sqldb` — nothing of its own | 12 |
+| `sqldb` (`kv`) | `rusqlite` (bundled SQLite), `thiserror` (`kv`: nothing of its own) | 12 (12) |
 | `bus` (`domain`, `bus-network`, `bus-network-axum`, `bus-network-webpki-roots`) | `serde`, `serde_json` (`domain`: nothing of its own, wasm-safe; + `netpolicy`, `tokio` rt/net/time/sync/macros, `tokio-tungstenite`, `futures-util`, `getrandom`, `rustls` (ring), `rustls-native-certs`; + `axum`, `hyper`, `hyper-util`; + `webpki-roots`) | 14 (14, 60, 76, 61) |
 | `config` (`config-pkl`, `config-signal`) | `bus` + `saphyr-parser`, `thiserror` (+ `regex`; + `tokio` rt, signal, sync) | 18 (22, 25) |
+| `llm` (`llm-anthropic`) | `config` + `netpolicy`, nothing of its own (+ `api`, `base64`, `tokio` time; native only) | 18 (115) |
 | `timeutil` | `chrono`, `interim`, `thiserror` | 19 |
 | `output` | `serde`, `serde_json`, `serde_norway`, `comfy-table`, `thiserror` | 22 |
-| `sqlstore` | `sqldb` + `serde`, `serde_json` | 22 |
-| `sqlstore-blob` | `sqlstore` + `blob` — nothing of its own | 22 |
+| `sqlstore` (`sqlstore-blob`) | `sqldb` + `serde`, `serde_json` (+ `blob`, nothing of its own) | 22 (22) |
 | `id` | `type-safe-id`, `uuid`, `serde`, `thiserror` | 25 |
 | `httpcache` | `kv` + `serde`, `serde_json`, `sha2`, `base64` | 33 |
 | `cli` | `output` + `clap` | 35 |
@@ -64,7 +64,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `telemetry` | `api` + `serde_norway`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
 
 Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`.
-`api` and `telemetry` are heaviest (`reqwest` brings `tokio` and TLS); bundled `rusqlite` builds SQLite from source (needs a C compiler). `bus-network` runs one shared current-thread tokio runtime on its own thread, where its blocking methods panic (use the `_async` variants); `ring` needs a C compiler for the target; `wss://` on Android needs `NetworkOptions::tls_config` or `bus-network-webpki-roots`.
+`api` and `telemetry` are heaviest (`reqwest` brings `tokio` and TLS); bundled `rusqlite` builds SQLite from source (needs a C compiler). `llm-anthropic` is native only and retries on tokio's timer unless given a `Sleeper`. `bus-network` runs one shared current-thread tokio runtime on its own thread, where its blocking methods panic (use the `_async` variants); `ring` needs a C compiler for the target; `wss://` on Android needs `NetworkOptions::tls_config` or `bus-network-webpki-roots`.
 
 ## Contract
 
