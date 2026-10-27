@@ -109,6 +109,8 @@ type llmConfFile struct {
 		Want float64 `json:"want"`
 	} `json:"usage_cost"`
 	MediaFetch []confMediaFetch `json:"media_fetch"`
+	// Run in go/ai/llm/google.
+	GeminiStreamEvents json.RawMessage `json:"gemini_stream_events"`
 }
 
 type confMediaFetch struct {

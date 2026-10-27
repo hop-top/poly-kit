@@ -262,6 +262,9 @@ type anthropicConfFile struct {
 		Withheld []string          `json:"withheld"`
 		Refused  bool              `json:"refused"`
 	} `json:"credential_headers"`
+
+	// Run in go/ai/llm/google.
+	GeminiStreamEvents json.RawMessage `json:"gemini_stream_events"`
 }
 
 func loadAnthropicConf(t *testing.T) anthropicConfFile {

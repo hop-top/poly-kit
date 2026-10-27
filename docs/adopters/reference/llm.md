@@ -229,17 +229,31 @@ sends input and cache tokens when the message starts, so an input or
 cache budget can stop a turn before any output; it sends the output
 count only near the end (`message_delta`), so a running output budget
 needs your own estimate from the text deltas. kit does not estimate.
+Gemini reports usage, output count included, on every chunk, so a
+running output budget needs no estimate there.
 
-Support: `anthropic` (`Stream`, `StreamWithTools`). `openai`,
-`routellm` and `gemini` stream text only and implement no
-`StreamWithTools` yet; they ignore `StreamEvents`. When they do, the
-mapping will be:
+**Gemini.** `StreamWithTools`, and `Stream` with `StreamEvents`, end
+the turn on the chunk with a `finishReason` (`STOP` → `stop`, also
+when the turn called tools; `MAX_TOKENS` → `length`; `SAFETY` →
+`content_filter`; others as sent) or, for a blocked prompt, a
+`promptFeedback.blockReason`; a body ending before either is
+`*llmerrors.ErrStreamTruncated`. `Stream` not opted in still ends a
+body without a finish reason with `Done`. Calls carry Gemini's id, or a
+synthesized `call_...`, and the thought signature in `ProviderData`, as
+`CallWithTools` does; a call without `args` has nil `Arguments` and no
+delta. No thinking blocks: the adapter requests no thoughts. One SSE
+line is capped at 1 MiB; there are no size params.
+
+Support: `anthropic` and `gemini` (`Stream`, `StreamWithTools`).
+`openai` and `routellm` stream text only and implement no
+`StreamWithTools` yet; they ignore `StreamEvents`. The mapping (the
+OpenAI row is the plan):
 
 | Provider stream | Events |
 |-----------------|--------|
 | Anthropic | `content_block_start` (tool_use) → start; `input_json_delta` → delta; `content_block_stop` → end; usage on `message_start` (input, cache) and `message_delta` (cumulative output) |
 | OpenAI | `tool_calls[i]` → start on the fragment carrying id and name, then deltas; every open call ends, in index order, on the `finish_reason` chunk; usage only with `stream_options.include_usage`, in the final chunk |
-| Gemini | a `functionCall` arrives whole: start, one delta, end back to back; `usageMetadata` on every chunk (true mid-stream usage) |
+| Gemini | a `functionCall` part arrives whole: start, one delta (its `args`), end back to back; `usageMetadata` on every chunk → a usage event after that chunk's parts (true mid-stream usage; a count a chunk omits keeps its last value) |
 
 ## System messages
 

@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON; system messages, wherever they sit, join in order with a blank line (\\n\\n) into the system field, empty ones skipped, and a cache_control on one ends a text block there, carrying that breakpoint. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds (a 403 or permission_error is permission_denied, which is also an auth error; a 401 is auth), whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode). anthropic_tool_choice: Request.ToolChoice (mode auto, any, none or tool with the tool's defined name) on the call made (complete, stream, tools, stream_tools): the body's tool_choice (want_tool_choice; null: absent; a named tool by its sent name) or the exact error before any request (no tools, unknown mode, a missing, stray or undefined name). anthropic_hermetic: the adapter built hermetic (Go ResolvedConfig.Hermetic, set by llm.Hermetic()) reads no environment and no llm.yaml: with the same env and file as credential_headers, the request goes to want_host (the configured base URL, else the default endpoint) carrying the sent headers and none of the withheld ones. anthropic_stream_events: what a stream yields when Request.StreamEvents is set (tools: the defined tool names; StreamWithTools when present, else Stream): text tokens, tool_call events (start with index, id and the original name; delta with the raw partial-JSON arguments; end with the complete call, as Outcome.ToolCalls[index]), cumulative usage snapshots (prompt, completion, cache read, cache creation, total) when the provider reports usage, then done; or, after a mid-stream error, the events so far and error_kind, with no end for an open call. Not opted in, the sequence is exactly anthropic_stream's. bus_request_started: the kit.ai.request.started payload for a request and call (op complete, stream, tool_call, stream_tools; tools: the tool names offered): metadata only (op, model when set, message count, roles and multimodal part types counted, content_bytes as the UTF-8 length of message text, text parts, tool call arguments and thinking text, tools counted, max_tokens, has_temperature, thinking, stop_sequences counted, extension_keys sorted), compared as JSON; no message text, tool names, extension values or media. bus_response_received: the kit.ai.response.received payload after a completion or tool call: op, finish_reason, usage, content_bytes (text, tool call arguments, thinking text), tool_calls counted, plus duration_ms (a non-negative integer, not compared); no content. Content appears in either only when the client opts in (Go WithRequestContent, WithResponseContent), outside these vectors. media_fetch: what a URL media source refuses to download (SSRF guard): only http and https, no userinfo, public addresses only (v4-mapped and NAT64 judged by their IPv4), redirects not followed, a byte cap (max_bytes, default 32 MiB); error_kind refused (message exact when given), redirect, http_status or too_large. A url starting with / is served by the runner's loopback server, which the runner lets past the address check, and attempts counts the requests it saw. Image and PDF url parts are sent to anthropic as url sources and never fetched.",
+  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON; system messages, wherever they sit, join in order with a blank line (\\n\\n) into the system field, empty ones skipped, and a cache_control on one ends a text block there, carrying that breakpoint. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds (a 403 or permission_error is permission_denied, which is also an auth error; a 401 is auth), whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode). anthropic_tool_choice: Request.ToolChoice (mode auto, any, none or tool with the tool's defined name) on the call made (complete, stream, tools, stream_tools): the body's tool_choice (want_tool_choice; null: absent; a named tool by its sent name) or the exact error before any request (no tools, unknown mode, a missing, stray or undefined name). anthropic_hermetic: the adapter built hermetic (Go ResolvedConfig.Hermetic, set by llm.Hermetic()) reads no environment and no llm.yaml: with the same env and file as credential_headers, the request goes to want_host (the configured base URL, else the default endpoint) carrying the sent headers and none of the withheld ones. anthropic_stream_events: what a stream yields when Request.StreamEvents is set (tools: the defined tool names; StreamWithTools when present, else Stream): text tokens, tool_call events (start with index, id and the original name; delta with the raw partial-JSON arguments; end with the complete call, as Outcome.ToolCalls[index]), cumulative usage snapshots (prompt, completion, cache read, cache creation, total) when the provider reports usage, then done; or, after a mid-stream error, the events so far and error_kind, with no end for an open call. Not opted in, the sequence is exactly anthropic_stream's. bus_request_started: the kit.ai.request.started payload for a request and call (op complete, stream, tool_call, stream_tools; tools: the tool names offered): metadata only (op, model when set, message count, roles and multimodal part types counted, content_bytes as the UTF-8 length of message text, text parts, tool call arguments and thinking text, tools counted, max_tokens, has_temperature, thinking, stop_sequences counted, extension_keys sorted), compared as JSON; no message text, tool names, extension values or media. bus_response_received: the kit.ai.response.received payload after a completion or tool call: op, finish_reason, usage, content_bytes (text, tool call arguments, thinking text), tool_calls counted, plus duration_ms (a non-negative integer, not compared); no content. Content appears in either only when the client opts in (Go WithRequestContent, WithResponseContent), outside these vectors. media_fetch: what a URL media source refuses to download (SSRF guard): only http and https, no userinfo, public addresses only (v4-mapped and NAT64 judged by their IPv4), redirects not followed, a byte cap (max_bytes, default 32 MiB); error_kind refused (message exact when given), redirect, http_status or too_large. A url starting with / is served by the runner's loopback server, which the runner lets past the address check, and attempts counts the requests it saw. Image and PDF url parts are sent to anthropic as url sources and never fetched. gemini_stream_events: the gemini adapter's StreamWithTools (tools: the defined tool names, sent as the gemini tool-name rule maps them; no tools: Stream) over a streamGenerateContent SSE body: text tokens; with stream_events, each functionCall part, which Gemini sends whole, as start (index, id, original name), one delta (the raw args JSON; none when a call has no args) and end (the complete call, as Outcome.ToolCalls[index]) back to back, then a cumulative usage snapshot for every chunk carrying usageMetadata (a count a chunk omits keeps its last value); then done on the chunk with a finishReason or a promptFeedback blockReason (want_outcome: content, tool_calls, finish_reason mapped as STOP stop, MAX_TOKENS length, SAFETY content_filter, usage), or error_kind (truncated: the body ended before either). Go only: no other port has a gemini adapter.",
   "redact_uri": [
     {
       "name": "api_key",
@@ -4480,6 +4480,462 @@
       },
       "want_size": 1024,
       "attempts": 1
+    }
+  ],
+  "gemini_stream_events": [
+    {
+      "name": "not opted in: text only, calls in the outcome",
+      "sse": "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Checking.\"}]}}],\"usageMetadata\":{\"promptTokenCount\":12,\"candidatesTokenCount\":2,\"totalTokenCount\":14}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"id\":\"fc_1\",\"name\":\"get_weather\",\"args\":{\"city\":\"LA\"}},\"thoughtSignature\":\"c2ln\"},{\"functionCall\":{\"id\":\"fc_2\",\"name\":\"pane_open\",\"args\":{\"pane\":\"left\"}}}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":12,\"candidatesTokenCount\":20,\"totalTokenCount\":32}}\r\n\r\n",
+      "tools": [
+        "get_weather",
+        "pane/open"
+      ],
+      "stream_events": false,
+      "want_events": [
+        {
+          "type": "text",
+          "text": "Checking."
+        },
+        {
+          "type": "done"
+        }
+      ],
+      "want_outcome": {
+        "content": "Checking.",
+        "tool_calls": [
+          {
+            "id": "fc_1",
+            "name": "get_weather",
+            "arguments": {
+              "city": "LA"
+            }
+          },
+          {
+            "id": "fc_2",
+            "name": "pane/open",
+            "arguments": {
+              "pane": "left"
+            }
+          }
+        ],
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 12,
+          "completion_tokens": 20,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "total_tokens": 32
+        }
+      },
+      "error_kind": ""
+    },
+    {
+      "name": "parallel calls arrive whole: start, one delta, end; usage every chunk",
+      "sse": "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Checking.\"}]}}],\"usageMetadata\":{\"promptTokenCount\":12,\"candidatesTokenCount\":2,\"totalTokenCount\":14}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"id\":\"fc_1\",\"name\":\"get_weather\",\"args\":{\"city\":\"LA\"}},\"thoughtSignature\":\"c2ln\"},{\"functionCall\":{\"id\":\"fc_2\",\"name\":\"pane_open\",\"args\":{\"pane\":\"left\"}}}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":12,\"candidatesTokenCount\":20,\"totalTokenCount\":32}}\r\n\r\n",
+      "tools": [
+        "get_weather",
+        "pane/open"
+      ],
+      "stream_events": true,
+      "want_events": [
+        {
+          "type": "text",
+          "text": "Checking."
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 12,
+            "completion_tokens": 2,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 14
+          }
+        },
+        {
+          "type": "tool_call",
+          "kind": "start",
+          "index": 0,
+          "id": "fc_1",
+          "name": "get_weather"
+        },
+        {
+          "type": "tool_call",
+          "kind": "delta",
+          "index": 0,
+          "arguments": "{\"city\":\"LA\"}"
+        },
+        {
+          "type": "tool_call",
+          "kind": "end",
+          "index": 0,
+          "id": "fc_1",
+          "name": "get_weather",
+          "arguments": {
+            "city": "LA"
+          }
+        },
+        {
+          "type": "tool_call",
+          "kind": "start",
+          "index": 1,
+          "id": "fc_2",
+          "name": "pane/open"
+        },
+        {
+          "type": "tool_call",
+          "kind": "delta",
+          "index": 1,
+          "arguments": "{\"pane\":\"left\"}"
+        },
+        {
+          "type": "tool_call",
+          "kind": "end",
+          "index": 1,
+          "id": "fc_2",
+          "name": "pane/open",
+          "arguments": {
+            "pane": "left"
+          }
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 12,
+            "completion_tokens": 20,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 32
+          }
+        },
+        {
+          "type": "done"
+        }
+      ],
+      "want_outcome": {
+        "content": "Checking.",
+        "tool_calls": [
+          {
+            "id": "fc_1",
+            "name": "get_weather",
+            "arguments": {
+              "city": "LA"
+            }
+          },
+          {
+            "id": "fc_2",
+            "name": "pane/open",
+            "arguments": {
+              "pane": "left"
+            }
+          }
+        ],
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 12,
+          "completion_tokens": 20,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "total_tokens": 32
+        }
+      },
+      "error_kind": ""
+    },
+    {
+      "name": "call without arguments: no delta",
+      "sse": "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"id\":\"fc_1\",\"name\":\"get_weather\"}}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":5,\"candidatesTokenCount\":3,\"totalTokenCount\":8}}\r\n\r\n",
+      "tools": [
+        "get_weather"
+      ],
+      "stream_events": true,
+      "want_events": [
+        {
+          "type": "tool_call",
+          "kind": "start",
+          "index": 0,
+          "id": "fc_1",
+          "name": "get_weather"
+        },
+        {
+          "type": "tool_call",
+          "kind": "end",
+          "index": 0,
+          "id": "fc_1",
+          "name": "get_weather",
+          "arguments": null
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 5,
+            "completion_tokens": 3,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 8
+          }
+        },
+        {
+          "type": "done"
+        }
+      ],
+      "want_outcome": {
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "fc_1",
+            "name": "get_weather",
+            "arguments": null
+          }
+        ],
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 5,
+          "completion_tokens": 3,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "total_tokens": 8
+        }
+      },
+      "error_kind": ""
+    },
+    {
+      "name": "plain stream: usage after each chunk",
+      "sse": "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Hello\"}]}}],\"usageMetadata\":{\"promptTokenCount\":10,\"candidatesTokenCount\":1,\"totalTokenCount\":11}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\" world\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":10,\"candidatesTokenCount\":5,\"totalTokenCount\":15}}\r\n\r\n",
+      "tools": [],
+      "stream_events": true,
+      "want_events": [
+        {
+          "type": "text",
+          "text": "Hello"
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 1,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 11
+          }
+        },
+        {
+          "type": "text",
+          "text": " world"
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 15
+          }
+        },
+        {
+          "type": "done"
+        }
+      ],
+      "error_kind": ""
+    },
+    {
+      "name": "usage never goes down when a chunk omits a count",
+      "sse": "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Hi\"}]}}],\"usageMetadata\":{\"promptTokenCount\":10,\"candidatesTokenCount\":4,\"totalTokenCount\":14}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":10,\"totalTokenCount\":10}}\r\n\r\n",
+      "tools": [
+        "get_weather"
+      ],
+      "stream_events": true,
+      "want_events": [
+        {
+          "type": "text",
+          "text": "Hi"
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 4,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 14
+          }
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 4,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 14
+          }
+        },
+        {
+          "type": "done"
+        }
+      ],
+      "want_outcome": {
+        "content": "Hi",
+        "tool_calls": [],
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 4,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "total_tokens": 14
+        }
+      },
+      "error_kind": ""
+    },
+    {
+      "name": "max tokens finish maps to length",
+      "sse": "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Long\"}]},\"finishReason\":\"MAX_TOKENS\"}],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":1,\"totalTokenCount\":4}}\r\n\r\n",
+      "tools": [
+        "get_weather"
+      ],
+      "stream_events": false,
+      "want_events": [
+        {
+          "type": "text",
+          "text": "Long"
+        },
+        {
+          "type": "done"
+        }
+      ],
+      "want_outcome": {
+        "content": "Long",
+        "tool_calls": [],
+        "finish_reason": "length",
+        "usage": {
+          "prompt_tokens": 3,
+          "completion_tokens": 1,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "total_tokens": 4
+        }
+      },
+      "error_kind": ""
+    },
+    {
+      "name": "blocked prompt ends the turn as content_filter",
+      "sse": "data: {\"usageMetadata\":{\"promptTokenCount\":7,\"totalTokenCount\":7},\"promptFeedback\":{\"blockReason\":\"SAFETY\"}}\r\n\r\n",
+      "tools": [
+        "get_weather"
+      ],
+      "stream_events": true,
+      "want_events": [
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 7,
+            "completion_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 7
+          }
+        },
+        {
+          "type": "done"
+        }
+      ],
+      "want_outcome": {
+        "content": "",
+        "tool_calls": [],
+        "finish_reason": "content_filter",
+        "usage": {
+          "prompt_tokens": 7,
+          "completion_tokens": 0,
+          "cache_read_tokens": 0,
+          "cache_creation_tokens": 0,
+          "total_tokens": 7
+        }
+      },
+      "error_kind": ""
+    },
+    {
+      "name": "body ends before a finish reason: truncated",
+      "sse": "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Partial\"}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"candidatesTokenCount\":1,\"totalTokenCount\":5}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"id\":\"fc_1\",\"name\":\"get_weather\",\"args\":{\"city\":\"LA\"}}}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"candidatesTokenCount\":9,\"totalTokenCount\":13}}\r\n\r\n",
+      "tools": [
+        "get_weather"
+      ],
+      "stream_events": true,
+      "want_events": [
+        {
+          "type": "text",
+          "text": "Partial"
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 4,
+            "completion_tokens": 1,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 5
+          }
+        },
+        {
+          "type": "tool_call",
+          "kind": "start",
+          "index": 0,
+          "id": "fc_1",
+          "name": "get_weather"
+        },
+        {
+          "type": "tool_call",
+          "kind": "delta",
+          "index": 0,
+          "arguments": "{\"city\":\"LA\"}"
+        },
+        {
+          "type": "tool_call",
+          "kind": "end",
+          "index": 0,
+          "id": "fc_1",
+          "name": "get_weather",
+          "arguments": {
+            "city": "LA"
+          }
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 4,
+            "completion_tokens": 9,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 13
+          }
+        }
+      ],
+      "error_kind": "truncated"
+    },
+    {
+      "name": "error event mid-stream",
+      "sse": "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Hel\"}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"candidatesTokenCount\":1,\"totalTokenCount\":5}}\r\n\r\ndata: {\"error\":{\"code\":429,\"message\":\"quota\",\"status\":\"RESOURCE_EXHAUSTED\"}}\r\n\r\n",
+      "tools": [
+        "get_weather"
+      ],
+      "stream_events": true,
+      "want_events": [
+        {
+          "type": "text",
+          "text": "Hel"
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 4,
+            "completion_tokens": 1,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 5
+          }
+        }
+      ],
+      "error_kind": "rate_limit"
     }
   ]
 }

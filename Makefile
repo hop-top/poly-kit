@@ -493,7 +493,7 @@ test-parity-netpolicy: ## netpolicy-v1 conformance corpus (Go and Rust runners)
 # vectors from loopback only.
 test-parity-llm: ## llm-v1 conformance corpus (Go, Rust, Python and TypeScript runners)
 	@echo "==> llm-v1 conformance: Go"
-	go test ./go/ai/llm/ ./go/ai/llm/anthropic/ -run '^TestConformance' -count=1
+	go test ./go/ai/llm/ ./go/ai/llm/anthropic/ ./go/ai/llm/google/ -run '^TestConformance' -count=1
 	@echo "==> llm-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --features llm-anthropic --test llm_conformance --locked
 	@echo "==> llm-v1 conformance: Python"
