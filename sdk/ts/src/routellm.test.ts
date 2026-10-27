@@ -3,55 +3,192 @@
  * Covers: parseModelField, parseRouterConfig, scheme registration.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { resolve } from "./llm";
-import { parseModelField, parseRouterConfig } from "./routellm";
+import { RouteLLMAdapter, parseModelField, parseRouterConfig } from "./routellm";
 
 // ─── parseModelField ──────────────────────────────────────────────────────────
 
 describe("parseModelField", () => {
-  it("parses valid router:threshold", () => {
-    const r = parseModelField("mf:0.7");
-    expect(r.routerName).toBe("mf");
-    expect(r.threshold).toBe(0.7);
-  });
+  // Router pair: the text after the last colon parses as a finite float.
+  const pairs: [string, string, string, number][] = [
+    ["valid", "mf:0.7", "mf", 0.7],
+    ["zero", "bert:0", "bert", 0],
+    ["one", "causal_llm:1", "causal_llm", 1],
+    ["precise", "mf:0.123456", "mf", 0.123456],
+    ["exponent", "mf:5e-1", "mf", 0.5],
+    ["leading dot", "mf:.5", "mf", 0.5],
+    ["trailing dot", "mf:1.", "mf", 1],
+    ["hex float", "mf:0x1p-1", "mf", 0.5],
+    ["colon in router name", "a:b:0.5", "a:b", 0.5],
+    ["out of range still a pair", "mf:1.5", "mf", 1.5],
+    // Go ParseFloat syntax, probed against strconv.
+    ["upper-case hex float", "mf:0X.8P1", "mf", 1],
+    ["underscore after hex prefix", "mf:0x_1p-1", "mf", 0.5],
+    ["underscore between digits", "mf:1_0", "mf", 10],
+    ["underscore in exponent", "mf:1e+0_1", "mf", 10],
+    ["leading zeros", "mf:00.5", "mf", 0.5],
+    ["underflow to zero", "mf:1e-400", "mf", 0],
+  ];
+  for (const [name, model, router, threshold] of pairs) {
+    it(`router pair: ${name}`, () => {
+      const r = parseModelField(model);
+      expect(r.isTier).toBe(false);
+      expect(r.tier).toBe("");
+      expect(r.routerName).toBe(router);
+      expect(r.threshold).toBe(threshold);
+    });
+  }
 
-  it("parses zero threshold", () => {
-    const r = parseModelField("bert:0");
-    expect(r.routerName).toBe("bert");
-    expect(r.threshold).toBe(0);
-  });
-
-  it("parses threshold of 1", () => {
-    const r = parseModelField("causal_llm:1");
-    expect(r.routerName).toBe("causal_llm");
-    expect(r.threshold).toBe(1);
-  });
-
-  it("parses precise threshold", () => {
-    const r = parseModelField("mf:0.123456");
-    expect(r.routerName).toBe("mf");
-    expect(r.threshold).toBe(0.123456);
-  });
+  // Tier: everything else non-empty, verbatim.
+  const tiers: [string, string][] = [
+    ["bare tier", "private"],
+    ["underscore tier", "coding_fast"],
+    ["server router id", "router-mf-0.5"],
+    ["non-numeric suffix", "mf:abc"],
+    ["colon in tier name", "a:b"],
+    ["empty name", ":0.5"],
+    ["empty threshold", "mf:"],
+    ["NaN suffix", "mf:NaN"],
+    ["Inf suffix", "mf:Inf"],
+    ["Infinity suffix", "mf:Infinity"],
+    ["overflowing suffix", "mf:1e400"],
+    ["whitespace suffix", "mf: 0.5"],
+    ["hex integer suffix", "mf:0x10"],
+    ["empty-after-sign suffix", "mf:+"],
+    ["double underscore", "mf:1__0"],
+    ["leading underscore", "mf:_1"],
+    ["trailing underscore", "mf:1_"],
+    ["underscore before dot", "mf:1_.5"],
+    ["underscore before hex exponent", "mf:0x1_p0"],
+    ["underscore inside hex prefix", "mf:0_x1p0"],
+  ];
+  for (const [name, model] of tiers) {
+    it(`tier: ${name}`, () => {
+      const r = parseModelField(model);
+      expect(r.isTier).toBe(true);
+      expect(r.tier).toBe(model);
+      expect(r.routerName).toBe("");
+      expect(r.threshold).toBe(0);
+    });
+  }
 
   it("throws on empty string", () => {
-    expect(() => parseModelField("")).toThrow("model field is required");
+    expect(() => parseModelField("")).toThrow(
+      "model field is required (router_name:threshold or tier name)"
+    );
+  });
+});
+
+// ─── Adapter: model field on the wire ─────────────────────────────────────────
+
+describe("RouteLLMAdapter model field", () => {
+  const origFetch = globalThis.fetch;
+  let sent: string[];
+
+  beforeEach(() => {
+    sent = [];
+    globalThis.fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      sent.push((JSON.parse(String(init?.body)) as { model: string }).model);
+      return new globalThis.Response(
+        JSON.stringify({
+          choices: [
+            { message: { role: "assistant", content: "ok" }, finish_reason: "stop" },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as unknown as typeof globalThis.fetch;
   });
 
-  it("throws on missing colon", () => {
-    expect(() => parseModelField("mf")).toThrow("expected format");
+  afterEach(() => {
+    globalThis.fetch = origFetch;
   });
 
-  it("throws on empty router name", () => {
-    expect(() => parseModelField(":0.5")).toThrow("expected format");
+  function adapter(model: string, uriOnly = false): RouteLLMAdapter {
+    return new RouteLLMAdapter({
+      uri: { scheme: "routellm", model },
+      provider: {
+        model: uriOnly ? "" : model,
+        apiKey: "test-key",
+        baseURL: "http://127.0.0.1:6060",
+      },
+      fallbacks: [],
+      hermetic: true,
+    });
+  }
+
+  const wire: [string, string, string][] = [
+    // Router pair: translated to the server's router id.
+    ["router pair", "mf:0.7", "router-mf-0.7"],
+    ["threshold zero", "bert:0", "router-bert-0"],
+    ["threshold one", "causal_llm:1", "router-causal_llm-1"],
+    ["trailing zeros trimmed", "mf:0.50", "router-mf-0.5"],
+    ["exponent expanded", "mf:5e-1", "router-mf-0.5"],
+    ["tiny threshold without exponent", "mf:1e-7", "router-mf-0.0000001"],
+    ["negative zero", "mf:-0", "router-mf--0"],
+    // Tier: verbatim, server resolves router and threshold.
+    ["tier", "private", "private"],
+    ["tier underscore", "coding_fast", "coding_fast"],
+    ["tier server router id", "router-mf-0.5", "router-mf-0.5"],
+    ["tier with colon", "a:b", "a:b"],
+  ];
+  for (const [name, model, want] of wire) {
+    it(`sends ${name} as ${want}`, async () => {
+      const a = adapter(model);
+      await a.complete({ messages: [{ role: "user", content: "hi" }] });
+      expect(sent).toEqual([want]);
+      a.close();
+    });
+  }
+
+  it("exposes a tier", () => {
+    const a = adapter("private");
+    expect(a.isTier()).toBe(true);
+    expect(a.tier).toBe("private");
+    expect(a.routerName).toBe("");
+    expect(a.threshold).toBe(0);
+    a.close();
   });
 
-  it("throws on empty threshold", () => {
-    expect(() => parseModelField("mf:")).toThrow("expected format");
+  it("exposes a router pair", () => {
+    const a = adapter("mf:0");
+    expect(a.isTier()).toBe(false);
+    expect(a.tier).toBe("");
+    expect(a.routerName).toBe("mf");
+    expect(a.threshold).toBe(0);
+    a.close();
   });
 
-  it("throws on non-numeric threshold", () => {
-    expect(() => parseModelField("mf:abc")).toThrow("invalid threshold");
+  it("falls back to the URI model", async () => {
+    const a = adapter("bert:0.5", true);
+    await a.complete({ messages: [{ role: "user", content: "hi" }] });
+    expect(sent).toEqual(["router-bert-0.5"]);
+    a.close();
+  });
+
+  it("rejects an empty model", () => {
+    expect(() => adapter("")).toThrow(
+      "routellm: model field is required (router_name:threshold or tier name)"
+    );
+  });
+
+  it("rejects a threshold below range", () => {
+    expect(() => adapter("mf:-0.1")).toThrow(
+      "routellm: threshold -0.1000 out of range [0, 1]"
+    );
+  });
+
+  it("rejects a threshold above range", () => {
+    expect(() => adapter("mf:1.5")).toThrow(
+      "routellm: threshold 1.5000 out of range [0, 1]"
+    );
+  });
+
+  it("resolves a tier URI", () => {
+    const p = resolve("routellm://private");
+    expect(p).toBeDefined();
+    p.close();
   });
 });
 
