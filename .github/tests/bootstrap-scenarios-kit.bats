@@ -17,6 +17,10 @@ DOGFOOD_WF=".github/workflows/dogfood-grade.yml"
 
 setup() {
     TMP="$(mktemp -d)"
+    # The bootstrap commits as the caller. Give it an identity so the
+    # suite does not depend on the host's git config (CI runners have none).
+    export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com
+    export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
     cd "$BATS_TEST_DIRNAME/../.."
     REPO_ROOT="$(pwd)"
 }
