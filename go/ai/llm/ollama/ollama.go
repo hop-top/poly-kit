@@ -413,8 +413,12 @@ func (a *Adapter) checkStatus(resp *http.Response, model string) error {
 
 	// Map HTTP status codes to typed errors.
 	switch {
-	case resp.StatusCode == 401 || resp.StatusCode == 403:
+	case resp.StatusCode == 401:
 		return llmerrors.NewAuth(
+			"ollama", fmt.Errorf("%s", resp.Status),
+		)
+	case resp.StatusCode == 403:
+		return llmerrors.NewPermissionDenied(
 			"ollama", fmt.Errorf("%s", resp.Status),
 		)
 	case resp.StatusCode == 404:
