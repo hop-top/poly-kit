@@ -46,8 +46,8 @@ pub use keys::{KeyResolution, KeySource, KeySourceKind, FALLBACK_ENV_KEY};
 pub use provider::{BoxFuture, Capability, Provider, TokenStream};
 pub use registry::{default_registry, Declaration, Factory, ProviderKey, Registry};
 pub use types::{
-    Media, MediaKind, Message, Part, ProviderData, Request, Response, Role, StreamOutcome, Token,
-    ToolCall, ToolDef, ToolResponse, Usage,
+    CacheControl, Media, MediaKind, Message, Part, Price, ProviderData, Request, Response, Role,
+    StreamOutcome, Thinking, ThinkingBlock, Token, ToolCall, ToolDef, ToolResponse, Usage,
 };
 pub use uri::{parse_uri, redact_uri, Uri};
 

@@ -44,6 +44,60 @@ struct Corpus {
     credential_headers: Vec<CredentialCase>,
     #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
     anthropic_limits: Vec<LimitCase>,
+    #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+    anthropic_response: Vec<ResponseCase>,
+    usage_cost: Vec<CostCase>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct ConfUsage {
+    prompt_tokens: u64,
+    completion_tokens: u64,
+    cache_read_tokens: u64,
+    cache_creation_tokens: u64,
+    #[serde(default)]
+    total_tokens: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct WantResponse {
+    content: String,
+    thinking_blocks: Vec<ConfThought>,
+    tool_calls: Vec<WantCall>,
+    stop_reason: String,
+    usage: ConfUsage,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct ResponseCase {
+    name: String,
+    tools: bool,
+    body: String,
+    want: WantResponse,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConfPrice {
+    input: f64,
+    output: f64,
+    cache_read: f64,
+    cache_write: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CostCase {
+    name: String,
+    usage: ConfUsage,
+    price: ConfPrice,
+    want: f64,
 }
 
 #[derive(Deserialize)]
@@ -135,6 +189,28 @@ struct ConfMessage {
     tool_calls: Vec<ConfToolCall>,
     #[serde(default)]
     tool_call_id: String,
+    #[serde(default)]
+    cache_control: Option<ConfCache>,
+    #[serde(default)]
+    thinking: Vec<ConfThought>,
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct ConfCache {
+    ttl: String,
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct ConfThought {
+    #[serde(default)]
+    thinking: String,
+    #[serde(default)]
+    signature: String,
+    #[serde(default)]
+    redacted: String,
 }
 
 #[derive(Deserialize, Clone)]
@@ -150,6 +226,8 @@ struct ConfRequest {
     #[serde(default)]
     stop_sequences: Vec<String>,
     messages: Vec<ConfMessage>,
+    #[serde(default)]
+    thinking_budget: u32,
 }
 
 #[derive(Deserialize, Clone)]
@@ -161,6 +239,8 @@ struct ConfTool {
     description: String,
     #[serde(default)]
     parameters: String,
+    #[serde(default)]
+    cache_control: Option<ConfCache>,
 }
 
 #[derive(Deserialize)]
@@ -204,6 +284,8 @@ struct StreamCase {
     want_tokens: Vec<String>,
     want_error: bool,
     error_kind: String,
+    thinking_budget: u32,
+    want_thinking: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -221,6 +303,10 @@ struct WantCall {
 struct WantUsage {
     input_tokens: u64,
     output_tokens: u64,
+    #[serde(default)]
+    cache_read_tokens: u64,
+    #[serde(default)]
+    cache_creation_tokens: u64,
 }
 
 #[derive(Deserialize)]
@@ -238,6 +324,8 @@ struct WantAccumulated {
     #[serde(default)]
     usage: Option<WantUsage>,
     error: bool,
+    #[serde(default)]
+    thinking_blocks: Option<Vec<ConfThought>>,
 }
 
 #[derive(Deserialize)]
@@ -311,6 +399,34 @@ fn redact_uri_vectors() {
 }
 
 #[test]
+fn usage_cost_vectors() {
+    use hop_top_kit::llm::{Price, Usage};
+    let c = load();
+    assert!(!c.usage_cost.is_empty());
+    for v in &c.usage_cost {
+        let u = Usage {
+            prompt_tokens: v.usage.prompt_tokens,
+            completion_tokens: v.usage.completion_tokens,
+            cache_read_tokens: v.usage.cache_read_tokens,
+            cache_creation_tokens: v.usage.cache_creation_tokens,
+            total_tokens: v.usage.total_tokens,
+        };
+        let p = Price {
+            input: v.price.input,
+            output: v.price.output,
+            cache_read: v.price.cache_read,
+            cache_write: v.price.cache_write,
+        };
+        assert!(
+            (u.cost(&p) - v.want).abs() < 1e-9,
+            "{}: {}",
+            v.name,
+            u.cost(&p)
+        );
+    }
+}
+
+#[test]
 fn parse_uri_vectors() {
     let c = load();
     assert!(!c.parse_uri.is_empty());
@@ -335,8 +451,8 @@ mod anthropic {
     use base64::Engine as _;
     use hop_top_kit::llm::anthropic::Adapter;
     use hop_top_kit::llm::{
-        LlmError, Media, MediaKind, Message, Part, Provider, ProviderConfig, Request,
-        ResolvedConfig, Response, Role, ToolCall, ToolDef,
+        CacheControl, LlmError, Media, MediaKind, Message, Part, Provider, ProviderConfig, Request,
+        ResolvedConfig, Response, Role, Thinking, ThinkingBlock, ToolCall, ToolDef,
     };
     use llm_support::{serve, Canned};
 
@@ -383,6 +499,8 @@ mod anthropic {
                     })
                     .collect(),
                 tool_call_id: m.tool_call_id.clone(),
+                cache_control: m.cache_control.as_ref().map(cache),
+                thinking: thoughts(&m.thinking),
             })
             .collect();
         Request {
@@ -391,7 +509,24 @@ mod anthropic {
             temperature: r.temperature,
             max_tokens: r.max_tokens,
             stop_sequences: r.stop_sequences.clone(),
+            thinking: (r.thinking_budget > 0).then_some(Thinking {
+                budget_tokens: r.thinking_budget,
+            }),
         }
+    }
+
+    fn cache(c: &ConfCache) -> CacheControl {
+        CacheControl { ttl: c.ttl.clone() }
+    }
+
+    fn thoughts(ts: &[ConfThought]) -> Vec<ThinkingBlock> {
+        ts.iter()
+            .map(|t| ThinkingBlock {
+                thinking: t.thinking.clone(),
+                signature: t.signature.clone(),
+                redacted: t.redacted.clone(),
+            })
+            .collect()
     }
 
     fn to_tools(tools: &[ConfTool]) -> Vec<ToolDef> {
@@ -402,6 +537,7 @@ mod anthropic {
                 description: t.description.clone(),
                 parameters: (!t.parameters.is_empty())
                     .then(|| serde_json::from_str(&t.parameters).unwrap()),
+                cache_control: t.cache_control.as_ref().map(cache),
             })
             .collect()
     }
@@ -518,8 +654,16 @@ mod anthropic {
         for v in &c.anthropic_stream {
             let srv = serve(vec![Canned::sse(&v.sse)]).await;
             let a = adapter(&srv.url, "m", "k");
-            let mut s = a.stream(&hi()).await.unwrap();
+            let mut req = hi();
+            if v.thinking_budget > 0 {
+                req.max_tokens = 4 * v.thinking_budget;
+                req.thinking = Some(Thinking {
+                    budget_tokens: v.thinking_budget,
+                });
+            }
+            let mut s = a.stream(&req).await.unwrap();
             let mut tokens = Vec::new();
+            let mut thinking = Vec::new();
             let mut stream_err: Option<LlmError> = None;
             loop {
                 match s.next().await {
@@ -531,6 +675,7 @@ mod anthropic {
                         );
                         break;
                     }
+                    Ok(Some(t)) if !t.thinking.is_empty() => thinking.push(t.thinking),
                     Ok(Some(t)) => tokens.push(t.content),
                     Ok(None) => break,
                     Err(e) => {
@@ -540,6 +685,7 @@ mod anthropic {
                 }
             }
             assert_eq!(tokens, v.want_tokens, "{}", v.name);
+            assert_eq!(thinking, v.want_thinking, "{}", v.name);
             assert_eq!(
                 stream_err.is_some(),
                 v.want_error,
@@ -595,12 +741,26 @@ mod anthropic {
             }
             let out = s.outcome().unwrap_or_else(|| panic!("{}: outcome", v.name));
             assert_eq!(out.content, v.want.text, "{}", v.name);
-            assert_eq!(out.thinking, v.want.thinking, "{}", v.name);
+            let thought: String = out.thinking.iter().map(|b| b.thinking.as_str()).collect();
+            assert_eq!(thought, v.want.thinking, "{}", v.name);
+            if let Some(want) = &v.want.thinking_blocks {
+                assert_eq!(out.thinking, thoughts(want), "{}", v.name);
+            }
             assert_eq!(out.finish_reason, v.want.stop_reason, "{}", v.name);
             let usage = v.want.usage.as_ref().unwrap();
             assert_eq!(out.usage.prompt_tokens, usage.input_tokens, "{}", v.name);
             assert_eq!(
                 out.usage.completion_tokens, usage.output_tokens,
+                "{}",
+                v.name
+            );
+            assert_eq!(
+                out.usage.cache_read_tokens, usage.cache_read_tokens,
+                "{}",
+                v.name
+            );
+            assert_eq!(
+                out.usage.cache_creation_tokens, usage.cache_creation_tokens,
                 "{}",
                 v.name
             );
@@ -793,6 +953,60 @@ mod anthropic {
                 Err(LlmError::ResponseTooLarge { .. }) => assert!(v.too_large, "{}", v.name),
                 Err(e) => panic!("{}: {e}", v.name),
                 Ok(()) => assert!(!v.too_large, "{}: not refused", v.name),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn response_vectors() {
+        let c = load();
+        assert!(!c.anthropic_response.is_empty());
+        for v in &c.anthropic_response {
+            let srv = serve(vec![Canned::json(200, &v.body)]).await;
+            let a = adapter(&srv.url, "m", "k");
+            let (content, stop, usage, thinking, calls) = if v.tools {
+                let r = a
+                    .call_with_tools(&hi(), &[ToolDef::named("f")])
+                    .await
+                    .unwrap();
+                (
+                    r.content,
+                    r.finish_reason,
+                    r.usage,
+                    r.thinking,
+                    r.tool_calls,
+                )
+            } else {
+                let r = a.complete(&hi()).await.unwrap();
+                (r.content, r.finish_reason, r.usage, r.thinking, Vec::new())
+            };
+            assert_eq!(content, v.want.content, "{}", v.name);
+            assert_eq!(stop, v.want.stop_reason, "{}", v.name);
+            let w = &v.want.usage;
+            assert_eq!(
+                (
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                    usage.cache_read_tokens,
+                    usage.cache_creation_tokens,
+                    usage.total_tokens
+                ),
+                (
+                    w.prompt_tokens,
+                    w.completion_tokens,
+                    w.cache_read_tokens,
+                    w.cache_creation_tokens,
+                    w.total_tokens
+                ),
+                "{}",
+                v.name
+            );
+            assert_eq!(thinking, thoughts(&v.want.thinking_blocks), "{}", v.name);
+            assert_eq!(calls.len(), v.want.tool_calls.len(), "{}", v.name);
+            for (got, want) in calls.iter().zip(&v.want.tool_calls) {
+                assert_eq!(got.id, want.id, "{}", v.name);
+                let input: Value = serde_json::from_str(&got.arguments).unwrap();
+                assert_eq!(input, want.input, "{}", v.name);
             }
         }
     }

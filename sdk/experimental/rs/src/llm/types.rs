@@ -95,6 +95,38 @@ pub struct Message {
     pub tool_calls: Vec<ToolCall>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub tool_call_id: String,
+    /// A prompt-cache breakpoint after this message: on a system message
+    /// its text, otherwise its last content block.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
+    /// An assistant turn's thinking blocks, replayed exactly as the
+    /// provider returned them; tool use with thinking requires them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub thinking: Vec<ThinkingBlock>,
+}
+
+/// A prompt-cache breakpoint. `ttl` is "" (the provider default, five
+/// minutes on Anthropic), "5m" or "1h".
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+pub struct CacheControl {
+    pub ttl: String,
+}
+
+/// Extended thinking with a token budget, below the request's
+/// `max_tokens`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Thinking {
+    pub budget_tokens: u32,
+}
+
+/// One block of extended thinking. `signature` verifies `thinking`; a
+/// redacted block carries only `redacted`, the provider's opaque data.
+/// Pass blocks back exactly as received.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+pub struct ThinkingBlock {
+    pub thinking: String,
+    pub signature: String,
+    pub redacted: String,
 }
 
 impl Message {
@@ -158,6 +190,8 @@ pub struct ToolDef {
     pub description: String,
     /// JSON Schema of the arguments; `None` takes no arguments.
     pub parameters: Option<serde_json::Value>,
+    /// A prompt-cache breakpoint after this tool.
+    pub cache_control: Option<CacheControl>,
 }
 
 impl ToolDef {
@@ -186,6 +220,9 @@ pub struct Request {
     pub max_tokens: u32,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub stop_sequences: Vec<String>,
+    /// Enables extended thinking; its deltas stream as [`Token::thinking`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<Thinking>,
 }
 
 fn is_zero(n: &u32) -> bool {
@@ -197,17 +234,46 @@ fn is_zero(n: &u32) -> bool {
 pub struct Usage {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
+    /// Input tokens read from the prompt cache, apart from `prompt_tokens`.
+    pub cache_read_tokens: u64,
+    /// Input tokens written to the prompt cache, apart from `prompt_tokens`.
+    pub cache_creation_tokens: u64,
+    /// Every input and output token, cache ones included.
     pub total_tokens: u64,
 }
 
 impl Usage {
     pub fn new(prompt: u64, completion: u64) -> Self {
+        Self::with_cache(prompt, completion, 0, 0)
+    }
+
+    pub fn with_cache(prompt: u64, completion: u64, cache_read: u64, cache_creation: u64) -> Self {
         Usage {
             prompt_tokens: prompt,
             completion_tokens: completion,
-            total_tokens: prompt + completion,
+            cache_read_tokens: cache_read,
+            cache_creation_tokens: cache_creation,
+            total_tokens: prompt + completion + cache_read + cache_creation,
         }
     }
+
+    /// The cost at `p`, cache reads and writes at their own rates.
+    pub fn cost(&self, p: &Price) -> f64 {
+        (self.prompt_tokens as f64 * p.input
+            + self.completion_tokens as f64 * p.output
+            + self.cache_read_tokens as f64 * p.cache_read
+            + self.cache_creation_tokens as f64 * p.cache_write)
+            / 1e6
+    }
+}
+
+/// A model's rate per million tokens, by kind.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Price {
+    pub input: f64,
+    pub output: f64,
+    pub cache_read: f64,
+    pub cache_write: f64,
 }
 
 /// The result of a completion.
@@ -218,6 +284,8 @@ pub struct Response {
     pub usage: Usage,
     /// The provider's stop reason (`end_turn`, `tool_use`, ...).
     pub finish_reason: String,
+    /// The turn's thinking blocks, to replay unchanged.
+    pub thinking: Vec<ThinkingBlock>,
 }
 
 /// The result of a tool-calling completion.
@@ -225,12 +293,19 @@ pub struct Response {
 pub struct ToolResponse {
     pub content: String,
     pub tool_calls: Vec<ToolCall>,
+    /// The turn's thinking blocks, to replay unchanged.
+    pub thinking: Vec<ThinkingBlock>,
+    pub finish_reason: String,
+    pub usage: Usage,
 }
 
 /// One streaming chunk. The last has `done` set and no content.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Token {
     pub content: String,
+    /// A thinking delta, sent only when the request enabled thinking;
+    /// `content` is then empty.
+    pub thinking: String,
     pub done: bool,
 }
 
@@ -239,8 +314,8 @@ pub struct Token {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct StreamOutcome {
     pub content: String,
-    /// Concatenated thinking text, when the model thought aloud.
-    pub thinking: String,
+    /// The turn's thinking blocks in order, to replay unchanged.
+    pub thinking: Vec<ThinkingBlock>,
     pub tool_calls: Vec<ToolCall>,
     pub finish_reason: String,
     pub usage: Usage,

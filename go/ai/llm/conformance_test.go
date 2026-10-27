@@ -49,6 +49,18 @@ type llmConfFile struct {
 	KeyEndpoint           json.RawMessage `json:"key_endpoint"`
 	CredentialHeaders     json.RawMessage `json:"credential_headers"`
 	AnthropicLimits       json.RawMessage `json:"anthropic_limits"`
+	AnthropicResponse     json.RawMessage `json:"anthropic_response"`
+	UsageCost             []struct {
+		Name  string    `json:"name"`
+		Usage confUsage `json:"usage"`
+		Price struct {
+			Input      float64 `json:"input"`
+			Output     float64 `json:"output"`
+			CacheRead  float64 `json:"cache_read"`
+			CacheWrite float64 `json:"cache_write"`
+		} `json:"price"`
+		Want float64 `json:"want"`
+	} `json:"usage_cost"`
 }
 
 func loadLLMConf(t *testing.T) llmConfFile {
@@ -100,3 +112,24 @@ func TestConformanceLLMParseURI(t *testing.T) {
 		})
 	}
 }
+
+func TestConformanceLLMUsageCost(t *testing.T) {
+	f := loadLLMConf(t)
+	require.NotEmpty(t, f.UsageCost)
+	for _, v := range f.UsageCost {
+		t.Run(v.Name, func(t *testing.T) {
+			p := llm.Price{Input: v.Price.Input, Output: v.Price.Output, CacheRead: v.Price.CacheRead, CacheWrite: v.Price.CacheWrite}
+			assert.InDelta(t, v.Want, v.Usage.toLLM().Cost(p), 1e-9)
+		})
+	}
+}
+
+type confUsage struct {
+	PromptTokens        int `json:"prompt_tokens"`
+	CompletionTokens    int `json:"completion_tokens"`
+	CacheReadTokens     int `json:"cache_read_tokens"`
+	CacheCreationTokens int `json:"cache_creation_tokens"`
+	TotalTokens         int `json:"total_tokens"`
+}
+
+func (u confUsage) toLLM() llm.Usage { return llm.Usage(u) }

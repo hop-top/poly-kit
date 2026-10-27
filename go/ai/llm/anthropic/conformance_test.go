@@ -46,21 +46,50 @@ type confMessage struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
 	} `json:"tool_calls"`
-	ToolCallID string `json:"tool_call_id"`
+	ToolCallID   string        `json:"tool_call_id"`
+	CacheControl *confCache    `json:"cache_control"`
+	Thinking     []confThought `json:"thinking"`
+}
+
+type confCache struct {
+	TTL string `json:"ttl"`
+}
+
+type confThought struct {
+	Thinking  string `json:"thinking"`
+	Signature string `json:"signature"`
+	Redacted  string `json:"redacted"`
+}
+
+func (c *confCache) toLLM() *llm.CacheControl {
+	if c == nil {
+		return nil
+	}
+	return &llm.CacheControl{TTL: c.TTL}
+}
+
+func thoughts(ts []confThought) []llm.ThinkingBlock {
+	var out []llm.ThinkingBlock
+	for _, t := range ts {
+		out = append(out, llm.ThinkingBlock{Thinking: t.Thinking, Signature: t.Signature, Redacted: t.Redacted})
+	}
+	return out
 }
 
 type confRequest struct {
-	Model         string        `json:"model"`
-	Temperature   *float64      `json:"temperature"`
-	MaxTokens     int           `json:"max_tokens"`
-	StopSequences []string      `json:"stop_sequences"`
-	Messages      []confMessage `json:"messages"`
+	Model          string        `json:"model"`
+	Temperature    *float64      `json:"temperature"`
+	MaxTokens      int           `json:"max_tokens"`
+	StopSequences  []string      `json:"stop_sequences"`
+	Messages       []confMessage `json:"messages"`
+	ThinkingBudget int           `json:"thinking_budget"`
 }
 
 type confTool struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Parameters  string `json:"parameters"`
+	Name         string     `json:"name"`
+	Description  string     `json:"description"`
+	Parameters   string     `json:"parameters"`
+	CacheControl *confCache `json:"cache_control"`
 }
 
 type confResponse struct {
@@ -79,10 +108,13 @@ type confAccumulated struct {
 	} `json:"tool_calls"`
 	StopReason string `json:"stop_reason"`
 	Usage      struct {
-		InputTokens  int64 `json:"input_tokens"`
-		OutputTokens int64 `json:"output_tokens"`
+		InputTokens         int64 `json:"input_tokens"`
+		OutputTokens        int64 `json:"output_tokens"`
+		CacheReadTokens     int   `json:"cache_read_tokens"`
+		CacheCreationTokens int   `json:"cache_creation_tokens"`
 	} `json:"usage"`
-	Error bool `json:"error"`
+	Error          bool           `json:"error"`
+	ThinkingBlocks *[]confThought `json:"thinking_blocks"`
 }
 
 type anthropicConfFile struct {
@@ -110,11 +142,13 @@ type anthropicConfFile struct {
 		Absent []string          `json:"absent"`
 	} `json:"anthropic_headers"`
 	AnthropicStream []struct {
-		Name       string   `json:"name"`
-		SSE        string   `json:"sse"`
-		WantTokens []string `json:"want_tokens"`
-		WantError  bool     `json:"want_error"`
-		ErrorKind  string   `json:"error_kind"`
+		Name           string   `json:"name"`
+		SSE            string   `json:"sse"`
+		WantTokens     []string `json:"want_tokens"`
+		WantError      bool     `json:"want_error"`
+		ErrorKind      string   `json:"error_kind"`
+		ThinkingBudget int      `json:"thinking_budget"`
+		WantThinking   []string `json:"want_thinking"`
 	} `json:"anthropic_stream"`
 	AnthropicAccumulate []struct {
 		Name    string          `json:"name"`
@@ -139,6 +173,23 @@ type anthropicConfFile struct {
 		Body        string            `json:"body"`
 		TooLarge    bool              `json:"too_large"`
 	} `json:"anthropic_limits"`
+	AnthropicResponse []struct {
+		Name  string `json:"name"`
+		Tools bool   `json:"tools"`
+		Body  string `json:"body"`
+		Want  struct {
+			Content        string        `json:"content"`
+			ThinkingBlocks []confThought `json:"thinking_blocks"`
+			ToolCalls      []struct {
+				ID    string          `json:"id"`
+				Name  string          `json:"name"`
+				Input json.RawMessage `json:"input"`
+			} `json:"tool_calls"`
+			StopReason string    `json:"stop_reason"`
+			Usage      confUsage `json:"usage"`
+		} `json:"want"`
+	} `json:"anthropic_response"`
+	UsageCost   json.RawMessage `json:"usage_cost"`
 	KeyEndpoint []struct {
 		Name    string            `json:"name"`
 		Op      string            `json:"op"`
@@ -179,8 +230,12 @@ func (r confRequest) toLLM(t *testing.T) llm.Request {
 		MaxTokens:     r.MaxTokens,
 		StopSequences: r.StopSequences,
 	}
+	if r.ThinkingBudget > 0 {
+		out.Thinking = &llm.ThinkingConfig{BudgetTokens: r.ThinkingBudget}
+	}
 	for _, m := range r.Messages {
-		msg := llm.Message{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID}
+		msg := llm.Message{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID,
+			CacheControl: m.CacheControl.toLLM(), Thinking: thoughts(m.Thinking)}
 		for _, p := range m.Parts {
 			part := llm.ContentPart{Type: llm.PartType(p.Type), Text: p.Text, MimeType: p.MimeType}
 			if p.Data != "" {
@@ -205,7 +260,7 @@ func (r confRequest) toLLM(t *testing.T) llm.Request {
 func toolDefs(tools []confTool) []llm.ToolDef {
 	var out []llm.ToolDef
 	for _, d := range tools {
-		def := llm.ToolDef{Name: d.Name, Description: d.Description}
+		def := llm.ToolDef{Name: d.Name, Description: d.Description, CacheControl: d.CacheControl.toLLM()}
 		if d.Parameters != "" {
 			def.Parameters = json.RawMessage(d.Parameters)
 		}
@@ -336,12 +391,15 @@ func TestConformanceAnthropicStream(t *testing.T) {
 		t.Run(v.Name, func(t *testing.T) {
 			clearAnthropicEnv(t)
 			p := newConfAdapter(t, sseServer(t, v.SSE).URL, "m", "k")
-			it, err := p.(llm.Streamer).Stream(context.Background(), llm.Request{
-				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
-			})
+			req := llm.Request{Messages: []llm.Message{{Role: "user", Content: "Hi"}}}
+			if v.ThinkingBudget > 0 {
+				req.MaxTokens = 4 * v.ThinkingBudget
+				req.Thinking = &llm.ThinkingConfig{BudgetTokens: v.ThinkingBudget}
+			}
+			it, err := p.(llm.Streamer).Stream(context.Background(), req)
 			require.NoError(t, err)
 			defer it.Close()
-			tokens := []string{}
+			tokens, thinking := []string{}, []string{}
 			var streamErr error
 			for {
 				tok, err := it.Next()
@@ -356,9 +414,14 @@ func TestConformanceAnthropicStream(t *testing.T) {
 					assert.ErrorIs(t, err, io.EOF, "Next after Done is EOF")
 					break
 				}
+				if tok.Thinking != "" {
+					thinking = append(thinking, tok.Thinking)
+					continue
+				}
 				tokens = append(tokens, tok.Content)
 			}
 			assert.Equal(t, v.WantTokens, tokens)
+			assert.Equal(t, v.WantThinking, thinking)
 			assert.Equal(t, v.WantError, streamErr != nil, "error: %v", streamErr)
 			kind, _ := errorKind(streamErr)
 			assert.Equal(t, v.ErrorKind, kind, "error: %v", streamErr)
@@ -418,6 +481,11 @@ func TestConformanceAnthropicAccumulate(t *testing.T) {
 			assert.Equal(t, v.Want.StopReason, out.FinishReason)
 			assert.Equal(t, int(v.Want.Usage.InputTokens), out.Usage.PromptTokens)
 			assert.Equal(t, int(v.Want.Usage.OutputTokens), out.Usage.CompletionTokens)
+			assert.Equal(t, v.Want.Usage.CacheReadTokens, out.Usage.CacheReadTokens)
+			assert.Equal(t, v.Want.Usage.CacheCreationTokens, out.Usage.CacheCreationTokens)
+			if v.Want.ThinkingBlocks != nil {
+				assert.Equal(t, thoughts(*v.Want.ThinkingBlocks), out.Thinking)
+			}
 			require.Len(t, out.ToolCalls, len(v.Want.ToolCalls))
 			for i, want := range v.Want.ToolCalls {
 				assert.Equal(t, want.ID, out.ToolCalls[i].ID)
@@ -634,4 +702,52 @@ func TestConformanceAnthropicLimits(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+}
+
+func TestConformanceAnthropicResponse(t *testing.T) {
+	f := loadAnthropicConf(t)
+	require.NotEmpty(t, f.AnthropicResponse)
+	for _, v := range f.AnthropicResponse {
+		t.Run(v.Name, func(t *testing.T) {
+			clearAnthropicEnv(t)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, v.Body)
+			}))
+			t.Cleanup(srv.Close)
+			p := newConfAdapter(t, srv.URL, "m", "k")
+			req := llm.Request{Messages: []llm.Message{{Role: "user", Content: "Hi"}}}
+			var content, stop string
+			var usage llm.Usage
+			var thinking []llm.ThinkingBlock
+			var calls []llm.ToolCall
+			if v.Tools {
+				r, err := p.(llm.ToolCaller).CallWithTools(context.Background(), req, []llm.ToolDef{{Name: "f"}})
+				require.NoError(t, err)
+				content, stop, usage, thinking, calls = r.Content, r.FinishReason, r.Usage, r.Thinking, r.ToolCalls
+			} else {
+				r, err := p.(llm.Completer).Complete(context.Background(), req)
+				require.NoError(t, err)
+				content, stop, usage, thinking = r.Content, r.FinishReason, r.Usage, r.Thinking
+			}
+			assert.Equal(t, v.Want.Content, content)
+			assert.Equal(t, v.Want.StopReason, stop)
+			assert.Equal(t, llm.Usage(v.Want.Usage), usage)
+			assert.Equal(t, thoughts(v.Want.ThinkingBlocks), thinking)
+			require.Len(t, calls, len(v.Want.ToolCalls))
+			for i, want := range v.Want.ToolCalls {
+				assert.Equal(t, want.ID, calls[i].ID)
+				assert.Equal(t, want.Name, calls[i].Name)
+				assert.JSONEq(t, string(want.Input), string(calls[i].Arguments))
+			}
+		})
+	}
+}
+
+type confUsage struct {
+	PromptTokens        int `json:"prompt_tokens"`
+	CompletionTokens    int `json:"completion_tokens"`
+	CacheReadTokens     int `json:"cache_read_tokens"`
+	CacheCreationTokens int `json:"cache_creation_tokens"`
+	TotalTokens         int `json:"total_tokens"`
 }
