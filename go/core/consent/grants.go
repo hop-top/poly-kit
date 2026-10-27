@@ -17,8 +17,10 @@ import (
 // end in "no".
 //
 // Lookup for (capability, subject): the subject's own grant first, then
-// the any-subject ("") grant; within a key the in-memory grant beats the
-// persisted one. An expired until grant counts as absent.
+// the any-subject ("") grant. Within a key, every record held (in
+// memory, stored, and for telemetry the legacy records and env) is
+// combined deny-wins: any deny is a deny. An expired until grant counts
+// as absent.
 type Grants struct {
 	store         GrantStore
 	audit         Auditor
@@ -157,8 +159,11 @@ func (g *Grants) checkLocked(ctx context.Context, c Capability, subject string) 
 		keys = append(keys, grantKey{c, ""})
 	}
 	for _, k := range keys {
+		// One key can hold an in-memory and a stored grant: deny-wins,
+		// the same rule as for telemetry's several records.
+		var held []Grant
 		if m, ok := g.mem[k]; ok {
-			return verdictOf(m), nil
+			held = append(held, m)
 		}
 		for _, p := range persisted {
 			if p.key() != k {
@@ -171,13 +176,30 @@ func (g *Grants) checkLocked(ctx context.Context, c Capability, subject string) 
 				}
 				break
 			}
-			return verdictOf(p), nil
+			held = append(held, p)
+		}
+		if v, ok := denyWinsVerdict(held); ok {
+			return v, nil
 		}
 	}
 	if expired != nil {
 		return Verdict{Reason: ReasonExpired, Grant: *expired}, nil
 	}
 	return Verdict{Reason: ReasonUnset}, nil
+}
+
+// denyWinsVerdict is the verdict of the grants held for one key: any
+// deny, else any allow; false when none is held.
+func denyWinsVerdict(held []Grant) (Verdict, bool) {
+	for _, h := range held {
+		if h.Decision == Deny {
+			return verdictOf(h), true
+		}
+	}
+	if len(held) > 0 {
+		return verdictOf(held[0]), true
+	}
+	return Verdict{}, false
 }
 
 func verdictOf(gr Grant) Verdict {

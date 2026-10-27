@@ -122,9 +122,9 @@ func (s *FileStore) Path() string {
 // Decision{State: StateUnknown} with a nil error; malformed YAML is
 // surfaced as an error.
 //
-// Read order: the grants file, then kit.telemetry.consent in
-// config.yaml, then telemetry.consent in the legacy telemetry.yaml.
-// Reads never write.
+// Get combines the grants file, kit.telemetry.consent in config.yaml
+// and telemetry.consent in the legacy telemetry.yaml deny-wins; any of
+// them that cannot be read is an error. Reads never write.
 func (s *FileStore) Get(ctx context.Context) (Decision, error) {
 	if err := ctx.Err(); err != nil {
 		return Decision{}, err
@@ -135,32 +135,28 @@ func (s *FileStore) Get(ctx context.Context) (Decision, error) {
 }
 
 func (s *FileStore) getLegacyLocked() (Decision, error) {
-	// Canonical path first.
-	doc, err := s.readDoc(s.path)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return Decision{}, err
-	}
-	if doc != nil {
-		d, found, err := extractDecision(doc)
-		if err != nil {
-			return Decision{}, err
-		}
-		if found {
-			return d, nil
-		}
-	}
-
-	// Legacy fallback. Malformed legacy YAML is surfaced as an error
-	// (mirrors the canonical-path behavior) so callers can spot a
-	// corrupt migration source.
-	legacyDoc, err := s.readDoc(s.legacyPath)
+	cfg, err := s.readLegacyRecord(s.path, extractDecision)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return Decision{State: StateUnknown}, nil
-		}
 		return Decision{}, err
 	}
-	d, found, err := extractLegacyDecision(legacyDoc)
+	old, err := s.readLegacyRecord(s.legacyPath, extractLegacyDecision)
+	if err != nil {
+		return Decision{}, err
+	}
+	return denyWins(cfg, old), nil
+}
+
+// readLegacyRecord reads one legacy file's record; a missing file or
+// block is StateUnknown, a file that does not parse is an error.
+func (s *FileStore) readLegacyRecord(path string, extract func(*yaml.Node) (Decision, bool, error)) (Decision, error) {
+	doc, err := s.readDoc(path)
+	if errors.Is(err, fs.ErrNotExist) || doc == nil && err == nil {
+		return Decision{State: StateUnknown}, nil
+	}
+	if err != nil {
+		return Decision{}, err
+	}
+	d, found, err := extract(doc)
 	if err != nil {
 		return Decision{}, err
 	}
@@ -170,10 +166,10 @@ func (s *FileStore) getLegacyLocked() (Decision, error) {
 	return d, nil
 }
 
-// Set persists the decision as the telemetry grant in the grants file
-// (the source of truth from then on), then mirrors it into
-// kit.telemetry.consent in config.yaml, preserving every other key, so
-// SDKs that only read the legacy record agree. A config.yaml that does
+// Set persists the decision as the telemetry grant in the grants file,
+// then mirrors it into kit.telemetry.consent in config.yaml (and into
+// telemetry.yaml when it holds a record), preserving every other key,
+// so every source agrees and deny-wins resolution converges. A config.yaml that does
 // not parse is left untouched. Both writes are atomic (tmp + rename).
 func (s *FileStore) Set(ctx context.Context, d Decision) error {
 	if err := ctx.Err(); err != nil {
@@ -196,7 +192,24 @@ func (s *FileStore) setLegacyLocked(d Decision) error {
 	if err := upsertDecision(doc, d); err != nil {
 		return err
 	}
-	return s.writeDoc(s.path, doc)
+	if err := s.writeDoc(s.path, doc); err != nil {
+		return err
+	}
+
+	// A record left in the legacy telemetry.yaml would deny forever
+	// under deny-wins; rewrite it so a re-grant converges.
+	legacy, err := s.readDoc(s.legacyPath)
+	if errors.Is(err, fs.ErrNotExist) || legacy == nil && err == nil {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if _, found, _ := extractLegacyDecision(legacy); !found {
+		return nil
+	}
+	setMappingChild(mappingChild(rootMapping(legacy), keyTelemetry), keyConsent, decisionNode(d))
+	return s.writeDoc(s.legacyPath, legacy)
 }
 
 // Clear resets to StateUnknown by removing the telemetry grant from

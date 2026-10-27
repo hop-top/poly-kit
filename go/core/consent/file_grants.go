@@ -15,18 +15,17 @@ import (
 // read for grants, so a typo there cannot refuse a capability, and a
 // grant write cannot clobber it.
 //
-// Telemetry compat: the telemetry capability reads the grants file
-// first, then the legacy kit.telemetry.consent record (config.yaml,
-// then telemetry.yaml). A telemetry write lands in the grants file,
-// the source of truth from then on, and is mirrored into
-// kit.telemetry.consent so SDKs that only know the legacy record keep
-// the same answer. Clear (and revoking telemetry) clears all three.
+// Telemetry compat: the telemetry capability combines the grants file
+// and the legacy kit.telemetry.consent records (config.yaml,
+// telemetry.yaml) deny-wins. A telemetry write lands in the grants file
+// and is mirrored into the legacy records so every source converges.
+// Clear (and revoking telemetry) clears all three.
 var _ GrantStore = (*FileStore)(nil)
 
-// Grants returns every grant in the grants file, plus the legacy
-// telemetry record when the file has no telemetry grant. An unreadable
-// legacy record is left out here; Get (and so a telemetry check)
-// reports it.
+// Grants returns every grant in the grants file, the telemetry grant
+// being the deny-wins combination with the legacy records. An
+// unreadable legacy record leaves telemetry out here; Get (and so a
+// telemetry check) reports it.
 func (s *FileStore) Grants(ctx context.Context) ([]Grant, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -38,11 +37,10 @@ func (s *FileStore) Grants(ctx context.Context) ([]Grant, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !hasTelemetry(gs) {
-		if d, err := s.getLegacyLocked(); err == nil {
-			if tg, ok := telemetryGrant(d); ok {
-				gs = append(gs, tg)
-			}
+	gs = removeKey(gs, grantKey{CapTelemetry, ""})
+	if d, err := s.getLocked(); err == nil {
+		if tg, ok := telemetryGrant(d); ok {
+			gs = append(gs, tg)
 		}
 	}
 	if gs == nil {
@@ -107,18 +105,43 @@ func (s *FileStore) putGrantLocked(g Grant) error {
 	return s.writeGrants(append(removeKey(gs, g.key()), g))
 }
 
-// getLocked is the telemetry Decision: grants file first, then legacy.
+// getLocked is the telemetry Decision: the grants file and both legacy
+// records combined deny-wins. Any unreadable source is an error.
 func (s *FileStore) getLocked() (Decision, error) {
 	gs, err := s.readGrants()
 	if err != nil {
 		return Decision{}, err
 	}
+	own := Decision{State: StateUnknown}
 	for _, g := range gs {
 		if g.Capability == CapTelemetry {
-			return telemetryDecision(g), nil
+			own = telemetryDecision(g)
 		}
 	}
-	return s.getLegacyLocked()
+	legacy, err := s.getLegacyLocked()
+	if err != nil {
+		return Decision{}, err
+	}
+	return denyWins(own, legacy), nil
+}
+
+// denyWins combines records of one decision kept in several places:
+// any deny is the answer (the first one given), whatever the
+// timestamps; otherwise the first allow; otherwise StateUnknown. A
+// refusal recorded anywhere therefore sticks until the user re-grants
+// through a path that writes every source.
+func denyWins(ds ...Decision) Decision {
+	for _, d := range ds {
+		if d.State == StateDenied {
+			return d
+		}
+	}
+	for _, d := range ds {
+		if d.State == StateGranted {
+			return d
+		}
+	}
+	return Decision{State: StateUnknown}
 }
 
 // setLocked writes the telemetry Decision to the grants file, then

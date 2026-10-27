@@ -280,3 +280,47 @@ func TestRelay_RunDeliversOnNotify(t *testing.T) {
 		t.Fatal("Run did not deliver after Notify")
 	}
 }
+
+func TestTelemetryResolution_DenyWins(t *testing.T) {
+	ctx := context.Background()
+	cfgOf := func(state string) *string {
+		s := "kit:\n  telemetry:\n    consent:\n      state: " + state + "\n      decided_at: \"2020-01-01T00:00:00Z\"\n      prompt_version: 1\n      decision_source: flag\n"
+		return &s
+	}
+	grantsOf := func(dec string) *string {
+		s := "version: 1\ngrants:\n  - capability: telemetry\n    subject: \"\"\n    decision: " + dec + "\n    duration: always\n    decided_at: \"2026-02-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n"
+		return &s
+	}
+	cases := []struct {
+		name           string
+		grants, legacy *string
+		dnt            bool
+		want           bool
+	}{
+		{"grants yes + legacy no", grantsOf("allow"), cfgOf("denied"), false, false},
+		{"grants no + legacy yes", grantsOf("deny"), cfgOf("granted"), false, false},
+		{"grants yes + legacy unset", grantsOf("allow"), nil, false, true},
+		{"grants unset + legacy yes", nil, cfgOf("granted"), false, true},
+		{"DO_NOT_TRACK + grants yes", grantsOf("allow"), nil, true, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := corpusStore(t, c.legacy, nil, c.grants)
+			env := map[string]string{}
+			if c.dnt {
+				env["DO_NOT_TRACK"] = "1"
+			}
+			g := NewGrants(s, fixedClock(), WithEnv(MapEnv(env)))
+			v, err := g.Check(ctx, CapTelemetry, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.Allowed != c.want {
+				t.Fatalf("Check allowed=%v, want %v (%+v)", v.Allowed, c.want, v)
+			}
+			if !c.dnt && NewHook(s).Granted(ctx) != c.want {
+				t.Fatalf("hook disagrees with Check")
+			}
+		})
+	}
+}

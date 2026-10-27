@@ -35,12 +35,12 @@ Steps: `decide {grant}` (missing `decided_at` = `now`), `check`, `request` (`ans
 
 Semantics a port can get wrong:
 
-- Lookup: the subject's own grant, then the any-subject grant; within a key the session grant beats the stored one. An `until` grant is expired when `now >= expires_at` and counts as absent; reason `expired` when nothing else holds.
+- Lookup: the subject's own grant, then the any-subject grant. One resolution rule for every record of one key (session and stored; for telemetry also both legacy records and the env): deny-wins, any deny is a deny whatever the timestamps, allow needs one allow and no deny, an unreadable source fails closed. An `until` grant is expired when `now >= expires_at` and counts as absent; reason `expired` when nothing else holds.
 - `once` and `session` grants never reach disk; `once` allow is consumed by one `use`, `once` deny is audited and stored nowhere. Persisting a decision for a key drops its session grant.
 - Fail closed: no grant and no prompter, a prompter error, an invalid answer, an unreadable store, or an audit failure on `use` all mean no. A standing deny is never prompted.
 - Refusals: `denied` is `UNAUTHORIZED`, exit 5, `permanent`; `unset`, `expired`, `declined` are `CONSENT_REFUSED`, exit 7, `transient`.
 - `refused` audit records mark a refusal that was not a decision, `reason` one of `no-prompter` (also `use` with no grant), `prompter-error` (error or invalid answer), `store-unreadable`, `standing-deny`, `expired`, `audit-failed`; `decision_source` is the governing grant's, `config` when none. Each (capability, subject, reason) is recorded once per session. `audit-failed` is published on the bus only, without a key. Recording or publishing a `refused` record never changes the outcome; its errors are ignored. A prompt answered deny is `denied`, not `refused`.
-- Telemetry: allow/deny, always, any subject; other scopes are `unsupported_scope`. Writes go to the grants file and are mirrored into `kit.telemetry.consent`; reads prefer the grants file. Checks run the telemetry resolver (`KIT_TELEMETRY_MODE=off`, `DO_NOT_TRACK` are a standing deny).
+- Telemetry: allow/deny, always, any subject; other scopes are `unsupported_scope`. Reads combine the grants file, `kit.telemetry.consent` and `telemetry.yaml` deny-wins; writes go to the grants file and are mirrored into `kit.telemetry.consent` (and `telemetry.yaml` when it holds a record). Grants files are per tool, but telemetry is shared through the legacy record: a refusal recorded by any tool or SDK sticks everywhere. Checks run the telemetry resolver (`KIT_TELEMETRY_MODE=off`, `DO_NOT_TRACK` are a standing deny).
 - Error kinds: `invalid_capability`, `invalid_subject`, `invalid_decision`, `invalid_duration`, `invalid_expiry`, `invalid_source`, `unsupported_scope`, `malformed_store`. Message text is not contract.
 - Timestamps are RFC 3339 UTC with whole seconds.
 

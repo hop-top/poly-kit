@@ -12,13 +12,14 @@
 // log next to it is the outbox a Relay delivers onto the bus with
 // confirmation. The cross-language contract is contracts/consent-v1.
 //
-// Telemetry consent is the CapTelemetry capability. It is read from
-// the grants file, else from the original record (state, decided_at,
+// Telemetry consent is the CapTelemetry capability. It combines,
+// deny-wins, the grants file, the original record (state, decided_at,
 // prompt_version, decision_source) at kit.telemetry.consent in
-// <XDG_CONFIG_HOME>/kit/config.yaml, else from the legacy
-// <XDG_CONFIG_HOME>/kit/telemetry.yaml (bare telemetry.consent).
-// Writes go to the grants file and are mirrored into
-// kit.telemetry.consent; Clear removes the record everywhere.
+// <XDG_CONFIG_HOME>/kit/config.yaml and the legacy
+// <XDG_CONFIG_HOME>/kit/telemetry.yaml (bare telemetry.consent): a
+// refusal recorded in any of them sticks. Writes go to the grants file
+// and are mirrored into the legacy records; Clear removes the record
+// everywhere.
 //
 // The wire-level contract with kit-telemetry is the ConsentHook
 // interface — kit-telemetry owns the interface as Granted(ctx) bool.

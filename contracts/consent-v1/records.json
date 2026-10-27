@@ -200,7 +200,7 @@
       ]
     },
     {
-      "name": "a telemetry grant in the grants file shadows the legacy record",
+      "name": "the telemetry grant listed is the deny-wins combination of the grants file and the legacy record",
       "config_yaml": "kit:\n  telemetry:\n    consent:\n      state: denied\n      decided_at: \"2025-01-01T00:00:00Z\"\n      prompt_version: 1\n      decision_source: flag\n",
       "grants_yaml": "version: 1\ngrants:\n  - capability: telemetry\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
       "ok": true,
@@ -208,10 +208,10 @@
         {
           "capability": "telemetry",
           "subject": "",
-          "decision": "allow",
+          "decision": "deny",
           "duration": "always",
-          "decided_at": "2026-03-01T00:00:00Z",
-          "decision_source": "prompt",
+          "decided_at": "2025-01-01T00:00:00Z",
+          "decision_source": "flag",
           "prompt_version": 1
         }
       ]

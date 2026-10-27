@@ -1615,6 +1615,67 @@
           "reason": "standing-deny"
         }
       ]
+    },
+    {
+      "name": "deny wins between a session grant and a stored grant for the same key",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "app:dek",
+            "decision": "deny",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "io.files.read",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "session",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "check",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "expect": {
+            "allowed": false,
+            "reason": "denied"
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "denied",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "decision": "deny",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "io.files.read",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "session",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
+      ]
     }
   ]
 }

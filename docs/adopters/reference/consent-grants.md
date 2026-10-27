@@ -36,8 +36,9 @@ session); `until` and `always` go to the `GrantStore`.
 ## Lookup
 
 For `(capability, subject)`: the subject's own grant first, then the
-any-subject grant. Within one key the in-memory grant beats the stored
-one, and storing a decision for a key drops its in-memory grant. An
+any-subject grant. Within one key every record held (in memory and
+stored) is combined deny-wins: any deny is a deny. Storing a decision
+for a key drops its in-memory grant. An
 `until` grant is expired once `now >= ExpiresAt` and counts as absent.
 
 `Verdict.Grant` is the governing grant; for `expired`, the grant that
@@ -216,15 +217,25 @@ check fails closed, and no write repairs it until the file is fixed.
 `consent.CapTelemetry` (`telemetry`) is an allow or deny, always and
 any-subject (other scopes are `unsupported_scope`).
 
-- Read: the grants file first, then the legacy `kit.telemetry.consent`
-  record in `<XDG_CONFIG_HOME>/kit/config.yaml`, then
-  `kit/telemetry.yaml`. `granted` is an allow, `denied` a deny.
+- Read: every source, combined deny-wins: the grants file, the legacy
+  `kit.telemetry.consent` record in `<XDG_CONFIG_HOME>/kit/config.yaml`,
+  and `kit/telemetry.yaml`. Any deny is the answer, whatever the
+  timestamps (a newer allow in one source does not beat a deny in
+  another); allow needs at least one allow and no deny. A source that
+  cannot be read fails the check closed.
 - Write (`Decide`, `FileStore.Set`, so `kit telemetry enable|disable`):
-  the grants file, the source of truth from then on, then a mirror into
-  `kit.telemetry.consent` so SDKs that only read the legacy record give
-  the same answer. A config.yaml that does not parse is left alone.
+  the grants file, then a mirror into `kit.telemetry.consent` and into
+  `kit/telemetry.yaml` when it holds a record, so a re-grant through the
+  kit converges every source. A config.yaml that does not parse is left
+  alone.
 - Revoke (`Revoke`, `FileStore.Clear`, so `kit telemetry reset`): the
   grants file entry and both legacy records, other keys kept.
+- Scope: grants files are per tool, so revoking in tool B never clears
+  tool A's grants. Telemetry, though, is effectively shared through the
+  legacy record every tool and SDK reads and writes: a "no" recorded by
+  any of them (or by the user in config.yaml) denies telemetry in every
+  tool, and deny-wins is what makes that refusal stick over an older
+  "yes" in a tool's own grants file.
 - Check runs the telemetry resolver over it, so `KIT_TELEMETRY_MODE=off`
   and `DO_NOT_TRACK` are a standing deny and `KIT_TELEMETRY_CONSENT`
   still overrides. `Install`, `NewHook` and `Resolve` are unchanged and

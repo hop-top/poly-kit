@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Telemetry consent as the `telemetry` capability. Reads: the grants file first, then the legacy record at kit.telemetry.consent in <XDG_CONFIG_HOME>/kit/config.yaml, then the legacy <XDG_CONFIG_HOME>/kit/telemetry.yaml (bare telemetry.consent). granted maps to allow, denied to deny, always with an empty subject. A telemetry write lands in the grants file, which is the source of truth from then on, and is mirrored into kit.telemetry.consent so SDKs that only read the legacy record keep the same answer. Revoke clears the grants file and both legacy records, other keys kept. The env precedence of the telemetry resolver still applies: KIT_TELEMETRY_MODE=off and DO_NOT_TRACK are a standing deny, KIT_TELEMETRY_CONSENT overrides the record. A corrupt grants file fails every check closed and is never repaired by a write, and config.yaml stays untouched.",
+  "description": "Telemetry consent as the `telemetry` capability. Reads combine every source deny-wins: the grants file, the legacy record at kit.telemetry.consent in <XDG_CONFIG_HOME>/kit/config.yaml and the legacy <XDG_CONFIG_HOME>/kit/telemetry.yaml (bare telemetry.consent). Any deny is a deny, whatever the timestamps; allow needs at least one allow and no deny; an unreadable source fails closed. granted maps to allow, denied to deny, always with an empty subject. A telemetry write lands in the grants file and is mirrored into every legacy record that exists (kit.telemetry.consent always), so a re-grant through the kit converges all sources. Grants files are per tool; telemetry is shared through the legacy record, which is what makes a refusal anywhere stick. Revoke clears the grants file and both legacy records, other keys kept. The env precedence of the telemetry resolver still applies: KIT_TELEMETRY_MODE=off and DO_NOT_TRACK are a standing deny, KIT_TELEMETRY_CONSENT overrides the record. A corrupt grants file fails every check closed and is never repaired by a write, and config.yaml stays untouched.",
   "scenarios": [
     {
       "name": "fallback read: a canonical legacy record is the telemetry grant until the first write",
@@ -208,7 +208,7 @@
       }
     },
     {
-      "name": "a grants-file telemetry grant beats a legacy record written later by an older SDK",
+      "name": "resolution: grants no + legacy yes (newer) is deny",
       "now": "2026-03-01T00:00:00Z",
       "config_yaml": "kit:\n  telemetry:\n    consent:\n      state: granted\n      decided_at: \"2026-02-01T00:00:00Z\"\n      prompt_version: 1\n      decision_source: prompt\n",
       "grants_yaml": "version: 1\ngrants:\n  - capability: telemetry\n    subject: \"\"\n    decision: deny\n    duration: always\n    decided_at: \"2026-01-01T00:00:00Z\"\n    decision_source: flag\n    prompt_version: 1\n",
@@ -639,6 +639,251 @@
       ],
       "grants_file": null,
       "config_file": null
+    },
+    {
+      "name": "resolution: grants yes + legacy no is deny",
+      "now": "2026-03-01T00:00:00Z",
+      "config_yaml": "kit:\n  telemetry:\n    consent:\n      state: denied\n      decided_at: \"2025-01-01T00:00:00Z\"\n      prompt_version: 1\n      decision_source: flag\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: telemetry\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-01-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
+      "steps": [
+        {
+          "op": "check",
+          "capability": "telemetry",
+          "subject": "",
+          "expect": {
+            "allowed": false,
+            "reason": "denied"
+          }
+        }
+      ],
+      "audit": []
+    },
+    {
+      "name": "resolution: a newer allow in the grants file does not beat an older legacy deny",
+      "now": "2026-03-01T00:00:00Z",
+      "config_yaml": "kit:\n  telemetry:\n    consent:\n      state: denied\n      decided_at: \"2020-01-01T00:00:00Z\"\n      prompt_version: 1\n      decision_source: flag\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: telemetry\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-02-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
+      "steps": [
+        {
+          "op": "check",
+          "capability": "telemetry",
+          "subject": "",
+          "expect": {
+            "allowed": false,
+            "reason": "denied"
+          }
+        },
+        {
+          "op": "list",
+          "expect": {
+            "grants": [
+              {
+                "capability": "telemetry",
+                "subject": "",
+                "decision": "deny",
+                "duration": "always",
+                "decided_at": "2020-01-01T00:00:00Z",
+                "decision_source": "flag",
+                "prompt_version": 1
+              }
+            ]
+          }
+        }
+      ],
+      "audit": []
+    },
+    {
+      "name": "resolution: grants yes + telemetry.yaml no is deny",
+      "now": "2026-03-01T00:00:00Z",
+      "legacy_yaml": "telemetry:\n  consent:\n    state: denied\n    decided_at: \"2025-01-01T00:00:00Z\"\n    prompt_version: 1\n    decision_source: flag\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: telemetry\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-01-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
+      "steps": [
+        {
+          "op": "check",
+          "capability": "telemetry",
+          "subject": "",
+          "expect": {
+            "allowed": false,
+            "reason": "denied"
+          }
+        }
+      ],
+      "audit": []
+    },
+    {
+      "name": "resolution: config.yaml yes + telemetry.yaml no is deny",
+      "now": "2026-03-01T00:00:00Z",
+      "config_yaml": "kit:\n  telemetry:\n    consent:\n      state: granted\n      decided_at: \"2025-01-01T00:00:00Z\"\n      prompt_version: 1\n      decision_source: prompt\n",
+      "legacy_yaml": "telemetry:\n  consent:\n    state: denied\n    decided_at: \"2024-01-01T00:00:00Z\"\n    prompt_version: 1\n    decision_source: flag\n",
+      "steps": [
+        {
+          "op": "check",
+          "capability": "telemetry",
+          "subject": "",
+          "expect": {
+            "allowed": false,
+            "reason": "denied"
+          }
+        }
+      ],
+      "audit": []
+    },
+    {
+      "name": "resolution: grants yes + legacy unset is allow",
+      "now": "2026-03-01T00:00:00Z",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: telemetry\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-01-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
+      "steps": [
+        {
+          "op": "check",
+          "capability": "telemetry",
+          "subject": "",
+          "expect": {
+            "allowed": true,
+            "reason": "allowed"
+          }
+        }
+      ],
+      "audit": []
+    },
+    {
+      "name": "resolution: grants unset + legacy yes is allow",
+      "now": "2026-03-01T00:00:00Z",
+      "config_yaml": "kit:\n  telemetry:\n    consent:\n      state: granted\n      decided_at: \"2025-01-01T00:00:00Z\"\n      prompt_version: 1\n      decision_source: prompt\n",
+      "steps": [
+        {
+          "op": "check",
+          "capability": "telemetry",
+          "subject": "",
+          "expect": {
+            "allowed": true,
+            "reason": "allowed"
+          }
+        }
+      ],
+      "audit": []
+    },
+    {
+      "name": "resolution: DO_NOT_TRACK + grants yes is deny",
+      "now": "2026-03-01T00:00:00Z",
+      "env": {
+        "DO_NOT_TRACK": "1"
+      },
+      "grants_yaml": "version: 1\ngrants:\n  - capability: telemetry\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-01-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
+      "steps": [
+        {
+          "op": "check",
+          "capability": "telemetry",
+          "subject": "",
+          "expect": {
+            "allowed": false,
+            "reason": "denied"
+          }
+        }
+      ],
+      "audit": []
+    },
+    {
+      "name": "resolution: an unreadable legacy record fails closed even when the grants file allows",
+      "now": "2026-03-01T00:00:00Z",
+      "config_yaml": "kit: [unclosed\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: telemetry\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-01-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
+      "steps": [
+        {
+          "op": "check",
+          "capability": "telemetry",
+          "subject": "",
+          "expect": {
+            "error_kind": "malformed_store"
+          }
+        }
+      ],
+      "audit": []
+    },
+    {
+      "name": "resolution: a re-grant through the kit writes every source so they converge",
+      "now": "2026-03-01T00:00:00Z",
+      "config_yaml": "kit:\n  telemetry:\n    consent:\n      state: denied\n      decided_at: \"2025-01-01T00:00:00Z\"\n      prompt_version: 1\n      decision_source: flag\n",
+      "legacy_yaml": "telemetry:\n  consent:\n    state: denied\n    decided_at: \"2025-01-01T00:00:00Z\"\n    prompt_version: 1\n    decision_source: flag\n",
+      "steps": [
+        {
+          "op": "check",
+          "capability": "telemetry",
+          "subject": "",
+          "expect": {
+            "allowed": false,
+            "reason": "denied"
+          }
+        },
+        {
+          "op": "decide",
+          "grant": {
+            "capability": "telemetry",
+            "subject": "",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        },
+        {
+          "op": "check",
+          "capability": "telemetry",
+          "subject": "",
+          "expect": {
+            "allowed": true,
+            "reason": "allowed"
+          }
+        }
+      ],
+      "audit": [
+        {
+          "v": 1,
+          "event": "granted",
+          "at": "2026-03-01T00:00:00Z",
+          "capability": "telemetry",
+          "subject": "",
+          "decision": "allow",
+          "duration": "always",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
+      ],
+      "grants_file": {
+        "version": 1,
+        "grants": [
+          {
+            "capability": "telemetry",
+            "subject": "",
+            "decision": "allow",
+            "duration": "always",
+            "decided_at": "2026-03-01T00:00:00Z",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          }
+        ]
+      },
+      "config_file": {
+        "kit": {
+          "telemetry": {
+            "consent": {
+              "state": "granted",
+              "decided_at": "2026-03-01T00:00:00Z",
+              "prompt_version": 1,
+              "decision_source": "prompt"
+            }
+          }
+        }
+      },
+      "legacy_file": {
+        "telemetry": {
+          "consent": {
+            "state": "granted",
+            "decided_at": "2026-03-01T00:00:00Z",
+            "prompt_version": 1,
+            "decision_source": "prompt"
+          }
+        }
+      }
     }
   ]
 }
