@@ -53,7 +53,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `output` | `serde`, `serde_json`, `serde_norway`, `comfy-table`, `thiserror` | 22 |
 | `sqlstore` | `sqldb` + `serde`, `serde_json` | 22 |
 | `sqlstore-blob` | `sqlstore` + `blob` — nothing of its own | 22 |
-| `id` | `mti`, `uuid`, `serde`, `thiserror` | 25 |
+| `id` | `type-safe-id`, `uuid`, `serde`, `thiserror` | 25 |
 | `httpcache` | `kv` + `serde`, `serde_json`, `sha2`, `base64` | 33 |
 | `cli` | `output` + `clap` | 35 |
 | `serve` | `output` + `tokio`, `serde_json` | 37 |
