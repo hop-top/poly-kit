@@ -44,6 +44,8 @@ def test_non_http_schemes_refused(url):
         "http://[::ffff:127.0.0.1]/x.png",
         "http://224.0.0.1/x.png",
         "http://100.64.0.1/x.png",
+        "http://[64:ff9b::a9fe:a9fe]/x.png",
+        "http://[fd00::1]/x.png",
     ],
 )
 def test_non_public_addresses_refused(url):
