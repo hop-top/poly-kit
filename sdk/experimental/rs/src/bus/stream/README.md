@@ -6,8 +6,10 @@ How does a bus link exchange event frames with offsets, resume after a drop and 
 without owning a socket? Submodules of `bus::stream`, the I/O-free half of Go's `stream_*.go` and the link
 logic of `network_*.go`: wire primitives (`wire.rs`), frames (`frame.rs`, `control.rs`), the handshake
 (`handshake.rs`, `ack.rs`), subscriptions (`subs.rs`), positions (`cursor.rs`), the send log and outbox
-(`log.rs`), and `StreamClient`, a dialer's link state machine for one address (`client.rs`, `dial.rs`,
-`requests.rs`).
+(`log.rs`), acknowledged publishes on the dialer side (`puback.rs`: the `puback` frame and `AckTracker`), and
+`StreamClient`, a dialer's link state machine for one address (`client.rs`, `dial.rs`, `requests.rs`). The
+acceptor side of acknowledged publishes (pubacks, the dedupe memory, `PrincipalVerifier`) is not ported: this
+port has no stream acceptor.
 
 ## Use it when
 

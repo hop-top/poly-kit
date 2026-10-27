@@ -117,6 +117,7 @@ func (n *NetworkAdapter) connect(ctx context.Context, addr string, fromLoop bool
 	} else {
 		l.peer.Origin = ack.Origin
 		l.heartbeatD = time.Duration(ack.Stream.HeartbeatMs) * time.Millisecond
+		l.acks = negotiateAcks(n.caps().Acks, peerCaps, true)
 	}
 
 	// Register in one critical section with the checks that decide
@@ -162,6 +163,9 @@ func (n *NetworkAdapter) connect(ctx context.Context, addr string, fromLoop bool
 	n.mu.Unlock()
 	ps.connected = true
 	ps.send.linkUp(n.log)
+	ps.ackMu.Lock()
+	unsupported := ps.acks.linkUp(l.acks, ps.send)
+	ps.ackMu.Unlock()
 	// A fresh state also clears Final from an earlier refused session.
 	ps.state = LinkState{Connected: true, Streams: l.stream, Format: format, Resume: resume}
 	ps.upAt = time.Now()
@@ -171,6 +175,7 @@ func (n *NetworkAdapter) connect(ctx context.Context, addr string, fromLoop bool
 	st := ps.state
 	ps.mu.Unlock()
 
+	applyAcks(addr, unsupported)
 	n.publishConnected(addr, st)
 	if gap != nil {
 		n.invalidate(addr, gap)
@@ -244,7 +249,7 @@ func (n *NetworkAdapter) dialHandshake(ctx context.Context, conn *websocket.Conn
 		sess.Subscribe = ps.subs.sortedPatterns()
 	}
 	ps.mu.Unlock()
-	if err := conn.Write(ctx, websocket.MessageText, encodeAuthFrame(token, &caps, n.originID, sess)); err != nil {
+	if err := conn.Write(ctx, websocket.MessageText, encodeAuthFrame(token, &caps, n.originID, n.log.ID(), sess)); err != nil {
 		_ = conn.Close(statusInternal, "auth write failed")
 		return ackFrame{}, nil, err
 	}
@@ -283,7 +288,10 @@ func (n *NetworkAdapter) Handler() http.Handler {
 		ctx := r.Context()
 		peer := Peer{Addr: r.RemoteAddr}
 
-		var af authFrame
+		var (
+			af     authFrame
+			dedupe seenPeer
+		)
 		handshake := n.auth != nil
 		if handshake {
 			authCtx, authCancel := context.WithTimeout(ctx, handshakeTimeout)
@@ -299,7 +307,8 @@ func (n *NetworkAdapter) Handler() http.Handler {
 				_ = conn.Close(statusPolicy, "invalid auth")
 				return
 			}
-			if err := n.auth.Verify(af.Token); err != nil {
+			principal, err := verifyPeer(n.auth, af.Token)
+			if err != nil {
 				_ = conn.Close(statusPolicy, "auth failed")
 				return
 			}
@@ -308,11 +317,25 @@ func (n *NetworkAdapter) Handler() http.Handler {
 				return
 			}
 			peer.Origin, peer.Token = af.Origin, af.Token
+			dedupe = dedupePeer(principal, af.Token)
 		}
 
 		v, format := negotiate(n.caps(), af.Caps, handshake, n.frames)
 		l := n.newLink(conn, peer.Addr, false)
 		l.peer, l.format, l.stream = peer, format, v >= 1
+		myCaps := n.caps()
+		myCaps.Acks = 0
+		mine := AcksVersion
+		if n.refuseAcks {
+			mine = 0
+		}
+		if negotiateAcks(mine, af.Caps, l.stream) {
+			// Acceptors acknowledge whenever a dialer asks; the reply
+			// echoes acks only then, so other acks stay as they were.
+			l.acks, l.dialerStream, l.seenPeer = true, af.Stream, dedupe
+			l.ackq = newAckQueue(n.maxPendingAcks)
+			myCaps.Acks = AcksVersion
+		}
 
 		var sess sessionReq
 		if l.stream && af.Session != nil {
@@ -346,7 +369,7 @@ func (n *NetworkAdapter) Handler() http.Handler {
 		l.flushing = false
 
 		if handshake {
-			ack := encodeAck(af.Caps != nil, n.caps(), n.originID, si, outcome)
+			ack := encodeAck(af.Caps != nil, myCaps, n.originID, si, outcome)
 			if err := conn.Write(ctx, websocket.MessageText, ack); err != nil {
 				_ = conn.Close(statusInternal, "ack write failed")
 				return

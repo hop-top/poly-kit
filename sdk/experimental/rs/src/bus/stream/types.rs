@@ -56,6 +56,10 @@ pub struct ClientConfig {
     pub scope: Option<Scope>,
     /// A persisted position: the first connect asks to resume after it.
     pub resume_from: Option<StreamPosition>,
+    /// This side's own stream id (its send log's), sent with `caps.acks`
+    /// so the acceptor can recognize frames sent again after a
+    /// reconnect. Set by [`ClientConfig::with_acks`].
+    pub stream: String,
 }
 
 impl ClientConfig {
@@ -68,6 +72,7 @@ impl ClientConfig {
             caps: StreamCaps {
                 streams: STREAMS_VERSION,
                 frames: vec![FrameFormat::Kit, FrameFormat::CloudEvents],
+                acks: 0,
             },
             handshake: true,
             format: FrameFormat::Kit,
@@ -76,7 +81,19 @@ impl ClientConfig {
             subscribe: None,
             scope: None,
             resume_from: None,
+            stream: String::new(),
         }
+    }
+
+    /// Asks acceptors for pubacks: advertises `caps.acks` with this side's
+    /// stream id (the send log's [`id`](super::StreamLog::id)) and turns
+    /// the outbox on, so a reconnect sends again everything after the last
+    /// acknowledged offset.
+    pub fn with_acks(mut self, stream: impl Into<String>) -> Self {
+        self.caps.acks = super::ACKS_VERSION;
+        self.stream = stream.into();
+        self.outbox = true;
+        self
     }
 }
 
@@ -152,6 +169,11 @@ pub struct LinkUp {
     /// The heartbeat interval to arm the watchdog with: the acceptor's on
     /// a stream link, none on a legacy one.
     pub heartbeat_ms: Option<u64>,
+    /// The link negotiated pubacks.
+    pub acks: bool,
+    /// Acknowledged publishes settled by the link coming up: every wait
+    /// fails `unsupported` on a link without acks.
+    pub settled: Vec<super::AckResolution>,
 }
 
 impl LinkUp {
@@ -312,6 +334,9 @@ pub enum Inbound {
     Invalidated(GapInfo),
     /// The position moved (a position frame).
     Position,
+    /// A puback settled these acknowledged publishes (cumulative: one
+    /// puback may settle several), in offset order.
+    Acked(Vec<super::AckResolution>),
 }
 
 /// What to do with a decoded event.

@@ -278,7 +278,7 @@ func acceptorControl(m map[string]json.RawMessage) (*ctlRequest, *ctlError) {
 		id, idOK = "", false
 	}
 	switch typ {
-	case "ack", "error":
+	case "ack", "error", "puback":
 		return nil, nil
 	case "reset", "position":
 		return nil, &ctlError{id, streamErr(CodeBadRequest, "%s is sent by acceptors only", typ)}

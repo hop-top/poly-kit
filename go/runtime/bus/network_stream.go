@@ -161,6 +161,10 @@ type peerState struct {
 	state     LinkState
 	upAt      time.Time // when the current or last link came up
 	flaps     int       // consecutive links shorter than the stability window
+
+	ackMu    sync.Mutex
+	acks     *ackTracker
+	ackSlots chan struct{} // one per unresolved acknowledged publish
 }
 
 func (ps *peerState) setFinal(code string) {
@@ -179,7 +183,9 @@ func (n *NetworkAdapter) peerFor(addr string) *peerState {
 	if ps, ok := n.peers[addr]; ok {
 		return ps
 	}
-	ps := &peerState{addr: addr, send: newSendCursor(n.log, n.outbox), subs: newSubState()}
+	ps := &peerState{addr: addr, send: newSendCursor(n.log, n.outbox), subs: newSubState(),
+		ackSlots: make(chan struct{}, n.maxPendingAcks)}
+	ps.acks = newAckTracker(ps.send.at)
 	if n.initialSubs != nil {
 		ps.subs = ps.subs.withPatterns(n.initialSubs)
 	}

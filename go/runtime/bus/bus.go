@@ -268,6 +268,15 @@ func (b *memBus) Publish(ctx context.Context, e Event) error {
 		return ErrBusClosed
 	}
 
+	// An acknowledged publish tracks this event's async handlers. Only
+	// observers see the ticket: handlers get a context without it, so an
+	// event they publish is not counted as part of this one.
+	obsCtx := ctx
+	ticket := ticketFrom(ctx)
+	if ticket != nil {
+		ctx = context.WithValue(ctx, ackTicketKey{}, (*ackTicket)(nil))
+	}
+
 	matching := make([]subscription, 0, len(b.subs))
 	for _, s := range b.subs {
 		if e.Topic.Match(s.pattern) {
@@ -288,7 +297,7 @@ func (b *memBus) Publish(ctx context.Context, e Event) error {
 	// Observers see every accepted event, in the publishing goroutine,
 	// after all sync handlers succeeded and before async handlers start.
 	for _, o := range b.observers {
-		o.fn(ctx, e)
+		o.fn(obsCtx, e)
 	}
 
 	// Collect async handlers under RLock (snapshot matching subs).
@@ -319,9 +328,15 @@ func (b *memBus) Publish(ctx context.Context, e Event) error {
 			return nil
 		}
 		b.wg.Add(1)
+		if ticket != nil {
+			ticket.addLocal()
+		}
 		go func() {
 			defer func() { <-b.sem }()
 			defer b.wg.Done()
+			if ticket != nil {
+				defer ticket.localDone()
+			}
 			h(ctx, e)
 		}()
 	}

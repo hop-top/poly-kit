@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -425,4 +426,42 @@ func waitHook(t *testing.T, ch chan string, want string) {
 func isCloseStatus(err error, code websocket.StatusCode) bool {
 	var ce websocket.CloseError
 	return errors.As(err, &ce) && ce.Code == code
+}
+
+func TestLegacy_SkipErrorRedactsTheDialURL(t *testing.T) {
+	h := newHub(t)
+	block, blocked := newGate(t), make(chan struct{}, 1)
+	errs := make(chan error, 16)
+	first := true
+	cl := newClient(t, WithStreamLog(2),
+		WithNetworkErrorFunc(func(err error) { errs <- err }),
+		WithLinkFilter(func(Peer, Event) bool {
+			if first {
+				first = false
+				blocked <- struct{}{}
+				<-block.ch
+			}
+			return true
+		}))
+	addr := strings.Replace(h.url, "ws://", "ws://user:pw@", 1) + "?token=s3cret"
+	connect(t, cl, addr)
+	publish(t, cl.bus, "acme.crm.deal.created", "")
+	select {
+	case <-blocked:
+	case <-time.After(failAfter):
+		t.Fatal("writer never reached the filter")
+	}
+	for i := 0; i < 5; i++ {
+		publish(t, cl.bus, "acme.crm.deal.updated", "")
+	}
+	block.open()
+	select {
+	case err := <-errs:
+		msg := err.Error()
+		if !strings.Contains(msg, "skipped") || strings.Contains(msg, "s3cret") || strings.Contains(msg, "pw@") {
+			t.Fatalf("error %q leaks the dial URL's credentials", msg)
+		}
+	case <-time.After(failAfter):
+		t.Fatal("no skip error reported")
+	}
 }

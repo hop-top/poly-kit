@@ -80,7 +80,13 @@ impl StreamClient {
             resume: self.cursor.request(),
         };
         let id = self.open_dial(sess.resume.clone())?;
-        let frame = encode_auth_frame(token, Some(&self.cfg.caps), &self.cfg.origin, Some(&sess));
+        let frame = encode_auth_frame(
+            token,
+            Some(&self.cfg.caps),
+            &self.cfg.origin,
+            &self.cfg.stream,
+            Some(&sess),
+        );
         Ok((id, frame))
     }
 

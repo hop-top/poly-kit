@@ -1,0 +1,11 @@
+{"version":"v1","description":"Acknowledged publishes: a dialer that advertises caps.acks with its stream id gets acks echoed in the ack, then one puback per event frame, in offset order. A frame sent again is acknowledged again without being published twice; a frame on a reserved topic is answered with err/invalid.","setup":{"log_size":8,"publish":[]}}
+{"send":{"auth":"open","caps":{"streams":1,"frames":["kit","cloudevents"],"acks":1},"origin":"dialer","stream":{"id":"stm_dialer"}}}
+{"recv":{"type":"auth_ok","caps":{"streams":1,"frames":["kit","cloudevents"],"acks":1},"origin":"hub","stream":{"id":"stm_wire","oldest":"1","head":"0","heartbeat_ms":15000}}}
+{"send":{"id":"evt_01jg000000e008000000000001","topic":"acme.crm.deal.created","source":"crm","timestamp":"2026-10-25T12:00:01Z","payload":{"n":1},"origin":"dialer","offset":"1"}}
+{"recv":{"type":"puback","offset":"1","id":"evt_01jg000000e008000000000001","status":"ok"}}
+{"send":{"id":"evt_01jg000000e008000000000002","topic":"acme.crm.deal.updated","source":"crm","timestamp":"2026-10-25T12:00:02Z","payload":{"n":2},"origin":"dialer","offset":"2"}}
+{"recv":{"type":"puback","offset":"2","id":"evt_01jg000000e008000000000002","status":"ok"}}
+{"send":{"id":"evt_01jg000000e008000000000002","topic":"acme.crm.deal.updated","source":"crm","timestamp":"2026-10-25T12:00:02Z","payload":{"n":2},"origin":"dialer","offset":"2"}}
+{"recv":{"type":"puback","offset":"2","id":"evt_01jg000000e008000000000002","status":"ok"}}
+{"send":{"id":"evt_01jg000000e008000000000003","topic":"kit.runtime.link.connected","source":"crm","timestamp":"2026-10-25T12:00:03Z","payload":{},"origin":"dialer","offset":"3"}}
+{"recv":{"type":"puback","offset":"3","id":"evt_01jg000000e008000000000003","status":"err","code":"invalid"}}

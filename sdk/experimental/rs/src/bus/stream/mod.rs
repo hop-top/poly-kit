@@ -24,6 +24,8 @@
 //!   [`OutboundWriter`])
 //! - event frames with offsets, on top of the CloudEvents core's codec
 //!   ([`encode_event_frame`], [`decode_event_frame`])
+//! - acknowledged publishes, dialer side: the `puback` frame and the
+//!   per-address [`AckTracker`] ([`parse_puback`], [`negotiate_acks`])
 //! - [`StreamClient`]: a dialer's link state machine over all of the
 //!   above, for one outbound address
 
@@ -36,6 +38,7 @@ mod error;
 mod frame;
 mod handshake;
 mod log;
+mod puback;
 mod requests;
 mod subs;
 mod types;
@@ -71,6 +74,11 @@ pub use handshake::{
 pub use log::{
     Batch, LogEntry, OutboundWriter, RingLog, SendCursor, StreamLog, DEFAULT_STREAM_LOG_SIZE,
     WRITER_BATCH,
+};
+pub use puback::{
+    encode_puback, negotiate_acks, parse_puback, AckResolution, AckTracker, Puback, ACKS_VERSION,
+    ACK_EVICTED, ACK_FILTERED, ACK_INVALID, ACK_REJECTED, ACK_TIMEOUT, ACK_UNAVAILABLE,
+    ACK_UNKNOWN, ACK_UNSUPPORTED,
 };
 pub use subs::{entry_delivers, SubState, Subscription};
 pub use types::{

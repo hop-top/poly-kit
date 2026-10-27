@@ -172,6 +172,13 @@ pub struct Batch {
     pub outbox_dropped: u64,
     /// Entries evicted before a connected writer reached them.
     pub skipped: u64,
+    /// Offsets of entries read but not sent (the peer's own origin, gap
+    /// markers), ascending.
+    pub filtered: Vec<u64>,
+    /// Acknowledged publishes this batch settled (filtered, evicted, or
+    /// sent on a link without acks); filled by
+    /// [`StreamClient::next_batch`](super::StreamClient::next_batch).
+    pub acks: Vec<super::AckResolution>,
 }
 
 /// A dialer's writer over the send log for one outbound address. It
@@ -221,11 +228,20 @@ impl OutboundWriter {
             }
         }
         let all = SubState::new();
-        b.send = entries
-            .into_iter()
-            .filter(|e| !e.marker && entry_delivers(&all, peer_origin, e))
-            .collect();
+        for e in entries {
+            if !e.marker && entry_delivers(&all, peer_origin, &e) {
+                b.send.push(e);
+            } else {
+                b.filtered.push(e.offset);
+            }
+        }
         Some(b)
+    }
+
+    /// Moves the cursor back to `to` when it is ahead: the next batch
+    /// starts after `to`.
+    pub fn rewind(&mut self, to: u64) {
+        self.cursor.at = self.cursor.at.min(to);
     }
 
     /// Records a failed write of the entry at `offset`. The link must

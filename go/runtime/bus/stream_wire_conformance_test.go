@@ -18,6 +18,7 @@ var streamWireFiles = map[string]bool{
 	"replay.jsonl":    true,
 	"reset_ack.jsonl": true,
 	"subscribe.jsonl": true,
+	"acks.jsonl":      true,
 }
 
 // wireStep is one transcript line after the header: a frame the dialer

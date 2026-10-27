@@ -16,7 +16,10 @@ import (
 
 // Publisher is the part of bus.Bus the relay needs. Publish returning
 // nil is the ack: on an in-process bus every sync subscriber returned
-// nil. Async subscribers and network peers are not covered by it.
+// nil. Async subscribers and network peers are not covered by it, unless
+// the publisher also confirms delivery (see [bus.AckPublisherOf]): a bus
+// from bus.New, or a networked bus built with bus.WithAcks. The relay
+// then waits for async subscribers and every network peer's ack.
 type Publisher interface {
 	Publish(ctx context.Context, e bus.Event) error
 }
@@ -32,12 +35,19 @@ type Publisher interface {
 //
 // A failing record blocks the ones after it until it is acked, so a
 // subscriber that always errors stalls delivery; Pending reports it.
+//
+// With a publisher that confirms delivery, a record is acked only when
+// every handler finished and every awaited network peer acknowledged
+// it; a peer's nack or a timeout fails the flush like a subscriber
+// error, and the record goes out again on the next flush.
 type Relay struct {
 	log    *FileAuditor
 	pub    Publisher
+	acked  bus.AckPublisher // nil: Publish is the ack
 	topics Topics
 	cursor string
 	retry  time.Duration
+	wait   time.Duration
 
 	mu     sync.Mutex
 	notify chan struct{}
@@ -76,6 +86,16 @@ func WithRetryInterval(d time.Duration) RelayOption {
 	}
 }
 
+// WithDeliveryTimeout bounds the wait for one record's confirmation
+// when the publisher confirms delivery. Default 30s.
+func WithDeliveryTimeout(d time.Duration) RelayOption {
+	return func(r *Relay) {
+		if d > 0 {
+			r.wait = d
+		}
+	}
+}
+
 // NewRelay relays log onto pub. The cursor lives next to the log
 // (audit.cursor).
 func NewRelay(log *FileAuditor, pub Publisher, opts ...RelayOption) *Relay {
@@ -86,6 +106,8 @@ func NewRelay(log *FileAuditor, pub Publisher, opts ...RelayOption) *Relay {
 		log: log, pub: pub, topics: DefaultTopics,
 		cursor:      filepath.Join(filepath.Dir(log.Path()), cursorFileName),
 		retry:       5 * time.Second,
+		wait:        30 * time.Second,
+		acked:       bus.AckPublisherOf(pub),
 		notify:      make(chan struct{}, 1),
 		writeCursor: writeCursorFile,
 	}
@@ -134,7 +156,7 @@ func (r *Relay) Flush(ctx context.Context) (FlushResult, error) {
 		if err := ctx.Err(); err != nil {
 			return res, err
 		}
-		if err := r.pub.Publish(ctx, r.event(e)); err != nil {
+		if err := r.deliver(ctx, r.event(e)); err != nil {
 			return res, fmt.Errorf("consent: deliver %s: %w", e.Key(), err)
 		}
 		next := relayCursor{Log: logID, Seq: e.Seq}
@@ -145,6 +167,17 @@ func (r *Relay) Flush(ctx context.Context) (FlushResult, error) {
 		res.Cursor, res.Pending = e.Seq, res.Pending-1
 	}
 	return res, nil
+}
+
+// deliver publishes one record and reports whether it was confirmed.
+func (r *Relay) deliver(ctx context.Context, ev bus.Event) error {
+	if r.acked == nil {
+		return r.pub.Publish(ctx, ev)
+	}
+	ctx, cancel := context.WithTimeout(ctx, r.wait)
+	defer cancel()
+	_, err := r.acked.PublishAcked(ctx, ev)
+	return err
 }
 
 // Notify asks Run to flush soon. It never blocks.

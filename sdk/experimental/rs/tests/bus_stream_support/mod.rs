@@ -18,6 +18,7 @@ use serde_json::Value;
 
 /// Every vector file a Rust runner consumes.
 pub const FILES: &[&str] = &[
+    "acks.json",
     "control.json",
     "cursor.json",
     "event_frames.json",
@@ -33,6 +34,7 @@ pub const FILES: &[&str] = &[
 /// Wire transcripts replay against a live acceptor over a WebSocket: the
 /// network half runs them, not the I/O-free core.
 pub const WIRE: &[&str] = &[
+    "acks.jsonl",
     "plain_ack.jsonl",
     "replay.jsonl",
     "reset_ack.jsonl",

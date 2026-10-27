@@ -585,6 +585,52 @@ dropped link starts; a first `Connect` that fails starts none, so use
 code). A `Connect` that loses a race with `Disconnect` returns
 `bus.ErrDisconnected`.
 
+### Acknowledged publish
+
+`Publish` returning nil means every local sync handler returned nil;
+async handlers and network peers are not covered. `PublishAcked`
+waits for those too:
+
+```go
+ack, err := bus.PublishAcked(ctx, b, e) // local sync and async handlers
+ack, err := n.PublishAcked(ctx, e)      // plus every outbound address (or the ones named)
+```
+
+- A bus from `bus.New()` (no network) waits for its async handlers.
+  `bus.AckPublisherOf(b)` returns nil when `b` cannot confirm delivery
+  to everything it forwards to (for example a network built without
+  `WithAcks`); fall back to `Publish` knowingly.
+- A dialer built with `WithAcks()` asks its acceptors for pubacks in
+  the handshake (`caps.acks`). `WithAcks` implies `WithOutbox`: a
+  reconnect sends again everything after the last acknowledged offset,
+  and the acceptor answers copies without publishing them twice.
+  Acceptors need no option.
+- The error is nil only when everything acknowledged. Otherwise it is
+  the local veto, the context's error while waiting for a pending slot,
+  or a `*bus.AckError` (`errors.Is(err, bus.ErrNack)`) with a code:
+  `rejected` (a peer handler failed), `invalid`, `timeout`, `unknown`,
+  `evicted`, `unavailable`, `filtered`, or `unsupported` (the peer does
+  not speak acks; also `errors.Is(err, bus.ErrAcksUnsupported)`).
+- `timeout` and `unknown` mean unknown, not lost: retry with the same
+  event id and dedupe on the receiving side. `unknown` comes from a
+  peer that saw the frame before but no longer holds its result. Without a context deadline the adapter
+  waits `WithAckTimeout` (default 30 s).
+- `WithMaxPendingAcks(n)` (default 1024) bounds unresolved acked
+  publishes per address; `PublishAcked` blocks for a slot until its
+  context ends, and the event is then not published.
+
+A hub deduplicates frames a dialer sends again after a reconnect. Its
+memory is bounded per peer; to keep one client from evicting
+another's, give the hub an authenticator that also implements
+`bus.PrincipalVerifier` (`VerifyPrincipal(token) (principal, error)`).
+Without it, clients sharing a token share one bound, and an evicted
+client's resent events may be delivered twice (never acknowledged
+falsely).
+
+A bus wired by hand (`NewNetworkAdapter(b, ...)`) confirms network
+peers only through `(*NetworkAdapter).PublishAcked`; publishing on `b`
+directly waits for local handlers only.
+
 ### Behaviour changes
 
 These change how the network adapter behaves for existing adopters:
@@ -608,6 +654,9 @@ These change how the network adapter behaves for existing adopters:
   without streams), and outbound links publish
   `kit.runtime.link.connected` / `disconnected`.
 - `kitoffset` is a reserved CloudEvents extension, like `kitorigin`.
+- An acceptor ignores `puback` control frames instead of answering
+  them with `unknown_type`.
+
 The wire contract is
 [bus network streams](../../contributors/architecture/bus-streams.md),
 pinned by [`contracts/bus-v1/streams`](../../../contracts/bus-v1/streams/README.md).

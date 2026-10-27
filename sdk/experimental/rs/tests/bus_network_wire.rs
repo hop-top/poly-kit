@@ -37,6 +37,9 @@ fn runner(name: &str) -> Option<Runner> {
     match name {
         "plain_ack.jsonl" => Some(Runner::Replay),
         "replay.jsonl" | "reset_ack.jsonl" | "subscribe.jsonl" => Some(Runner::Waits(STREAMS)),
+        "acks.jsonl" => Some(Runner::Waits(
+            "needs a stream acceptor that answers pubacks; this port has the dialer side only",
+        )),
         _ => None,
     }
 }

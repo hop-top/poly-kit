@@ -17,6 +17,10 @@ var knownFrames = []string{"kit", "cloudevents"}
 type streamCaps struct {
 	Streams int
 	Frames  []string
+	// Acks is the acknowledged-publish version; 0 is absent from the
+	// wire, so the frames of peers that do not ask for acks stay as they
+	// were.
+	Acks int
 }
 
 func (c streamCaps) MarshalJSON() ([]byte, error) {
@@ -27,7 +31,8 @@ func (c streamCaps) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		Streams int      `json:"streams"`
 		Frames  []string `json:"frames"`
-	}{c.Streams, fr})
+		Acks    int      `json:"acks,omitempty"`
+	}{c.Streams, fr, c.Acks})
 }
 
 func (c streamCaps) decodes(f FrameFormat) bool {
@@ -39,6 +44,17 @@ func (c streamCaps) decodes(f FrameFormat) bool {
 	return false
 }
 
+// capsVersion reads a caps version leniently: anything but a
+// non-negative integer is 0.
+func capsVersion(s json.RawMessage) int {
+	if len(s) > 0 && !bytes.ContainsAny(s, ".eE") {
+		if v, err := strconv.Atoi(string(s)); err == nil && v >= 0 {
+			return v
+		}
+	}
+	return 0
+}
+
 // parseCaps decodes caps leniently: a non-object is absent, a bad
 // streams is 0, unknown frame names are dropped.
 func parseCaps(raw json.RawMessage) *streamCaps {
@@ -46,12 +62,7 @@ func parseCaps(raw json.RawMessage) *streamCaps {
 	if isNull(raw) || json.Unmarshal(raw, &m) != nil || m == nil {
 		return nil
 	}
-	c := &streamCaps{Frames: []string{}}
-	if s := m["streams"]; len(s) > 0 && !bytes.ContainsAny(s, ".eE") {
-		if v, err := strconv.Atoi(string(s)); err == nil && v >= 0 {
-			c.Streams = v
-		}
-	}
+	c := &streamCaps{Frames: []string{}, Streams: capsVersion(m["streams"]), Acks: capsVersion(m["acks"])}
 	var frames []json.RawMessage
 	if json.Unmarshal(m["frames"], &frames) == nil {
 		for _, raw := range frames {
@@ -87,6 +98,9 @@ type authFrame struct {
 	Caps    *streamCaps
 	Origin  string
 	Session *sessionReq
+	// Stream is the dialer's own stream id, sent with caps.acks so the
+	// acceptor can recognize frames sent again after a reconnect.
+	Stream string
 }
 
 // parseAuthFrame decodes the dialer's first frame. An unusable token is
@@ -104,6 +118,15 @@ func parseAuthFrame(data []byte) (authFrame, *StreamError) {
 	}
 	a := authFrame{Token: tok, Caps: parseCaps(m["caps"])}
 	a.Origin, _ = memberString(m, "origin")
+	if a.Caps != nil && a.Caps.Acks >= 1 {
+		var st map[string]json.RawMessage
+		_ = json.Unmarshal(m["stream"], &st)
+		id, ok := memberString(st, "id")
+		if !ok || !validStreamID(id) {
+			return a, streamErr(CodeBadRequest, "caps.acks needs the dialer's stream id")
+		}
+		a.Stream = id
+	}
 	if isNull(m["session"]) {
 		return a, nil
 	}
@@ -141,12 +164,16 @@ func parseAuthFrame(data []byte) (authFrame, *StreamError) {
 }
 
 // encodeAuthFrame renders the dialer's first frame.
-func encodeAuthFrame(token string, caps *streamCaps, origin string, s *sessionReq) []byte {
+// stream is the dialer's stream id, sent only with caps.acks.
+func encodeAuthFrame(token string, caps *streamCaps, origin, stream string, s *sessionReq) []byte {
 	if caps == nil {
 		b, _ := json.Marshal(map[string]string{"auth": token})
 		return b
 	}
 	out := map[string]any{"auth": token, "caps": *caps, "origin": origin}
+	if caps.Acks > 0 {
+		out["stream"] = map[string]string{"id": stream}
+	}
 	if s != nil {
 		sess := map[string]any{}
 		if s.Subscribe != nil {

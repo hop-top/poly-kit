@@ -122,7 +122,7 @@ pub fn acceptor_control(m: &Members) -> AcceptorControl {
         .filter(|id| !id.is_empty() && id.len() <= MAX_REQUEST_ID)
         .unwrap_or("");
     let typ = match typ {
-        "ack" | "error" => return AcceptorControl::Ignore,
+        "ack" | "error" | "puback" => return AcceptorControl::Ignore,
         "reset" | "position" => {
             return reply(
                 id,

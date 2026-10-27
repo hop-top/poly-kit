@@ -85,6 +85,26 @@ type Authenticator interface {
 	Verify(token string) error
 }
 
+// PrincipalVerifier is an optional [Authenticator] extension that names
+// who a token belongs to. An acceptor whose authenticator implements it
+// calls VerifyPrincipal instead of Verify, and bounds the acknowledged
+// publish dedupe memory per principal, so one peer opening many streams
+// cannot evict another peer's. Without it, dialers that present the same
+// token share one bound, as large as the overall one. Return a stable
+// identity (an account or client id), not the token.
+type PrincipalVerifier interface {
+	VerifyPrincipal(token string) (principal string, err error)
+}
+
+// verifyPeer verifies token, returning its principal when the
+// authenticator names one.
+func verifyPeer(a Authenticator, token string) (string, error) {
+	if pv, ok := a.(PrincipalVerifier); ok {
+		return pv.VerifyPrincipal(token)
+	}
+	return "", a.Verify(token)
+}
+
 type ctxKey struct{}
 
 // networkOriginKey marks events injected from the network to prevent re-forwarding.
@@ -153,6 +173,12 @@ type NetworkAdapter struct {
 	onSkip       func(addr string, n uint64)
 	authorize    func(context.Context, Peer, Subscription) error
 	linkFilter   func(Peer, Event) bool
+
+	acks           bool // dialer: ask acceptors for pubacks
+	pubAckTimeout  time.Duration
+	maxPendingAcks int
+	ackSeen        *ackSeen
+	refuseAcks     bool // test seam: an acceptor that predates acks
 }
 
 // NewNetworkAdapter creates a network adapter bridging the given bus.
@@ -175,7 +201,11 @@ func NewNetworkAdapter(b Bus, opts ...NetworkOption) *NetworkAdapter {
 		heartbeat:  DefaultHeartbeat,
 		ackTimeout: handshakeTimeout,
 		maxSubs:    DefaultMaxSubscriptions,
-		seeds:      map[string]StreamPosition{},
+		ackSeen:    newAckSeen(),
+
+		pubAckTimeout:  DefaultAckTimeout,
+		maxPendingAcks: DefaultMaxPendingAcks,
+		seeds:          map[string]StreamPosition{},
 		newTicker: func(d time.Duration) (<-chan time.Time, func()) {
 			t := time.NewTicker(d)
 			return t.C, t.Stop
@@ -217,7 +247,18 @@ func (n *NetworkAdapter) observe(ctx context.Context, e Event) {
 		return
 	}
 	via, _ := ctx.Value(viaKey{}).(uint64)
-	n.log.Append(LogEntry{Event: e, Origin: origin, via: via})
+	entry := LogEntry{Event: e, Origin: origin, via: via}
+	t := ticketFrom(ctx)
+	if t != nil && t.network {
+		entry.ticket = t
+	}
+	off := n.log.Append(entry)
+	if entry.ticket != nil {
+		t.setOffset(off)
+		if t.onLogged != nil {
+			t.onLogged(off)
+		}
+	}
 	n.wake()
 }
 
@@ -245,6 +286,9 @@ func (n *NetworkAdapter) caps() streamCaps {
 	c := streamCaps{Frames: append([]string(nil), knownFrames...)}
 	if n.ordered {
 		c.Streams = StreamsVersion
+		if n.acks {
+			c.Acks = AcksVersion
+		}
 	}
 	return c
 }
@@ -285,6 +329,7 @@ func (n *NetworkAdapter) Disconnect(addr string) error {
 	n.mu.Unlock()
 	if ps != nil {
 		ps.setFinal("")
+		n.failAcks(ps, AckUnavailable)
 	}
 	if !ok {
 		return nil
@@ -313,6 +358,15 @@ func (n *NetworkAdapter) Close() error {
 		l.close(statusGoingAway, "closing", "")
 	}
 	n.wg.Wait()
+	n.mu.RLock()
+	peers := make([]*peerState, 0, len(n.peers))
+	for _, ps := range n.peers {
+		peers = append(peers, ps)
+	}
+	n.mu.RUnlock()
+	for _, ps := range peers {
+		n.failAcks(ps, AckUnavailable)
+	}
 	return nil
 }
 
