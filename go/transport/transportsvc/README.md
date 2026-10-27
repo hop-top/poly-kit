@@ -13,7 +13,8 @@ contract itself lives in `go/console/serve`.
 
 - front the tree over a transport → implement `Bind` / `Serve` / `Close`, then `NewTransportService(name, root, surface, tr, opts...)`
 - reach commands the bridge does not enable by default → `Expose("*")`, then `Hide("widget delete")` for exceptions
-- supply a custom `Policy` or `Runner` → `WithBridgeOptions(...)`, or `WithBridgeOptionsFunc(fn)` when the options are known only at Start
+- supply a custom `Policy` or `Runner` → `WithBridgeOptions(...)`, or `WithBridgeOptionsFunc(fn)` when the options are known only once flags are parsed
+- build something from the tree or the root's configuration (a narrowed catalog, a handler chain) → implement `Preparer` on the transport
 - fail fast on bad configuration → `WithValidate(fn)`
 - be gated by a policy table, or ordered after another service → `WithClass(sideEffect, network)`, `WithDependsOn(names...)`
 - enumerate what the transport exposes, excluded commands included → `TransportService.Bridge()`, `Bridge.NonInvocable()`
@@ -28,6 +29,20 @@ type Transport interface {
 }
 ```
 
+A transport may also implement `Preparer`:
+
+```go
+type Preparer interface {
+    Prepare(ctx context.Context, b *cmdsurface.Bridge) error
+}
+```
+
+`Prepare` runs once per run, before `Bind`, in the supervisor's prepare
+phase — when no service of the run is serving yet — with the bridge
+the seam just reflected. Build there everything that reads the command
+tree or the root's configuration; `Bind` and `Serve` use only what it
+built.
+
 `Bind` acquires everything that can fail deterministically and returns
 the resolved address, or `""`. `Serve` accepts work until `ctx` is
 canceled or it fails, and is called only after `Bind` succeeds; `nil`
@@ -41,7 +56,8 @@ once.
 - The `Invoker` a transport receives has the surface already pinned and the policy gate already wired. A transport never reads an annotation or gates a command, and cannot invoke as another surface.
 - Errors are the bridge's, mapped by the transport onto its wire format, not decided by it: `ErrUnknownCommand`, `ErrSurfaceNotEnabled`, `ErrDestructiveBlocked`, `ErrPermissionDenied`.
 - Meta reaches the bridge unchanged except for `Surface`, which the seam pins. A transport fills `Caller` and `Tenant` only from an identity it verified; the bridge grants nothing on a claim.
-- Reflection happens once, at `Start`, so the tree is complete: do not cache leaves.
+- Reflection happens once, in the prepare phase (`TransportService.Prepare`, which the supervisor calls before starting any service), so the tree is complete: do not cache leaves. A `Start` with no `Prepare` before it prepares first.
+- Nothing reads the command tree or the root's configuration from `Bind` on: other services of the run are serving calls that write the tree's flag values under its invocation lock.
 - Readiness is reported after `Bind` returns nil; `Stop` calls `Close` once.
 - Rules apply in order, so `Expose("*")` then `Hide("widget delete")` reaches everything but that leaf. Patterns are `"widget add"`, `"widget *"`, or `"*"`.
 
