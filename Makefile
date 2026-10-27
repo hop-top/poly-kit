@@ -1,7 +1,7 @@
 .PHONY: api audit-php build builtins-sync check check-go-version check-mirror-sync check-template-sources clients \
 	clients-php clients-rs clients-test clients-ts job-integration-hatchet job-integration-restate \
-	job-integration-temporal job-test lint lint-config lint-docs lint-go lint-links lint-lock-php \
-	check-toolchain-parity lint-actions-pinned lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
+	job-integration-temporal job-test lint lint-all lint-config lint-docs lint-go lint-links lint-lock-php \
+	check-toolchain-parity lint-actions-pinned lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-sdk-paths-all lint-templates lint-ts openapi \
 	preflight promote promote-beta promote-rc promote-open-line proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
 	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-py \
@@ -475,31 +475,87 @@ test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
 	@echo "==> kv-v1 parity: Go <-> Rust cross-process"
 	KV_CROSSLANG=1 go test ./go/storage/kv/sqlite/... -run '^TestCrossLang' -count=1 -timeout 300s -v
 
-lint: check-toolchain-parity lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths lint-adr-refs lint-internal-refs lint-actions-pinned ## Run all linters
+# ── Lint scope: changed files only ────────────────────────────
+# Every lint target lints what the change touches, not the tree: the
+# files changed since the merge-base with the default branch (origin/next),
+# plus staged, unstaged and untracked ones. scripts/changed-files.sh is
+# the one definition of "changed" the targets, the pre-push hook and CI
+# share; its header lists the knobs:
+#
+#   make lint                     changed files only
+#   make lint-all                 everything (same as LINT_ALL=1)
+#   make lint-go LINT_BASE=<rev>  measure the change against <rev>
+#   LINT_HEAD=HEAD                committed changes only (CI, pre-push)
+#
+# File-level linters (eslint, ruff, markdownlint, lychee, the grep
+# guards, actionlint-style scripts) get the changed files; package-level
+# ones (golangci-lint per package, tsc, clippy, phpstan, lock checks) run
+# when their package changed. A change to a linter's config, lockfile
+# or tool pin (its --trigger list), or to the scope scripts, lints
+# everything for that linter. scripts/lint-changed.sh runs one linter
+# under that contract; a linter with nothing relevant prints a skip line.
+export LINT_ALL LINT_BASE LINT_HEAD LINT_BASE_REF
+LINT_CHANGED := scripts/lint-changed.sh
 
-lint-go: check-go-version tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION + mise.toml Go pin)
-	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
-	@find go cmd contracts engine examples incubator -name "go.mod" -execdir env GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./... \;
+lint: check-toolchain-parity lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths lint-adr-refs lint-internal-refs lint-actions-pinned ## Run all linters on changed files (lint-all: whole tree)
 
-lint-ts: ## TypeScript: eslint + tsc type-check (src and tests)
-	cd sdk/ts && pnpm eslint src/
-	cd sdk/ts && pnpm run typecheck
-	cd engine/sdk/ts-kit-engine && pnpm run typecheck
+lint-all: ## Run all linters on the whole tree
+	@$(MAKE) --no-print-directory lint LINT_ALL=1
 
-lint-py: ## Python: ruff check + format
-	cd sdk/py && uv run ruff check . && uv run ruff format --check .
-	cd engine/sdk/py-kit-engine && uv run ruff check . && uv run ruff format --check .
+# golangci-lint is bounded so a full run, or several worktrees pushing at
+# once, cannot take the machine: GOLANGCI_LINT_CONCURRENCY workers, a
+# soft heap limit (GOMEMLIMIT; the GC works harder near it instead of
+# growing), and --allow-serial-runners, so a second run waits for the
+# first instead of failing on its lock. Override any of them per call.
+GOLANGCI_LINT_CONCURRENCY ?= 4
+GOLANGCI_LINT_GOMEMLIMIT ?= 2GiB
+GOLANGCI_LINT_FLAGS ?=
+
+lint-go: check-go-version tools-golangci-lint ## Go: golangci-lint on changed packages (pinned via GOLANGCI_LINT_VERSION + mise.toml Go pin)
+	@GOLANGCI_LINT=$(GOLANGCI_LINT) GOMEMLIMIT=$(GOLANGCI_LINT_GOMEMLIMIT) \
+		GOLANGCI_LINT_FLAGS="--concurrency=$(GOLANGCI_LINT_CONCURRENCY) --allow-serial-runners $(GOLANGCI_LINT_FLAGS)" \
+		scripts/lint-go.sh
+
+TS_EXTS := ts tsx mts cts js mjs cjs
+
+lint-ts: ## TypeScript: eslint on changed files + tsc type-check of changed packages
+	@$(LINT_CHANGED) lint-ts:eslint --cd sdk/ts --full src/ \
+		--trigger sdk/ts/eslint.config.mjs --trigger sdk/ts/package.json --trigger pnpm-lock.yaml \
+		$(foreach e,$(TS_EXTS),':(glob)sdk/ts/src/**/*.$(e)') -- pnpm eslint --no-warn-ignored
+	@$(LINT_CHANGED) lint-ts:typecheck --cd sdk/ts --gate --include-deleted --trigger pnpm-lock.yaml \
+		sdk/ts ':(exclude)*.md' -- pnpm run typecheck
+	@$(LINT_CHANGED) lint-ts:typecheck-engine --cd engine/sdk/ts-kit-engine --gate --include-deleted \
+		--trigger pnpm-lock.yaml engine/sdk/ts-kit-engine ':(exclude)*.md' -- pnpm run typecheck
+
+# --force-exclude keeps ruff.toml's excludes in force for files named
+# on the command line.
+PY_PROJECTS := sdk/py engine/sdk/py-kit-engine
+
+lint-py: ## Python: ruff check + format on changed files
+	@set -e; for p in $(PY_PROJECTS); do \
+		for t in "check" "format --check"; do \
+			$(LINT_CHANGED) "lint-py:$$p:ruff $$t" --cd $$p --full . \
+				--trigger $$p/ruff.toml --trigger $$p/pyproject.toml --trigger $$p/uv.lock \
+				"$$p/*.py" "$$p/*.pyi" -- uv run ruff $$t --force-exclude; \
+		done; \
+	done
 
 # `uv sync` rewrites uv.lock in place when it disagrees with pyproject.toml,
 # so drift never fails a build — it just lands as an unrelated dirty file in
 # the next contributor's tree. --check resolves without writing and exits
 # non-zero instead.
-lint-lock-py: ## Python: uv.lock consistent with pyproject.toml
-	cd sdk/py && uv lock --check
-	cd engine/sdk/py-kit-engine && uv lock --check
+lint-lock-py: ## Python: uv.lock consistent with pyproject.toml (when either changed)
+	@set -e; for p in $(PY_PROJECTS); do \
+		$(LINT_CHANGED) "lint-lock-py:$$p" --cd $$p --gate --include-deleted \
+			$$p/pyproject.toml $$p/uv.lock -- uv lock --check; \
+	done
 
-lint-lock-php: ## PHP: composer.lock consistent with composer.json
-	cd sdk/experimental/php && composer validate --check-lock --no-check-publish
+PHP_SDK := sdk/experimental/php
+
+lint-lock-php: ## PHP: composer.lock consistent with composer.json (when either changed)
+	@$(LINT_CHANGED) lint-lock-php --cd $(PHP_SDK) --gate --include-deleted \
+		$(PHP_SDK)/composer.json $(PHP_SDK)/composer.lock \
+		-- composer validate --check-lock --no-check-publish
 
 # `--locked` audits composer.lock directly, so this runs without a vendor/
 # tree and reports what CI would actually install. Severity gate: low is
@@ -509,8 +565,15 @@ lint-lock-php: ## PHP: composer.lock consistent with composer.json
 # report but don't fail: abandonment is not a vulnerability and rarely has a
 # same-day replacement. `--ignore-unreachable` keeps a Packagist outage from
 # failing the build for a reason unrelated to the code under test.
-audit-php: ## PHP: composer.lock free of medium+ security advisories
-	cd sdk/experimental/php && composer audit --locked --no-dev \
+#
+# Changed-only like the rest of `lint`: it runs when composer.json or
+# composer.lock changed. An advisory published against an unchanged lock
+# is the vulnerability-scan workflow's job (osv-scanner reads
+# composer.lock on every pull request and weekly).
+audit-php: ## PHP: composer.lock free of medium+ security advisories (when it changed)
+	@$(LINT_CHANGED) audit-php --cd $(PHP_SDK) --gate \
+		$(PHP_SDK)/composer.json $(PHP_SDK)/composer.lock \
+		-- composer audit --locked --no-dev \
 		--ignore-severity=low --abandoned=report --ignore-unreachable
 
 # Local mirror of .github/workflows/vulnerability-scan.yml: same scanners,
@@ -566,27 +629,53 @@ vuln-go-binary: check-go-version tools-govulncheck ## govulncheck binary scan of
 # `composer analyse` gate identically. Neither config carries a baseline or
 # an ignore list, so every error reported is a real one. Needs vendor/
 # (unlike audit-php), hence the install.
-lint-php: ## PHP: phpstan static analysis (levels pinned in phpstan.neon)
-	cd sdk/experimental/php && composer install --no-progress --quiet && composer analyse
+lint-php: ## PHP: phpstan static analysis when the PHP SDK changed (levels pinned in phpstan.neon)
+	@$(LINT_CHANGED) lint-php --cd $(PHP_SDK) --gate --include-deleted $(PHP_SDK) ':(exclude)*.md' \
+		-- sh -c 'composer install --no-progress --quiet && composer analyse'
 
-lint-rs: ## Rust: cargo fmt --check + clippy (all features)
-	cd sdk/experimental/rs && cargo fmt --all -- --check
-	cd sdk/experimental/rs && cargo clippy --all-features --all-targets -- -D warnings
+RS_SDK := sdk/experimental/rs
+
+lint-rs: ## Rust: cargo fmt --check + clippy (all features) when the Rust SDK changed
+	@$(LINT_CHANGED) lint-rs --cd $(RS_SDK) --gate --include-deleted --trigger mise.toml \
+		$(RS_SDK) ':(exclude)*.md' \
+		-- sh -c 'cargo fmt --all -- --check && cargo clippy --all-features --all-targets -- -D warnings'
 
 # release-please CHANGELOG.md files get their own config: their entries are
 # commit text copied verbatim, so prose rules there are relaxed (see
 # .markdownlint-changelog.yaml); structure is still checked.
-lint-docs: ## Markdown: markdownlint (version pinned in mise.toml)
-	npx --yes markdownlint-cli2@$(MARKDOWNLINT_CLI2_VERSION) "README.md" "RELEASING.md" "AGENTS.md" "docs/**/*.md" "cmd/kit/README.md" "incubator/**/*.md" "#incubator/**/CHANGELOG.md" --config examples/spaced/.markdownlint.yaml
-	npx --yes markdownlint-cli2@$(MARKDOWNLINT_CLI2_VERSION) "CHANGELOG.md" "incubator/**/CHANGELOG.md" --config .markdownlint-changelog.yaml
+MARKDOWNLINT := npx --yes markdownlint-cli2@$(MARKDOWNLINT_CLI2_VERSION)
 
-lint-readmes: ## Markdown: folder README coverage, Contents links, shape caps
-	scripts/lint-readmes
+lint-docs: ## Markdown: markdownlint on changed docs (version pinned in mise.toml)
+	@$(LINT_CHANGED) lint-docs --trigger examples/spaced/.markdownlint.yaml --trigger .config/mise.toml \
+		$(foreach g,README.md RELEASING.md AGENTS.md docs/**/*.md cmd/kit/README.md incubator/**/*.md,--full "$(g)") \
+		--full "#incubator/**/CHANGELOG.md" \
+		README.md RELEASING.md AGENTS.md ':(glob)docs/**/*.md' cmd/kit/README.md ':(glob)incubator/**/*.md' \
+		':(exclude,glob)incubator/**/CHANGELOG.md' \
+		-- $(MARKDOWNLINT) --config examples/spaced/.markdownlint.yaml
+	@$(LINT_CHANGED) lint-docs:changelog --trigger .markdownlint-changelog.yaml --trigger .config/mise.toml \
+		--full CHANGELOG.md --full "incubator/**/CHANGELOG.md" \
+		CHANGELOG.md ':(glob)incubator/**/CHANGELOG.md' \
+		-- $(MARKDOWNLINT) --config .markdownlint-changelog.yaml
 
-lint-config: ## Validate configuration files and check for broken paths
+# A whole-tree check (README coverage per directory), so it runs in full,
+# but only when a change can move its verdict: a README, its allowlist or
+# the script changed, or a path was added or removed. Plain edits to
+# existing files cannot.
+lint-readmes: ## Markdown: folder README coverage, Contents links, shape caps (when READMEs or the tree shape changed)
+	@docs=$$(scripts/changed-files.sh --include-deleted -- '*.md' .readme-allowlist scripts/lint-readmes) && \
+		shape=$$(scripts/changed-files.sh --filter AD --include-deleted) && [ -z "$$docs$$shape" ]; \
+	if [ $$? -eq 0 ]; then \
+		echo "==> lint-readmes: no README or tree-shape changes, skipped (LINT_ALL=1 lints everything)"; \
+	else \
+		scripts/lint-readmes; \
+	fi
+
+lint-config: ## Validate changed JSON files and check config for broken paths
 	@echo "Validating configuration files..."
-	@# Check all JSON files for syntax errors
-	@find . -name "*.json" -not -path "*/node_modules/*" -not -path "*/vendor/*" -exec jq . {} + > /dev/null
+	@# JSON syntax: changed files, or every one in a full run. The path
+	@# checks below read two small files, so they always run.
+	@$(LINT_CHANGED) lint-config:json '*.json' ':(exclude,glob)**/node_modules/**' ':(exclude,glob)**/vendor/**' \
+		-- sh -c 'if [ $$# -eq 0 ]; then find . -name "*.json" -not -path "*/node_modules/*" -not -path "*/vendor/*" -exec jq . {} +; else jq . "$$@"; fi > /dev/null' jq
 	@# Check release-please for broken paths
 	@for p in $$(jq -r '.packages | keys[]' .github/release-please-config.json); do \
 		if [ "$$p" != "." ] && [ ! -d "$$p" ]; then \
@@ -603,11 +692,23 @@ lint-config: ## Validate configuration files and check for broken paths
 	done
 	@echo "Config validation passed."
 
-lint-links: ## Check for broken links in documentation
-	lychee --config lychee.toml --offline docs/ README.md
+# A deleted or renamed file can break a link in a doc nobody touched, so
+# any deletion checks every doc.
+lint-links: ## Check for broken links in changed documentation
+	@$(LINT_CHANGED) lint-links --full-on-delete --trigger lychee.toml --full docs/ --full README.md \
+		':(glob)docs/**/*.md' ':(glob)docs/**/*.html' README.md \
+		-- lychee --config lychee.toml --offline
 
-lint-sdk-paths: ## Guard against repeated-sdk-segment path corruption recurrence
+SDK_PATHS_EXCLUDE := Makefile '**/docs-review-*.md' '**/2026-03-28-kit-foundation.md' '**/.xray_*.md' \
+	'**/*.pyc' '**/*.db'
+
+lint-sdk-paths: ## Guard against repeated-sdk-segment path corruption recurrence (changed files)
 	@echo "Scanning for repeated-sdk-segment path corruption..."
+	@$(LINT_CHANGED) lint-sdk-paths $(foreach x,$(SDK_PATHS_EXCLUDE),':(exclude,glob)$(x)') \
+		-- sh -c 'if [ $$# -gt 0 ]; then ! grep -IEn "sdk/sdk/sdk" -- "$$@"; else $(MAKE) --no-print-directory lint-sdk-paths-all; fi' grep
+	@echo "No repeated-sdk-segment corruption detected."
+
+lint-sdk-paths-all:
 	@! grep -IrEn 'sdk/sdk/sdk' . \
 		--exclude-dir=.git \
 		--exclude-dir=node_modules \
@@ -622,7 +723,6 @@ lint-sdk-paths: ## Guard against repeated-sdk-segment path corruption recurrence
 		--exclude='2026-03-28-kit-foundation.md' \
 		--exclude='Makefile' \
 		--exclude='.xray_*.md'
-	@echo "No repeated-sdk-segment corruption detected."
 
 # Decision records are kept outside this repository, so an ADR number in
 # a comment, doc, help string or workflow names a document no reader of
@@ -632,25 +732,28 @@ lint-sdk-paths: ## Guard against repeated-sdk-segment path corruption recurrence
 #
 # git grep exits 1 on no match and >1 on error; only 1 passes, so a
 # failed scan can never read as a clean one.
-lint-adr-refs: ## Guard against ADR-number mentions (decision records live outside the repo)
+lint-adr-refs: ## Guard against ADR-number mentions in changed files (decision records live outside the repo)
 	@echo "Scanning for ADR-number mentions..."
-	@status=0; \
-	git grep -nIE 'ADR[- ]?[0-9]{4}' -- . ':(exclude,glob)**/CHANGELOG.md' || status=$$?; \
-	case $$status in \
-		0) echo "error: ADR-number mentions found above; decision records are not in this repo." >&2; \
-		   echo "       Point at the in-repo doc that holds the content, or state the rationale inline." >&2; \
-		   exit 1 ;; \
-		1) echo "No ADR-number mentions found." ;; \
-		*) echo "error: git grep failed (exit $$status); scan did not run." >&2; exit $$status ;; \
-	esac
+	@$(LINT_CHANGED) lint-adr-refs ':(exclude,glob)**/CHANGELOG.md' -- sh -c '\
+		if [ $$# -gt 0 ]; then u=--untracked; else u=""; set -- .; fi; \
+		status=0; \
+		git grep $$u -nIE "ADR[- ]?[0-9]{4}" -- "$$@" ":(exclude,glob)**/CHANGELOG.md" || status=$$?; \
+		case $$status in \
+			0) echo "error: ADR-number mentions found above; decision records are not in this repo." >&2; \
+			   echo "       Point at the in-repo doc that holds the content, or state the rationale inline." >&2; \
+			   exit 1 ;; \
+			1) echo "No ADR-number mentions found." ;; \
+			*) echo "error: git grep failed (exit $$status); scan did not run." >&2; exit $$status ;; \
+		esac' adr-refs
 
 # Sibling of lint-adr-refs for everything else a reader of the repo
 # cannot open: a real home directory, a workspace-private doc, a design
 # note, working note or tracker name, or a spec/contract section or
 # decision number cited without naming its file. The patterns and the
 # placeholder users allowed in example paths live in the script header.
-lint-internal-refs: ## Guard against references to documents and paths outside the repo
-	@scripts/lint-internal-refs.sh
+lint-internal-refs: ## Guard against references to documents and paths outside the repo (changed files)
+	@$(LINT_CHANGED) lint-internal-refs --trigger scripts/lint-internal-refs.sh \
+		':(exclude,glob)**/CHANGELOG.md' -- scripts/lint-internal-refs.sh
 
 # Every workflow and composite-action `uses:` is pinned to a full commit
 # SHA, version in a trailing comment; Dependabot keeps them current.
@@ -660,16 +763,30 @@ lint-internal-refs: ## Guard against references to documents and paths outside t
 ADOPTER_WORKFLOWS = 'templates/shared/ci/*.yml' 'templates/shared/ci/*.yml.tmpl' \
 	'templates/ci/*/github-actions.yml' 'examples/*/.github/workflows/*.yml'
 
-lint-actions-pinned: ## Fail on GitHub Actions `uses:` refs not pinned to a commit SHA
-	@scripts/lint-actions-pinned.sh
-	@scripts/lint-actions-pinned.sh $$(git ls-files -- $(ADOPTER_WORKFLOWS))
+REPO_WORKFLOWS = '.github/workflows/*.yml' '.github/workflows/*.yaml' \
+	':(glob).github/actions/**/action.yml' ':(glob).github/actions/**/action.yaml'
+
+lint-actions-pinned: ## Fail on GitHub Actions `uses:` refs not pinned to a commit SHA (changed workflows)
+	@$(LINT_CHANGED) lint-actions-pinned --trigger scripts/lint-actions-pinned.sh \
+		$(REPO_WORKFLOWS) -- scripts/lint-actions-pinned.sh
+	@$(LINT_CHANGED) lint-actions-pinned:adopter --trigger scripts/lint-actions-pinned.sh \
+		$(addprefix --full ,$(shell git ls-files -- $(ADOPTER_WORKFLOWS))) \
+		$(ADOPTER_WORKFLOWS) -- scripts/lint-actions-pinned.sh
 
 # mise.toml pins the toolchain; CI and the Makefile read it. The files
 # that must carry their own copy (go.mod, rust-toolchain.toml, uv.lock's
 # ruff, workflow literals, the devcontainer) are held to it here. The
 # script header lists every check.
-check-toolchain-parity: ## Fail when a declared tool version disagrees with mise.toml
-	@scripts/check-toolchain-parity.sh
+# Runs when a file that declares or reads a pin changed (the list
+# mirrors the script header); LINT_ALL=1 runs it regardless.
+TOOLCHAIN_PARITY_INPUTS := mise.toml .config/mise.toml '*go.mod' '*rust-toolchain.toml' '*uv.lock' \
+	'.github/*' '.devcontainer/*' '*.nvmrc' '*.node-version' '*.python-version' \
+	'*tool-versions.toml' '*composer.json' 'cmd/kit/init/managed_assets/*' \
+	scripts/check-toolchain-parity.sh scripts/toolchain-pins.sh
+
+check-toolchain-parity: ## Fail when a declared tool version disagrees with mise.toml (when a pin-bearing file changed)
+	@$(LINT_CHANGED) check-toolchain-parity --gate --include-deleted $(TOOLCHAIN_PARITY_INPUTS) \
+		-- scripts/check-toolchain-parity.sh
 
 proto: ## Generate protobuf + Connect/gRPC stubs
 # Generated files are committed for go-get compatibility.
@@ -782,7 +899,7 @@ test-hook: ## Run bats tests for pre-push hook
 test-lint-scripts: ## Run bats tests for repo lint and sync scripts
 	bats .github/tests/lint-internal-refs.bats .github/tests/sync-builtins.bats \
 		.github/tests/toolchain-parity.bats .github/tests/lint-actions-pinned.bats \
-		.github/tests/gitignore-hop-copy.bats
+		.github/tests/gitignore-hop-copy.bats .github/tests/changed-files.bats
 
 # Every *.bats suite in the repo, discovered by git ls-files: the targets
 # above plus the template-script suites (templates/shared and its builtins

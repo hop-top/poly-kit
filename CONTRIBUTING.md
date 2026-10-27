@@ -64,7 +64,7 @@ the repo root gives you what CI runs.
 
 This repo ships Git hooks in `.githooks/` to catch common mistakes locally before they hit CI:
 
-- `pre-push` — refuses direct pushes to `main`/`master` (open a PR instead) and runs affected linters/tests against the changes being pushed. Bypass with `git push --no-verify` for emergencies.
+- `pre-push` — refuses direct pushes to `main`/`master` (open a PR instead) and runs the affected linters on the commits being pushed (changed files only, see [Linting](#linting)). Bypass with `git push --no-verify` for emergencies.
 
 To install (per-clone, idempotent):
 
@@ -79,6 +79,47 @@ This sets `core.hooksPath=.githooks` for the current clone. CI does not require 
 - Follow existing conventions in the codebase
 - Run linters before submitting: `make lint`
 - Keep changes focused; one concern per PR
+
+## Linting
+
+`make lint` and every `lint-*` target lint **only what your change
+touches**: files changed since the merge-base with `origin/next`, plus
+staged, unstaged and untracked ones. A linter with nothing relevant
+prints a skip line. CI lints a pull request against its base commit and
+a push against the commit it replaced; the pre-push hook lints the
+pushed commits. All three use one definition of "changed",
+[`scripts/changed-files.sh`](scripts/changed-files.sh).
+
+| Run | Lints |
+| --- | --- |
+| `make lint` | the changed files, per linter |
+| `make lint-all` (or `LINT_ALL=1 make <target>`) | the whole tree |
+| `make lint-go LINT_BASE=<rev>` | the change measured against `<rev>` |
+| `scripts/changed-files.sh` | prints the changed set (`--base`: the base commit) |
+
+Scope per linter:
+
+- File-level linters (eslint, ruff, markdownlint, lychee, the
+  `lint-*-refs` and `lint-sdk-paths` guards, JSON syntax,
+  `lint-actions-pinned`) get the changed files.
+- `lint-go` runs golangci-lint on the packages holding changed Go files,
+  per module; a module whose `go.mod`/`go.sum` changed is linted whole.
+  It is capped at `GOLANGCI_LINT_CONCURRENCY` (4) workers and a
+  `GOLANGCI_LINT_GOMEMLIMIT` (2GiB) soft heap limit, and a second
+  concurrent run waits for the first instead of failing.
+- Package-level tools (tsc, clippy, phpstan, the lock and audit checks,
+  `check-toolchain-parity`) run when their package or inputs changed.
+- A change to a linter's config, lockfile or tool pin (`.golangci.yml`,
+  `ruff.toml`, `eslint.config.mjs`, `mise.toml`, ...) or to the scope
+  scripts lints everything for that linter. So does a base that cannot
+  be resolved: an unknown base never skips.
+- `lint-links` checks every doc when a file is deleted or renamed, and
+  `lint-readmes` runs when a README changed or a path was added or
+  removed.
+
+The trade-off: an issue in a file nobody touched (a new linter rule, a
+removed symbol an untouched package still uses) surfaces only on
+`make lint-all` or when that file next changes.
 
 ## Tests
 

@@ -297,7 +297,7 @@ run_hook_capped() {
     for c in make go; do
         cat > "$stub/$c" <<STUB
 #!/bin/sh
-echo "\$0 \$*" >> "$BATS_TEST_TMPDIR/invoked"
+echo "\$0 \$* [LINT_BASE=\${LINT_BASE:-} LINT_HEAD=\${LINT_HEAD:-}]" >> "$BATS_TEST_TMPDIR/invoked"
 exit 0
 STUB
         chmod +x "$stub/$c"
@@ -415,6 +415,17 @@ refs/heads/work $(git rev-parse HEAD) refs/heads/work $base"
     run_hook_capped 60 lines "refs/heads/work $(git rev-parse HEAD) refs/heads/work $base"
     [ "$HOOK_STATUS" != "TIMEOUT" ]
     [ -n "$HOOK_INVOKED" ]
+}
+
+@test "scope: lint targets get the push range, committed changes only" {
+    # Every lint target is changed-only (scripts/changed-files.sh); the
+    # hook hands it the pushed range so it lints what the push carries,
+    # not the working tree and not the whole repo.
+    base="$(go_touching_base)"
+    [ -n "$base" ]
+    run_hook_capped 60 lines "refs/heads/work $(git rev-parse HEAD) refs/heads/work $base"
+    [ "$HOOK_STATUS" != "TIMEOUT" ]
+    [[ "$HOOK_INVOKED" == *"make lint-go [LINT_BASE=$base LINT_HEAD=HEAD]"* ]]
 }
 
 @test "deletion: protected-branch refusal still fires for a real push" {
