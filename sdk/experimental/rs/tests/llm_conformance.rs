@@ -512,6 +512,22 @@ fn media_fetch_vectors_not_applicable() {
     }
 }
 
+/// Gemini stream-event vectors pin the gemini adapter, which this port
+/// does not have; the section must still be present and well formed.
+#[test]
+fn gemini_stream_events_vectors_not_applicable() {
+    let c = load();
+    assert!(!c.gemini_stream_events.is_empty());
+    for v in &c.gemini_stream_events {
+        let name = v.get("name").and_then(Value::as_str).unwrap_or_default();
+        assert!(
+            !name.is_empty(),
+            "gemini_stream_events vector without a name"
+        );
+        eprintln!("gemini_stream_events/{name}: not applicable (no gemini adapter in this port)");
+    }
+}
+
 #[test]
 fn redact_uri_vectors() {
     let c = load();
