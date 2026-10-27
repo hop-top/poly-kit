@@ -80,6 +80,21 @@ pub fn check_key_endpoint(scheme: &str, key: &str, base_url: &str) -> Result<(),
     }
 }
 
+/// Whether credentials kit resolved itself (a stored or env key, a
+/// token, a workspace header) may go to `base`: it is loopback, or shares
+/// an origin with one of `trusted`. Every credential path decides here.
+pub fn credentials_trusted(base: &str, trusted: &[String]) -> bool {
+    if loopback(base) {
+        return true;
+    }
+    let Some(want) = origin(base) else {
+        return false;
+    };
+    trusted
+        .iter()
+        .any(|t| origin(t).as_deref() == Some(want.as_str()))
+}
+
 /// The endpoint a URI itself names: `base_url`, else its host.
 fn uri_endpoint(u: &Uri) -> Option<String> {
     match u.params.get("base_url").filter(|v| !v.is_empty()) {
@@ -105,17 +120,10 @@ impl Registry {
             return Ok(());
         }
         check_key_endpoint(&u.scheme, key, &endpoint)?;
-        if kind == KeySourceKind::Uri || loopback(&endpoint) {
+        if kind == KeySourceKind::Uri
+            || credentials_trusted(&endpoint, &self.trusted_endpoints(src, &u.scheme))
+        {
             return Ok(());
-        }
-        if let Some(want) = origin(&endpoint) {
-            if self
-                .trusted_endpoints(src, &u.scheme)
-                .iter()
-                .any(|t| origin(t).as_deref() == Some(want.as_str()))
-            {
-                return Ok(());
-            }
         }
         Err(LlmError::KeyEndpoint {
             scheme: u.scheme.clone(),

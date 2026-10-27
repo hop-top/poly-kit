@@ -16,7 +16,8 @@ scheme in `default_registry()`. Feature `llm-anthropic`, native only.
 ## Contract
 
 - Headers: `x-api-key`, `anthropic-version: 2023-06-01`; `authorization: Bearer` from a non-blank
-  `ANTHROPIC_AUTH_TOKEN`; `anthropic-workspace-id` from a non-empty `ANTHROPIC_WORKSPACE_ID`.
+  `ANTHROPIC_AUTH_TOKEN`; `anthropic-workspace-id` from a non-empty `ANTHROPIC_WORKSPACE_ID`. Those two
+  go only to a trusted origin (default, `ANTHROPIC_BASE_URL`, llm.yaml, `LLM_BASE_URL`, loopback).
 - Base URL: the config's, else `ANTHROPIC_BASE_URL`, else `https://api.anthropic.com`; an
   unparseable one is rejected at build with credentials masked.
 - Body: system messages lift to `system` (the last wins); consecutive tool results merge into one

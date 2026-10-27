@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds, whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host.",
+  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds, whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused.",
   "redact_uri": [
     {
       "name": "api_key",
@@ -1443,6 +1443,154 @@
       "env": {},
       "want_uri": "",
       "refused": false
+    }
+  ],
+  "credential_headers": [
+    {
+      "name": "default endpoint",
+      "base_url": "",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1"
+      },
+      "sent": [
+        "x-api-key",
+        "authorization",
+        "anthropic-workspace-id"
+      ],
+      "withheld": [],
+      "refused": false
+    },
+    {
+      "name": "default endpoint named",
+      "base_url": "https://api.anthropic.com",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1"
+      },
+      "sent": [
+        "x-api-key",
+        "authorization",
+        "anthropic-workspace-id"
+      ],
+      "withheld": [],
+      "refused": false
+    },
+    {
+      "name": "ANTHROPIC_BASE_URL",
+      "base_url": "",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1",
+        "ANTHROPIC_BASE_URL": "https://gw.corp.test"
+      },
+      "sent": [
+        "x-api-key",
+        "authorization",
+        "anthropic-workspace-id"
+      ],
+      "withheld": [],
+      "refused": false
+    },
+    {
+      "name": "llm.yaml base_url",
+      "base_url": "https://gw.corp.test/v1",
+      "yaml": "providers:\n  anthropic:\n    base_url: https://gw.corp.test\n",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1"
+      },
+      "sent": [
+        "x-api-key",
+        "authorization",
+        "anthropic-workspace-id"
+      ],
+      "withheld": [],
+      "refused": false
+    },
+    {
+      "name": "LLM_BASE_URL",
+      "base_url": "https://gw.corp.test/v1",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1",
+        "LLM_BASE_URL": "https://gw.corp.test"
+      },
+      "sent": [
+        "x-api-key",
+        "authorization",
+        "anthropic-workspace-id"
+      ],
+      "withheld": [],
+      "refused": false
+    },
+    {
+      "name": "loopback",
+      "base_url": "http://127.0.0.1:9",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1"
+      },
+      "sent": [
+        "x-api-key",
+        "authorization",
+        "anthropic-workspace-id"
+      ],
+      "withheld": [],
+      "refused": false
+    },
+    {
+      "name": "hostile base_url",
+      "base_url": "https://evil.example",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1"
+      },
+      "sent": [
+        "x-api-key"
+      ],
+      "withheld": [
+        "authorization",
+        "anthropic-workspace-id"
+      ],
+      "refused": false
+    },
+    {
+      "name": "hostile beside a trusted ANTHROPIC_BASE_URL",
+      "base_url": "https://evil.example",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1",
+        "ANTHROPIC_BASE_URL": "https://gw.corp.test"
+      },
+      "sent": [
+        "x-api-key"
+      ],
+      "withheld": [
+        "authorization",
+        "anthropic-workspace-id"
+      ],
+      "refused": false
+    },
+    {
+      "name": "token over plain http to a remote host",
+      "base_url": "",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1",
+        "ANTHROPIC_BASE_URL": "http://gw.corp.test"
+      },
+      "sent": [],
+      "withheld": [],
+      "refused": true
     }
   ]
 }

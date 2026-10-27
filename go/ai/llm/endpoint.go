@@ -107,18 +107,36 @@ func (r *Registry) guardKeyEndpoint(ctx context.Context, u URI, src KeySource, k
 	if src.Kind == KeySourceURI {
 		return nil
 	}
-	if eu, err := url.Parse(endpoint); err == nil && netpolicy.IsLoopback(eu.Host) {
+	if r.credentialsTrusted(ctx, u.Scheme, endpoint) {
 		return nil
 	}
+	return &KeyEndpointError{Scheme: u.Scheme, Endpoint: RedactURI(endpoint)}
+}
+
+// CredentialsTrusted reports whether credentials kit resolved itself,
+// not taken from the URI (a stored or env key, a bearer token, a
+// workspace header), may go to baseURL for scheme: it is loopback, or
+// shares an origin with the scheme's default or declared endpoints, its
+// llm.yaml base_url, LLM_BASE_URL or one of extra (an adapter's own
+// base URL variable). Every credential path uses this one decision.
+func CredentialsTrusted(scheme, baseURL string, extra ...string) bool {
+	return DefaultRegistry.credentialsTrusted(context.Background(), scheme, baseURL, extra...)
+}
+
+func (r *Registry) credentialsTrusted(ctx context.Context, scheme, endpoint string, extra ...string) bool {
+	if eu, err := url.Parse(strings.TrimSpace(endpoint)); err == nil && netpolicy.IsLoopback(eu.Host) {
+		return true
+	}
 	want, ok := origin(endpoint)
-	if ok {
-		for _, trusted := range r.trustedEndpoints(ctx, u.Scheme) {
-			if got, ok := origin(trusted); ok && got == want {
-				return nil
-			}
+	if !ok {
+		return false
+	}
+	for _, trusted := range append(r.trustedEndpoints(ctx, scheme), extra...) {
+		if got, ok := origin(trusted); ok && got == want {
+			return true
 		}
 	}
-	return &KeyEndpointError{Scheme: u.Scheme, Endpoint: RedactURI(endpoint)}
+	return false
 }
 
 // trustedEndpoints lists where scheme's key may go besides loopback.

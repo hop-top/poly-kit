@@ -39,9 +39,9 @@ pub struct Adapter {
     client: GuardedClient,
     url: reqwest::Url,
     destination: String,
-    key: String,
-    auth_token: Option<String>,
-    workspace_id: Option<String>,
+    /// Every credential header, chosen once at build behind
+    /// `credentials_trusted`; `send` adds exactly these.
+    credentials: Vec<(&'static str, String)>,
     model: String,
     max_retries: u32,
     sleeper: Option<Sleeper>,
@@ -52,7 +52,7 @@ impl std::fmt::Debug for Adapter {
         f.debug_struct("Adapter")
             .field("url", &self.destination)
             .field("model", &self.model)
-            .field("workspace_id", &self.workspace_id)
+            .field("credentials", &self.credential_headers())
             .field("max_retries", &self.max_retries)
             .finish_non_exhaustive()
     }
@@ -65,6 +65,7 @@ pub struct Builder {
     client: Option<GuardedClient>,
     sleeper: Option<Sleeper>,
     max_retries: u32,
+    file: Option<crate::llm::ConfigFile>,
 }
 
 /// The default retry timer: tokio's, which reqwest already runs on.
@@ -97,10 +98,50 @@ impl Builder {
         self
     }
 
+    /// The llm.yaml whose `providers.anthropic.base_url` counts as a
+    /// trusted origin; the default reads it from disk at build.
+    pub fn config_file(mut self, file: crate::llm::ConfigFile) -> Self {
+        self.file = Some(file);
+        self
+    }
+
     /// Retries after the first attempt; 0 disables them.
     pub fn max_retries(mut self, n: u32) -> Self {
         self.max_retries = n;
         self
+    }
+
+    /// The credential headers for `base`. The configured key is the
+    /// caller's; the environment's token and workspace ID go only to a
+    /// trusted origin (the default endpoint, `ANTHROPIC_BASE_URL`, llm.yaml
+    /// `base_url`, `LLM_BASE_URL`, loopback). None goes over plain http
+    /// to a remote host. Every credential passes through here.
+    fn credentials(&self, base: &str) -> Result<Vec<(&'static str, String)>, LlmError> {
+        let key = self.cfg.provider.api_key.clone();
+        crate::llm::check_key_endpoint(SCHEME, &key, base)?;
+        let mut out = vec![("x-api-key", key)];
+        let mut env_creds = Vec::new();
+        if let Some(t) = (self.env)("ANTHROPIC_AUTH_TOKEN").filter(|t| !t.trim().is_empty()) {
+            crate::llm::check_key_endpoint(SCHEME, &t, base)?;
+            env_creds.push(("authorization", format!("Bearer {t}")));
+        }
+        if let Some(w) = (self.env)("ANTHROPIC_WORKSPACE_ID").filter(|w| !w.is_empty()) {
+            env_creds.push(("anthropic-workspace-id", w));
+        }
+        let mut trusted = vec![DEFAULT_BASE_URL.to_string()];
+        trusted.extend((self.env)("ANTHROPIC_BASE_URL"));
+        trusted.extend((self.env)("LLM_BASE_URL"));
+        let file = match &self.file {
+            Some(f) => f.clone(),
+            None => crate::llm::ConfigFile::load(),
+        };
+        if let Some((_, b)) = file.block(&[SCHEME]) {
+            trusted.push(b.base_url.clone());
+        }
+        if crate::llm::credentials_trusted(base, &trusted) {
+            out.extend(env_creds);
+        }
+        Ok(out)
     }
 
     pub fn build(self) -> Result<Adapter, LlmError> {
@@ -122,7 +163,7 @@ impl Builder {
                 crate::llm::redact_uri(&base)
             ))
         })?;
-        crate::llm::check_key_endpoint(SCHEME, &p.api_key, &base)?;
+        let credentials = self.credentials(&base)?;
         let client = match self.client {
             Some(c) => c,
             None => GuardedClient::new(self.cfg.net_policy)
@@ -132,9 +173,7 @@ impl Builder {
             destination: crate::netpolicy::destination(&url),
             url,
             client,
-            key: p.api_key.clone(),
-            auth_token: (self.env)("ANTHROPIC_AUTH_TOKEN").filter(|t| !t.trim().is_empty()),
-            workspace_id: (self.env)("ANTHROPIC_WORKSPACE_ID").filter(|w| !w.is_empty()),
+            credentials,
             model: p.model.clone(),
             max_retries: self.max_retries,
             sleeper: self.sleeper,
@@ -155,7 +194,14 @@ impl Adapter {
             client: None,
             sleeper: Some(tokio_sleeper()),
             max_retries: DEFAULT_MAX_RETRIES,
+            file: None,
         }
+    }
+
+    /// The names of the credential headers this adapter sends, never
+    /// their values.
+    pub fn credential_headers(&self) -> Vec<&'static str> {
+        self.credentials.iter().map(|(name, _)| *name).collect()
     }
 
     fn model_for<'a>(&'a self, req: &'a Request) -> &'a str {

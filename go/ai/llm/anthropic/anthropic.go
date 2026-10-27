@@ -59,9 +59,13 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		option.WithoutEnvironmentDefaults(),
 		option.WithMiddleware(boundRetryAfter),
 	}
+	envBase := os.Getenv("ANTHROPIC_BASE_URL")
 	base := cfg.Provider.BaseURL
 	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok && base == "" {
 		base = v
+	}
+	if base == "" {
+		base = defaultBaseURL
 	}
 	if err := llm.CheckKeyEndpoint(scheme, cfg.Provider.APIKey, base); err != nil {
 		return nil, err
@@ -72,11 +76,20 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		}
 		opts = append(opts, option.WithBaseURL(v))
 	}
+	// Credentials from the environment go only where kit trusts them:
+	// every one is added here, behind the one CredentialsTrusted gate.
+	var envCreds []option.RequestOption
 	if v := os.Getenv("ANTHROPIC_AUTH_TOKEN"); strings.TrimSpace(v) != "" {
-		opts = append(opts, option.WithAuthToken(v))
+		if err := llm.CheckKeyEndpoint(scheme, v, base); err != nil {
+			return nil, err
+		}
+		envCreds = append(envCreds, option.WithAuthToken(v))
 	}
 	if v := os.Getenv("ANTHROPIC_WORKSPACE_ID"); v != "" {
-		opts = append(opts, option.WithHeader("anthropic-workspace-id", v))
+		envCreds = append(envCreds, option.WithHeader("anthropic-workspace-id", v))
+	}
+	if llm.CredentialsTrusted(scheme, base, envBase) {
+		opts = append(opts, envCreds...)
 	}
 	opts = append(opts, option.WithAPIKey(cfg.Provider.APIKey))
 	if cfg.Provider.BaseURL != "" {

@@ -40,6 +40,21 @@ struct Corpus {
     anthropic_error: Vec<ErrorCase>,
     #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
     key_endpoint: Vec<KeyEndpointCase>,
+    #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+    credential_headers: Vec<CredentialCase>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct CredentialCase {
+    name: String,
+    base_url: String,
+    yaml: String,
+    env: BTreeMap<String, String>,
+    sent: Vec<String>,
+    withheld: Vec<String>,
+    refused: bool,
 }
 
 #[derive(Deserialize)]
@@ -675,6 +690,35 @@ mod anthropic {
                 Err(LlmError::KeyEndpoint { .. }) => assert!(v.refused, "{}: refused", v.name),
                 Err(e) => panic!("{}: {e}", v.name),
                 Ok(()) => assert!(!v.refused, "{}: not refused", v.name),
+            }
+        }
+    }
+
+    #[test]
+    fn credential_header_vectors() {
+        use hop_top_kit::llm::ConfigFile;
+        let c = load();
+        assert!(!c.credential_headers.is_empty());
+        for v in &c.credential_headers {
+            let vars = v.env.clone();
+            let built = Adapter::builder(cfg(&v.base_url, "m", "kit-key"))
+                .env(move |k| vars.get(k).cloned())
+                .config_file(ConfigFile::parse(&v.yaml).unwrap())
+                .build();
+            if v.refused {
+                assert!(
+                    matches!(built, Err(LlmError::KeyEndpoint { .. })),
+                    "{}: refused",
+                    v.name
+                );
+                continue;
+            }
+            let names = built.unwrap().credential_headers();
+            for h in &v.sent {
+                assert!(names.contains(&h.as_str()), "{}: {h} sent", v.name);
+            }
+            for h in &v.withheld {
+                assert!(!names.contains(&h.as_str()), "{}: {h} withheld", v.name);
             }
         }
     }

@@ -39,17 +39,13 @@ impl Adapter {
             let mut rb = self
                 .client
                 .post(self.url.clone())
-                .header("x-api-key", &self.key)
                 .header("anthropic-version", API_VERSION)
                 .header("content-type", "application/json");
             if stream {
                 rb = rb.header("accept", "text/event-stream");
             }
-            if let Some(token) = &self.auth_token {
-                rb = rb.bearer_auth(token);
-            }
-            if let Some(ws) = &self.workspace_id {
-                rb = rb.header("anthropic-workspace-id", ws);
+            for (name, value) in &self.credentials {
+                rb = rb.header(name, value);
             }
             let (err, retry, after) = match rb.json(body).send().await {
                 Err(NetError::Offline(o)) => return Err(o.into()),

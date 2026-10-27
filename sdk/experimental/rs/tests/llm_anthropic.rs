@@ -439,3 +439,34 @@ fn a_key_never_goes_over_plain_http_to_a_remote_host() {
         assert!(build(ok, None).is_ok(), "{ok}");
     }
 }
+
+/// What the server receives: a hostile base URL gets the key the caller
+/// configured but not the environment's token or workspace ID; a trusted
+/// (here loopback) one gets all three.
+#[tokio::test]
+async fn env_credentials_reach_only_trusted_origins() {
+    let srv = serve(vec![Canned::json(200, r#"{"content":[],"usage":{}}"#)]).await;
+    let env: BTreeMap<String, String> = [
+        ("ANTHROPIC_AUTH_TOKEN".to_string(), "fake-token".to_string()),
+        ("ANTHROPIC_WORKSPACE_ID".to_string(), "ws-1".to_string()),
+    ]
+    .into();
+    let e = env.clone();
+    let a = Adapter::builder(cfg(&srv.url, "k"))
+        .env(move |k| e.get(k).cloned())
+        .config_file(hop_top_kit::llm::ConfigFile::default())
+        .build()
+        .unwrap();
+    a.complete(&hi()).await.unwrap();
+    let got = srv.only();
+    assert_eq!(got.header("authorization"), Some("Bearer fake-token"));
+    assert_eq!(got.header("anthropic-workspace-id"), Some("ws-1"));
+
+    let hostile = Adapter::builder(cfg("https://evil.example", "k"))
+        .env(move |k| env.get(k).cloned())
+        .config_file(hop_top_kit::llm::ConfigFile::default())
+        .build()
+        .unwrap();
+    assert_eq!(hostile.credential_headers(), ["x-api-key"]);
+    assert!(!format!("{hostile:?}").contains("fake-token"));
+}

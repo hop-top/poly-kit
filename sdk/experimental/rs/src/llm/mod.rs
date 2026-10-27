@@ -38,7 +38,7 @@ pub use client::{Client, Topics};
 pub use config::{
     process_env, ConfigFile, ProviderBlock, ProviderConfig, ResolvedConfig, SecretStore, Sources,
 };
-pub use endpoint::check_key_endpoint;
+pub use endpoint::{check_key_endpoint, credentials_trusted};
 pub use error::{LlmError, MissingKeyError};
 pub use keys::{KeyResolution, KeySource, KeySourceKind, FALLBACK_ENV_KEY};
 pub use provider::{BoxFuture, Capability, Provider, TokenStream};

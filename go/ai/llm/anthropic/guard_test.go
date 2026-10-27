@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -100,4 +102,69 @@ func TestRetryAfter_OutOfRangeFallsBackToBackoff(t *testing.T) {
 			assert.Less(t, elapsed, 3*time.Second)
 		})
 	}
+}
+
+// Credentials kit takes from the environment (ANTHROPIC_AUTH_TOKEN, the
+// workspace ID) go only to a trusted origin: the default endpoint,
+// ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL or loopback. A
+// base URL from anywhere else gets the request without them.
+func TestEnvCredentials_OnlyToTrustedOrigins(t *testing.T) {
+	cases := []struct {
+		name, base, envBase, llmBase, yaml string
+		withheld                           bool
+	}{
+		{name: "default endpoint"},
+		{name: "default endpoint named", base: "https://api.anthropic.com"},
+		{name: "ANTHROPIC_BASE_URL", envBase: "https://gw.corp.test"},
+		{name: "llm.yaml base_url", base: "https://gw.corp.test/v1", yaml: "providers:\n  anthropic:\n    base_url: https://gw.corp.test\n"},
+		{name: "LLM_BASE_URL", base: "https://gw.corp.test/v1", llmBase: "https://gw.corp.test"},
+		{name: "loopback", base: "http://127.0.0.1:9"},
+		{name: "hostile base_url", base: "https://evil.example", withheld: true},
+		{name: "hostile beside a trusted env base", base: "https://evil.example", envBase: "https://gw.corp.test", withheld: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, rt, _ := isolateAnthropicEnv(t)
+			unsetenv(t, "LLM_BASE_URL")
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			if tc.yaml != "" {
+				writeLLMYAML(t, tc.yaml)
+			}
+			if tc.envBase != "" {
+				t.Setenv("ANTHROPIC_BASE_URL", tc.envBase)
+			}
+			if tc.llmBase != "" {
+				t.Setenv("LLM_BASE_URL", tc.llmBase)
+			}
+			t.Setenv("ANTHROPIC_AUTH_TOKEN", "fake-token")
+			t.Setenv("ANTHROPIC_WORKSPACE_ID", "ws-1")
+			completeOnce(t, tc.base)
+			req := rt.only(t)
+			assert.Equal(t, "kit-key", req.Header.Get("X-Api-Key"))
+			if tc.withheld {
+				assert.Empty(t, req.Header.Values("Authorization"))
+				assert.Empty(t, req.Header.Values("Anthropic-Workspace-Id"))
+				return
+			}
+			assert.Equal(t, "Bearer fake-token", req.Header.Get("Authorization"))
+			assert.Equal(t, "ws-1", req.Header.Get("Anthropic-Workspace-Id"))
+		})
+	}
+}
+
+// The token, like the key, never goes over plain http to a remote host.
+func TestNew_RefusesTokenOverPlainHTTP(t *testing.T) {
+	clearAnthropicEnv(t)
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "fake-token")
+	t.Setenv("ANTHROPIC_BASE_URL", "http://gw.corp.test")
+	_, err := anthropic.New(llm.ResolvedConfig{Provider: llm.ProviderConfig{APIKey: "k", Model: "m"}})
+	require.ErrorIs(t, err, llm.ErrKeyEndpoint)
+	assert.NotContains(t, err.Error(), "fake-token")
+}
+
+func writeLLMYAML(t *testing.T, body string) {
+	t.Helper()
+	dir := os.Getenv("XDG_CONFIG_HOME")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "hop"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "hop", "llm.yaml"), []byte(body), 0o600))
 }

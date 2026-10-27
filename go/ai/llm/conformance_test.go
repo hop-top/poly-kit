@@ -47,6 +47,7 @@ type llmConfFile struct {
 	AnthropicAccumulate   json.RawMessage `json:"anthropic_accumulate"`
 	AnthropicError        json.RawMessage `json:"anthropic_error"`
 	KeyEndpoint           json.RawMessage `json:"key_endpoint"`
+	CredentialHeaders     json.RawMessage `json:"credential_headers"`
 }
 
 func loadLLMConf(t *testing.T) llmConfFile {

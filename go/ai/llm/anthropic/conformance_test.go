@@ -139,6 +139,15 @@ type anthropicConfFile struct {
 		WantURI string            `json:"want_uri"`
 		Refused bool              `json:"refused"`
 	} `json:"key_endpoint"`
+	CredentialHeaders []struct {
+		Name     string            `json:"name"`
+		BaseURL  string            `json:"base_url"`
+		YAML     string            `json:"yaml"`
+		Env      map[string]string `json:"env"`
+		Sent     []string          `json:"sent"`
+		Withheld []string          `json:"withheld"`
+		Refused  bool              `json:"refused"`
+	} `json:"credential_headers"`
 }
 
 func loadAnthropicConf(t *testing.T) anthropicConfFile {
@@ -510,6 +519,43 @@ func TestConformanceKeyEndpoint(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestConformanceCredentialHeaders(t *testing.T) {
+	f := loadAnthropicConf(t)
+	require.NotEmpty(t, f.CredentialHeaders)
+	for _, v := range f.CredentialHeaders {
+		t.Run(v.Name, func(t *testing.T) {
+			_, rt, _ := isolateAnthropicEnv(t)
+			unsetenv(t, "LLM_BASE_URL")
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			if v.YAML != "" {
+				writeLLMYAML(t, v.YAML)
+			}
+			for k, val := range v.Env {
+				t.Setenv(k, val)
+			}
+			p, err := anthropic.New(llm.ResolvedConfig{Provider: llm.ProviderConfig{
+				APIKey: "kit-key", BaseURL: v.BaseURL, Model: "m",
+			}})
+			if v.Refused {
+				require.ErrorIs(t, err, llm.ErrKeyEndpoint)
+				return
+			}
+			require.NoError(t, err)
+			_, err = p.(llm.Completer).Complete(context.Background(), llm.Request{
+				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+			})
+			require.NoError(t, err)
+			req := rt.only(t)
+			for _, h := range v.Sent {
+				assert.NotEmpty(t, req.Header.Get(h), h)
+			}
+			for _, h := range v.Withheld {
+				assert.Empty(t, req.Header.Values(h), h)
+			}
 		})
 	}
 }
