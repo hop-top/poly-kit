@@ -411,8 +411,9 @@ test-parity-netpolicy: ## netpolicy-v1 conformance corpus (Go and Rust runners)
 	cd sdk/experimental/rs && cargo test --features api --test netpolicy_conformance --locked
 
 # llm core and anthropic adapter corpus: URI parsing and redaction,
-# request bodies, headers, SSE tokens and accumulation, error mapping
-# and retries. Both runners serve the vectors from loopback only.
+# credential endpoint guard, request bodies, headers, SSE tokens and
+# accumulation, error mapping and retries. Both runners serve the
+# vectors from loopback only.
 test-parity-llm: ## llm-v1 conformance corpus (Go and Rust runners)
 	@echo "==> llm-v1 conformance: Go"
 	go test ./go/ai/llm/ ./go/ai/llm/anthropic/ -run '^TestConformance' -count=1
