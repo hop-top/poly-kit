@@ -90,7 +90,7 @@ func newConfig(opts ...Option) *config {
 // RateLimiter, then Volume/Count last (cheapest pre-flight, runs first
 // against fn). Allow runs inner alone, behind its own circuit check.
 func assemblePolicies(b *breakerImpl, cb failsafe.Policy[any], c *config) (outer, inner []failsafe.Policy[any]) {
-	if c.fallback != nil {
+	if c.fallback != nil && c.action == Degrade {
 		fb := c.fallback
 		outer = append(outer, fallback.NewBuilderWithFunc[any](
 			func(_ failsafe.Execution[any]) (any, error) {
@@ -207,9 +207,9 @@ func ResetAfter(d time.Duration) Option {
 	return func(c *config) { c.circDelay = d }
 }
 
-// Fallback attaches a function to run when the breaker degrades.
-// Pair with OnTrip(Degrade); without a Fallback, Degrade silently
-// behaves like Halt.
+// Fallback attaches a function to run when the breaker degrades. Only
+// OnTrip(Degrade) runs it; under Halt or Warn it is ignored, and
+// Degrade without a Fallback behaves like Halt.
 func Fallback(fn FallbackFn) Option {
 	return func(c *config) { c.fallback = fn }
 }

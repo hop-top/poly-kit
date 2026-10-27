@@ -72,6 +72,17 @@ func (b *breakerImpl) publishTransition(prev, next State, trigger string) {
 	}()
 }
 
+// logWouldReject records an Allow that OnTrip(Warn) let through
+// although policy refused it.
+func (b *breakerImpl) logWouldReject(policy string) {
+	b.logger().Warn("breaker would reject",
+		"breaker.name", b.name,
+		"breaker.state", b.State().String(),
+		"breaker.policy", policy,
+		"breaker.action", Warn.String(),
+	)
+}
+
 // logReset records a manual Reset call. INFO — the operator chose
 // to recover the breaker.
 func (b *breakerImpl) logReset() {

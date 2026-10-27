@@ -2,16 +2,22 @@ package breaker
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/failsafe-go/failsafe-go"
+	"github.com/failsafe-go/failsafe-go/bulkhead"
+	"github.com/failsafe-go/failsafe-go/ratelimiter"
+	"github.com/failsafe-go/failsafe-go/timeout"
 )
 
-// Action is what the breaker does on trip. Halt is the safe default
-// (fail closed). Degrade requires a Fallback to be configured. Warn
-// turns Allow into a no-op + log only — for migration / known
-// soft-failure modes only.
+// Action is what Allow does when a policy refuses. Halt is the safe
+// default (fail closed). Degrade answers with the configured Fallback
+// (Halt without one; Executor() installs the Fallback only under
+// Degrade). Warn logs "breaker would reject" at WARN and allows — for
+// migration / known soft-failure modes only; it applies to Allow and
+// the wrap helpers, not to Executor().
 type Action int
 
 const (
@@ -169,22 +175,55 @@ func New(name string, opts ...Option) Breaker {
 // rejects.
 func (b *breakerImpl) Allow() error {
 	if !b.acquire() {
-		return b.reject()
+		return b.reject(policyCircuit)
 	}
 	if b.preflight != nil {
 		if err := b.preflight.Run(noopFn); err != nil {
 			b.circ.release()
-			return b.reject()
+			return b.reject(b.rejectingPolicy(err))
 		}
 	}
 	return nil
 }
 
-// reject is Allow's answer once a policy refused: the fallback's
-// verdict when one is configured, ErrBrokenCircuit otherwise.
-func (b *breakerImpl) reject() error {
-	if fb := b.cfg.fallback; fb != nil {
-		if err := fb(context.Background()); err == nil {
+// Policy names Allow reports a rejection under (log attr
+// breaker.policy).
+const (
+	policyCircuit  = "circuit"
+	policyBulkhead = "bulkhead"
+	policyRate     = "rate"
+	policyBytes    = "bytes"
+	policyOps      = "ops"
+	policyTimeout  = "timeout"
+)
+
+// rejectingPolicy names the pre-flight policy behind err. Volume runs
+// before Count, so a spent byte budget wins when both are spent.
+func (b *breakerImpl) rejectingPolicy(err error) string {
+	switch {
+	case errors.Is(err, ratelimiter.ErrExceeded):
+		return policyRate
+	case errors.Is(err, bulkhead.ErrFull):
+		return policyBulkhead
+	case errors.Is(err, timeout.ErrExceeded):
+		return policyTimeout
+	case b.cfg.hasBytes && b.counterValue("bytes") >= b.cfg.maxBytes:
+		return policyBytes
+	default:
+		return policyOps
+	}
+}
+
+// reject applies the OnTrip action once policy refused: Warn logs and
+// allows, Degrade answers with the Fallback (Halt without one), Halt
+// returns ErrBrokenCircuit.
+func (b *breakerImpl) reject(policy string) error {
+	switch b.cfg.action {
+	case Warn:
+		b.logWouldReject(policy)
+		return nil
+	case Degrade:
+		if fb := b.cfg.fallback; fb != nil && fb(context.Background()) == nil {
 			return nil
 		}
 	}
