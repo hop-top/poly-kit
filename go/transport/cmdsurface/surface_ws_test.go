@@ -727,3 +727,101 @@ func TestWSSurface_ConcurrentInvocations_Parallelism(t *testing.T) {
 		}
 	}
 }
+
+// TestWSSurface_IDReusableAfterTerminalFrame pins id release: once a
+// client has read an invocation's terminal frame (result or error), the
+// id is free, and an invoke reusing it must run rather than be refused
+// with "id already in flight". Many rounds make the window, if present,
+// show up on every run instead of once in a while.
+func TestWSSurface_IDReusableAfterTerminalFrame(t *testing.T) {
+	f := newWSFixture(t, []string{"hello"})
+	f.runner.StreamFn = func(_ context.Context, _ cmdsurface.Invocation, out chan<- cmdsurface.Event) error {
+		out <- cmdsurface.Event{Kind: "done", Data: &cmdsurface.Result{Stdout: "hello"}, At: time.Now()}
+		return nil
+	}
+
+	c := f.dialOK(t, "/ws/cmd", nil)
+	// Sized for a loaded race-enabled run of all the rounds; a hang
+	// still fails here rather than at the test binary's timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	cases := []struct {
+		name, path, want string
+	}{
+		{"result", "hello", "result"},
+		// An admission refusal is the invocation's only, terminal frame.
+		{"refusal", "nope", "error"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for round := range 1000 {
+				wsWriteJSON(t, ctx, c, wsRawFrame{
+					Op:         "invoke",
+					ID:         "same",
+					Invocation: &cmdsurface.Invocation{Path: []string{tc.path}},
+				})
+				frame := wsReadJSON(t, ctx, c)
+				for frame.Op == "event" {
+					frame = wsReadJSON(t, ctx, c)
+				}
+				if frame.Op != tc.want {
+					t.Fatalf("round %d: terminal frame %+v (error=%+v), want %s", round, frame, frame.Error, tc.want)
+				}
+				if frame.Error != nil && frame.Error.Message == "id already in flight" {
+					t.Fatalf("round %d: id refused as in flight after its terminal frame", round)
+				}
+			}
+		})
+	}
+}
+
+// TestWSSurface_CanceledIDInFlightUntilTerminalFrame pins the other
+// end of an id's lifetime: a cancel frame does not free the id. Until
+// the canceled run's terminal frame is written the id is still in
+// flight, so an invoke reusing it is refused; once the terminal frame
+// is out, the id runs again.
+func TestWSSurface_CanceledIDInFlightUntilTerminalFrame(t *testing.T) {
+	f := newWSFixture(t, []string{"lines"})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	f.runner.StreamFn = func(ctx context.Context, _ cmdsurface.Invocation, out chan<- cmdsurface.Event) error {
+		if calls.Add(1) > 1 {
+			out <- cmdsurface.Event{Kind: "done", Data: &cmdsurface.Result{Stdout: "again"}, At: time.Now()}
+			return nil
+		}
+		out <- cmdsurface.Event{Kind: "stdout", Data: "up", At: time.Now()}
+		<-ctx.Done()
+		<-release // hold the canceled run open: no terminal frame yet
+		return ctx.Err()
+	}
+
+	c := f.dialOK(t, "/ws/cmd", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	invoke := wsRawFrame{Op: "invoke", ID: "c", Invocation: &cmdsurface.Invocation{Path: []string{"lines"}}}
+	wsWriteJSON(t, ctx, c, invoke)
+	if frame := wsReadJSON(t, ctx, c); frame.Op != "event" {
+		t.Fatalf("first frame %+v, want event", frame)
+	}
+	wsWriteJSON(t, ctx, c, wsRawFrame{Op: "cancel", ID: "c"})
+	wsWriteJSON(t, ctx, c, invoke)
+	frame := wsReadJSON(t, ctx, c)
+	if frame.Op != "error" || frame.Error == nil || frame.Error.Message != "id already in flight" {
+		t.Fatalf("reuse before terminal frame: %+v (error=%+v), want id already in flight", frame, frame.Error)
+	}
+
+	close(release)
+	if frame := wsReadJSON(t, ctx, c); frame.Op != "error" || frame.Error == nil || frame.Error.Code != "canceled" {
+		t.Fatalf("canceled run terminal frame %+v (error=%+v), want error canceled", frame, frame.Error)
+	}
+	wsWriteJSON(t, ctx, c, invoke)
+	frame = wsReadJSON(t, ctx, c)
+	for frame.Op == "event" {
+		frame = wsReadJSON(t, ctx, c)
+	}
+	if frame.Op != "result" || frame.Result == nil || frame.Result.Stdout != "again" {
+		t.Fatalf("reuse after terminal frame: %+v (error=%+v), want result again", frame, frame.Error)
+	}
+}
