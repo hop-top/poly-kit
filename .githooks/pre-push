@@ -326,9 +326,9 @@ fi
 # well — the gate stopped gating. Keeping pre-push to the checks it can
 # actually finish is what keeps it running at all.
 #
-# The selection logic moved verbatim to scripts/test-affected.sh:
+# Test selection lives in scripts/test-scope.sh, shared with CI:
 #
-#   make test-affected     # same per-language selection, on demand
+#   make test-affected     # the tests the change reaches, on demand
 #   make check             # the full suite
 #
 # CI remains the enforcing gate for tests.
