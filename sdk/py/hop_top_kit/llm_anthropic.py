@@ -240,10 +240,8 @@ def build_body(
         "max_tokens": max_tokens,
         "messages": messages,
     }
-    if system is not None:
-        block = _text_block(system[0])
-        _set_cache(block, system[1])
-        b["system"] = [block]
+    if system:
+        b["system"] = system
     if req.thinking is not None:
         budget = req.thinking.budget_tokens
         if budget < MIN_THINKING_BUDGET:
@@ -295,14 +293,13 @@ def _replay_thinking(tbs: list[llm.ThinkingBlock]) -> list[dict[str, Any]]:
 
 def _messages(
     msgs: list[llm.Message], names: ToolNames
-) -> tuple[tuple[str, llm.CacheControl | None] | None, list[dict[str, Any]]]:
-    """The top-level system text (the last system message wins) and the
-    conversation without it."""
-    system = None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The top-level system blocks (see :func:`_system_blocks`) and the
+    conversation without them."""
+    system = _system_blocks(msgs)
     out: list[dict[str, Any]] = []
     for i, m in enumerate(msgs):
         if m.role == "system":
-            system = (m.content, m.cache_control)
             continue
         _check_linkage_role(m)
         if m.role == "tool":
@@ -325,6 +322,29 @@ def _messages(
             _set_cache(blocks[-1], m.cache_control)
         out.append({"role": m.role, "content": _replay_thinking(m.thinking) + blocks})
     return system, out
+
+
+def _system_blocks(msgs: list[llm.Message]) -> list[dict[str, Any]]:
+    """Every system message, wherever it sits, as Go joins them: the
+    contents in order joined with a blank line, empty ones skipped; a
+    cache_control on a system message ends a text block there, carrying
+    that breakpoint. No system text: no blocks."""
+    out: list[dict[str, Any]] = []
+    text = ""
+    for m in msgs:
+        if m.role != "system":
+            continue
+        if m.content:
+            text = f"{text}\n\n{m.content}" if text else m.content
+        if m.cache_control is None or not text:
+            continue
+        block = _text_block(text)
+        _set_cache(block, m.cache_control)
+        out.append(block)
+        text = ""
+    if text:
+        out.append(_text_block(text))
+    return out
 
 
 def _check_linkage_role(m: llm.Message) -> None:

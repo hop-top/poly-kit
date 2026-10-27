@@ -145,7 +145,8 @@ def classify(
 ) -> llm.LLMError:
     """An error response in the llm taxonomy, as Go's ``mapError``."""
     if status in (401, 403):
-        return llm.AuthError(provider, f"{error_type}: {message}" if error_type else message)
+        cls = llm.PermissionDeniedError if status == 403 else llm.AuthError
+        return cls(provider, f"{error_type}: {message}" if error_type else message)
     if 300 <= status <= 399:
         return llm.HTTPStatusError(status, f"{provider}: redirect not followed")
     if status == 429:
