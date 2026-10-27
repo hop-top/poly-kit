@@ -93,6 +93,9 @@ type Adapter struct {
 	client oai.Client
 	model  string
 	scheme string
+	// toolNames is the tool_names param: how tool names the API
+	// rejects are handled.
+	toolNames llm.ToolNameMode
 }
 
 // compile-time interface checks.
@@ -135,10 +138,16 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		model = cfg.URI.Model
 	}
 
+	toolNames, err := llm.ToolNameModeOf(cfg.Provider.Params)
+	if err != nil {
+		return nil, fmt.Errorf("openai: %w", err)
+	}
+
 	return &Adapter{
-		client: oai.NewClient(opts...),
-		model:  model,
-		scheme: cfg.URI.Scheme,
+		client:    oai.NewClient(opts...),
+		model:     model,
+		scheme:    cfg.URI.Scheme,
+		toolNames: toolNames,
 	}, nil
 }
 
@@ -188,7 +197,11 @@ func (a *Adapter) Complete(
 	ctx context.Context, req llm.Request,
 ) (llm.Response, error) {
 	model := a.effectiveModel(req)
-	params, err := a.buildParams(ctx, req)
+	names, err := a.toolNameMap(nil)
+	if err != nil {
+		return llm.Response{}, err
+	}
+	params, err := a.buildParams(ctx, req, names)
 	if err != nil {
 		return llm.Response{}, err
 	}
@@ -204,7 +217,11 @@ func (a *Adapter) Stream(
 	ctx context.Context, req llm.Request,
 ) (llm.TokenIterator, error) {
 	model := a.effectiveModel(req)
-	params, err := a.buildParams(ctx, req)
+	names, err := a.toolNameMap(nil)
+	if err != nil {
+		return nil, err
+	}
+	params, err := a.buildParams(ctx, req, names)
 	if err != nil {
 		return nil, err
 	}
@@ -221,31 +238,41 @@ func (a *Adapter) Stream(
 func (a *Adapter) CallWithTools(
 	ctx context.Context, req llm.Request, tools []llm.ToolDef,
 ) (llm.ToolResponse, error) {
-	params, err := a.buildParams(ctx, req)
+	names, err := a.toolNameMap(tools)
 	if err != nil {
 		return llm.ToolResponse{}, err
 	}
-	params.Tools = mapTools(tools)
+	params, err := a.buildParams(ctx, req, names)
+	if err != nil {
+		return llm.ToolResponse{}, err
+	}
+	params.Tools = mapTools(names.Defs(tools))
 
 	comp, err := a.client.Chat.Completions.New(ctx, params)
 	if err != nil {
 		return llm.ToolResponse{}, mapError(err, a.scheme, a.effectiveModel(req))
 	}
 
-	return mapToolResponse(comp), nil
+	return mapToolResponse(comp, names), nil
+}
+
+// toolNameMap checks tools against the API's name rule and maps them,
+// per the tool_names param; see [llm.NewToolNames].
+func (a *Adapter) toolNameMap(tools []llm.ToolDef) (*llm.ToolNames, error) {
+	return llm.NewToolNames(llm.OpenAIToolNames, a.toolNames, tools)
 }
 
 // ---------- param building ----------
 
 func (a *Adapter) buildParams(
-	ctx context.Context, req llm.Request,
+	ctx context.Context, req llm.Request, names *llm.ToolNames,
 ) (oai.ChatCompletionNewParams, error) {
 	model := a.model
 	if req.Model != "" {
 		model = req.Model
 	}
 
-	msgs, err := mapMessages(ctx, req.Messages)
+	msgs, err := mapMessages(ctx, req.Messages, names)
 	if err != nil {
 		return oai.ChatCompletionNewParams{}, err
 	}
@@ -271,10 +298,11 @@ func (a *Adapter) buildParams(
 func mapMessages(
 	ctx context.Context,
 	msgs []llm.Message,
+	names *llm.ToolNames,
 ) ([]oai.ChatCompletionMessageParamUnion, error) {
 	out := make([]oai.ChatCompletionMessageParamUnion, 0, len(msgs))
 	for _, m := range msgs {
-		linked, err := mapToolLinkage(m)
+		linked, err := mapToolLinkage(m, names)
 		if err != nil {
 			return nil, err
 		}
@@ -313,7 +341,7 @@ func mapMessages(
 // turn carrying ToolCalls becomes a message with tool_calls, and a role
 // "tool" result becomes a tool message with tool_call_id. It returns nil
 // and no error for any other message, which then maps as before.
-func mapToolLinkage(m llm.Message) (*oai.ChatCompletionMessageParamUnion, error) {
+func mapToolLinkage(m llm.Message, names *llm.ToolNames) (*oai.ChatCompletionMessageParamUnion, error) {
 	switch {
 	case m.Role == "tool":
 		if m.ToolCallID == "" {
@@ -356,7 +384,7 @@ func mapToolLinkage(m llm.Message) (*oai.ChatCompletionMessageParamUnion, error)
 		asst.ToolCalls = append(asst.ToolCalls, oai.ChatCompletionMessageToolCallParam{
 			ID: tc.ID,
 			Function: oai.ChatCompletionMessageToolCallFunctionParam{
-				Name:      tc.Name,
+				Name:      names.Wire(tc.Name),
 				Arguments: args,
 			},
 		})
@@ -478,14 +506,16 @@ func mapCompletion(c *oai.ChatCompletion) llm.Response {
 	return resp
 }
 
-func mapToolResponse(c *oai.ChatCompletion) llm.ToolResponse {
+// mapToolResponse maps c; each call carries the name the caller
+// defined, through names.
+func mapToolResponse(c *oai.ChatCompletion, names *llm.ToolNames) llm.ToolResponse {
 	var resp llm.ToolResponse
 	if len(c.Choices) > 0 {
 		resp.Content = c.Choices[0].Message.Content
 		for _, tc := range c.Choices[0].Message.ToolCalls {
 			resp.ToolCalls = append(resp.ToolCalls, llm.ToolCall{
 				ID:        tc.ID,
-				Name:      tc.Function.Name,
+				Name:      names.Original(tc.Function.Name),
 				Arguments: json.RawMessage(tc.Function.Arguments),
 			})
 		}

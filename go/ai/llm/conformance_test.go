@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/ai/llm"
+	llmerrors "hop.top/kit/go/ai/llm/errors"
 )
 
 // Runs the provider-neutral sections of contracts/llm-v1. The vectors
@@ -50,7 +51,22 @@ type llmConfFile struct {
 	CredentialHeaders     json.RawMessage `json:"credential_headers"`
 	AnthropicLimits       json.RawMessage `json:"anthropic_limits"`
 	AnthropicResponse     json.RawMessage `json:"anthropic_response"`
-	UsageCost             []struct {
+	AnthropicToolNames    json.RawMessage `json:"anthropic_tool_names"`
+	ToolNames             []struct {
+		Name      string   `json:"name"`
+		Rule      string   `json:"rule"`
+		Mode      string   `json:"mode"`
+		Tools     []string `json:"tools"`
+		Want      []string `json:"want"`
+		Calls     []string `json:"calls"`
+		WantCalls []string `json:"want_calls"`
+		Error     *struct {
+			Reason string `json:"reason"`
+			Name   string `json:"name"`
+			Other  string `json:"other"`
+		} `json:"error"`
+	} `json:"tool_names"`
+	UsageCost []struct {
 		Name  string    `json:"name"`
 		Usage confUsage `json:"usage"`
 		Price struct {
@@ -68,7 +84,7 @@ func loadLLMConf(t *testing.T) llmConfFile {
 	entries, err := os.ReadDir(llmConfDir)
 	require.NoError(t, err)
 	for _, e := range entries {
-		if e.Name() != "vectors.json" && e.Name() != "README.md" {
+		if e.Name() != "vectors.json" && e.Name() != "README.md" && e.Name() != "tool-names.md" {
 			t.Fatalf("contracts/llm-v1/%s: no runner consumes it", e.Name())
 		}
 	}
@@ -133,3 +149,59 @@ type confUsage struct {
 }
 
 func (u confUsage) toLLM() llm.Usage { return llm.Usage(u) }
+
+var confToolNameRules = map[string]llm.ToolNameRule{
+	"anthropic": llm.AnthropicToolNames,
+	"openai":    llm.OpenAIToolNames,
+	"gemini":    llm.GeminiToolNames,
+}
+
+func TestConformanceLLMToolNames(t *testing.T) {
+	f := loadLLMConf(t)
+	require.NotEmpty(t, f.ToolNames)
+	for _, v := range f.ToolNames {
+		t.Run(v.Name, func(t *testing.T) {
+			rule, ok := confToolNameRules[v.Rule]
+			require.True(t, ok, "unknown rule %q", v.Rule)
+			mode := llm.ToolNamesSanitize
+			if v.Mode != "" {
+				mode = llm.ToolNameMode(v.Mode)
+			}
+			var defs []llm.ToolDef
+			for _, n := range v.Tools {
+				defs = append(defs, llm.ToolDef{Name: n})
+			}
+			names, err := llm.NewToolNames(rule, mode, defs)
+			if v.Error != nil {
+				var te *llmerrors.ErrToolName
+				require.ErrorAs(t, err, &te)
+				assert.Equal(t, v.Error.Reason, te.Reason)
+				assert.Equal(t, v.Error.Name, te.Name)
+				assert.Equal(t, v.Error.Other, te.Other)
+				assert.Equal(t, rule.Provider, te.Provider)
+				return
+			}
+			require.NoError(t, err)
+			var got []string
+			for _, n := range v.Tools {
+				got = append(got, names.Wire(n))
+			}
+			assert.Equal(t, v.Want, got)
+			for _, w := range got {
+				assert.True(t, rule.Valid(w), "wire name %q invalid for %s", w, v.Rule)
+			}
+			if mode == llm.ToolNamesSanitize {
+				for i, n := range v.Tools {
+					s, err := rule.Sanitize(n)
+					require.NoError(t, err)
+					assert.Equal(t, v.Want[i], s, "Sanitize(%q)", n)
+				}
+			}
+			var back []string
+			for _, c := range v.Calls {
+				back = append(back, names.Original(c))
+			}
+			assert.Equal(t, v.WantCalls, back)
+		})
+	}
+}

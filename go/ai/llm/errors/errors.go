@@ -323,6 +323,48 @@ func NewResponseTooLarge(provider, what string, limit int64) error {
 	return &ErrResponseTooLarge{Provider: provider, What: what, Limit: limit}
 }
 
+// Reasons an [ErrToolName] gives.
+const (
+	ToolNameEmpty       = "empty"
+	ToolNameInvalidUTF8 = "invalid_utf8"
+	ToolNameInvalid     = "invalid"
+	ToolNameDuplicate   = "duplicate"
+	ToolNameCollision   = "collision"
+)
+
+// ErrToolName indicates a tool definition's name fails the request
+// before anything is sent: Reason is one of the ToolName* constants,
+// Other is the earlier tool a "collision" maps to the same wire name.
+// NOT fallbackable: the caller's tool set needs fixing.
+type ErrToolName struct {
+	Provider string
+	Reason   string
+	Name     string
+	Other    string
+}
+
+func (e *ErrToolName) Error() string {
+	switch e.Reason {
+	case ToolNameEmpty:
+		return fmt.Sprintf("tool name is empty (provider %q)", e.Provider)
+	case ToolNameInvalidUTF8:
+		return fmt.Sprintf("tool name %q is not valid UTF-8 (provider %q)", e.Name, e.Provider)
+	case ToolNameInvalid:
+		return fmt.Sprintf("tool name %q is not valid for provider %q", e.Name, e.Provider)
+	case ToolNameDuplicate:
+		return fmt.Sprintf("tool name %q is defined twice (provider %q)", e.Name, e.Provider)
+	case ToolNameCollision:
+		return fmt.Sprintf("tool names %q and %q map to the same provider name (provider %q)",
+			e.Other, e.Name, e.Provider)
+	}
+	return fmt.Sprintf("tool name %q: %s (provider %q)", e.Name, e.Reason, e.Provider)
+}
+
+// NewToolName creates an [ErrToolName].
+func NewToolName(provider, reason, name, other string) error {
+	return &ErrToolName{Provider: provider, Reason: reason, Name: name, Other: other}
+}
+
 // IsFallbackable returns true when the error should trigger fallback
 // to the next provider. Network errors, rate limits, and 5xx responses
 // are fallbackable. Auth errors, model errors, capability errors, and
@@ -397,6 +439,10 @@ func IsFallbackable(err error) bool {
 	}
 	var thErr *ErrThresholdInvalid
 	if errors.As(err, &thErr) {
+		return false
+	}
+	var tnErr *ErrToolName
+	if errors.As(err, &tnErr) {
 		return false
 	}
 
