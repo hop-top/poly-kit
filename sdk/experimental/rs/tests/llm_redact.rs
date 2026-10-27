@@ -123,6 +123,65 @@ fn arguments_key_context_keeps_the_rest() {
     );
 }
 
+/// A value another rule already masks in part is still checked in key
+/// context: the context rule replaces it whole, no tail survives.
+#[test]
+fn arguments_key_context_runs_when_the_value_alone_matches() {
+    let mut r = Redactor::new();
+    r.add_rule("abc", "abc", "").unwrap();
+    r.add_rule("gated", r#"secret_token"?\s*[:=]\s*"?[A-Za-z0-9]{12}"#, "")
+        .unwrap();
+    let got = redacted_args(r, r#"{"secret_token":"abcDEF123456","city":"NYC"}"#);
+    assert!(!got.contains("DEF123456"), "{got}");
+    assert_eq!(
+        serde_json::from_str::<Value>(&got).unwrap(),
+        serde_json::json!({"secret_token": "REDACTED", "city": "NYC"}),
+        "{got}"
+    );
+}
+
+/// A key that matches alone is no reason to skip its member's context
+/// check; when the context still matches with the value replaced, the
+/// whole arguments become the placeholder.
+#[test]
+fn arguments_key_context_runs_when_the_key_alone_matches() {
+    let mut r = Redactor::new();
+    r.add_rule("key", "hunter2", "").unwrap();
+    let got = redacted_args(r, r#"{"hunter2":"x","ok":1}"#);
+    assert_eq!(got, r#""REDACTED""#);
+}
+
+/// Members keep their order: a rule that needs the input's adjacency
+/// still sees it in the result, so a secret it guards cannot pass.
+#[test]
+fn arguments_keep_member_order() {
+    let mut r = Redactor::new();
+    r.add_rule("span", r#""zz":"\d+","aa":"x""#, "").unwrap();
+    assert_eq!(
+        redacted_args(r, r#"{"zz":"1234","aa":"x"}"#),
+        r#""REDACTED""#
+    );
+    let got = redacted_args(Redactor::new(), r#"{"zz":1,"aa":2,"zz":3}"#);
+    assert_eq!(
+        got, r#"{"zz":3,"aa":2}"#,
+        "order kept, the later duplicate wins"
+    );
+}
+
+/// A match across members in the input that masking another member
+/// would break up fails closed: nothing of it survives.
+#[test]
+fn arguments_cross_member_match_fails_closed() {
+    let mut r = Redactor::new();
+    r.add_rule("span", r#""pin":"\d+","user":"bob""#, "")
+        .unwrap();
+    r.add_rule("bob", "bob", "").unwrap();
+    assert_eq!(
+        redacted_args(r, r#"{"pin":"1234","user":"bob"}"#),
+        r#""REDACTED""#
+    );
+}
+
 /// A number past what u64 and f64 hold is matched on the digits it was
 /// sent with, not on a rounded copy.
 #[test]
@@ -137,7 +196,7 @@ fn arguments_match_long_numbers_on_their_text() {
     assert!(!got.contains("e22"), "{got}");
     assert_eq!(
         serde_json::from_str::<Value>(&got).unwrap(),
-        serde_json::json!({"n": "***REDACTED***", "m": ["***REDACTED***"]})
+        serde_json::json!({"n": "REDACTED", "m": ["***REDACTED***"]})
     );
 }
 
@@ -158,7 +217,7 @@ fn arguments_keep_plain_values() {
 #[test]
 fn arguments_fallback_is_placeholder() {
     for (name, args) in [
-        ("rule spans members", r#"{"user":"bob","pin":"1234"}"#),
+        ("rule spans members", r#"{"pin":"1234","user":"bob"}"#),
         ("undecodable with a secret", r#"{"pw": hunter2"#),
         ("undecodable escaped secret", r#"{"pw":"hunter2""#),
         ("trailing data", r#"{"pw":"x"} hunter2"#),

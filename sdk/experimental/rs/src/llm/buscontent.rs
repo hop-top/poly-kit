@@ -29,11 +29,13 @@ const MAX_DEPTH: usize = 128;
 ///
 /// Tool call arguments are masked on their decoded JSON, every string,
 /// key and number on its own text, each object member also in key
-/// context (`"key":value`, `key=value`) for rules that need the key
-/// beside the value; a member flagged there gets its value replaced
-/// whole. Arguments that do not decode, or that `r` still matches after
-/// that, become the JSON string `"REDACTED"`: nothing is derived from
-/// their raw text.
+/// context (`"key":value`, `key=value`), always, for rules that need
+/// the key beside the value; a member matching there gets its value
+/// replaced whole. Members keep their order. Arguments that do not
+/// decode, a member that still matches with its value replaced, a match
+/// across members of the input, or a result `r` still matches, become
+/// the JSON string `"REDACTED"`: nothing is derived from their raw
+/// text.
 ///
 /// What `r` cannot vouch for is left out: `extensions`, media bytes (a
 /// part keeps its kind and MIME type), thinking signatures and redacted
@@ -110,59 +112,146 @@ fn redact_thinking(r: &Redactor, tbs: &mut [ThinkingBlock]) {
 /// `raw`, a JSON value, masked with `r`, failing closed; see
 /// [`redact_request`]. Numbers keep their literal text, so a number
 /// past what `f64` or `u64` hold is masked on the digits it was sent
-/// with, never on a rounded copy.
+/// with, never on a rounded copy. Members keep their order.
+///
+/// Placeholder when: `raw` does not decode; a member still matches in
+/// key context with its value replaced; a match in the compact input
+/// spans more than one token and is not a member the context check
+/// replaced (masking a neighbour could break such a match up and let
+/// the rest pass); or `r` still matches the result.
 fn redact_json(r: &Redactor, raw: &str) -> String {
     let Some(v) = Json::parse(raw) else {
         return PLACEHOLDER.into();
     };
-    let out = redact_value(r, v).encode();
-    if flags(r, &out) {
+    let mut w = Walk {
+        r,
+        compact: String::new(),
+        cleared: Vec::new(),
+    };
+    let Some(out) = w.value(&v) else {
+        return PLACEHOLDER.into();
+    };
+    let covered = r.spans(&w.compact).iter().all(|s| {
+        w.cleared
+            .iter()
+            .any(|&(from, to)| from <= s.start && s.end <= to)
+    });
+    let out = out.encode();
+    if !covered || flags(r, &out) {
         return PLACEHOLDER.into();
     }
     out
 }
 
-fn redact_value(r: &Redactor, v: Json) -> Json {
-    match v {
-        Json::Str(s) => Json::Str(apply(r, &s)),
-        Json::Num(n) => {
-            let m = apply(r, &n);
-            if m != n {
-                Json::Str(m)
-            } else {
-                Json::Num(n)
+/// Masks a decoded value while writing the input back compact, in
+/// order, noting the ranges of it the masking clears on its own: each
+/// scalar token, and each member the key-context check replaced.
+struct Walk<'a> {
+    r: &'a Redactor,
+    compact: String,
+    cleared: Vec<(usize, usize)>,
+}
+
+impl Walk<'_> {
+    /// The masked value; `None` fails the whole arguments closed.
+    fn value(&mut self, v: &Json) -> Option<Json> {
+        match v {
+            Json::Null | Json::Bool(_) => {
+                v.write(&mut self.compact);
+                Some(v.clone())
+            }
+            Json::Num(_) | Json::Str(_) => {
+                self.token(v);
+                Some(scalar(self.r, v))
+            }
+            Json::Arr(items) => {
+                self.compact.push('[');
+                let mut out = Vec::with_capacity(items.len());
+                for (i, e) in items.iter().enumerate() {
+                    if i > 0 {
+                        self.compact.push(',');
+                    }
+                    out.push(self.value(e)?);
+                }
+                self.compact.push(']');
+                Some(Json::Arr(out))
+            }
+            Json::Obj(members) => {
+                self.compact.push('{');
+                let mut out: Vec<(String, Json)> = Vec::with_capacity(members.len());
+                for (i, (k, e)) in members.iter().enumerate() {
+                    if i > 0 {
+                        self.compact.push(',');
+                    }
+                    let start = self.compact.len();
+                    self.token(&Json::Str(k.clone()));
+                    self.compact.push(':');
+                    let masked = match e {
+                        Json::Num(_) | Json::Str(_) => {
+                            self.token(e);
+                            if in_context(self.r, k, e) {
+                                // Replaced whole; still matching with
+                                // the value gone means the key holds it.
+                                if in_context(self.r, k, &Json::Str(REDACTED.into())) {
+                                    return None;
+                                }
+                                self.cleared.push((start, self.compact.len()));
+                                Json::Str(REDACTED.into())
+                            } else {
+                                scalar(self.r, e)
+                            }
+                        }
+                        _ => self.value(e)?,
+                    };
+                    // Two keys masked to the same text keep one member,
+                    // in the first one's place, with the later value:
+                    // the copy only describes.
+                    let key = apply(self.r, k);
+                    match out.iter_mut().find(|(k, _)| *k == key) {
+                        Some(slot) => slot.1 = masked,
+                        None => out.push((key, masked)),
+                    }
+                }
+                self.compact.push('}');
+                Some(Json::Obj(out))
             }
         }
-        Json::Arr(items) => Json::Arr(items.into_iter().map(|e| redact_value(r, e)).collect()),
-        Json::Obj(members) => {
-            // Two keys masked to the same text keep one value, the
-            // later: the copy only describes.
-            let mut out = BTreeMap::new();
-            for (k, e) in members {
-                let v = if flagged_in_context(r, &k, &e) {
-                    Json::Str(REDACTED.into())
-                } else {
-                    redact_value(r, e)
-                };
-                out.insert(apply(r, &k), v);
-            }
-            Json::Obj(out.into_iter().collect())
-        }
-        other => other, // bool, null
+    }
+
+    /// Write a scalar token, noting its range as cleared.
+    fn token(&mut self, v: &Json) {
+        let start = self.compact.len();
+        v.write(&mut self.compact);
+        self.cleared.push((start, self.compact.len()));
     }
 }
 
-/// Whether `r` flags the member `k`: a scalar `e` rendered with its key,
-/// as `"key":value` and `key=value`, matches where neither alone does.
-fn flagged_in_context(r: &Redactor, k: &str, e: &Json) -> bool {
+/// A string or number masked on its decoded text; a masked number
+/// becomes a string.
+fn scalar(r: &Redactor, v: &Json) -> Json {
+    match v {
+        Json::Str(s) => Json::Str(apply(r, s)),
+        Json::Num(n) => {
+            let m = apply(r, n);
+            if m != *n {
+                Json::Str(m)
+            } else {
+                Json::Num(n.clone())
+            }
+        }
+        other => other.clone(),
+    }
+}
+
+/// Whether `r` matches the member `k` with the scalar `e` rendered
+/// beside its key, as `"key":value` or `key=value`. Always checked,
+/// whether or not the key or value alone matches.
+fn in_context(r: &Redactor, k: &str, e: &Json) -> bool {
     let (text, wire) = match e {
         Json::Str(s) => (s.as_str(), json_string(s)),
         Json::Num(n) => (n.as_str(), n.clone()),
-        _ => return false, // containers are walked; bool and null hold nothing
+        _ => return false,
     };
-    if flags(r, k) || flags(r, text) {
-        return false;
-    }
     [format!("{}:{wire}", json_string(k)), format!("{k}={text}")]
         .iter()
         .any(|s| flags(r, s))
