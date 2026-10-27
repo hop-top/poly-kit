@@ -181,9 +181,11 @@ func containsTok(s string) bool {
 
 func TestBreaker_OpenCircuit_PropagatesErrBrokenCircuit(t *testing.T) {
 	// not parallel: registering the breaker by name is a process-
-	// global mutation.
-	b := breaker.New("emailsink-test-trip")
-	t.Cleanup(b.Reset)
+	// global mutation. Unregister on cleanup so -count>1 re-runs
+	// don't hit the registry's duplicate-name panic.
+	const breakerName = "emailsink-test-trip"
+	t.Cleanup(func() { breaker.Unregister(breakerName) })
+	b := breaker.New(breakerName)
 
 	b.Trip("test")
 
