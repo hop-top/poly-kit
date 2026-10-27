@@ -2,11 +2,10 @@
 
 ## What it answers
 
-What the llm core and the Anthropic adapter must do, independent of language: provider URI
-parsing and credential masking, the Messages API body for a request, auth headers, text tokens
-and events from an SSE body, what it accumulates into, how error responses map and retry, and
-what the client's bus events carry. Wrong place for HTTP client wiring, timers and key stores;
-those are per-runtime.
+What the llm core and the Anthropic adapter must do, independent of language: provider URI parsing and
+credential masking, the Messages API body for a request, auth headers, text tokens and events from an SSE
+body, what it accumulates into, how error responses map and retry, and what the client's bus events carry.
+Wrong place for HTTP client wiring, timers and key stores; those are per-runtime.
 
 ## Use it when
 
@@ -20,6 +19,7 @@ make test-parity-llm
 # or separately:
 go test ./go/ai/llm/ ./go/ai/llm/anthropic/ -run '^TestConformance'
 cargo test --features llm-anthropic --test llm_conformance   # from sdk/experimental/rs
+pnpm vitest run src/llm-anthropic.conformance.test.ts src/llm-toolnames.conformance.test.ts   # from sdk/ts
 uv run pytest tests/test_llm_conformance.py                  # from sdk/py
 ```
 
@@ -36,7 +36,7 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 | `anthropic_headers[]` | key, version, bearer token and workspace headers from the `ANTHROPIC_*` env |
 | `anthropic_stream[]` | text tokens of an SSE body, then done, or the typed error (`error_kind`; `truncated` without `message_stop`) |
 | `anthropic_stream_events[]` | with `Request.StreamEvents`: text, tool-call `start`/`delta`/`end` (end = `Outcome.ToolCalls[index]`, original name) and cumulative `usage` events in order, then `done` or `error_kind` with no end for an open call; not opted in, exactly `anthropic_stream`'s tokens |
-| `anthropic_accumulate[]` | text, thinking, tool calls, stop reason and usage of an SSE body; Go runs the SDK's `Message.Accumulate`, Rust and Python their stream outcome |
+| `anthropic_accumulate[]` | text, thinking, tool calls, stop reason and usage of an SSE body; Go runs the SDK's `Message.Accumulate`, Rust, Python and TypeScript their stream outcome |
 | `anthropic_error[]` | error kind (`permission_denied` for a 403 or `permission_error`, which is also `auth`), status, fallbackable, and attempts under the default retry policy (server waits honored in (0, 60s] only); the last response repeats |
 | `anthropic_limits[]` | `max_body_bytes` / `max_event_bytes` params: a body or one SSE event over the limit is `too_large` |
 | `anthropic_response[]` | a response parsed: text, thinking blocks, tool calls, stop reason, usage with cache tokens |
@@ -53,7 +53,7 @@ Runners are strict: unknown fields, a `version` other than `v1` and a file no ru
 
 ### Known differences
 
-Not vectored. A `retry-after` HTTP date: Go honors one within 60s, Rust and Python back off.
+Not vectored. A `retry-after` HTTP date: Go and TypeScript honor one within 60s, Rust and Python back off.
 Python keeps `LLM_API_KEY` ahead of llm.yaml and `<SCHEME>_API_KEY` (Go: llm.yaml, then the provider variable, then `LLM_API_KEY`) and has no secret store.
 
 ## Tool names
@@ -73,8 +73,8 @@ calls carry the original name.
 | Go | `go/ai/llm/conformance_test.go`, `go/ai/llm/anthropic/conformance_test.go` (`TestConformance*`) |
 | Rust | `sdk/experimental/rs/tests/llm_conformance.rs` (anthropic sections, including `anthropic_tool_names`, need feature `llm-anthropic`; `anthropic_tool_choice`, `anthropic_hermetic`, `anthropic_stream_events`, `bus_request_started`, `bus_response_received` and the vectors in `PENDING_RUST_PORT` skipped, pending the Rust port) |
 | Python | `sdk/py/tests/test_llm_conformance.py`: every section, anthropic ones against a loopback server; `anthropic_tool_choice`, `anthropic_hermetic`, `anthropic_stream_events`, `bus_request_started` and `bus_response_received` skipped (`PENDING_PY_PORT`), pending the Python port |
-| TypeScript | `sdk/ts/src/llm-toolnames.conformance.test.ts`: `tool_names` only (no anthropic adapter in TypeScript) |
+| TypeScript | `sdk/ts/src/llm-anthropic.conformance.test.ts` (every `anthropic_*` section, `credential_headers`, `redact_uri`, `usage_cost`) and `sdk/ts/src/llm-toolnames.conformance.test.ts` (`tool_names`); not run: `parse_uri`, `key_endpoint` and the llm.yaml `credential_headers` vector (the TS core has no llm.yaml or Resolve-time key guard), each listed with its reason in the runner; `anthropic_tool_choice`, `anthropic_hermetic`, `anthropic_stream_events`, `bus_request_started`, `bus_response_received` and the 403 / system-joining vectors pending the TypeScript port |
 
 ## See also
 
-- [`go/ai/llm`](../../go/ai/llm/README.md), [`sdk/experimental/rs/src/llm`](../../sdk/experimental/rs/src/llm/README.md), [Python `hop_top_kit.llm`](../../docs/adopters/reference/py-sdk.md#provider-adapters)
+- [`go/ai/llm`](../../go/ai/llm/README.md), [`sdk/experimental/rs/src/llm`](../../sdk/experimental/rs/src/llm/README.md), [Python `hop_top_kit.llm`](../../docs/adopters/reference/py-sdk.md#provider-adapters), [TypeScript `@hop-top/kit/llm`](../../docs/adopters/reference/ts-api-reference.md#llm-adapters)
