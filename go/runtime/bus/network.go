@@ -85,6 +85,26 @@ type Authenticator interface {
 	Verify(token string) error
 }
 
+// PrincipalVerifier is an optional [Authenticator] extension that names
+// who a token belongs to. An acceptor whose authenticator implements it
+// calls VerifyPrincipal instead of Verify, and bounds the acknowledged
+// publish dedupe memory per principal, so one peer opening many streams
+// cannot evict another peer's. Without it, dialers that present the same
+// token share one bound, as large as the overall one. Return a stable
+// identity (an account or client id), not the token.
+type PrincipalVerifier interface {
+	VerifyPrincipal(token string) (principal string, err error)
+}
+
+// verifyPeer verifies token, returning its principal when the
+// authenticator names one.
+func verifyPeer(a Authenticator, token string) (string, error) {
+	if pv, ok := a.(PrincipalVerifier); ok {
+		return pv.VerifyPrincipal(token)
+	}
+	return "", a.Verify(token)
+}
+
 type ctxKey struct{}
 
 // networkOriginKey marks events injected from the network to prevent re-forwarding.

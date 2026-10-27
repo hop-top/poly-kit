@@ -242,7 +242,7 @@ func (l *link) onAckedEvent(data []byte) bool {
 		if !ok {
 			return l.protocolError(protocolErr(pkOffset, "event frame without a valid offset"))
 		}
-		res, dup := n.ackSeen.begin(l.peer.Token, l.dialerStream, v, "")
+		res, dup := n.ackSeen.begin(l.seenPeer, l.dialerStream, v, "")
 		if !dup {
 			res.complete(AckInvalid, err.Error(), l.settleFn())
 		}
@@ -251,7 +251,7 @@ func (l *link) onAckedEvent(data []byte) bool {
 	if l.peerOrigin() == "" && origin != "" {
 		l.learnedOrigin.Store(origin)
 	}
-	res, dup := n.ackSeen.begin(l.peer.Token, l.dialerStream, off.value, e.ID)
+	res, dup := n.ackSeen.begin(l.seenPeer, l.dialerStream, off.value, e.ID)
 	if !l.queueAck(off.value, e.ID, res) {
 		return false
 	}
@@ -286,7 +286,7 @@ func (l *link) onAckedEvent(data []byte) bool {
 
 // settleFn records a settled result in the dedupe memory.
 func (l *link) settleFn() func(pubackInfo) {
-	n, peer, stream := l.n, l.peer.Token, l.dialerStream
+	n, peer, stream := l.n, l.seenPeer.key, l.dialerStream
 	return func(p pubackInfo) { n.ackSeen.settle(peer, stream, p) }
 }
 

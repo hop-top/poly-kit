@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -442,12 +443,42 @@ func acksAuth(token, stream string) string {
 	return `{"auth":"` + token + `","caps":{"streams":1,"frames":["kit"],"acks":1},"origin":"o-` + token + `","stream":{"id":"` + stream + `"}}`
 }
 
-// TestAcks_PeerFloodKeepsOtherPeersDedupe: a peer that opens many dialer
-// streams only evicts its own dedupe memory; another peer's copies are
-// still recognized and not published twice.
-func TestAcks_PeerFloodKeepsOtherPeersDedupe(t *testing.T) {
-	h := newHub(t, WithAuth(&gateAuth{}))
-	h.n.ackSeen.maxPerPeer = 2
+// principalAuth names a principal per token.
+type principalAuth map[string]string
+
+func (principalAuth) Token() (string, error) { return "open", nil }
+func (p principalAuth) Verify(tok string) error {
+	_, err := p.VerifyPrincipal(tok)
+	return err
+}
+func (p principalAuth) VerifyPrincipal(tok string) (string, error) {
+	if who, ok := p[tok]; ok {
+		return who, nil
+	}
+	return "", ErrAuthFailed
+}
+
+// floodStreams opens n dialer streams with token, one frame each.
+func floodStreams(t *testing.T, url, token string, n int) {
+	t.Helper()
+	for i := 0; i < n; i++ {
+		a := rawDial(t, url, acksAuth(token, "stm_flood"+formatOffset(uint64(i))))
+		rawJSON(t, a)
+		rawSend(t, a, eventFrame(1, "ea", "acme.flood"))
+		rawJSON(t, a)
+		_ = a.Close(websocket.StatusNormalClosure, "")
+	}
+}
+
+// TestAcks_PrincipalFloodKeepsOtherPrincipalsDedupe: a principal that
+// opens more streams than its bound only evicts its own dedupe memory;
+// another principal's copies are still recognized and not published
+// twice.
+func TestAcks_PrincipalFloodKeepsOtherPrincipalsDedupe(t *testing.T) {
+	h := newHub(t, WithAuth(principalAuth{"tok-a": "alice", "tok-b": "bob"}))
+	// Room for alice's bound and bob, not for alice's whole flood: only
+	// the per-principal bound keeps alice from reaching the overall one.
+	h.n.ackSeen.maxStreams = ackSeenStreamsPerPrincipal + 4
 	var seen atomic.Int32
 	h.bus.Subscribe("acme.b", func(context.Context, Event) error { seen.Add(1); return nil })
 
@@ -455,16 +486,10 @@ func TestAcks_PeerFloodKeepsOtherPeersDedupe(t *testing.T) {
 	rawJSON(t, b)
 	rawSend(t, b, eventFrame(1, "eb", "acme.b"))
 	rawJSON(t, b)
-
-	for i := 0; i < 8; i++ {
-		a := rawDial(t, h.url, acksAuth("tok-a", "stm_a"+formatOffset(uint64(i))))
-		rawJSON(t, a)
-		rawSend(t, a, eventFrame(1, "ea", "acme.a"))
-		rawJSON(t, a)
-		_ = a.Close(websocket.StatusNormalClosure, "")
-	}
-
 	_ = b.Close(websocket.StatusNormalClosure, "")
+
+	floodStreams(t, h.url, "tok-a", ackSeenStreamsPerPrincipal+16)
+
 	b2 := rawDial(t, h.url, acksAuth("tok-b", "stm_b"))
 	rawJSON(t, b2)
 	rawSend(t, b2, eventFrame(1, "eb", "acme.b"))
@@ -472,7 +497,89 @@ func TestAcks_PeerFloodKeepsOtherPeersDedupe(t *testing.T) {
 		t.Fatalf("puback = %v", p)
 	}
 	if n := seen.Load(); n != 1 {
-		t.Fatalf("peer b's event published %d times after peer a flooded streams", n)
+		t.Fatalf("bob's event published %d times after alice flooded streams", n)
+	}
+}
+
+// TestAcks_SharedTokenFloodOnlyDuplicates: dialers that share a token
+// cannot be told apart, so a flood can evict another's memory. The
+// evicted frame is published again and answered with its new result,
+// never a false ok.
+func TestAcks_SharedTokenFloodOnlyDuplicates(t *testing.T) {
+	h := newHub(t, WithAuth(OpenAuth()))
+	h.n.ackSeen.maxStreams = 4
+	var seen atomic.Int32
+	h.bus.Subscribe("acme.b", func(context.Context, Event) error { seen.Add(1); return errors.New("nope") })
+
+	b := rawDial(t, h.url, acksAuth("open", "stm_b"))
+	rawJSON(t, b)
+	rawSend(t, b, eventFrame(1, "eb", "acme.b"))
+	if p := rawJSON(t, b); p["status"] != "err" {
+		t.Fatalf("puback = %v", p)
+	}
+	_ = b.Close(websocket.StatusNormalClosure, "")
+
+	floodStreams(t, h.url, "open", 8)
+
+	b2 := rawDial(t, h.url, acksAuth("open", "stm_b"))
+	rawJSON(t, b2)
+	rawSend(t, b2, eventFrame(1, "eb", "acme.b"))
+	if p := rawJSON(t, b2); p["status"] != "err" || p["code"] != AckRejected {
+		t.Fatalf("evicted copy answered %v, want its new result", p)
+	}
+	if n := seen.Load(); n != 2 {
+		t.Fatalf("published %d times; an evicted copy is published again (want 2)", n)
+	}
+}
+
+// TestAcks_SharedTokenBoundIsTheOverallBound: without a principal, a
+// token's streams are bounded only by the overall bound, so dialers that
+// share it do not evict each other before that.
+func TestAcks_SharedTokenBoundIsTheOverallBound(t *testing.T) {
+	h := newHub(t, WithAuth(OpenAuth()))
+	var seen atomic.Int32
+	h.bus.Subscribe("acme.b", func(context.Context, Event) error { seen.Add(1); return nil })
+	b := rawDial(t, h.url, acksAuth("open", "stm_b"))
+	rawJSON(t, b)
+	rawSend(t, b, eventFrame(1, "eb", "acme.b"))
+	rawJSON(t, b)
+	_ = b.Close(websocket.StatusNormalClosure, "")
+
+	floodStreams(t, h.url, "open", ackSeenStreamsPerPrincipal+16)
+
+	b2 := rawDial(t, h.url, acksAuth("open", "stm_b"))
+	rawJSON(t, b2)
+	rawSend(t, b2, eventFrame(1, "eb", "acme.b"))
+	rawJSON(t, b2)
+	if n := seen.Load(); n != 1 {
+		t.Fatalf("published %d times below the overall bound", n)
+	}
+}
+
+// TestAcks_DedupeKeysHoldNoTokens: the dedupe memory is keyed by
+// digests, never by a raw token.
+func TestAcks_DedupeKeysHoldNoTokens(t *testing.T) {
+	h := newHub(t, WithAuth(principalAuth{"s3cret-token": "alice"}))
+	c := rawDial(t, h.url, acksAuth("s3cret-token", "stm_c"))
+	rawJSON(t, c)
+	rawSend(t, c, eventFrame(1, "e1", "acme.x"))
+	rawJSON(t, c)
+	o := newHub(t, WithAuth(OpenAuth()))
+	c2 := rawDial(t, o.url, acksAuth("open-s3cret", "stm_c"))
+	rawJSON(t, c2)
+	rawSend(t, c2, eventFrame(1, "e1", "acme.x"))
+	rawJSON(t, c2)
+	for _, n := range []*NetworkAdapter{h.n, o.n} {
+		n.ackSeen.mu.Lock()
+		for k := range n.ackSeen.streams {
+			if strings.Contains(k.peer, "s3cret") || strings.Contains(k.peer, "alice") {
+				t.Errorf("dedupe key %q holds a raw identity", k.peer)
+			}
+		}
+		if len(n.ackSeen.streams) != 1 {
+			t.Errorf("dedupe memory holds %d streams, want 1", len(n.ackSeen.streams))
+		}
+		n.ackSeen.mu.Unlock()
 	}
 }
 

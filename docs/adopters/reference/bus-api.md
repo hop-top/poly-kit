@@ -619,6 +619,14 @@ ack, err := n.PublishAcked(ctx, e)      // plus every outbound address (or the o
   publishes per address; `PublishAcked` blocks for a slot until its
   context ends, and the event is then not published.
 
+A hub deduplicates frames a dialer sends again after a reconnect. Its
+memory is bounded per peer; to keep one client from evicting
+another's, give the hub an authenticator that also implements
+`bus.PrincipalVerifier` (`VerifyPrincipal(token) (principal, error)`).
+Without it, clients sharing a token share one bound, and an evicted
+client's resent events may be delivered twice (never acknowledged
+falsely).
+
 A bus wired by hand (`NewNetworkAdapter(b, ...)`) confirms network
 peers only through `(*NetworkAdapter).PublishAcked`; publishing on `b`
 directly waits for local handlers only.

@@ -841,10 +841,8 @@ acknowledged offset survives reconnects.
 ### 13.4 Acceptor
 
 The acceptor remembers, per peer and dialer stream id, the highest
-offset it received and the failed results of its frames. The peer is
-the token its link presented, the one value the authenticator
-verified; the dialer's stream id and origin are its own claims. A frame
-at or below the highest offset is a copy:
+offset it received and the failed results of its frames. A frame at or
+below the highest offset is a copy:
 
 - still being handled: its puback waits for the first copy's result
 - a failed result is held: that result is sent again
@@ -856,10 +854,10 @@ A copy is never published again. The memory is bounded, and every
 bound errs toward publishing again or answering `unknown`, never toward
 a false `ok`:
 
-- **per peer:** at most 64 dialer streams. A peer that opens more
-  forgets its own least recently used stream; it cannot evict another
-  peer's. Dialers that share one token (an `OpenAuth` hub, one key for
-  many clients) share the bound
+- **per principal:** at most 64 dialer streams. A principal that opens
+  more forgets its own least recently used stream; it cannot evict
+  another principal's
+- **per token, without a principal:** the overall bound
 - **overall:** at most 1 024 dialer streams, least recently used
   forgotten first, as a backstop
 - **per stream:** at most 1 024 failed results; past that the oldest is
@@ -868,6 +866,24 @@ a false `ok`:
 A forgotten stream's frames are new again: published again, at least
 once. The memory is lost on restart, after which dedupe falls to the
 event id.
+
+**Who a peer is.** Only what the authenticator verified can tell peers
+apart: the dialer's stream id and origin are its own claims, and a
+dialer holding a valid token could mint any number of them. An
+authenticator that also implements `PrincipalVerifier` names the
+principal a token belongs to; the acceptor then calls `VerifyPrincipal`
+instead of `Verify` and bounds each principal at 64 streams. Without
+it, the peer is the token: dialers presenting the same token
+(`OpenAuth`, one key shared by many clients) cannot be told apart, so
+they share one bound as large as the overall one, and once a flood of
+streams fills the overall bound one of them can evict another's
+memory. That is the guarantee's limit: an evicted dialer's copies are
+published again (a duplicate, deduplicated by event `id`), never
+answered with a false `ok`. Isolation between dialers that share a
+token needs an authenticator that names them apart.
+
+Keys are digests (SHA-256) of the principal or the token; raw tokens
+never become map keys.
 
 `unknown` resolves the dialer's wait like any failure: its
 acknowledged offset moves past the frame, so the link does not resend
@@ -923,6 +939,12 @@ func WithSubscribeAuthorizer(f func(ctx context.Context, p Peer, s Subscription)
 func WithLinkFilter(f func(p Peer, e Event) bool) NetworkOption
 func WithNetworkErrorFunc(f ErrFunc) NetworkOption
 func OpenAuth() Authenticator
+
+// optional Authenticator extension: names who a token belongs to, so
+// the acknowledged-publish dedupe memory is bounded per principal
+type PrincipalVerifier interface {
+    VerifyPrincipal(token string) (principal string, err error)
+}
 
 // adapter methods
 func (n *NetworkAdapter) Dial(addr string)

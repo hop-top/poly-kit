@@ -288,7 +288,10 @@ func (n *NetworkAdapter) Handler() http.Handler {
 		ctx := r.Context()
 		peer := Peer{Addr: r.RemoteAddr}
 
-		var af authFrame
+		var (
+			af     authFrame
+			dedupe seenPeer
+		)
 		handshake := n.auth != nil
 		if handshake {
 			authCtx, authCancel := context.WithTimeout(ctx, handshakeTimeout)
@@ -304,7 +307,8 @@ func (n *NetworkAdapter) Handler() http.Handler {
 				_ = conn.Close(statusPolicy, "invalid auth")
 				return
 			}
-			if err := n.auth.Verify(af.Token); err != nil {
+			principal, err := verifyPeer(n.auth, af.Token)
+			if err != nil {
 				_ = conn.Close(statusPolicy, "auth failed")
 				return
 			}
@@ -313,6 +317,7 @@ func (n *NetworkAdapter) Handler() http.Handler {
 				return
 			}
 			peer.Origin, peer.Token = af.Origin, af.Token
+			dedupe = dedupePeer(principal, af.Token)
 		}
 
 		v, format := negotiate(n.caps(), af.Caps, handshake, n.frames)
@@ -327,7 +332,7 @@ func (n *NetworkAdapter) Handler() http.Handler {
 		if negotiateAcks(mine, af.Caps, l.stream) {
 			// Acceptors acknowledge whenever a dialer asks; the reply
 			// echoes acks only then, so other acks stay as they were.
-			l.acks, l.dialerStream = true, af.Stream
+			l.acks, l.dialerStream, l.seenPeer = true, af.Stream, dedupe
 			l.ackq = newAckQueue(n.maxPendingAcks)
 			myCaps.Acks = AcksVersion
 		}

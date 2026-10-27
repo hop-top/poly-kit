@@ -1,6 +1,8 @@
 package bus
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"sort"
 	"sync"
@@ -301,13 +303,35 @@ func (r *ackResult) settled() bool {
 	}
 }
 
-// Acceptor dedupe bounds: dialer streams remembered in all, per peer
-// (the token its link presented), and failed results kept per stream.
+// Acceptor dedupe bounds: dialer streams remembered in all, per
+// principal (see [PrincipalVerifier]), and failed results kept per
+// stream. Dialers known only by their token share the overall bound.
 const (
-	ackSeenStreams        = 1024
-	ackSeenStreamsPerPeer = 64
-	ackSeenErrors         = 1024
+	ackSeenStreams             = 1024
+	ackSeenStreamsPerPrincipal = 64
+	ackSeenErrors              = 1024
 )
+
+// seenPeer is whose dedupe memory a link uses: a digest of its verified
+// principal, or of its token when the authenticator names none, and the
+// number of streams that identity may keep (0: the overall bound). Raw
+// tokens never become keys.
+type seenPeer struct {
+	key string
+	max int
+}
+
+func dedupePeer(principal, token string) seenPeer {
+	if principal != "" {
+		return seenPeer{key: digest("principal", principal), max: ackSeenStreamsPerPrincipal}
+	}
+	return seenPeer{key: digest("token", token)}
+}
+
+func digest(kind, v string) string {
+	h := sha256.Sum256([]byte(kind + "\x00" + v))
+	return kind + ":" + hex.EncodeToString(h[:16])
+}
 
 // ackSeen is an acceptor's memory of the dialer streams it acknowledged,
 // so a frame redelivered after a reconnect is acknowledged again without
@@ -315,6 +339,10 @@ const (
 //
 // Bounded per peer first: a peer that opens many streams only forgets
 // its own least recently used one; the overall bound is a backstop. A
+// peer is a verified principal, else a token: dialers sharing a token
+// cannot be told apart, so they share a bound as large as the overall
+// one, and one of them can evict another's streams (its frames are then
+// published again, never answered with a false ok). A
 // forgotten stream's frames are treated as new (published again: at
 // least once). Within a stream, failed results are kept up to a bound;
 // past it the oldest is pruned and the stream's floor rises, and a copy
@@ -326,7 +354,7 @@ type ackSeen struct {
 	perPeer map[string]int
 	clock   uint64
 
-	maxStreams, maxPerPeer, maxErrors int
+	maxStreams, maxErrors int
 }
 
 type seenKey struct{ peer, stream string }
@@ -342,21 +370,25 @@ type seenStream struct {
 func newAckSeen() *ackSeen {
 	return &ackSeen{
 		streams: map[seenKey]*seenStream{}, perPeer: map[string]int{},
-		maxStreams: ackSeenStreams, maxPerPeer: ackSeenStreamsPerPeer, maxErrors: ackSeenErrors,
+		maxStreams: ackSeenStreams, maxErrors: ackSeenErrors,
 	}
 }
 
 // begin returns the result for frame off of peer's stream with event id,
 // and whether it is a redelivery (dup: do not publish it again).
-func (s *ackSeen) begin(peer, stream string, off uint64, id string) (*ackResult, bool) {
+func (s *ackSeen) begin(sp seenPeer, stream string, off uint64, id string) (*ackResult, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.clock++
+	peer, max := sp.key, sp.max
+	if max <= 0 {
+		max = s.maxStreams
+	}
 	k := seenKey{peer, stream}
 	st := s.streams[k]
 	if st == nil {
 		switch {
-		case s.perPeer[peer] >= s.maxPerPeer:
+		case s.perPeer[peer] >= max:
 			s.evictLocked(func(o seenKey) bool { return o.peer == peer })
 		case len(s.streams) >= s.maxStreams:
 			s.evictLocked(func(seenKey) bool { return true })

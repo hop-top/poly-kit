@@ -68,6 +68,7 @@ type link struct {
 	heartbeatD time.Duration // dialer: acceptor's advertised interval
 
 	dialerStream string    // acceptor of an acks link: the dialer's stream id
+	seenPeer     seenPeer  // acceptor of an acks link: whose dedupe memory it uses
 	ackq         *ackQueue // acceptor of an acks link: pubacks in frame order
 }
 
