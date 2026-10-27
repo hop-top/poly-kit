@@ -99,16 +99,20 @@ fn should_retry(status: u16, headers: &reqwest::header::HeaderMap) -> bool {
     }
 }
 
-/// `retry-after-ms`, else `retry-after` in seconds (an HTTP date is not
-/// read). Negative waits are zero.
+/// The longest wait a server may ask for, as the Anthropic SDKs cap it.
+const MAX_RETRY_AFTER: Duration = Duration::from_secs(60);
+
+/// `retry-after-ms`, else `retry-after` in seconds, when it asks for a
+/// wait in (0, 60s]. Anything else (zero, negative, NaN, infinite, huge,
+/// unparsable, an HTTP date) is `None`: the caller backs off instead, so
+/// a hostile or broken server cannot stall the client.
 fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
-    let num = |name: &str| -> Option<f64> {
-        headers.get(name)?.to_str().ok()?.trim().parse::<f64>().ok()
+    let secs = |name: &str, per_sec: f64| -> Option<Duration> {
+        let v: f64 = headers.get(name)?.to_str().ok()?.trim().parse().ok()?;
+        let s = v / per_sec;
+        (s > 0.0 && s <= MAX_RETRY_AFTER.as_secs_f64()).then(|| Duration::from_secs_f64(s))
     };
-    let secs = num("retry-after-ms")
-        .map(|ms| ms / 1000.0)
-        .or_else(|| num("retry-after"))?;
-    Some(Duration::try_from_secs_f64(secs.max(0.0)).unwrap_or(Duration::MAX))
+    secs("retry-after-ms", 1000.0).or_else(|| secs("retry-after", 1.0))
 }
 
 fn cap(s: &str) -> String {

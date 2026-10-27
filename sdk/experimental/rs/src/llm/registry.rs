@@ -34,6 +34,9 @@ pub struct Declaration {
     /// The default endpoint, passed as `base_url` when the URI names
     /// neither a host nor a `base_url` param. Empty leaves the adapter's.
     pub base_url: String,
+    /// Further base URLs that may receive the scheme's key when a URI
+    /// names them, such as the adapter's own default. Compared by origin.
+    pub endpoints: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -167,6 +170,8 @@ impl Registry {
         if provider.base_url.is_empty() {
             provider.base_url = entry.decl.base_url.clone();
         }
+        // A key never crosses the network in clear.
+        super::endpoint::check_key_endpoint(&parsed.scheme, &provider.api_key, &provider.base_url)?;
         (entry.factory)(ResolvedConfig {
             uri: parsed,
             provider,

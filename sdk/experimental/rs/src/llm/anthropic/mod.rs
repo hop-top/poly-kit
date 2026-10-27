@@ -122,6 +122,7 @@ impl Builder {
                 crate::llm::redact_uri(&base)
             ))
         })?;
+        crate::llm::check_key_endpoint(SCHEME, &p.api_key, &base)?;
         let client = match self.client {
             Some(c) => c,
             None => GuardedClient::new(self.cfg.net_policy)
@@ -245,6 +246,9 @@ pub fn register(registry: &Registry) -> Result<(), LlmError> {
     registry.register(
         SCHEME,
         Arc::new(|cfg| Ok(Box::new(Adapter::new(cfg)?) as Box<dyn Provider>)),
-        Declaration::default(),
+        Declaration {
+            endpoints: vec![DEFAULT_BASE_URL.to_string()],
+            ..Declaration::default()
+        },
     )
 }

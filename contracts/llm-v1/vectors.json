@@ -1,57 +1,279 @@
 {
   "version": "v1",
-  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds, whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats.",
+  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds, whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host.",
   "redact_uri": [
-    {"name": "api_key", "in": "openrouter://openai/gpt-4?api_key=fake-secret-must-not-leak", "want": "openrouter://openai/gpt-4?api_key=REDACTED"},
-    {"name": "key", "in": "google://gemini-2.0-flash?key=fake-secret-must-not-leak", "want": "google://gemini-2.0-flash?key=REDACTED"},
-    {"name": "name case and hyphen", "in": "openai://gpt-4?X-API-Key=fake-secret-must-not-leak", "want": "openai://gpt-4?X-API-Key=REDACTED"},
-    {"name": "token", "in": "openai://gpt-4?access_token=fake-secret-must-not-leak", "want": "openai://gpt-4?access_token=REDACTED"},
-    {"name": "secret", "in": "openai://gpt-4?client_secret=fake-secret-must-not-leak", "want": "openai://gpt-4?client_secret=REDACTED"},
-    {"name": "password", "in": "openai://gpt-4?password=fake-secret-must-not-leak", "want": "openai://gpt-4?password=REDACTED"},
-    {"name": "signature", "in": "https://cdn.example/a.png?X-Amz-Signature=fake-secret-must-not-leak", "want": "https://cdn.example/a.png?X-Amz-Signature=REDACTED"},
-    {"name": "escaped name", "in": "openai://gpt-4?api%5Fkey=fake-secret-must-not-leak", "want": "openai://gpt-4?api%5Fkey=REDACTED"},
-    {"name": "multiple params", "in": "openai://gpt-4?temperature=0.2&api_key=fake-secret-must-not-leak&key=fake-secret-must-not-leak&base_url=http://h:1/v1", "want": "openai://gpt-4?temperature=0.2&api_key=REDACTED&key=REDACTED&base_url=http://h:1/v1"},
-    {"name": "fragment after key", "in": "openai://gpt-4?api_key=fake-secret-must-not-leak#frag", "want": "openai://gpt-4?api_key=REDACTED"},
-    {"name": "userinfo with password", "in": "openai://user:fake-secret-must-not-leak@proxy:8080/gpt-4", "want": "openai://REDACTED@proxy:8080/gpt-4"},
-    {"name": "userinfo token before path", "in": "openai://fake-secret-must-not-leak@proxy/gpt-4", "want": "openai://REDACTED@proxy/gpt-4"},
-    {"name": "http userinfo without path", "in": "https://fake-secret-must-not-leak@proxy", "want": "https://REDACTED@proxy"},
-    {"name": "net/http masked password", "in": "http://user:***@h/x", "want": "http://REDACTED@h/x"},
-    {"name": "base_url userinfo", "in": "openai://gpt-4?base_url=https://fake-secret-must-not-leak@proxy", "want": "openai://gpt-4?base_url=https://REDACTED@proxy"},
-    {"name": "base_url nested query", "in": "openai://gpt-4?base_url=https://h/v1?key=fake-secret-must-not-leak", "want": "openai://gpt-4?base_url=https://h/v1?key=REDACTED"},
-    {"name": "malformed: missing scheme", "in": "openai/gpt-4?api_key=fake-secret-must-not-leak", "want": "openai/gpt-4?api_key=REDACTED"},
-    {"name": "malformed: empty scheme", "in": "://gpt-4?api_key=fake-secret-must-not-leak", "want": "://gpt-4?api_key=REDACTED"},
-    {"name": "malformed: & without ?", "in": "openai://gpt-4&api_key=fake-secret-must-not-leak", "want": "openai://gpt-4&api_key=REDACTED"},
-    {"name": "malformed: doubled ?", "in": "openai://gpt-4??api_key=fake-secret-must-not-leak", "want": "openai://gpt-4??api_key=REDACTED"},
-    {"name": "malformed: bare param", "in": "api_key=fake-secret-must-not-leak", "want": "api_key=REDACTED"},
-    {"name": "malformed: no scheme userinfo", "in": "user:fake-secret-must-not-leak@host/model", "want": "REDACTED@host/model"},
-    {"name": "empty", "in": "", "want": ""},
-    {"name": "plain", "in": "openai://gpt-4o", "want": "openai://gpt-4o"},
-    {"name": "host form", "in": "ollama://localhost:11434/llama3?temperature=0.5", "want": "ollama://localhost:11434/llama3?temperature=0.5"},
-    {"name": "look-alike names", "in": "openai://gpt-4?max_tokens=10&keyword=a&top_k=3&monkey=1", "want": "openai://gpt-4?max_tokens=10&keyword=a&top_k=3&monkey=1"},
-    {"name": "empty key value", "in": "openai://gpt-4?api_key=", "want": "openai://gpt-4?api_key="},
-    {"name": "model@version", "in": "vertex://claude-3-5-sonnet@20240620", "want": "vertex://claude-3-5-sonnet@20240620"},
-    {"name": "@ in model path", "in": "openrouter://openai/gpt-4@latest", "want": "openrouter://openai/gpt-4@latest"},
-    {"name": "already redacted", "in": "openai://REDACTED@h/m?api_key=REDACTED", "want": "openai://REDACTED@h/m?api_key=REDACTED"}
+    {
+      "name": "api_key",
+      "in": "openrouter://openai/gpt-4?api_key=fake-secret-must-not-leak",
+      "want": "openrouter://openai/gpt-4?api_key=REDACTED"
+    },
+    {
+      "name": "key",
+      "in": "google://gemini-2.0-flash?key=fake-secret-must-not-leak",
+      "want": "google://gemini-2.0-flash?key=REDACTED"
+    },
+    {
+      "name": "name case and hyphen",
+      "in": "openai://gpt-4?X-API-Key=fake-secret-must-not-leak",
+      "want": "openai://gpt-4?X-API-Key=REDACTED"
+    },
+    {
+      "name": "token",
+      "in": "openai://gpt-4?access_token=fake-secret-must-not-leak",
+      "want": "openai://gpt-4?access_token=REDACTED"
+    },
+    {
+      "name": "secret",
+      "in": "openai://gpt-4?client_secret=fake-secret-must-not-leak",
+      "want": "openai://gpt-4?client_secret=REDACTED"
+    },
+    {
+      "name": "password",
+      "in": "openai://gpt-4?password=fake-secret-must-not-leak",
+      "want": "openai://gpt-4?password=REDACTED"
+    },
+    {
+      "name": "signature",
+      "in": "https://cdn.example/a.png?X-Amz-Signature=fake-secret-must-not-leak",
+      "want": "https://cdn.example/a.png?X-Amz-Signature=REDACTED"
+    },
+    {
+      "name": "escaped name",
+      "in": "openai://gpt-4?api%5Fkey=fake-secret-must-not-leak",
+      "want": "openai://gpt-4?api%5Fkey=REDACTED"
+    },
+    {
+      "name": "multiple params",
+      "in": "openai://gpt-4?temperature=0.2&api_key=fake-secret-must-not-leak&key=fake-secret-must-not-leak&base_url=http://h:1/v1",
+      "want": "openai://gpt-4?temperature=0.2&api_key=REDACTED&key=REDACTED&base_url=http://h:1/v1"
+    },
+    {
+      "name": "fragment after key",
+      "in": "openai://gpt-4?api_key=fake-secret-must-not-leak#frag",
+      "want": "openai://gpt-4?api_key=REDACTED"
+    },
+    {
+      "name": "userinfo with password",
+      "in": "openai://user:fake-secret-must-not-leak@proxy:8080/gpt-4",
+      "want": "openai://REDACTED@proxy:8080/gpt-4"
+    },
+    {
+      "name": "userinfo token before path",
+      "in": "openai://fake-secret-must-not-leak@proxy/gpt-4",
+      "want": "openai://REDACTED@proxy/gpt-4"
+    },
+    {
+      "name": "http userinfo without path",
+      "in": "https://fake-secret-must-not-leak@proxy",
+      "want": "https://REDACTED@proxy"
+    },
+    {
+      "name": "net/http masked password",
+      "in": "http://user:***@h/x",
+      "want": "http://REDACTED@h/x"
+    },
+    {
+      "name": "base_url userinfo",
+      "in": "openai://gpt-4?base_url=https://fake-secret-must-not-leak@proxy",
+      "want": "openai://gpt-4?base_url=https://REDACTED@proxy"
+    },
+    {
+      "name": "base_url nested query",
+      "in": "openai://gpt-4?base_url=https://h/v1?key=fake-secret-must-not-leak",
+      "want": "openai://gpt-4?base_url=https://h/v1?key=REDACTED"
+    },
+    {
+      "name": "malformed: missing scheme",
+      "in": "openai/gpt-4?api_key=fake-secret-must-not-leak",
+      "want": "openai/gpt-4?api_key=REDACTED"
+    },
+    {
+      "name": "malformed: empty scheme",
+      "in": "://gpt-4?api_key=fake-secret-must-not-leak",
+      "want": "://gpt-4?api_key=REDACTED"
+    },
+    {
+      "name": "malformed: & without ?",
+      "in": "openai://gpt-4&api_key=fake-secret-must-not-leak",
+      "want": "openai://gpt-4&api_key=REDACTED"
+    },
+    {
+      "name": "malformed: doubled ?",
+      "in": "openai://gpt-4??api_key=fake-secret-must-not-leak",
+      "want": "openai://gpt-4??api_key=REDACTED"
+    },
+    {
+      "name": "malformed: bare param",
+      "in": "api_key=fake-secret-must-not-leak",
+      "want": "api_key=REDACTED"
+    },
+    {
+      "name": "malformed: no scheme userinfo",
+      "in": "user:fake-secret-must-not-leak@host/model",
+      "want": "REDACTED@host/model"
+    },
+    {
+      "name": "empty",
+      "in": "",
+      "want": ""
+    },
+    {
+      "name": "plain",
+      "in": "openai://gpt-4o",
+      "want": "openai://gpt-4o"
+    },
+    {
+      "name": "host form",
+      "in": "ollama://localhost:11434/llama3?temperature=0.5",
+      "want": "ollama://localhost:11434/llama3?temperature=0.5"
+    },
+    {
+      "name": "look-alike names",
+      "in": "openai://gpt-4?max_tokens=10&keyword=a&top_k=3&monkey=1",
+      "want": "openai://gpt-4?max_tokens=10&keyword=a&top_k=3&monkey=1"
+    },
+    {
+      "name": "empty key value",
+      "in": "openai://gpt-4?api_key=",
+      "want": "openai://gpt-4?api_key="
+    },
+    {
+      "name": "model@version",
+      "in": "vertex://claude-3-5-sonnet@20240620",
+      "want": "vertex://claude-3-5-sonnet@20240620"
+    },
+    {
+      "name": "@ in model path",
+      "in": "openrouter://openai/gpt-4@latest",
+      "want": "openrouter://openai/gpt-4@latest"
+    },
+    {
+      "name": "already redacted",
+      "in": "openai://REDACTED@h/m?api_key=REDACTED",
+      "want": "openai://REDACTED@h/m?api_key=REDACTED"
+    }
   ],
   "parse_uri": [
-    {"name": "model only", "uri": "anthropic://claude-opus-5-5", "scheme": "anthropic", "model": "claude-opus-5-5", "host": "", "params": null, "error": ""},
-    {"name": "params", "uri": "anthropic://claude-opus-5-5?api_key=k&temperature=0.2", "scheme": "anthropic", "model": "claude-opus-5-5", "host": "", "params": {"api_key": "k", "temperature": "0.2"}, "error": ""},
-    {"name": "host form", "uri": "ollama://localhost:11434/llama3", "scheme": "ollama", "model": "llama3", "host": "localhost:11434", "params": null, "error": ""},
-    {"name": "ipv6 host form", "uri": "ollama://[::1]:11434/llama3", "scheme": "ollama", "model": "llama3", "host": "[::1]:11434", "params": null, "error": ""},
-    {"name": "slash in model", "uri": "openrouter://openai/gpt-4.1-nano", "scheme": "openrouter", "model": "openai/gpt-4.1-nano", "host": "", "params": null, "error": ""},
-    {"name": "empty model", "uri": "anthropic://", "scheme": "anthropic", "model": "", "host": "", "params": null, "error": ""},
-    {"name": "empty query", "uri": "anthropic://m?", "scheme": "anthropic", "model": "m", "host": "", "params": null, "error": ""},
-    {"name": "valueless param", "uri": "anthropic://m?flag&=x", "scheme": "anthropic", "model": "m", "host": "", "params": {"flag": ""}, "error": ""},
-    {"name": "empty", "uri": "", "error": "empty URI"},
-    {"name": "missing scheme redacted", "uri": "openai/gpt-4?api_key=fake-secret-must-not-leak", "error": "missing scheme in URI \"openai/gpt-4?api_key=REDACTED\""},
-    {"name": "empty scheme redacted", "uri": "://gpt-4?api_key=fake-secret-must-not-leak", "error": "empty scheme in URI \"://gpt-4?api_key=REDACTED\""}
+    {
+      "name": "model only",
+      "uri": "anthropic://claude-opus-5-5",
+      "scheme": "anthropic",
+      "model": "claude-opus-5-5",
+      "host": "",
+      "params": null,
+      "error": ""
+    },
+    {
+      "name": "params",
+      "uri": "anthropic://claude-opus-5-5?api_key=k&temperature=0.2",
+      "scheme": "anthropic",
+      "model": "claude-opus-5-5",
+      "host": "",
+      "params": {
+        "api_key": "k",
+        "temperature": "0.2"
+      },
+      "error": ""
+    },
+    {
+      "name": "host form",
+      "uri": "ollama://localhost:11434/llama3",
+      "scheme": "ollama",
+      "model": "llama3",
+      "host": "localhost:11434",
+      "params": null,
+      "error": ""
+    },
+    {
+      "name": "ipv6 host form",
+      "uri": "ollama://[::1]:11434/llama3",
+      "scheme": "ollama",
+      "model": "llama3",
+      "host": "[::1]:11434",
+      "params": null,
+      "error": ""
+    },
+    {
+      "name": "slash in model",
+      "uri": "openrouter://openai/gpt-4.1-nano",
+      "scheme": "openrouter",
+      "model": "openai/gpt-4.1-nano",
+      "host": "",
+      "params": null,
+      "error": ""
+    },
+    {
+      "name": "empty model",
+      "uri": "anthropic://",
+      "scheme": "anthropic",
+      "model": "",
+      "host": "",
+      "params": null,
+      "error": ""
+    },
+    {
+      "name": "empty query",
+      "uri": "anthropic://m?",
+      "scheme": "anthropic",
+      "model": "m",
+      "host": "",
+      "params": null,
+      "error": ""
+    },
+    {
+      "name": "valueless param",
+      "uri": "anthropic://m?flag&=x",
+      "scheme": "anthropic",
+      "model": "m",
+      "host": "",
+      "params": {
+        "flag": ""
+      },
+      "error": ""
+    },
+    {
+      "name": "empty",
+      "uri": "",
+      "error": "empty URI"
+    },
+    {
+      "name": "missing scheme redacted",
+      "uri": "openai/gpt-4?api_key=fake-secret-must-not-leak",
+      "error": "missing scheme in URI \"openai/gpt-4?api_key=REDACTED\""
+    },
+    {
+      "name": "empty scheme redacted",
+      "uri": "://gpt-4?api_key=fake-secret-must-not-leak",
+      "error": "empty scheme in URI \"://gpt-4?api_key=REDACTED\""
+    }
   ],
   "anthropic_request": [
     {
       "name": "plain user turn",
       "adapter_model": "claude-sonnet-4-20250514",
-      "request": {"messages": [{"role": "user", "content": "Hi"}]},
-      "want_body": {"model": "claude-sonnet-4-20250514", "max_tokens": 1024, "messages": [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]}
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hi"
+          }
+        ]
+      },
+      "want_body": {
+        "model": "claude-sonnet-4-20250514",
+        "max_tokens": 1024,
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Hi"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "system, model override, zero temperature, limits",
@@ -60,144 +282,599 @@
         "model": "claude-opus-5-5",
         "temperature": 0,
         "max_tokens": 256,
-        "stop_sequences": ["END"],
-        "messages": [{"role": "system", "content": "be brief"}, {"role": "user", "content": "Hi"}]
+        "stop_sequences": [
+          "END"
+        ],
+        "messages": [
+          {
+            "role": "system",
+            "content": "be brief"
+          },
+          {
+            "role": "user",
+            "content": "Hi"
+          }
+        ]
       },
       "want_body": {
         "model": "claude-opus-5-5",
         "max_tokens": 256,
         "temperature": 0,
-        "stop_sequences": ["END"],
-        "system": [{"type": "text", "text": "be brief"}],
-        "messages": [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
+        "stop_sequences": [
+          "END"
+        ],
+        "system": [
+          {
+            "type": "text",
+            "text": "be brief"
+          }
+        ],
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Hi"
+              }
+            ]
+          }
+        ]
       }
     },
     {
       "name": "last system message wins",
       "adapter_model": "m",
-      "request": {"messages": [{"role": "system", "content": "first"}, {"role": "user", "content": "Hi"}, {"role": "system", "content": "second"}]},
-      "want_body": {"model": "m", "max_tokens": 1024, "system": [{"type": "text", "text": "second"}], "messages": [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]}
+      "request": {
+        "messages": [
+          {
+            "role": "system",
+            "content": "first"
+          },
+          {
+            "role": "user",
+            "content": "Hi"
+          },
+          {
+            "role": "system",
+            "content": "second"
+          }
+        ]
+      },
+      "want_body": {
+        "model": "m",
+        "max_tokens": 1024,
+        "system": [
+          {
+            "type": "text",
+            "text": "second"
+          }
+        ],
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Hi"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "tool round merges results into one user turn",
       "adapter_model": "m",
-      "request": {"messages": [
-        {"role": "system", "content": "sys"},
-        {"role": "user", "content": "Weather in NYC and LA?"},
-        {"role": "assistant", "content": "Checking.", "tool_calls": [
-          {"id": "call_1", "name": "get_weather", "arguments": "{\"city\":\"NYC\"}"},
-          {"id": "call_2", "name": "get_weather", "arguments": "{\"city\":\"LA\"}"}
-        ]},
-        {"role": "tool", "tool_call_id": "call_1", "content": "sunny"},
-        {"role": "tool", "tool_call_id": "call_2", "content": "rainy"}
-      ]},
-      "tools": [{"name": "get_weather", "description": "Current weather", "parameters": "{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]}"}],
+      "request": {
+        "messages": [
+          {
+            "role": "system",
+            "content": "sys"
+          },
+          {
+            "role": "user",
+            "content": "Weather in NYC and LA?"
+          },
+          {
+            "role": "assistant",
+            "content": "Checking.",
+            "tool_calls": [
+              {
+                "id": "call_1",
+                "name": "get_weather",
+                "arguments": "{\"city\":\"NYC\"}"
+              },
+              {
+                "id": "call_2",
+                "name": "get_weather",
+                "arguments": "{\"city\":\"LA\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "call_1",
+            "content": "sunny"
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "call_2",
+            "content": "rainy"
+          }
+        ]
+      },
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Current weather",
+          "parameters": "{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]}"
+        }
+      ],
       "want_body": {
         "model": "m",
         "max_tokens": 1024,
-        "system": [{"type": "text", "text": "sys"}],
-        "messages": [
-          {"role": "user", "content": [{"type": "text", "text": "Weather in NYC and LA?"}]},
-          {"role": "assistant", "content": [
-            {"type": "text", "text": "Checking."},
-            {"type": "tool_use", "id": "call_1", "name": "get_weather", "input": {"city": "NYC"}},
-            {"type": "tool_use", "id": "call_2", "name": "get_weather", "input": {"city": "LA"}}
-          ]},
-          {"role": "user", "content": [
-            {"type": "tool_result", "tool_use_id": "call_1", "content": [{"type": "text", "text": "sunny"}]},
-            {"type": "tool_result", "tool_use_id": "call_2", "content": [{"type": "text", "text": "rainy"}]}
-          ]}
+        "system": [
+          {
+            "type": "text",
+            "text": "sys"
+          }
         ],
-        "tools": [{"name": "get_weather", "description": "Current weather", "input_schema": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}]
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Weather in NYC and LA?"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Checking."
+              },
+              {
+                "type": "tool_use",
+                "id": "call_1",
+                "name": "get_weather",
+                "input": {
+                  "city": "NYC"
+                }
+              },
+              {
+                "type": "tool_use",
+                "id": "call_2",
+                "name": "get_weather",
+                "input": {
+                  "city": "LA"
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "tool_use_id": "call_1",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "sunny"
+                  }
+                ]
+              },
+              {
+                "type": "tool_result",
+                "tool_use_id": "call_2",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "rainy"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "name": "get_weather",
+            "description": "Current weather",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        ]
       }
     },
     {
       "name": "empty content and arguments",
       "adapter_model": "m",
-      "request": {"messages": [
-        {"role": "user", "content": "ping"},
-        {"role": "assistant", "tool_calls": [{"id": "call_1", "name": "ping"}]},
-        {"role": "tool", "tool_call_id": "call_1"},
-        {"role": "user", "content": "and now?"}
-      ]},
-      "tools": [{"name": "ping", "parameters": "{\"type\":\"object\"}"}],
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "ping"
+          },
+          {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "id": "call_1",
+                "name": "ping"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "call_1"
+          },
+          {
+            "role": "user",
+            "content": "and now?"
+          }
+        ]
+      },
+      "tools": [
+        {
+          "name": "ping",
+          "parameters": "{\"type\":\"object\"}"
+        }
+      ],
       "want_body": {
         "model": "m",
         "max_tokens": 1024,
         "messages": [
-          {"role": "user", "content": [{"type": "text", "text": "ping"}]},
-          {"role": "assistant", "content": [{"type": "tool_use", "id": "call_1", "name": "ping", "input": {}}]},
-          {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "call_1"}]},
-          {"role": "user", "content": [{"type": "text", "text": "and now?"}]}
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "ping"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "call_1",
+                "name": "ping",
+                "input": {}
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "tool_use_id": "call_1"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "and now?"
+              }
+            ]
+          }
         ],
-        "tools": [{"name": "ping", "description": "", "input_schema": {"type": "object"}}]
+        "tools": [
+          {
+            "name": "ping",
+            "description": "",
+            "input_schema": {
+              "type": "object"
+            }
+          }
+        ]
       }
     },
     {
       "name": "image part",
       "adapter_model": "m",
-      "request": {"messages": [{"role": "user", "parts": [
-        {"type": "text", "text": "what is this?"},
-        {"type": "image", "mime_type": "image/png", "data": "iVBORw0K"}
-      ]}]},
-      "want_body": {"model": "m", "max_tokens": 1024, "messages": [{"role": "user", "content": [
-        {"type": "text", "text": "what is this?"},
-        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "iVBORw0K"}}
-      ]}]}
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "type": "text",
+                "text": "what is this?"
+              },
+              {
+                "type": "image",
+                "mime_type": "image/png",
+                "data": "iVBORw0K"
+              }
+            ]
+          }
+        ]
+      },
+      "want_body": {
+        "model": "m",
+        "max_tokens": 1024,
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "what is this?"
+              },
+              {
+                "type": "image",
+                "source": {
+                  "type": "base64",
+                  "media_type": "image/png",
+                  "data": "iVBORw0K"
+                }
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "pdf part",
       "adapter_model": "m",
-      "request": {"messages": [{"role": "user", "parts": [{"type": "image", "mime_type": "application/pdf", "data": "JVBERi0x"}]}]},
-      "want_body": {"model": "m", "max_tokens": 1024, "messages": [{"role": "user", "content": [
-        {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": "JVBERi0x"}}
-      ]}]}
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "type": "image",
+                "mime_type": "application/pdf",
+                "data": "JVBERi0x"
+              }
+            ]
+          }
+        ]
+      },
+      "want_body": {
+        "model": "m",
+        "max_tokens": 1024,
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "document",
+                "source": {
+                  "type": "base64",
+                  "media_type": "application/pdf",
+                  "data": "JVBERi0x"
+                }
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "anthropic_request_error": [
-    {"name": "tool calls on a user turn", "request": {"messages": [{"role": "user", "content": "x", "tool_calls": [{"id": "c", "name": "t"}]}]}, "error": "anthropic: ToolCalls are valid only on role assistant, got \"user\""},
-    {"name": "tool call id on a user turn", "request": {"messages": [{"role": "user", "content": "x", "tool_call_id": "c"}]}, "error": "anthropic: ToolCallID is valid only on role tool, got \"user\""},
-    {"name": "tool result without id", "request": {"messages": [{"role": "tool", "content": "x"}]}, "error": "anthropic: tool result needs ToolCallID"},
-    {"name": "tool result with parts", "request": {"messages": [{"role": "tool", "tool_call_id": "c", "parts": [{"type": "text", "text": "x"}]}]}, "error": "anthropic: tool result \"c\" carries only Content"},
-    {"name": "tool call without id", "request": {"messages": [{"role": "assistant", "tool_calls": [{"name": "ping"}]}]}, "error": "anthropic: tool call \"ping\" needs an ID"},
-    {"name": "tool call arguments not JSON", "request": {"messages": [{"role": "assistant", "tool_calls": [{"id": "call_1", "name": "ping", "arguments": "{nope"}]}]}, "error": "anthropic: tool call \"call_1\" arguments are not valid JSON"}
+    {
+      "name": "tool calls on a user turn",
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "x",
+            "tool_calls": [
+              {
+                "id": "c",
+                "name": "t"
+              }
+            ]
+          }
+        ]
+      },
+      "error": "anthropic: ToolCalls are valid only on role assistant, got \"user\""
+    },
+    {
+      "name": "tool call id on a user turn",
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "x",
+            "tool_call_id": "c"
+          }
+        ]
+      },
+      "error": "anthropic: ToolCallID is valid only on role tool, got \"user\""
+    },
+    {
+      "name": "tool result without id",
+      "request": {
+        "messages": [
+          {
+            "role": "tool",
+            "content": "x"
+          }
+        ]
+      },
+      "error": "anthropic: tool result needs ToolCallID"
+    },
+    {
+      "name": "tool result with parts",
+      "request": {
+        "messages": [
+          {
+            "role": "tool",
+            "tool_call_id": "c",
+            "parts": [
+              {
+                "type": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      },
+      "error": "anthropic: tool result \"c\" carries only Content"
+    },
+    {
+      "name": "tool call without id",
+      "request": {
+        "messages": [
+          {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "name": "ping"
+              }
+            ]
+          }
+        ]
+      },
+      "error": "anthropic: tool call \"ping\" needs an ID"
+    },
+    {
+      "name": "tool call arguments not JSON",
+      "request": {
+        "messages": [
+          {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "id": "call_1",
+                "name": "ping",
+                "arguments": "{nope"
+              }
+            ]
+          }
+        ]
+      },
+      "error": "anthropic: tool call \"call_1\" arguments are not valid JSON"
+    }
   ],
   "anthropic_headers": [
-    {"name": "key and version", "api_key": "k-test", "env": {}, "want": {"x-api-key": "k-test", "anthropic-version": "2023-06-01"}, "absent": ["authorization", "anthropic-workspace-id"]},
-    {"name": "workspace id", "api_key": "k-test", "env": {"ANTHROPIC_WORKSPACE_ID": "ws-1"}, "want": {"x-api-key": "k-test", "anthropic-workspace-id": "ws-1"}, "absent": ["authorization"]},
-    {"name": "empty workspace id", "api_key": "k-test", "env": {"ANTHROPIC_WORKSPACE_ID": ""}, "want": {"x-api-key": "k-test"}, "absent": ["anthropic-workspace-id"]},
-    {"name": "auth token", "api_key": "k-test", "env": {"ANTHROPIC_AUTH_TOKEN": "tok-1"}, "want": {"x-api-key": "k-test", "authorization": "Bearer tok-1"}, "absent": []},
-    {"name": "blank auth token", "api_key": "k-test", "env": {"ANTHROPIC_AUTH_TOKEN": "  "}, "want": {"x-api-key": "k-test"}, "absent": ["authorization"]}
+    {
+      "name": "key and version",
+      "api_key": "k-test",
+      "env": {},
+      "want": {
+        "x-api-key": "k-test",
+        "anthropic-version": "2023-06-01"
+      },
+      "absent": [
+        "authorization",
+        "anthropic-workspace-id"
+      ]
+    },
+    {
+      "name": "workspace id",
+      "api_key": "k-test",
+      "env": {
+        "ANTHROPIC_WORKSPACE_ID": "ws-1"
+      },
+      "want": {
+        "x-api-key": "k-test",
+        "anthropic-workspace-id": "ws-1"
+      },
+      "absent": [
+        "authorization"
+      ]
+    },
+    {
+      "name": "empty workspace id",
+      "api_key": "k-test",
+      "env": {
+        "ANTHROPIC_WORKSPACE_ID": ""
+      },
+      "want": {
+        "x-api-key": "k-test"
+      },
+      "absent": [
+        "anthropic-workspace-id"
+      ]
+    },
+    {
+      "name": "auth token",
+      "api_key": "k-test",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "tok-1"
+      },
+      "want": {
+        "x-api-key": "k-test",
+        "authorization": "Bearer tok-1"
+      },
+      "absent": []
+    },
+    {
+      "name": "blank auth token",
+      "api_key": "k-test",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "  "
+      },
+      "want": {
+        "x-api-key": "k-test"
+      },
+      "absent": [
+        "authorization"
+      ]
+    }
   ],
   "anthropic_stream": [
     {
       "name": "text deltas",
       "sse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" world\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
-      "want_tokens": ["Hello", " world"],
+      "want_tokens": [
+        "Hello",
+        " world"
+      ],
       "want_error": false
     },
     {
       "name": "crlf framing and comments",
       "sse": ": keep-alive\r\nevent: message_start\r\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\r\n\r\nevent: content_block_start\r\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\r\n\r\nevent: content_block_delta\r\ndata:{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"a\"}}\r\n\r\nevent: message_stop\r\ndata: {\"type\":\"message_stop\"}\r\n\r\n",
-      "want_tokens": ["a"],
+      "want_tokens": [
+        "a"
+      ],
       "want_error": false
     },
     {
       "name": "thinking and tool use yield no text tokens",
       "sse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"usage\":{\"input_tokens\":3,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"hmm\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"sig\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"Let me check.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"get_weather\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"ci\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"ty\\\": \\\"NYC\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":2}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":40}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
-      "want_tokens": ["Let me check."],
+      "want_tokens": [
+        "Let me check."
+      ],
       "want_error": false
     },
     {
       "name": "body ends without message_stop",
       "sse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"partial\"}}\n\n",
-      "want_tokens": ["partial"],
+      "want_tokens": [
+        "partial"
+      ],
       "want_error": false
     },
     {
       "name": "overloaded error event mid-stream",
       "sse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hel\"}}\n\nevent: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n",
-      "want_tokens": ["Hel"],
+      "want_tokens": [
+        "Hel"
+      ],
       "want_error": true
     }
   ],
@@ -208,9 +885,20 @@
       "want": {
         "text": "Let me check.",
         "thinking": "hmm",
-        "tool_calls": [{"id": "toolu_1", "name": "get_weather", "input": {"city": "NYC"}}],
+        "tool_calls": [
+          {
+            "id": "toolu_1",
+            "name": "get_weather",
+            "input": {
+              "city": "NYC"
+            }
+          }
+        ],
         "stop_reason": "tool_use",
-        "usage": {"input_tokens": 3, "output_tokens": 40},
+        "usage": {
+          "input_tokens": 3,
+          "output_tokens": 40
+        },
         "error": false
       }
     },
@@ -220,9 +908,18 @@
       "want": {
         "text": "",
         "thinking": "",
-        "tool_calls": [{"id": "toolu_2", "name": "ping", "input": {}}],
+        "tool_calls": [
+          {
+            "id": "toolu_2",
+            "name": "ping",
+            "input": {}
+          }
+        ],
         "stop_reason": "tool_use",
-        "usage": {"input_tokens": 7, "output_tokens": 9},
+        "usage": {
+          "input_tokens": 7,
+          "output_tokens": 9
+        },
         "error": false
       }
     },
@@ -234,30 +931,518 @@
         "thinking": "",
         "tool_calls": [],
         "stop_reason": "end_turn",
-        "usage": {"input_tokens": 10, "output_tokens": 5},
+        "usage": {
+          "input_tokens": 10,
+          "output_tokens": 5
+        },
         "error": false
       }
     },
     {
       "name": "block start out of order is an error",
       "sse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
-      "want": {"error": true}
+      "want": {
+        "error": true
+      }
     }
   ],
   "anthropic_error": [
-    {"name": "401 auth", "responses": [{"status": 401, "headers": {}, "body": "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"}}"}], "want_kind": "auth", "want_status": 0, "fallbackable": false, "attempts": 1},
-    {"name": "403 auth", "responses": [{"status": 403, "headers": {}, "body": "{\"type\":\"error\",\"error\":{\"type\":\"permission_error\",\"message\":\"no\"}}"}], "want_kind": "auth", "want_status": 0, "fallbackable": false, "attempts": 1},
-    {"name": "404 model", "responses": [{"status": 404, "headers": {}, "body": "{\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: nope\"}}"}], "want_kind": "model", "want_status": 0, "fallbackable": false, "attempts": 1},
-    {"name": "400 invalid request", "responses": [{"status": 400, "headers": {}, "body": "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"bad\"}}"}], "want_kind": "api", "want_status": 400, "fallbackable": false, "attempts": 1},
-    {"name": "429 rate limit retried", "responses": [{"status": 429, "headers": {"retry-after-ms": "1"}, "body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}"}], "want_kind": "rate_limit", "want_status": 0, "fallbackable": true, "attempts": 3},
-    {"name": "529 overloaded retried", "responses": [{"status": 529, "headers": {"retry-after-ms": "1"}, "body": "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}"}], "want_kind": "http_status", "want_status": 529, "fallbackable": true, "attempts": 3},
-    {"name": "500 retried", "responses": [{"status": 500, "headers": {"retry-after-ms": "1"}, "body": "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"internal\"}}"}], "want_kind": "http_status", "want_status": 500, "fallbackable": true, "attempts": 3},
-    {"name": "500 with x-should-retry false", "responses": [{"status": 500, "headers": {"x-should-retry": "false"}, "body": "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"internal\"}}"}], "want_kind": "http_status", "want_status": 500, "fallbackable": true, "attempts": 1},
-    {"name": "400 with x-should-retry true", "responses": [{"status": 400, "headers": {"x-should-retry": "true", "retry-after-ms": "1"}, "body": "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"bad\"}}"}], "want_kind": "api", "want_status": 400, "fallbackable": false, "attempts": 3},
-    {"name": "409 retried", "responses": [{"status": 409, "headers": {"retry-after-ms": "1"}, "body": "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"conflict\"}}"}], "want_kind": "api", "want_status": 409, "fallbackable": false, "attempts": 3},
-    {"name": "503 then success", "responses": [
-      {"status": 503, "headers": {"retry-after-ms": "1"}, "body": "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"unavailable\"}}"},
-      {"status": 200, "headers": {"content-type": "application/json"}, "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}"}
-    ], "want_kind": "", "want_status": 0, "fallbackable": false, "attempts": 2}
+    {
+      "name": "401 auth",
+      "responses": [
+        {
+          "status": 401,
+          "headers": {},
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"}}"
+        }
+      ],
+      "want_kind": "auth",
+      "want_status": 0,
+      "fallbackable": false,
+      "attempts": 1
+    },
+    {
+      "name": "403 auth",
+      "responses": [
+        {
+          "status": 403,
+          "headers": {},
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"permission_error\",\"message\":\"no\"}}"
+        }
+      ],
+      "want_kind": "auth",
+      "want_status": 0,
+      "fallbackable": false,
+      "attempts": 1
+    },
+    {
+      "name": "404 model",
+      "responses": [
+        {
+          "status": 404,
+          "headers": {},
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: nope\"}}"
+        }
+      ],
+      "want_kind": "model",
+      "want_status": 0,
+      "fallbackable": false,
+      "attempts": 1
+    },
+    {
+      "name": "400 invalid request",
+      "responses": [
+        {
+          "status": 400,
+          "headers": {},
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"bad\"}}"
+        }
+      ],
+      "want_kind": "api",
+      "want_status": 400,
+      "fallbackable": false,
+      "attempts": 1
+    },
+    {
+      "name": "429 rate limit retried",
+      "responses": [
+        {
+          "status": 429,
+          "headers": {
+            "retry-after-ms": "1"
+          },
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}"
+        }
+      ],
+      "want_kind": "rate_limit",
+      "want_status": 0,
+      "fallbackable": true,
+      "attempts": 3
+    },
+    {
+      "name": "529 overloaded retried",
+      "responses": [
+        {
+          "status": 529,
+          "headers": {
+            "retry-after-ms": "1"
+          },
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}"
+        }
+      ],
+      "want_kind": "http_status",
+      "want_status": 529,
+      "fallbackable": true,
+      "attempts": 3
+    },
+    {
+      "name": "500 retried",
+      "responses": [
+        {
+          "status": 500,
+          "headers": {
+            "retry-after-ms": "1"
+          },
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"internal\"}}"
+        }
+      ],
+      "want_kind": "http_status",
+      "want_status": 500,
+      "fallbackable": true,
+      "attempts": 3
+    },
+    {
+      "name": "500 with x-should-retry false",
+      "responses": [
+        {
+          "status": 500,
+          "headers": {
+            "x-should-retry": "false"
+          },
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"internal\"}}"
+        }
+      ],
+      "want_kind": "http_status",
+      "want_status": 500,
+      "fallbackable": true,
+      "attempts": 1
+    },
+    {
+      "name": "400 with x-should-retry true",
+      "responses": [
+        {
+          "status": 400,
+          "headers": {
+            "x-should-retry": "true",
+            "retry-after-ms": "1"
+          },
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"bad\"}}"
+        }
+      ],
+      "want_kind": "api",
+      "want_status": 400,
+      "fallbackable": false,
+      "attempts": 3
+    },
+    {
+      "name": "409 retried",
+      "responses": [
+        {
+          "status": 409,
+          "headers": {
+            "retry-after-ms": "1"
+          },
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"conflict\"}}"
+        }
+      ],
+      "want_kind": "api",
+      "want_status": 409,
+      "fallbackable": false,
+      "attempts": 3
+    },
+    {
+      "name": "503 then success",
+      "responses": [
+        {
+          "status": 503,
+          "headers": {
+            "retry-after-ms": "1"
+          },
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"unavailable\"}}"
+        },
+        {
+          "status": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}"
+        }
+      ],
+      "want_kind": "",
+      "want_status": 0,
+      "fallbackable": false,
+      "attempts": 2
+    },
+    {
+      "name": "retry-after huge falls back to backoff",
+      "responses": [
+        {
+          "status": 429,
+          "headers": {
+            "retry-after": "999999"
+          },
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}"
+        },
+        {
+          "status": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}"
+        }
+      ],
+      "want_kind": "",
+      "want_status": 0,
+      "fallbackable": false,
+      "attempts": 2
+    },
+    {
+      "name": "retry-after-ms over 60s falls back",
+      "responses": [
+        {
+          "status": 429,
+          "headers": {
+            "retry-after-ms": "60001"
+          },
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}"
+        },
+        {
+          "status": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}"
+        }
+      ],
+      "want_kind": "",
+      "want_status": 0,
+      "fallbackable": false,
+      "attempts": 2
+    },
+    {
+      "name": "retry-after zero falls back",
+      "responses": [
+        {
+          "status": 429,
+          "headers": {
+            "retry-after": "0"
+          },
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}"
+        },
+        {
+          "status": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}"
+        }
+      ],
+      "want_kind": "",
+      "want_status": 0,
+      "fallbackable": false,
+      "attempts": 2
+    },
+    {
+      "name": "retry-after negative falls back",
+      "responses": [
+        {
+          "status": 429,
+          "headers": {
+            "retry-after": "-5"
+          },
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}"
+        },
+        {
+          "status": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}"
+        }
+      ],
+      "want_kind": "",
+      "want_status": 0,
+      "fallbackable": false,
+      "attempts": 2
+    },
+    {
+      "name": "retry-after NaN falls back",
+      "responses": [
+        {
+          "status": 429,
+          "headers": {
+            "retry-after": "NaN"
+          },
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}"
+        },
+        {
+          "status": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}"
+        }
+      ],
+      "want_kind": "",
+      "want_status": 0,
+      "fallbackable": false,
+      "attempts": 2
+    }
+  ],
+  "key_endpoint": [
+    {
+      "name": "no endpoint in the URI",
+      "op": "apply",
+      "uri": "anthropic://m",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "anthropic://m?api_key=fake-env-key",
+      "refused": false
+    },
+    {
+      "name": "default endpoint named",
+      "op": "apply",
+      "uri": "anthropic://m?base_url=https://api.anthropic.com",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "anthropic://m?base_url=https://api.anthropic.com&api_key=fake-env-key",
+      "refused": false
+    },
+    {
+      "name": "default endpoint, case, port and path",
+      "op": "apply",
+      "uri": "anthropic://m?base_url=https://API.anthropic.com:443/proxy",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "anthropic://m?base_url=https://API.anthropic.com:443/proxy&api_key=fake-env-key",
+      "refused": false
+    },
+    {
+      "name": "llm.yaml base_url",
+      "op": "apply",
+      "uri": "anthropic://m?base_url=https://gw.corp.test/v1",
+      "yaml": "providers:\n  anthropic:\n    base_url: https://gw.corp.test\n",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "anthropic://m?base_url=https://gw.corp.test/v1&api_key=fake-env-key",
+      "refused": false
+    },
+    {
+      "name": "LLM_BASE_URL",
+      "op": "apply",
+      "uri": "anthropic://m?base_url=https://gw.corp.test/v1",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key",
+        "LLM_BASE_URL": "https://gw.corp.test"
+      },
+      "want_uri": "anthropic://m?base_url=https://gw.corp.test/v1&api_key=fake-env-key",
+      "refused": false
+    },
+    {
+      "name": "loopback http base_url",
+      "op": "apply",
+      "uri": "anthropic://m?base_url=http://127.0.0.1:8080",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "anthropic://m?base_url=http://127.0.0.1:8080&api_key=fake-env-key",
+      "refused": false
+    },
+    {
+      "name": "loopback host form",
+      "op": "apply",
+      "uri": "anthropic://localhost:1234/m",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "anthropic://localhost:1234/m?api_key=fake-env-key",
+      "refused": false
+    },
+    {
+      "name": "hostile base_url",
+      "op": "apply",
+      "uri": "anthropic://m?base_url=https://evil.example",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "",
+      "refused": true
+    },
+    {
+      "name": "hostile host form",
+      "op": "apply",
+      "uri": "anthropic://evil.example:8443/m",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "",
+      "refused": true
+    },
+    {
+      "name": "look-alike host",
+      "op": "apply",
+      "uri": "anthropic://m?base_url=https://api.anthropic.com.evil.example",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "",
+      "refused": true
+    },
+    {
+      "name": "default host over plain http",
+      "op": "apply",
+      "uri": "anthropic://m?base_url=http://api.anthropic.com",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "",
+      "refused": true
+    },
+    {
+      "name": "configured endpoint over plain http",
+      "op": "apply",
+      "uri": "anthropic://m?base_url=http://gw.corp.test",
+      "yaml": "providers:\n  anthropic:\n    base_url: http://gw.corp.test\n",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "",
+      "refused": true
+    },
+    {
+      "name": "inline key to any https host",
+      "op": "apply",
+      "uri": "anthropic://m?api_key=fake-inline&base_url=https://elsewhere.example",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "anthropic://m?api_key=fake-inline&base_url=https://elsewhere.example",
+      "refused": false
+    },
+    {
+      "name": "load: hostile base_url",
+      "op": "load",
+      "uri": "anthropic://m?base_url=https://evil.example",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "",
+      "refused": true
+    },
+    {
+      "name": "load: configured plain http endpoint",
+      "op": "load",
+      "uri": "anthropic://m",
+      "yaml": "providers:\n  anthropic:\n    base_url: http://gw.corp.test\n",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "",
+      "refused": true
+    },
+    {
+      "name": "load: default endpoint",
+      "op": "load",
+      "uri": "anthropic://m",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_API_KEY": "fake-env-key"
+      },
+      "want_uri": "",
+      "refused": false
+    },
+    {
+      "name": "resolve: inline key over plain http",
+      "op": "resolve",
+      "uri": "anthropic://m?api_key=fake-inline&base_url=http://elsewhere.example",
+      "yaml": "",
+      "env": {},
+      "want_uri": "",
+      "refused": true
+    },
+    {
+      "name": "resolve: inline key over loopback http",
+      "op": "resolve",
+      "uri": "anthropic://127.0.0.1:9/m?api_key=fake-inline",
+      "yaml": "",
+      "env": {},
+      "want_uri": "",
+      "refused": false
+    },
+    {
+      "name": "resolve: inline key to any https host",
+      "op": "resolve",
+      "uri": "anthropic://m?api_key=fake-inline&base_url=https://elsewhere.example",
+      "yaml": "",
+      "env": {},
+      "want_uri": "",
+      "refused": false
+    }
   ]
 }

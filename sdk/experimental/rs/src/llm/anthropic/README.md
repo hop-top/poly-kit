@@ -27,7 +27,7 @@ scheme in `default_registry()`. Feature `llm-anthropic`, native only.
   An SSE `error` event maps by its type (`overloaded_error` as 529, `rate_limit_error` as 429);
   Go leaves these unclassified.
 - Retries: 2 more attempts on 408, 409, 429, 5xx and transport failures; `x-should-retry` wins;
-  wait `retry-after-ms`/`retry-after`, else 500ms backoff capped at 8s with full jitter. Offline
+  wait `retry-after-ms`/`retry-after` when in (0, 60s], else 500ms backoff capped at 8s with full jitter. Offline
   refusals are never retried.
 - Streaming folds events as the Go SDK's `Message.Accumulate` does: tool-call JSON deltas
   concatenate, usage totals overwrite, out-of-order blocks are an error.

@@ -62,6 +62,13 @@ pub enum LlmError {
     },
     /// A required key resolved nowhere.
     MissingKey(MissingKeyError),
+    /// A key kit will not send to `endpoint` (masked): plain http to a
+    /// remote host (`insecure`), or a host only the URI names.
+    KeyEndpoint {
+        scheme: String,
+        endpoint: String,
+        insecure: bool,
+    },
     /// Refused by the `--offline` policy; never retried.
     Offline(OfflineError),
     /// The request could not be sent or its body not read. Fallbackable,
@@ -137,6 +144,20 @@ impl fmt::Display for LlmError {
             LlmError::InvalidFormat { format, provider } => {
                 write!(f, "invalid format {format:?} for provider {provider:?}")
             }
+            LlmError::KeyEndpoint {
+                scheme,
+                endpoint,
+                insecure: true,
+            } => write!(
+                f,
+                "llm: refusing to send the {scheme} API key over plain http to {endpoint:?}; use https or a loopback host"
+            ),
+            LlmError::KeyEndpoint {
+                scheme, endpoint, ..
+            } => write!(
+                f,
+                "llm: refusing to send the {scheme} API key to {endpoint:?}, which only the URI names; set it as llm.yaml base_url or LLM_BASE_URL, or pass api_key in the URI"
+            ),
             LlmError::MissingKey(e) => e.fmt(f),
             LlmError::Offline(e) => e.fmt(f),
             LlmError::Transport { message } => f.write_str(message),

@@ -35,7 +35,8 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 | `anthropic_headers[]` | key, version, bearer token and workspace headers from the `ANTHROPIC_*` env |
 | `anthropic_stream[]` | text tokens of an SSE body, then done, or an error |
 | `anthropic_accumulate[]` | text, thinking, tool calls, stop reason and usage of an SSE body; Go runs the SDK's `Message.Accumulate`, Rust its stream outcome |
-| `anthropic_error[]` | error kind, status, fallbackable, and attempts under the default retry policy; the last response repeats |
+| `anthropic_error[]` | error kind, status, fallbackable, and attempts under the default retry policy (server waits honored in (0, 60s] only); the last response repeats |
+| `key_endpoint[]` | where a resolved key may go: `apply` (resulting URI), `load`, `resolve` (refused or not) |
 
 Runners are strict: unknown fields, a `version` other than `v1` and a file no runner consumes fail the run. Servers are loopback only; no vector reaches the network.
 

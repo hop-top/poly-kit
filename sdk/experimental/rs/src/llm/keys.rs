@@ -198,6 +198,7 @@ impl Registry {
             out = strip_param(&out, "api_key");
         }
         let res = self.resolve_key(src, &parsed)?;
+        self.guard_key_endpoint(src, &parsed, res.source.kind, &res.value)?;
         if res.source.kind == KeySourceKind::Uri || res.value.is_empty() {
             return Ok(out);
         }
@@ -246,10 +247,10 @@ impl Registry {
             pc.model = b.model.clone();
             pc.extras = b.extras.clone();
         }
-        pc.api_key = self
-            .resolve_key(src, &parsed)
-            .map(|r| r.value)
-            .unwrap_or_default();
+        if let Ok(key) = self.resolve_key(src, &parsed) {
+            self.guard_key_endpoint(src, &parsed, key.source.kind, &key.value)?;
+            pc.api_key = key.value;
+        }
         if !parsed.model.is_empty() {
             pc.model = parsed.model.clone();
         }
@@ -263,6 +264,7 @@ impl Registry {
             pc.base_url = b.clone();
         }
         pc.params = parsed.params.clone();
+        super::endpoint::check_key_endpoint(&parsed.scheme, &pc.api_key, &pc.base_url)?;
 
         let fallbacks = match src.env("LLM_FALLBACK") {
             Some(list) => list

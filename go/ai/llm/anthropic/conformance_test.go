@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/packages/ssestream"
@@ -129,6 +130,15 @@ type anthropicConfFile struct {
 		Fallbackable bool           `json:"fallbackable"`
 		Attempts     int            `json:"attempts"`
 	} `json:"anthropic_error"`
+	KeyEndpoint []struct {
+		Name    string            `json:"name"`
+		Op      string            `json:"op"`
+		URI     string            `json:"uri"`
+		YAML    string            `json:"yaml"`
+		Env     map[string]string `json:"env"`
+		WantURI string            `json:"want_uri"`
+		Refused bool              `json:"refused"`
+	} `json:"key_endpoint"`
 }
 
 func loadAnthropicConf(t *testing.T) anthropicConfFile {
@@ -447,7 +457,10 @@ func TestConformanceAnthropicError(t *testing.T) {
 			}))
 			t.Cleanup(srv.Close)
 			p := newConfAdapter(t, srv.URL, "m", "k")
-			_, err := p.(llm.Completer).Complete(context.Background(), llm.Request{
+			// A wait the client should not honor fails here, not hangs.
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_, err := p.(llm.Completer).Complete(ctx, llm.Request{
 				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
 			})
 			kind, status := errorKind(err)
@@ -455,6 +468,48 @@ func TestConformanceAnthropicError(t *testing.T) {
 			assert.Equal(t, v.WantStatus, status)
 			assert.Equal(t, v.Fallbackable, llmerrors.IsFallbackable(err))
 			assert.Equal(t, v.Attempts, int(attempts.Load()))
+		})
+	}
+}
+
+func TestConformanceKeyEndpoint(t *testing.T) {
+	f := loadAnthropicConf(t)
+	require.NotEmpty(t, f.KeyEndpoint)
+	for _, v := range f.KeyEndpoint {
+		t.Run(v.Name, func(t *testing.T) {
+			clearAnthropicEnv(t)
+			unsetenv(t, "LLM_BASE_URL")
+			unsetenv(t, llm.FallbackEnvKey)
+			unsetenv(t, "LLM_PROVIDER")
+			dir := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", dir)
+			if v.YAML != "" {
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "hop"), 0o750))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "hop", "llm.yaml"), []byte(v.YAML), 0o600))
+			}
+			for k, val := range v.Env {
+				t.Setenv(k, val)
+			}
+			var err error
+			switch v.Op {
+			case "apply":
+				var got string
+				got, err = llm.ApplyAPIKey(context.Background(), nil, v.URI)
+				if !v.Refused {
+					assert.Equal(t, v.WantURI, got)
+				}
+			case "load":
+				_, err = llm.LoadConfig(v.URI)
+			case "resolve":
+				_, err = llm.Resolve(v.URI)
+			default:
+				t.Fatalf("unknown op %q", v.Op)
+			}
+			if v.Refused {
+				assert.ErrorIs(t, err, llm.ErrKeyEndpoint)
+				return
+			}
+			assert.NoError(t, err)
 		})
 	}
 }

@@ -46,6 +46,9 @@ let calls = &s.outcome().unwrap().tool_calls; // replay with Message::assistant_
   then env; `LLM_API_KEY` for required keys only. Blank is unset everywhere.
 - Base URL: `base_url` param, URI host, `LLM_BASE_URL`, llm.yaml. `Registry::resolve` reads the
   URI alone, as Go's `Resolve`.
+- A resolved (non-URI) key goes to a URI-named endpoint only when loopback or same origin as the
+  declared default/endpoints, llm.yaml `base_url` or `LLM_BASE_URL`; a URI's own key, any https host.
+  No key over plain http to a remote host (`check_key_endpoint`). Else `LlmError::KeyEndpoint`.
 - Fallbackable: rate limits, transport failures, 5xx (529 included). Offline refusals are not.
 - Keys never reach `Debug` or error text. Parity:
   [`contracts/llm-v1`](../../../../../contracts/llm-v1/README.md).

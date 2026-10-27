@@ -355,3 +355,87 @@ fn registered_in_the_default_registry() {
     assert_eq!(err.to_string(), "anthropic: API key required");
     assert!(r.resolve("anthropic://claude-opus-5-5?api_key=k").is_ok());
 }
+
+/// A server's wait is honored only within (0, 60s]; anything else falls
+/// back to backoff (at most 500ms before the second attempt).
+#[tokio::test]
+async fn retry_after_outside_bounds_falls_back_to_backoff() {
+    let cases: &[(&str, &str, Option<Duration>)] = &[
+        ("retry-after", "1.5", Some(Duration::from_millis(1500))),
+        ("retry-after", "60", Some(Duration::from_secs(60))),
+        ("retry-after-ms", "250", Some(Duration::from_millis(250))),
+        ("retry-after", "0", None),
+        ("retry-after", "-5", None),
+        ("retry-after", "NaN", None),
+        ("retry-after", "inf", None),
+        ("retry-after", "soon", None),
+        ("retry-after", "61", None),
+        ("retry-after", "999999999999", None),
+        ("retry-after-ms", "60001", None),
+    ];
+    for (header, value, want) in cases {
+        let srv = serve(vec![
+            Canned {
+                status: 429,
+                headers: vec![(header.to_string(), value.to_string())],
+                body: "{}".into(),
+                hang: false,
+            },
+            Canned::json(200, r#"{"content":[],"usage":{}}"#),
+        ])
+        .await;
+        let waits: Arc<std::sync::Mutex<Vec<Duration>>> = Arc::default();
+        let w = waits.clone();
+        let a = Adapter::builder(cfg(&srv.url, "k"))
+            .env(|_| None)
+            .sleeper(Arc::new(move |d| {
+                w.lock().unwrap().push(d);
+                Box::pin(async { true })
+            }))
+            .build()
+            .unwrap();
+        a.complete(&hi()).await.unwrap();
+        let got = waits.lock().unwrap().clone();
+        assert_eq!(got.len(), 1, "{header}: {value}");
+        match want {
+            Some(d) => assert_eq!(got[0], *d, "{header}: {value}"),
+            None => assert!(
+                got[0] <= Duration::from_millis(500),
+                "{header}: {value}: waited {:?}",
+                got[0]
+            ),
+        }
+    }
+}
+
+#[test]
+fn a_key_never_goes_over_plain_http_to_a_remote_host() {
+    let build = |base: &str, env_base: Option<&str>| {
+        let env_base = env_base.map(String::from);
+        Adapter::builder(cfg(base, "k"))
+            .env(move |k| {
+                (k == "ANTHROPIC_BASE_URL")
+                    .then(|| env_base.clone())
+                    .flatten()
+            })
+            .build()
+    };
+    for bad in ["http://gateway.example.test", "HTTP://10.0.0.5:8080"] {
+        assert!(
+            matches!(
+                build(bad, None),
+                Err(LlmError::KeyEndpoint { insecure: true, .. })
+            ),
+            "{bad}"
+        );
+        assert!(build("", Some(bad)).is_err(), "env {bad}");
+    }
+    for ok in [
+        "http://127.0.0.1:9",
+        "http://localhost:9",
+        "http://[::1]:9",
+        "https://gateway.example.test",
+    ] {
+        assert!(build(ok, None).is_ok(), "{ok}");
+    }
+}

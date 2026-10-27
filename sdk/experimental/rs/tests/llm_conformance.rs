@@ -38,6 +38,21 @@ struct Corpus {
     anthropic_accumulate: Vec<AccumulateCase>,
     #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
     anthropic_error: Vec<ErrorCase>,
+    #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+    key_endpoint: Vec<KeyEndpointCase>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct KeyEndpointCase {
+    name: String,
+    op: String,
+    uri: String,
+    yaml: String,
+    env: BTreeMap<String, String>,
+    want_uri: String,
+    refused: bool,
 }
 
 #[derive(Deserialize)]
@@ -617,7 +632,10 @@ mod anthropic {
                 .collect();
             let srv = serve(canned).await;
             let a = adapter(&srv.url, "m", "k");
-            let res = a.complete(&hi()).await;
+            // A wait the client should not honor fails here, not hangs.
+            let res = tokio::time::timeout(std::time::Duration::from_secs(10), a.complete(&hi()))
+                .await
+                .unwrap_or_else(|_| panic!("{}: timed out", v.name));
             let (k, status) = match &res {
                 Ok(_) => ("", 0),
                 Err(e) => kind(e),
@@ -627,6 +645,37 @@ mod anthropic {
             let fallbackable = res.as_ref().err().is_some_and(LlmError::is_fallbackable);
             assert_eq!(fallbackable, v.fallbackable, "{}", v.name);
             assert_eq!(srv.attempts(), v.attempts, "{}", v.name);
+        }
+    }
+
+    #[test]
+    fn key_endpoint_vectors() {
+        use hop_top_kit::llm::{default_registry, ConfigFile, Sources};
+        let c = load();
+        assert!(!c.key_endpoint.is_empty());
+        for v in &c.key_endpoint {
+            let file = ConfigFile::parse(&v.yaml).unwrap();
+            let vars = v.env.clone();
+            let env = move |k: &str| vars.get(k).cloned();
+            let src = Sources {
+                file: &file,
+                env: &env,
+                store: None,
+            };
+            let r = default_registry();
+            let res: Result<(), LlmError> = match v.op.as_str() {
+                "apply" => r.apply_api_key(&src, &v.uri).map(|got| {
+                    assert_eq!(got, v.want_uri, "{}", v.name);
+                }),
+                "load" => r.load_config(&src, &v.uri).map(|_| ()),
+                "resolve" => r.resolve(&v.uri).map(|_| ()),
+                op => panic!("unknown op {op}"),
+            };
+            match res {
+                Err(LlmError::KeyEndpoint { .. }) => assert!(v.refused, "{}: refused", v.name),
+                Err(e) => panic!("{}: {e}", v.name),
+                Ok(()) => assert!(!v.refused, "{}: not refused", v.name),
+            }
         }
     }
 }
