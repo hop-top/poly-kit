@@ -259,11 +259,10 @@ func TestOpenGrants_WithDeliveryConfirmsThroughTheRelay(t *testing.T) {
 }
 
 func TestRelay_RunDeliversOnNotify(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	b := bus.New()
-	defer b.Close(context.Background())
+	t.Cleanup(func() { _ = b.Close(context.Background()) })
 	seen := make(chan struct{}, 4)
 	b.Subscribe("kit.core.consent.#", func(context.Context, bus.Event) error {
 		seen <- struct{}{}
@@ -271,7 +270,7 @@ func TestRelay_RunDeliversOnNotify(t *testing.T) {
 	})
 	a, _ := NewFileAuditorFor("mytool")
 	r := NewRelay(a, b)
-	go func() { _ = r.Run(ctx) }()
+	runRelay(t, r)
 	g := NewGrants(&MemoryGrantStore{}, fixedClock(), WithAuditor(a), WithRelay(r))
 	_ = g.Decide(ctx, allowAlways("io.files.read", ""))
 	select {
