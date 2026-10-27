@@ -18,6 +18,9 @@ Corpora bind every port, Go included; detail lives in each corpus README.
   typing, overrides, precedence, layered load, set/unset. Go and Rust.
 - [netpolicy-v1/](netpolicy-v1/README.md): kit/core/netpolicy `--offline`:
   loopback, dial decision, URL guard, refusal texts. Go and Rust.
+- [llm-v1/](llm-v1/README.md): kit/ai/llm URI parsing and redaction,
+  credential endpoint guard, anthropic adapter requests, headers,
+  streams, errors and retries. Go runner.
 - [completion-spec-v1/](completion-spec-v1/README.md): kit/console/cli Fig
   and Usage specs of one fixture tree, byte for byte. Go and Rust runners.
 - [statemachine-v1/](statemachine-v1/README.md): kit/runtime/domain state

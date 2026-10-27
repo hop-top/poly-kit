@@ -4,7 +4,7 @@
 	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-beta promote-rc promote-open-line proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	completion-regen test-parity test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-py \
+	completion-regen test-parity test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-rs-wasm test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
 	vuln vuln-go vuln-go-binary vuln-osv
@@ -256,7 +256,7 @@ test-rs-wasm: ## Rust: bus and domain wasm32 smoke tests under Node (needs the m
 	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features domain --test domain_statemachine_wasm
 
-test-parity: test-parity-typeid test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -409,6 +409,14 @@ test-parity-netpolicy: ## netpolicy-v1 conformance corpus (Go and Rust runners)
 	go test ./go/core/netpolicy/ -run '^TestConformanceNetpolicy' -count=1
 	@echo "==> netpolicy-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --features api --test netpolicy_conformance --locked
+
+# llm core and anthropic adapter corpus: URI parsing and redaction,
+# credential endpoint guard, request bodies, headers, SSE tokens and
+# accumulation, error mapping and retries. Go runner only until a port
+# lands; vectors served from loopback only.
+test-parity-llm: ## llm-v1 conformance corpus (Go runner)
+	@echo "==> llm-v1 conformance: Go"
+	go test ./go/ai/llm/ ./go/ai/llm/anthropic/ -run '^TestConformance' -count=1
 
 # Cross-process kv storage-binding gate over contracts/kv-v1/keys.json.
 # The Go test drives the Rust half as a `cargo test` subprocess, so this
