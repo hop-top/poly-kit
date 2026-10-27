@@ -1,7 +1,7 @@
 .PHONY: api audit-php build builtins-sync check check-go-version check-mirror-sync check-template-sources clients \
 	clients-php clients-rs clients-test clients-ts job-integration-hatchet job-integration-restate \
 	job-integration-temporal job-test lint lint-config lint-docs lint-go lint-links lint-lock-php \
-	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
+	check-toolchain-parity lint-actions-pinned lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-beta promote-rc promote-open-line proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
 	completion-regen test-parity test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-py \
@@ -428,7 +428,7 @@ test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
 	@echo "==> kv-v1 parity: Go <-> Rust cross-process"
 	KV_CROSSLANG=1 go test ./go/storage/kv/sqlite/... -run '^TestCrossLang' -count=1 -timeout 300s -v
 
-lint: check-toolchain-parity lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths lint-adr-refs lint-internal-refs ## Run all linters
+lint: check-toolchain-parity lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths lint-adr-refs lint-internal-refs lint-actions-pinned ## Run all linters
 
 lint-go: check-go-version tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION + mise.toml Go pin)
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
@@ -605,6 +605,11 @@ lint-adr-refs: ## Guard against ADR-number mentions (decision records live outsi
 lint-internal-refs: ## Guard against references to documents and paths outside the repo
 	@scripts/lint-internal-refs.sh
 
+# Every workflow and composite-action `uses:` is pinned to a full commit
+# SHA, version in a trailing comment; Dependabot keeps them current.
+lint-actions-pinned: ## Fail on GitHub Actions `uses:` refs not pinned to a commit SHA
+	@scripts/lint-actions-pinned.sh
+
 # mise.toml pins the toolchain; CI and the Makefile read it. The files
 # that must carry their own copy (go.mod, rust-toolchain.toml, uv.lock's
 # ruff, workflow literals, the devcontainer) are held to it here. The
@@ -722,7 +727,7 @@ test-hook: ## Run bats tests for pre-push hook
 
 test-lint-scripts: ## Run bats tests for repo lint and sync scripts
 	bats .github/tests/lint-internal-refs.bats .github/tests/sync-builtins.bats \
-		.github/tests/toolchain-parity.bats
+		.github/tests/toolchain-parity.bats .github/tests/lint-actions-pinned.bats
 
 job-test:
 	go test ./go/runtime/job/... -count=1
