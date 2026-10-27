@@ -849,7 +849,12 @@ The URI's `api_key` or `LLM_API_KEY` outranks the env key.
   `cacheReadTokens` / `cacheCreationTokens`; `usageCost(usage, price)`
   prices each kind per million tokens. `ANTHROPIC_BASE_URL`,
   `ANTHROPIC_AUTH_TOKEN` (bearer) and `ANTHROPIC_WORKSPACE_ID` are read
-  from the environment.
+  from the environment, unless hermetic.
+- Anthropic system messages, wherever they sit, join in order with a
+  blank line (`"\n\n"`) into the top-level `system` field; empty ones
+  are skipped. A `cacheControl` on a system message ends a text block
+  there with that breakpoint, so each breakpoint caches exactly the text
+  up to it. (Before, only the last system message was sent.)
 - OpenAI: a host form (`openai://host:port/model`) reaches
   `http://host:port/v1`; a `base_url` param is used as given. A blank
   key sends no `Authorization` header.
@@ -880,7 +885,8 @@ Transport guarantees, the same as Go:
 
 | Error | When | `isFallbackable` |
 |-------|------|------------------|
-| `AuthError` | 401, 403 | no |
+| `AuthError` | 401 | no |
+| `PermissionDeniedError` (an `AuthError`) | 403, an Anthropic `permission_error` stream event | no |
 | `ModelError` | 404 | no |
 | `RateLimitError` | 429 | yes |
 | `HTTPStatusError` | 5xx, overloaded stream event (529), a redirect | 5xx only |
@@ -890,6 +896,94 @@ Transport guarantees, the same as Go:
 Bundles share one registry and one set of error classes, so
 `instanceof` and `isFallbackable` hold across entry points.
 `redactURI(uri)` masks credentials in a URI before you log it.
+
+`PermissionDeniedError`: the key was accepted but may not use the
+model, workspace or feature; retrying with it will not help. It extends
+`AuthError`, so `instanceof AuthError` still catches every 401 and 403;
+test `PermissionDeniedError` first to tell them apart.
+
+### Stream events
+
+Set `Request.streamEvents` and the anthropic adapter's `stream` and
+`streamWithTools` also yield tool-call events and usage snapshots
+(Go [Tool-call and usage events](llm.md#tool-call-and-usage-events)):
+
+```ts
+for await (const tok of llm.streamWithTools({ messages, streamEvents: true }, tools)) {
+  if (tok.usage) enforceBudget(tok.usage);       // cumulative, never a delta
+  else if (tok.toolCall?.kind === 'end') run(tok.toolCall.call!);
+  else process.stdout.write(tok.content);
+}
+```
+
+- A token carries one thing: `content`, `thinking`, `toolCall`, `usage`
+  or `done`; `content` is `""` on all but text.
+- `toolCall`: per call one `start` (`index`, `id`, original `name`), any
+  `delta` (`argumentsDelta`, raw JSON fragments), one `end` (`call`,
+  exactly `outcome().toolCalls[index]`). Parallel calls interleave by
+  `index`. A call open when the stream fails gets no `end`.
+- `usage`: when the provider reports it (message start, message delta);
+  the last one equals `outcome().usage`.
+- Unset, the stream yields exactly the tokens it did before. `complete`
+  and `callWithTools` ignore it; the openai adapter does not emit events
+  yet.
+
+### Tool choice
+
+`Request.toolChoice` constrains tool use on `callWithTools` and
+`streamWithTools` (Go [Tool choice](llm.md#tool-choice)):
+
+| `mode` | Anthropic | OpenAI, `routellm` |
+|--------|-----------|--------------------|
+| `auto` | `{type: "auto"}` | `"auto"` |
+| `any` | `{type: "any"}` | `"required"` |
+| `none` | `{type: "none"}` | `"none"` |
+| `tool` + `name` | `{type: "tool", name}` | `{type: "function", function: {name}}` |
+
+`name` is the `ToolDef.name` as defined; it goes out under its wire
+name. Unset sends no `tool_choice`. `checkToolChoice(choice, tools)`
+rejects, and every adapter throws `LLMError` before sending, for an
+unknown mode, no tools (including `complete` and `stream`), a missing
+name with `tool`, a name with another mode, or a name no tool has.
+
+### Hermetic mode
+
+`{ hermetic: true }` on `createLLM`, `resolve` or `loadConfig` reads
+nothing ambient: the provider comes from the URI alone (`api_key`,
+`base_url`, host). No `LLM_PROVIDER`, `LLM_FALLBACK`, `LLM_API_KEY`,
+`LLM_BASE_URL`, `<SCHEME>_API_KEY` (`ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, ...), `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`,
+`ANTHROPIC_WORKSPACE_ID` or `ROUTELLM_*`; the TypeScript SDK reads no
+config file either way. Built directly, an adapter takes
+`ResolvedConfig.hermetic`. Go: [Hermetic mode](llm.md#hermetic-mode).
+
+```ts
+const llm = createLLM(`anthropic://claude-sonnet-4-5?api_key=${key}`, { hermetic: true });
+```
+
+### Lifecycle payloads
+
+The TypeScript client publishes no bus events: `onRequest` and
+`onResponse` run in process with the full request and response (for
+`callWithTools`, the response now carries `usage`, `finishReason` and
+`thinking`). To forward a call to a bus, log or peer, send the
+metadata-only payload Go publishes on `kit.ai.request.started` and
+`kit.ai.response.received`
+([no content](llm.md#request-and-response-payloads-carry-no-content)):
+
+```ts
+import { requestStartedPayload, responseReceivedPayload } from '@hop-top/kit/llm';
+
+requestStartedPayload('tool_call', req, tools.length);
+// { op, model?, messages, roles, parts?, content_bytes, tools, max_tokens,
+//   has_temperature, thinking, stop_sequences, extension_keys? }
+responseReceivedPayload('tool_call', resp, resp.toolCalls, ms);
+// { op, finish_reason?, usage, content_bytes, tool_calls, duration_ms }
+```
+
+Neither holds message text, tool names or arguments, extension values
+or media; `content_bytes` is their UTF-8 size. Keys are the wire
+spelling the llm-v1 `bus_*` vectors pin.
 
 ## LLM tool calling
 
