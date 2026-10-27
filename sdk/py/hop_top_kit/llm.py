@@ -76,6 +76,8 @@ __all__ = [  # noqa: RUF022 — grouped by category
     "RouterTimeoutError",
     "ContractViolationError",
     "ThresholdInvalidError",
+    "ToolNameReason",
+    "ToolNameError",
     "is_fallbackable",
 ]
 
@@ -502,8 +504,56 @@ class ThresholdInvalidError(LLMError):
         super().__init__(f"threshold {threshold:.4f} out of [0,1] range")
 
 
+class ToolNameReason(StrEnum):
+    """Why a :class:`ToolNameError` fails a request."""
+
+    EMPTY = "empty"
+    INVALID_UTF8 = "invalid_utf8"
+    INVALID = "invalid"
+    DUPLICATE = "duplicate"
+    COLLISION = "collision"
+
+
+class ToolNameError(LLMError):
+    """A tool definition's name fails the request before anything is sent.
+
+    ``reason`` is a :class:`ToolNameReason` value; ``other`` names the
+    earlier tool a ``collision`` maps to the same wire name. Not
+    fallbackable: the caller's tool set needs fixing. See
+    :mod:`hop_top_kit.llm_toolnames`.
+    """
+
+    def __init__(self, provider: str, reason: str, name: str, other: str = "") -> None:
+        self.provider = provider
+        self.reason = reason
+        self.name = name
+        self.other = other
+        super().__init__(self._message())
+
+    def _message(self) -> str:
+        p, n = self.provider, self.name
+        if self.reason == ToolNameReason.EMPTY:
+            return f"tool name is empty (provider {p!r})"
+        if self.reason == ToolNameReason.INVALID_UTF8:
+            return f"tool name {n!r} is not valid UTF-8 (provider {p!r})"
+        if self.reason == ToolNameReason.INVALID:
+            return f"tool name {n!r} is not valid for provider {p!r}"
+        if self.reason == ToolNameReason.DUPLICATE:
+            return f"tool name {n!r} is defined twice (provider {p!r})"
+        if self.reason == ToolNameReason.COLLISION:
+            return (
+                f"tool names {self.other!r} and {n!r} map to the same provider name "
+                f"(provider {p!r})"
+            )
+        return f"tool name {n!r}: {self.reason} (provider {p!r})"
+
+
 def is_fallbackable(err: Exception) -> bool:
-    """Return True if *err* should trigger a fallback attempt."""
+    """Return True if *err* should trigger a fallback attempt.
+
+    Errors not listed here, :class:`ToolNameError` among them, are not
+    fallbackable.
+    """
     return isinstance(err, (RateLimitError, RouterUnavailableError, RouterTimeoutError))
 
 

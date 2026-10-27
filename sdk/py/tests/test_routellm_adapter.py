@@ -462,3 +462,85 @@ class TestMapParts:
         msg = llm.Message(role="user", parts=[llm.ContentPart(type=llm.PartType.TEXT, text="x")])
         list(_adapter(controller).stream(llm.Request(messages=[msg])))
         assert _sent_messages(controller)[0]["content"] == [{"type": "text", "text": "x"}]
+
+
+# ------------------------------------------------------------------
+# Tool names: replayed history goes out under the openai rule
+# ------------------------------------------------------------------
+
+
+def _adapter_with(controller: mock.MagicMock, params: dict[str, str]):
+    from hop_top_kit.routellm_adapter import RouteLLMAdapter
+
+    cfg = llm.ResolvedConfig(
+        uri=llm.URI(scheme="routellm", model="mf:0.7", params=params),
+        provider=llm.ProviderConfig(params=params, extras={}),
+    )
+    with mock.patch("hop_top_kit.routellm_adapter.Controller", return_value=controller):
+        return RouteLLMAdapter(cfg)
+
+
+def _history(*names: str) -> list[llm.Message]:
+    return [
+        llm.Message(role="user", content="go"),
+        llm.Message(
+            role="assistant",
+            tool_calls=[
+                llm.ToolCall(id=f"c{i}", name=n, arguments="{}") for i, n in enumerate(names)
+            ],
+        ),
+    ]
+
+
+def _sent_call_names(controller: mock.MagicMock) -> list[str]:
+    return [tc["function"]["name"] for tc in _sent_messages(controller)[1]["tool_calls"]]
+
+
+class TestToolNames:
+    LONG = "ns.very_long_namespace_segment.another_segment.and_one_more_segment.read"
+    LONG_WIRE = "ns_very_long_namespace_segment_another_segment_and_one__b076f47d"
+
+    @pytest.mark.parametrize("entry", ["complete", "stream"])
+    def test_history_names_sanitized_by_default(self, entry):
+        controller = mock.MagicMock()
+        controller.completion.return_value = (
+            _completion_result() if entry == "complete" else _stream_result()
+        )
+        adapter = _adapter_with(controller, {})
+        out = getattr(adapter, entry)(llm.Request(messages=_history("pane.open", "ok", self.LONG)))
+        if entry == "stream":
+            list(out)
+        assert _sent_call_names(controller) == ["pane_open", "ok", self.LONG_WIRE]
+
+    @pytest.mark.parametrize("entry", ["complete", "stream"])
+    def test_history_names_unchanged_in_strict(self, entry):
+        controller = mock.MagicMock()
+        controller.completion.return_value = (
+            _completion_result() if entry == "complete" else _stream_result()
+        )
+        adapter = _adapter_with(controller, {"tool_names": "strict"})
+        out = getattr(adapter, entry)(llm.Request(messages=_history("pane.open")))
+        if entry == "stream":
+            list(out)
+        assert _sent_call_names(controller) == ["pane.open"]
+
+    def test_explicit_sanitize_param(self):
+        controller = mock.MagicMock()
+        controller.completion.return_value = _completion_result()
+        adapter = _adapter_with(controller, {"tool_names": "sanitize"})
+        adapter.complete(llm.Request(messages=_history("a:b")))
+        assert _sent_call_names(controller) == ["a_b"]
+
+    def test_unknown_mode_fails_construction(self):
+        controller = mock.MagicMock()
+        with pytest.raises(llm.LLMError, match="tool_names must be"):
+            _adapter_with(controller, {"tool_names": "lenient"})
+        controller.completion.assert_not_called()
+
+    def test_map_messages_default_keeps_names(self):
+        """map_messages without a table sends names as given (callers that
+        build the wire themselves)."""
+        from hop_top_kit.routellm_adapter import map_messages
+
+        out = map_messages(_history("pane.open"))
+        assert out[1]["tool_calls"][0]["function"]["name"] == "pane.open"
