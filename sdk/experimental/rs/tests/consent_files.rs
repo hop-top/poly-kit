@@ -276,3 +276,55 @@ fn telemetry_writes_keep_comments_in_the_legacy_files() {
     let v: serde_json::Value = serde_norway::from_str(&legacy).unwrap();
     assert_eq!(v, serde_json::json!({"telemetry": {}}));
 }
+
+/// Revoking telemetry clears the old-location records too (macOS:
+/// `~/.config/kit/`, where kit-rs telemetry used to read).
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_revoke_clears_old_location_records() {
+    use hop_top_kit::consent::CAP_TELEMETRY;
+    let (_g, tmp) = isolated();
+    std::env::remove_var("XDG_CONFIG_HOME");
+    let old_cfg = tmp.path().join(".config/kit/config.yaml");
+    let old_leg = tmp.path().join(".config/kit/telemetry.yaml");
+    std::fs::create_dir_all(old_cfg.parent().unwrap()).unwrap();
+    std::fs::write(
+        &old_cfg,
+        "kit:\n  telemetry:\n    consent:\n      state: denied\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &old_leg,
+        "other: keep\ntelemetry:\n  consent:\n    state: granted\n",
+    )
+    .unwrap();
+    let canon = hop_top_kit::xdg::config_home().join("kit/config.yaml");
+    std::fs::create_dir_all(canon.parent().unwrap()).unwrap();
+    std::fs::write(
+        &canon,
+        "kit:\n  telemetry:\n    consent:\n      state: granted\n",
+    )
+    .unwrap();
+    let g = open(Some("dek")).unwrap().env(|_| String::new()).build();
+    assert!(
+        !g.check(CAP_TELEMETRY, "").unwrap().allowed,
+        "an old deny beats a canonical yes"
+    );
+    g.revoke(CAP_TELEMETRY, "", DecisionSource::Flag).unwrap();
+    assert!(!old_cfg.exists(), "a record-only old file is removed");
+    let v: serde_json::Value =
+        serde_norway::from_str(&std::fs::read_to_string(&old_leg).unwrap()).unwrap();
+    assert_eq!(v, serde_json::json!({"other": "keep", "telemetry": {}}));
+    g.decide(allow_always(CAP_TELEMETRY, "")).unwrap();
+    assert!(g.check(CAP_TELEMETRY, "").unwrap().allowed);
+    std::fs::write(
+        &old_cfg,
+        "kit:\n  telemetry:\n    consent:\n      state: denied\n",
+    )
+    .unwrap();
+    assert!(!g.check(CAP_TELEMETRY, "").unwrap().allowed);
+    g.decide(allow_always(CAP_TELEMETRY, "")).unwrap();
+    assert!(!old_cfg.exists(), "a re-grant through the store converges");
+    assert!(g.check(CAP_TELEMETRY, "").unwrap().allowed);
+    std::env::set_var("XDG_CONFIG_HOME", tmp.path().join("config"));
+}

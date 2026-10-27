@@ -14,7 +14,8 @@
 //!   `~/.local/state` (other Unix).
 //! - legacy homes: where kit-rs telemetry looked before it resolved
 //!   here (`~/.config`, `~/.local/state`), when that differs from the
-//!   home above; readers fall back to them.
+//!   home above. Readers migrate a file there once (moved, not copied)
+//!   and otherwise count it only as a deny, never as a grant.
 //!
 //! The resolvers take the OS and the env lookup, so every branch is
 //! testable on any host. Gated behind `config` or `telemetry`, off wasm32.

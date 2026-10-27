@@ -108,27 +108,88 @@ fn old_location_paths() -> Option<(PathBuf, PathBuf)> {
 /// and no deny. A file that exists but cannot be read or parsed fails
 /// closed.
 ///
-/// Where kit-rs used to look (`~/.config/kit/` on macOS and Windows with
-/// no `XDG_CONFIG_HOME`) is read too, after the current location, and
-/// joins the same deny-wins combination.
+/// Old location (`~/.config/kit/`, where this loader read before it
+/// resolved through `xdg`; macOS and Windows): migrate once, deny only.
+/// With no canonical record, an old file whose canonical counterpart
+/// does not exist is moved there and read as canonical. Otherwise an
+/// old deny still applies and an old allow is ignored; an ignored old
+/// file holding nothing but the record is removed.
 pub fn load_consent() -> Consent {
-    let mut paths = vec![(consent_path(), legacy_consent_path())];
-    paths.extend(old_location_paths());
-    let mut records = Vec::new();
-    for (canonical, legacy) in &paths {
-        let (Ok(c), Ok(l)) = (
-            read_record(canonical, canonical_block),
-            read_record(legacy, legacy_block),
-        ) else {
-            return Consent::denied();
-        };
-        records.extend([c, l]);
+    let (Ok(c), Ok(l)) = (
+        read_record(&consent_path(), canonical_block),
+        read_record(&legacy_consent_path(), legacy_block),
+    ) else {
+        return Consent::denied();
+    };
+    let canonical_unset = c.is_none() && l.is_none();
+    let mut records = vec![c, l];
+    if let Some((oc, ol)) = old_location_paths() {
+        for (old, new, is_canonical) in [
+            (oc, consent_path(), true),
+            (ol, legacy_consent_path(), false),
+        ] {
+            let rec = if is_canonical {
+                read_record(&old, canonical_block)
+            } else {
+                read_record(&old, legacy_block)
+            };
+            let Ok(rec) = rec else {
+                return Consent::denied();
+            };
+            let Some(rec) = rec else { continue };
+            let migrated = canonical_unset && !new.exists() && migrate(&old, &new).is_ok();
+            if migrated || !rec.allowed {
+                records.push(Some(rec));
+            } else if only_record(&old, is_canonical) {
+                let _ = fs::remove_file(&old);
+            }
+        }
     }
     let pick = |allowed: bool| records.iter().flatten().find(|c| c.allowed == allowed);
     pick(false)
         .or_else(|| pick(true))
         .cloned()
         .unwrap_or_else(Consent::denied)
+}
+
+/// Moves `old` to `new` (0600 in a 0700 dir): a rename, or a copy and
+/// delete across filesystems.
+fn migrate(old: &std::path::Path, new: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = new.parent().unwrap_or(std::path::Path::new("."));
+    fs::create_dir_all(dir)?;
+    fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+    if fs::rename(old, new).is_err() {
+        let tmp = new.with_extension("migrate");
+        fs::copy(old, &tmp)?;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))?;
+        fs::rename(&tmp, new)?;
+        fs::remove_file(old)?;
+    }
+    fs::set_permissions(new, fs::Permissions::from_mode(0o600))
+}
+
+/// Whether the file holds the consent record and nothing else.
+fn only_record(p: &std::path::Path, canonical: bool) -> bool {
+    use serde_norway::Value;
+    let Ok(text) = fs::read_to_string(p) else {
+        return false;
+    };
+    let Ok(Value::Mapping(root)) = serde_norway::from_str::<Value>(&text) else {
+        return false;
+    };
+    let sole = |m: &serde_norway::Mapping, k: &str| -> Option<Value> {
+        (m.len() == 1).then(|| m.get(k).cloned()).flatten()
+    };
+    let telemetry = if canonical {
+        match sole(&root, "kit") {
+            Some(Value::Mapping(kit)) => sole(&kit, "telemetry"),
+            _ => None,
+        }
+    } else {
+        sole(&root, "telemetry")
+    };
+    matches!(telemetry, Some(Value::Mapping(t)) if sole(&t, "consent").is_some())
 }
 
 /// Unreadable: the file exists but does not read or parse.

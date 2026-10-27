@@ -394,3 +394,19 @@ pub(crate) fn replace_legacy_consent(doc: &mut Node, d: &TelemetryDecision) {
         set_child(t, "consent", consent_node(d));
     }
 }
+
+/// Whether `doc` is only the emptied consent path (`kit.telemetry` or
+/// `telemetry` holding nothing): the file held the record and no more.
+pub(crate) fn only_consent_path(doc: &Node, canonical: bool) -> bool {
+    use crate::config::getter::node_to_value;
+    let skeleton = if canonical {
+        "kit:\n  telemetry: {}\n"
+    } else {
+        "telemetry: {}\n"
+    };
+    let want = parse_doc(skeleton)
+        .ok()
+        .flatten()
+        .map(|n| node_to_value(&n));
+    Some(node_to_value(doc)) == want
+}

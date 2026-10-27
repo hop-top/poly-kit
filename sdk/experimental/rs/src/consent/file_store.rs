@@ -11,11 +11,12 @@ use super::error::{Error, GrantError};
 use super::grant::{Grant, Key, CAP_TELEMETRY};
 use super::paths::{state_file, write_file_atomic, GRANTS_FILE};
 use super::store::GrantStore;
+use super::telemetry::DENIED;
 use super::telemetry::{deny_wins, TelemetryDecision};
 use super::yaml_doc::{
     consent_block, consent_node, decode_consent, decode_grants, edit_or_render, encode_grants,
-    parse_doc, remove_consent, render, replace_legacy_consent, splice_remove, splice_set,
-    upsert_consent,
+    only_consent_path, parse_doc, remove_consent, render, replace_legacy_consent, splice_remove,
+    splice_set, upsert_consent,
 };
 
 /// The [`GrantStore`] over `<XDG_STATE_HOME>/<tool>/consent/grants.yaml`.
@@ -36,6 +37,10 @@ pub struct FileStore {
     grants_path: PathBuf,
     config_path: PathBuf,
     legacy_path: PathBuf,
+    /// Where kit-rs telemetry read before it resolved through `xdg`
+    /// (`~/.config/kit/{config,telemetry}.yaml`, macOS and Windows):
+    /// deny-only, cleared by every telemetry write and revoke.
+    old: Option<(PathBuf, PathBuf)>,
     mu: Mutex<()>,
 }
 
@@ -94,11 +99,15 @@ impl FileStore {
     /// telemetry records under `<XDG_CONFIG_HOME>/kit/`.
     pub fn for_tool(tool: &str) -> Result<Self, Error> {
         let kit = crate::xdg::raw_config_dir("kit");
-        Ok(Self::at(
+        let mut s = Self::at(
             state_file(tool, GRANTS_FILE)?,
             kit.join("config.yaml"),
             kit.join("telemetry.yaml"),
-        ))
+        );
+        s.old = crate::xdg::legacy_config_home()
+            .map(|h| h.join("kit"))
+            .map(|k| (k.join("config.yaml"), k.join("telemetry.yaml")));
+        Ok(s)
     }
 
     /// The store over explicit paths: the grants file, config.yaml and
@@ -112,6 +121,7 @@ impl FileStore {
             grants_path: grants.into(),
             config_path: config.into(),
             legacy_path: legacy.into(),
+            old: None,
             mu: Mutex::new(()),
         }
     }
@@ -185,7 +195,47 @@ impl FileStore {
             .unwrap_or_else(TelemetryDecision::unknown);
         let cfg = self.read_legacy(&self.config_path, true)?;
         let old = self.read_legacy(&self.legacy_path, false)?;
-        Ok(deny_wins(&[own, deny_wins(&[cfg, old])]))
+        let mut all = vec![own, deny_wins(&[cfg, old])];
+        for (path, canonical) in self.old_paths() {
+            let d = self.read_legacy(&path, canonical)?;
+            if d.state == DENIED {
+                all.push(d);
+            }
+        }
+        Ok(deny_wins(&all))
+    }
+
+    fn old_paths(&self) -> Vec<(PathBuf, bool)> {
+        self.old
+            .iter()
+            .flat_map(|(c, l)| [(c.clone(), true), (l.clone(), false)])
+            .collect()
+    }
+
+    /// Removes the old-location records: a file that held nothing else
+    /// is deleted, any other is spliced like the current records.
+    fn clear_old_locked(&self) -> Result<(), Error> {
+        for (path, canonical) in self.old_paths() {
+            let Some((src, mut doc)) = read_text_doc(&path)? else {
+                continue;
+            };
+            if consent_block(&doc, canonical).is_none() {
+                continue;
+            }
+            remove_consent(&mut doc, canonical);
+            if only_consent_path(&doc, canonical) {
+                fs::remove_file(&path).map_err(|e| io_err("remove", &path, e))?;
+                continue;
+            }
+            let (key, parent) = if canonical {
+                ("kit.telemetry.consent", "kit.telemetry")
+            } else {
+                ("telemetry.consent", "telemetry")
+            };
+            let text = edit_or_render(Some(&src), &doc, &|s| splice_remove(s, key, parent));
+            write_file_atomic(&path, text.as_bytes())?;
+        }
+        Ok(())
     }
 
     /// The combined telemetry decision (Go `FileStore.Get`).
@@ -200,7 +250,7 @@ impl FileStore {
         self.put_locked(g)?;
         match self.mirror_legacy(&TelemetryDecision::from_grant(g)) {
             Err(DocError::Other(e)) => Err(e),
-            _ => Ok(()),
+            _ => self.clear_old_locked(),
         }
     }
 
@@ -244,6 +294,7 @@ impl FileStore {
             });
             write_file_atomic(&self.config_path, text.as_bytes())?;
         }
+        self.clear_old_locked()?;
         let Some((src, mut legacy)) = read_text_doc(&self.legacy_path)? else {
             return Ok(());
         };

@@ -101,5 +101,105 @@ fn macos_old_install_id_is_moved_not_regenerated() {
     write(&old, &[7u8; 32]);
     let id = get_install_id().unwrap();
     assert_eq!(std::fs::read(install_id_path()).unwrap(), vec![7u8; 32]);
+    assert!(!old.exists(), "migrated by move");
     assert_eq!(get_install_id().unwrap(), id);
+}
+
+#[cfg(target_os = "macos")]
+const YES: &[u8] = b"kit:\n  telemetry:\n    consent:\n      state: granted\n";
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_canonical_reset_and_old_yes_is_not_granted() {
+    let (_g, tmp) = bare_home();
+    write(&consent_path(), b"other: 1\nkit:\n  telemetry: {}\n");
+    let old = tmp.path().join(".config/kit/config.yaml");
+    write(&old, YES);
+    assert!(!load_consent().allowed, "an old-location yes never grants");
+    assert!(!old.exists(), "an ignored old-location allow is removed");
+    assert!(!load_consent().allowed);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_canonical_unset_and_old_yes_migrates_once() {
+    let (_g, tmp) = bare_home();
+    let old = tmp.path().join(".config/kit/config.yaml");
+    write(&old, YES);
+    assert!(load_consent().allowed);
+    assert!(!old.exists(), "migrated, not copied");
+    assert_eq!(std::fs::read(consent_path()).unwrap(), YES);
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(consent_path())
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o600);
+    assert!(load_consent().allowed);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_old_no_and_canonical_yes_is_deny_and_kept() {
+    let (_g, tmp) = bare_home();
+    write(&consent_path(), YES);
+    let old = tmp.path().join(".config/kit/telemetry.yaml");
+    write(&old, b"telemetry:\n  consent:\n    state: denied\n");
+    assert!(!load_consent().allowed);
+    assert!(old.exists(), "an old-location deny keeps applying");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_old_file_with_other_keys_is_not_deleted() {
+    let (_g, tmp) = bare_home();
+    write(&consent_path(), b"kit:\n  telemetry: {}\n");
+    let old = tmp.path().join(".config/kit/config.yaml");
+    write(
+        &old,
+        b"mine: keep\nkit:\n  telemetry:\n    consent:\n      state: granted\n",
+    );
+    assert!(!load_consent().allowed);
+    assert!(
+        old.exists(),
+        "a file holding more than the record is left alone"
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_rotate_never_resurrects_the_old_install_id() {
+    let (_g, tmp) = bare_home();
+    let old = tmp
+        .path()
+        .join(".local/state/kit/telemetry/installation_id");
+    write(&old, &[7u8; 32]);
+    let first = get_install_id().unwrap();
+    assert!(!old.exists(), "migrated by move");
+    let rotated = hop_top_kit::telemetry::rotate().unwrap();
+    assert_ne!(rotated, first);
+    assert!(!old.exists());
+    std::fs::remove_file(install_id_path()).unwrap();
+    let fresh = get_install_id().unwrap();
+    assert_ne!(fresh, first, "the old id never comes back");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_rotate_removes_a_stray_old_install_id() {
+    let (_g, tmp) = bare_home();
+    get_install_id().unwrap();
+    let old = tmp
+        .path()
+        .join(".local/state/kit/telemetry/installation_id");
+    write(&old, &[9u8; 32]);
+    hop_top_kit::telemetry::rotate().unwrap();
+    assert!(!old.exists());
+    write(&old, &[9u8; 32]);
+    get_install_id().unwrap();
+    assert!(
+        !old.exists(),
+        "a read with a canonical id drops the stale one"
+    );
 }

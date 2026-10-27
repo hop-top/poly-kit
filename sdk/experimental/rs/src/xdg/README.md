@@ -27,7 +27,8 @@ assert!(dir.ends_with("mytool"));
 - Home is `$HOME`, else `/` (`%USERPROFILE%` first on Windows). On Windows a variable needs a
   volume to count as absolute and only `%USERPROFILE%` expands, as in adrg/xdg.
 - `legacy_config_home` / `legacy_state_home`: `~/.config` / `~/.local/state` when no variable is
-  set and the default is elsewhere (macOS, Windows), where kit-rs telemetry read before.
+  set and the default is elsewhere (macOS, Windows), where kit-rs telemetry read before. Readers
+  migrate a file found there once and otherwise count it only as a deny; never as a grant.
 - Not ported: data/cache/runtime dirs, file and search helpers, the write guard.
 
 ## Neighbours

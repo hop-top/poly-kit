@@ -38,26 +38,43 @@ fn id_under(state_home: &Path) -> PathBuf {
         .join("installation_id")
 }
 
+fn old_id_path() -> Option<PathBuf> {
+    crate::xdg::legacy_state_home().map(|h| id_under(&h))
+}
+
+/// Removes an id kit-rs wrote before it resolved through `xdg`, so it
+/// can never come back through the fallback.
+fn drop_old_location() -> io::Result<()> {
+    match old_id_path().map(fs::remove_file) {
+        Some(Err(e)) if e.kind() != io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
+}
+
 /// Moves an id kit-rs wrote before it resolved through `xdg`
 /// (`~/.local/state`, macOS and Windows) to the current path, so the
-/// installation keeps its id. `Ok(false)` when there is none.
+/// installation keeps its id: a rename, or a copy and delete across
+/// filesystems. Migrate once: the old file is gone afterwards.
+/// `Ok(false)` when there is no valid old id.
 fn adopt_old_location(p: &Path) -> io::Result<bool> {
-    let Some(old) = crate::xdg::legacy_state_home().map(|h| id_under(&h)) else {
+    let Some(old) = old_id_path() else {
         return Ok(false);
     };
-    let data = match fs::read(&old) {
-        Ok(d) => d,
+    match fs::metadata(&old) {
+        Ok(m) if m.len() == INSTALL_ID_SIZE as u64 => {}
+        Ok(_) => return Ok(false),
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
         Err(e) => return Err(e),
-    };
-    if data.len() != INSTALL_ID_SIZE {
-        return Ok(false);
     }
     ensure_parent(p)?;
-    let tmp = p.with_extension("new");
-    fs::write(&tmp, &data)?;
-    fs::set_permissions(&tmp, fs::Permissions::from_mode(FILE_PERM))?;
-    fs::rename(&tmp, p)?;
+    if fs::rename(&old, p).is_err() {
+        let tmp = p.with_extension("new");
+        fs::copy(&old, &tmp)?;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(FILE_PERM))?;
+        fs::rename(&tmp, p)?;
+        fs::remove_file(&old)?;
+    }
+    fs::set_permissions(p, fs::Permissions::from_mode(FILE_PERM))?;
     Ok(true)
 }
 
@@ -68,7 +85,11 @@ fn adopt_old_location(p: &Path) -> io::Result<bool> {
 pub fn get_install_id() -> io::Result<String> {
     let p = install_id_path();
 
-    // Fast path: file already exists (or an old-location id moves in).
+    // Fast path: file already exists (a stale old-location id is then
+    // dropped), or an old-location id moves in.
+    if p.exists() {
+        drop_old_location()?;
+    }
     if p.exists() || adopt_old_location(&p)? {
         let data = fs::read(&p)?;
         if data.len() != INSTALL_ID_SIZE {
@@ -135,6 +156,7 @@ pub fn rotate() -> io::Result<String> {
     fs::write(&tmp, fresh)?;
     fs::set_permissions(&tmp, fs::Permissions::from_mode(FILE_PERM))?;
     fs::rename(&tmp, &p)?;
+    drop_old_location()?;
     Ok(hex_sha256(&fresh))
 }
 
