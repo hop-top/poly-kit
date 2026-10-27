@@ -245,6 +245,43 @@ Wire mapping per adapter:
 - A tool error travels as result text; no adapter sets a provider
   error flag such as Anthropic's `is_error`.
 
+### Tool names
+
+Providers restrict tool names; ids such as `pane.open` or
+`capability:files.read` work as `ToolDef.Name` all the same. Each
+tool-calling adapter sends a name its provider rejects in a form it
+accepts, and every `ToolCall` it returns (`ToolResponse.ToolCalls`,
+`StreamOutcome.ToolCalls`) carries your original name. Replayed history
+is mapped the same way, so `resp.ToolCalls` goes back verbatim.
+
+| Adapter | Accepted names |
+|---------|----------------|
+| `anthropic` | `^[a-zA-Z0-9_-]{1,128}$` |
+| `openai` and its schemes, `routellm` | `^[a-zA-Z0-9_-]{1,64}$` |
+| `gemini` / `google` | `^[a-zA-Z_][a-zA-Z0-9_.:-]{0,127}$` |
+
+A valid name goes out unchanged. Otherwise each run of other characters
+becomes one `_` (Gemini also gets a leading `_` when the name does not
+start with a letter or `_`), and a name still too long, or with no
+ASCII letter or digit left, is cut and ends in `_` plus 8 hex digits of
+its SHA-256: `pane.open` is sent as `pane_open`, a 65-character name to
+OpenAI as 55 characters + `_635361c4`. `llm.AnthropicToolNames.Sanitize`
+(and the `OpenAI`, `Gemini` rules) returns what a name becomes. The
+algorithm is the same in every kit SDK:
+[contracts/llm-v1/tool-names.md](../../../contracts/llm-v1/tool-names.md).
+
+Before any network call, a request fails with `*errors.ErrToolName`
+(not fallbackable; `Reason`, `Name`, `Other`) when a tool name is empty
+(`empty`) or not UTF-8 (`invalid_utf8`), defined twice (`duplicate`),
+or maps to the same sent name as an earlier tool (`collision`, e.g.
+`pane.open` and `pane:open`; `Other` is the earlier one).
+
+Opt out of rewriting with the `tool_names` provider param:
+`anthropic://claude-sonnet-4-5?tool_names=strict` sends names as given
+and fails a name the provider rejects with reason `invalid`, before
+sending. `tool_names=sanitize` is the default; any other value fails
+`Resolve`.
+
 ### Thinking and prompt caching
 
 `Request.Thinking = &llm.ThinkingConfig{BudgetTokens: n}` enables
