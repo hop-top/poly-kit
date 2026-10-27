@@ -23,7 +23,7 @@ const upgradeConfDir = "../../../contracts/upgrade-v1"
 
 // upgradeConfFiles is every vector file this runner consumes; the
 // corpus directory must match it exactly.
-var upgradeConfFiles = map[string]bool{"versions.json": true, "migrator.json": true}
+var upgradeConfFiles = map[string]bool{"versions.json": true, "migrator.json": true, "document.json": true}
 
 const upgradeConfTool = "conftool"
 

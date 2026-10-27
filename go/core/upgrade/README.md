@@ -51,7 +51,10 @@ rolls back: `Down`s newest first, else the backup.
 | `WithEventPublisher(p)` | `kit.core.migration.*` events, in order |
 | `WithManualRollback()`, `WithBackupRetention(n)` | no auto rollback; backups kept |
 
-Parity:
+`MigrateDocument` (and `MigrateDocumentMap`) migrates one JSON document
+in memory by its integer version field: `DocStep{From, To, Apply,
+Verify, Note}` as in `config.Migration`; refuses newer documents; on
+error the input is untouched. Keys come back sorted. Parity:
 [`contracts/upgrade-v1`](../../../contracts/upgrade-v1/README.md)
 (`make test-parity-upgrade`); Rust: `hop_top_kit::upgrade`.
 
