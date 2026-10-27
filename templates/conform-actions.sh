@@ -59,11 +59,13 @@ copy_template_if_missing() {
   ensure_dir "$(dirname "$target")"
   cp "$source" "$target"
 
-  # Replace tokens: each remaining arg is token=value
+  # Replace tokens: each remaining arg is token=value.
+  # Values are sed_escape'd (& | / \) like replace_token in
+  # lib.sh, so they render literally, same as scaffold.
   local pair tok val
   for pair in "$@"; do
     tok="${pair%%=*}"
-    val="${pair#*=}"
+    val="$(sed_escape "${pair#*=}")"
     sedi "s|${tok}|${val}|g" "$target"
   done
 

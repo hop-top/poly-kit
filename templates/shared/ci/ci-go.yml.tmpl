@@ -75,4 +75,4 @@ jobs:
       # <<< kit-managed: toolchain <<<
 
       - name: Build
-        run: mise exec -- go build -o {{.Name}} .
+        run: mise exec -- go build -o "{{.Name}}" .

@@ -124,6 +124,23 @@ detect_tools || true
 detect_languages
 detect_project_meta
 
+# APP_NAME / MODULE_PREFIX come from repo metadata (go.mod,
+# package.json, dirname) and are rendered into YAML, shell
+# and sed scripts. Allow only a metacharacter-free charset
+# (superset of kit init's ^[a-z][a-z0-9-]{0,63}$); fail
+# before any file is written.
+if ! [[ "$APP_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Error: invalid app name '$APP_NAME'" >&2
+  echo "  must match ^[A-Za-z0-9._-]+\$ (from go.mod," >&2
+  echo "  package.json name, or directory name)" >&2
+  exit 1
+fi
+if ! [[ "$MODULE_PREFIX" =~ ^[A-Za-z0-9._~/-]*$ ]]; then
+  echo "Error: invalid module prefix '$MODULE_PREFIX'" >&2
+  echo "  must match ^[A-Za-z0-9._~/-]*\$ (from go.mod)" >&2
+  exit 1
+fi
+
 echo "Project: $APP_NAME"
 echo "Languages: ${DETECTED_LANGS[*]:-none}"
 
