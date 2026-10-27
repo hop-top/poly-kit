@@ -12,6 +12,7 @@ failure. Self-update (release check, download, binary replace) is not ported.
 - a release changes a stored format → `Migration::new("1.2.0", "layout", up)`, `with_down` when it can be undone
 - startup must bring old data to the current build → `Migrator::run` before loading it; a re-run is a no-op
 - the store is a set of files rewritten in place → `configfile::ConfigFileDriver`; anything else → `impl SchemaDriver`
+- one JSON document carries its own integer version (a saved layout) → `migrate_value` / `migrate_document` with `DocStep`s, pure, wasm-safe
 - a step must be checked before the version is recorded → `with_verify` per migration, `Migrator::verify` for the final state
 - other parts of the app react to migrations → `publisher(bus)`: `kit.core.migration.*` events, in order
 - a failure must be inspected before undoing it → `manual_rollback()`, then `rollback_latest()`
@@ -44,7 +45,10 @@ m.run(&Context::background()).unwrap(); // nothing pending
 ## Contract
 
 - Feature `upgrade` builds on `bus` (context, events) plus `thiserror`. Authority: the crate [feature table](../../README.md#features).
-- `compare_versions`, `pending`, `Migration` and `SchemaDriver` build on wasm32; `Migrator`,
+- `migrate_value` refuses newer documents and leaves the value untouched on any error; a current
+  document returns from `migrate_document` borrowed, byte for byte. Keys stay ordered only with
+  serde_json `preserve_order` in the build (the `output` feature has it), else they come back sorted.
+- `compare_versions`, `pending`, `Migration`, `SchemaDriver` and `document` build on wasm32; `Migrator`,
   `configfile` and the version-file helpers are compiled off wasm32 only.
 - Pending is `stored < version <= target` per schema, in semver order; the version recorded is the
   last applied migration's, under the data dir (default `<XDG data home>/hop/<tool>`, or `data_dir`).

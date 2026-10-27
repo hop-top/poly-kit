@@ -15,13 +15,14 @@ use std::sync::{Arc, Mutex};
 
 use hop_top_kit::bus::{Context, Event};
 use hop_top_kit::upgrade::{
-    compare_versions, pending, read_version_file_in, AppliedMigration, BoxError, Migration,
-    Migrator, SchemaDriver,
+    compare_versions, migrate_document, migrate_value, pending, read_version_file_in,
+    AppliedMigration, BoxError, DocApplied, DocErrorKind, DocOptions, DocReport, DocStep,
+    Migration, Migrator, SchemaDriver,
 };
 use serde::Deserialize;
 use serde_json::Value;
 
-const FILES: &[&str] = &["migrator.json", "versions.json"];
+const FILES: &[&str] = &["document.json", "migrator.json", "versions.json"];
 
 fn corpus_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/upgrade-v1")
@@ -533,5 +534,259 @@ fn conformance_migrator() {
     assert!(!f.scenarios.is_empty(), "scenarios section is empty");
     for sc in &f.scenarios {
         run_scenario(sc);
+    }
+}
+
+// ---- document.json -------------------------------------------------------
+
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct DocSet {
+    path: String,
+    value: Value,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct DocRename {
+    from: String,
+    to: String,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct DocOp {
+    set: Option<DocSet>,
+    rename: Option<DocRename>,
+    fail: Option<String>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct DocVerifyCase {
+    require: String,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct DocStepCase {
+    from: i64,
+    to: i64,
+    note: String,
+    ops: Vec<DocOp>,
+    verify: Option<DocVerifyCase>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct DocOptionsCase {
+    #[serde(default)]
+    version_field: String,
+    #[serde(default)]
+    latest: i64,
+    #[serde(default)]
+    missing_is_zero: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocAppliedCase {
+    from: i64,
+    to: i64,
+    note: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocReportCase {
+    from: i64,
+    to: i64,
+    applied: Vec<DocAppliedCase>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocExpect {
+    doc: Option<Value>,
+    text: Option<String>,
+    report: Option<DocReportCase>,
+    error: Option<String>,
+    kind: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocScenario {
+    name: String,
+    doc: Option<Value>,
+    text: Option<String>,
+    #[serde(default)]
+    options: DocOptionsCase,
+    steps: Vec<DocStepCase>,
+    expect: DocExpect,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentFile {
+    #[serde(rename = "$schema")]
+    #[allow(dead_code)]
+    schema: String,
+    #[serde(rename = "$id")]
+    #[allow(dead_code)]
+    id: String,
+    version: String,
+    #[allow(dead_code)]
+    description: String,
+    scenarios: Vec<DocScenario>,
+}
+
+fn lookup<'v>(doc: &'v Value, path: &str) -> Option<&'v Value> {
+    path.split('.')
+        .try_fold(doc, |cur, seg| cur.as_object()?.get(seg))
+}
+
+fn set_path(doc: &mut Value, path: &str, value: Value) {
+    let segs: Vec<&str> = path.split('.').collect();
+    let mut cur = doc;
+    for seg in &segs[..segs.len() - 1] {
+        let obj = cur.as_object_mut().unwrap();
+        cur = obj
+            .entry(seg.to_string())
+            .or_insert_with(|| Value::Object(Default::default()));
+        if !cur.is_object() {
+            *cur = Value::Object(Default::default());
+        }
+    }
+    cur.as_object_mut()
+        .unwrap()
+        .insert(segs[segs.len() - 1].to_string(), value);
+}
+
+fn doc_steps(cases: &[DocStepCase]) -> Vec<DocStep> {
+    cases
+        .iter()
+        .map(|c| {
+            let ops = c.ops.clone();
+            // In place, on purpose: the migrator must hand steps a copy.
+            let mut s = DocStep::new(c.from, c.to, move |mut doc: Value| {
+                for op in &ops {
+                    if let Some(set) = &op.set {
+                        set_path(&mut doc, &set.path, set.value.clone());
+                    }
+                    if let Some(r) = &op.rename {
+                        let obj = doc.as_object_mut().unwrap();
+                        if let Some(v) = obj.remove(&r.from) {
+                            obj.insert(r.to.clone(), v);
+                        }
+                    }
+                    if let Some(msg) = &op.fail {
+                        return Err(msg.clone().into());
+                    }
+                }
+                Ok(doc)
+            })
+            .with_note(c.note.clone());
+            if let Some(v) = &c.verify {
+                let path = v.require.clone();
+                s = s.with_verify(move |doc| match lookup(doc, &path) {
+                    Some(_) => Ok(()),
+                    None => Err(format!("missing {path}").into()),
+                });
+            }
+            s
+        })
+        .collect()
+}
+
+fn kind_name(k: DocErrorKind) -> &'static str {
+    match k {
+        DocErrorKind::Newer => "newer",
+        DocErrorKind::Version => "version",
+        DocErrorKind::Gap => "gap",
+        DocErrorKind::Step => "step",
+        DocErrorKind::Verify => "verify",
+        DocErrorKind::Invalid => "invalid",
+    }
+}
+
+fn want_report(r: &DocReportCase) -> DocReport {
+    DocReport {
+        from: r.from,
+        to: r.to,
+        applied: r
+            .applied
+            .iter()
+            .map(|a| DocApplied {
+                from: a.from,
+                to: a.to,
+                note: a.note.clone(),
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn conformance_document() {
+    let f: DocumentFile = load("document.json");
+    assert_eq!(f.version, "v1");
+    assert!(!f.scenarios.is_empty(), "scenarios section is empty");
+    for sc in &f.scenarios {
+        let name = &sc.name;
+        let opts = DocOptions {
+            version_field: sc.options.version_field.clone(),
+            latest: sc.options.latest,
+            missing_is_zero: sc.options.missing_is_zero,
+        };
+        let steps = doc_steps(&sc.steps);
+        let input = match (&sc.text, &sc.doc) {
+            (Some(t), _) => t.clone(),
+            (None, Some(d)) => d.to_string(),
+            _ => panic!("{name}: neither doc nor text"),
+        };
+        let check =
+            |via: &str, got: Result<(Value, DocReport), hop_top_kit::upgrade::DocError>| match (
+                &sc.expect.error,
+                got,
+            ) {
+                (Some(want), Err(e)) => {
+                    assert_eq!(&e.to_string(), want, "{name} ({via}): error");
+                    assert_eq!(
+                        Some(kind_name(e.kind())),
+                        sc.expect.kind.as_deref(),
+                        "{name} ({via}): kind"
+                    );
+                }
+                (Some(want), Ok(_)) => panic!("{name} ({via}): no error, want {want:?}"),
+                (None, Err(e)) => panic!("{name} ({via}): unexpected error {e}"),
+                (None, Ok((doc, report))) => {
+                    if let Some(want) = &sc.expect.doc {
+                        assert_eq!(&doc, want, "{name} ({via}): doc");
+                    }
+                    if let Some(want) = &sc.expect.report {
+                        assert_eq!(report, want_report(want), "{name} ({via}): report");
+                    }
+                }
+            };
+
+        let out = migrate_document(&input, &steps, &opts);
+        if let (Some(want), Ok((text, _))) = (&sc.expect.text, &out) {
+            assert_eq!(text, want, "{name}: byte-identical text");
+        }
+        check(
+            "text",
+            out.map(|(t, r)| (serde_json::from_str(&t).unwrap(), r)),
+        );
+
+        // In place: the same result, and the caller's value untouched on error.
+        if sc.text.is_none() {
+            let mut doc = sc.doc.clone().unwrap();
+            let before = doc.clone();
+            let got = migrate_value(&mut doc, &steps, &opts);
+            if got.is_err() {
+                assert_eq!(doc, before, "{name} (value): input changed on error");
+            }
+            check("value", got.map(|r| (doc, r)));
+        }
     }
 }

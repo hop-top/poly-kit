@@ -5,7 +5,7 @@
 What versioned state migrations in `kit/core/upgrade` must do, independent of language: how migration
 versions order, which migrations are pending between a stored and a target version, and what the runner
 does around them: the backup it takes, the order it applies and rolls back in, the version it records,
-the backups it prunes and the exact error texts. Wrong place for self-update (check, download, replace);
+the backups it prunes and the exact error texts; and how one JSON document migrates by its own version field. Wrong place for self-update (check, download, replace);
 that half of the package is Go-only and has no vectors.
 
 ## Use it when
@@ -32,6 +32,7 @@ rules it pins.
 |---------------|------|
 | `versions.json` `compare[]` `{a, b, cmp}` | lenient semver order: `v` and build metadata dropped, missing or non-numeric parts 0, pre-release identifier rules; checked both ways |
 | `versions.json` `pending[]` | `from < version <= to` for one schema, ascending, versions as registered |
+| `document.json` `scenarios[]` | the in-memory JSON document migrator: chain by version field, refusing newer documents, missing or non-integer versions, gaps, invalid steps, step and verify failures (input untouched), byte-identical when current |
 | `migrator.json` `scenarios[]` | `run`, `rollback_latest` and `status` steps against a recording driver: calls in order, error text, history, version files, backup directories, published events, logged warnings |
 
 What the scenarios pin, beyond order: a re-run applies nothing; the recorded version is the last applied

@@ -8,10 +8,15 @@
 //! and build on wasm32; the runner, its version files and backups, and
 //! [`configfile`] touch the filesystem and are compiled off wasm32 only.
 
+pub mod document;
 mod driver;
 mod migration;
 mod version;
 
+pub use document::{
+    migrate_document, migrate_value, DocApplied, DocError, DocErrorKind, DocOptions, DocReport,
+    DocStep,
+};
 pub use driver::SchemaDriver;
 pub use migration::{pending, Migration, StepFn};
 pub use version::compare_versions;
