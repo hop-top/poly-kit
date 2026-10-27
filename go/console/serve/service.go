@@ -58,6 +58,30 @@ type Validator interface {
 	Validate() error
 }
 
+// Preparer is the optional preparation step a [Service] may implement
+// (serve-lifecycle.md §"Prepare phase"). The supervisor calls Prepare
+// on every selected service, one at a time, in start order and on the
+// goroutine that called [Supervisor.Run], before it starts any of
+// them.
+//
+// Prepare is where a service does everything that reads state the
+// services of one run share and that a running service may write: the
+// command tree (reflecting it, collecting its flags), the root's
+// configuration (a logger's level, a listener's settings). Once the
+// first service starts, requests are in flight, and a served request
+// writes that state — flag values, the command's writers — under the
+// tree's invocation lock; a Start that read it then would race with
+// it. Start then only acquires and serves what Prepare built.
+//
+// An error is the service's start failure (reason "prepare"): a
+// required service's ends the run before anything starts, an optional
+// one's is reported and the service is not started. A service whose
+// Prepare succeeded but that the run never starts is stopped, without
+// events, so whatever Prepare acquired is released.
+type Preparer interface {
+	Prepare(ctx context.Context) error
+}
+
 // Dependent is the optional ordering declaration a [Service] may
 // implement. Start order is topological over DependsOn with ties
 // broken by registration order; stop order is the exact reverse of

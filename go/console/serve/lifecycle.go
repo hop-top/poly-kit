@@ -41,6 +41,19 @@ type supervised struct {
 	startErr error
 }
 
+// newSupervised tracks a run of up to n services.
+func newSupervised(ctx context.Context, n int) *supervised {
+	sup := &supervised{
+		// Each service sends at most one return and one write-off
+		// notice, so no send ever blocks, read or not.
+		exits:   make(chan serviceExit, 2*n),
+		running: make(map[string]bool, n),
+		done:    make(map[string]chan struct{}, n),
+	}
+	sup.releaseCtx, sup.capReleases = context.WithCancel(context.WithoutCancel(ctx))
+	return sup
+}
+
 // serviceExit is one service's Start returning, or, with abandoned,
 // the notice that a released service is written off.
 type serviceExit struct {
@@ -81,14 +94,7 @@ func (s *Supervisor) startAll(
 	st *runState,
 	em *emitter,
 ) *supervised {
-	sup := &supervised{
-		// Each service sends at most one return and one write-off
-		// notice, so no send ever blocks, read or not.
-		exits:   make(chan serviceExit, 2*len(order)),
-		running: make(map[string]bool, len(order)),
-		done:    make(map[string]chan struct{}, len(order)),
-	}
-	sup.releaseCtx, sup.capReleases = context.WithCancel(context.WithoutCancel(ctx))
+	sup := newSupervised(ctx, len(order))
 
 	for _, name := range order {
 		if err := ctx.Err(); err != nil {

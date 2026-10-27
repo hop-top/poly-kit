@@ -198,7 +198,20 @@ func (s *Supervisor) Run(ctx context.Context, selected []string, configs map[str
 	// for its dependencies reports what the supervisor saw.
 	runCtx = ContextWithRunView(runCtx, st)
 
-	sup := s.startAll(runCtx, order, configs, st, em)
+	// Every service prepares before any starts: once one is serving,
+	// its requests write state the others would read while preparing.
+	start, prepared, prepErr := s.prepareAll(runCtx, order, st, em)
+	defer s.releaseUnstarted(ctx, prepared, st, configs)
+	if prepErr != nil || len(start) == 0 {
+		if prepErr == nil {
+			// Every service was optional and failed to prepare:
+			// nothing would serve.
+			st.record(OutcomeStartFailed)
+		}
+		return s.shutdown(ctx, cancelRun, newSupervised(runCtx, 0), st, em)
+	}
+
+	sup := s.startAll(runCtx, start, configs, st, em)
 
 	// A start failure short-circuits: services already running are
 	// stopped in reverse order, and the outcome is start-failed.
