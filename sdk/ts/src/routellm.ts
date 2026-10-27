@@ -21,8 +21,12 @@ import {
   type Message,
   type ContentPart,
   LLMError,
+  OPENAI_TOOL_NAMES,
+  ToolNames,
   checkToolLinkage,
   register,
+  toolNameModeOf,
+  type ToolNameMode,
 } from "./llm";
 
 // ─── RouterConfig ─────────────────────────────────────────────────────────────
@@ -191,9 +195,12 @@ export class RouteLLMAdapter implements Completer, Streamer {
   private readonly _baseUrl: string;
   private readonly _serverModel: string;
   private readonly _apiKey: string;
+  private readonly _toolNames: ToolNameMode;
 
   constructor(cfg: ResolvedConfig) {
     this.config = parseRouterConfig(cfg.provider.extras);
+    // The server speaks the OpenAI wire: its tool-name rule applies.
+    this._toolNames = toolNameModeOf(cfg.provider.params);
 
     const model = cfg.provider.model || cfg.uri.model;
     const parsed = parseModelField(model);
@@ -290,8 +297,11 @@ export class RouteLLMAdapter implements Completer, Streamer {
     req: Request,
     stream: boolean
   ): Promise<Record<string, unknown>> {
+    // No tools on these entry points: replayed history names still go
+    // out as the provider accepts them.
+    const names = ToolNames.build(OPENAI_TOOL_NAMES, this._toolNames, []);
     const messages: Record<string, unknown>[] = [];
-    for (const m of req.messages) messages.push(await mapMessage(m));
+    for (const m of req.messages) messages.push(await mapMessage(m, names));
     const body: Record<string, unknown> = {
       model: this._serverModel,
       messages,
@@ -340,8 +350,12 @@ export class RouteLLMAdapter implements Completer, Streamer {
  * result carries `tool_call_id`, and `parts` become a user content
  * array. Linkage or parts the wire cannot carry throw instead of being
  * sent as plain text. Messages without them map to `{role, content}`.
+ * Tool-call names go out as `names` maps them (llm-v1 tool names).
  */
-async function mapMessage(m: Message): Promise<Record<string, unknown>> {
+async function mapMessage(
+  m: Message,
+  names: ToolNames
+): Promise<Record<string, unknown>> {
   if (m.role === "tool" && !m.toolCallId) {
     throw new LLMError("routellm: tool result needs toolCallId");
   }
@@ -367,7 +381,7 @@ async function mapMessage(m: Message): Promise<Record<string, unknown>> {
         id: tc.id,
         type: "function",
         function: {
-          name: tc.name,
+          name: names.wire(tc.name),
           arguments: encodeArguments(tc.id, tc.arguments),
         },
       };

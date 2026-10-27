@@ -19,6 +19,10 @@
 
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
+import { LLMError } from "./llm-error";
+import { ToolNameError } from "./llm-toolnames";
+
+export * from "./llm-toolnames";
 
 // ─── Data types ──────────────────────────────────────────────────────────────
 
@@ -180,16 +184,7 @@ export interface ResolvedConfig {
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
-export class LLMError extends Error {
-  statusCode?: number;
-  code?: string;
-
-  constructor(message: string) {
-    super(message);
-    this.name = "LLMError";
-    Object.setPrototypeOf(this, new.target.prototype);
-  }
-}
+export { LLMError };
 
 export class ProviderNotFoundError extends LLMError {
   scheme: string;
@@ -269,8 +264,11 @@ export class FallbackExhaustedError extends LLMError {
  * - LLMError with statusCode >= 500
  * - RateLimitError (429)
  * - Connection/timeout errors (ECONNREFUSED, ETIMEDOUT, ECONNRESET)
+ *
+ * A {@link ToolNameError} never is: the caller's tool set needs fixing.
  */
 export function isFallbackable(err: Error): boolean {
+  if (err instanceof ToolNameError) return false;
   if (err instanceof RateLimitError) return true;
   if (err instanceof LLMError) {
     if (err.code && isConnectionError(err.code)) return true;
