@@ -10,7 +10,7 @@ would make it a server-side request forgery or a local file read:
 - every address the host resolves to must be public: loopback, private,
   link-local (cloud metadata ``169.254.169.254`` among them), shared,
   reserved, unspecified and multicast addresses are refused, v4-mapped
-  IPv6 included;
+  and NAT64 IPv6 judged by their IPv4;
 - the connection goes to the vetted address itself, so a second DNS
   answer cannot rebind it; TLS still verifies the host name;
 - redirects are not followed; a non-2xx status is an error;
@@ -39,11 +39,18 @@ _CHUNK = 64 << 10
 IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 
 
+_NAT64 = ipaddress.IPv6Network("64:ff9b::/96")
+
+
 def is_public_ip(ip: IPAddress) -> bool:
-    """Whether *ip* is a globally routable unicast address."""
+    """Whether *ip* is a globally routable unicast address. A v4-mapped
+    or NAT64 (``64:ff9b::/96``) address is judged by the IPv4 address it
+    carries."""
     mapped = getattr(ip, "ipv4_mapped", None)
     if mapped is not None:
         ip = mapped
+    elif isinstance(ip, ipaddress.IPv6Address) and ip in _NAT64:
+        ip = ipaddress.IPv4Address(ip.packed[12:])
     return ip.is_global and not ip.is_multicast
 
 
