@@ -51,8 +51,8 @@ struct Corpus {
     #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
     anthropic_tool_names: Vec<AnthropicToolNamesCase>,
     // Sections below are pending Rust port: decoded loosely, not run.
-    #[allow(dead_code)]
-    anthropic_tool_choice: Vec<Value>,
+    #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+    anthropic_tool_choice: Vec<ToolChoiceCase>,
     #[allow(dead_code)]
     anthropic_hermetic: Vec<Value>,
     #[allow(dead_code)]
@@ -75,6 +75,29 @@ struct Corpus {
     openai_accumulate: Vec<Value>,
     openai_error: Vec<Value>,
     openai_limits: Vec<Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+struct ConfToolChoice {
+    mode: String,
+    #[serde(default)]
+    name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+struct ToolChoiceCase {
+    name: String,
+    call: String,
+    tools: Vec<String>,
+    tool_choice: Option<ConfToolChoice>,
+    #[serde(default)]
+    want_tool_choice: Option<Value>,
+    #[serde(default)]
+    error: String,
 }
 
 #[derive(Deserialize)]
@@ -721,6 +744,7 @@ mod anthropic {
             thinking: (r.thinking_budget > 0).then_some(Thinking {
                 budget_tokens: r.thinking_budget,
             }),
+            ..Request::default()
         }
     }
 
@@ -1333,6 +1357,62 @@ mod anthropic {
             for (got, want) in calls.iter().zip(&v.want_calls) {
                 assert_eq!(got.id, want.id, "{}", v.name);
                 assert_eq!(got.name, want.name, "{}", v.name);
+            }
+        }
+    }
+
+    /// A complete, empty streamed turn.
+    const MINIMAL_SSE: &str = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+
+    #[tokio::test]
+    async fn tool_choice_vectors() {
+        use hop_top_kit::llm::{ToolChoice, ToolChoiceMode};
+        let c = load();
+        assert!(!c.anthropic_tool_choice.is_empty());
+        for v in &c.anthropic_tool_choice {
+            let streamed = v.call == "stream" || v.call == "stream_tools";
+            let canned = if streamed {
+                Canned::sse(MINIMAL_SSE)
+            } else {
+                ok_message()
+            };
+            let srv = serve(vec![canned]).await;
+            let a = adapter(&srv.url, "m", "k");
+            let mut req = hi();
+            req.tool_choice = v.tool_choice.as_ref().map(|c| ToolChoice {
+                mode: ToolChoiceMode::new(c.mode.clone()),
+                name: c.name.clone(),
+            });
+            let defs: Vec<ToolDef> = v.tools.iter().map(ToolDef::named).collect();
+            let res = match v.call.as_str() {
+                "complete" => a.complete(&req).await.map(|_| ()),
+                "stream" => a.stream(&req).await.map(|_| ()),
+                "tools" => a.call_with_tools(&req, &defs).await.map(|_| ()),
+                "stream_tools" => a.stream_with_tools(&req, &defs).await.map(|_| ()),
+                other => panic!("{}: unknown call {other:?}", v.name),
+            };
+            if !v.error.is_empty() {
+                let e = res.expect_err(&v.name);
+                assert_eq!(e.to_string(), v.error, "{}", v.name);
+                assert_eq!(
+                    srv.attempts(),
+                    0,
+                    "{}: a rejected request is never sent",
+                    v.name
+                );
+                continue;
+            }
+            res.unwrap_or_else(|e| panic!("{}: {e}", v.name));
+            let body = srv.only().json();
+            match &v.want_tool_choice {
+                None | Some(Value::Null) => {
+                    assert!(
+                        body.get("tool_choice").is_none(),
+                        "{}: no tool_choice sent",
+                        v.name
+                    )
+                }
+                Some(want) => assert_eq!(&body["tool_choice"], want, "{}", v.name),
             }
         }
     }
