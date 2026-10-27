@@ -7,7 +7,7 @@ use serde_json::{json, Map, Value};
 
 use crate::llm::{
     CacheControl, LlmError, Media, Message, Part, Request, Response, Role, ThinkingBlock, ToolCall,
-    ToolDef, ToolResponse, Usage,
+    ToolDef, ToolNames, ToolResponse, Usage,
 };
 
 use super::{DEFAULT_MAX_TOKENS, SCHEME};
@@ -17,14 +17,16 @@ fn invalid(msg: String) -> LlmError {
 }
 
 /// The JSON body for `req` against `default_model`. `tools` adds tool
-/// definitions; `stream` asks for SSE.
+/// definitions; `stream` asks for SSE. Tool definitions and replayed
+/// calls go out under their `names` wire names.
 pub(crate) fn body(
     default_model: &str,
     req: &Request,
     tools: Option<&[ToolDef]>,
     stream: bool,
+    names: &ToolNames,
 ) -> Result<Value, LlmError> {
-    let (system, messages) = messages(&req.messages)?;
+    let (system, messages) = messages(&req.messages, names)?;
     let model = if req.model.is_empty() {
         default_model
     } else {
@@ -69,7 +71,10 @@ pub(crate) fn body(
         b.insert("stop_sequences".into(), json!(req.stop_sequences));
     }
     if let Some(tools) = tools {
-        let defs = tools.iter().map(tool_def).collect::<Result<_, _>>()?;
+        let defs = tools
+            .iter()
+            .map(|d| tool_def(d, names))
+            .collect::<Result<_, _>>()?;
         b.insert("tools".into(), Value::Array(defs));
     }
     if stream {
@@ -121,7 +126,7 @@ type System = (String, Option<CacheControl>);
 
 /// The top-level system text (the last system message wins, as in Go)
 /// and the conversation without it.
-fn messages(msgs: &[Message]) -> Result<(Option<System>, Vec<Value>), LlmError> {
+fn messages(msgs: &[Message], names: &ToolNames) -> Result<(Option<System>, Vec<Value>), LlmError> {
     let mut system = None;
     let mut out: Vec<Value> = Vec::with_capacity(msgs.len());
     for (i, m) in msgs.iter().enumerate() {
@@ -153,7 +158,7 @@ fn messages(msgs: &[Message]) -> Result<(Option<System>, Vec<Value>), LlmError> 
             Vec::new()
         };
         for tc in &m.tool_calls {
-            blocks.push(tool_use(tc)?);
+            blocks.push(tool_use(tc, names)?);
         }
         if let Some(last) = blocks.last_mut() {
             set_cache(last, m.cache_control.as_ref())?;
@@ -205,7 +210,8 @@ fn tool_result(m: &Message) -> Result<Value, LlmError> {
     Ok(b)
 }
 
-fn tool_use(tc: &ToolCall) -> Result<Value, LlmError> {
+/// A replayed call, under the name the request sends for it.
+fn tool_use(tc: &ToolCall, names: &ToolNames) -> Result<Value, LlmError> {
     if tc.id.is_empty() {
         return Err(invalid(format!(
             "{SCHEME}: tool call {:?} needs an ID",
@@ -222,7 +228,7 @@ fn tool_use(tc: &ToolCall) -> Result<Value, LlmError> {
             ))
         })?
     };
-    Ok(json!({ "type": "tool_use", "id": tc.id, "name": tc.name, "input": input }))
+    Ok(json!({ "type": "tool_use", "id": tc.id, "name": names.wire(&tc.name), "input": input }))
 }
 
 fn parts(parts: &[Part]) -> Result<Vec<Value>, LlmError> {
@@ -264,7 +270,7 @@ fn media(m: &Media) -> Result<Value, LlmError> {
 /// parameters (or with a non-object schema) sends
 /// `{"type":"object","properties":{}}`, as Go does; a schema without
 /// `type` gets `"object"`.
-fn tool_def(d: &ToolDef) -> Result<Value, LlmError> {
+fn tool_def(d: &ToolDef, names: &ToolNames) -> Result<Value, LlmError> {
     let mut schema = match &d.parameters {
         Some(Value::Object(m)) => m.clone(),
         _ => {
@@ -276,7 +282,11 @@ fn tool_def(d: &ToolDef) -> Result<Value, LlmError> {
     schema
         .entry("type")
         .or_insert_with(|| Value::String("object".into()));
-    let mut def = json!({ "name": d.name, "description": d.description, "input_schema": schema });
+    let mut def = json!({
+        "name": names.wire(&d.name),
+        "description": d.description,
+        "input_schema": schema,
+    });
     set_cache(&mut def, d.cache_control.as_ref())?;
     Ok(def)
 }

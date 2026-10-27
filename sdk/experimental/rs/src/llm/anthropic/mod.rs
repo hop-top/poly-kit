@@ -6,6 +6,10 @@
 //! config only; `ANTHROPIC_BASE_URL` (below a configured base URL),
 //! `ANTHROPIC_AUTH_TOKEN` (sent as a bearer token when not blank) and
 //! `ANTHROPIC_WORKSPACE_ID` are read as in Go. Native only.
+//!
+//! Tool names follow [`ANTHROPIC_TOOL_NAMES`]: sanitized on the way out
+//! and restored on returned calls, per the `tool_names` provider param
+//! ([`ToolNameMode`]); see [`ToolNames`].
 
 mod http;
 mod sse;
@@ -17,7 +21,7 @@ use std::time::Duration;
 
 use crate::llm::{
     BoxFuture, Capability, Declaration, LlmError, Provider, Registry, Request, ResolvedConfig,
-    Response, TokenStream, ToolDef, ToolResponse,
+    Response, TokenStream, ToolDef, ToolNameMode, ToolNames, ToolResponse, ANTHROPIC_TOOL_NAMES,
 };
 use crate::netpolicy::GuardedClient;
 
@@ -84,6 +88,8 @@ pub struct Adapter {
     sleeper: Option<Sleeper>,
     limits: Limits,
     scrub: stream::Scrub,
+    /// The `tool_names` param: how names the API rejects are handled.
+    tool_names: ToolNameMode,
 }
 
 impl std::fmt::Debug for Adapter {
@@ -213,6 +219,8 @@ impl Builder {
                 crate::llm::redact_uri(&base)
             ))
         })?;
+        let tool_names = ToolNameMode::from_params(&p.params)
+            .map_err(|e| LlmError::invalid(format!("anthropic: {e}")))?;
         let credentials = self.credentials(&base, &url)?;
         let limits = match self.limits {
             Some(l) => l,
@@ -248,6 +256,7 @@ impl Builder {
             sleeper: self.sleeper,
             limits,
             scrub,
+            tool_names,
         })
     }
 }
@@ -284,17 +293,30 @@ impl Adapter {
         }
     }
 
+    /// Checks the request's tool names against the API's rule and maps
+    /// them, per the `tool_names` param; see [`ToolNames::new`].
+    fn tool_names(&self, tools: Option<&[ToolDef]>) -> Result<ToolNames, LlmError> {
+        ToolNames::new(
+            ANTHROPIC_TOOL_NAMES,
+            self.tool_names,
+            tools.unwrap_or_default(),
+        )
+    }
+
     async fn message(
         &self,
         req: &Request,
         tools: Option<&[ToolDef]>,
     ) -> Result<wire::Parsed, LlmError> {
-        let body = wire::body(&self.model, req, tools, false)?;
+        let names = self.tool_names(tools)?;
+        let body = wire::body(&self.model, req, tools, false, &names)?;
         let resp = self.send(&body, false, self.model_for(req)).await?;
         let text = self.read_body(resp).await?;
         let v: serde_json::Value = serde_json::from_slice(&text)
             .map_err(|e| LlmError::Protocol(format!("anthropic: decode response: {e}")))?;
-        Ok(wire::parse_message(&v))
+        let mut parsed = wire::parse_message(&v);
+        names.restore_calls(&mut parsed.tool_calls);
+        Ok(parsed)
     }
 
     async fn open_stream(
@@ -302,7 +324,8 @@ impl Adapter {
         req: &Request,
         tools: Option<&[ToolDef]>,
     ) -> Result<Box<dyn TokenStream>, LlmError> {
-        let body = wire::body(&self.model, req, tools, true)?;
+        let names = self.tool_names(tools)?;
+        let body = wire::body(&self.model, req, tools, true, &names)?;
         let model = self.model_for(req).to_string();
         let resp = self.send(&body, true, &model).await?;
         let destination = self.destination.clone();
@@ -319,6 +342,7 @@ impl Adapter {
             self.limits.max_event_bytes,
             self.scrub.clone(),
             req.thinking.is_some(),
+            names,
         )))
     }
 }

@@ -12,6 +12,9 @@
 //!   [`Sources`], with Go's precedence.
 //! - [`Client`]: fallback chain and bus events.
 //! - [`LlmError`]: Go's error taxonomy; [`LlmError::is_fallbackable`].
+//! - [`ToolNames`]: tool-name rules ([`ANTHROPIC_TOOL_NAMES`] and
+//!   friends) and the reversible sanitizer adapters run per request;
+//!   [`ToolNameMode`] is the `tool_names` provider param.
 //! - [`anthropic`] (feature `llm-anthropic`): the Messages API adapter.
 //!
 //! Keys never reach `Debug` or error text: [`redact_uri`] masks URIs,
@@ -28,6 +31,7 @@ mod error;
 mod keys;
 mod provider;
 mod registry;
+mod toolnames;
 pub mod types;
 mod uri;
 
@@ -41,10 +45,14 @@ pub use config::{
 pub use endpoint::{
     check_endpoint_url, check_key_endpoint, credentials_trusted, is_loopback_url, parse_endpoint,
 };
-pub use error::{KeyEndpointReason, LlmError, MissingKeyError};
+pub use error::{KeyEndpointReason, LlmError, MissingKeyError, ToolNameReason};
 pub use keys::{KeyResolution, KeySource, KeySourceKind, FALLBACK_ENV_KEY};
 pub use provider::{BoxFuture, Capability, Provider, TokenStream};
 pub use registry::{default_registry, Declaration, Factory, ProviderKey, Registry};
+pub use toolnames::{
+    ToolNameMode, ToolNameRule, ToolNames, ANTHROPIC_TOOL_NAMES, GEMINI_TOOL_NAMES,
+    OPENAI_TOOL_NAMES, TOOL_NAMES_PARAM,
+};
 pub use types::{
     CacheControl, Media, MediaKind, Message, Part, Price, ProviderData, Request, Response, Role,
     StreamOutcome, Thinking, ThinkingBlock, Token, ToolCall, ToolDef, ToolResponse, Usage,
