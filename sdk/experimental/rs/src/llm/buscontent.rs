@@ -117,7 +117,7 @@ fn redact_thinking(r: &Redactor, tbs: &mut [ThinkingBlock]) {
 /// Placeholder when: `raw` does not decode; a member still matches in
 /// key context with its value replaced; a match in the compact input
 /// spans more than one token and is not a member the context check
-/// replaced (masking a neighbour could break such a match up and let
+/// replaced (masking a neighbor could break such a match up and let
 /// the rest pass); or `r` still matches the result.
 fn redact_json(r: &Redactor, raw: &str) -> String {
     let Some(v) = Json::parse(raw) else {
