@@ -27,6 +27,7 @@
 #   --include-deleted
 #                    passed to changed-files.sh: a deletion counts as a
 #                    change (with --gate: a removed file can break a build)
+#   --full-on-delete passed to changed-files.sh: any deletion lints all
 #   pathspec         git pathspecs selecting the files CMD lints
 #
 # Exit: CMD's status; 0 on skip; changed-files.sh's status on its errors.
@@ -46,7 +47,7 @@ while [ $# -gt 0 ]; do
         --full) full_args+=("$2"); shift 2 ;;
         --gate) gate=1; shift ;;
         --trigger) cf_args+=(--trigger "$2"); shift 2 ;;
-        --include-deleted) cf_args+=(--include-deleted); shift ;;
+        --include-deleted|--full-on-delete) cf_args+=("$1"); shift ;;
         --) shift; break ;;
         -*) echo "lint-changed: unknown option: $1" >&2; exit 2 ;;
         *) specs+=("$1"); shift ;;
