@@ -132,26 +132,75 @@ locally.
 
 ## Tests
 
-`make test` is the everyday gate. Two Go test targets run in CI as
-separate jobs, and you can run either locally:
+`make test` is the everyday gate. The CI test jobs run these targets in
+full, and you can run any of them locally (one heavy suite at a time):
 
 | Target | Covers |
 | --- | --- |
 | `make test-go-integration` | Every Go module, testcontainer suites included. The `go-test` job. |
 | `make test-go-integration PROPERTY_ITERATIONS=100` | Same, with the `engine/store` property tests at 100 iterations instead of 1000: what the `go-test` job runs on pull requests. Pushes and the nightly schedule keep the full count. |
-| `make test-go-race` | The `go/` tree under `-race`. The `go-race` job. |
+| `make test-go-race` | `go/`, `cmd/`, `internal/` and `examples/` under `-race`. The `go-race` job. |
+| `make test-ts`, `test-py`, `test-rs`, `test-php` | The SDK suites (`test-ts-sdk`, `test-ts-engine`, `test-py-sdk`, `test-py-engine` per package). |
+| `make test-parity` | Every cross-language parity target. The `parity` job. |
 
 `test-go-race` exists because a concurrency guard is invisible to a
 plain `go test`: the parallel-invocation and flag-isolation tests behind
 `serve` pass whether or not the code they guard is still correct, and
 only the race detector tells them apart. Add a test that spawns a
 goroutine and it is covered the moment it lands — the target takes the
-whole `go/` tree, so there is no list to add yourself to.
+whole of those trees, so there is no list to add yourself to. It runs
+alongside `test-go-integration` rather than after it; nothing is
+excluded, and the Makefile target says why it should stay that way.
 
-It runs alongside `test-go-integration` rather than after it, and takes
-about three minutes from a cold cache. One package, `go/core/projects`,
-is excluded because it races today for a reason of its own; the Makefile
-target carries the detail and the condition for dropping the exclusion.
+### Affected tests: pull requests and `make test-affected`
+
+Pull requests test **only what the change reaches**, the way lint does.
+[`scripts/test-scope.sh`](scripts/test-scope.sh) decides, on the same
+changed set as lint ([`scripts/changed-files.sh`](scripts/changed-files.sh)),
+and `make test-affected` runs the same scope locally:
+
+- **Go** (`go-test`, `go-race`): the packages holding changed files and
+  every package whose build or tests import one of them, transitively
+  (`go list -test` dependencies, per module). A `_test.go` file,
+  `testdata/`, or a file only a test reads affects its own package
+  alone; an embedded file counts as source. A file outside a package
+  counts when Go code names its path (a contract vector, a fixture, a
+  doc a test checks; [`scripts/path-refs.awk`](scripts/path-refs.awk)).
+  A changed `go.mod`/`go.sum` or a deleted package runs the module whole.
+- **SDKs** (`ts-test`, `py-test`, `rs-*`, `php-test`): a package runs
+  when a file under it changed or a file its sources name by path
+  (contracts, shared fixtures). Rust and PHP are crate level; TypeScript
+  and Python per package.
+- **bats**: a changed suite, a suite naming a changed file, and the
+  suites that build kit when non-test Go changed. Any shell, template,
+  hook, workflow or `scripts/` change runs every suite.
+- **parity**: the `test-parity-*` targets whose Go half or SDK runner the
+  change reaches; any `contracts/` change runs them all, and a target
+  the table in `test-scope.sh` does not know always runs.
+
+A suite runs **whole** when TEST_ALL is set, the base is unknown, or a
+shared input changed: the scope scripts, the Makefile, the mise pins,
+`ci.yml`, the root `go.mod`/`go.sum`, the pnpm lockfile or workspace,
+`uv.toml`. When nothing relevant changed, a CI job skips its remaining
+steps and still succeeds, with the reason in its job summary, so
+`needs:` and status checks see green.
+
+| Run | Tests |
+| --- | --- |
+| `make test-affected` | what the change reaches, every suite |
+| `scripts/test-affected.sh go-race ts` | the named suites only |
+| `TEST_ALL=1 make test-affected` | every suite in full |
+| `make test-affected LINT_BASE=<rev>` | the change measured against `<rev>` |
+| `scripts/test-scope.sh [--gate] <suite>` | prints the scope (exit 3: whole suite) |
+
+The scope errs toward running more: a coupling it cannot see (a path
+built at run time, a dependency outside the import graph) is what the
+full runs are for. Pushes, manual dispatch and the nightly run of
+[`ci.yml`](.github/workflows/ci.yml) on `next` run every suite in full.
+A failing night opens one tracking issue, `CI nightly: full test suites
+failing on the default branch` (later failures comment on it), and the
+next green night closes it. Reproduce a suite with `TEST_ALL=1
+scripts/test-affected.sh <suite>`, one heavy suite at a time.
 
 ### Shell suites (bats)
 
@@ -164,9 +213,9 @@ default is the CPU count) and print whole, in path order; on a 10-core
 laptop the set takes under three minutes, bounded by the pre-push hook
 suite. bats is pinned in `.config/mise.toml`; `mise install` gets it.
 
-`make test` includes it, `make test-affected` runs it when a change
-touches shell, a suite, `templates/`, `scripts/`, `.githooks/` or a
-workflow, and the `bats-tests` CI job runs it on every pull request. The
+`make test` includes it; `make test-affected` and the `bats-tests` CI
+job run the affected suites (above), all of them when a change touches
+shell, `templates/`, `scripts/`, `.githooks/` or a workflow. The
 narrower targets (`test-templates`, `lint-templates`, `test-workflow`,
 `test-hook`, `test-lint-scripts`) still run their subsets. Pre-push does
 not run it, for the reason it runs no tests (see `.githooks/pre-push`).
