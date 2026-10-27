@@ -379,9 +379,8 @@ impl Adapter {
             Box::new(transport),
             self.limits.max_event_bytes,
             self.scrub.clone(),
-            req.thinking.is_some(),
             names,
-            req.stream_events,
+            req,
         )))
     }
 }

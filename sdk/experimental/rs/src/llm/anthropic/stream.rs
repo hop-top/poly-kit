@@ -241,9 +241,8 @@ impl AnthropicStream {
         transport: Box<dyn Fn(reqwest::Error) -> LlmError + Send>,
         max_event: u64,
         scrub: Scrub,
-        thinking: bool,
         names: ToolNames,
-        events: bool,
+        req: &crate::llm::Request,
     ) -> Self {
         AnthropicStream {
             resp,
@@ -254,9 +253,9 @@ impl AnthropicStream {
             outcome: None,
             transport,
             scrub,
-            thinking,
+            thinking: req.thinking.is_some(),
             names,
-            events,
+            events: req.stream_events,
             calls: BTreeMap::new(),
         }
     }

@@ -384,7 +384,7 @@ impl Registry {
         store: &dyn AsyncSecretStore,
         uri: &str,
     ) -> Result<ResolvedConfig, LlmError> {
-        let replay = match effective_uri(src, uri).and_then(|u| Ok(parse_uri(&u)?)) {
+        let replay = match effective_uri(src, uri).and_then(|u| parse_uri(&u)) {
             Ok(mut parsed) => {
                 parsed.drop_blank_key();
                 self.ask(src, store, &parsed).await
