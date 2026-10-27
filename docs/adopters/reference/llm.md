@@ -172,6 +172,22 @@ for iter.Next() {
 }
 ```
 
+## System messages
+
+Put any number of `Role: "system"` messages anywhere in
+`Request.Messages`; none is dropped.
+
+| Adapter | Sent as |
+|---------|---------|
+| `anthropic` | the `system` field: every system message's `Content`, in order, joined with a blank line (`"\n\n"`); empty ones skipped |
+| `openai` and its schemes, `routellm` | one `system` message each, in place |
+| `gemini` / `google` | one `systemInstruction` part each, in order |
+
+On `anthropic`, a `CacheControl` on a system message ends a system text
+block there and carries that breakpoint: system messages `a` (cached),
+`b`, `c` (cached, 1h), `d` go out as three blocks `a` | `b\n\nc` | `d`,
+so each breakpoint caches exactly the text up to it.
+
 ## Tool calling
 
 ```go
