@@ -51,6 +51,12 @@ func DefaultRouterConfig() RouterConfig {
 // the provider extras map. Missing keys fall back to defaults. Environment
 // variables override all other sources.
 func ParseRouterConfig(extras map[string]any) (RouterConfig, error) {
+	return parseRouterConfig(extras, false)
+}
+
+// parseRouterConfig is [ParseRouterConfig]; a hermetic one reads no
+// environment variable.
+func parseRouterConfig(extras map[string]any, hermetic bool) (RouterConfig, error) {
 	cfg := DefaultRouterConfig()
 
 	// Extract the "routellm" sub-map if present.
@@ -65,6 +71,10 @@ func ParseRouterConfig(extras map[string]any) (RouterConfig, error) {
 		if err := remarshal(sub, &cfg); err != nil {
 			return cfg, fmt.Errorf("routellm: %w", err)
 		}
+	}
+
+	if hermetic {
+		return cfg, nil
 	}
 
 	// Environment variable overrides.

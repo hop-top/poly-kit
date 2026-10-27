@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON; system messages, wherever they sit, join in order with a blank line (\\n\\n) into the system field, empty ones skipped, and a cache_control on one ends a text block there, carrying that breakpoint. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds (a 403 or permission_error is permission_denied, which is also an auth error; a 401 is auth), whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode). anthropic_tool_choice: Request.ToolChoice (mode auto, any, none or tool with the tool's defined name) on the call made (complete, stream, tools, stream_tools): the body's tool_choice (want_tool_choice; null: absent; a named tool by its sent name) or the exact error before any request (no tools, unknown mode, a missing, stray or undefined name).",
+  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON; system messages, wherever they sit, join in order with a blank line (\\n\\n) into the system field, empty ones skipped, and a cache_control on one ends a text block there, carrying that breakpoint. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds (a 403 or permission_error is permission_denied, which is also an auth error; a 401 is auth), whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode). anthropic_tool_choice: Request.ToolChoice (mode auto, any, none or tool with the tool's defined name) on the call made (complete, stream, tools, stream_tools): the body's tool_choice (want_tool_choice; null: absent; a named tool by its sent name) or the exact error before any request (no tools, unknown mode, a missing, stray or undefined name). anthropic_hermetic: the adapter built hermetic (Go ResolvedConfig.Hermetic, set by llm.Hermetic()) reads no environment and no llm.yaml: with the same env and file as credential_headers, the request goes to want_host (the configured base URL, else the default endpoint) carrying the sent headers and none of the withheld ones.",
   "redact_uri": [
     {
       "name": "api_key",
@@ -3559,6 +3559,111 @@
         "name": "get_weather"
       },
       "error": "anthropic: tool_choice \"any\" takes no tool name"
+    }
+  ],
+  "anthropic_hermetic": [
+    {
+      "name": "token and workspace env ignored",
+      "base_url": "",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1"
+      },
+      "want_host": "api.anthropic.com",
+      "sent": [
+        "x-api-key"
+      ],
+      "withheld": [
+        "authorization",
+        "anthropic-workspace-id"
+      ]
+    },
+    {
+      "name": "ANTHROPIC_BASE_URL ignored",
+      "base_url": "",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1",
+        "ANTHROPIC_BASE_URL": "https://gw.corp.test"
+      },
+      "want_host": "api.anthropic.com",
+      "sent": [
+        "x-api-key"
+      ],
+      "withheld": [
+        "authorization",
+        "anthropic-workspace-id"
+      ]
+    },
+    {
+      "name": "ANTHROPIC_BASE_URL over plain http not read",
+      "base_url": "",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1",
+        "ANTHROPIC_BASE_URL": "http://gw.corp.test"
+      },
+      "want_host": "api.anthropic.com",
+      "sent": [
+        "x-api-key"
+      ],
+      "withheld": [
+        "authorization",
+        "anthropic-workspace-id"
+      ]
+    },
+    {
+      "name": "llm.yaml base_url trusts nothing",
+      "base_url": "https://gw.corp.test",
+      "yaml": "providers:\n  anthropic:\n    base_url: https://gw.corp.test\n",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1"
+      },
+      "want_host": "gw.corp.test",
+      "sent": [
+        "x-api-key"
+      ],
+      "withheld": [
+        "authorization",
+        "anthropic-workspace-id"
+      ]
+    },
+    {
+      "name": "LLM_BASE_URL trusts nothing",
+      "base_url": "https://gw.corp.test",
+      "yaml": "",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "fake-token",
+        "ANTHROPIC_WORKSPACE_ID": "ws-1",
+        "LLM_BASE_URL": "https://gw.corp.test"
+      },
+      "want_host": "gw.corp.test",
+      "sent": [
+        "x-api-key"
+      ],
+      "withheld": [
+        "authorization",
+        "anthropic-workspace-id"
+      ]
+    },
+    {
+      "name": "configured base URL still used",
+      "base_url": "https://proxy.test",
+      "yaml": "",
+      "env": {},
+      "want_host": "proxy.test",
+      "sent": [
+        "x-api-key",
+        "anthropic-version"
+      ],
+      "withheld": [
+        "authorization",
+        "anthropic-workspace-id"
+      ]
     }
   ]
 }

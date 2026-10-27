@@ -72,6 +72,8 @@ struct Corpus {
     // Sections below are pending Rust port: decoded loosely, not run.
     #[allow(dead_code)]
     anthropic_tool_choice: Vec<Value>,
+    #[allow(dead_code)]
+    anthropic_hermetic: Vec<Value>,
 }
 
 #[derive(Deserialize)]

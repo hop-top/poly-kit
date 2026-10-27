@@ -684,6 +684,47 @@ itself (the same chain, ignoring the URI's own `api_key`), and `llm.EnvKeyFor(ur
 set; for `google`/`gemini` it stays `GEMINI_API_KEY` for compatibility;
 unknown schemes and `lmstudio` get `LLM_API_KEY`).
 
+### Secret stores are synchronous
+
+`secret.Store` (`hop.top/kit/go/storage/secret`) is a blocking,
+context-aware interface: `Get(ctx, key)`. `ApplyAPIKey`, `ResolveAPIKey`
+and `SecretFor` call it in the caller's goroutine with the caller's
+`ctx`, one name at a time, and return when it does. There is no async
+variant; in Go the caller picks the concurrency:
+
+- bound a slow backend (a vault over the network, a keyring prompt)
+  with `context.WithTimeout`; a store must return when `ctx` is done.
+  A store error, cancellation included, counts that name as absent and
+  is reported in `StoreErr`, as above;
+- resolve keys before the hot path (at startup, or on your own
+  goroutine) and hand the resulting URI to `Resolve`;
+- a store that is itself asynchronous wraps its call in `Get`, waiting
+  on its result or `ctx.Done()`.
+
+### Hermetic mode
+
+An app embedding kit that owns its configuration passes
+`llm.Hermetic()` to `Resolve`; nothing ambient is read then, only the
+URI counts:
+
+```go
+p, err := llm.Resolve("anthropic://claude-sonnet-4-5?api_key="+key+"&base_url="+url, llm.Hermetic())
+```
+
+| Ambient input | Ambient (default) | Hermetic |
+|---------------|-------------------|----------|
+| `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_WORKSPACE_ID` | read by `anthropic` | ignored |
+| `llm.yaml` (`base_url` trusting env credentials), `LLM_BASE_URL` | consulted by `anthropic` | not read |
+| `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID` (openai SDK headers) | sent by `openai` and its schemes | not sent |
+| `ROUTELLM_*` | read by `routellm` | ignored |
+| aim catalog cache (catalog-only providers) | `Resolve` routes by protocol | not read: only registered schemes and curated aliases resolve |
+
+The flag reaches the adapter as `ResolvedConfig.Hermetic`; set it
+yourself when you call an adapter's `New` directly. Without a
+`base_url`, an adapter uses its built-in default endpoint. `LoadConfig`,
+`ApplyAPIKey`, `ResolveAPIKey` and `SecretFor` exist to read `llm.yaml`
+and the environment: a hermetic app does not call them.
+
 ## Model registry
 
 `aim` (`hop.top/aim`, `v0.1.0-alpha.6`) is the source of truth for model
