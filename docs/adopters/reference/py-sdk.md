@@ -769,7 +769,8 @@ another mode, a name no tool has, or any choice on `complete` / `stream`
 (no tools); `llm.check_tool_choice(choice, tools)` returns the reason.
 
 `Request.stream_events=True` (anthropic) adds two kinds of token to a
-stream; unset, a stream yields exactly what it always has. Each token
+stream; unset, a stream yields exactly what it always has. The openai
+adapter does not emit them yet (Go's does). Each token
 carries one thing:
 
 | Field | When | Holds |

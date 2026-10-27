@@ -903,7 +903,8 @@ Params on any adapter URI: `tool_names` (`sanitize` | `strict`),
 `max_body_bytes` (default 32 MiB) and `max_event_bytes` (one SSE event,
 default 8 MiB).
 
-Transport guarantees, the same as Go:
+Transport guarantees, the same as Go (except that Go's openai adapter
+follows redirects and does not scrub a key a response echoes):
 
 - A key goes over plain http only to loopback, and never to an endpoint
   with userinfo, a backslash, a percent-escape, whitespace or a control
@@ -967,7 +968,7 @@ for await (const tok of llm.streamWithTools({ messages, streamEvents: true }, to
   the last one equals `outcome().usage`.
 - Unset, the stream yields exactly the tokens it did before. `complete`
   and `callWithTools` ignore it; the openai adapter does not emit events
-  yet.
+  yet (Go's does).
 
 ### Tool choice
 

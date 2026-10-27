@@ -228,9 +228,11 @@ up for it, and `Outcome()` reports none.
 sends input and cache tokens when the message starts, so an input or
 cache budget can stop a turn before any output; it sends the output
 count only near the end (`message_delta`), so a running output budget
-needs your own estimate from the text deltas. kit does not estimate.
-Gemini reports usage, output count included, on every chunk, so a
-running output budget needs no estimate there.
+needs your own estimate from the text deltas. OpenAI sends usage once,
+in a chunk after the last choice: no mid-stream budget there, and a
+compatible server that ignores `stream_options` sends none. Gemini
+reports usage, output count included, on every chunk, so a running
+output budget needs no estimate there. kit does not estimate.
 
 **Gemini.** `StreamWithTools`, and `Stream` with `StreamEvents`, end
 the turn on the chunk with a `finishReason` (`STOP` → `stop`, also
@@ -244,15 +246,13 @@ synthesized `call_...`, and the thought signature in `ProviderData`, as
 delta. No thinking blocks: the adapter requests no thoughts. One SSE
 line is capped at 1 MiB; there are no size params.
 
-Support: `anthropic` and `gemini` (`Stream`, `StreamWithTools`).
-`openai` and `routellm` stream text only and implement no
-`StreamWithTools` yet; they ignore `StreamEvents`. The mapping (the
-OpenAI row is the plan):
+Support: `anthropic`, `gemini`, `openai` and its schemes, `routellm`
+(`Stream`, `StreamWithTools`). Mapping:
 
 | Provider stream | Events |
 |-----------------|--------|
 | Anthropic | `content_block_start` (tool_use) → start; `input_json_delta` → delta; `content_block_stop` → end; usage on `message_start` (input, cache) and `message_delta` (cumulative output) |
-| OpenAI | `tool_calls[i]` → start on the fragment carrying id and name, then deltas; every open call ends, in index order, on the `finish_reason` chunk; usage only with `stream_options.include_usage`, in the final chunk |
+| OpenAI | `tool_calls[i]` → start on the fragment that completes its id and name (earlier argument fragments follow it as one delta), then a delta per arguments fragment; every open call ends, in index order, on the `finish_reason` chunk; usage from the final chunk, which kit asks for (`stream_options.include_usage`) only when `StreamEvents` is set |
 | Gemini | a `functionCall` part arrives whole: start, one delta (its `args`), end back to back; `usageMetadata` on every chunk → a usage event after that chunk's parts (true mid-stream usage; a count a chunk omits keeps its last value) |
 
 ## System messages
@@ -823,6 +823,16 @@ fallbackable 529); bounds a response body to 32 MiB and one SSE event to
 8 MiB (params `max_body_bytes`, `max_event_bytes`), past which it fails
 with `*llmerrors.ErrResponseTooLarge`; and scrubs its credentials from
 every error message.
+
+The `openai` adapter, and `routellm` through it: ends a stream with
+`*llmerrors.ErrStreamTruncated` unless it reached `data: [DONE]` or,
+for a server that closes without it, a choice carried a
+`finish_reason`; maps an error chunk on a `200` stream (`{"error":
+{...}}`) to an `*openai.Error` with status 0, not fallbackable; bounds
+a response body to 32 MiB and one SSE event to 8 MiB (params
+`max_body_bytes`, `max_event_bytes`), past which it fails with
+`*llmerrors.ErrResponseTooLarge`, not retried. Unlike `anthropic`, it
+follows redirects and does not scrub a key a response body echoes.
 
 ### Where a key came from
 
