@@ -12,8 +12,8 @@ or a provider-specific wire detail (the adapter sub-packages below).
 ## Use it when
 
 - you call a model without hard-coding a vendor → `llm.Resolve("anthropic://...")` then `llm.NewClient(provider).Chat(ctx, messages)`
-- you stream tokens → `client.StreamChat(ctx, messages)` and iterate `iter.Next()` / `iter.Token()`
-- you expose tools → `client.ChatWith(ctx, messages, []llm.ToolDef{...})` and read `resp.ToolCalls`
+- you stream tokens → `client.Stream(ctx, req)` and call `Next()` until `Done`; set `req.StreamEvents` for tool-call events and usage snapshots mid-stream (anthropic): [Streaming](../../../docs/adopters/reference/llm.md#streaming)
+- you expose tools → `client.CallWithTools(ctx, req, []llm.ToolDef{...})` and read `resp.ToolCalls`; constrain with `req.ToolChoice`
 - one provider may fail → `llm.WithFallback(secondary)`, `llm.OnFallback(fn)`
 - you pick a model by capability and budget → `llm.PickProvider(ctx, reg, profile, llm.BudgetBalanced)`; restrict with `llm.LoadPool()` + `PickProviderInPool`
 - you observe calls → `llm.OnRequest`/`OnResponse`/`OnError`/`OnRoute`/`OnEvaResult`, or `llm.WithBus(bus)`
@@ -28,10 +28,10 @@ or a provider-specific wire detail (the adapter sub-packages below).
 provider, _ := llm.Resolve("anthropic://claude-sonnet-4-5-20250514")
 client := llm.NewClient(provider)
 
-resp, _ := client.Chat(ctx, []llm.Message{
+resp, _ := client.Complete(ctx, llm.Request{Messages: []llm.Message{
     {Role: "user", Content: "Hello"},
-})
-fmt.Println(resp.Message.Content)
+}})
+fmt.Println(resp.Content)
 ```
 
 ## Contract

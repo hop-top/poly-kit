@@ -156,21 +156,90 @@ Mask the URIs you print or log yourself the same way:
 provider, _ := llm.Resolve("anthropic://claude-sonnet-4-5-20250514")
 client := llm.NewClient(provider)
 
-resp, _ := client.Chat(ctx, []llm.Message{
+resp, _ := client.Complete(ctx, llm.Request{Messages: []llm.Message{
     {Role: "user", Content: "Hello"},
-})
-fmt.Println(resp.Message.Content)
+}})
+fmt.Println(resp.Content)
 ```
 
 ## Streaming
 
 ```go
-iter, _ := client.StreamChat(ctx, messages)
-for iter.Next() {
-    tok := iter.Token()
-    fmt.Print(tok.Text)
+iter, _ := client.Stream(ctx, req)
+defer iter.Close()
+for {
+    tok, err := iter.Next()
+    if err != nil {
+        return err // typed, see Errors; io.EOF only after Done
+    }
+    if tok.Done {
+        break
+    }
+    fmt.Print(tok.Content)
 }
 ```
+
+The last token has `Done` set; every `Next` after it returns `io.EOF`.
+`client.StreamWithTools(ctx, req, tools)` streams a tool-calling turn the
+same way; once `Done` arrived, `ToolStream.Outcome()` returns the whole
+turn (text, thinking blocks, tool calls, stop reason, usage). After an
+error, a cancelled `ctx` or `Close`, there is no outcome.
+
+### Tool-call and usage events
+
+Set `Request.StreamEvents` and a stream also yields, as they happen,
+tool-call events in `Token.ToolCall` and usage snapshots in
+`Token.Usage`. Without it a stream yields exactly what it always has.
+
+```go
+req.StreamEvents = true
+st, _ := client.StreamWithTools(ctx, req, tools)
+for {
+    tok, err := st.Next()
+    if err != nil || tok.Done {
+        break
+    }
+    switch {
+    case tok.Usage != nil:
+        if tok.Usage.Cost(price) > budget {
+            st.Close() // stop paying; no outcome
+        }
+    case tok.ToolCall != nil && tok.ToolCall.Kind == llm.ToolCallEnd:
+        go run(*tok.ToolCall.Call) // complete, before the turn ends
+    default:
+        fmt.Print(tok.Content)
+    }
+}
+```
+
+| `Token` field | When | Carries |
+|---------------|------|---------|
+| `ToolCall`, `Kind` `ToolCallStart` | a call opens | `Index` (its position in `Outcome().ToolCalls`), `ID`, `Name` (your original name) |
+| `ToolCall`, `Kind` `ToolCallDelta` | arguments stream | `Index`, `ArgumentsDelta`: a raw JSON fragment, not valid alone |
+| `ToolCall`, `Kind` `ToolCallEnd` | a call is complete | `Index`, `ID`, `Name`, `Call`: exactly `Outcome().ToolCalls[Index]` |
+| `Usage` | the provider reports usage | the turn's usage so far: cumulative, never a delta; the last equals `Outcome().Usage` |
+
+Each call goes start, deltas, end; parallel calls may interleave, told
+apart by `Index`. A call that started and did not end (the stream
+failed, was cancelled or closed) did not complete: no end event is made
+up for it, and `Outcome()` reports none.
+
+**Budgets.** Usage arrives only when the provider sends it. Anthropic
+sends input and cache tokens when the message starts, so an input or
+cache budget can stop a turn before any output; it sends the output
+count only near the end (`message_delta`), so a running output budget
+needs your own estimate from the text deltas. kit does not estimate.
+
+Support: `anthropic` (`Stream`, `StreamWithTools`). `openai`,
+`routellm` and `gemini` stream text only and implement no
+`StreamWithTools` yet; they ignore `StreamEvents`. When they do, the
+mapping will be:
+
+| Provider stream | Events |
+|-----------------|--------|
+| Anthropic | `content_block_start` (tool_use) → start; `input_json_delta` → delta; `content_block_stop` → end; usage on `message_start` (input, cache) and `message_delta` (cumulative output) |
+| OpenAI | `tool_calls[i]` → start on the fragment carrying id and name, then deltas; every open call ends, in index order, on the `finish_reason` chunk; usage only with `stream_options.include_usage`, in the final chunk |
+| Gemini | a `functionCall` arrives whole: start, one delta, end back to back; `usageMetadata` on every chunk (true mid-stream usage) |
 
 ## System messages
 
@@ -191,8 +260,8 @@ so each breakpoint caches exactly the text up to it.
 ## Tool calling
 
 ```go
-resp, _ := client.ChatWith(ctx, messages, []llm.ToolDef{
-    {Name: "weather", Description: "Get weather", InputSchema: schema},
+resp, _ := client.CallWithTools(ctx, llm.Request{Messages: messages}, []llm.ToolDef{
+    {Name: "weather", Description: "Get weather", Parameters: schema},
 })
 for _, tc := range resp.ToolCalls {
     fmt.Println(tc.Name, string(tc.Arguments))
@@ -338,7 +407,8 @@ otherwise its last content block. `Usage.CacheReadTokens` and
 `Usage.Cost(llm.Price{...})` prices each kind at its own rate.
 
 `StreamWithTools` (`llm.ToolStreamer`) streams text, then the whole
-turn from `ToolStream.Outcome()`.
+turn from `ToolStream.Outcome()`; with `Request.StreamEvents`, tool calls
+and usage also stream as they happen ([Streaming](#tool-call-and-usage-events)).
 
 ## Errors
 

@@ -231,6 +231,15 @@ type anthropicConfFile struct {
 		Sent     []string          `json:"sent"`
 		Withheld []string          `json:"withheld"`
 	} `json:"anthropic_hermetic"`
+	AnthropicStreamEvents []struct {
+		Name         string            `json:"name"`
+		SSE          string            `json:"sse"`
+		SSEFrom      string            `json:"sse_from"`
+		Tools        []string          `json:"tools"`
+		StreamEvents bool              `json:"stream_events"`
+		WantEvents   []json.RawMessage `json:"want_events"`
+		ErrorKind    string            `json:"error_kind"`
+	} `json:"anthropic_stream_events"`
 	KeyEndpoint []struct {
 		Name    string            `json:"name"`
 		Op      string            `json:"op"`
@@ -1028,6 +1037,134 @@ func TestConformanceAnthropicHermetic(t *testing.T) {
 			}
 			for _, h := range v.Withheld {
 				assert.Empty(t, req.Header.Values(h), h)
+			}
+		})
+	}
+}
+
+// confUsageJSON is a Usage as the stream event vectors spell it.
+func confUsageJSON(u llm.Usage) map[string]any {
+	return map[string]any{
+		"prompt_tokens": u.PromptTokens, "completion_tokens": u.CompletionTokens,
+		"cache_read_tokens": u.CacheReadTokens, "cache_creation_tokens": u.CacheCreationTokens,
+		"total_tokens": u.TotalTokens,
+	}
+}
+
+// eventJSON spells one streamed token as the vectors do.
+func eventJSON(t *testing.T, tok llm.Token) map[string]any {
+	t.Helper()
+	switch {
+	case tok.Done:
+		return map[string]any{"type": "done"}
+	case tok.ToolCall != nil:
+		ev := tok.ToolCall
+		out := map[string]any{"type": "tool_call", "kind": string(ev.Kind), "index": ev.Index}
+		switch ev.Kind {
+		case llm.ToolCallStart:
+			out["id"], out["name"] = ev.ID, ev.Name
+		case llm.ToolCallDelta:
+			out["arguments"] = ev.ArgumentsDelta
+		case llm.ToolCallEnd:
+			require.NotNil(t, ev.Call)
+			var args any
+			require.NoError(t, json.Unmarshal(ev.Call.Arguments, &args))
+			out["id"], out["name"], out["arguments"] = ev.Call.ID, ev.Call.Name, args
+			assert.Equal(t, ev.Call.ID, ev.ID, "end repeats the id")
+			assert.Equal(t, ev.Call.Name, ev.Name, "end repeats the name")
+		}
+		return out
+	case tok.Usage != nil:
+		return map[string]any{"type": "usage", "usage": confUsageJSON(*tok.Usage)}
+	case tok.Thinking != "":
+		return map[string]any{"type": "thinking", "thinking": tok.Thinking}
+	default:
+		return map[string]any{"type": "text", "text": tok.Content}
+	}
+}
+
+func TestConformanceAnthropicStreamEvents(t *testing.T) {
+	f := loadAnthropicConf(t)
+	require.NotEmpty(t, f.AnthropicStreamEvents)
+	streams := map[string]string{}
+	for _, s := range f.AnthropicStream {
+		streams["anthropic_stream/"+s.Name] = s.SSE
+	}
+	for _, v := range f.AnthropicStreamEvents {
+		t.Run(v.Name, func(t *testing.T) {
+			clearAnthropicEnv(t)
+			sse := v.SSE
+			if v.SSEFrom != "" {
+				var ok bool
+				sse, ok = streams[v.SSEFrom]
+				require.True(t, ok, "sse_from %q", v.SSEFrom)
+			}
+			p := newConfAdapter(t, sseServer(t, sse).URL, "m", "k")
+			req := llm.Request{
+				Messages:     []llm.Message{{Role: "user", Content: "Hi"}},
+				StreamEvents: v.StreamEvents,
+			}
+			var it llm.TokenIterator
+			var st llm.ToolStream
+			var err error
+			if len(v.Tools) > 0 {
+				var tools []llm.ToolDef
+				for _, n := range v.Tools {
+					tools = append(tools, llm.ToolDef{Name: n})
+				}
+				st, err = p.(llm.ToolStreamer).StreamWithTools(context.Background(), req, tools)
+				it = st
+			} else {
+				it, err = p.(llm.Streamer).Stream(context.Background(), req)
+			}
+			require.NoError(t, err)
+			defer it.Close()
+			var got []any
+			var ends []*llm.ToolCallEvent
+			var last *llm.Usage
+			var streamErr error
+			for {
+				tok, err := it.Next()
+				if err != nil {
+					if !errors.Is(err, io.EOF) {
+						streamErr = err
+					}
+					break
+				}
+				got = append(got, eventJSON(t, tok))
+				if tok.ToolCall != nil && tok.ToolCall.Kind == llm.ToolCallEnd {
+					ends = append(ends, tok.ToolCall)
+				}
+				if tok.Usage != nil {
+					last = tok.Usage
+				}
+				if tok.Done {
+					_, err := it.Next()
+					assert.ErrorIs(t, err, io.EOF, "Next after Done is EOF")
+					break
+				}
+			}
+			want, err := json.Marshal(v.WantEvents)
+			require.NoError(t, err)
+			gotJSON, err := json.Marshal(got)
+			require.NoError(t, err)
+			assert.JSONEq(t, string(want), string(gotJSON))
+			kind, _ := errorKind(streamErr)
+			assert.Equal(t, v.ErrorKind, kind, "error: %v", streamErr)
+			if st == nil || streamErr != nil {
+				return
+			}
+			// The events and the outcome tell the same story.
+			out, ok := st.Outcome()
+			require.True(t, ok)
+			if v.StreamEvents {
+				require.Len(t, out.ToolCalls, len(ends))
+				for _, ev := range ends {
+					assert.Equal(t, out.ToolCalls[ev.Index], *ev.Call, "end call is Outcome.ToolCalls[index]")
+				}
+				if last != nil {
+					assert.Equal(t, out.Usage, *last, "the last usage snapshot is Outcome.Usage")
+				}
 			}
 		})
 	}

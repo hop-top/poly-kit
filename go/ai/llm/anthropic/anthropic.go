@@ -215,6 +215,7 @@ func (a *Adapter) openStream(
 	}
 	return &streamIter{
 		stream: stream, a: a, model: a.effectiveModel(req), thinking: req.Thinking != nil, names: names,
+		events: req.StreamEvents, calls: map[int64]int{},
 	}, nil
 }
 
@@ -674,6 +675,12 @@ func usageOf(u anthropic.Usage) llm.Usage {
 	return out
 }
 
+// toolCallOf maps a tool_use block; the call carries the name the
+// caller defined, through names.
+func toolCallOf(block anthropic.ContentBlockUnion, names *llm.ToolNames) llm.ToolCall {
+	return llm.ToolCall{ID: block.ID, Name: names.Original(block.Name), Arguments: block.Input}
+}
+
 // toolResponseFromMessage maps msg; each call carries the name the
 // caller defined, through names.
 func toolResponseFromMessage(msg *anthropic.Message, names *llm.ToolNames) llm.ToolResponse {
@@ -685,11 +692,7 @@ func toolResponseFromMessage(msg *anthropic.Message, names *llm.ToolNames) llm.T
 		case "text":
 			text += block.Text
 		case "tool_use":
-			calls = append(calls, llm.ToolCall{
-				ID:        block.ID,
-				Name:      names.Original(block.Name),
-				Arguments: block.Input,
-			})
+			calls = append(calls, toolCallOf(block, names))
 		}
 	}
 
@@ -718,6 +721,11 @@ type streamIter struct {
 	outcome *llm.StreamOutcome
 	// names maps returned tool names back to the caller's.
 	names *llm.ToolNames
+	// events streams tool-call events and usage snapshots
+	// ([llm.Request.StreamEvents]).
+	events bool
+	// calls maps a tool_use block's content index to its call index.
+	calls map[int64]int
 }
 
 // Outcome is the finished turn, once Next returned Done.
@@ -754,6 +762,13 @@ func (s *streamIter) Next() (llm.Token, error) {
 			case evt.Delta.Type == "thinking_delta" && s.thinking:
 				return llm.Token{Thinking: evt.Delta.Thinking}, nil
 			}
+			if tok, ok := s.event(evt); ok {
+				return tok, nil
+			}
+		case "message_start", "message_delta", "content_block_start", "content_block_stop":
+			if tok, ok := s.event(evt); ok {
+				return tok, nil
+			}
 		case "message_stop":
 			s.done = true
 			out := outcomeFromMessage(&s.msg, s.names)
@@ -766,6 +781,47 @@ func (s *streamIter) Next() (llm.Token, error) {
 
 func (s *streamIter) Close() error {
 	return s.stream.Close()
+}
+
+// event maps an accumulated SSE event to a tool-call or usage token,
+// when the request asked for them ([llm.Request.StreamEvents]).
+func (s *streamIter) event(evt anthropic.MessageStreamEventUnion) (llm.Token, bool) {
+	if !s.events {
+		return llm.Token{}, false
+	}
+	switch evt.Type {
+	case "message_start", "message_delta":
+		u := usageOf(s.msg.Usage)
+		return llm.Token{Usage: &u}, true
+	case "content_block_start":
+		block := s.msg.Content[evt.Index]
+		if block.Type != "tool_use" {
+			return llm.Token{}, false
+		}
+		i := len(s.calls)
+		s.calls[evt.Index] = i
+		return llm.Token{ToolCall: &llm.ToolCallEvent{
+			Kind: llm.ToolCallStart, Index: i, ID: block.ID, Name: s.names.Original(block.Name),
+		}}, true
+	case "content_block_delta":
+		i, ok := s.calls[evt.Index]
+		if !ok || evt.Delta.Type != "input_json_delta" || evt.Delta.PartialJSON == "" {
+			return llm.Token{}, false
+		}
+		return llm.Token{ToolCall: &llm.ToolCallEvent{
+			Kind: llm.ToolCallDelta, Index: i, ArgumentsDelta: evt.Delta.PartialJSON,
+		}}, true
+	case "content_block_stop":
+		i, ok := s.calls[evt.Index]
+		if !ok {
+			return llm.Token{}, false
+		}
+		call := toolCallOf(s.msg.Content[evt.Index], s.names)
+		return llm.Token{ToolCall: &llm.ToolCallEvent{
+			Kind: llm.ToolCallEnd, Index: i, ID: call.ID, Name: call.Name, Call: &call,
+		}}, true
+	}
+	return llm.Token{}, false
 }
 
 // ---------------------------------------------------------------------------

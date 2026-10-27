@@ -54,6 +54,7 @@ type llmConfFile struct {
 	AnthropicToolNames    json.RawMessage `json:"anthropic_tool_names"`
 	AnthropicToolChoice   json.RawMessage `json:"anthropic_tool_choice"`
 	AnthropicHermetic     json.RawMessage `json:"anthropic_hermetic"`
+	AnthropicStreamEvents json.RawMessage `json:"anthropic_stream_events"`
 	ToolNames             []struct {
 		Name      string   `json:"name"`
 		Rule      string   `json:"rule"`

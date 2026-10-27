@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON; system messages, wherever they sit, join in order with a blank line (\\n\\n) into the system field, empty ones skipped, and a cache_control on one ends a text block there, carrying that breakpoint. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds (a 403 or permission_error is permission_denied, which is also an auth error; a 401 is auth), whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode). anthropic_tool_choice: Request.ToolChoice (mode auto, any, none or tool with the tool's defined name) on the call made (complete, stream, tools, stream_tools): the body's tool_choice (want_tool_choice; null: absent; a named tool by its sent name) or the exact error before any request (no tools, unknown mode, a missing, stray or undefined name). anthropic_hermetic: the adapter built hermetic (Go ResolvedConfig.Hermetic, set by llm.Hermetic()) reads no environment and no llm.yaml: with the same env and file as credential_headers, the request goes to want_host (the configured base URL, else the default endpoint) carrying the sent headers and none of the withheld ones.",
+  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON; system messages, wherever they sit, join in order with a blank line (\\n\\n) into the system field, empty ones skipped, and a cache_control on one ends a text block there, carrying that breakpoint. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds (a 403 or permission_error is permission_denied, which is also an auth error; a 401 is auth), whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode). anthropic_tool_choice: Request.ToolChoice (mode auto, any, none or tool with the tool's defined name) on the call made (complete, stream, tools, stream_tools): the body's tool_choice (want_tool_choice; null: absent; a named tool by its sent name) or the exact error before any request (no tools, unknown mode, a missing, stray or undefined name). anthropic_hermetic: the adapter built hermetic (Go ResolvedConfig.Hermetic, set by llm.Hermetic()) reads no environment and no llm.yaml: with the same env and file as credential_headers, the request goes to want_host (the configured base URL, else the default endpoint) carrying the sent headers and none of the withheld ones. anthropic_stream_events: what a stream yields when Request.StreamEvents is set (tools: the defined tool names; StreamWithTools when present, else Stream): text tokens, tool_call events (start with index, id and the original name; delta with the raw partial-JSON arguments; end with the complete call, as Outcome.ToolCalls[index]), cumulative usage snapshots (prompt, completion, cache read, cache creation, total) when the provider reports usage, then done; or, after a mid-stream error, the events so far and error_kind, with no end for an open call. Not opted in, the sequence is exactly anthropic_stream's.",
   "redact_uri": [
     {
       "name": "api_key",
@@ -3664,6 +3664,307 @@
         "authorization",
         "anthropic-workspace-id"
       ]
+    }
+  ],
+  "anthropic_stream_events": [
+    {
+      "name": "not opted in: today's sequence",
+      "sse_from": "anthropic_stream/thinking and tool use yield no text tokens",
+      "tools": [
+        "get_weather",
+        "pane.open"
+      ],
+      "stream_events": false,
+      "want_events": [
+        {
+          "type": "text",
+          "text": "Let me check."
+        },
+        {
+          "type": "done"
+        }
+      ],
+      "error_kind": ""
+    },
+    {
+      "name": "plain stream: usage around text",
+      "sse_from": "anthropic_stream/text deltas",
+      "tools": [],
+      "stream_events": true,
+      "want_events": [
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 10
+          }
+        },
+        {
+          "type": "text",
+          "text": "Hello"
+        },
+        {
+          "type": "text",
+          "text": " world"
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 15
+          }
+        },
+        {
+          "type": "done"
+        }
+      ],
+      "error_kind": ""
+    },
+    {
+      "name": "tool call start, deltas, end",
+      "sse_from": "anthropic_stream/thinking and tool use yield no text tokens",
+      "tools": [
+        "get_weather",
+        "pane.open"
+      ],
+      "stream_events": true,
+      "want_events": [
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 3,
+            "completion_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 3
+          }
+        },
+        {
+          "type": "text",
+          "text": "Let me check."
+        },
+        {
+          "type": "tool_call",
+          "kind": "start",
+          "index": 0,
+          "id": "toolu_1",
+          "name": "get_weather"
+        },
+        {
+          "type": "tool_call",
+          "kind": "delta",
+          "index": 0,
+          "arguments": "{\"ci"
+        },
+        {
+          "type": "tool_call",
+          "kind": "delta",
+          "index": 0,
+          "arguments": "ty\": \"NYC\"}"
+        },
+        {
+          "type": "tool_call",
+          "kind": "end",
+          "index": 0,
+          "id": "toolu_1",
+          "name": "get_weather",
+          "arguments": {
+            "city": "NYC"
+          }
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 3,
+            "completion_tokens": 40,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 43
+          }
+        },
+        {
+          "type": "done"
+        }
+      ],
+      "error_kind": ""
+    },
+    {
+      "name": "parallel calls interleave; original names; cache usage",
+      "sse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"usage\":{\"input_tokens\":20,\"output_tokens\":1,\"cache_read_input_tokens\":100,\"cache_creation_input_tokens\":7}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_a\",\"name\":\"get_weather\",\"input\":{}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_b\",\"name\":\"pane_open\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"city\\\":\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"pane\\\":\\\"left\\\"}\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"LA\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_c\",\"name\":\"get_weather\",\"input\":{}}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":2}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":33}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+      "tools": [
+        "get_weather",
+        "pane.open"
+      ],
+      "stream_events": true,
+      "want_events": [
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 20,
+            "completion_tokens": 1,
+            "cache_read_tokens": 100,
+            "cache_creation_tokens": 7,
+            "total_tokens": 128
+          }
+        },
+        {
+          "type": "tool_call",
+          "kind": "start",
+          "index": 0,
+          "id": "toolu_a",
+          "name": "get_weather"
+        },
+        {
+          "type": "tool_call",
+          "kind": "start",
+          "index": 1,
+          "id": "toolu_b",
+          "name": "pane.open"
+        },
+        {
+          "type": "tool_call",
+          "kind": "delta",
+          "index": 0,
+          "arguments": "{\"city\":"
+        },
+        {
+          "type": "tool_call",
+          "kind": "delta",
+          "index": 1,
+          "arguments": "{\"pane\":\"left\"}"
+        },
+        {
+          "type": "tool_call",
+          "kind": "delta",
+          "index": 0,
+          "arguments": "\"LA\"}"
+        },
+        {
+          "type": "tool_call",
+          "kind": "end",
+          "index": 1,
+          "id": "toolu_b",
+          "name": "pane.open",
+          "arguments": {
+            "pane": "left"
+          }
+        },
+        {
+          "type": "tool_call",
+          "kind": "end",
+          "index": 0,
+          "id": "toolu_a",
+          "name": "get_weather",
+          "arguments": {
+            "city": "LA"
+          }
+        },
+        {
+          "type": "tool_call",
+          "kind": "start",
+          "index": 2,
+          "id": "toolu_c",
+          "name": "get_weather"
+        },
+        {
+          "type": "tool_call",
+          "kind": "end",
+          "index": 2,
+          "id": "toolu_c",
+          "name": "get_weather",
+          "arguments": {}
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 20,
+            "completion_tokens": 33,
+            "cache_read_tokens": 100,
+            "cache_creation_tokens": 7,
+            "total_tokens": 160
+          }
+        },
+        {
+          "type": "done"
+        }
+      ],
+      "error_kind": ""
+    },
+    {
+      "name": "truncated mid tool call: no end",
+      "sse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"usage\":{\"input_tokens\":4,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"get_weather\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"ci\"}}\n\n",
+      "tools": [
+        "get_weather",
+        "pane.open"
+      ],
+      "stream_events": true,
+      "want_events": [
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 4,
+            "completion_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 4
+          }
+        },
+        {
+          "type": "tool_call",
+          "kind": "start",
+          "index": 0,
+          "id": "toolu_1",
+          "name": "get_weather"
+        },
+        {
+          "type": "tool_call",
+          "kind": "delta",
+          "index": 0,
+          "arguments": "{\"ci"
+        }
+      ],
+      "error_kind": "truncated"
+    },
+    {
+      "name": "error event mid tool call: no end",
+      "sse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"usage\":{\"input_tokens\":4,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"get_weather\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"ci\"}}\n\nevent: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"m\"}}\n\n",
+      "tools": [
+        "get_weather",
+        "pane.open"
+      ],
+      "stream_events": true,
+      "want_events": [
+        {
+          "type": "usage",
+          "usage": {
+            "prompt_tokens": 4,
+            "completion_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_tokens": 4
+          }
+        },
+        {
+          "type": "tool_call",
+          "kind": "start",
+          "index": 0,
+          "id": "toolu_1",
+          "name": "get_weather"
+        },
+        {
+          "type": "tool_call",
+          "kind": "delta",
+          "index": 0,
+          "arguments": "{\"ci"
+        }
+      ],
+      "error_kind": "http_status"
     }
   ]
 }
