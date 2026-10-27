@@ -12,25 +12,24 @@ entry-point plugins; this module contains only the core plumbing.
 
 from __future__ import annotations
 
+import importlib
+import json
 import mimetypes
 import os
 import time
 import urllib.request
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
-from urllib.parse import parse_qs, urlparse
-
-import yaml
-
-from hop_top_kit.xdg import config_dir
 
 __all__ = [  # noqa: RUF022 — grouped by category
     # Protocols
     "Completer",
     "Streamer",
     "ToolCaller",
+    "ToolStreamer",
+    "ToolStream",
     "Provider",
     # Data types
     "PartType",
@@ -43,16 +42,22 @@ __all__ = [  # noqa: RUF022 — grouped by category
     "Request",
     "Response",
     "Usage",
+    "Price",
     "Token",
     "ToolDef",
     "ToolCall",
     "ToolResponse",
+    "ThinkingBlock",
+    "ThinkingConfig",
+    "CacheControl",
+    "StreamOutcome",
     # URI + config
     "URI",
     "ProviderConfig",
     "ResolvedConfig",
     "parse_uri",
     "load_config",
+    "apply_api_key",
     # Registry
     "register",
     "resolve",
@@ -78,6 +83,14 @@ __all__ = [  # noqa: RUF022 — grouped by category
     "ThresholdInvalidError",
     "ToolNameReason",
     "ToolNameError",
+    "HTTPStatusError",
+    "APIError",
+    "TransportError",
+    "StreamTruncatedError",
+    "ResponseTooLargeError",
+    "KeyEndpointError",
+    "UnsupportedModalityError",
+    "InvalidFormatError",
     "is_fallbackable",
 ]
 
@@ -100,6 +113,34 @@ class Streamer(Protocol):
 @runtime_checkable
 class ToolCaller(Protocol):
     def call_with_tools(self, req: Request, tools: list[ToolDef]) -> ToolResponse: ...
+
+
+@runtime_checkable
+class ToolStream(Protocol):
+    """A token iterator whose finished turn can be read back.
+
+    Iterating yields text (and, with :attr:`Request.thinking`, thinking)
+    tokens, then one ``done`` token, then stops. :meth:`outcome` returns
+    the folded turn once the ``done`` token was yielded, else ``None``;
+    after an error it stays ``None``.
+    """
+
+    def __iter__(self) -> Iterator[Token]: ...
+
+    def __next__(self) -> Token: ...
+
+    def outcome(self) -> StreamOutcome | None: ...
+
+    def close(self) -> None: ...
+
+
+@runtime_checkable
+class ToolStreamer(Protocol):
+    """Streams a tool-calling completion: text deltas as tokens, then the
+    whole turn (tool calls, stop reason, usage) from
+    :meth:`ToolStream.outcome`."""
+
+    def stream_with_tools(self, req: Request, tools: list[ToolDef]) -> ToolStream: ...
 
 
 class Provider(Protocol):
@@ -241,16 +282,62 @@ class Message:
     tool_calls: list[ToolCall] = field(default_factory=list)
     # Links a role "tool" result to the ToolCall it answers.
     tool_call_id: str = ""
+    # Replays an assistant turn's thinking blocks exactly as returned (in
+    # Response.thinking, ToolResponse.thinking or StreamOutcome.thinking).
+    # Required with tool use when thinking is enabled. Assistant only.
+    thinking: list[ThinkingBlock] = field(default_factory=list)
+    # A prompt-cache breakpoint after this message: on a system message
+    # its text, otherwise its last content block.
+    cache_control: CacheControl | None = None
+
+
+@dataclass(frozen=True)
+class ThinkingBlock:
+    """One block of a model's extended thinking.
+
+    ``signature`` verifies ``thinking``; a redacted block carries only
+    ``redacted``, the provider's opaque data. Pass blocks back exactly as
+    received.
+    """
+
+    thinking: str = ""
+    signature: str = ""
+    redacted: str = ""
+
+
+@dataclass(frozen=True)
+class CacheControl:
+    """A prompt-cache breakpoint. ``ttl`` is ``""`` (the provider default,
+    five minutes on Anthropic), ``"5m"`` or ``"1h"``."""
+
+    ttl: str = ""
+
+
+@dataclass(frozen=True)
+class ThinkingConfig:
+    """Enables extended thinking with a token budget, which must be below
+    the request's ``max_tokens``."""
+
+    budget_tokens: int
 
 
 @dataclass
 class Request:
+    """All parameters of a completion call.
+
+    ``temperature`` ``None`` leaves the provider default; any number,
+    ``0.0`` included, is sent. ``max_tokens`` 0 means the provider
+    default. ``thinking`` enables extended thinking where the provider
+    has it; thinking deltas then stream as :attr:`Token.thinking`.
+    """
+
     messages: list[Message]
     model: str = ""
-    temperature: float = 0.0
+    temperature: float | None = None
     max_tokens: int = 0
     stop_sequences: list[str] = field(default_factory=list)
     extensions: dict[str, Any] = field(default_factory=dict)
+    thinking: ThinkingConfig | None = None
 
 
 @dataclass
@@ -259,26 +346,67 @@ class Response:
     role: str = ""
     usage: Usage | None = None
     finish_reason: str = ""
+    # The turn's thinking blocks, to replay unchanged.
+    thinking: list[ThinkingBlock] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class Price:
+    """A model's rate per million tokens, by kind."""
+
+    input: float = 0.0
+    output: float = 0.0
+    cache_read: float = 0.0
+    cache_write: float = 0.0
 
 
 @dataclass
 class Usage:
+    """Token consumption.
+
+    ``cache_read_tokens`` and ``cache_creation_tokens`` are input tokens
+    read from or written to the prompt cache, apart from
+    ``prompt_tokens``; ``total_tokens`` counts every input and output
+    token, cache ones included.
+    """
+
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+
+    def cost(self, price: Price) -> float:
+        """This usage's cost at *price*, cache reads and writes at their own rates."""
+        return (
+            self.prompt_tokens * price.input
+            + self.completion_tokens * price.output
+            + self.cache_read_tokens * price.cache_read
+            + self.cache_creation_tokens * price.cache_write
+        ) / 1e6
 
 
 @dataclass
 class Token:
+    """A streaming chunk. ``thinking`` is a thinking delta, sent only when
+    the request enabled :attr:`Request.thinking`; ``content`` is then
+    empty."""
+
     content: str = ""
     done: bool = False
+    thinking: str = ""
 
 
 @dataclass
 class ToolDef:
+    """A tool the model may call. ``parameters`` is a JSON schema: a dict,
+    or JSON text or bytes."""
+
     name: str
     description: str
     parameters: Any = None
+    # A prompt-cache breakpoint after this tool.
+    cache_control: CacheControl | None = None
 
 
 @dataclass
@@ -300,6 +428,22 @@ class ToolCall:
 class ToolResponse:
     content: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
+    # The turn's thinking blocks, to replay unchanged.
+    thinking: list[ThinkingBlock] = field(default_factory=list)
+    finish_reason: str = ""
+    usage: Usage | None = None
+
+
+@dataclass
+class StreamOutcome:
+    """What a finished stream folded into. Replay ``thinking`` on the
+    assistant message, unchanged, in a follow-up turn."""
+
+    content: str = ""
+    thinking: list[ThinkingBlock] = field(default_factory=list)
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    finish_reason: str = ""
+    usage: Usage = field(default_factory=Usage)
 
 
 # ---------------------------------------------------------------------------
@@ -331,104 +475,6 @@ class ResolvedConfig:
     fallbacks: list[str] = field(default_factory=list)
 
 
-def parse_uri(raw: str) -> URI:
-    """Parse a provider URI like ``openai://gpt-4?temperature=0.5``.
-
-    Supports optional host (``ollama://localhost:11434/llama3``) and
-    slash-containing model names (``openai://org/model``).
-    """
-    if not raw or "://" not in raw:
-        raise LLMError(f"invalid LLM URI (missing scheme): {raw!r}")
-
-    parsed = urlparse(raw)
-    scheme = parsed.scheme
-    if not scheme:
-        raise LLMError(f"invalid LLM URI (empty scheme): {raw!r}")
-
-    # Determine host vs model.
-    # urlparse puts everything after :// into netloc when there's no path,
-    # or splits netloc/path when a slash follows a host-like segment.
-    host = ""
-    model = ""
-
-    try:
-        port = parsed.port
-    except ValueError:
-        # Non-integer port (e.g. "mf:0.7") — not a real host:port.
-        port = None
-
-    # Heuristic: if there's a valid integer port, netloc is a real host.
-    if port:
-        hostname = parsed.hostname or ""
-        host = f"{hostname}:{port}"
-        model = parsed.path.lstrip("/")
-    else:
-        # No valid port — treat raw netloc + path as the model.
-        # Use parsed.netloc (not parsed.hostname) to preserve
-        # segments like "mf:0.7" that urlparse splits incorrectly.
-        full = parsed.netloc or ""
-        if parsed.path:
-            full += parsed.path
-        model = full.lstrip("/")
-
-    # Query params — flatten single-value lists.
-    params: dict[str, str] = {}
-    for k, v_list in parse_qs(parsed.query).items():
-        params[k] = v_list[0] if v_list else ""
-
-    return URI(scheme=scheme, model=model, host=host, params=params)
-
-
-def load_config(uri: str = "") -> ResolvedConfig:
-    """Load LLM configuration from env vars, YAML file, or explicit *uri*.
-
-    Resolution order (first wins per field):
-    1. Explicit *uri* argument
-    2. ``LLM_PROVIDER`` / ``LLM_API_KEY`` / ``LLM_BASE_URL`` / ``LLM_FALLBACK``
-    3. ``{xdg.config_dir("hop")}/llm.yaml``
-    """
-    # Defaults from YAML file.
-    yaml_data = _load_yaml_config()
-
-    raw_uri = uri or os.environ.get("LLM_PROVIDER", "") or yaml_data.get("default", "")
-    if not raw_uri:
-        raise LLMError("no LLM provider configured (set LLM_PROVIDER env or provide a URI)")
-
-    parsed = parse_uri(raw_uri)
-
-    # Look up per-provider config from YAML ``providers`` dict.
-    providers_map: dict[str, Any] = yaml_data.get("providers", {}) or {}
-    prov_section = providers_map.get(parsed.scheme, {}) or {}
-
-    api_key = os.environ.get("LLM_API_KEY", "") or prov_section.get("api_key", "")
-    base_url = os.environ.get("LLM_BASE_URL", "") or prov_section.get("base_url", "")
-
-    fallback_env = os.environ.get("LLM_FALLBACK", "")
-    if fallback_env:
-        fallbacks = [f.strip() for f in fallback_env.split(",") if f.strip()]
-    else:
-        fallbacks = yaml_data.get("fallback", []) or []
-
-    provider_cfg = ProviderConfig(
-        api_key=api_key,
-        base_url=base_url,
-        model=parsed.model,
-        params=parsed.params,
-    )
-
-    return ResolvedConfig(uri=parsed, provider=provider_cfg, fallbacks=fallbacks)
-
-
-def _load_yaml_config() -> dict[str, Any]:
-    """Read ``{xdg.config_dir("hop")}/llm.yaml`` if it exists."""
-    cfg_path = os.path.join(config_dir("hop"), "llm.yaml")
-    if not os.path.isfile(cfg_path):
-        return {}
-    with open(cfg_path) as fh:
-        data = yaml.safe_load(fh)
-    return data if isinstance(data, dict) else {}
-
-
 # ---------------------------------------------------------------------------
 # Errors
 # ---------------------------------------------------------------------------
@@ -452,9 +498,14 @@ class CapabilityNotSupportedError(LLMError):
 
 
 class AuthError(LLMError):
-    def __init__(self, provider: str) -> None:
+    """The provider refused the credential (HTTP 401 or 403). ``detail``
+    is the provider's error text, credentials scrubbed."""
+
+    def __init__(self, provider: str, detail: str = "") -> None:
         self.provider = provider
-        super().__init__(f"authentication error for provider {provider!r}")
+        self.detail = detail
+        msg = f"authentication error for provider {provider!r}"
+        super().__init__(f"{msg}: {detail}" if detail else msg)
 
 
 class RateLimitError(LLMError):
@@ -548,13 +599,139 @@ class ToolNameError(LLMError):
         return f"tool name {n!r}: {self.reason} (provider {p!r})"
 
 
+class HTTPStatusError(LLMError):
+    """An HTTP status the provider answered with: a 5xx (the server
+    failed; ``overloaded`` is 529) or a 3xx (redirects are not followed).
+    Fallbackable for 5xx only."""
+
+    def __init__(self, status_code: int, status: str) -> None:
+        self.status_code = status_code
+        self.status = status
+        super().__init__(f"http {status_code}: {status}")
+
+
+class APIError(LLMError):
+    """A 4xx the provider answered with that no other error names: the
+    request needs fixing. Not fallbackable."""
+
+    def __init__(self, provider: str, status_code: int, error_type: str, message: str) -> None:
+        self.provider = provider
+        self.status_code = status_code
+        self.error_type = error_type
+        self.message = message
+        kind = f"{error_type}: " if error_type else ""
+        super().__init__(f"{provider}: http {status_code}: {kind}{message}")
+
+
+class TransportError(LLMError):
+    """The request did not complete at the transport level (connection
+    refused or reset, timeout, TLS failure). The message names the
+    destination without userinfo or query. Fallbackable."""
+
+
+class StreamTruncatedError(LLMError):
+    """A stream ended before its final event: the response is incomplete."""
+
+    def __init__(self, provider: str) -> None:
+        self.provider = provider
+        super().__init__(f"stream truncated (provider {provider!r}): ended before its final event")
+
+
+class ResponseTooLargeError(LLMError):
+    """A response outgrew its limit. ``what`` is the part that overran:
+    ``"body"`` (a whole non-streamed body) or ``"event"`` (one SSE
+    event)."""
+
+    def __init__(self, provider: str, what: str, limit: int) -> None:
+        self.provider = provider
+        self.what = what
+        self.limit = limit
+        super().__init__(f"response {what} exceeds {limit} bytes (provider {provider!r})")
+
+
+class KeyEndpointError(LLMError):
+    """A provider key kit will not send to an endpoint.
+
+    ``endpoint`` is masked by :func:`hop_top_kit.llm_endpoint.redact_uri`;
+    the key never appears. ``insecure``: plain http to a remote host.
+    ``malformed``: the endpoint carries userinfo, a backslash, a
+    percent-escape, whitespace or a control character, or does not
+    parse. Neither: the endpoint came from the URI and is not trusted.
+    """
+
+    def __init__(
+        self, scheme: str, endpoint: str, *, insecure: bool = False, malformed: bool = False
+    ) -> None:
+        self.scheme = scheme
+        self.endpoint = endpoint
+        self.insecure = insecure
+        self.malformed = malformed
+        super().__init__(self._message())
+
+    def _message(self) -> str:
+        s, e = self.scheme, _go_quote(self.endpoint)
+        if self.malformed:
+            return (
+                f"llm: refusing to send the {s} API key to {e}: an endpoint must parse and "
+                "carry no userinfo, backslash, percent-escape, whitespace or control character"
+            )
+        if self.insecure:
+            return (
+                f"llm: refusing to send the {s} API key over plain http to {e}; "
+                "use https or a loopback host"
+            )
+        return (
+            f"llm: refusing to send the {s} API key to {e}, which only the URI names; "
+            "set it as llm.yaml base_url or LLM_BASE_URL, or pass api_key in the URI"
+        )
+
+
+class UnsupportedModalityError(LLMError):
+    def __init__(self, modality: str, provider: str) -> None:
+        self.modality = modality
+        self.provider = provider
+        super().__init__(f"modality {modality!r} not supported by provider {provider!r}")
+
+
+class InvalidFormatError(LLMError):
+    def __init__(self, fmt: str, provider: str) -> None:
+        self.format = fmt
+        self.provider = provider
+        super().__init__(f"invalid format {fmt!r} for provider {provider!r}")
+
+
+def _schema_object(parameters: Any) -> dict[str, Any] | None:
+    """A tool's parameters as a JSON object (from a dict, or JSON text or
+    bytes), or ``None`` when absent or not an object."""
+    v = parameters
+    if isinstance(v, (str, bytes, bytearray)):
+        try:
+            v = json.loads(v) if v else None
+        except ValueError:
+            return None
+    return dict(v) if isinstance(v, dict) else None
+
+
+def _go_quote(s: str) -> str:
+    """*s* double-quoted as Go's ``%q`` quotes it, for messages shared
+    with the other ports."""
+    return json.dumps(s, ensure_ascii=False)
+
+
 def is_fallbackable(err: Exception) -> bool:
     """Return True if *err* should trigger a fallback attempt.
 
-    Errors not listed here, :class:`ToolNameError` among them, are not
-    fallbackable.
+    Rate limits, router failures, transport failures and 5xx statuses
+    (``overloaded`` among them) are fallbackable. Errors not listed here,
+    :class:`AuthError`, :class:`ModelError`, :class:`APIError`,
+    :class:`ToolNameError` and :class:`KeyEndpointError` among them, are
+    not.
     """
-    return isinstance(err, (RateLimitError, RouterUnavailableError, RouterTimeoutError))
+    if isinstance(err, HTTPStatusError):
+        return err.status_code >= 500
+    return isinstance(
+        err, (RateLimitError, RouterUnavailableError, RouterTimeoutError, TransportError)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -564,26 +741,65 @@ def is_fallbackable(err: Exception) -> bool:
 Factory = Callable[[ResolvedConfig], Any]
 
 _registry: dict[str, Factory] = {}
+# Endpoints each scheme's adapter declares: where a key kit resolved
+# itself may go besides loopback, llm.yaml base_url and LLM_BASE_URL.
+_endpoints: dict[str, tuple[str, ...]] = {}
+
+# Built-in adapters, imported the first time their scheme is needed so
+# importing this module stays light. Each registers its schemes.
+_BUILTIN_ADAPTERS: dict[str, str] = {
+    "anthropic": "hop_top_kit.llm_anthropic",
+    **{
+        s: "hop_top_kit.llm_openai"
+        for s in (
+            "openai",
+            "openrouter",
+            "xai",
+            "lmstudio",
+            "groq",
+            "together",
+            "fireworks",
+            "deepseek",
+            "mistral",
+        )
+    },
+}
 
 
-def register(scheme: str, factory: Factory) -> None:
+def register(scheme: str, factory: Factory, *, endpoints: Iterable[str] = ()) -> None:
     """Register a provider factory for *scheme*.
+
+    *endpoints* are the API base URLs the adapter talks to by default; a
+    key kit resolves from llm.yaml or the environment may go to an
+    endpoint the URI names only when it shares an origin with one of
+    them (or is loopback, llm.yaml ``base_url`` or ``LLM_BASE_URL``).
 
     Raises :class:`LLMError` if *scheme* is already registered.
     """
     if scheme in _registry:
         raise LLMError(f"scheme {scheme!r} already registered")
     _registry[scheme] = factory
+    _endpoints[scheme] = tuple(endpoints)
+
+
+def _ensure_builtin(scheme: str) -> None:
+    """Import the built-in adapter serving *scheme*, if any and not yet
+    registered."""
+    mod = _BUILTIN_ADAPTERS.get(scheme)
+    if mod is not None and scheme not in _registry:
+        # Registering again covers a registry cleared after the import.
+        importlib.import_module(mod)._register()
+
+
+def declared_endpoints(scheme: str) -> tuple[str, ...]:
+    """The endpoints *scheme*'s adapter declared at registration."""
+    _ensure_builtin(scheme)
+    return _endpoints.get(scheme, ())
 
 
 def resolve(uri: str) -> Any:
     """Resolve a URI to a provider instance via the registry."""
-    cfg = load_config(uri)
-    scheme = cfg.uri.scheme
-    factory = _registry.get(scheme)
-    if factory is None:
-        raise ProviderNotFoundError(scheme)
-    return factory(cfg)
+    return _resolve_from_config(load_config(uri))
 
 
 # ---------------------------------------------------------------------------
@@ -629,6 +845,8 @@ class Client:
             caps.append("stream")
         if isinstance(self._provider, ToolCaller):
             caps.append("call_with_tools")
+        if isinstance(self._provider, ToolStreamer):
+            caps.append("stream_with_tools")
         return caps
 
     def complete(self, req: Request) -> Response:
@@ -697,6 +915,14 @@ class Client:
             return prov.call_with_tools(req, tools)
 
         raise CapabilityNotSupportedError("call_with_tools", type(self._provider).__name__)
+
+    def stream_with_tools(self, req: Request, tools: list[ToolDef]) -> ToolStream:
+        """Stream a tool-calling turn, falling back if a provider lacks the
+        capability."""
+        for prov in [self._provider, *self._fallbacks]:
+            if isinstance(prov, ToolStreamer):
+                return prov.stream_with_tools(req, tools)
+        raise CapabilityNotSupportedError("stream_with_tools", type(self._provider).__name__)
 
     def close(self) -> None:
         """Close primary and fallback providers."""
@@ -835,7 +1061,17 @@ def create_llm(
 
 def _resolve_from_config(cfg: ResolvedConfig) -> Any:
     """Resolve a provider from a :class:`ResolvedConfig`."""
+    _ensure_builtin(cfg.uri.scheme)
     factory = _registry.get(cfg.uri.scheme)
     if factory is None:
         raise ProviderNotFoundError(cfg.uri.scheme)
     return factory(cfg)
+
+
+# URI parsing and configuration live in hop_top_kit.llm_config, which
+# needs the types and errors above; re-exported here as before.
+from hop_top_kit.llm_config import (  # noqa: E402
+    apply_api_key,
+    load_config,
+    parse_uri,
+)

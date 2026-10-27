@@ -711,6 +711,72 @@ from a `MediaSource`: `InlineSource(data, mime_type)`, `URLSource(url)`
 (downloaded on `read()`) or `FileSource(path)` (MIME from the
 extension). `ContentPart.mime_type` overrides the source's.
 
+### Provider adapters
+
+`create_llm()` / `llm.resolve()` load the built-in adapters on first
+use; both are stdlib-only (`urllib`, no provider SDK):
+
+| Scheme | Module | Default endpoint |
+|--------|--------|------------------|
+| `anthropic` | `hop_top_kit.llm_anthropic` | `https://api.anthropic.com` |
+| `openai`, `openrouter`, `xai`, `groq`, `together`, `fireworks`, `deepseek`, `mistral` | `hop_top_kit.llm_openai` | each provider's API |
+| `lmstudio` | `hop_top_kit.llm_openai` | `http://localhost:1234/v1` (no key; `/v1` appended) |
+
+Each implements `complete`, `stream`, `call_with_tools` and
+`stream_with_tools`. A stream yields `llm.Token`s, then one with
+`done=True`; `stream.outcome()` then returns the `llm.StreamOutcome`
+(content, thinking blocks, tool calls, finish reason, usage).
+
+```python
+client = llm.create_llm("anthropic://claude-opus-5-5")
+req = llm.Request(messages=msgs, max_tokens=4096, thinking=llm.ThinkingConfig(2048))
+stream = client.stream_with_tools(req, tools)
+for tok in stream:
+    print(tok.thinking or tok.content, end="")
+turn = stream.outcome()
+msgs.append(llm.Message(role="assistant", content=turn.content,
+                        tool_calls=turn.tool_calls, thinking=turn.thinking))
+```
+
+Anthropic only: `Request.thinking` (budget at least 1024, below
+`max_tokens`) streams thinking deltas as `Token.thinking`; replay
+`thinking` blocks unchanged on the assistant message. `cache_control=
+llm.CacheControl(ttl="5m" | "1h" | "")` on a message or `ToolDef` marks
+a prompt-cache breakpoint. `Usage` carries `cache_read_tokens` and
+`cache_creation_tokens`; `usage.cost(llm.Price(input=, output=,
+cache_read=, cache_write=))` prices it per million tokens.
+
+Transport rules, every adapter:
+
+- **Keys**: `api_key` URI param, `LLM_API_KEY`, llm.yaml
+  `providers.<scheme>.api_key`, then `<SCHEME>_API_KEY`. A key not from
+  the URI reaches an endpoint the URI names (`?base_url=`, host form)
+  only when it is loopback or the same origin as the adapter's default,
+  llm.yaml `base_url` or `LLM_BASE_URL`; no key goes over plain http to a
+  remote host or to an endpoint with userinfo, `\`, `%`, whitespace or a
+  control character (`llm.KeyEndpointError`). `llm.apply_api_key(uri)`
+  returns the URI carrying the resolved key under the same rules.
+- **Anthropic env**: `ANTHROPIC_BASE_URL` (below a configured base URL),
+  `ANTHROPIC_AUTH_TOKEN` (bearer, when not blank) and
+  `ANTHROPIC_WORKSPACE_ID`; the token and workspace go only to a trusted
+  origin. The openai adapter reads no environment credential.
+- **Retries**: two more attempts on 408, 409, 429, 5xx and transport
+  failures (`x-should-retry` overrides); a server wait
+  (`retry-after-ms`, `retry-after` seconds) is honored only within
+  (0, 60s], else backoff (0.5s base, 8s cap, jitter).
+- **No redirects**: a 3xx is `llm.HTTPStatusError`.
+- **Limits**: params `max_body_bytes` (32 MiB) and `max_event_bytes`
+  (one SSE event, 8 MiB); past either, `llm.ResponseTooLargeError`.
+- **Truncation**: a stream ending without its final event (Anthropic
+  `message_stop`; OpenAI `[DONE]` or a `finish_reason`) raises
+  `llm.StreamTruncatedError`.
+- **Errors**: 401/403 `AuthError`, 404 `ModelError`, 429
+  `RateLimitError`, 5xx `HTTPStatusError` (`overloaded`, 529, among
+  them), other 4xx `APIError`, transport `TransportError`; an SSE error
+  event maps by its type. `llm.is_fallbackable()` is true for rate
+  limits, 5xx and transport failures. Every credential sent is
+  `REDACTED` in error text.
+
 ### RouteLLM wire mapping
 
 `hop_top_kit.routellm_adapter` sends the OpenAI chat shape, the same
@@ -772,8 +838,15 @@ Opt out of rewriting with the `tool_names` provider param:
 rejects with reason `invalid`; `sanitize` is the default; any other
 value fails adapter construction with `llm.LLMError`.
 
-The `routellm` adapter has no tool-definition entry point; it applies
-`OPENAI_TOOL_NAMES` to the calls replayed in history (`complete` and
-`stream`), so a `resp.tool_calls` list from another adapter goes back
-verbatim: `routellm://mf:0.7` sends `pane.open` as `pane_open`,
-`routellm://mf:0.7?tool_names=strict` as given.
+Every adapter applies its rule on every entry point: tool definitions
+(`call_with_tools`, `stream_with_tools`) and the calls replayed in
+history (all four), and maps returned calls, in responses and stream
+outcomes, back to the caller's names. `anthropic` uses
+`ANTHROPIC_TOOL_NAMES`; the `openai` schemes and `routellm` use
+`OPENAI_TOOL_NAMES`, so a `resp.tool_calls` list from another adapter
+goes back verbatim: `routellm://mf:0.7` sends `pane.open` as
+`pane_open`, `routellm://mf:0.7?tool_names=strict` as given.
+
+`routellm` calls tools through the OpenAI wire mapping
+(`hop_top_kit.llm_openai`): the Controller gets the mapped `tools`, and
+the routed model's calls come back under the caller's names.

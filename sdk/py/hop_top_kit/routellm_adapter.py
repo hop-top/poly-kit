@@ -10,13 +10,11 @@ Optional Eva contract validation runs post-completion when configured.
 
 from __future__ import annotations
 
-import base64
-import json
 import logging
 from collections.abc import Iterator
 from typing import Any
 
-from hop_top_kit import llm
+from hop_top_kit import llm, llm_openai
 from hop_top_kit.llm_toolnames import (
     OPENAI_TOOL_NAMES,
     ToolNameMode,
@@ -72,116 +70,29 @@ def map_messages(
 ) -> list[dict[str, Any]]:
     """Map :class:`llm.Message` values to OpenAI chat messages.
 
-    RouteLLM speaks the OpenAI chat shape. An assistant turn carrying
-    ``tool_calls`` becomes a message with ``tool_calls`` (arguments as a
-    JSON string); a role ``"tool"`` result becomes a ``tool`` message with
-    ``tool_call_id``; ``parts`` become a user content array. Messages
-    without those fields map to ``{"role", "content"}`` as before.
-
-    With *tool_names*, a replayed call's name goes out as its wire name
-    (:meth:`ToolNames.wire`); without, names go out as given.
-
-    Raises :class:`llm.LLMError` for linkage or parts the wire cannot
-    express instead of degrading them to plain text.
+    RouteLLM speaks the OpenAI chat shape; this is
+    :func:`hop_top_kit.llm_openai.map_messages` with errors prefixed
+    ``routellm``. With *tool_names*, a replayed call's name goes out as
+    its wire name (:meth:`ToolNames.wire`); without, names go out as
+    given.
     """
-    out: list[dict[str, Any]] = []
-    for m in messages:
-        linked = _map_tool_linkage(m, tool_names)
-        if linked is not None:
-            out.append(linked)
-            continue
-        if not m.parts:
-            out.append({"role": m.role, "content": m.content})
-            continue
-        # Multimodal path: only user messages support content parts.
-        if m.role not in ("", "user"):
-            raise llm.LLMError(f"routellm: message role {m.role!r} does not support content parts")
-        out.append({"role": "user", "content": [_map_part(p) for p in m.parts]})
-    return out
+    return llm_openai.map_messages(messages, tool_names, provider="routellm")
 
 
-def _map_tool_linkage(m: llm.Message, tool_names: ToolNames | None) -> dict[str, Any] | None:
-    """Map the tool-call half of a conversation, or return None."""
-    if m.role == "tool":
-        if not m.tool_call_id:
-            raise llm.LLMError("routellm: tool result needs tool_call_id")
-        if m.tool_calls or m.parts:
-            raise llm.LLMError(f"routellm: tool result {m.tool_call_id!r} carries only content")
-        return {"role": "tool", "content": m.content, "tool_call_id": m.tool_call_id}
-    if m.tool_call_id:
-        raise llm.LLMError(f"routellm: tool_call_id is valid only on role tool, got {m.role!r}")
-    if not m.tool_calls:
-        return None
-    if m.role != "assistant":
-        raise llm.LLMError(f"routellm: tool_calls are valid only on role assistant, got {m.role!r}")
-    if m.parts:
-        raise llm.LLMError("routellm: assistant tool calls do not support content parts")
-
-    msg: dict[str, Any] = {"role": "assistant"}
-    if m.content:
-        msg["content"] = m.content
-    msg["tool_calls"] = [
-        {
-            "id": _require_call_id(tc),
-            "type": "function",
-            "function": {
-                "name": tool_names.wire(tc.name) if tool_names else tc.name,
-                "arguments": _arguments_json(tc),
-            },
-        }
-        for tc in m.tool_calls
-    ]
-    return msg
-
-
-def _require_call_id(tc: llm.ToolCall) -> str:
-    if not tc.id:
-        raise llm.LLMError(f"routellm: tool call {tc.name!r} needs an id")
-    return tc.id
-
-
-def _arguments_json(tc: llm.ToolCall) -> str:
-    """Return the call's arguments as a JSON string; empty means ``{}``."""
-    args = tc.arguments
-    if args is None or args in ("", b""):
-        return "{}"
-    if isinstance(args, bytes):
-        args = args.decode("utf-8")
-    if isinstance(args, str):
-        try:
-            json.loads(args)
-        except ValueError:
-            raise llm.LLMError(
-                f"routellm: tool call {tc.id!r} arguments are not valid JSON"
-            ) from None
-        return args
-    try:
-        return json.dumps(args, separators=(",", ":"))
-    except (TypeError, ValueError) as exc:
-        raise llm.LLMError(f"routellm: tool call {tc.id!r} arguments are not valid JSON") from exc
-
-
-def _map_part(p: llm.ContentPart) -> dict[str, Any]:
-    if p.type == llm.PartType.TEXT:
-        return {"type": "text", "text": p.text}
-    if p.type != llm.PartType.IMAGE:
-        raise llm.LLMError(f"routellm: unsupported modality {str(p.type)!r}")
-
-    mime = p.mime_type or (p.source.mime_type if p.source is not None else "")
-    if mime == "application/pdf":
-        return {"type": "file", "file": {"file_data": _read_base64(p.source)}}
-    if p.source is not None and p.source.url:
-        return {"type": "image_url", "image_url": {"url": p.source.url}}
-    if not mime:
-        raise llm.LLMError("routellm: image part has no MIME type")
-    data = _read_base64(p.source)
-    return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data}"}}
-
-
-def _read_base64(src: llm.MediaSource | None) -> str:
-    if src is None:
-        raise llm.LLMError("routellm: content part has no media source")
-    return base64.b64encode(src.read()).decode("ascii")
+def _plain(obj: Any) -> Any:
+    """A Controller result (litellm objects, dicts) as plain JSON data."""
+    if isinstance(obj, dict):
+        return {k: _plain(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_plain(v) for v in obj]
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    dump = getattr(obj, "model_dump", None)
+    if callable(dump):
+        return _plain(dump())
+    if hasattr(obj, "__dict__"):
+        return {k: _plain(v) for k, v in vars(obj).items() if not k.startswith("_")}
+    return None
 
 
 # ------------------------------------------------------------------
@@ -190,7 +101,15 @@ def _read_base64(src: llm.MediaSource | None) -> str:
 
 
 class RouteLLMAdapter:
-    """Completer + Streamer backed by RouteLLM's Controller."""
+    """Completer, Streamer, ToolCaller and ToolStreamer backed by
+    RouteLLM's Controller.
+
+    Tool calling goes through the OpenAI wire mapping
+    (:mod:`hop_top_kit.llm_openai`): tools under
+    :data:`~hop_top_kit.llm_toolnames.OPENAI_TOOL_NAMES` wire names,
+    passed to the Controller as ``tools``, and the routed model's calls
+    mapped back to the caller's names.
+    """
 
     def __init__(self, cfg: llm.ResolvedConfig) -> None:
         if Controller is None:
@@ -281,11 +200,55 @@ class RouteLLMAdapter:
             done = chunk.choices[0].finish_reason is not None
             yield llm.Token(content=content, done=done)
 
-    def _history_names(self) -> ToolNames:
+    def _history_names(self, tools: list[llm.ToolDef] | None = None) -> ToolNames:
         """The request's name table: RouteLLM speaks the OpenAI chat shape,
-        so replayed calls follow the openai rule. No entry point here sends
-        tool definitions, so the table holds none."""
-        return ToolNames.build(OPENAI_TOOL_NAMES, self._tool_name_mode, [])
+        so tool definitions and replayed calls follow the openai rule."""
+        return ToolNames.build(OPENAI_TOOL_NAMES, self._tool_name_mode, tools or [])
+
+    def _tool_kwargs(self, req: llm.Request) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {}
+        if req.temperature is not None:
+            kwargs["temperature"] = req.temperature
+        if req.max_tokens:
+            kwargs["max_tokens"] = req.max_tokens
+        if req.stop_sequences:
+            kwargs["stop"] = list(req.stop_sequences)
+        return kwargs
+
+    # -- ToolCaller protocol -----------------------------------
+
+    def call_with_tools(self, req: llm.Request, tools: list[llm.ToolDef]) -> llm.ToolResponse:
+        names = self._history_names(tools)
+        messages = map_messages(req.messages, names)
+        result = self._controller.completion(
+            router=self._router_name,
+            threshold=self._threshold,
+            messages=messages,
+            tools=llm_openai.map_tools(tools, names),
+            **self._tool_kwargs(req),
+        )
+        c = llm_openai.parse_completion(_plain(result), names)
+        return llm.ToolResponse(
+            content=c.content,
+            tool_calls=c.tool_calls,
+            finish_reason=c.finish_reason,
+            usage=c.usage,
+        )
+
+    # -- ToolStreamer protocol ---------------------------------
+
+    def stream_with_tools(self, req: llm.Request, tools: list[llm.ToolDef]) -> RouteLLMToolStream:
+        names = self._history_names(tools)
+        messages = map_messages(req.messages, names)
+        result = self._controller.completion(
+            router=self._router_name,
+            threshold=self._threshold,
+            messages=messages,
+            tools=llm_openai.map_tools(tools, names),
+            stream=True,
+            **self._tool_kwargs(req),
+        )
+        return RouteLLMToolStream(iter(result), names)
 
     # -- Eva validation ----------------------------------------
 
@@ -314,6 +277,47 @@ class RouteLLMAdapter:
 
     def close(self) -> None:
         pass
+
+
+class RouteLLMToolStream:
+    """A streamed tool-calling turn from the Controller: content tokens,
+    then one ``done`` token; :meth:`outcome` is the folded turn after it.
+    The chunks ending before any carried a ``finish_reason`` raises
+    :class:`~hop_top_kit.llm.StreamTruncatedError`."""
+
+    def __init__(self, chunks: Iterator[Any], names: ToolNames) -> None:
+        self._chunks = chunks
+        self._names = names
+        self._acc = llm_openai.ChunkAccumulator()
+        self._finished = False
+        self._outcome: llm.StreamOutcome | None = None
+
+    def __iter__(self) -> Iterator[llm.Token]:
+        return self
+
+    def outcome(self) -> llm.StreamOutcome | None:
+        return self._outcome
+
+    def close(self) -> None:
+        self._finished = True
+        closer = getattr(self._chunks, "close", None)
+        if callable(closer):
+            closer()
+
+    def __next__(self) -> llm.Token:
+        while not self._finished:
+            try:
+                chunk = next(self._chunks)
+            except StopIteration:
+                self._finished = True
+                if not self._acc.finish_reason:
+                    raise llm.StreamTruncatedError("routellm") from None
+                self._outcome = self._acc.outcome(self._names)
+                return llm.Token(done=True)
+            text = self._acc.apply(_plain(chunk))
+            if text:
+                return llm.Token(content=text)
+        raise StopIteration
 
 
 # ------------------------------------------------------------------
