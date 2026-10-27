@@ -7,194 +7,65 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/internal/serving"
 	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/console/output"
-	"hop.top/kit/go/core/identity"
 	"hop.top/kit/go/transport/authn"
 )
 
-// tokenCommandName is the kit-owned token command's word.
-const tokenCommandName = "token"
+func init() { serving.Mount = mountTokenIfKeyed }
 
-// mountTokenCmd mounts the kit-owned `token` command, or completes one
-// already mounted: claims, decode and verify always, create when the
-// tool has an identity keypair to sign with (cli.WithIdentity), and
-// key create|list|revoke when it issues API keys (service.WithAPIKeys).
-// It is idempotent, so WithAPI and OptionsApplied can both call it
-// whichever order the options ran in.
+// mountTokenIfKeyed mounts the token command when the Root serves —
+// any serve option, or an option that marked it serving (peers.With) —
+// and has something to issue: an identity keypair (cli.WithIdentity),
+// API keys (WithAPIKeys) or API auth. A key source mounts it with or
+// without WithAPI: a tool that serves only mcp or rpc under auth.mode
+// apikey or jwt must be able to issue what its service accepts without
+// registering a REST api that exposes the whole tree. It runs from
+// OptionsApplied, before the reserved snapshot, so token stays
+// kit-reserved and no served surface lists or runs it.
+func mountTokenIfKeyed(r *cli.Root) {
+	s, served := lookup(r)
+	if !served && !serving.Marked(r) {
+		return
+	}
+	keyed := cli.IdentityConfigured(r) ||
+		(served && (s.apiKeysCfg != nil || (s.apiCfg != nil && s.apiCfg.Auth != nil)))
+	if keyed {
+		mountTokenCmd(r)
+	}
+}
+
+// mountTokenCmd completes the kit-owned `token` command with the serve
+// plane's leaves. cli.MountTokenCommand mounts the command, or finds
+// the one already there (cli-side, from WithIdentity, or the
+// adopter's), with claims, decode and create; this adds verify always
+// and key create|list|revoke when the tool issues API keys. One token
+// command either way, idempotent, whichever order the options ran in.
 func mountTokenCmd(r *cli.Root) {
-	var cmd *cobra.Command
-	for _, c := range r.Cmd.Commands() {
-		if c.Name() == tokenCommandName {
-			cmd = c
-			break
-		}
-	}
-	if cmd == nil {
-		cmd = &cobra.Command{
-			Use:   tokenCommandName,
-			Short: "Manage API tokens",
-		}
-		r.Cmd.AddCommand(cmd)
-	}
+	cmd := cli.MountTokenCommand(r)
 	has := map[string]bool{}
 	for _, c := range cmd.Commands() {
 		has[c.Name()] = true
 	}
-	if !has["claims"] {
-		cmd.AddCommand(tokenClaimsCmd(r))
-	}
-	if !has["decode"] {
-		cmd.AddCommand(tokenDecodeCmd(r))
-	}
 	if !has["verify"] {
 		cmd.AddCommand(tokenVerifyCmd(r))
-	}
-	if !has["create"] && cli.IdentityConfigured(r) {
-		cmd.AddCommand(tokenCreateCmd(r))
 	}
 	if !has["key"] && stateOf(r).apiKeysCfg != nil {
 		cmd.AddCommand(tokenKeyCmd(r))
 	}
 }
 
-// tokenClaims is the JSON structure token claims prints.
-type tokenClaims struct {
-	Sub    string   `json:"sub"`
-	Scopes []string `json:"scopes,omitempty"`
-	Iat    int64    `json:"iat"`
-	Exp    int64    `json:"exp"`
-}
-
-// Every token leaf carries the annotations a validating root requires
-// of every leaf — kit/side-effect, kit/idempotent, Long — because
-// the root mounts them into the adopter's tree, and a tree that fails
-// its own validator would refuse to start. The command is mounted by
-// the serve plane before the reserved snapshot, so it is kit-reserved:
-// the api, mcp and rpc surfaces withhold it as management-only, the
-// socket withholds it by name, and no served caller can mint or probe
-// tokens.
-func tokenClaimsCmd(_ *cli.Root) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "claims",
-		Short: "Print a structured claims template (not a signed token)",
-		Long: "Print a JSON claims template — subject, scopes, issued-at and expiry —\n" +
-			"for an external signer to turn into a token. Nothing is signed here;\n" +
-			"`token create` signs with the tool's own identity keypair.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			sub, _ := cmd.Flags().GetString("sub")
-			scopes, _ := cmd.Flags().GetStringSlice("scopes")
-			expires, _ := cmd.Flags().GetDuration("expires")
-
-			now := time.Now()
-			claims := tokenClaims{
-				Sub:    sub,
-				Scopes: scopes,
-				Iat:    now.Unix(),
-				Exp:    now.Add(expires).Unix(),
-			}
-
-			data, err := json.MarshalIndent(claims, "", "  ")
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), string(data))
-			return nil
-		},
-	}
-
-	cmd.Flags().String("sub", "", "Subject (identity)")
-	cmd.Flags().StringSlice("scopes", nil, "Comma-separated scopes")
-	cmd.Flags().Duration("expires", 24*time.Hour, "Token lifetime")
-
-	cli.SetSideEffect(cmd, cli.SideEffectRead)
-	cli.SetIdempotency(cmd, cli.IdempotencyYes)
-	// JSON whatever --format says: the template is for a signer.
-	_ = cli.SetOutputSchema(cmd, cli.OutputSchema{Type: &tokenClaims{}, Version: "1.0"})
-	return cmd
-}
-
-// tokenCreated is what token create renders under a data format (json,
-// yaml). Human formats print the bare token instead, so the
-// $(tool token create) scripts depend on keeps working.
-type tokenCreated struct {
-	Token string `json:"token" yaml:"token"`
-}
-
-// tokenCreateCmd signs a token with the tool's identity keypair — the
-// token `auth.mode: jwt` accepts.
-func tokenCreateCmd(r *cli.Root) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "create",
-		Short: "Sign a token with the tool's identity keypair",
-		Long: "Sign a JWT with the tool's identity keypair (EdDSA, its kid in the header)\n" +
-			"and print it. A service with auth.mode: jwt accepts it. The scopes are\n" +
-			"written twice: scope, space-delimited, as OAuth 2.0 resource servers read\n" +
-			"it, and scopes, as a list.",
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if r.Identity == nil {
-				return output.UsageError("token create: the tool has no identity keypair to sign with")
-			}
-			sub, _ := cmd.Flags().GetString("sub")
-			scopes, _ := cmd.Flags().GetStringSlice("scopes")
-			tenant, _ := cmd.Flags().GetString("tenant")
-			audience, _ := cmd.Flags().GetStringSlice("audience")
-			issuer, _ := cmd.Flags().GetString("issuer")
-			expires, _ := cmd.Flags().GetDuration("expires")
-
-			if strings.TrimSpace(sub) == "" {
-				return output.UsageError("token create: --sub is required: the principal the token names")
-			}
-			if expires <= 0 {
-				return output.UsageError("token create: --expires must be positive: every token expires")
-			}
-			for _, s := range scopes {
-				if s == "" || strings.IndexFunc(s, unicode.IsSpace) >= 0 {
-					return output.UsageError(fmt.Sprintf(
-						"token create: scope %q: a scope is one non-empty word with no spaces", s))
-				}
-			}
-
-			now := time.Now()
-			raw, err := r.Identity.SignJWT(identity.Claims{
-				Subject:   sub,
-				Issuer:    issuer,
-				Audience:  identity.Audience(audience),
-				Tenant:    tenant,
-				Scopes:    scopes,
-				Scope:     strings.Join(scopes, " "),
-				IssuedAt:  now.Unix(),
-				ExpiresAt: now.Add(expires).Unix(),
-			})
-			if err != nil {
-				return err
-			}
-			if isDataFormat(cmd, r.Viper) {
-				return output.Dispatch(cmd, r.Viper, tokenCreated{Token: raw})
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), raw)
-			return nil
-		},
-	}
-	cmd.Flags().String("sub", "", "Subject: the principal the token names (required)")
-	cmd.Flags().StringSlice("scopes", nil, "Comma-separated scopes")
-	cmd.Flags().String("tenant", "", "Tenant the principal acts within")
-	cmd.Flags().StringSlice("audience", nil, "Audiences (aud) the token is for")
-	cmd.Flags().String("issuer", "", "Issuer (iss)")
-	cmd.Flags().Duration("expires", 24*time.Hour, "Token lifetime")
-
-	cli.SetSideEffect(cmd, cli.SideEffectRead)
-	cli.SetIdempotency(cmd, cli.IdempotencyNo)
-	// Describes --format json|yaml; human formats print the bare token.
-	_ = cli.SetOutputSchema(cmd, cli.OutputSchema{Type: &tokenCreated{}, Version: "1.0"})
-	return cmd
-}
+// The serve-side token leaves carry the annotations a validating root
+// requires of every leaf — kit/side-effect, kit/idempotent, Long —
+// because the root mounts them into the adopter's tree. The command is
+// kit-reserved: the api, mcp and rpc surfaces withhold it as
+// management-only, the socket withholds it by name, and no served
+// caller can mint or probe tokens.
 
 // tokenVerdict is what token verify prints.
 type tokenVerdict struct {
@@ -305,43 +176,4 @@ func unverifiedPayload(raw string) map[string]any {
 		return nil
 	}
 	return out
-}
-
-func tokenDecodeCmd(_ *cli.Root) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "decode [token]",
-		Short: "Decode and print JWT payload (no signature verification)",
-		Long: "Decode the payload segment of a JWT and print it as JSON. The signature\n" +
-			"is not verified; this is an inspection aid, not an authentication step.\n" +
-			"`token verify` checks it.",
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			token := args[0]
-			parts := strings.Split(token, ".")
-			if len(parts) != 3 {
-				return fmt.Errorf("invalid JWT format: expected 3 parts, got %d", len(parts))
-			}
-
-			// Decode payload (part 1) without signature verification.
-			payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-			if err != nil {
-				return fmt.Errorf("decode payload: %w", err)
-			}
-
-			// Pretty-print.
-			var pretty json.RawMessage
-			if err := json.Unmarshal(payload, &pretty); err != nil {
-				return fmt.Errorf("parse payload: %w", err)
-			}
-			out, _ := json.MarshalIndent(pretty, "", "  ")
-			fmt.Fprintln(cmd.OutOrStdout(), string(out))
-			return nil
-		},
-	}
-	cli.SetSideEffect(cmd, cli.SideEffectRead)
-	cli.SetIdempotency(cmd, cli.IdempotencyYes)
-	// A JWT payload is a JSON object of claims (RFC 7519 §4), printed
-	// as-is; the claim names are the issuer's, so none is fixed here.
-	_ = cli.SetOutputSchema(cmd, cli.OutputSchema{Type: &map[string]any{}, Version: "1.0"})
-	return cmd
 }

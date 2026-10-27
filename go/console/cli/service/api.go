@@ -139,10 +139,6 @@ func WithAPI(cfg APIConfig) func(*cli.Root) {
 		ensureServeRegistry(r)
 		st.serveReg.Register(newAPIService(r, &cfg))
 		mountAPIServeFlags(r)
-
-		if cfg.Auth != nil {
-			mountTokenCmd(r)
-		}
 	}
 }
 

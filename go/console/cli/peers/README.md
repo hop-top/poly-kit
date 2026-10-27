@@ -52,6 +52,10 @@ Verified by `example_test.go` in this directory.
   `$XDG_DATA_HOME/kit/peers/`. The `peer` group is not kit-reserved.
 - The mesh is built, not started: call `Mesh.Start(ctx)` where the tool
   runs; the kit binary starts it when it serves.
+- `peers.With` counts as a serve option for kit's `token` command. `token
+  verify` needs authn, so it mounts beside `create`, `decode` and
+  `claims` only in a binary that imports `go/console/cli/service`;
+  `peers` deliberately does not. Peer challenges sign with the same keypair.
 
 ## Neighbours
 

@@ -17,6 +17,10 @@ type IdentityConfig struct {
 }
 
 // WithIdentity enables automatic identity management on the CLI root.
+// It also mounts the kit-reserved `token create`, `decode` and `claims`
+// (see MountTokenCommand), serve plane or not: the self-signed tokens
+// another tool's auth.mode jwt accepts once it names this tool's public
+// key in auth.jwt.public_key_files.
 func WithIdentity(cfg IdentityConfig) func(*Root) {
 	return func(r *Root) {
 		r.identityCfg = &cfg

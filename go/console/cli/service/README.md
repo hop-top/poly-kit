@@ -8,8 +8,10 @@ package is that plane: the `service` command group and its supervisor,
 the built-in `api` and `socket` services, and the gates every
 kit-shipped transport service shares (authentication modes, TLS and
 ACME, the HTTP plane, permission and permission rules, audit sinks,
-quota, rate limit, the usage ledger, observability), plus the `token`,
-audit and quota commands and the per-invocation root factory.
+quota, rate limit, the usage ledger, observability), plus `token
+verify` and `token key` (merged into the `token` command `cli` mounts
+with `create`, `decode` and `claims`), the audit and quota commands
+and the per-invocation root factory.
 
 ## Use it when
 

@@ -85,19 +85,11 @@ var (
 // OptionsApplied runs once every option of New has run: the
 // deprecated `serve` takes the flags the options put on `service
 // start`, and the token command is mounted now that WithAPI,
-// WithIdentity and WithAPIKeys may have come in any order. A key
-// source mounts it on its own, with or without WithAPI: a tool that
-// serves only mcp or rpc under auth.mode apikey or jwt must be able to
-// issue what its service accepts without registering a REST api that
-// exposes the whole tree. It runs only on a Root a serve option
-// touched, so an identity on a Root that serves nothing mounts none.
-// Mounted here, before the reserved snapshot, token stays
-// kit-reserved, so no served surface lists or runs it.
+// WithIdentity and WithAPIKeys may have come in any order (see
+// mountTokenIfKeyed).
 func (s *state) OptionsApplied(r *cli.Root) {
 	syncServeAlias(r)
-	if cli.IdentityConfigured(r) || s.apiKeysCfg != nil || (s.apiCfg != nil && s.apiCfg.Auth != nil) {
-		mountTokenCmd(r)
-	}
+	mountTokenIfKeyed(r)
 }
 
 // PrepareTree lists the registered services on `service start --help`,

@@ -666,6 +666,12 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	for _, o := range opts {
 		o(r)
 	}
+	// An identity keypair mounts the signing token leaves on its own,
+	// serve plane or not; the plane's hook below completes the same
+	// command with verify and key.
+	if IdentityConfigured(r) {
+		MountTokenCommand(r)
+	}
 	// Extensions finish what needs every option, in whatever order the
 	// options came, before the snapshot below reserves what they mount.
 	extHooks(r, func(h OptionsHook) { h.OptionsApplied(r) })
