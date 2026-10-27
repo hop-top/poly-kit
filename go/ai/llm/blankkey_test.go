@@ -228,13 +228,13 @@ func TestBlankKey_FallsThrough(t *testing.T) {
 // api_key, the real one, and its other params as given.
 func TestApplyAPIKey_DropsBlankURIParam(t *testing.T) {
 	cases := map[string]string{
-		"openai://m?api_key=":                   "openai://m?api_key=fake-env",
-		"openai://m?api_key":                    "openai://m?api_key=fake-env",
-		"openai://m?api_key=  ":                 "openai://m?api_key=fake-env",
-		"openai://m?api_key=&api_key=":          "openai://m?api_key=fake-env",
-		"openai://m?temperature=1&api_key=&x=2": "openai://m?temperature=1&x=2&api_key=fake-env",
-		"openai://m?api_key=&base_url=http://h": "openai://m?base_url=http://h&api_key=fake-env",
-		"openai://localhost:8080/m?api_key=":    "openai://localhost:8080/m?api_key=fake-env",
+		"openai://m?api_key=":                             "openai://m?api_key=fake-env",
+		"openai://m?api_key":                              "openai://m?api_key=fake-env",
+		"openai://m?api_key=  ":                           "openai://m?api_key=fake-env",
+		"openai://m?api_key=&api_key=":                    "openai://m?api_key=fake-env",
+		"openai://m?temperature=1&api_key=&x=2":           "openai://m?temperature=1&x=2&api_key=fake-env",
+		"openai://m?api_key=&base_url=http://127.0.0.1:9": "openai://m?base_url=http://127.0.0.1:9&api_key=fake-env",
+		"openai://localhost:8080/m?api_key=":              "openai://localhost:8080/m?api_key=fake-env",
 	}
 	for in, want := range cases {
 		t.Run(in, func(t *testing.T) {
@@ -260,7 +260,7 @@ func TestApplyAPIKey_DropsBlankURIParam(t *testing.T) {
 	t.Run("request carries the resolved key", func(t *testing.T) {
 		isolateKeys(t)
 		t.Setenv("OPENAI_API_KEY", "fake-env")
-		uri, err := llm.ApplyAPIKey(context.Background(), nil, "openai://m?api_key=&base_url=http://blank.invalid/v1")
+		uri, err := llm.ApplyAPIKey(context.Background(), nil, "openai://m?api_key=&base_url=http://127.0.0.1:9/v1")
 		require.NoError(t, err)
 		rr := recordRequests(t)
 		complete(t, uri)
@@ -308,7 +308,7 @@ func TestResolve_BlankURIKeyNotInParams(t *testing.T) {
 	reg.Register("blankfake", func(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		got = cfg
 		return &mockProvider{}, nil
-	}, llm.Declaration{BaseURL: "http://blank.invalid"})
+	}, llm.Declaration{BaseURL: "https://blank.invalid"})
 
 	for _, uri := range []string{"blankfake://m?api_key=&x=1", "blankfake://m?api_key= &x=1", "blankfake://m?api_key&x=1"} {
 		_, err := reg.Resolve(uri)

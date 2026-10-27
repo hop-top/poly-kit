@@ -25,6 +25,7 @@ import (
 const (
 	defaultMaxTokens = 1024
 	scheme           = "anthropic"
+	defaultBaseURL   = "https://api.anthropic.com"
 )
 
 // Adapter wraps an anthropic-sdk-go client.
@@ -54,7 +55,17 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	// ANTHROPIC_WORKSPACE_ID keep their fallback role; the workspace ID
 	// is what keys not scoped to a workspace must send. A blank key or
 	// token is no credential: the key is required, the token not sent.
-	opts := []option.RequestOption{option.WithoutEnvironmentDefaults()}
+	opts := []option.RequestOption{
+		option.WithoutEnvironmentDefaults(),
+		option.WithMiddleware(boundRetryAfter),
+	}
+	base := cfg.Provider.BaseURL
+	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok && base == "" {
+		base = v
+	}
+	if err := llm.CheckKeyEndpoint(scheme, cfg.Provider.APIKey, base); err != nil {
+		return nil, err
+	}
 	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok {
 		if err := checkBaseURL("ANTHROPIC_BASE_URL", v); err != nil {
 			return nil, err
@@ -515,5 +526,5 @@ func mapError(err error, model string) error {
 // ---------------------------------------------------------------------------
 
 func init() {
-	llm.Register(scheme, New)
+	llm.Register(scheme, New, llm.Declaration{Endpoints: []string{defaultBaseURL}})
 }
