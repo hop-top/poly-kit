@@ -17,6 +17,7 @@ type backupOrchestrator struct {
 	tool      string
 	schema    string
 	retention int
+	base      string // data dir; "" resolves xdg.DataDir("hop/<tool>")
 }
 
 func newBackupOrchestrator(tool, schema string, retention int) *backupOrchestrator {
@@ -30,12 +31,24 @@ func newBackupOrchestrator(tool, schema string, retention int) *backupOrchestrat
 	}
 }
 
-// backupDir returns the backup directory for a specific version.
-// Path: xdg.DataDir("hop/<tool>")/backups/<schema>/pre-<version>/
-func (o *backupOrchestrator) backupDir(version string) (string, error) {
+// dataDir returns the explicit base, or xdg.DataDir("hop/<tool>").
+func (o *backupOrchestrator) dataDir() (string, error) {
+	if o.base != "" {
+		return o.base, nil
+	}
 	base, err := xdg.DataDir(filepath.Join("hop", o.tool))
 	if err != nil {
 		return "", fmt.Errorf("resolve data dir: %w", err)
+	}
+	return base, nil
+}
+
+// backupDir returns the backup directory for a specific version.
+// Path: xdg.DataDir("hop/<tool>")/backups/<schema>/pre-<version>/
+func (o *backupOrchestrator) backupDir(version string) (string, error) {
+	base, err := o.dataDir()
+	if err != nil {
+		return "", err
 	}
 	dir := filepath.Join(base, "backups", o.schema, "pre-"+version)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -46,9 +59,9 @@ func (o *backupOrchestrator) backupDir(version string) (string, error) {
 
 // latestBackup returns the path to the most recent backup directory.
 func (o *backupOrchestrator) latestBackup() (string, error) {
-	base, err := xdg.DataDir(filepath.Join("hop", o.tool))
+	base, err := o.dataDir()
 	if err != nil {
-		return "", fmt.Errorf("resolve data dir: %w", err)
+		return "", err
 	}
 	schemaDir := filepath.Join(base, "backups", o.schema)
 	entries, err := os.ReadDir(schemaDir)
@@ -81,9 +94,9 @@ func (o *backupOrchestrator) latestBackup() (string, error) {
 
 // prune keeps only the N most recent backups (by semver), removing the rest.
 func (o *backupOrchestrator) prune() error {
-	base, err := xdg.DataDir(filepath.Join("hop", o.tool))
+	base, err := o.dataDir()
 	if err != nil {
-		return fmt.Errorf("resolve data dir: %w", err)
+		return err
 	}
 	schemaDir := filepath.Join(base, "backups", o.schema)
 

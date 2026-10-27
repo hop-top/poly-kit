@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -63,11 +65,19 @@ type upgradeConfDriver struct {
 }
 
 type upgradeConfMigration struct {
-	Schema   string `json:"schema"`
-	Version  string `json:"version"`
-	Fail     string `json:"fail"`
-	Down     bool   `json:"down"`
-	DownFail string `json:"down_fail"`
+	Schema     string `json:"schema"`
+	Version    string `json:"version"`
+	Fail       string `json:"fail"`
+	Down       bool   `json:"down"`
+	DownFail   string `json:"down_fail"`
+	Verify     bool   `json:"verify"`
+	VerifyFail string `json:"verify_fail"`
+	Cancel     bool   `json:"cancel"`
+}
+
+type upgradeConfEvent struct {
+	Topic   string         `json:"topic"`
+	Payload map[string]any `json:"payload"`
 }
 
 type upgradeConfStatus struct {
@@ -80,6 +90,9 @@ type upgradeConfStatus struct {
 
 type upgradeConfStep struct {
 	Op       string               `json:"op"`
+	Canceled bool                 `json:"canceled"`
+	Events   *[]upgradeConfEvent  `json:"events"`
+	Warnings []string             `json:"warnings"`
 	Error    *string              `json:"error"`
 	Calls    *[]string            `json:"calls"`
 	History  *[]AppliedMigration  `json:"history"`
@@ -91,14 +104,20 @@ type upgradeConfStep struct {
 type upgradeConfMigrator struct {
 	upgradeConfHeader
 	Scenarios []struct {
-		Name           string                 `json:"name"`
-		Target         string                 `json:"target"`
-		ManualRollback bool                   `json:"manual_rollback"`
-		Retention      int                    `json:"retention"`
-		Drivers        []upgradeConfDriver    `json:"drivers"`
-		Migrations     []upgradeConfMigration `json:"migrations"`
-		Backups        map[string][]string    `json:"backups"`
-		Steps          []upgradeConfStep      `json:"steps"`
+		Name              string                 `json:"name"`
+		Target            string                 `json:"target"`
+		ManualRollback    bool                   `json:"manual_rollback"`
+		Retention         int                    `json:"retention"`
+		Drivers           []upgradeConfDriver    `json:"drivers"`
+		Migrations        []upgradeConfMigration `json:"migrations"`
+		Backups           map[string][]string    `json:"backups"`
+		LockedBackups     map[string][]string    `json:"locked_backups"`
+		FinalVerify       bool                   `json:"final_verify"`
+		FinalVerifyFail   string                 `json:"final_verify_fail"`
+		DataDir           bool                   `json:"data_dir"`
+		Registry          string                 `json:"registry"`
+		DefaultMigrations []upgradeConfMigration `json:"default_migrations"`
+		Steps             []upgradeConfStep      `json:"steps"`
 	} `json:"scenarios"`
 }
 
@@ -185,7 +204,13 @@ func TestConformanceUpgradePending(t *testing.T) {
 // with the scenario's migrations.
 type recordingDriver struct {
 	upgradeConfDriver
-	log *[]string
+	record func(string)
+}
+
+type publisherFunc func(ctx context.Context, topic, source string, payload any) error
+
+func (f publisherFunc) Publish(ctx context.Context, topic, source string, payload any) error {
+	return f(ctx, topic, source, payload)
 }
 
 func failIf(msg string) error {
@@ -205,7 +230,7 @@ func (d *recordingDriver) Version() (string, error) {
 }
 
 func (d *recordingDriver) SetVersion(v string) error {
-	*d.log = append(*d.log, d.Name()+" set_version "+v)
+	d.record(d.Name() + " set_version " + v)
 	if d.SetVersionFail != "" {
 		return errors.New(d.SetVersionFail)
 	}
@@ -214,12 +239,12 @@ func (d *recordingDriver) SetVersion(v string) error {
 }
 
 func (d *recordingDriver) Backup(dest string) error {
-	*d.log = append(*d.log, d.Name()+" backup "+filepath.Base(dest))
+	d.record(d.Name() + " backup " + filepath.Base(dest))
 	return failIf(d.BackupFail)
 }
 
 func (d *recordingDriver) Restore(src string) error {
-	*d.log = append(*d.log, d.Name()+" restore "+filepath.Base(src))
+	d.record(d.Name() + " restore " + filepath.Base(src))
 	return failIf(d.RestoreFail)
 }
 
@@ -251,56 +276,147 @@ func TestConformanceUpgradeMigrator(t *testing.T) {
 			resetRegistry()
 			defer resetRegistry()
 			tmp := t.TempDir()
-			t.Setenv("XDG_DATA_HOME", tmp)
-			base := filepath.Join(tmp, "hop", upgradeConfTool)
+			t.Setenv("XDG_DATA_HOME", filepath.Join(tmp, "xdg"))
+			xdgBase := filepath.Join(tmp, "xdg", "hop", upgradeConfTool)
+			base := xdgBase
+			if sc.DataDir {
+				base = filepath.Join(tmp, "custom")
+			}
 
-			for schema, dirs := range sc.Backups {
-				if err := os.MkdirAll(filepath.Join(base, "backups", schema), 0o750); err != nil {
-					t.Fatal(err)
-				}
-				for _, d := range dirs {
-					if err := os.MkdirAll(filepath.Join(base, "backups", schema, d), 0o750); err != nil {
+			mkBackups := func(m map[string][]string, locked bool) {
+				for schema, dirs := range m {
+					if err := os.MkdirAll(filepath.Join(base, "backups", schema), 0o750); err != nil {
 						t.Fatal(err)
+					}
+					for _, d := range dirs {
+						dir := filepath.Join(base, "backups", schema, d)
+						if !locked {
+							if err := os.MkdirAll(dir, 0o750); err != nil {
+								t.Fatal(err)
+							}
+							continue
+						}
+						inner := filepath.Join(dir, "locked")
+						if err := os.MkdirAll(inner, 0o750); err != nil {
+							t.Fatal(err)
+						}
+						if err := os.WriteFile(filepath.Join(inner, "f"), nil, 0o600); err != nil {
+							t.Fatal(err)
+						}
+						if err := os.Chmod(inner, 0o500); err != nil {
+							t.Fatal(err)
+						}
+						t.Cleanup(func() { _ = os.Chmod(inner, 0o750) })
 					}
 				}
 			}
+			mkBackups(sc.Backups, false)
+			mkBackups(sc.LockedBackups, true)
 
-			var log []string
-			for _, mc := range sc.Migrations {
-				mc := mc
+			var mu sync.Mutex
+			var calls []string
+			record := func(e string) { mu.Lock(); calls = append(calls, e); mu.Unlock() }
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			build := func(mc upgradeConfMigration) Migration {
 				mig := Migration{Version: mc.Version, Schema: mc.Schema,
 					Up: func(context.Context) error {
-						log = append(log, mc.Schema+" up "+mc.Version)
+						record(mc.Schema + " up " + mc.Version)
+						if mc.Cancel {
+							cancel()
+						}
 						return failIf(mc.Fail)
 					},
 				}
 				if mc.Down || mc.DownFail != "" {
 					mig.Down = func(context.Context) error {
-						log = append(log, mc.Schema+" down "+mc.Version)
+						record(mc.Schema + " down " + mc.Version)
 						return failIf(mc.DownFail)
 					}
 				}
-				RegisterMigration(mig)
+				if mc.Verify || mc.VerifyFail != "" {
+					mig.Verify = func(context.Context) error {
+						record(mc.Schema + " verify " + mc.Version)
+						return failIf(mc.VerifyFail)
+					}
+				}
+				return mig
 			}
 
 			var opts []MigratorOption
+			reg := DefaultRegistry()
+			if sc.Registry == "own" {
+				reg = NewRegistry()
+				opts = append(opts, WithRegistry(reg))
+				for _, mc := range sc.DefaultMigrations {
+					RegisterMigration(build(mc))
+				}
+			}
+			for _, mc := range sc.Migrations {
+				reg.Register(build(mc))
+			}
 			if sc.ManualRollback {
 				opts = append(opts, WithManualRollback())
 			}
 			if sc.Retention != 0 {
 				opts = append(opts, WithBackupRetention(sc.Retention))
 			}
+			if sc.DataDir {
+				opts = append(opts, WithDataDir(base))
+			}
+			if sc.FinalVerify || sc.FinalVerifyFail != "" {
+				opts = append(opts, WithVerify(func(_ context.Context, schema, version string) error {
+					record(schema + " final_verify " + version)
+					return failIf(sc.FinalVerifyFail)
+				}))
+			}
+			var events []upgradeConfEvent
+			opts = append(opts, WithEventPublisher(publisherFunc(func(_ context.Context, topic, source string, payload any) error {
+				if source != "core.upgrade" {
+					t.Errorf("source = %q", source)
+				}
+				raw, err := json.Marshal(payload)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var m map[string]any
+				if err := json.Unmarshal(raw, &m); err != nil {
+					t.Fatal(err)
+				}
+				if d, ok := m["duration_ms"]; ok {
+					if f, isNum := d.(float64); !isNum || f < 0 || f != float64(int64(f)) {
+						t.Errorf("%s: duration_ms = %v", topic, d)
+					}
+					delete(m, "duration_ms")
+				}
+				events = append(events, upgradeConfEvent{Topic: topic, Payload: m})
+				return nil
+			})))
 			m := NewMigrator(upgradeConfTool, sc.Target, opts...)
 			for _, dc := range sc.Drivers {
-				m.AddDriver(&recordingDriver{upgradeConfDriver: dc, log: &log})
+				m.AddDriver(&recordingDriver{upgradeConfDriver: dc, record: record})
 			}
 
+			var logBuf bytes.Buffer
+			log.SetOutput(&logBuf)
+			flags := log.Flags()
+			log.SetFlags(0)
+			defer func() { log.SetOutput(os.Stderr); log.SetFlags(flags) }()
+
 			for i, st := range sc.Steps {
-				log = nil
+				calls, events = nil, nil
+				logBuf.Reset()
+				runCtx := ctx
+				if st.Canceled {
+					c, stop := context.WithCancel(ctx)
+					stop()
+					runCtx = c
+				}
 				var err error
 				switch st.Op {
 				case "run":
-					err = m.Run(context.Background())
+					err = m.Run(runCtx)
 				case "rollback_latest":
 					err = m.RollbackLatest()
 				case "status":
@@ -332,7 +448,7 @@ func TestConformanceUpgradeMigrator(t *testing.T) {
 					t.Errorf("step %d: error %q, want %q", i, err, *st.Error)
 				}
 				if st.Calls != nil {
-					got := append([]string{}, log...)
+					got := append([]string{}, calls...)
 					if !reflect.DeepEqual(got, *st.Calls) {
 						t.Errorf("step %d: calls = %q, want %q", i, got, *st.Calls)
 					}
@@ -343,8 +459,31 @@ func TestConformanceUpgradeMigrator(t *testing.T) {
 						t.Errorf("step %d: history = %+v, want %+v", i, got, *st.History)
 					}
 				}
+				if st.Events != nil {
+					got := append([]upgradeConfEvent{}, events...)
+					if !reflect.DeepEqual(got, *st.Events) {
+						gj, _ := json.Marshal(got)
+						wj, _ := json.Marshal(*st.Events)
+						t.Errorf("step %d: events =\n%s\nwant\n%s", i, gj, wj)
+					}
+				}
+				if st.Warnings != nil {
+					lines := strings.Split(strings.TrimRight(logBuf.String(), "\n"), "\n")
+					if logBuf.Len() == 0 {
+						lines = nil
+					}
+					if len(lines) != len(st.Warnings) {
+						t.Errorf("step %d: logged %q, want prefixes %q", i, lines, st.Warnings)
+					} else {
+						for j, w := range st.Warnings {
+							if !strings.HasPrefix(lines[j], w) {
+								t.Errorf("step %d: logged %q, want prefix %q", i, lines[j], w)
+							}
+						}
+					}
+				}
 				for schema, want := range st.Versions {
-					got, err := ReadVersionFile(upgradeConfTool, schema)
+					got, err := ReadVersionFileIn(base, schema)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -355,6 +494,11 @@ func TestConformanceUpgradeMigrator(t *testing.T) {
 				for schema, want := range st.Backups {
 					if got := listBackups(t, base, schema); !reflect.DeepEqual(got, want) {
 						t.Errorf("step %d: %s backups = %q, want %q", i, schema, got, want)
+					}
+				}
+				if sc.DataDir {
+					if _, err := os.Stat(xdgBase); !errors.Is(err, os.ErrNotExist) {
+						t.Errorf("step %d: XDG data dir touched despite WithDataDir: %v", i, err)
 					}
 				}
 			}

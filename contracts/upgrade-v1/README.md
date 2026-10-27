@@ -32,12 +32,18 @@ rules it pins.
 |---------------|------|
 | `versions.json` `compare[]` `{a, b, cmp}` | lenient semver order: `v` and build metadata dropped, missing or non-numeric parts 0, pre-release identifier rules; checked both ways |
 | `versions.json` `pending[]` | `from < version <= to` for one schema, ascending, versions as registered |
-| `migrator.json` `scenarios[]` | `run`, `rollback_latest` and `status` steps against a recording driver: calls in order, error text, history, version files, backup directories |
+| `migrator.json` `scenarios[]` | `run`, `rollback_latest` and `status` steps against a recording driver: calls in order, error text, history, version files, backup directories, published events, logged warnings |
 
 What the scenarios pin, beyond order: a re-run applies nothing; the recorded version is the last applied
 migration's, not the target; a failure runs applied `down`s newest first and restores the backup the moment
-one is missing or fails; a failing first migration rolls nothing back; history keeps rolled-back
-migrations; the version file is written before the driver hears of it.
+one is missing or fails; a failed `verify` (per migration or final) rolls back including the verified
+step; a context canceled between steps stops before the next `up` (rollbacks still run); an explicit data
+dir replaces XDG; an own registry ignores the default one; a prune failure is logged, never fatal; events
+come in order under `kit.core.migration.*`.
+
+Deliberate, kept from Go: history keeps migrations a later failure rolled back; a failing first `up` rolls
+nothing back (no `down`, no restore); the version file is written before the driver's `set_version`, so a
+refused `set_version` leaves the file at the new version.
 
 Equal versions have no defined order (Go sorts unstably), so no vector holds a tie. Runners are strict:
 unknown fields, a `version` other than `v1` and a corpus file no runner consumes all fail the run.

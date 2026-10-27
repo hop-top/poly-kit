@@ -68,3 +68,13 @@ func TestDriver_BackupMissingFile(t *testing.T) {
 	err := d.Backup(backupDir)
 	require.NoError(t, err) // missing files are skipped
 }
+
+func TestDriver_WithDataDir(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "config"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config", "version"), []byte("2.0.0"), 0o600))
+	d := NewWithOptions([]Option{WithDataDir(dir)}, "/nonexistent")
+	v, err := d.Version()
+	require.NoError(t, err)
+	assert.Equal(t, "2.0.0", v)
+}

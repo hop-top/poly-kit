@@ -89,6 +89,21 @@ swallowed: they are notifications, not gates.
 | `Installed`  | `kit.core.upgrade.installed`     | running binary replaced |
 | `Snoozed`    | `kit.core.upgrade.snoozed`       | user deferred the notification |
 
+`upgrade.MigrationTopics`, defaults in `upgrade.DefaultMigrationTopics`, published by a
+`Migrator` built `WithEventPublisher` (synchronously, in order; Rust: `hop_top_kit::upgrade`).
+Payloads: `MigrationRunPayload` and `MigrationPayload`.
+
+| Field          | Default topic                        | Meaning |
+|----------------|--------------------------------------|---------|
+| `RunStarted`   | `kit.core.migration.run_started`     | `Run` began |
+| `RunCompleted` | `kit.core.migration.run_completed`   | every schema is current (`applied` count) |
+| `RunFailed`    | `kit.core.migration.run_failed`      | a schema stopped the run (`schema`, `error`) |
+| `Started`      | `kit.core.migration.started`         | a migration's `Up` is about to run |
+| `Applied`      | `kit.core.migration.applied`         | its `Up` succeeded |
+| `Verified`     | `kit.core.migration.verified`        | its `Verify`, or the final verify (`final`), passed |
+| `Failed`       | `kit.core.migration.failed`          | `stage`: `up`, `verify`, `final` or `canceled` |
+| `Reverted`     | `kit.core.migration.reverted`        | a rollback succeeded (`method`: `down` or `restore`) |
+
 ## `go/core/breaker`
 
 `breaker.Topics`, defaults in `breaker.DefaultTopics`.
