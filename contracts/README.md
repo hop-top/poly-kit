@@ -22,12 +22,12 @@ Corpora bind every port, Go included; detail lives in each corpus README.
   and Usage specs of one fixture tree, byte for byte. Go and Rust runners.
 - [statemachine-v1/](statemachine-v1/README.md): kit/runtime/domain state
   machine transitions, error texts, veto wrap, payload JSON. Go and Rust.
+- [breaker-v1/](breaker-v1/README.md): kit/core/breaker on a fake clock.
 - [retry-v1/](retry-v1/README.md): kit/core/util retry backoff corpus:
   delay table, full-jitter bounds, stop rule. Go and Rust runners.
 - [kv-v1/](kv-v1/README.md): kit/storage/kv keys bind to SQLite as TEXT,
   written by one SDK and read back by another.
-- [identity-v1/](identity-v1/README.md): kit/core/identity HKDF-SHA256
-  key derivation over an Ed25519 seed.
+- [identity-v1/](identity-v1/README.md): kit/core/identity HKDF over Ed25519.
 - [typeid-v1/](typeid-v1/README.md): kit `typeid`: the string every SDK
   makes from `(prefix, uuid)` and recovers it from.
 - [proto/](proto/README.md): shared protobuf definitions;

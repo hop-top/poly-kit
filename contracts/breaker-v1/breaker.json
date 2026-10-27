@@ -1,0 +1,1865 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/breaker-v1/breaker.json",
+  "version": "v1",
+  "description": "Breaker (Go `core/breaker`): circuit state machine, MaxOps/MaxBytes budgets, bursty rate limiter, OnTrip halt/warn/degrade, logs and bus events. Each scenario builds a breaker named after the scenario on a fake clock, `config` mapping to the options (zero or absent circuit fields keep the defaults 5/1/30s), and runs `steps` in order: `allow` (want ok or broken), `record` (success, n bytes), `advance` (ms on the fake clock), `state` (want closed, open or half_open), `trip` (reason), `reset`, `stats` (trips, last_trip_reason, last_trip_at_ms since the fake epoch or null, counters). `logs` is every log record in order: level, msg and the full field set. With `publisher` true, `events` is every bus event as a multiset (publication is fire-and-forget, so order is not pinned), payload as Go's encoding/json writes it: states are ints (closed 0, open 1, half_open 2). Rate vectors stay inside the first period: Go's limiter reads failsafe-go's wall clock, not the fake one. `topic_prefixes` pins the composed topics or the panic text.",
+  "source": "core.breaker",
+  "default_topics": {
+    "tripped": "kit.core.breaker.tripped",
+    "opened": "kit.core.breaker.opened",
+    "closed": "kit.core.breaker.closed",
+    "half_opened": "kit.core.breaker.half_opened"
+  },
+  "scenarios": [
+    {
+      "name": "defaults_open_after_five_failures_and_cool_down_for_30s",
+      "config": {},
+      "steps": [
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "state",
+          "want": "closed"
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "state",
+          "want": "open"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "advance",
+          "ms": 29999
+        },
+        {
+          "op": "state",
+          "want": "open"
+        },
+        {
+          "op": "advance",
+          "ms": 1
+        },
+        {
+          "op": "state",
+          "want": "half_open"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "defaults_open_after_five_failures_and_cool_down_for_30s",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "defaults_open_after_five_failures_and_cool_down_for_30s",
+            "breaker.state": "half_open",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "success_resets_consecutive_failures",
+      "config": {
+        "circuit": {
+          "failure_threshold": 3
+        }
+      },
+      "steps": [
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 0
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "state",
+          "want": "closed"
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "state",
+          "want": "open"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "success_resets_consecutive_failures",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "allow_is_not_a_success",
+      "config": {
+        "circuit": {
+          "failure_threshold": 2
+        }
+      },
+      "steps": [
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "state",
+          "want": "open"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "allow_is_not_a_success",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "cooldown_boundary_is_inclusive",
+      "config": {
+        "circuit": {
+          "failure_threshold": 1,
+          "delay_ms": 1000
+        }
+      },
+      "steps": [
+        {
+          "op": "advance",
+          "ms": 500
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "advance",
+          "ms": 999
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "state",
+          "want": "open"
+        },
+        {
+          "op": "advance",
+          "ms": 1
+        },
+        {
+          "op": "state",
+          "want": "half_open"
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "stats",
+          "trips": 1,
+          "last_trip_reason": "circuit",
+          "last_trip_at_ms": 500,
+          "counters": {
+            "bytes": 0,
+            "ops": 1
+          }
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "cooldown_boundary_is_inclusive",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "cooldown_boundary_is_inclusive",
+            "breaker.state": "half_open",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "half_open_probe_success_closes",
+      "config": {
+        "circuit": {
+          "failure_threshold": 1,
+          "success_threshold": 1,
+          "delay_ms": 1000
+        }
+      },
+      "steps": [
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "advance",
+          "ms": 1000
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "state",
+          "want": "half_open"
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 0
+        },
+        {
+          "op": "state",
+          "want": "closed"
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "half_open_probe_success_closes",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "half_open_probe_success_closes",
+            "breaker.state": "half_open",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "half_open_probe_success_closes",
+            "breaker.state": "closed",
+            "breaker.prev_state": "half_open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "half_open_admits_success_threshold_probes",
+      "config": {
+        "circuit": {
+          "failure_threshold": 1,
+          "success_threshold": 2,
+          "delay_ms": 1000
+        }
+      },
+      "steps": [
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "advance",
+          "ms": 1000
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 0
+        },
+        {
+          "op": "state",
+          "want": "half_open"
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 0
+        },
+        {
+          "op": "state",
+          "want": "closed"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "half_open_admits_success_threshold_probes",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "half_open_admits_success_threshold_probes",
+            "breaker.state": "half_open",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "half_open_admits_success_threshold_probes",
+            "breaker.state": "closed",
+            "breaker.prev_state": "half_open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "half_open_probe_failure_reopens_and_restarts_cooldown",
+      "config": {
+        "circuit": {
+          "failure_threshold": 1,
+          "delay_ms": 1000
+        }
+      },
+      "steps": [
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "advance",
+          "ms": 1000
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "state",
+          "want": "open"
+        },
+        {
+          "op": "stats",
+          "trips": 2,
+          "last_trip_reason": "circuit",
+          "last_trip_at_ms": 1000,
+          "counters": {
+            "bytes": 0,
+            "ops": 2
+          }
+        },
+        {
+          "op": "advance",
+          "ms": 999
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "advance",
+          "ms": 1
+        },
+        {
+          "op": "state",
+          "want": "half_open"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "half_open_probe_failure_reopens_and_restarts_cooldown",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "half_open_probe_failure_reopens_and_restarts_cooldown",
+            "breaker.state": "half_open",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "warn",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "half_open_probe_failure_reopens_and_restarts_cooldown",
+            "breaker.state": "open",
+            "breaker.prev_state": "half_open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 2
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "half_open_probe_failure_reopens_and_restarts_cooldown",
+            "breaker.state": "half_open",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "record_after_cooldown_is_a_probe_outcome",
+      "config": {
+        "circuit": {
+          "failure_threshold": 1,
+          "delay_ms": 1000
+        }
+      },
+      "steps": [
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "advance",
+          "ms": 1000
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "state",
+          "want": "open"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "record_after_cooldown_is_a_probe_outcome",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "record_after_cooldown_is_a_probe_outcome",
+            "breaker.state": "half_open",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "warn",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "record_after_cooldown_is_a_probe_outcome",
+            "breaker.state": "open",
+            "breaker.prev_state": "half_open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "record_while_open_is_ignored",
+      "config": {
+        "circuit": {
+          "failure_threshold": 1,
+          "success_threshold": 1,
+          "delay_ms": 1000
+        }
+      },
+      "steps": [
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 0
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 0
+        },
+        {
+          "op": "state",
+          "want": "open"
+        },
+        {
+          "op": "advance",
+          "ms": 1000
+        },
+        {
+          "op": "state",
+          "want": "half_open"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "record_while_open_is_ignored",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "record_while_open_is_ignored",
+            "breaker.state": "half_open",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "manual_trip_and_reset",
+      "config": {},
+      "steps": [
+        {
+          "op": "advance",
+          "ms": 250
+        },
+        {
+          "op": "trip",
+          "reason": "ops"
+        },
+        {
+          "op": "state",
+          "want": "open"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "stats",
+          "trips": 1,
+          "last_trip_reason": "ops",
+          "last_trip_at_ms": 250,
+          "counters": {}
+        },
+        {
+          "op": "trip",
+          "reason": "again"
+        },
+        {
+          "op": "stats",
+          "trips": 2,
+          "last_trip_reason": "again",
+          "last_trip_at_ms": 250,
+          "counters": {}
+        },
+        {
+          "op": "reset"
+        },
+        {
+          "op": "state",
+          "want": "closed"
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "reset"
+        },
+        {
+          "op": "stats",
+          "trips": 2,
+          "last_trip_reason": "again",
+          "last_trip_at_ms": 250,
+          "counters": {}
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker tripped manually",
+          "fields": {
+            "breaker.name": "manual_trip_and_reset",
+            "breaker.state": "open",
+            "breaker.reason": "ops",
+            "breaker.policy": "manual",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "manual_trip_and_reset",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "error",
+          "msg": "breaker tripped manually",
+          "fields": {
+            "breaker.name": "manual_trip_and_reset",
+            "breaker.state": "open",
+            "breaker.reason": "again",
+            "breaker.policy": "manual",
+            "breaker.trips_total": 2
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker reset",
+          "fields": {
+            "breaker.name": "manual_trip_and_reset",
+            "breaker.state": "closed",
+            "breaker.policy": "manual"
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "manual_trip_and_reset",
+            "breaker.state": "closed",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 2
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker reset",
+          "fields": {
+            "breaker.name": "manual_trip_and_reset",
+            "breaker.state": "closed",
+            "breaker.policy": "manual"
+          }
+        }
+      ]
+    },
+    {
+      "name": "trip_after_expired_cooldown_holds_a_full_cooldown",
+      "config": {
+        "circuit": {
+          "failure_threshold": 1,
+          "delay_ms": 1000
+        }
+      },
+      "steps": [
+        {
+          "op": "trip",
+          "reason": "first"
+        },
+        {
+          "op": "advance",
+          "ms": 1000
+        },
+        {
+          "op": "trip",
+          "reason": "second"
+        },
+        {
+          "op": "state",
+          "want": "open"
+        },
+        {
+          "op": "advance",
+          "ms": 999
+        },
+        {
+          "op": "state",
+          "want": "open"
+        },
+        {
+          "op": "advance",
+          "ms": 1
+        },
+        {
+          "op": "state",
+          "want": "half_open"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker tripped manually",
+          "fields": {
+            "breaker.name": "trip_after_expired_cooldown_holds_a_full_cooldown",
+            "breaker.state": "open",
+            "breaker.reason": "first",
+            "breaker.policy": "manual",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "trip_after_expired_cooldown_holds_a_full_cooldown",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "trip_after_expired_cooldown_holds_a_full_cooldown",
+            "breaker.state": "half_open",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "error",
+          "msg": "breaker tripped manually",
+          "fields": {
+            "breaker.name": "trip_after_expired_cooldown_holds_a_full_cooldown",
+            "breaker.state": "open",
+            "breaker.reason": "second",
+            "breaker.policy": "manual",
+            "breaker.trips_total": 2
+          }
+        },
+        {
+          "level": "warn",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "trip_after_expired_cooldown_holds_a_full_cooldown",
+            "breaker.state": "open",
+            "breaker.prev_state": "half_open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 2
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "trip_after_expired_cooldown_holds_a_full_cooldown",
+            "breaker.state": "half_open",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "reset_clears_the_failure_window",
+      "config": {
+        "circuit": {
+          "failure_threshold": 3
+        }
+      },
+      "steps": [
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "reset"
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "state",
+          "want": "closed"
+        },
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "state",
+          "want": "open"
+        }
+      ],
+      "logs": [
+        {
+          "level": "info",
+          "msg": "breaker reset",
+          "fields": {
+            "breaker.name": "reset_clears_the_failure_window",
+            "breaker.state": "closed",
+            "breaker.policy": "manual"
+          }
+        },
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "reset_clears_the_failure_window",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "reset_from_half_open_lifts_the_probe_limit",
+      "config": {
+        "circuit": {
+          "failure_threshold": 1,
+          "delay_ms": 1000
+        }
+      },
+      "steps": [
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "advance",
+          "ms": 1000
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "reset"
+        },
+        {
+          "op": "state",
+          "want": "closed"
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "reset_from_half_open_lifts_the_probe_limit",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "reset_from_half_open_lifts_the_probe_limit",
+            "breaker.state": "half_open",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker reset",
+          "fields": {
+            "breaker.name": "reset_from_half_open_lifts_the_probe_limit",
+            "breaker.state": "closed",
+            "breaker.policy": "manual"
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "reset_from_half_open_lifts_the_probe_limit",
+            "breaker.state": "closed",
+            "breaker.prev_state": "half_open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "max_ops_budget",
+      "config": {
+        "max_ops": 2
+      },
+      "steps": [
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 0
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 0
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "state",
+          "want": "closed"
+        },
+        {
+          "op": "stats",
+          "trips": 0,
+          "last_trip_reason": "",
+          "last_trip_at_ms": null,
+          "counters": {
+            "bytes": 0,
+            "ops": 2
+          }
+        },
+        {
+          "op": "reset"
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "stats",
+          "trips": 0,
+          "last_trip_reason": "",
+          "last_trip_at_ms": null,
+          "counters": {}
+        }
+      ],
+      "logs": [
+        {
+          "level": "info",
+          "msg": "breaker reset",
+          "fields": {
+            "breaker.name": "max_ops_budget",
+            "breaker.state": "closed",
+            "breaker.policy": "manual"
+          }
+        }
+      ]
+    },
+    {
+      "name": "max_bytes_budget",
+      "config": {
+        "max_bytes": 100
+      },
+      "steps": [
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 60
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 40
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "stats",
+          "trips": 0,
+          "last_trip_reason": "",
+          "last_trip_at_ms": null,
+          "counters": {
+            "bytes": 100,
+            "ops": 2
+          }
+        }
+      ],
+      "logs": []
+    },
+    {
+      "name": "budget_rejections_do_not_feed_the_circuit",
+      "config": {
+        "circuit": {
+          "failure_threshold": 2
+        },
+        "max_ops": 1
+      },
+      "steps": [
+        {
+          "op": "record",
+          "success": true,
+          "n": 0
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "state",
+          "want": "closed"
+        }
+      ],
+      "logs": []
+    },
+    {
+      "name": "rate_limit_is_bursty_within_a_period",
+      "config": {
+        "rate": {
+          "max": 2,
+          "period_ms": 3600000
+        }
+      },
+      "steps": [
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "advance",
+          "ms": 1000
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "state",
+          "want": "closed"
+        }
+      ],
+      "logs": []
+    },
+    {
+      "name": "rate_rejections_do_not_feed_the_circuit",
+      "config": {
+        "circuit": {
+          "failure_threshold": 1
+        },
+        "rate": {
+          "max": 1,
+          "period_ms": 3600000
+        }
+      },
+      "steps": [
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "state",
+          "want": "closed"
+        }
+      ],
+      "logs": []
+    },
+    {
+      "name": "open_circuit_rejects_before_the_rate_limiter",
+      "config": {
+        "circuit": {
+          "failure_threshold": 1,
+          "delay_ms": 1000
+        },
+        "rate": {
+          "max": 1,
+          "period_ms": 3600000
+        }
+      },
+      "steps": [
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "advance",
+          "ms": 1000
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 0
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "open_circuit_rejects_before_the_rate_limiter",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "open_circuit_rejects_before_the_rate_limiter",
+            "breaker.state": "half_open",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "open_circuit_rejects_before_the_rate_limiter",
+            "breaker.state": "closed",
+            "breaker.prev_state": "half_open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "warn_allows_an_open_circuit_and_logs",
+      "config": {
+        "on_trip": "warn"
+      },
+      "steps": [
+        {
+          "op": "trip",
+          "reason": "ops"
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "state",
+          "want": "open"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker tripped manually",
+          "fields": {
+            "breaker.name": "warn_allows_an_open_circuit_and_logs",
+            "breaker.state": "open",
+            "breaker.reason": "ops",
+            "breaker.policy": "manual",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "warn_allows_an_open_circuit_and_logs",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "warn",
+          "msg": "breaker would reject",
+          "fields": {
+            "breaker.name": "warn_allows_an_open_circuit_and_logs",
+            "breaker.state": "open",
+            "breaker.policy": "circuit",
+            "breaker.action": "warn"
+          }
+        }
+      ]
+    },
+    {
+      "name": "warn_names_the_refusing_policy",
+      "config": {
+        "on_trip": "warn",
+        "max_ops": 1,
+        "max_bytes": 10,
+        "rate": {
+          "max": 2,
+          "period_ms": 3600000
+        }
+      },
+      "steps": [
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 4
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 6
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        }
+      ],
+      "logs": [
+        {
+          "level": "warn",
+          "msg": "breaker would reject",
+          "fields": {
+            "breaker.name": "warn_names_the_refusing_policy",
+            "breaker.state": "closed",
+            "breaker.policy": "bytes",
+            "breaker.action": "warn"
+          }
+        },
+        {
+          "level": "warn",
+          "msg": "breaker would reject",
+          "fields": {
+            "breaker.name": "warn_names_the_refusing_policy",
+            "breaker.state": "closed",
+            "breaker.policy": "rate",
+            "breaker.action": "warn"
+          }
+        }
+      ]
+    },
+    {
+      "name": "degrade_without_fallback_halts",
+      "config": {
+        "on_trip": "degrade"
+      },
+      "steps": [
+        {
+          "op": "trip",
+          "reason": "ops"
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker tripped manually",
+          "fields": {
+            "breaker.name": "degrade_without_fallback_halts",
+            "breaker.state": "open",
+            "breaker.reason": "ops",
+            "breaker.policy": "manual",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "degrade_without_fallback_halts",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "events_on_default_topics",
+      "config": {
+        "circuit": {
+          "failure_threshold": 1,
+          "delay_ms": 1000
+        },
+        "publisher": true
+      },
+      "steps": [
+        {
+          "op": "record",
+          "success": false,
+          "n": 0
+        },
+        {
+          "op": "advance",
+          "ms": 1000
+        },
+        {
+          "op": "state",
+          "want": "half_open"
+        },
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 0
+        },
+        {
+          "op": "trip",
+          "reason": "ops"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "events_on_default_topics",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "events_on_default_topics",
+            "breaker.state": "half_open",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "events_on_default_topics",
+            "breaker.state": "closed",
+            "breaker.prev_state": "half_open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "error",
+          "msg": "breaker tripped manually",
+          "fields": {
+            "breaker.name": "events_on_default_topics",
+            "breaker.state": "open",
+            "breaker.reason": "ops",
+            "breaker.policy": "manual",
+            "breaker.trips_total": 2
+          }
+        },
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "events_on_default_topics",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 2
+          }
+        }
+      ],
+      "events": [
+        {
+          "topic": "kit.core.breaker.opened",
+          "payload": {
+            "From": 0,
+            "To": 1,
+            "Trigger": "auto"
+          }
+        },
+        {
+          "topic": "kit.core.breaker.half_opened",
+          "payload": {
+            "From": 1,
+            "To": 2,
+            "Trigger": "auto"
+          }
+        },
+        {
+          "topic": "kit.core.breaker.closed",
+          "payload": {
+            "From": 2,
+            "To": 0,
+            "Trigger": "auto"
+          }
+        },
+        {
+          "topic": "kit.core.breaker.tripped",
+          "payload": {
+            "Reason": "ops",
+            "From": 0,
+            "To": 1
+          }
+        },
+        {
+          "topic": "kit.core.breaker.opened",
+          "payload": {
+            "From": 0,
+            "To": 1,
+            "Trigger": "auto"
+          }
+        }
+      ]
+    },
+    {
+      "name": "events_on_a_topic_prefix",
+      "config": {
+        "publisher": true,
+        "topic_prefix": "myapp.core.breaker"
+      },
+      "steps": [
+        {
+          "op": "trip",
+          "reason": "x"
+        },
+        {
+          "op": "reset"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker tripped manually",
+          "fields": {
+            "breaker.name": "events_on_a_topic_prefix",
+            "breaker.state": "open",
+            "breaker.reason": "x",
+            "breaker.policy": "manual",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "events_on_a_topic_prefix",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker reset",
+          "fields": {
+            "breaker.name": "events_on_a_topic_prefix",
+            "breaker.state": "closed",
+            "breaker.policy": "manual"
+          }
+        },
+        {
+          "level": "info",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "events_on_a_topic_prefix",
+            "breaker.state": "closed",
+            "breaker.prev_state": "open",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        }
+      ],
+      "events": [
+        {
+          "topic": "myapp.core.breaker.tripped",
+          "payload": {
+            "Reason": "x",
+            "From": 0,
+            "To": 1
+          }
+        },
+        {
+          "topic": "myapp.core.breaker.opened",
+          "payload": {
+            "From": 0,
+            "To": 1,
+            "Trigger": "auto"
+          }
+        },
+        {
+          "topic": "myapp.core.breaker.closed",
+          "payload": {
+            "From": 1,
+            "To": 0,
+            "Trigger": "auto"
+          }
+        }
+      ]
+    },
+    {
+      "name": "events_with_a_partial_topic_override",
+      "config": {
+        "publisher": true,
+        "topics": {
+          "tripped": "myapp.audit.breaker.tripped"
+        }
+      },
+      "steps": [
+        {
+          "op": "trip",
+          "reason": "x"
+        }
+      ],
+      "logs": [
+        {
+          "level": "error",
+          "msg": "breaker tripped manually",
+          "fields": {
+            "breaker.name": "events_with_a_partial_topic_override",
+            "breaker.state": "open",
+            "breaker.reason": "x",
+            "breaker.policy": "manual",
+            "breaker.trips_total": 1
+          }
+        },
+        {
+          "level": "error",
+          "msg": "breaker state transition",
+          "fields": {
+            "breaker.name": "events_with_a_partial_topic_override",
+            "breaker.state": "open",
+            "breaker.prev_state": "closed",
+            "breaker.policy": "circuit",
+            "breaker.trips_total": 1
+          }
+        }
+      ],
+      "events": [
+        {
+          "topic": "myapp.audit.breaker.tripped",
+          "payload": {
+            "Reason": "x",
+            "From": 0,
+            "To": 1
+          }
+        },
+        {
+          "topic": "kit.core.breaker.opened",
+          "payload": {
+            "From": 0,
+            "To": 1,
+            "Trigger": "auto"
+          }
+        }
+      ]
+    },
+    {
+      "name": "no_events_without_a_transition",
+      "config": {
+        "publisher": true,
+        "max_ops": 1
+      },
+      "steps": [
+        {
+          "op": "allow",
+          "want": "ok"
+        },
+        {
+          "op": "record",
+          "success": true,
+          "n": 0
+        },
+        {
+          "op": "allow",
+          "want": "broken"
+        },
+        {
+          "op": "reset"
+        }
+      ],
+      "logs": [
+        {
+          "level": "info",
+          "msg": "breaker reset",
+          "fields": {
+            "breaker.name": "no_events_without_a_transition",
+            "breaker.state": "closed",
+            "breaker.policy": "manual"
+          }
+        }
+      ],
+      "events": []
+    }
+  ],
+  "topic_prefixes": [
+    {
+      "name": "three_segments",
+      "prefix": "myapp.core.breaker",
+      "topics": {
+        "tripped": "myapp.core.breaker.tripped",
+        "opened": "myapp.core.breaker.opened",
+        "closed": "myapp.core.breaker.closed",
+        "half_opened": "myapp.core.breaker.half_opened"
+      }
+    },
+    {
+      "name": "empty",
+      "prefix": "",
+      "panic": "breaker.WithTopicPrefix(\"\"): prefix is empty"
+    },
+    {
+      "name": "trailing_dot",
+      "prefix": "myapp.core.breaker.",
+      "panic": "breaker.WithTopicPrefix(\"myapp.core.breaker.\"): prefix \"myapp.core.breaker.\" must not end with '.'"
+    }
+  ]
+}

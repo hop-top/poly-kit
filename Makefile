@@ -4,7 +4,7 @@
 	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-beta promote-rc promote-open-line proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	completion-regen test-parity test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-py \
+	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-rs-wasm test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
 	vuln vuln-go vuln-go-binary vuln-osv
@@ -256,7 +256,7 @@ test-rs-wasm: ## Rust: bus and domain wasm32 smoke tests under Node (needs the m
 	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features domain --test domain_statemachine_wasm
 
-test-parity: test-parity-typeid test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-breaker test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -382,6 +382,13 @@ test-parity-retry: ## retry-v1 conformance corpus (Go and Rust runners)
 	go test ./go/core/util/ -run '^TestConformanceRetry' -count=1
 	@echo "==> retry-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --test retry_conformance --locked
+
+# Breaker corpus: circuit, budgets, rate limiter, OnTrip, logs and bus
+# events under a fake clock. Go's bus events publish on goroutines,
+# hence -race.
+test-parity-breaker: ## breaker-v1 conformance corpus (Go and Rust runners)
+	@echo "==> breaker-v1 conformance: Go"
+	go test -race ./go/core/breaker/ -run '^TestConformanceBreaker' -count=1
 
 # Domain state machine corpus: transitions, error texts, the veto wrap,
 # payload JSON bytes and topic options. Go's post-transition event runs
