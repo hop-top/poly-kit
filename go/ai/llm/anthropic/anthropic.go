@@ -429,9 +429,11 @@ func anthropicReadBase64(ctx context.Context, src llm.MediaSource) (string, erro
 func mapTools(defs []llm.ToolDef) []anthropic.ToolUnionParam {
 	out := make([]anthropic.ToolUnionParam, 0, len(defs))
 	for _, d := range defs {
+		// The API requires input_schema: a tool without parameters, or
+		// with ones that do not decode, takes an empty object schema.
 		var schema anthropic.ToolInputSchemaParam
-		if len(d.Parameters) > 0 {
-			_ = json.Unmarshal(d.Parameters, &schema)
+		if len(d.Parameters) == 0 || json.Unmarshal(d.Parameters, &schema) != nil {
+			schema = anthropic.ToolInputSchemaParam{Properties: map[string]any{}}
 		}
 		out = append(out, anthropic.ToolUnionParam{
 			OfTool: &anthropic.ToolParam{

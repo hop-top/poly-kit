@@ -697,6 +697,49 @@
           }
         ]
       }
+    },
+    {
+      "name": "tool without parameters sends an empty object schema",
+      "adapter_model": "m",
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "ping"
+          }
+        ]
+      },
+      "tools": [
+        {
+          "name": "ping",
+          "description": "Ping it"
+        }
+      ],
+      "want_body": {
+        "model": "m",
+        "max_tokens": 1024,
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "ping"
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "name": "ping",
+            "description": "Ping it",
+            "input_schema": {
+              "type": "object",
+              "properties": {}
+            }
+          }
+        ]
+      }
     }
   ],
   "anthropic_request_error": [

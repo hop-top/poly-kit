@@ -43,7 +43,7 @@ Runners are strict: unknown fields, a `version` other than `v1` and a file no ru
 
 ### Known differences
 
-Not vectored. A tool without parameters: Go sends no `input_schema` (the API rejects it), Rust sends `{"type":"object"}`. A `retry-after` HTTP date: Go honors one within 60s, Rust backs off. Rust's text stream also fails on malformed block indexes, which Go's ignores.
+Not vectored. A `retry-after` HTTP date: Go honors one within 60s, Rust backs off. Rust's text stream also fails on malformed block indexes, which Go's ignores.
 
 ## Runners
 

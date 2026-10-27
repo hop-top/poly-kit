@@ -22,8 +22,7 @@ scheme in `default_registry()`. Feature `llm-anthropic`, native only.
   unparseable one is rejected at build with credentials masked.
 - Body: system messages lift to `system` (the last wins); consecutive tool results merge into one
   user turn; `max_tokens` 0 sends 1024; `temperature: Some(0.0)` is sent.
-- A tool without parameters sends `input_schema: {"type":"object"}`; Go omits the field, which the
-  API rejects.
+- A tool without parameters sends `input_schema: {"type":"object","properties":{}}`, as Go does.
 - Errors: 401/403 auth, 404 model, 429 rate limit, 5xx (529 included) `HttpStatus`, other `Api`.
   An SSE `error` event maps by its type (`overloaded_error` as 529, `rate_limit_error` as 429). A
   stream ending before `message_stop` is `Truncated`, never a success. 3xx: not followed, `HttpStatus`.

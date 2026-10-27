@@ -193,12 +193,17 @@ fn media(m: &Media) -> Result<Value, LlmError> {
 }
 
 /// A tool definition. The API requires `input_schema`: a tool without
-/// parameters sends `{"type":"object"}` (Go omits it), and a schema
-/// without `type` gets `"object"`.
+/// parameters (or with a non-object schema) sends
+/// `{"type":"object","properties":{}}`, as Go does; a schema without
+/// `type` gets `"object"`.
 fn tool_def(d: &ToolDef) -> Value {
     let mut schema = match &d.parameters {
         Some(Value::Object(m)) => m.clone(),
-        _ => Map::new(),
+        _ => {
+            let mut m = Map::new();
+            m.insert("properties".into(), json!({}));
+            m
+        }
     };
     schema
         .entry("type")
