@@ -25,6 +25,7 @@ const PENDING_RUST_PORT: &[(&str, &str)] = &[
     ("anthropic_stream", "permission error event mid-stream"),
     ("anthropic_request", "system messages join in order"),
     ("anthropic_request", "empty system messages are skipped"),
+    ("anthropic_request", "only empty system messages send no system"),
     ("anthropic_request", "system cache breakpoints split the joined text"),
 ];
 
