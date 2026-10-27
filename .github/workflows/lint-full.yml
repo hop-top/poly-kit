@@ -1,0 +1,244 @@
+# lint-full: the whole-tree lint (`make lint-all`) on a schedule.
+#
+# Pull requests and pushes lint only what a change touches (ci.yml; see
+# the Linting section of CONTRIBUTING.md). An issue in a file nobody
+# touched (a new linter rule, a removed symbol an untouched package still
+# uses) would surface only when that file next changes, on someone
+# else's pull request. This run lints everything once a week so it
+# surfaces here instead.
+#
+# Each job mirrors the toolchain setup of its ci.yml lint job and runs
+# the same make targets with LINT_ALL=1; together they cover `make
+# lint-all` plus lint-rs (which ci.yml runs on its own). Every target in
+# a job runs even when an earlier one fails, so one run lists them all.
+#
+# Not a pull request gate: it runs on the schedule and on manual
+# dispatch only. A failure on the default branch opens one tracking issue
+# (title below), or comments on it while it is open; the next green run
+# closes it. Runs dispatched on another branch write the job summary and
+# touch no issue.
+#
+# Reproduce one linter locally with `LINT_ALL=1 make <target>`; a full
+# `make lint-all` is heavy, so prefer the targets you need.
+name: lint-full
+
+on:
+  schedule:
+    - cron: '17 2 * * 0'  # Sundays 02:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run per ref at a time; a dispatch never cancels the scheduled run.
+concurrency:
+  group: lint-full-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  LINT_ALL: '1'
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make lint-go
+
+  ts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ steps.pins.outputs.node }}
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: ${{ steps.pins.outputs.pnpm }}
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: make lint-ts
+
+  py:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ steps.pins.outputs.python }}
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
+        with:
+          version: ${{ steps.pins.outputs.uv }}
+      - run: cd sdk/py && uv sync --all-extras --locked
+      - run: cd engine/sdk/py-kit-engine && uv sync --all-extras --locked
+      - run: make lint-lock-py
+      - if: ${{ !cancelled() }}
+        run: make lint-py
+
+  rs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ steps.pins.outputs.rust }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: sdk/experimental/rs
+      - run: make lint-rs
+
+  php:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # composer.json requires php ^8.4; matches ci.yml's php-test job.
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+      - run: make lint-lock-php
+      - if: ${{ !cancelled() }}
+        run: make audit-php
+      - if: ${{ !cancelled() }}
+        run: make lint-php
+
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ steps.pins.outputs.node }}
+      - run: make lint-docs
+      - if: ${{ !cancelled() }}
+        run: make lint-readmes
+      # External links across every doc, report only (as in ci.yml); it
+      # also installs the lychee that `make lint-links` runs offline.
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        if: ${{ !cancelled() }}
+        with:
+          lycheeVersion: v${{ steps.pins.outputs.lychee }}
+          args: '--config examples/spaced/lychee.toml docs/ README.md'
+          fail: false
+      - name: Fail on broken internal links
+        if: ${{ !cancelled() }}
+        run: make lint-links
+
+  # The repo guards: grep and script checks needing no toolchain.
+  # lint-config is in `make lint` but has no ci.yml job of its own.
+  guards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: make check-toolchain-parity
+      - if: ${{ !cancelled() }}
+        run: make lint-config
+      - if: ${{ !cancelled() }}
+        run: make lint-sdk-paths
+      - if: ${{ !cancelled() }}
+        run: make lint-adr-refs
+      - if: ${{ !cancelled() }}
+        run: make lint-internal-refs
+      - if: ${{ !cancelled() }}
+        run: make lint-actions-pinned
+
+  # Job verdicts into the run summary; on the default branch, the
+  # tracking issue opened, updated or closed to match. The failed lint
+  # jobs carry the red; this job fails only when it cannot report.
+  report:
+    needs: [go, ts, py, rs, php, docs, guards]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      NEEDS: ${{ toJSON(needs) }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
+      TITLE: 'lint-full: whole-tree lint failing on the default branch'
+      ON_DEFAULT: ${{ github.ref_name == github.event.repository.default_branch }}
+    steps:
+      - name: Summarize and track
+        run: |
+          set -euo pipefail
+          failed=$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key) (\(.value.result))"' <<<"$NEEDS")
+
+          {
+            echo "## Whole-tree lint (LINT_ALL=1)"
+            echo
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"' <<<"$NEEDS"
+            echo
+            echo "Reproduce one linter: \`LINT_ALL=1 make <target>\` (the failing step names it)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$ON_DEFAULT" != true ]; then
+            echo "Not the default branch: tracking issue left alone."
+            exit 0
+          fi
+
+          issue=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title \
+            --jq "map(select(.title == env.TITLE))[0].number // empty")
+
+          if [ -z "$failed" ]; then
+            if [ -n "$issue" ]; then
+              gh issue close "$issue" --comment "Green again at $SHA: $RUN_URL"
+            fi
+            exit 0
+          fi
+
+          body=$(cat <<EOF
+          Whole-tree lint failed at $SHA.
+
+          Run: $RUN_URL
+
+          Failed jobs:
+
+          $(printf '%s\n' "$failed" | sed 's/^/- /')
+
+          These are issues in files the changed-only pull request lint did not
+          cover. Reproduce with \`LINT_ALL=1 make <target>\`; this issue closes
+          on the next green run.
+          EOF
+          )
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body "$body"
+          else
+            gh issue create --title "$TITLE" --body "$body"
+          fi

@@ -121,6 +121,15 @@ The trade-off: an issue in a file nobody touched (a new linter rule, a
 removed symbol an untouched package still uses) surfaces only on
 `make lint-all` or when that file next changes.
 
+So the whole tree is linted in CI once a week:
+[`lint-full`](.github/workflows/lint-full.yml) runs every linter with
+`LINT_ALL=1` on `next` each Sunday (and on manual dispatch). It is not a
+pull request gate. A failure opens one tracking issue, `lint-full:
+whole-tree lint failing on the default branch` (later failures comment
+on it), and the next green run closes it. Reproduce a failing linter
+with `LINT_ALL=1 make <target>`; there is no need to run `make lint-all`
+locally.
+
 ## Tests
 
 `make test` is the everyday gate. Two Go test targets run in CI as
