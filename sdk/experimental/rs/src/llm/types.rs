@@ -220,6 +220,11 @@ pub struct Request {
     pub max_tokens: u32,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub stop_sequences: Vec<String>,
+    /// Caller metadata for observers (Go `Request.Extensions`); no
+    /// adapter sends it. The `kit.ai.request.started` event lists its
+    /// keys, never its values.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub extensions: BTreeMap<String, serde_json::Value>,
     /// Enables extended thinking; its deltas stream as [`Token::thinking`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking: Option<Thinking>,

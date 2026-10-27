@@ -30,6 +30,7 @@ mod client;
 mod config;
 mod endpoint;
 mod error;
+mod events;
 mod keys;
 mod provider;
 mod registry;
@@ -49,6 +50,7 @@ pub use endpoint::{
     check_endpoint_url, check_key_endpoint, credentials_trusted, is_loopback_url, parse_endpoint,
 };
 pub use error::{KeyEndpointReason, LlmError, MissingKeyError, ToolNameReason};
+pub use events::{RequestEndPayload, RequestStartPayload};
 pub use keys::{KeyResolution, KeySource, KeySourceKind, FALLBACK_ENV_KEY};
 pub use provider::{BoxFuture, Capability, Provider, TokenStream};
 pub use registry::{default_registry, Declaration, Factory, ProviderKey, Registry, ResolveOptions};
