@@ -61,6 +61,7 @@ CONSUMED = {
     "anthropic_stream_events",
     "bus_request_started",
     "bus_response_received",
+    "media_fetch",
 }
 
 _META = {"version", "description"}
@@ -262,11 +263,28 @@ def _part(p: dict[str, Any]) -> llm.ContentPart:
     if p["type"] == "text":
         return llm.ContentPart(type=llm.PartType.TEXT, text=p.get("text", ""))
     assert p["type"] == "image", p
+    if p.get("url"):
+        return llm.ContentPart(
+            type=llm.PartType.IMAGE,
+            source=_UnfetchedURL(p["url"]),
+            mime_type=p.get("mime_type", ""),
+        )
     return llm.ContentPart(
         type=llm.PartType.IMAGE,
         source=llm.InlineSource(base64.b64decode(p.get("data", "")), p.get("mime_type", "")),
         mime_type=p.get("mime_type", ""),
     )
+
+
+class _UnfetchedURL:
+    """A URL media source the adapter must send as a URL: reading it fails."""
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+        self.mime_type = ""
+
+    def read(self) -> bytes:
+        raise AssertionError(f"url source {self.url} was fetched; it must be sent as a url source")
 
 
 def _message(m: dict[str, Any]) -> llm.Message:
@@ -865,3 +883,70 @@ def test_bus_response_received(v: dict[str, Any]) -> None:
 def test_runner_env_is_clean(clean_env) -> None:
     """The runner clears the host's provider settings."""
     assert not any(os.environ.get(k) for k in _ENV_VARS)
+
+
+# --- media_fetch ------------------------------------------------------------
+
+_MEDIA_FETCH_FIELDS = {
+    "name",
+    "url",
+    "max_bytes",
+    "server",
+    "error_kind",
+    "message",
+    "want_body",
+    "want_size",
+    "attempts",
+}
+
+
+def _media_kind(e: BaseException) -> str:
+    if isinstance(e, llm.MediaTooLargeError):
+        return "too_large"
+    if isinstance(e, llm.HTTPStatusError) and 300 <= e.status_code < 400:
+        return "redirect"
+    if isinstance(e, llm.LLMError) and "refusing to fetch" in str(e):
+        return "refused"
+    if isinstance(e, llm.LLMError) and ": http " in str(e):
+        return "http_status"
+    return f"other: {e!r}"
+
+
+@pytest.mark.parametrize("v", _cases("media_fetch"), ids=lambda v: v["name"])
+def test_media_fetch(v: dict[str, Any], monkeypatch) -> None:
+    from hop_top_kit import llm_media
+
+    extra = set(v) - _MEDIA_FETCH_FIELDS
+    assert not extra, f"unknown fields {sorted(extra)}"
+    kw = {"max_bytes": v["max_bytes"]} if v.get("max_bytes") else {}
+
+    def read(url: str) -> bytes:
+        return llm.URLSource(url, **kw).read()
+
+    def check(srv=None) -> None:
+        url = v["url"] if srv is None else srv.url + v["url"]
+        if v.get("error_kind"):
+            with pytest.raises(llm.LLMError) as ei:
+                read(url)
+            assert _media_kind(ei.value) == v["error_kind"]
+            if v.get("message"):
+                assert str(ei.value) == v["message"]
+        else:
+            got = read(url)
+            if v.get("want_body"):
+                assert got.decode() == v["want_body"]
+            if v.get("want_size"):
+                assert len(got) == v["want_size"]
+        if srv is not None and "attempts" in v:
+            assert srv.attempts == v["attempts"]
+
+    s = v.get("server")
+    if s is None:
+        check()
+        return
+    assert v["url"].startswith("/"), "a served url is a path"
+    real = llm_media.is_public_ip
+    monkeypatch.setattr(llm_media, "is_public_ip", lambda ip: ip.is_loopback or real(ip))
+    body = "x" * s["body_size"] if s.get("body_size") else s.get("body", "")
+    with serve(Canned(s["status"], s.get("headers", {}), body)) as srv:
+        check(srv)

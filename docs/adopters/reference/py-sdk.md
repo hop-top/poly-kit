@@ -714,11 +714,14 @@ extension). `ContentPart.mime_type` overrides the source's.
 `URLSource.read()` treats the URL as untrusted: `http` or `https` only,
 no userinfo, every address the host resolves to public (loopback,
 private, link-local such as `169.254.169.254`, shared, reserved and
-multicast refused; the connection goes to the vetted address, so DNS
-cannot rebind it), no redirects, a 30s timeout, at most `max_bytes`
-(32 MiB; `llm.MediaTooLargeError` past it), and `--offline` applies.
-Adapters that pass an image URL to the provider (`openai`, `routellm`)
-never read it.
+multicast refused, v4-mapped and NAT64 IPv6 judged by their IPv4; the
+connection goes to the vetted address, so DNS cannot rebind it), no
+redirects, a 30s timeout, at most `max_bytes` (32 MiB;
+`llm.MediaTooLargeError` past it), and `--offline` applies. There is no
+switch for private hosts: read local media yourself and pass
+`InlineSource` or `FileSource`. Adapters that pass a URL to the provider
+never read it: `anthropic` (images and PDFs, as `url` sources),
+`openai` and `routellm` (images).
 
 ### Provider adapters
 

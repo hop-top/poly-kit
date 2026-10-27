@@ -5,8 +5,14 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -102,6 +108,24 @@ type llmConfFile struct {
 		} `json:"price"`
 		Want float64 `json:"want"`
 	} `json:"usage_cost"`
+	MediaFetch []confMediaFetch `json:"media_fetch"`
+}
+
+type confMediaFetch struct {
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	MaxBytes int64  `json:"max_bytes"`
+	Server   *struct {
+		Status   int               `json:"status"`
+		Headers  map[string]string `json:"headers"`
+		Body     string            `json:"body"`
+		BodySize int               `json:"body_size"`
+	} `json:"server"`
+	ErrorKind string `json:"error_kind"`
+	Message   string `json:"message"`
+	WantBody  string `json:"want_body"`
+	WantSize  int    `json:"want_size"`
+	Attempts  *int   `json:"attempts"`
 }
 
 func loadLLMConf(t *testing.T) llmConfFile {
@@ -435,6 +459,82 @@ func TestConformanceLLMBusResponseReceived(t *testing.T) {
 			rest, err := json.Marshal(payload)
 			require.NoError(t, err)
 			assert.JSONEq(t, string(v.WantPayload), string(rest))
+		})
+	}
+}
+
+// mediaFetchKind names the error a URLSource read failed with, as the
+// vectors spell it.
+func mediaFetchKind(err error) string {
+	var hs *llmerrors.HTTPStatusError
+	var tl *llmerrors.ErrMediaTooLarge
+	switch {
+	case errors.Is(err, llm.ErrMediaURLRefused):
+		return "refused"
+	case errors.As(err, &tl):
+		return "too_large"
+	case errors.As(err, &hs) && hs.StatusCode >= 300 && hs.StatusCode < 400:
+		return "redirect"
+	case strings.Contains(err.Error(), ": http "):
+		return "http_status"
+	}
+	return "other: " + err.Error()
+}
+
+func TestConformanceLLMMediaFetch(t *testing.T) {
+	f := loadLLMConf(t)
+	require.NotEmpty(t, f.MediaFetch)
+	for _, v := range f.MediaFetch {
+		t.Run(v.Name, func(t *testing.T) {
+			raw := v.URL
+			var attempts atomic.Int32
+			if v.Server != nil {
+				require.True(t, strings.HasPrefix(raw, "/"), "a served url is a path")
+				s := v.Server
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					attempts.Add(1)
+					for k, val := range s.Headers {
+						w.Header().Set(k, val)
+					}
+					w.WriteHeader(s.Status)
+					body := s.Body
+					if s.BodySize > 0 {
+						body = strings.Repeat("x", s.BodySize)
+					}
+					_, _ = io.WriteString(w, body)
+				}))
+				t.Cleanup(srv.Close)
+				raw = srv.URL + raw
+				llm.AllowLoopbackMedia(t)
+			}
+			var opts []llm.URLSourceOption
+			if v.MaxBytes > 0 {
+				opts = append(opts, llm.MediaMaxBytes(v.MaxBytes))
+			}
+			var got []byte
+			rc, err := llm.URLSource(raw, opts...).Reader(context.Background())
+			if err == nil {
+				got, err = io.ReadAll(rc)
+				_ = rc.Close()
+			}
+			if v.Attempts != nil {
+				assert.Equal(t, int32(*v.Attempts), attempts.Load(), "requests the server saw")
+			}
+			if v.ErrorKind != "" {
+				require.Error(t, err)
+				assert.Equal(t, v.ErrorKind, mediaFetchKind(err))
+				if v.Message != "" {
+					assert.Equal(t, v.Message, err.Error())
+				}
+				return
+			}
+			require.NoError(t, err)
+			if v.WantBody != "" {
+				assert.Equal(t, v.WantBody, string(got))
+			}
+			if v.WantSize > 0 {
+				assert.Len(t, got, v.WantSize)
+			}
 		})
 	}
 }

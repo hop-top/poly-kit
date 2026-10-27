@@ -4,7 +4,8 @@
 // payloads through the pure builders (this client publishes no bus
 // events). Go is
 // canonical; a failure means this SDK drifted, not that a vector
-// should change. tool_names runs in llm-toolnames.conformance.test.ts.
+// should change. tool_names runs in llm-toolnames.conformance.test.ts,
+// media_fetch in llm-media.conformance.test.ts.
 //
 // Sections this SDK does not run are listed in NOT_RUN with the reason;
 // a section in neither list fails the run, so none is skipped silently.
@@ -32,6 +33,7 @@ import {
   responseReceivedPayload,
   usageCost,
   type CallOp,
+  type MediaSource,
   type Message,
   type Request,
   type ResolvedConfig,
@@ -57,7 +59,7 @@ import {
 interface VMessage {
   role: string;
   content?: string;
-  parts?: { type: string; text?: string; mime_type?: string; data?: string }[];
+  parts?: { type: string; text?: string; mime_type?: string; data?: string; url?: string }[];
   tool_calls?: { id?: string; name: string; arguments?: string }[];
   tool_call_id?: string;
   cache_control?: { ttl: string };
@@ -104,7 +106,7 @@ const RUN = [
   "anthropic_tool_choice", "anthropic_hermetic", "anthropic_stream_events",
   "bus_request_started", "bus_response_received",
 ];
-const SIBLING = ["tool_names"];
+const SIBLING = ["tool_names", "media_fetch"];
 const NOT_RUN: Record<string, string> = {
   parse_uri:
     "core parseURI keeps its own error texts and rejects an empty model; adapters are unaffected",
@@ -136,6 +138,17 @@ describe("llm-v1 conformance file", () => {
 
 // ─── Conversions ─────────────────────────────────────────────────────────────
 
+/** A URL media source the adapter must send as a URL: reading it fails. */
+function unfetchedURL(url: string): MediaSource {
+  return {
+    url: () => url,
+    mimeType: () => "",
+    read: async () => {
+      throw new Error(`url source ${url} was fetched; it must be sent as a url source`);
+    },
+  };
+}
+
 function toMessage(m: VMessage): Message {
   strictKeys(m, [
     "role", "content", "parts", "tool_calls", "tool_call_id", "cache_control", "thinking",
@@ -143,14 +156,16 @@ function toMessage(m: VMessage): Message {
   const out: Message = { role: m.role, content: m.content ?? "" };
   if (m.parts) {
     out.parts = m.parts.map((p) => {
-      strictKeys(p, ["type", "text", "mime_type", "data"], "part");
+      strictKeys(p, ["type", "text", "mime_type", "data", "url"], "part");
       return {
         type: p.type as "text",
         text: p.text,
         mimeType: p.mime_type,
-        source: p.data
-          ? inlineSource(new Uint8Array(Buffer.from(p.data, "base64")), p.mime_type ?? "")
-          : undefined,
+        source: p.url
+          ? unfetchedURL(p.url)
+          : p.data
+            ? inlineSource(new Uint8Array(Buffer.from(p.data, "base64")), p.mime_type ?? "")
+            : undefined,
       };
     });
   }
