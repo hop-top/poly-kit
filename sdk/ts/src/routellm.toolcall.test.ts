@@ -408,3 +408,70 @@ describe("routellm tool names (openai rule)", () => {
     ).toThrow(/tool_names/);
   });
 });
+
+// ─── Tool calling through the openai adapter ────────────────────────────────
+
+describe("routellm tool calling", () => {
+  const defs = [{ name: "pane.open", description: "Open", parameters: { type: "object" } }];
+
+  it("callWithTools sends wire names and returns the original", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
+      urls.push(String(url));
+      bodies.push(JSON.parse(String(init?.body)));
+      return new globalThis.Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  { id: "call_9", type: "function", function: { name: "pane_open", arguments: '{"x":1}' } },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as unknown as typeof globalThis.fetch;
+
+    const r = await new RouteLLMAdapter(cfg).callWithTools(
+      { messages: [{ role: "user", content: "open it" }] },
+      defs
+    );
+    expect(r.toolCalls).toEqual([{ id: "call_9", name: "pane.open", arguments: { x: 1 } }]);
+    expect(urls).toEqual(["http://routellm.test/v1/chat/completions"]);
+    const body = bodies[0] as unknown as {
+      model: string;
+      tools: { function: { name: string } }[];
+    };
+    expect(body.model).toBe("router-mf-0.7");
+    expect(body.tools[0]!.function.name).toBe("pane_open");
+  });
+
+  it("streamWithTools folds tool-call deltas into the outcome", async () => {
+    const events = [
+      { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "pane_open", arguments: "{}" } }] } }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
+    ];
+    globalThis.fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new globalThis.Response(
+        events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("") + "data: [DONE]\n\n",
+        { status: 200, headers: { "Content-Type": "text/event-stream" } }
+      );
+    }) as unknown as typeof globalThis.fetch;
+
+    const st = new RouteLLMAdapter(cfg).streamWithTools(
+      { messages: [{ role: "user", content: "open it" }] },
+      defs
+    );
+    for await (const _t of st) {
+      // drain
+    }
+    expect(st.outcome()?.toolCalls).toEqual([{ id: "c1", name: "pane.open", arguments: {} }]);
+  });
+});

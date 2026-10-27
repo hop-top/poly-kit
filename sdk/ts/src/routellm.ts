@@ -5,29 +5,30 @@
  *
  * URI format: `routellm://router_name:threshold` (e.g. `routellm://mf:0.7`).
  *
- * Delegates HTTP completions to an OpenAI-compatible endpoint on the
- * RouteLLM server, translating the model field into the server's
- * expected `router-[name]-[threshold]` format.
+ * Delegates to the openai adapter (`@hop-top/kit/openai`) pointed
+ * at the RouteLLM server's OpenAI-compatible endpoint, translating the
+ * model field into the server's `router-[name]-[threshold]` format.
+ * Importing this module registers the openai schemes too.
  */
 
 import {
   type Completer,
   type Streamer,
+  type ToolCaller,
+  type ToolStreamer,
+  type ToolDef,
+  type ToolResponse,
+  type ToolStream,
   type Request,
   type Response,
-  type Token,
   type ResolvedConfig,
   type Provider,
-  type Message,
-  type ContentPart,
   LLMError,
-  OPENAI_TOOL_NAMES,
-  ToolNames,
-  checkToolLinkage,
+  TOOL_NAMES_PARAM,
   register,
   toolNameModeOf,
-  type ToolNameMode,
 } from "./llm";
+import { OpenAIAdapter, apiRootV1 } from "./llm-openai";
 
 // ─── RouterConfig ─────────────────────────────────────────────────────────────
 
@@ -182,25 +183,27 @@ export function parseModelField(model: string): ParsedModel {
 // ─── Adapter ──────────────────────────────────────────────────────────────────
 
 /**
- * RouteLLM adapter implementing Completer and Streamer.
+ * RouteLLM adapter: complete, stream, callWithTools and streamWithTools.
  *
- * Delegates to an OpenAI-compatible HTTP endpoint on the RouteLLM
- * server using the standard fetch API.
+ * Delegates to an inner {@link OpenAIAdapter} pointed at the RouteLLM
+ * server's OpenAI-compatible `/v1` API, so tool calling, tool names
+ * (openai rule, `?tool_names=`), size limits, retries and the
+ * credential guard are the openai adapter's.
  */
-export class RouteLLMAdapter implements Completer, Streamer {
+export class RouteLLMAdapter
+  implements Completer, Streamer, ToolCaller, ToolStreamer
+{
   readonly config: RouterConfig;
   readonly routerName: string;
   readonly threshold: number;
 
-  private readonly _baseUrl: string;
-  private readonly _serverModel: string;
-  private readonly _apiKey: string;
-  private readonly _toolNames: ToolNameMode;
+  private readonly inner: OpenAIAdapter;
 
   constructor(cfg: ResolvedConfig) {
     this.config = parseRouterConfig(cfg.provider.extras);
     // The server speaks the OpenAI wire: its tool-name rule applies.
-    this._toolNames = toolNameModeOf(cfg.provider.params);
+    // Checked here so an unknown mode fails construction.
+    toolNameModeOf(cfg.provider.params);
 
     const model = cfg.provider.model || cfg.uri.model;
     const parsed = parseModelField(model);
@@ -213,258 +216,53 @@ export class RouteLLMAdapter implements Completer, Streamer {
       );
     }
 
-    // Build server model name: router-[name]-[threshold]
-    this._serverModel = `router-${this.routerName}-${this.threshold}`;
-
     // Resolve base URL: config > provider > default.
     let baseUrl = this.config.baseUrl;
     if (baseUrl === "http://localhost:6060" && cfg.provider.baseURL) {
       baseUrl = cfg.provider.baseURL;
     }
-    this._baseUrl = baseUrl;
-    this._apiKey = cfg.provider.apiKey ?? "";
+
+    // The inner adapter takes the params it owns.
+    const params: Record<string, string> = {};
+    for (const k of [TOOL_NAMES_PARAM, "max_body_bytes", "max_event_bytes"]) {
+      const v = cfg.provider.params?.[k];
+      if (v !== undefined) params[k] = v;
+    }
+    this.inner = new OpenAIAdapter(
+      {
+        uri: { scheme: "routellm", model },
+        provider: {
+          apiKey: cfg.provider.apiKey,
+          baseURL: apiRootV1(baseUrl),
+          // Server model name: router-[name]-[threshold]
+          model: `router-${this.routerName}-${this.threshold}`,
+          params,
+        },
+        fallbacks: [],
+      },
+      { label: "routellm" }
+    );
   }
 
-  async complete(req: Request): Promise<Response> {
-    const body = await this._buildBody(req, false);
-    const resp = await this._post("/v1/chat/completions", body);
-
-    const data = (await resp.json()) as OpenAIChatResponse;
-    const choice = data.choices?.[0];
-    const content = choice?.message?.content ?? "";
-    const finishReason = choice?.finish_reason ?? "";
-
-    const usage = data.usage
-      ? {
-          promptTokens: data.usage.prompt_tokens ?? 0,
-          completionTokens: data.usage.completion_tokens ?? 0,
-          totalTokens: data.usage.total_tokens ?? 0,
-        }
-      : undefined;
-
-    return { content, role: "assistant", usage, finishReason };
+  complete(req: Request): Promise<Response> {
+    return this.inner.complete(req);
   }
 
-  async *stream(req: Request): AsyncGenerator<Token> {
-    const body = await this._buildBody(req, true);
-    const resp = await this._post("/v1/chat/completions", body);
+  stream(req: Request): ToolStream {
+    return this.inner.stream(req);
+  }
 
-    if (!resp.body) {
-      throw new LLMError("routellm: streaming response has no body");
-    }
+  callWithTools(req: Request, tools: ToolDef[]): Promise<ToolResponse> {
+    return this.inner.callWithTools(req, tools);
+  }
 
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith("data: ")) continue;
-          const payload = trimmed.slice(6);
-          if (payload === "[DONE]") {
-            yield { content: "", done: true };
-            return;
-          }
-
-          const chunk = JSON.parse(payload) as OpenAIStreamChunk;
-          const delta = chunk.choices?.[0]?.delta;
-          const content = delta?.content ?? "";
-          const isDone = chunk.choices?.[0]?.finish_reason != null;
-          yield { content, done: isDone };
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
+  streamWithTools(req: Request, tools: ToolDef[]): ToolStream {
+    return this.inner.streamWithTools(req, tools);
   }
 
   close(): void {
-    // No persistent resources to release.
+    this.inner.close();
   }
-
-  // ── private ────────────────────────────────────────────────────
-
-  private async _buildBody(
-    req: Request,
-    stream: boolean
-  ): Promise<Record<string, unknown>> {
-    // No tools on these entry points: replayed history names still go
-    // out as the provider accepts them.
-    const names = ToolNames.build(OPENAI_TOOL_NAMES, this._toolNames, []);
-    const messages: Record<string, unknown>[] = [];
-    for (const m of req.messages) messages.push(await mapMessage(m, names));
-    const body: Record<string, unknown> = {
-      model: this._serverModel,
-      messages,
-      stream,
-    };
-    if (req.temperature !== undefined) body["temperature"] = req.temperature;
-    if (req.maxTokens !== undefined) body["max_tokens"] = req.maxTokens;
-    if (req.stopSequences?.length) body["stop"] = req.stopSequences;
-    return body;
-  }
-
-  private async _post(
-    path: string,
-    body: Record<string, unknown>
-  ): Promise<globalThis.Response> {
-    const url = `${this._baseUrl}${path}`;
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (this._apiKey) {
-      headers["Authorization"] = `Bearer ${this._apiKey}`;
-    }
-
-    const resp = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      throw new LLMError(
-        `routellm: HTTP ${resp.status} from ${url}: ${text}`
-      );
-    }
-
-    return resp;
-  }
-}
-
-// ─── Message mapping (OpenAI-compatible wire) ─────────────────────────────────
-
-/**
- * Maps one message onto the OpenAI chat wire, mirroring the Go openai
- * adapter: assistant `toolCalls` become `tool_calls`, a role `tool`
- * result carries `tool_call_id`, and `parts` become a user content
- * array. Linkage or parts the wire cannot carry throw instead of being
- * sent as plain text. Messages without them map to `{role, content}`.
- * Tool-call names go out as `names` maps them (llm-v1 tool names).
- */
-async function mapMessage(
-  m: Message,
-  names: ToolNames
-): Promise<Record<string, unknown>> {
-  if (m.role === "tool" && !m.toolCallId) {
-    throw new LLMError("routellm: tool result needs toolCallId");
-  }
-  checkToolLinkage(m);
-
-  if (m.role === "tool") {
-    return { role: "tool", content: m.content, tool_call_id: m.toolCallId };
-  }
-
-  if (m.toolCalls?.length) {
-    if (m.parts?.length) {
-      throw new LLMError(
-        "routellm: assistant tool calls do not support content parts"
-      );
-    }
-    const out: Record<string, unknown> = { role: "assistant" };
-    if (m.content) out["content"] = m.content;
-    out["tool_calls"] = m.toolCalls.map((tc) => {
-      if (!tc.id) {
-        throw new LLMError(`routellm: tool call "${tc.name}" needs an id`);
-      }
-      return {
-        id: tc.id,
-        type: "function",
-        function: {
-          name: names.wire(tc.name),
-          arguments: encodeArguments(tc.id, tc.arguments),
-        },
-      };
-    });
-    return out;
-  }
-
-  if (!m.parts?.length) return { role: m.role, content: m.content };
-
-  if (m.role !== "" && m.role !== "user") {
-    throw new LLMError(
-      `routellm: message role "${m.role}" does not support content parts`
-    );
-  }
-  const content: Record<string, unknown>[] = [];
-  for (const p of m.parts) content.push(await mapPart(p));
-  return { role: "user", content };
-}
-
-/** Tool-call arguments as the JSON string the wire expects. */
-function encodeArguments(id: string, args: unknown): string {
-  if (args === undefined || args === null) return "{}";
-  if (typeof args !== "string") return JSON.stringify(args);
-  try {
-    JSON.parse(args);
-  } catch {
-    throw new LLMError(
-      `routellm: tool call "${id}" arguments are not valid JSON`
-    );
-  }
-  return args;
-}
-
-async function mapPart(p: ContentPart): Promise<Record<string, unknown>> {
-  switch (p.type) {
-    case "text":
-      return { type: "text", text: p.text ?? "" };
-
-    case "image": {
-      const mime = p.mimeType || p.source?.mimeType() || "";
-      if (mime === "application/pdf") {
-        return { type: "file", file: { file_data: await readBase64(p) } };
-      }
-      const url = p.source?.url();
-      if (url) return { type: "image_url", image_url: { url } };
-      if (!mime) {
-        throw new LLMError("routellm: image part needs a MIME type or URL");
-      }
-      return {
-        type: "image_url",
-        image_url: { url: `data:${mime};base64,${await readBase64(p)}` },
-      };
-    }
-
-    default:
-      throw new LLMError(`routellm: unsupported modality "${p.type}"`);
-  }
-}
-
-async function readBase64(p: ContentPart): Promise<string> {
-  if (!p.source) throw new LLMError("routellm: nil media source");
-  return Buffer.from(await p.source.read()).toString("base64");
-}
-
-// ─── OpenAI-compatible response types (internal) ──────────────────────────────
-
-interface OpenAIChatResponse {
-  choices?: {
-    message?: { content?: string; role?: string };
-    finish_reason?: string;
-  }[];
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  };
-}
-
-interface OpenAIStreamChunk {
-  choices?: {
-    delta?: { content?: string; role?: string };
-    finish_reason?: string | null;
-  }[];
 }
 
 // ─── Registration ─────────────────────────────────────────────────────────────
@@ -474,6 +272,8 @@ function routellmFactory(cfg: ResolvedConfig): Provider {
   return {
     complete: (req) => adapter.complete(req),
     stream: (req) => adapter.stream(req),
+    callWithTools: (req, tools) => adapter.callWithTools(req, tools),
+    streamWithTools: (req, tools) => adapter.streamWithTools(req, tools),
     close: () => adapter.close(),
   };
 }
