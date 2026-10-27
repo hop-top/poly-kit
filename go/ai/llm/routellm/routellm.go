@@ -58,10 +58,11 @@ func (a *Adapter) IsTier() bool { return a.tier != "" }
 
 // compile-time interface checks.
 var (
-	_ llm.Provider   = (*Adapter)(nil)
-	_ llm.Completer  = (*Adapter)(nil)
-	_ llm.Streamer   = (*Adapter)(nil)
-	_ llm.ToolCaller = (*Adapter)(nil)
+	_ llm.Provider     = (*Adapter)(nil)
+	_ llm.Completer    = (*Adapter)(nil)
+	_ llm.Streamer     = (*Adapter)(nil)
+	_ llm.ToolCaller   = (*Adapter)(nil)
+	_ llm.ToolStreamer = (*Adapter)(nil)
 )
 
 // New creates an Adapter from the resolved config.
@@ -124,9 +125,15 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		},
 		Hermetic: cfg.Hermetic,
 	}
-	// The inner adapter applies the tool-name mode the URI asks for.
-	if v, ok := cfg.Provider.Params[llm.ToolNamesParam]; ok {
-		innerCfg.Provider.Params = map[string]string{llm.ToolNamesParam: v}
+	// The inner adapter applies the tool-name mode and the size caps
+	// the URI asks for.
+	for _, k := range []string{llm.ToolNamesParam, "max_body_bytes", "max_event_bytes"} {
+		if v, ok := cfg.Provider.Params[k]; ok {
+			if innerCfg.Provider.Params == nil {
+				innerCfg.Provider.Params = map[string]string{}
+			}
+			innerCfg.Provider.Params[k] = v
+		}
 	}
 
 	inner, err := openai.New(innerCfg)
@@ -247,4 +254,17 @@ func (a *Adapter) CallWithTools(
 		)
 	}
 	return tc.CallWithTools(ctx, req, tools)
+}
+
+// StreamWithTools delegates to the inner openai adapter.
+func (a *Adapter) StreamWithTools(
+	ctx context.Context, req llm.Request, tools []llm.ToolDef,
+) (llm.ToolStream, error) {
+	ts, ok := a.inner.(llm.ToolStreamer)
+	if !ok {
+		return nil, llmerrors.NewCapabilityNotSupported(
+			"stream_with_tools", "routellm/inner",
+		)
+	}
+	return ts.StreamWithTools(ctx, req, tools)
 }
