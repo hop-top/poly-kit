@@ -32,7 +32,8 @@ err := breaker.WrapCtx(b, ctx, func(ctx context.Context) error {
 
 ## Contract
 
-- `Allow()` returns `ErrBrokenCircuit` when open; `Record(success, n)` feeds counters and the state machine; `Reset()` closes and zeroes counters.
+- `Allow()` returns `ErrBrokenCircuit` when open and records nothing; `Record(success, n)` feeds counters and the state machine; `Reset()` closes and zeroes counters.
+- `State()` applies cooldown expiry (open → half-open, inclusive) without a call; half-open admits `SuccessThreshold` probes, one failure re-opens.
 - `OnTrip(Degrade)` without `Fallback` behaves like `Halt`; `OnTrip(Warn)` is log-only, for migration and known soft-failure modes.
 - `MaxPerMinute` is bursty (period-windowed); `Timeout(d)` applies to `Executor().Run/Get`, not `Allow`.
 - Bus topics `kit.core.breaker.{tripped,opened,closed,half_opened}` publish only when `WithPublisher` is wired; `WithTopicPrefix` / `WithTopics` rename them.

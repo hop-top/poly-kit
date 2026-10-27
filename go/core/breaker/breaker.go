@@ -1,6 +1,7 @@
 package breaker
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -121,7 +122,10 @@ type breakerImpl struct {
 
 	cfg      *config
 	executor failsafe.Executor[any]
-	circ     *circuit
+	// preflight runs Allow's no-op through the policies inside the
+	// circuit (bulkhead, rate, volume, count); nil when none is set.
+	preflight failsafe.Executor[any]
+	circ      *circuit
 
 	mu       sync.Mutex
 	stats    Stats
@@ -146,19 +150,43 @@ func New(name string, opts ...Option) Breaker {
 	}
 	b.circ = newCircuit(cfg.clock, cfg.circFailureThreshold, cfg.circSuccessThreshold, cfg.circDelay)
 	// The circuit policy and the Volume/Count closures need b.
-	b.executor = failsafe.With(assemblePolicies(b, &circuitPolicy{b: b}, cfg)...)
+	outer, inner := assemblePolicies(b, &circuitPolicy{b: b}, cfg)
+	b.executor = failsafe.With(append(outer, inner...)...)
+	if len(inner) > 0 {
+		b.preflight = failsafe.With(inner...)
+	}
 
 	registerOrPanic(name, b)
 	return b
 }
 
-// Allow runs the executor's no-op and maps any failure to the single
-// ErrBrokenCircuit sentinel.
+// Allow asks the circuit for a permit, then runs a no-op through the
+// pre-flight policies. Neither outcome is recorded on the circuit:
+// only Record (or a real execution through Executor) feeds it. A
+// permit the circuit granted is returned when a pre-flight policy
+// rejects.
 func (b *breakerImpl) Allow() error {
-	if err := b.executor.Run(noopFn); err != nil {
-		return ErrBrokenCircuit
+	if !b.acquire() {
+		return b.reject()
+	}
+	if b.preflight != nil {
+		if err := b.preflight.Run(noopFn); err != nil {
+			b.circ.release()
+			return b.reject()
+		}
 	}
 	return nil
+}
+
+// reject is Allow's answer once a policy refused: the fallback's
+// verdict when one is configured, ErrBrokenCircuit otherwise.
+func (b *breakerImpl) reject() error {
+	if fb := b.cfg.fallback; fb != nil {
+		if err := fb(context.Background()); err == nil {
+			return nil
+		}
+	}
+	return ErrBrokenCircuit
 }
 
 // Record updates the kit-side cumulative counters and forwards the
@@ -177,7 +205,9 @@ func (b *breakerImpl) Record(success bool, n int64) {
 }
 
 func (b *breakerImpl) State() State {
-	return b.circ.current()
+	s, ts := b.circ.current()
+	b.emitTransitions(ts)
+	return s
 }
 
 // acquire asks the circuit to admit one execution and emits any
@@ -241,6 +271,6 @@ func (b *breakerImpl) counterValue(name string) int64 {
 	return b.counters[name]
 }
 
-// noopFn is the function we hand to the executor for Allow checks —
-// it succeeds; the policies decide whether to short-circuit.
+// noopFn is the function Allow hands to the pre-flight executor; it
+// succeeds, the policies decide whether to short-circuit.
 func noopFn() error { return nil }

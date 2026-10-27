@@ -272,9 +272,10 @@ ceremony instead of a flat `Allow` / `Record`), and `afex/hystrix-go`
 - **No `kit breaker watch` subcommand yet.** Use `watch -n 1 'kit
   breaker list'` in a shell. A bubbletea-driven live tail is
   follow-up.
-- **`Allow()` runs a noop fn through the executor.** Per-call cost
-  is one failsafe executor pass (~50–100 ns + kit wrapper
-  overhead). Acceptable for any op that does real I/O downstream.
+- **`Allow()` runs a noop fn through the pre-flight policies.**
+  Bulkhead, rate limiter and the Volume/Count caps see it; the
+  circuit only grants or refuses a permit and records nothing, so
+  only `Record` (or a real `Executor()` run) moves the state machine.
 
 ## Related pages
 

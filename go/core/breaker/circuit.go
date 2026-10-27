@@ -55,11 +55,31 @@ func newCircuit(clock Clock, failureThreshold, successThreshold uint, delay time
 	}
 }
 
-// current returns the stored state.
-func (c *circuit) current() State {
+// current returns the state, applying cooldown expiry first.
+func (c *circuit) current() (State, []transition) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.state
+	out := c.expire()
+	return c.state, out
+}
+
+// expire moves Open to HalfOpen once the cooldown has elapsed: the
+// boundary is inclusive. Requires c.mu.
+func (c *circuit) expire() []transition {
+	if c.state == Open && c.clock.Now().Sub(c.openedAt) >= c.delay {
+		return []transition{c.moveTo(HalfOpen, false)}
+	}
+	return nil
+}
+
+// release returns a probe permit taken by tryAcquire whose execution
+// never ran (a later pre-flight check rejected it).
+func (c *circuit) release() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.state == HalfOpen && c.permits < c.successThreshold {
+		c.permits++
+	}
 }
 
 // tryAcquire admits one execution. Open moves to HalfOpen once the
@@ -67,14 +87,11 @@ func (c *circuit) current() State {
 func (c *circuit) tryAcquire() (bool, []transition) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var out []transition
-	if c.state == Open {
-		if c.clock.Now().Sub(c.openedAt) < c.delay {
-			return false, nil
-		}
-		out = append(out, c.moveTo(HalfOpen, false))
-	}
-	if c.state == HalfOpen {
+	out := c.expire()
+	switch c.state {
+	case Open:
+		return false, out
+	case HalfOpen:
 		if c.permits == 0 {
 			return false, out
 		}
@@ -83,17 +100,18 @@ func (c *circuit) tryAcquire() (bool, []transition) {
 	return true, out
 }
 
-// record feeds one outcome to the state machine and releases a probe
-// permit while HalfOpen.
+// record feeds one outcome to the state machine. While HalfOpen a
+// failure re-opens, successThreshold successes close, and any other
+// outcome returns its probe permit. Open ignores outcomes.
 func (c *circuit) record(success bool) []transition {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var out []transition
+	out := c.expire()
 	switch c.state {
 	case Closed:
 		if success {
 			c.failures = 0
-			return nil
+			return out
 		}
 		c.failures++
 		if c.failures >= c.failureThreshold {
@@ -108,7 +126,7 @@ func (c *circuit) record(success bool) []transition {
 			out = append(out, c.moveTo(Open, false))
 		case c.successes >= c.successThreshold:
 			out = append(out, c.moveTo(Closed, false))
-		default:
+		case c.permits < c.successThreshold:
 			c.permits++
 		}
 	}
