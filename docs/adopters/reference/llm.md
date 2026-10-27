@@ -550,10 +550,15 @@ client := llm.NewClient(provider, llm.WithBus(b),
 `RedactRequest` and `RedactResponse` pass every text (message content,
 text parts, tool call arguments, thinking) through the redactor and
 leave out what it cannot vouch for: `Extensions`, media bytes, thinking
-signatures, `ProviderData`. Tool call arguments are masked per JSON
-string, keys included, on the decoded text (a secret needing `\"` or
-`\u` escapes on the wire still matches); arguments that are not JSON
-travel as one masked JSON string, never unmasked. A nil transform publishes content
+signatures, `ProviderData`. Tool call arguments are masked fail-closed:
+every JSON string, key and number on its decoded text (a secret needing
+`\"` or `\u` escapes on the wire still matches; a masked number
+becomes a string); each member also in key context (`"key":value`,
+`key=value`), so rules that need the key beside the value (generic API
+keys) replace that value whole; and if the result still matches on its
+wire form, or the arguments are not JSON, they travel as one masked
+JSON string. Tool results, text parts and replies are plain text,
+masked as written. A nil transform publishes content
 unchanged; only do that on a bus you control.
 
 ## Configuration

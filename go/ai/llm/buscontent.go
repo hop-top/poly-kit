@@ -92,30 +92,50 @@ func redactCalls(r *redact.Redactor, calls []ToolCall) []ToolCall {
 	return calls
 }
 
-// redactJSON passes every string of raw, keys included, through r on
-// its decoded text, so a secret that needs escapes on the wire (a
-// quote, a backslash, a \u escape) still matches. Raw that does not
-// decode goes out as r's mask of the whole text, as a JSON string;
-// nothing passes unmasked.
+// redactJSON masks raw, a JSON value, with r, failing closed:
+//
+//   - every string, key and number is masked on its decoded text, so a
+//     secret needing escapes on the wire (a quote, a backslash, a \u
+//     escape) still matches; a number r masks becomes the masked text;
+//   - each object member is also checked in key context, as
+//     "key":value and key=value, for rules that need the key beside the
+//     value (generic API keys, keyword-gated rules); a member r flags
+//     there gets its value replaced whole;
+//   - the result is checked once more on its wire form: if r still
+//     finds anything, or raw does not decode, the whole of raw goes out
+//     as one masked JSON string.
+//
+// Nothing passes unmasked.
 func redactJSON(r *redact.Redactor, raw json.RawMessage) json.RawMessage {
+	fallback := func() json.RawMessage {
+		quoted, _ := json.Marshal(r.Apply(string(raw)))
+		return quoted
+	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	var v any
-	if err := dec.Decode(&v); err == nil && !dec.More() {
-		if out, err := json.Marshal(redactValue(r, v)); err == nil {
-			return out
-		}
+	if err := dec.Decode(&v); err != nil || dec.More() {
+		return fallback()
 	}
-	quoted, _ := json.Marshal(r.Apply(string(raw)))
-	return quoted
+	out, err := json.Marshal(redactValue(r, v))
+	if err != nil || r.Apply(string(out)) != string(out) {
+		return fallback()
+	}
+	return out
 }
 
-// redactValue masks every string in a decoded JSON value. Two keys
-// masked to the same text keep one value: the copy only describes.
+// redactValue masks every string, key and number in a decoded JSON
+// value; see [redactJSON]. Two keys masked to the same text keep one
+// value: the copy only describes.
 func redactValue(r *redact.Redactor, v any) any {
 	switch x := v.(type) {
 	case string:
 		return r.Apply(x)
+	case json.Number:
+		if m := r.Apply(x.String()); m != x.String() {
+			return m
+		}
+		return x
 	case []any:
 		for i := range x {
 			x[i] = redactValue(r, x[i])
@@ -124,11 +144,37 @@ func redactValue(r *redact.Redactor, v any) any {
 	case map[string]any:
 		out := make(map[string]any, len(x))
 		for k, e := range x {
+			if flaggedInContext(r, k, e) {
+				out[r.Apply(k)] = redacted
+				continue
+			}
 			out[r.Apply(k)] = redactValue(r, e)
 		}
 		return out
 	}
-	return v
+	return v // bool, nil
+}
+
+// flaggedInContext reports whether r flags the member k: e rendered
+// with its key, for a scalar e.
+func flaggedInContext(r *redact.Redactor, k string, e any) bool {
+	var text string
+	switch x := e.(type) {
+	case string:
+		text = x
+	case json.Number:
+		text = x.String()
+	default:
+		return false // containers are walked; bool and null hold nothing
+	}
+	jk, _ := json.Marshal(k)
+	je, _ := json.Marshal(e)
+	for _, s := range []string{string(jk) + ":" + string(je), k + "=" + text} {
+		if r.Apply(s) != s && r.Apply(k) == k && r.Apply(text) == text {
+			return true
+		}
+	}
+	return false
 }
 
 func redactThinking(r *redact.Redactor, tbs []ThinkingBlock) []ThinkingBlock {
