@@ -8,22 +8,21 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The grants partition is kit.consent in config.yaml:
+// The grants file is <XDG_STATE_HOME>/<tool>/consent/grants.yaml:
 //
-//	kit:
-//	  consent:
-//	    version: 1
-//	    grants:
-//	      - capability: io.screen.capture
-//	        subject: app:dek
-//	        decision: allow
-//	        duration: always
-//	        decided_at: "2026-03-01T00:00:00Z"
-//	        decision_source: prompt
-//	        prompt_version: 1
+//	version: 1
+//	grants:
+//	  - capability: io.screen.capture
+//	    subject: app:dek
+//	    decision: allow
+//	    duration: always
+//	    decided_at: "2026-03-01T00:00:00Z"
+//	    decision_source: prompt
+//	    prompt_version: 1
 //
-// Decoding is strict: one bad record makes the whole partition
-// malformed, so every check fails closed instead of skipping it.
+// The file belongs to consent alone; it is rewritten whole. Decoding
+// is strict: one bad record makes the whole file malformed, so every
+// check fails closed instead of skipping it.
 
 const (
 	grantsVersion = 1
@@ -45,53 +44,44 @@ func malformed(format string, args ...any) error {
 	return grantErr(KindMalformedStore, format, args...)
 }
 
-// consentPartition returns the kit.consent node, or nil when absent.
-func consentPartition(doc *yaml.Node) *yaml.Node {
-	kit := mappingChild(rootMapping(doc), keyKit)
-	return mappingChild(kit, keyConsent)
-}
-
-// decodeGrants reads kit.consent from doc. A missing partition holds
-// no grants.
+// decodeGrants reads a grants file document. A nil document (no
+// file, or an empty one) holds no grants.
 func decodeGrants(doc *yaml.Node) ([]Grant, error) {
-	if doc != nil && len(doc.Content) > 0 && rootMapping(doc) == nil {
-		return nil, malformed("document root is not a mapping")
-	}
-	p := consentPartition(doc)
-	if p == nil {
+	if doc == nil || len(doc.Content) == 0 {
 		return nil, nil
 	}
-	if p.Kind != yaml.MappingNode {
-		return nil, malformed("kit.consent is not a mapping")
+	p := rootMapping(doc)
+	if p == nil {
+		return nil, malformed("document root is not a mapping")
 	}
 	for i := 0; i+1 < len(p.Content); i += 2 {
 		if k := p.Content[i].Value; k != keyVersion && k != keyGrants {
-			return nil, malformed("kit.consent: unknown key %q", k)
+			return nil, malformed("unknown key %q", k)
 		}
 	}
 	v := mappingChild(p, keyVersion)
 	if v == nil {
-		return nil, malformed("kit.consent.version is missing")
+		return nil, malformed("version is missing")
 	}
 	if v.Value != strconv.Itoa(grantsVersion) {
-		return nil, malformed("kit.consent.version %q is not supported (want %d)", v.Value, grantsVersion)
+		return nil, malformed("version %q is not supported (want %d)", v.Value, grantsVersion)
 	}
 	list := mappingChild(p, keyGrants)
 	if list == nil {
 		return nil, nil
 	}
 	if list.Kind != yaml.SequenceNode {
-		return nil, malformed("kit.consent.grants is not a list")
+		return nil, malformed("grants is not a list")
 	}
 	out := make([]Grant, 0, len(list.Content))
 	seen := map[grantKey]bool{}
 	for i, n := range list.Content {
 		g, err := decodeGrant(n)
 		if err != nil {
-			return nil, malformed("kit.consent.grants[%d]: %v", i, err)
+			return nil, malformed("grants[%d]: %v", i, err)
 		}
 		if seen[g.key()] {
-			return nil, malformed("kit.consent.grants[%d]: duplicate %s for %q", i, g.Capability, g.Subject)
+			return nil, malformed("grants[%d]: duplicate %s for %q", i, g.Capability, g.Subject)
 		}
 		seen[g.key()] = true
 		out = append(out, g)
@@ -151,31 +141,14 @@ func decodeGrant(n *yaml.Node) (Grant, error) {
 	if g.PromptVersion, err = strconv.Atoi(pv); err != nil {
 		return Grant{}, fmt.Errorf("prompt_version: %w", err)
 	}
-	if g.Capability == CapTelemetry {
-		return Grant{}, fmt.Errorf("telemetry lives at kit.telemetry.consent")
-	}
 	if err := checkPersistable(g); err != nil {
 		return Grant{}, err
 	}
 	return g, nil
 }
 
-// encodeGrants writes gs as kit.consent, or removes the partition
-// when gs is empty. Grants are written sorted.
-func encodeGrants(doc *yaml.Node, gs []Grant) error {
-	root := rootMapping(doc)
-	if root == nil {
-		return malformed("document root is not a mapping")
-	}
-	kit := mappingChild(root, keyKit)
-	if len(gs) == 0 {
-		deleteMappingChild(kit, keyConsent)
-		return nil
-	}
-	if kit == nil || kit.Kind != yaml.MappingNode {
-		kit = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-		setMappingChild(root, keyKit, kit)
-	}
+// encodeGrants renders gs as a grants file document, sorted.
+func encodeGrants(gs []Grant) *yaml.Node {
 	sortGrants(gs)
 	list := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
 	for _, g := range gs {
@@ -192,11 +165,10 @@ func encodeGrants(doc *yaml.Node, gs []Grant) error {
 		setMappingChild(m, keyPromptVersion, intNode(g.PromptVersion))
 		list.Content = append(list.Content, m)
 	}
-	p := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-	setMappingChild(p, keyVersion, intNode(grantsVersion))
-	setMappingChild(p, keyGrants, list)
-	setMappingChild(kit, keyConsent, p)
-	return nil
+	doc := newMappingDoc()
+	setMappingChild(doc.Content[0], keyVersion, intNode(grantsVersion))
+	setMappingChild(doc.Content[0], keyGrants, list)
+	return doc
 }
 
 func strNode(v string) *yaml.Node { return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v} }

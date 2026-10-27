@@ -7,15 +7,18 @@
 // session, until or always. Request asks a caller-supplied Prompter
 // when there is no standing decision; Use gates every tap and audits
 // it; every path fails closed. Refusals render on the kit exit
-// taxonomy through RefusedError.AsCLIError. The cross-language
-// contract is contracts/consent-v1.
+// taxonomy through RefusedError.AsCLIError. Persisted grants live in
+// the per-tool <XDG_STATE_HOME>/<tool>/consent/grants.yaml; the audit
+// log next to it is the outbox a Relay delivers onto the bus with
+// confirmation. The cross-language contract is contracts/consent-v1.
 //
-// Telemetry consent is the CapTelemetry capability. Its record keeps
-// the original on-disk schema (state, decided_at, prompt_version,
-// decision_source) under <XDG_CONFIG_HOME>/kit/config.yaml at the
-// kit.telemetry.consent partition; a legacy
-// <XDG_CONFIG_HOME>/kit/telemetry.yaml (bare telemetry.consent) is
-// read as a fallback, and Clear removes the record from both files.
+// Telemetry consent is the CapTelemetry capability. It is read from
+// the grants file, else from the original record (state, decided_at,
+// prompt_version, decision_source) at kit.telemetry.consent in
+// <XDG_CONFIG_HOME>/kit/config.yaml, else from the legacy
+// <XDG_CONFIG_HOME>/kit/telemetry.yaml (bare telemetry.consent).
+// Writes go to the grants file and are mirrored into
+// kit.telemetry.consent; Clear removes the record everywhere.
 //
 // The wire-level contract with kit-telemetry is the ConsentHook
 // interface — kit-telemetry owns the interface as Granted(ctx) bool.

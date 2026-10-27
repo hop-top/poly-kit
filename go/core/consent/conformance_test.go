@@ -24,7 +24,11 @@ var corpusFiles = map[string]bool{
 	"records.json":      true,
 	"scenarios.json":    true,
 	"migration.json":    true,
+	"delivery.json":     true,
 }
+
+// corpusTool is the tool every runner uses for per-tool state.
+const corpusTool = "mytool"
 
 func loadCorpus(t *testing.T, name string, v any) {
 	t.Helper()
@@ -156,15 +160,18 @@ func mustTime(t *testing.T, s string) time.Time {
 	return v
 }
 
-// corpusStore seeds a FileStore under a fresh XDG_CONFIG_HOME.
-func corpusStore(t *testing.T, configYAML, legacyYAML *string) *FileStore {
+// corpusStore seeds a FileStore for corpusTool under fresh XDG dirs.
+func corpusStore(t *testing.T, configYAML, legacyYAML, grantsYAML *string) *FileStore {
 	t.Helper()
-	s, dir := newTestStore(t)
-	write := func(rel string, body *string) {
+	_, dir := newTestStore(t)
+	s, err := NewFileStoreFor(corpusTool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(p string, body *string) {
 		if body == nil {
 			return
 		}
-		p := filepath.Join(dir, "kit", rel)
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -172,8 +179,9 @@ func corpusStore(t *testing.T, configYAML, legacyYAML *string) *FileStore {
 			t.Fatal(err)
 		}
 	}
-	write("config.yaml", configYAML)
-	write("telemetry.yaml", legacyYAML)
+	write(filepath.Join(dir, "kit", "config.yaml"), configYAML)
+	write(filepath.Join(dir, "kit", "telemetry.yaml"), legacyYAML)
+	write(s.grantsPath, grantsYAML)
 	return s
 }
 
@@ -184,6 +192,7 @@ func TestConformanceConsentRecords(t *testing.T) {
 		Cases       []struct {
 			Name       string      `json:"name"`
 			ConfigYAML *string     `json:"config_yaml"`
+			GrantsYAML *string     `json:"grants_yaml"`
 			OK         bool        `json:"ok"`
 			Grants     []grantJSON `json:"grants"`
 			ErrorKind  string      `json:"error_kind"`
@@ -193,7 +202,7 @@ func TestConformanceConsentRecords(t *testing.T) {
 	checkVersion(t, "records.json", doc.Version)
 	for _, c := range doc.Cases {
 		t.Run(c.Name, func(t *testing.T) {
-			s := corpusStore(t, c.ConfigYAML, nil)
+			s := corpusStore(t, c.ConfigYAML, nil, c.GrantsYAML)
 			got, err := s.Grants(context.Background())
 			if !c.OK {
 				assertKind(t, c.Name, err, false, c.ErrorKind)
@@ -264,8 +273,10 @@ type scenarioJSON struct {
 	PromptVersion *int              `json:"prompt_version"`
 	ConfigYAML    *string           `json:"config_yaml"`
 	LegacyYAML    *string           `json:"legacy_yaml"`
+	GrantsYAML    *string           `json:"grants_yaml"`
 	Steps         []stepJSON        `json:"steps"`
 	Audit         []json.RawMessage `json:"audit"`
+	GrantsFile    *json.RawMessage  `json:"grants_file"`
 	ConfigFile    *json.RawMessage  `json:"config_file"`
 	LegacyFile    *json.RawMessage  `json:"legacy_file"`
 }
@@ -273,6 +284,7 @@ type scenarioJSON struct {
 // presence records whether config_file / legacy_file keys appear at
 // all, since a JSON null there means "the file must not exist".
 type presence struct {
+	GrantsFile json.RawMessage `json:"grants_file"`
 	ConfigFile json.RawMessage `json:"config_file"`
 	LegacyFile json.RawMessage `json:"legacy_file"`
 }
@@ -300,7 +312,7 @@ func runScenarioFile(t *testing.T, name string) {
 
 func runScenario(t *testing.T, sc scenarioJSON, pres presence) {
 	ctx := context.Background()
-	store := corpusStore(t, sc.ConfigYAML, sc.LegacyYAML)
+	store := corpusStore(t, sc.ConfigYAML, sc.LegacyYAML, sc.GrantsYAML)
 	now := mustTime(t, sc.Now)
 	var audit []AuditEvent
 	pv := 1
@@ -333,6 +345,9 @@ func runScenario(t *testing.T, sc scenarioJSON, pres presence) {
 	}
 	assertJSONEqual(t, "audit", mustJSON(t, gotAudit), mustJSON(t, nonNil(sc.Audit)))
 
+	if len(pres.GrantsFile) > 0 {
+		assertFile(t, "grants_file", store.grantsPath, pres.GrantsFile)
+	}
 	if len(pres.ConfigFile) > 0 {
 		assertFile(t, "config_file", store.path, pres.ConfigFile)
 	}

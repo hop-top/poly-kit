@@ -200,7 +200,7 @@ func (p *recPub) Publish(_ context.Context, topic, source string, payload any) e
 
 func TestBusAuditor_PublishesTopicsAndVetoRefusesUse(t *testing.T) {
 	ctx := context.Background()
-	for _, tp := range []bus.Topic{DefaultTopics.Granted, DefaultTopics.Denied, DefaultTopics.Revoked, DefaultTopics.Used} {
+	for _, tp := range []bus.Topic{DefaultTopics.Granted, DefaultTopics.Denied, DefaultTopics.Revoked, DefaultTopics.Used, DefaultTopics.Refused} {
 		if err := bus.ValidateTopic(tp); err != nil {
 			t.Fatalf("topic %s: %v", tp, err)
 		}
@@ -276,7 +276,7 @@ func TestMemoryGrantStore_RejectsInMemoryDurations(t *testing.T) {
 func TestFileStore_ClearStripsLegacyRecord(t *testing.T) {
 	ctx := context.Background()
 	legacy := "telemetry:\n  consent:\n    state: granted\n    decided_at: \"2025-01-01T00:00:00Z\"\n    prompt_version: 1\n    decision_source: prompt\nother: keep\n"
-	s := corpusStore(t, nil, &legacy)
+	s := corpusStore(t, nil, &legacy, nil)
 	if err := s.Clear(ctx); err != nil {
 		t.Fatal(err)
 	}

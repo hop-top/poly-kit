@@ -8,7 +8,8 @@ May this subject use this capability now, did the user agree to telemetry, and w
 
 - you gate a sensitive tap (clipboard, screen, files fed to a prompt): `OpenGrants()`, then `Request(cap, subject, prompter)` once and `Use(cap, subject)` before every tap
 - you record or withdraw a decision from your own UI: `Decide`, `Revoke`; read back with `Check`, `List`
-- you need bus events or your own audit sink: `WithAuditor(BusAuditor(pub, DefaultTopics))`, `MultiAuditor`, `FileAuditor`
+- consent events must reach subscribers with confirmation: `OpenGrants(WithDelivery(bus))`, then run `g.Relay().Run(ctx)` (or `Flush`)
+- you need your own audit sink: `WithAuditor`, `MultiAuditor`, `FileAuditor`; `BusAuditor` publishes inline without redelivery
 - wiring telemetry at bootstrap: `Install()` builds the `FileStore` and installs the hook into kit-telemetry
 - you have your own `Store`: `NewHook(store)` then `telemetry.SetConsentHook`
 - you must decide telemetry from flags, env and the persisted record: `Resolve` / `ResolveWithDiagnostics` with `Inputs`
@@ -35,12 +36,13 @@ fmt.Println(consent.KindOf(err), errors.Is(err, consent.ErrRefused))
 
 ## Contract
 
-- Grants: capability (`telemetry`, or dotted `io.screen.capture` style) + subject (empty = any) + `allow|deny` + `once|session|until|always`. `until` and `always` persist to `<XDG_CONFIG_HOME>/kit/config.yaml` partition `kit.consent`; `once` and `session` live in the `Grants` value only.
+- Grants: capability (`telemetry`, or dotted `io.screen.capture` style) + subject (empty = any) + `allow|deny` + `once|session|until|always`. `until` and `always` persist to `<XDG_STATE_HOME>/<tool>/consent/grants.yaml` (atomic, 0600, dir 0700; tool from `WithTool`, default `DefaultTool()`); `once` and `session` live in the `Grants` value only. config.yaml is never read for grants.
 - Fail closed: no grant and no prompter, a prompter error, an unreadable store, or an audit failure on `Use` all refuse. A standing deny is never prompted.
 - Refusals are `*RefusedError` (`errors.Is(err, ErrRefused)`): `denied` is `UNAUTHORIZED`/5 permanent; `unset`, `expired`, `declined` are `CONSENT_REFUSED`/7 transient.
-- Audit: JSON lines at `<XDG_STATE_HOME>/kit/consent/audit.jsonl` by default; bus topics `kit.core.consent.{granted,denied,revoked,used}`.
-- Telemetry is the `telemetry` capability over the unchanged `kit.telemetry.consent` record (fields `state`, `decided_at`, `prompt_version`, `decision_source`); legacy `kit/telemetry.yaml` is read as a fallback. `Clear` (and revoking telemetry) removes the record from both files, other keys kept.
-- `Store.Set` writes a `*.tmp` sibling then renames, perms 0600, and preserves every other key. `Get` on a missing record returns `StateUnknown`; malformed YAML is an error.
+- Audit: JSON lines with `log` + `seq` at `<XDG_STATE_HOME>/<tool>/consent/audit.jsonl`. `refused` records mark refusals that were not a decision (`no-prompter`, `prompter-error`, `store-unreadable`, `standing-deny`, `expired`; `audit-failed` on the bus only), once per capability, subject and reason per session.
+- Delivery: `Relay` publishes the log in order to `kit.core.consent.{granted,denied,revoked,used,refused}` with event id `<log>:<seq>`; an ack is `Publish` returning nil (local sync subscribers); cursor `audit.cursor`; at-least-once. Delivery never changes a decision.
+- Telemetry is the `telemetry` capability: read from the grants file, else the legacy `kit.telemetry.consent` record (config.yaml, then `kit/telemetry.yaml`). Writes (`Set`, `kit telemetry enable|disable`) go to the grants file, then are mirrored into `kit.telemetry.consent` for SDKs that read only that. `Clear` (and revoking telemetry) clears all three, other keys kept.
+- Writes go to a `*.tmp` sibling then rename, perms 0600, preserving every other config key. `Get` on a missing record returns `StateUnknown`; a malformed grants file or legacy file is an error (fail closed).
 - Telemetry precedence, highest first: `<APP>_TELEMETRY_MODE=off` or `KIT_TELEMETRY_MODE=off`; `DO_NOT_TRACK`; `--telemetry=on|off`; `KIT_TELEMETRY_CONSENT=granted|denied`; persisted decision; default denied with `SourceConfig`. `Grants.Check` applies the same chain.
 - Cross-language: [contracts/consent-v1](../../../contracts/consent-v1/README.md), `make test-parity-consent`.
 - `NewHook(nil)` and `NewGrants(nil)` panic: a nil store is a wiring bug.

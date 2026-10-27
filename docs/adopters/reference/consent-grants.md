@@ -2,8 +2,8 @@
 
 > Per-capability consent for kit-based tools (`hop.top/kit/go/core/consent`).
 > Grant model, lookup and expiry, the prompter seam, refusals and exit
-> codes, audit records and bus topics, on-disk format, telemetry as a
-> capability.
+> codes, audit records, confirmed delivery to the bus, on-disk layout,
+> telemetry as a capability.
 
 ## Who this is for
 
@@ -40,6 +40,9 @@ any-subject grant. Within one key the in-memory grant beats the stored
 one, and storing a decision for a key drops its in-memory grant. An
 `until` grant is expired once `now >= ExpiresAt` and counts as absent.
 
+`Verdict.Grant` is the governing grant; for `expired`, the grant that
+expired.
+
 | `Verdict.Reason` | Meaning |
 |------------------|---------|
 | `allowed` | an allow grant holds |
@@ -50,7 +53,7 @@ one, and storing a decision for a key drops its in-memory grant. An
 ## API
 
 ```go
-g, err := consent.OpenGrants(opts...)            // FileStore + FileAuditor
+g, err := consent.OpenGrants(opts...)            // per-tool FileStore + FileAuditor
 g := consent.NewGrants(store, opts...)           // any GrantStore; no audit unless WithAuditor
 
 g.Check(ctx, cap, subject) (Verdict, error)      // no prompt, no audit
@@ -62,8 +65,11 @@ g.List(ctx) ([]Grant, error)
 g.EndSession()
 ```
 
-Options: `WithAuditor`, `WithClock`, `WithEnv`, `WithAppPrefix`,
-`WithPromptVersion` (default 1).
+Options: `WithTool` (OpenGrants; default `DefaultTool()`: the
+registered telemetry app prefix, lowercased, else `kit`),
+`WithDelivery(bus)` (OpenGrants builds the Relay), `WithRelay`,
+`WithAuditor`, `WithClock`, `WithEnv`, `WithAppPrefix`,
+`WithPromptVersion` (default 1). `g.Relay()` returns the relay.
 
 - `Request` returns an allow verdict when one holds. Otherwise: a
   standing deny is refused without prompting; with no prompter it is
@@ -110,66 +116,119 @@ store is never rewritten by a decide.
 
 ## Audit
 
-`AuditEvent` is one record: `v`, `event` (`granted`, `denied`,
-`revoked`, `used`), `at`, `capability`, `subject`, then `decision`,
-`duration`, `expires_at` (until only), `decision_source`,
-`prompt_version`. `revoked` carries only `decision_source`, naming who
-revoked.
+`AuditEvent` is one record: `v`, `log`, `seq`, `event` (`granted`,
+`denied`, `revoked`, `used`, `refused`), `at`, `capability`, `subject`,
+then `decision`, `duration`, `expires_at` (until only),
+`decision_source`, `prompt_version`. `revoked` carries only
+`decision_source`, naming who revoked. `refused` carries
+`decision_source` (of the governing grant, `config` when none) and
+`reason`.
+
+`denied` is a decision of no. `refused` is a refusal that was not one:
+
+| `reason` | When |
+|----------|------|
+| `no-prompter` | `Request` without a prompter, or `Use` with no grant |
+| `prompter-error` | the prompter failed or gave an invalid answer |
+| `store-unreadable` | the grants file (or the legacy telemetry record) cannot be read |
+| `standing-deny` | a deny grant (or `DO_NOT_TRACK`, `KIT_TELEMETRY_MODE=off`) holds |
+| `expired` | the governing grant expired and nothing can ask |
+| `audit-failed` | the `used` record could not be written; published on the bus only, without a key |
+
+Each (capability, subject, reason) is recorded once per session
+(`EndSession` resets it), so a hot `Use` loop on a standing deny writes
+one record. Writing or publishing a `refused` record is best effort: its
+errors, a bus veto included, are ignored and never change the outcome.
 
 | Auditor | Writes |
 |---------|--------|
-| `NewFileAuditor()` | JSON lines, `<XDG_STATE_HOME>/kit/consent/audit.jsonl`, perms 0600 |
+| `NewFileAuditor()`, `NewFileAuditorFor(tool)` | JSON lines, `<XDG_STATE_HOME>/<tool>/consent/audit.jsonl`, 0600 in a 0700 dir; stamps `log` and `seq` |
 | `NewFileAuditorAt(path)` | same, at `path` |
-| `BusAuditor(pub, DefaultTopics)` | `kit.core.consent.granted`, `.denied`, `.revoked`, `.used`, source `core.consent`, payload `AuditEvent`; a publisher veto refuses the use |
+| `BusAuditor(pub, DefaultTopics)` | publishes inline; the publisher's error refuses the use; nothing kept for redelivery |
 | `MultiAuditor(a, b, ...)` | each in order, stops at the first error |
 
-## On-disk format
+## Confirmed delivery
 
-Grants live in the kit AppConfig, `<XDG_CONFIG_HOME>/kit/config.yaml`,
-next to the telemetry record; every other key is preserved and writes
-are atomic (`*.tmp` + rename, 0600).
+The audit log is the outbox. `NewRelay(fileAuditor, bus)` (or
+`WithDelivery`) publishes every record after the ack cursor, in `seq`
+order:
+
+| Field | Value |
+|-------|-------|
+| topic | `kit.core.consent.granted`, `.denied`, `.revoked`, `.used`, `.refused` |
+| source | `core.consent` |
+| id | `<log>:<seq>`, the idempotency key; dedupe on it |
+| subject | the capability |
+| payload | the `AuditEvent` |
+
+A record is acked when `Publish` returns nil: on an in-process bus,
+every sync subscriber (`Subscribe`) returned nil. The cursor
+(`audit.cursor`, `{"log","seq"}`, written atomically, 0600) then moves
+past it. A subscriber error stops the flush at that record; the next
+flush, `Run` retry or restart sends it again with the same id, so
+delivery is at-least-once and in order, and a subscriber that always
+errors stalls the ones behind it (`FlushResult.Pending`).
+
+```go
+g, _ := consent.OpenGrants(consent.WithTool("mytool"), consent.WithDelivery(b))
+go g.Relay().Run(ctx) // flushes at start, on every new record, and every 5s after a failure
+```
+
+Not covered by the ack: `SubscribeAsync` handlers, and peers behind a
+network adapter (the bus stream has no publisher-visible ack). Delivery
+runs after the decision and never blocks or changes it; `Use` does not
+wait for acks.
+
+## On-disk layout
+
+Per tool, under `<XDG_STATE_HOME>/<tool>/consent/` (0700): `grants.yaml`
+(written atomically, 0600), `audit.jsonl`, `audit.cursor`. config.yaml
+is never read for grants, so a typo there cannot refuse a capability,
+and a grant write cannot clobber it.
 
 ```yaml
-kit:
-  consent:
-    version: 1
-    grants:
-      - capability: io.screen.capture
-        subject: app:dek
-        decision: allow
-        duration: until
-        decided_at: "2026-03-01T00:00:00Z"
-        expires_at: "2026-03-01T01:00:00Z"
-        decision_source: prompt
-        prompt_version: 1
-  telemetry:
-    consent:
-      state: granted
-      decided_at: "2025-01-01T00:00:00Z"
-      prompt_version: 1
-      decision_source: prompt
+version: 1
+grants:
+  - capability: io.screen.capture
+    subject: app:dek
+    decision: allow
+    duration: until
+    decided_at: "2026-03-01T00:00:00Z"
+    expires_at: "2026-03-01T01:00:00Z"
+    decision_source: prompt
+    prompt_version: 1
+  - capability: telemetry
+    subject: ""
+    decision: allow
+    duration: always
+    decided_at: "2026-03-01T00:00:00Z"
+    decision_source: prompt
+    prompt_version: 1
 ```
 
 Decoding is strict: an unknown key, a missing field, `version` other
-than 1, a `once`/`session` record, a duplicate key or `telemetry` inside
-the list makes the whole store `malformed_store`, so every check fails
-closed until the file is fixed.
+than 1, a `once`/`session` record, a duplicate key or a scoped
+`telemetry` grant makes the whole file `malformed_store`, so every
+check fails closed, and no write repairs it until the file is fixed.
 
 ## Telemetry as a capability
 
-`consent.CapTelemetry` (`telemetry`) maps onto the existing
-`kit.telemetry.consent` record: `granted` is an allow, `denied` a deny,
-always and any-subject (other scopes are `unsupported_scope`). Nothing is
-rewritten on upgrade, so `Install`, `NewHook`, `Resolve`, `kit telemetry`
-and the other SDKs keep reading the same record. `Check` runs the
-telemetry resolver over it, so `KIT_TELEMETRY_MODE=off` and
-`DO_NOT_TRACK` are a standing deny and `KIT_TELEMETRY_CONSENT` still
-overrides.
+`consent.CapTelemetry` (`telemetry`) is an allow or deny, always and
+any-subject (other scopes are `unsupported_scope`).
 
-Revoking telemetry (and `FileStore.Clear`, so `kit telemetry reset`)
-removes the record from `config.yaml` and from the legacy
-`kit/telemetry.yaml`, keeping other keys, so the reset is not undone by
-the legacy fallback.
+- Read: the grants file first, then the legacy `kit.telemetry.consent`
+  record in `<XDG_CONFIG_HOME>/kit/config.yaml`, then
+  `kit/telemetry.yaml`. `granted` is an allow, `denied` a deny.
+- Write (`Decide`, `FileStore.Set`, so `kit telemetry enable|disable`):
+  the grants file, the source of truth from then on, then a mirror into
+  `kit.telemetry.consent` so SDKs that only read the legacy record give
+  the same answer. A config.yaml that does not parse is left alone.
+- Revoke (`Revoke`, `FileStore.Clear`, so `kit telemetry reset`): the
+  grants file entry and both legacy records, other keys kept.
+- Check runs the telemetry resolver over it, so `KIT_TELEMETRY_MODE=off`
+  and `DO_NOT_TRACK` are a standing deny and `KIT_TELEMETRY_CONSENT`
+  still overrides. `Install`, `NewHook` and `Resolve` are unchanged and
+  read the same answer.
 
 ## See also
 

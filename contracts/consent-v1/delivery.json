@@ -1,0 +1,503 @@
+{
+  "version": "v1",
+  "description": "Confirmed delivery of consent events (outbox). The per-tool audit log <XDG_STATE_HOME>/<tool>/consent/audit.jsonl is the durable source of truth: every record carries `log` (an id minted when the file is created) and `seq` (1, 2, 3, ... per log). A relay publishes records after the ack cursor <XDG_STATE_HOME>/<tool>/consent/audit.cursor ({\"log\", \"seq\"}, written atomically, 0600) in seq order, as bus events with topic kit.core.consent.<event>, source core.consent, id `<log>:<seq>` (the idempotency key) and the record as payload. A record is delivered when Publish returns nil, i.e. every sync subscriber on the local bus returned nil; the cursor then moves past it. A failure stops the flush at that record. At-least-once: a record published but not yet acked (crash, cursor write failure, subscriber error) is published again with the same key; acked records are never resent. A cursor naming another log is ignored; a corrupt cursor fails the flush.",
+  "scenarios": [
+    {
+      "name": "each record gets the next sequence number and is delivered once acked",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "record",
+          "record": {
+            "event": "granted",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 1
+          }
+        },
+        {
+          "op": "record",
+          "record": {
+            "event": "used",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 2
+          }
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [
+              1,
+              2
+            ],
+            "cursor": 2,
+            "pending": 0
+          }
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [],
+            "cursor": 2,
+            "pending": 0
+          }
+        }
+      ],
+      "published": [
+        {
+          "seq": 1,
+          "topic": "kit.core.consent.granted"
+        },
+        {
+          "seq": 2,
+          "topic": "kit.core.consent.used"
+        }
+      ],
+      "cursor_file": {
+        "seq": 2
+      }
+    },
+    {
+      "name": "a subscriber error is not an ack: the record is redelivered in order",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "record",
+          "record": {
+            "event": "granted",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 1
+          }
+        },
+        {
+          "op": "record",
+          "record": {
+            "event": "refused",
+            "capability": "io.camera.capture",
+            "subject": "app:dek",
+            "decision_source": "config",
+            "reason": "no-prompter"
+          },
+          "expect": {
+            "seq": 2
+          }
+        },
+        {
+          "op": "subscriber",
+          "fail_seq": 1
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [],
+            "cursor": 0,
+            "pending": 2,
+            "error": true
+          }
+        },
+        {
+          "op": "subscriber",
+          "fail_seq": 0
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [
+              1,
+              2
+            ],
+            "cursor": 2,
+            "pending": 0
+          }
+        }
+      ],
+      "published": [
+        {
+          "seq": 1,
+          "topic": "kit.core.consent.granted"
+        },
+        {
+          "seq": 1,
+          "topic": "kit.core.consent.granted"
+        },
+        {
+          "seq": 2,
+          "topic": "kit.core.consent.refused"
+        }
+      ],
+      "cursor_file": {
+        "seq": 2
+      }
+    },
+    {
+      "name": "a later failure keeps the earlier acks",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "record",
+          "record": {
+            "event": "granted",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 1
+          }
+        },
+        {
+          "op": "record",
+          "record": {
+            "event": "used",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 2
+          }
+        },
+        {
+          "op": "subscriber",
+          "fail_seq": 2
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [
+              1
+            ],
+            "cursor": 1,
+            "pending": 1,
+            "error": true
+          }
+        },
+        {
+          "op": "restart"
+        },
+        {
+          "op": "subscriber",
+          "fail_seq": 0
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [
+              2
+            ],
+            "cursor": 2,
+            "pending": 0
+          }
+        }
+      ],
+      "published": [
+        {
+          "seq": 1,
+          "topic": "kit.core.consent.granted"
+        },
+        {
+          "seq": 2,
+          "topic": "kit.core.consent.used"
+        },
+        {
+          "seq": 2,
+          "topic": "kit.core.consent.used"
+        }
+      ],
+      "cursor_file": {
+        "seq": 2
+      }
+    },
+    {
+      "name": "the cursor survives a restart: no loss, no resend of acked records",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "record",
+          "record": {
+            "event": "granted",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 1
+          }
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [
+              1
+            ],
+            "cursor": 1,
+            "pending": 0
+          }
+        },
+        {
+          "op": "restart"
+        },
+        {
+          "op": "record",
+          "record": {
+            "event": "used",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 2
+          }
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [
+              2
+            ],
+            "cursor": 2,
+            "pending": 0
+          }
+        }
+      ],
+      "published": [
+        {
+          "seq": 1,
+          "topic": "kit.core.consent.granted"
+        },
+        {
+          "seq": 2,
+          "topic": "kit.core.consent.used"
+        }
+      ],
+      "cursor_file": {
+        "seq": 2
+      }
+    },
+    {
+      "name": "records written while nothing flushed are sent after a restart",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "record",
+          "record": {
+            "event": "granted",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 1
+          }
+        },
+        {
+          "op": "record",
+          "record": {
+            "event": "refused",
+            "capability": "io.camera.capture",
+            "subject": "app:dek",
+            "decision_source": "config",
+            "reason": "no-prompter"
+          },
+          "expect": {
+            "seq": 2
+          }
+        },
+        {
+          "op": "restart"
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [
+              1,
+              2
+            ],
+            "cursor": 2,
+            "pending": 0
+          }
+        }
+      ],
+      "published": [
+        {
+          "seq": 1,
+          "topic": "kit.core.consent.granted"
+        },
+        {
+          "seq": 2,
+          "topic": "kit.core.consent.refused"
+        }
+      ],
+      "cursor_file": {
+        "seq": 2
+      }
+    },
+    {
+      "name": "a crash between publish and ack resends the record with the same key",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "record",
+          "record": {
+            "event": "granted",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 1
+          }
+        },
+        {
+          "op": "crash_after_publish"
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [],
+            "cursor": 0,
+            "pending": 1,
+            "error": true
+          }
+        },
+        {
+          "op": "restart"
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [
+              1
+            ],
+            "cursor": 1,
+            "pending": 0
+          }
+        }
+      ],
+      "published": [
+        {
+          "seq": 1,
+          "topic": "kit.core.consent.granted"
+        },
+        {
+          "seq": 1,
+          "topic": "kit.core.consent.granted"
+        }
+      ],
+      "cursor_file": {
+        "seq": 1
+      }
+    },
+    {
+      "name": "a cursor from another log is ignored and the new log is sent from the start",
+      "now": "2026-03-01T00:00:00Z",
+      "cursor_json": "{\"log\":\"clog_other\",\"seq\":7}",
+      "steps": [
+        {
+          "op": "record",
+          "record": {
+            "event": "granted",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 1
+          }
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [
+              1
+            ],
+            "cursor": 1,
+            "pending": 0
+          }
+        }
+      ],
+      "published": [
+        {
+          "seq": 1,
+          "topic": "kit.core.consent.granted"
+        }
+      ],
+      "cursor_file": {
+        "seq": 1
+      }
+    },
+    {
+      "name": "a corrupt cursor fails the flush and sends nothing",
+      "now": "2026-03-01T00:00:00Z",
+      "cursor_json": "{\"seq\":",
+      "steps": [
+        {
+          "op": "record",
+          "record": {
+            "event": "granted",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 1
+          }
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [],
+            "cursor": 0,
+            "pending": 1,
+            "error": true
+          }
+        }
+      ],
+      "published": []
+    }
+  ]
+}

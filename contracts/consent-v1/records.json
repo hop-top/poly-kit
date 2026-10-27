@@ -1,145 +1,237 @@
 {
   "version": "v1",
-  "description": "On-disk grant records: the kit.consent partition of <XDG_CONFIG_HOME>/kit/config.yaml. `version` must be 1; each grant carries exactly capability, subject, decision, duration (until or always), decided_at, expires_at (until only, after decided_at), decision_source and prompt_version. A store that breaks any rule is malformed as a whole, so every check fails closed. Grants are listed sorted by capability, then subject (byte order).",
+  "description": "Persisted grants: <XDG_STATE_HOME>/<tool>/consent/grants.yaml, read through the file store together with the legacy telemetry record. `version` must be 1; each grant carries exactly capability, subject, decision, duration (until or always), decided_at, expires_at (until only, after decided_at), decision_source and prompt_version. `telemetry` may appear, any-subject and always only. A grants file that breaks any rule is malformed as a whole, so every check fails closed; the legacy config files are never consulted for other capabilities. Grants are listed sorted by capability, then subject (byte order).",
   "cases": [
     {
       "name": "no file holds no grants",
-      "config_yaml": null,
-      "ok": true,
-      "grants": []
-    },
-    {
-      "name": "file without a consent partition holds no grants",
-      "config_yaml": "other: keep\nkit:\n  theme: dark\n",
+      "grants_yaml": null,
       "ok": true,
       "grants": []
     },
     {
       "name": "empty grant list",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants: []\n",
+      "grants_yaml": "version: 1\ngrants: []\n",
       "ok": true,
       "grants": []
     },
     {
       "name": "grants come back sorted by capability then subject",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants:\n      - capability: io.screen.capture\n        subject: app:dek\n        decision: allow\n        duration: always\n        decided_at: \"2026-03-01T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 1\n      - capability: io.clipboard.read\n        subject: app:dek\n        decision: deny\n        duration: always\n        decided_at: \"2026-03-01T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 1\n      - capability: io.clipboard.read\n        subject: \"\"\n        decision: allow\n        duration: until\n        decided_at: \"2026-03-01T00:00:00Z\"\n        expires_at: \"2026-03-02T00:00:00Z\"\n        decision_source: config\n        prompt_version: 0\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: io.screen.capture\n    subject: app:dek\n    decision: allow\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n  - capability: io.clipboard.read\n    subject: app:dek\n    decision: deny\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n  - capability: io.clipboard.read\n    subject: \"\"\n    decision: allow\n    duration: until\n    decided_at: \"2026-03-01T00:00:00Z\"\n    expires_at: \"2026-03-02T00:00:00Z\"\n    decision_source: config\n    prompt_version: 0\n",
       "ok": true,
       "grants": [
-        {"capability": "io.clipboard.read", "subject": "", "decision": "allow", "duration": "until", "decided_at": "2026-03-01T00:00:00Z", "expires_at": "2026-03-02T00:00:00Z", "decision_source": "config", "prompt_version": 0},
-        {"capability": "io.clipboard.read", "subject": "app:dek", "decision": "deny", "duration": "always", "decided_at": "2026-03-01T00:00:00Z", "decision_source": "prompt", "prompt_version": 1},
-        {"capability": "io.screen.capture", "subject": "app:dek", "decision": "allow", "duration": "always", "decided_at": "2026-03-01T00:00:00Z", "decision_source": "prompt", "prompt_version": 1}
-      ]
-    },
-    {
-      "name": "telemetry block and grants partition are read together",
-      "config_yaml": "kit:\n  telemetry:\n    consent:\n      state: denied\n      decided_at: \"2025-01-01T00:00:00Z\"\n      prompt_version: 1\n      decision_source: flag\n  consent:\n    version: 1\n    grants:\n      - capability: io.files.read\n        subject: tool:kit\n        decision: allow\n        duration: always\n        decided_at: \"2026-03-01T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 2\n",
-      "ok": true,
-      "grants": [
-        {"capability": "io.files.read", "subject": "tool:kit", "decision": "allow", "duration": "always", "decided_at": "2026-03-01T00:00:00Z", "decision_source": "prompt", "prompt_version": 2},
-        {"capability": "telemetry", "subject": "", "decision": "deny", "duration": "always", "decided_at": "2025-01-01T00:00:00Z", "decision_source": "flag", "prompt_version": 1}
+        {
+          "capability": "io.clipboard.read",
+          "subject": "",
+          "decision": "allow",
+          "duration": "until",
+          "decided_at": "2026-03-01T00:00:00Z",
+          "expires_at": "2026-03-02T00:00:00Z",
+          "decision_source": "config",
+          "prompt_version": 0
+        },
+        {
+          "capability": "io.clipboard.read",
+          "subject": "app:dek",
+          "decision": "deny",
+          "duration": "always",
+          "decided_at": "2026-03-01T00:00:00Z",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        },
+        {
+          "capability": "io.screen.capture",
+          "subject": "app:dek",
+          "decision": "allow",
+          "duration": "always",
+          "decided_at": "2026-03-01T00:00:00Z",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
       ]
     },
     {
       "name": "missing version",
-      "config_yaml": "kit:\n  consent:\n    grants: []\n",
+      "grants_yaml": "grants: []\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
       "name": "unsupported version",
-      "config_yaml": "kit:\n  consent:\n    version: 2\n    grants: []\n",
+      "grants_yaml": "version: 2\ngrants: []\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
-      "name": "unknown partition key",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants: []\n    audit: true\n",
+      "name": "unknown top-level key",
+      "grants_yaml": "version: 1\ngrants: []\naudit: true\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
       "name": "grants is not a list",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants: {}\n",
+      "grants_yaml": "version: 1\ngrants: {}\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
       "name": "unknown grant key",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants:\n      - capability: io.files.read\n        subject: \"\"\n        decision: allow\n        duration: always\n        decided_at: \"2026-03-01T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 1\n        scope: all\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: io.files.read\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n    scope: all\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
       "name": "missing decided_at",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants:\n      - capability: io.files.read\n        subject: \"\"\n        decision: allow\n        duration: always\n        decision_source: prompt\n        prompt_version: 1\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: io.files.read\n    subject: \"\"\n    decision: allow\n    duration: always\n    decision_source: prompt\n    prompt_version: 1\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
       "name": "session grants never reach disk",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants:\n      - capability: io.files.read\n        subject: \"\"\n        decision: allow\n        duration: session\n        decided_at: \"2026-03-01T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 1\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: io.files.read\n    subject: \"\"\n    decision: allow\n    duration: session\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
       "name": "once grants never reach disk",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants:\n      - capability: io.files.read\n        subject: \"\"\n        decision: allow\n        duration: once\n        decided_at: \"2026-03-01T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 1\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: io.files.read\n    subject: \"\"\n    decision: allow\n    duration: once\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
       "name": "until without expires_at",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants:\n      - capability: io.files.read\n        subject: \"\"\n        decision: allow\n        duration: until\n        decided_at: \"2026-03-01T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 1\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: io.files.read\n    subject: \"\"\n    decision: allow\n    duration: until\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
       "name": "always with expires_at",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants:\n      - capability: io.files.read\n        subject: \"\"\n        decision: allow\n        duration: always\n        decided_at: \"2026-03-01T00:00:00Z\"\n        expires_at: \"2026-03-02T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 1\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: io.files.read\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    expires_at: \"2026-03-02T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
       "name": "expires_at not after decided_at",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants:\n      - capability: io.files.read\n        subject: \"\"\n        decision: allow\n        duration: until\n        decided_at: \"2026-03-01T00:00:00Z\"\n        expires_at: \"2026-03-01T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 1\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: io.files.read\n    subject: \"\"\n    decision: allow\n    duration: until\n    decided_at: \"2026-03-01T00:00:00Z\"\n    expires_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
-      "name": "telemetry inside the grants list",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants:\n      - capability: telemetry\n        subject: \"\"\n        decision: allow\n        duration: always\n        decided_at: \"2026-03-01T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 1\n",
-      "ok": false,
-      "error_kind": "malformed_store"
+      "name": "telemetry may live in the grants file",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: telemetry\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
+      "ok": true,
+      "grants": [
+        {
+          "capability": "telemetry",
+          "subject": "",
+          "decision": "allow",
+          "duration": "always",
+          "decided_at": "2026-03-01T00:00:00Z",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
+      ]
     },
     {
       "name": "duplicate capability and subject",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants:\n      - capability: io.files.read\n        subject: app:dek\n        decision: allow\n        duration: always\n        decided_at: \"2026-03-01T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 1\n      - capability: io.files.read\n        subject: app:dek\n        decision: deny\n        duration: always\n        decided_at: \"2026-03-02T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 1\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: io.files.read\n    subject: app:dek\n    decision: allow\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n  - capability: io.files.read\n    subject: app:dek\n    decision: deny\n    duration: always\n    decided_at: \"2026-03-02T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
       "name": "invalid capability id",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants:\n      - capability: screen\n        subject: \"\"\n        decision: allow\n        duration: always\n        decided_at: \"2026-03-01T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 1\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: screen\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
       "name": "invalid decision",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants:\n      - capability: io.files.read\n        subject: \"\"\n        decision: granted\n        duration: always\n        decided_at: \"2026-03-01T00:00:00Z\"\n        decision_source: prompt\n        prompt_version: 1\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: io.files.read\n    subject: \"\"\n    decision: granted\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
       "name": "invalid decision_source",
-      "config_yaml": "kit:\n  consent:\n    version: 1\n    grants:\n      - capability: io.files.read\n        subject: \"\"\n        decision: allow\n        duration: always\n        decided_at: \"2026-03-01T00:00:00Z\"\n        decision_source: agent\n        prompt_version: 1\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: io.files.read\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: agent\n    prompt_version: 1\n",
       "ok": false,
       "error_kind": "malformed_store"
     },
     {
       "name": "malformed yaml",
-      "config_yaml": "kit: [unclosed\n",
+      "grants_yaml": "grants: [unclosed\n",
       "ok": false,
       "error_kind": "malformed_store"
+    },
+    {
+      "name": "telemetry with a subject",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: telemetry\n    subject: app:dek\n    decision: allow\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
+      "ok": false,
+      "error_kind": "malformed_store"
+    },
+    {
+      "name": "telemetry with an expiry",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: telemetry\n    subject: \"\"\n    decision: allow\n    duration: until\n    decided_at: \"2026-03-01T00:00:00Z\"\n    expires_at: \"2026-03-02T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
+      "ok": false,
+      "error_kind": "malformed_store"
+    },
+    {
+      "name": "legacy telemetry record is listed when the grants file has none",
+      "config_yaml": "kit:\n  telemetry:\n    consent:\n      state: denied\n      decided_at: \"2025-01-01T00:00:00Z\"\n      prompt_version: 1\n      decision_source: flag\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: io.files.read\n    subject: tool:kit\n    decision: allow\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 2\n",
+      "ok": true,
+      "grants": [
+        {
+          "capability": "io.files.read",
+          "subject": "tool:kit",
+          "decision": "allow",
+          "duration": "always",
+          "decided_at": "2026-03-01T00:00:00Z",
+          "decision_source": "prompt",
+          "prompt_version": 2
+        },
+        {
+          "capability": "telemetry",
+          "subject": "",
+          "decision": "deny",
+          "duration": "always",
+          "decided_at": "2025-01-01T00:00:00Z",
+          "decision_source": "flag",
+          "prompt_version": 1
+        }
+      ]
+    },
+    {
+      "name": "a telemetry grant in the grants file shadows the legacy record",
+      "config_yaml": "kit:\n  telemetry:\n    consent:\n      state: denied\n      decided_at: \"2025-01-01T00:00:00Z\"\n      prompt_version: 1\n      decision_source: flag\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: telemetry\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
+      "ok": true,
+      "grants": [
+        {
+          "capability": "telemetry",
+          "subject": "",
+          "decision": "allow",
+          "duration": "always",
+          "decided_at": "2026-03-01T00:00:00Z",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
+      ]
+    },
+    {
+      "name": "a config typo does not refuse grants from the grants file",
+      "config_yaml": "kit: [unclosed\n",
+      "grants_yaml": "version: 1\ngrants:\n  - capability: io.files.read\n    subject: \"\"\n    decision: allow\n    duration: always\n    decided_at: \"2026-03-01T00:00:00Z\"\n    decision_source: prompt\n    prompt_version: 1\n",
+      "ok": true,
+      "grants": [
+        {
+          "capability": "io.files.read",
+          "subject": "",
+          "decision": "allow",
+          "duration": "always",
+          "decided_at": "2026-03-01T00:00:00Z",
+          "decision_source": "prompt",
+          "prompt_version": 1
+        }
+      ]
     }
   ]
 }

@@ -26,9 +26,19 @@ type Grants struct {
 	env           EnvProvider
 	appPrefix     string
 	promptVersion int
+	tool          string
+	relay         *Relay
+	deliverTo     Publisher
 
-	mu  sync.Mutex
-	mem map[grantKey]Grant
+	mu      sync.Mutex
+	mem     map[grantKey]Grant
+	refused map[refusedKey]bool
+}
+
+type refusedKey struct {
+	cap     Capability
+	subject string
+	cause   RefusalCause
 }
 
 // Option configures Grants.
@@ -50,6 +60,18 @@ func WithAppPrefix(p string) Option { return func(g *Grants) { g.appPrefix = p }
 // WithPromptVersion stamps grants decided through Request. Default 1.
 func WithPromptVersion(v int) Option { return func(g *Grants) { g.promptVersion = v } }
 
+// WithTool picks the tool whose state OpenGrants opens. Default
+// DefaultTool(). Ignored by NewGrants.
+func WithTool(tool string) Option { return func(g *Grants) { g.tool = tool } }
+
+// WithRelay notifies r after every audit record, and sends the
+// audit-failed refusals no auditor could record through r's publisher.
+func WithRelay(r *Relay) Option { return func(g *Grants) { g.relay = r } }
+
+// WithDelivery makes OpenGrants build a Relay from its audit log onto
+// pub (see Relay). Run it with g.Relay().Run(ctx), or Flush it.
+func WithDelivery(pub Publisher) Option { return func(g *Grants) { g.deliverTo = pub } }
+
 // NewGrants builds Grants over store. A nil store panics: it is a
 // wiring bug, like NewHook(nil).
 func NewGrants(store GrantStore, opts ...Option) *Grants {
@@ -69,22 +91,38 @@ func NewGrants(store GrantStore, opts ...Option) *Grants {
 	return g
 }
 
-// OpenGrants builds Grants over the default FileStore and FileAuditor;
-// opts apply after the defaults.
+// OpenGrants builds Grants over the per-tool FileStore and FileAuditor
+// (WithTool, default DefaultTool()); opts apply after the defaults.
+// With WithDelivery it also builds the Relay for that audit log.
 func OpenGrants(opts ...Option) (*Grants, error) {
-	s, err := NewFileStore()
+	probe := &Grants{}
+	for _, o := range opts {
+		o(probe)
+	}
+	tool := probe.tool
+	if tool == "" {
+		tool = DefaultTool()
+	}
+	s, err := NewFileStoreFor(tool)
 	if err != nil {
 		return nil, err
 	}
-	a, err := NewFileAuditor()
+	a, err := NewFileAuditorFor(tool)
 	if err != nil {
 		return nil, err
 	}
-	return NewGrants(s, append([]Option{WithAuditor(a)}, opts...)...), nil
+	pre := []Option{WithAuditor(a)}
+	if probe.deliverTo != nil {
+		pre = append(pre, WithRelay(NewRelay(a, probe.deliverTo)))
+	}
+	return NewGrants(s, append(pre, opts...)...), nil
 }
 
-// Verdict is the outcome of a check. Grant is the governing grant, zero
-// when Reason is unset or expired.
+// Relay returns the relay set by WithRelay or WithDelivery, or nil.
+func (g *Grants) Relay() *Relay { return g.relay }
+
+// Verdict is the outcome of a check. Grant is the governing grant (for
+// expired, the grant that expired), zero when Reason is unset.
 type Verdict struct {
 	Allowed bool
 	Reason  Reason
@@ -110,10 +148,10 @@ func (g *Grants) checkLocked(ctx context.Context, c Capability, subject string) 
 		return Verdict{}, err
 	}
 	if c == CapTelemetry {
-		return g.telemetryVerdict(ctx, persisted), nil
+		return g.telemetryVerdict(ctx, persisted)
 	}
 	now := g.clock()
-	expired := false
+	var expired *Grant
 	keys := []grantKey{{c, subject}}
 	if subject != "" {
 		keys = append(keys, grantKey{c, ""})
@@ -127,14 +165,17 @@ func (g *Grants) checkLocked(ctx context.Context, c Capability, subject string) 
 				continue
 			}
 			if p.Expired(now) {
-				expired = true
+				if expired == nil {
+					p := p
+					expired = &p
+				}
 				break
 			}
 			return verdictOf(p), nil
 		}
 	}
-	if expired {
-		return Verdict{Reason: ReasonExpired}, nil
+	if expired != nil {
+		return Verdict{Reason: ReasonExpired, Grant: *expired}, nil
 	}
 	return Verdict{Reason: ReasonUnset}, nil
 }
@@ -148,20 +189,33 @@ func verdictOf(gr Grant) Verdict {
 
 // telemetryVerdict runs the telemetry resolver over the persisted
 // record, so DO_NOT_TRACK and KIT_TELEMETRY_MODE=off stay a standing no.
-func (g *Grants) telemetryVerdict(ctx context.Context, persisted []Grant) Verdict {
+// A store that is also a Store answers through Get, so an unreadable
+// legacy record is an error rather than "unset".
+func (g *Grants) telemetryVerdict(ctx context.Context, persisted []Grant) (Verdict, error) {
 	var rec Decision
 	found := false
-	for _, p := range persisted {
-		if p.Capability == CapTelemetry {
-			rec, found = telemetryDecision(p), true
+	if st, ok := g.store.(Store); ok {
+		d, err := st.Get(ctx)
+		if err != nil {
+			return Verdict{}, asStoreError(err)
+		}
+		_, found = telemetryGrant(d)
+		if found {
+			rec = d
+		}
+	} else {
+		for _, p := range persisted {
+			if p.Capability == CapTelemetry {
+				rec, found = telemetryDecision(p), true
+			}
 		}
 	}
 	d := Resolve(ctx, Inputs{Env: g.env, AppPrefix: g.appPrefix, Persisted: rec})
 	if !found && d.State == StateDenied && d.DecisionSource == SourceConfig {
-		return Verdict{Reason: ReasonUnset}
+		return Verdict{Reason: ReasonUnset}, nil
 	}
 	gr, _ := telemetryGrant(d)
-	return verdictOf(gr)
+	return verdictOf(gr), nil
 }
 
 // Decide records a decision and audits it as granted or denied. A zero
@@ -198,7 +252,54 @@ func (g *Grants) decideLocked(ctx context.Context, gr Grant) error {
 	if gr.Decision == Deny {
 		kind = AuditDenied
 	}
-	return g.audit.Record(ctx, auditFromGrant(kind, gr, g.clock()))
+	return g.record(ctx, auditFromGrant(kind, gr, g.clock()))
+}
+
+// record writes e to the auditor and wakes the relay.
+func (g *Grants) record(ctx context.Context, e AuditEvent) error {
+	err := g.audit.Record(ctx, e)
+	if err == nil && g.relay != nil {
+		g.relay.Notify()
+	}
+	return err
+}
+
+// refuse audits a refusal that was not a decision, once per
+// (capability, subject, cause) per session. Best effort: nothing here
+// can turn the refusal into an allow, and an auditor or bus error on
+// a refused record is ignored. Caller holds g.mu.
+func (g *Grants) refuseLocked(ctx context.Context, c Capability, subject string, cause RefusalCause, gov Grant) {
+	k := refusedKey{c, subject, cause}
+	if g.refused[k] {
+		return
+	}
+	if g.refused == nil {
+		g.refused = map[refusedKey]bool{}
+	}
+	g.refused[k] = true
+	src := gov.DecisionSource
+	if src == "" {
+		src = SourceConfig
+	}
+	e := AuditEvent{Event: AuditRefused, At: g.clock(), Capability: c, Subject: subject, DecisionSource: src, Cause: cause}
+	if cause == CauseAuditFailed {
+		if g.relay != nil {
+			g.relay.publishUnrecorded(ctx, e)
+		}
+		return
+	}
+	_ = g.record(ctx, e)
+}
+
+func causeOf(v Verdict) RefusalCause {
+	switch v.Reason {
+	case ReasonDenied:
+		return CauseStandingDeny
+	case ReasonExpired:
+		return CauseExpired
+	default:
+		return CauseNoPrompter
+	}
 }
 
 // Request returns an allow verdict, asking p when there is no standing
@@ -206,15 +307,31 @@ func (g *Grants) decideLocked(ctx context.Context, gr Grant) error {
 // prompter error or an invalid answer is refused too. Every refusal is
 // a *RefusedError; store and audit failures come back as they are.
 func (g *Grants) Request(ctx context.Context, c Capability, subject string, p Prompter) (Verdict, error) {
-	v, err := g.Check(ctx, c, subject)
-	if err != nil || v.Allowed {
+	if err := validateKey(c, subject); err != nil {
+		return Verdict{}, err
+	}
+	g.mu.Lock()
+	v, err := g.checkLocked(ctx, c, subject)
+	if err != nil {
+		g.refuseLocked(ctx, c, subject, CauseStoreUnreadable, Grant{})
+		g.mu.Unlock()
 		return v, err
 	}
-	refuse := func(r Reason, cause error) (Verdict, error) {
-		return v, &RefusedError{Capability: c, Subject: subject, Reason: r, Err: cause}
+	if v.Allowed {
+		g.mu.Unlock()
+		return v, nil
 	}
 	if v.Reason == ReasonDenied || p == nil {
-		return refuse(v.Reason, nil)
+		g.refuseLocked(ctx, c, subject, causeOf(v), v.Grant)
+		g.mu.Unlock()
+		return v, &RefusedError{Capability: c, Subject: subject, Reason: v.Reason}
+	}
+	g.mu.Unlock()
+	refuse := func(r Reason, cause error) (Verdict, error) {
+		g.mu.Lock()
+		g.refuseLocked(ctx, c, subject, CausePrompterError, v.Grant)
+		g.mu.Unlock()
+		return v, &RefusedError{Capability: c, Subject: subject, Reason: r, Err: cause}
 	}
 	ans, err := p.Ask(ctx, Prompt{Capability: c, Subject: subject, PromptVersion: g.promptVersion, Reason: v.Reason})
 	if err != nil {
@@ -232,7 +349,7 @@ func (g *Grants) Request(ctx context.Context, c Capability, subject string, p Pr
 		return v, err
 	}
 	if gr.Decision == Deny {
-		return refuse(ReasonDeclined, nil)
+		return v, &RefusedError{Capability: c, Subject: subject, Reason: ReasonDeclined}
 	}
 	return verdictOf(gr), nil
 }
@@ -248,12 +365,15 @@ func (g *Grants) Use(ctx context.Context, c Capability, subject string) (Grant, 
 	defer g.mu.Unlock()
 	v, err := g.checkLocked(ctx, c, subject)
 	if err != nil {
+		g.refuseLocked(ctx, c, subject, CauseStoreUnreadable, Grant{})
 		return Grant{}, err
 	}
 	if !v.Allowed {
+		g.refuseLocked(ctx, c, subject, causeOf(v), v.Grant)
 		return Grant{}, &RefusedError{Capability: c, Subject: subject, Reason: v.Reason}
 	}
-	if err := g.audit.Record(ctx, auditFromGrant(AuditUsed, v.Grant, g.clock())); err != nil {
+	if err := g.record(ctx, auditFromGrant(AuditUsed, v.Grant, g.clock())); err != nil {
+		g.refuseLocked(ctx, c, subject, CauseAuditFailed, v.Grant)
 		return Grant{}, fmt.Errorf("consent: audit use of %s: %w", c, err)
 	}
 	if v.Grant.Duration == Once {
@@ -285,7 +405,7 @@ func (g *Grants) Revoke(ctx context.Context, c Capability, subject string, sourc
 		return false, nil
 	}
 	e := AuditEvent{Event: AuditRevoked, At: g.clock(), Capability: c, Subject: subject, DecisionSource: source}
-	return true, g.audit.Record(ctx, e)
+	return true, g.record(ctx, e)
 }
 
 // List returns every grant this session sees: persisted ones with the
@@ -311,9 +431,11 @@ func (g *Grants) List(ctx context.Context) ([]Grant, error) {
 	return out, nil
 }
 
-// EndSession drops every once and session grant.
+// EndSession drops every once and session grant and resets the
+// refused debounce.
 func (g *Grants) EndSession() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.mem = nil
+	g.refused = nil
 }
