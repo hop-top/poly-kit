@@ -25,8 +25,14 @@ const PENDING_RUST_PORT: &[(&str, &str)] = &[
     ("anthropic_stream", "permission error event mid-stream"),
     ("anthropic_request", "system messages join in order"),
     ("anthropic_request", "empty system messages are skipped"),
-    ("anthropic_request", "only empty system messages send no system"),
-    ("anthropic_request", "system cache breakpoints split the joined text"),
+    (
+        "anthropic_request",
+        "only empty system messages send no system",
+    ),
+    (
+        "anthropic_request",
+        "system cache breakpoints split the joined text",
+    ),
 ];
 
 /// Whether a vector waits for the Rust port; see [`PENDING_RUST_PORT`].
