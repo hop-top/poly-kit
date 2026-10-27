@@ -49,9 +49,11 @@ full_lint() {
     local mod rc=0
     while IFS= read -r mod; do
         run_lint "$mod" ./... || rc=1
-    done < <(modules)
+    done <<<"$linted"
     exit "$rc"
 }
+
+linted=$(modules)
 
 rc=0
 changed=$(scripts/changed-files.sh --include-deleted \
@@ -80,8 +82,9 @@ module_of() {
         [ "$d" != . ] || return 0
         d=$(dirname "$d")
     done
-    modules | grep -qxF -- "$mod" && printf '%s\n' "$mod"
-    return 0
+    if printf '%s\n' "$linted" | grep -xF -- "$mod" >/dev/null; then
+        printf '%s\n' "$mod"
+    fi
 }
 
 # One "<module>\t<package dir|*>" line per changed path; "*" lints the
