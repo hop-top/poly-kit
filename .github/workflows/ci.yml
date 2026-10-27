@@ -8,6 +8,17 @@ on:
   schedule:
     - cron: '0 3 * * *'
 
+# Lint jobs lint the change, not the tree (scripts/changed-files.sh; the
+# Makefile header of the lint section lists the rules). A pull request is
+# measured from its base commit, a push from the commit it replaced;
+# LINT_HEAD pins the checked-out commit so nothing a step writes to the
+# working tree is linted. A config, lockfile or tool-pin change, a new
+# branch (zero `before`) or an unresolvable base lints everything for
+# that linter. `make lint-all` is the whole-tree run.
+env:
+  LINT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+  LINT_HEAD: HEAD
+
 jobs:
   # ── Stage 1: Lint ──────────────────────────────────────────────
   go-lint:
@@ -16,7 +27,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # History for the merge-base of the change (trees and commits
+          # only; blobs arrive for the checked-out commit alone).
           fetch-depth: 0
+          filter: blob:none
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -31,6 +45,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # History for the merge-base of the change (trees and commits
+          # only; blobs arrive for the checked-out commit alone).
+          fetch-depth: 0
+          filter: blob:none
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
@@ -49,6 +67,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # History for the merge-base of the change (trees and commits
+          # only; blobs arrive for the checked-out commit alone).
+          fetch-depth: 0
+          filter: blob:none
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
@@ -73,6 +95,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # History for the merge-base of the change (trees and commits
+          # only; blobs arrive for the checked-out commit alone).
+          fetch-depth: 0
+          filter: blob:none
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
@@ -96,6 +122,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # History for the merge-base of the change (trees and commits
+          # only; blobs arrive for the checked-out commit alone).
+          fetch-depth: 0
+          filter: blob:none
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
@@ -104,13 +134,31 @@ jobs:
           node-version: ${{ steps.pins.outputs.node }}
       - run: make lint-docs
       - run: make lint-readmes
+      # Docs the link checks cover, on the same rules as `make lint-links`:
+      # the changed ones, or all of them when a doc was deleted or renamed
+      # (an untouched doc can link to it) or a lychee config changed.
+      - id: docs
+        name: Changed docs
+        run: |
+          rc=0
+          files=$(scripts/changed-files.sh --full-on-delete \
+            --trigger lychee.toml --trigger examples/spaced/lychee.toml \
+            ':(glob)docs/**/*.md' ':(glob)docs/**/*.html' README.md) || rc=$?
+          case "$rc" in
+            0) ;;
+            3) files="docs/ README.md" ;;
+            *) exit "$rc" ;;
+          esac
+          echo "files=$(printf '%s\n' "$files" | tr '\n' ' ' | sed 's/ *$//')" >> "$GITHUB_OUTPUT"
       - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        if: steps.docs.outputs.files != ''
         with:
           lycheeVersion: v${{ steps.pins.outputs.lychee }}
-          args: '--config examples/spaced/lychee.toml docs/ README.md'
+          args: '--config examples/spaced/lychee.toml ${{ steps.docs.outputs.files }}'
           fail: false
       - name: Fail on broken internal links
-        run: lychee --offline docs/ README.md
+        if: steps.docs.outputs.files != ''
+        run: make lint-links
 
   sdk-paths-lint:
     runs-on: ubuntu-latest
@@ -118,6 +166,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # History for the merge-base of the change (trees and commits
+          # only; blobs arrive for the checked-out commit alone).
+          fetch-depth: 0
+          filter: blob:none
       - run: make lint-sdk-paths
 
   adr-refs-lint:
@@ -126,6 +178,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # History for the merge-base of the change (trees and commits
+          # only; blobs arrive for the checked-out commit alone).
+          fetch-depth: 0
+          filter: blob:none
       - run: make lint-adr-refs
 
   internal-refs-lint:
@@ -134,6 +190,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # History for the merge-base of the change (trees and commits
+          # only; blobs arrive for the checked-out commit alone).
+          fetch-depth: 0
+          filter: blob:none
       - run: make lint-internal-refs
 
   actions-pinned-lint:
@@ -142,6 +202,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # History for the merge-base of the change (trees and commits
+          # only; blobs arrive for the checked-out commit alone).
+          fetch-depth: 0
+          filter: blob:none
       - run: make lint-actions-pinned
 
   # mise.toml pins the toolchain and the jobs here read it. go.mod,
@@ -153,6 +217,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # History for the merge-base of the change (trees and commits
+          # only; blobs arrive for the checked-out commit alone).
+          fetch-depth: 0
+          filter: blob:none
       - run: make check-toolchain-parity
 
   # Every *.bats suite (make test-bats): template scripts and their embed
@@ -537,6 +605,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # History for the merge-base of the change (trees and commits
+          # only; blobs arrive for the checked-out commit alone).
+          fetch-depth: 0
+          filter: blob:none
       # sdk/experimental/php's composer.json requires php ^8.4
       # (for jewei/typeid-php); ubuntu-latest ships 8.3 by default,
       # so pin explicitly. Matches the parity job's PHP setup below.
