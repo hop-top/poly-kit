@@ -91,7 +91,7 @@ func TestURLSource_Reader(t *testing.T) {
 	}
 }
 
-func TestURLSource_Reader_contextCancelled(t *testing.T) {
+func TestURLSource_Reader_contextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 

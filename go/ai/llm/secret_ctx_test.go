@@ -40,12 +40,12 @@ func TestSecretStoreRunsUnderCallerContext(t *testing.T) {
 		assert.Equal(t, "caller", v)
 	}
 
-	cancelled, cancel := context.WithCancel(ctx)
+	canceled, cancel := context.WithCancel(ctx)
 	cancel()
 	seen = nil
-	_, err = llm.ApplyAPIKey(cancelled, ctxStore{&seen}, "openrouter://m")
-	require.NotEmpty(t, seen, "the store saw the cancelled context")
+	_, err = llm.ApplyAPIKey(canceled, ctxStore{&seen}, "openrouter://m")
+	require.NotEmpty(t, seen, "the store saw the canceled context")
 	var missing *llm.MissingKeyError
-	require.ErrorAs(t, err, &missing, "a cancelled lookup finds no key")
+	require.ErrorAs(t, err, &missing, "a canceled lookup finds no key")
 	assert.ErrorIs(t, err, context.Canceled)
 }
