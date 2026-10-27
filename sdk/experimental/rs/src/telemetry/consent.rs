@@ -76,24 +76,25 @@ struct ConsentRaw {
     decided_at: Option<String>,
 }
 
-fn xdg_config_home() -> PathBuf {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"))
-}
-
 /// Resolve the canonical consent path:
 /// `<XDG_CONFIG_HOME>/kit/config.yaml` (kit AppConfig under
-/// `kit.telemetry.consent`).
+/// `kit.telemetry.consent`), the config home Go resolves
+/// ([`crate::xdg::config_home`]).
 pub fn consent_path() -> PathBuf {
-    xdg_config_home().join("kit").join("config.yaml")
+    crate::xdg::config_home().join("kit").join("config.yaml")
 }
 
 /// Resolve the pre-refactor consent path:
 /// `<XDG_CONFIG_HOME>/kit/telemetry.yaml` (bare `telemetry.consent`).
-/// Read-only fallback consumed by [`load_consent`].
 pub fn legacy_consent_path() -> PathBuf {
-    xdg_config_home().join("kit").join("telemetry.yaml")
+    crate::xdg::config_home().join("kit").join("telemetry.yaml")
+}
+
+/// Where this loader looked before it resolved through `xdg`
+/// (`~/.config/kit/`, macOS and Windows with no `XDG_CONFIG_HOME`).
+fn old_location_paths() -> Option<(PathBuf, PathBuf)> {
+    let kit = crate::xdg::legacy_config_home()?.join("kit");
+    Some((kit.join("config.yaml"), kit.join("telemetry.yaml")))
 }
 
 /// Load the consent decision. Every error path collapses to
@@ -106,14 +107,23 @@ pub fn legacy_consent_path() -> PathBuf {
 /// canonical one first), whatever the timestamps; allow needs one allow
 /// and no deny. A file that exists but cannot be read or parsed fails
 /// closed.
+///
+/// Where kit-rs used to look (`~/.config/kit/` on macOS and Windows with
+/// no `XDG_CONFIG_HOME`) is read too, after the current location, and
+/// joins the same deny-wins combination.
 pub fn load_consent() -> Consent {
-    let (Ok(canonical), Ok(legacy)) = (
-        read_record(&consent_path(), canonical_block),
-        read_record(&legacy_consent_path(), legacy_block),
-    ) else {
-        return Consent::denied();
-    };
-    let records = [canonical, legacy];
+    let mut paths = vec![(consent_path(), legacy_consent_path())];
+    paths.extend(old_location_paths());
+    let mut records = Vec::new();
+    for (canonical, legacy) in &paths {
+        let (Ok(c), Ok(l)) = (
+            read_record(canonical, canonical_block),
+            read_record(legacy, legacy_block),
+        ) else {
+            return Consent::denied();
+        };
+        records.extend([c, l]);
+    }
     let pick = |allowed: bool| records.iter().flatten().find(|c| c.allowed == allowed);
     pick(false)
         .or_else(|| pick(true))

@@ -38,10 +38,13 @@ pub mod config;
 #[cfg(feature = "consent")]
 pub mod consent;
 
-// Base directories for the config loader and consent files (a port of
+// Base directories for config, consent and telemetry files (a port of
 // go/core/xdg's home, config-home and state-home resolution).
 // Filesystem-only: off wasm32.
-#[cfg(all(feature = "config", not(target_arch = "wasm32")))]
+#[cfg(all(
+    any(feature = "config", feature = "telemetry"),
+    not(target_arch = "wasm32")
+))]
 pub mod xdg;
 
 #[cfg(feature = "sqldb")]

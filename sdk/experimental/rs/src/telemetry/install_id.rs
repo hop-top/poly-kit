@@ -24,18 +24,41 @@ const INSTALL_ID_SIZE: usize = 32;
 const FILE_PERM: u32 = 0o600;
 const DIR_PERM: u32 = 0o700;
 
-/// Resolve `<XDG_STATE_HOME>/kit/telemetry/installation_id`, honoring
-/// the XDG_STATE_HOME env var with a `$HOME/.local/state` fallback.
+/// Resolve `<XDG_STATE_HOME>/kit/telemetry/installation_id` through
+/// [`crate::xdg::state_home`], as Go's `xdg.StateFile` does
+/// (`~/Library/Application Support` on macOS with no `XDG_STATE_HOME`).
 pub fn install_id_path() -> PathBuf {
-    let base = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            dirs::home_dir()
-                .unwrap_or_default()
-                .join(".local")
-                .join("state")
-        });
-    base.join("kit").join("telemetry").join("installation_id")
+    id_under(&crate::xdg::state_home())
+}
+
+fn id_under(state_home: &Path) -> PathBuf {
+    state_home
+        .join("kit")
+        .join("telemetry")
+        .join("installation_id")
+}
+
+/// Moves an id kit-rs wrote before it resolved through `xdg`
+/// (`~/.local/state`, macOS and Windows) to the current path, so the
+/// installation keeps its id. `Ok(false)` when there is none.
+fn adopt_old_location(p: &Path) -> io::Result<bool> {
+    let Some(old) = crate::xdg::legacy_state_home().map(|h| id_under(&h)) else {
+        return Ok(false);
+    };
+    let data = match fs::read(&old) {
+        Ok(d) => d,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e),
+    };
+    if data.len() != INSTALL_ID_SIZE {
+        return Ok(false);
+    }
+    ensure_parent(p)?;
+    let tmp = p.with_extension("new");
+    fs::write(&tmp, &data)?;
+    fs::set_permissions(&tmp, fs::Permissions::from_mode(FILE_PERM))?;
+    fs::rename(&tmp, p)?;
+    Ok(true)
 }
 
 /// Return the persisted installation ID as a 64-char lowercase hex
@@ -45,8 +68,8 @@ pub fn install_id_path() -> PathBuf {
 pub fn get_install_id() -> io::Result<String> {
     let p = install_id_path();
 
-    // Fast path: file already exists.
-    if p.exists() {
+    // Fast path: file already exists (or an old-location id moves in).
+    if p.exists() || adopt_old_location(&p)? {
         let data = fs::read(&p)?;
         if data.len() != INSTALL_ID_SIZE {
             return Err(io::Error::new(
