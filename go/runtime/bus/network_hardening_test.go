@@ -17,7 +17,10 @@ import (
 // whatever origin the frame claims. The raw peer here would accept its
 // own frame, so only the hub's exclusion keeps it away.
 func TestNetworkAdapter_Relay_NoEchoToArrivalLink(t *testing.T) {
-	hub := NewNetworkAdapter(New(), WithOriginID("hub"), WithRelay(true))
+	// Without auth there is no ack: Connect can return before the hub
+	// registers the link, so wait for that before sending.
+	accepted := make(chan string, 16)
+	hub := NewNetworkAdapter(New(), WithOriginID("hub"), WithRelay(true), withHook(accepted))
 	srv := httptest.NewServer(hub.Handler())
 	defer srv.Close()
 	defer hub.Close()
@@ -29,6 +32,7 @@ func TestNetworkAdapter_Relay_NoEchoToArrivalLink(t *testing.T) {
 	if err := b.Connect(context.Background(), url); err != nil {
 		t.Fatal(err)
 	}
+	waitHook(t, accepted, "accepted")
 	var bGot atomic.Int32
 	busB.Subscribe("relay.test.event.sent", func(context.Context, Event) error {
 		bGot.Add(1)
@@ -98,7 +102,8 @@ func TestNetworkAdapter_Relay_EmptyOriginNoLoop(t *testing.T) {
 // handler that rewrites RemoteAddr) must not leave a link Close cannot
 // reach: the second is refused, and Close ends every reader.
 func TestNetworkAdapter_Handler_DuplicateAddrRefused(t *testing.T) {
-	hub := NewNetworkAdapter(New(), WithOriginID("hub"))
+	accepted := make(chan string, 16)
+	hub := NewNetworkAdapter(New(), WithOriginID("hub"), withHook(accepted))
 	h := hub.Handler()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.RemoteAddr = "10.0.0.1:1"
@@ -108,7 +113,7 @@ func TestNetworkAdapter_Handler_DuplicateAddrRefused(t *testing.T) {
 	url := "ws" + srv.URL[4:]
 
 	first := rawDial(t, url, `{"topic":"a.test.event.sent","source":"raw","origin":"one"}`)
-	time.Sleep(100 * time.Millisecond)
+	waitHook(t, accepted, "accepted") // the first holds the address
 	second := rawDial(t, url, "")
 	ctx, cancel := context.WithTimeout(context.Background(), failAfter)
 	defer cancel()
@@ -134,14 +139,17 @@ func TestNetworkAdapter_Handler_DuplicateAddrRefused(t *testing.T) {
 // The filter applies to relayed events too: a hub that denies a topic
 // never relays it, even though it arrived from a peer.
 func TestNetworkAdapter_Relay_FilterAppliesToRelayedEvents(t *testing.T) {
-	hub := newHub(t, WithOriginID("hub"), WithRelay(true), WithFilter(TopicFilter{Deny: []string{"secret.#"}}))
+	// No auth, so no ack: wait until the hub registered both links.
+	accepted := make(chan string, 16)
+	hub := newHub(t, WithOriginID("hub"), WithRelay(true), WithFilter(TopicFilter{Deny: []string{"secret.#"}}), withHook(accepted))
 	a, b := newClient(t, WithOriginID("A")), newClient(t, WithOriginID("B"))
 	connect(t, a, hub.url)
 	connect(t, b, hub.url)
+	waitHook(t, accepted, "accepted")
+	waitHook(t, accepted, "accepted")
 	var secret, public atomic.Int32
 	b.bus.Subscribe("secret.#", func(context.Context, Event) error { secret.Add(1); return nil })
 	b.bus.Subscribe("public.#", func(context.Context, Event) error { public.Add(1); return nil })
-	time.Sleep(50 * time.Millisecond)
 	_ = a.bus.Publish(context.Background(), NewEvent("secret.test.event.sent", "A", nil))
 	_ = a.bus.Publish(context.Background(), NewEvent("public.test.event.sent", "A", nil))
 	deadline := time.Now().Add(failAfter)

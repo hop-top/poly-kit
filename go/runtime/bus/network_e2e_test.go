@@ -10,7 +10,8 @@ import (
 
 func TestE2E_Bidirectional(t *testing.T) {
 	busA := New()
-	adapterA := NewNetworkAdapter(busA, WithOriginID("A"))
+	accepted := make(chan string, 16)
+	adapterA := NewNetworkAdapter(busA, WithOriginID("A"), withHook(accepted))
 
 	srv := httptest.NewServer(adapterA.Handler())
 	defer srv.Close()
@@ -24,7 +25,8 @@ func TestE2E_Bidirectional(t *testing.T) {
 	if err := adapterB.Connect(context.Background(), wsURL); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	time.Sleep(50 * time.Millisecond)
+	// No auth, so no ack: Connect may return before A registers the link.
+	waitHook(t, accepted, "accepted")
 
 	// A → B
 	var bReceived atomic.Bool
@@ -51,7 +53,8 @@ func TestE2E_Bidirectional(t *testing.T) {
 
 func TestE2E_NoLoops(t *testing.T) {
 	busA := New()
-	adapterA := NewNetworkAdapter(busA, WithOriginID("A"))
+	accepted := make(chan string, 16)
+	adapterA := NewNetworkAdapter(busA, WithOriginID("A"), withHook(accepted))
 
 	srv := httptest.NewServer(adapterA.Handler())
 	defer srv.Close()
@@ -65,7 +68,8 @@ func TestE2E_NoLoops(t *testing.T) {
 	if err := adapterB.Connect(context.Background(), wsURL); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	time.Sleep(50 * time.Millisecond)
+	// No auth, so no ack: Connect may return before A registers the link.
+	waitHook(t, accepted, "accepted")
 
 	var countA, countB atomic.Int32
 	busA.Subscribe("ping", func(_ context.Context, e Event) error {
