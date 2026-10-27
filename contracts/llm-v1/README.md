@@ -72,7 +72,7 @@ calls carry the original name.
 |------|--------|
 | Go | `go/ai/llm/conformance_test.go`, `go/ai/llm/anthropic/conformance_test.go` (`TestConformance*`) |
 | Rust | `sdk/experimental/rs/tests/llm_conformance.rs` (anthropic sections, including `anthropic_tool_names`, need feature `llm-anthropic`; `anthropic_tool_choice`, `anthropic_hermetic`, `anthropic_stream_events`, `bus_request_started`, `bus_response_received` and the vectors in `PENDING_RUST_PORT` skipped, pending the Rust port) |
-| Python | `sdk/py/tests/test_llm_conformance.py`: every section, anthropic ones against a loopback server; `anthropic_tool_choice`, `anthropic_hermetic`, `anthropic_stream_events`, `bus_request_started` and `bus_response_received` skipped (`PENDING_PY_PORT`), pending the Python port |
+| Python | `sdk/py/tests/test_llm_conformance.py`: every section, anthropic ones against a loopback server; `bus_*` against the `hop_top_kit.llm_events` payload builders (the Python client publishes no bus events) |
 | TypeScript | `sdk/ts/src/llm-anthropic.conformance.test.ts` (every `anthropic_*` section, `credential_headers`, `redact_uri`, `usage_cost`) and `sdk/ts/src/llm-toolnames.conformance.test.ts` (`tool_names`); not run: `parse_uri`, `key_endpoint` and the llm.yaml `credential_headers` vector (the TS core has no llm.yaml or Resolve-time key guard), each listed with its reason in the runner; `anthropic_tool_choice`, `anthropic_hermetic`, `anthropic_stream_events`, `bus_request_started`, `bus_response_received` and the 403 / system-joining vectors pending the TypeScript port |
 
 ## See also
