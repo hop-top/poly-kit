@@ -18,6 +18,9 @@
 #   BATS_JOBS=1 scripts/test-bats.sh     # serial (default: CPU count)
 #
 # Or: make test-bats
+#
+# internal/template/builtins/ mirrors templates/ byte-for-byte (enforced by
+# check-mirror-sync), so its suite copies are skipped.
 
 set -euo pipefail
 
@@ -34,7 +37,7 @@ else
     suites=()
     while IFS= read -r f; do
         [ -f "$f" ] && suites+=("$f")
-    done < <(git ls-files --cached --others --exclude-standard -- '*.bats' | sort -u)
+    done < <(git ls-files --cached --others --exclude-standard -- '*.bats' ':(exclude)internal/template/builtins/**' | sort -u)
 fi
 [ "${#suites[@]}" -gt 0 ] || { echo "test-bats: no suites found" >&2; exit 2; }
 
