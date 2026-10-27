@@ -276,8 +276,9 @@ func (b *breakerImpl) Reset() {
 }
 
 func (b *breakerImpl) Trip(reason string) {
+	prev := b.State() // cooldown expiry first, so it logs before the count
 	b.countTrip(reason)
-	b.logTrip(reason)
+	b.logTrip(reason, prev)
 	b.emitTransitions(b.circ.open(true))
 }
 

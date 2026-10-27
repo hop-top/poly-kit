@@ -2,6 +2,7 @@ package breaker_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -168,4 +169,19 @@ func TestTrip_AfterExpiredCooldownRestartsIt(t *testing.T) {
 	assert.Equal(t, breaker.Open, b.State(), "a trip holds for a full cooldown")
 	clk.Advance(10 * time.Second)
 	assert.Equal(t, breaker.HalfOpen, b.State())
+}
+
+func TestTrip_ExpiryTransitionPrecedesTheCount(t *testing.T) {
+	lg, buf := newCaptureLogger()
+	b, clk := newClocked(t, "reg-trip-order", 1, 1, breaker.Logger(lg))
+	b.Trip("first")
+	clk.Advance(10 * time.Second)
+	buf.Reset()
+	b.Trip("second")
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, lines, 3)
+	assert.Contains(t, lines[0], `"breaker.state":"half_open","breaker.prev_state":"open","breaker.policy":"circuit","breaker.trips_total":1`)
+	assert.Contains(t, lines[1], `"breaker tripped manually"`)
+	assert.Contains(t, lines[1], `"breaker.trips_total":2`)
+	assert.Contains(t, lines[2], `"breaker.state":"open","breaker.prev_state":"half_open"`)
 }

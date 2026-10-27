@@ -30,8 +30,7 @@ func (b *breakerImpl) logger() *log.Logger {
 // to the bus when a publisher is configured (best-effort, fire-and-
 // forget; matches the post-transition pattern in
 // runtime/domain.StateMachine).
-func (b *breakerImpl) logTrip(reason string) {
-	prev := b.State()
+func (b *breakerImpl) logTrip(reason string, prev State) {
 	b.logger().Error("breaker tripped manually",
 		"breaker.name", b.name,
 		"breaker.state", Open.String(),
