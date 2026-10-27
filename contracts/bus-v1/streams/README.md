@@ -31,7 +31,7 @@ Go is canonical; a runner failure means the implementation drifted. Every file c
 | `inbound.json` | bounded inbound queue: overflow closes and resumes after the last delivered offset |
 | `outbox.json` | ordered flush and drop-oldest counting over the send log |
 | `event_frames.json` | `offset` / `kitoffset` on event frames: encode, strip, validate on stream links |
-| `acks.json` | acknowledged publishes: `caps.acks` and the dialer's stream id in the auth frame, negotiation, the `puback` frame, the dialer's ack tracking (cumulative pubacks, rewind on reconnect, unsupported, evicted) |
+| `acks.json` | acknowledged publishes: `caps.acks` and the dialer's stream id in the auth frame, negotiation, the `puback` frame, the dialer's ack tracking (cumulative pubacks, rewind on reconnect, unsupported, evicted), the acceptor's dedupe memory (per-peer and overall bounds, pruned results answered `unknown`) |
 | `wire/*.jsonl` | transcripts replayed against a Go acceptor over a real WebSocket |
 
 Conventions:

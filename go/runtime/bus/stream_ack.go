@@ -33,6 +33,10 @@ const (
 	// AckUnavailable: the address was disconnected, unknown, or the
 	// adapter closed.
 	AckUnavailable = "unavailable"
+	// AckUnknown: the peer received this frame before but no longer
+	// knows its result. Delivery is unknown, as with a timeout; retry with
+	// the same event id.
+	AckUnknown = "unknown"
 	// AckFiltered: the event was not sent to the peer (topic filter,
 	// link filter, or the peer is its origin).
 	AckFiltered = "filtered"
@@ -297,45 +301,69 @@ func (r *ackResult) settled() bool {
 	}
 }
 
-// Acceptor dedupe bounds: dialer streams remembered, and failed offsets
-// remembered per stream behind its highest offset.
+// Acceptor dedupe bounds: dialer streams remembered in all, per peer
+// (the token its link presented), and failed results kept per stream.
 const (
-	ackSeenStreams = 1024
-	ackSeenErrors  = 1024
+	ackSeenStreams        = 1024
+	ackSeenStreamsPerPeer = 64
+	ackSeenErrors         = 1024
 )
 
 // ackSeen is an acceptor's memory of the dialer streams it acknowledged,
 // so a frame redelivered after a reconnect is acknowledged again without
-// being published twice. Bounded: the least recently used stream is
-// forgotten first, and its frames are then treated as new.
+// being published twice.
+//
+// Bounded per peer first: a peer that opens many streams only forgets
+// its own least recently used one; the overall bound is a backstop. A
+// forgotten stream's frames are treated as new (published again: at
+// least once). Within a stream, failed results are kept up to a bound;
+// past it the oldest is pruned and the stream's floor rises, and a copy
+// at or below the floor is answered err/unknown, never ok: an ok that
+// is not known to be one must not confirm delivery.
 type ackSeen struct {
 	mu      sync.Mutex
-	streams map[string]*seenStream
+	streams map[seenKey]*seenStream
+	perPeer map[string]int
 	clock   uint64
+
+	maxStreams, maxPerPeer, maxErrors int
 }
+
+type seenKey struct{ peer, stream string }
 
 type seenStream struct {
 	last     uint64
+	floor    uint64 // results at or below it may have been pruned
 	used     uint64
 	inflight map[uint64]*ackResult
 	errs     map[uint64]pubackInfo
 }
 
-func newAckSeen() *ackSeen { return &ackSeen{streams: map[string]*seenStream{}} }
+func newAckSeen() *ackSeen {
+	return &ackSeen{
+		streams: map[seenKey]*seenStream{}, perPeer: map[string]int{},
+		maxStreams: ackSeenStreams, maxPerPeer: ackSeenStreamsPerPeer, maxErrors: ackSeenErrors,
+	}
+}
 
-// begin returns the result for frame off of stream with event id, and
-// whether it is a redelivery (dup: do not publish it again).
-func (s *ackSeen) begin(stream string, off uint64, id string) (*ackResult, bool) {
+// begin returns the result for frame off of peer's stream with event id,
+// and whether it is a redelivery (dup: do not publish it again).
+func (s *ackSeen) begin(peer, stream string, off uint64, id string) (*ackResult, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.clock++
-	st := s.streams[stream]
+	k := seenKey{peer, stream}
+	st := s.streams[k]
 	if st == nil {
-		if len(s.streams) >= ackSeenStreams {
-			s.evictLocked()
+		switch {
+		case s.perPeer[peer] >= s.maxPerPeer:
+			s.evictLocked(func(o seenKey) bool { return o.peer == peer })
+		case len(s.streams) >= s.maxStreams:
+			s.evictLocked(func(seenKey) bool { return true })
 		}
 		st = &seenStream{inflight: map[uint64]*ackResult{}, errs: map[uint64]pubackInfo{}}
-		s.streams[stream] = st
+		s.streams[k] = st
+		s.perPeer[peer]++
 	}
 	st.used = s.clock
 	if off <= st.last {
@@ -346,6 +374,10 @@ func (s *ackSeen) begin(stream string, off uint64, id string) (*ackResult, bool)
 			p.ID = id
 			return completedAck(p), true
 		}
+		if off <= st.floor {
+			return completedAck(pubackInfo{Offset: off, ID: id, Status: pubackErr, Code: AckUnknown,
+				Message: "result no longer known"}), true
+		}
 		return completedAck(pubackInfo{Offset: off, ID: id, Status: pubackOK}), true
 	}
 	st.last = off
@@ -354,40 +386,49 @@ func (s *ackSeen) begin(stream string, off uint64, id string) (*ackResult, bool)
 	return r, false
 }
 
-// settle records a completed result of stream.
-func (s *ackSeen) settle(stream string, p pubackInfo) {
+// settle records a completed result of peer's stream.
+func (s *ackSeen) settle(peer, stream string, p pubackInfo) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st := s.streams[stream]
+	st := s.streams[seenKey{peer, stream}]
 	if st == nil {
 		return
 	}
 	delete(st.inflight, p.Offset)
-	if p.Status == pubackErr {
-		st.errs[p.Offset] = p
+	if p.Status != pubackErr {
+		return
 	}
-	if len(st.errs) > ackSeenErrors {
-		floor := uint64(0)
-		if st.last > ackSeenErrors {
-			floor = st.last - ackSeenErrors
-		}
+	st.errs[p.Offset] = p
+	for len(st.errs) > s.maxErrors {
+		lowest := p.Offset
 		for off := range st.errs {
-			if off <= floor {
-				delete(st.errs, off)
-			}
+			lowest = min(lowest, off)
 		}
+		delete(st.errs, lowest)
+		st.floor = max(st.floor, lowest)
 	}
 }
 
-func (s *ackSeen) evictLocked() {
-	var victim string
-	var oldest uint64
-	for id, st := range s.streams {
-		if victim == "" || st.used < oldest {
-			victim, oldest = id, st.used
+// evictLocked forgets the least recently used stream among those match
+// selects.
+func (s *ackSeen) evictLocked(match func(seenKey) bool) {
+	var (
+		victim seenKey
+		found  bool
+		oldest uint64
+	)
+	for k, st := range s.streams {
+		if match(k) && (!found || st.used < oldest) {
+			victim, oldest, found = k, st.used, true
 		}
 	}
+	if !found {
+		return
+	}
 	delete(s.streams, victim)
+	if s.perPeer[victim.peer]--; s.perPeer[victim.peer] <= 0 {
+		delete(s.perPeer, victim.peer)
+	}
 }
 
 // DefaultMaxPendingAcks bounds unresolved acked publishes per outbound

@@ -608,11 +608,12 @@ ack, err := n.PublishAcked(ctx, e)      // plus every outbound address (or the o
 - The error is nil only when everything acknowledged. Otherwise it is
   the local veto, the context's error while waiting for a pending slot,
   or a `*bus.AckError` (`errors.Is(err, bus.ErrNack)`) with a code:
-  `rejected` (a peer handler failed), `invalid`, `timeout`, `evicted`,
-  `unavailable`, `filtered`, or `unsupported` (the peer does not speak
-  acks; also `errors.Is(err, bus.ErrAcksUnsupported)`).
-- `timeout` means unknown, not lost: retry with the same event id and
-  dedupe on the receiving side. Without a context deadline the adapter
+  `rejected` (a peer handler failed), `invalid`, `timeout`, `unknown`,
+  `evicted`, `unavailable`, `filtered`, or `unsupported` (the peer does
+  not speak acks; also `errors.Is(err, bus.ErrAcksUnsupported)`).
+- `timeout` and `unknown` mean unknown, not lost: retry with the same
+  event id and dedupe on the receiving side. `unknown` comes from a
+  peer that saw the frame before but no longer holds its result. Without a context deadline the adapter
   waits `WithAckTimeout` (default 30 s).
 - `WithMaxPendingAcks(n)` (default 1024) bounds unresolved acked
   publishes per address; `PublishAcked` blocks for a slot until its

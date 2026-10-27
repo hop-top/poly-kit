@@ -437,3 +437,59 @@ func TestAcks_CumulativePubackResolvesEarlierFrames(t *testing.T) {
 		}
 	}
 }
+
+func acksAuth(token, stream string) string {
+	return `{"auth":"` + token + `","caps":{"streams":1,"frames":["kit"],"acks":1},"origin":"o-` + token + `","stream":{"id":"` + stream + `"}}`
+}
+
+// TestAcks_PeerFloodKeepsOtherPeersDedupe: a peer that opens many dialer
+// streams only evicts its own dedupe memory; another peer's copies are
+// still recognized and not published twice.
+func TestAcks_PeerFloodKeepsOtherPeersDedupe(t *testing.T) {
+	h := newHub(t, WithAuth(&gateAuth{}))
+	h.n.ackSeen.maxPerPeer = 2
+	var seen atomic.Int32
+	h.bus.Subscribe("acme.b", func(context.Context, Event) error { seen.Add(1); return nil })
+
+	b := rawDial(t, h.url, acksAuth("tok-b", "stm_b"))
+	rawJSON(t, b)
+	rawSend(t, b, eventFrame(1, "eb", "acme.b"))
+	rawJSON(t, b)
+
+	for i := 0; i < 8; i++ {
+		a := rawDial(t, h.url, acksAuth("tok-a", "stm_a"+formatOffset(uint64(i))))
+		rawJSON(t, a)
+		rawSend(t, a, eventFrame(1, "ea", "acme.a"))
+		rawJSON(t, a)
+		_ = a.Close(websocket.StatusNormalClosure, "")
+	}
+
+	_ = b.Close(websocket.StatusNormalClosure, "")
+	b2 := rawDial(t, h.url, acksAuth("tok-b", "stm_b"))
+	rawJSON(t, b2)
+	rawSend(t, b2, eventFrame(1, "eb", "acme.b"))
+	if p := rawJSON(t, b2); p["offset"] != "1" || p["status"] != "ok" {
+		t.Fatalf("puback = %v", p)
+	}
+	if n := seen.Load(); n != 1 {
+		t.Fatalf("peer b's event published %d times after peer a flooded streams", n)
+	}
+}
+
+// TestAcks_PrunedFailureIsNeverOK: a copy whose result was pruned is
+// answered err/unknown, not ok.
+func TestAcks_PrunedFailureIsNeverOK(t *testing.T) {
+	h := newHub(t, WithAuth(OpenAuth()))
+	h.n.ackSeen.maxErrors = 1
+	h.bus.Subscribe("acme.#", func(context.Context, Event) error { return errors.New("nope") })
+	c := rawDial(t, h.url, hubAcksFrame)
+	rawJSON(t, c)
+	rawSend(t, c, eventFrame(1, "e1", "acme.x"))
+	rawSend(t, c, eventFrame(2, "e2", "acme.x"))
+	rawJSON(t, c)
+	rawJSON(t, c)
+	rawSend(t, c, eventFrame(1, "e1", "acme.x"))
+	if p := rawJSON(t, c); p["status"] != "err" || p["code"] != AckUnknown {
+		t.Fatalf("copy of a pruned failure answered %v", p)
+	}
+}

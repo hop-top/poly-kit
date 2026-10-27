@@ -55,7 +55,7 @@ func WithMaxPendingAcks(max int) NetworkOption {
 // The error is nil only when everything acknowledged. Otherwise it is
 // the local veto, ctx's error while waiting for a pending slot, or an
 // [*AckError] for the first peer (by address) that did not acknowledge:
-// [AckRejected] or [AckInvalid] from the peer, [AckTimeout],
+// [AckRejected], [AckInvalid] or [AckUnknown] from the peer, [AckTimeout],
 // [AckEvicted], [AckUnavailable], [AckFiltered], or [AckUnsupported]
 // (which also matches [ErrAcksUnsupported]). A timeout means unknown,
 // not lost: retry with the same event id, and let the receiver dedupe.
@@ -242,7 +242,7 @@ func (l *link) onAckedEvent(data []byte) bool {
 		if !ok {
 			return l.protocolError(protocolErr(pkOffset, "event frame without a valid offset"))
 		}
-		res, dup := n.ackSeen.begin(l.dialerStream, v, "")
+		res, dup := n.ackSeen.begin(l.peer.Token, l.dialerStream, v, "")
 		if !dup {
 			res.complete(AckInvalid, err.Error(), l.settleFn())
 		}
@@ -251,7 +251,7 @@ func (l *link) onAckedEvent(data []byte) bool {
 	if l.peerOrigin() == "" && origin != "" {
 		l.learnedOrigin.Store(origin)
 	}
-	res, dup := n.ackSeen.begin(l.dialerStream, off.value, e.ID)
+	res, dup := n.ackSeen.begin(l.peer.Token, l.dialerStream, off.value, e.ID)
 	if !l.queueAck(off.value, e.ID, res) {
 		return false
 	}
@@ -286,8 +286,8 @@ func (l *link) onAckedEvent(data []byte) bool {
 
 // settleFn records a settled result in the dedupe memory.
 func (l *link) settleFn() func(pubackInfo) {
-	n, stream := l.n, l.dialerStream
-	return func(p pubackInfo) { n.ackSeen.settle(stream, p) }
+	n, peer, stream := l.n, l.peer.Token, l.dialerStream
+	return func(p pubackInfo) { n.ackSeen.settle(peer, stream, p) }
 }
 
 // queueAck appends a frame's result to the link's puback queue, waiting

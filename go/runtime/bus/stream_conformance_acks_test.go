@@ -11,6 +11,31 @@ func TestStreamConformanceAcks(t *testing.T) {
 		Event string `json:"event"`
 		Code  string `json:"code"`
 	}
+	type seenRef struct {
+		Peer   string `json:"peer"`
+		Stream string `json:"stream"`
+		Offset string `json:"offset"`
+		ID     string `json:"id"`
+	}
+	type acceptorCase struct {
+		Name   string `json:"name"`
+		Limits struct {
+			Streams        int `json:"streams"`
+			StreamsPerPeer int `json:"streams_per_peer"`
+			Errors         int `json:"errors"`
+		} `json:"limits"`
+		Steps []struct {
+			Recv   *seenRef `json:"recv"`
+			Result string   `json:"result"`
+			Settle *seenRef `json:"settle"`
+			Code   string   `json:"code"`
+			Expect *struct {
+				Publish bool   `json:"publish"`
+				Status  string `json:"status"`
+				Code    string `json:"code"`
+			} `json:"expect"`
+		} `json:"steps"`
+	}
 	var f struct {
 		ceConfHeader
 		Auth []struct {
@@ -67,8 +92,56 @@ func TestStreamConformanceAcks(t *testing.T) {
 			Resolved []resolved `json:"resolved"`
 			Error    string     `json:"error"`
 		} `json:"dialer"`
+		Acceptor []acceptorCase `json:"acceptor"`
 	}
 	streamConfLoad(t, "acks.json", &f)
+	if len(f.Acceptor) == 0 {
+		t.Fatal("acks.json: acceptor needs cases")
+	}
+	for _, tc := range f.Acceptor {
+		t.Run("acceptor/"+tc.Name, func(t *testing.T) {
+			seen := newAckSeen()
+			seen.maxStreams, seen.maxPerPeer, seen.maxErrors = tc.Limits.Streams, tc.Limits.StreamsPerPeer, tc.Limits.Errors
+			pending := map[seenRef]*ackResult{}
+			settle := func(r seenRef) func(pubackInfo) {
+				return func(p pubackInfo) { seen.settle(r.Peer, r.Stream, p) }
+			}
+			for i, st := range tc.Steps {
+				switch {
+				case st.Recv != nil:
+					r := *st.Recv
+					off := mustOffset(t, r.Offset)
+					res, dup := seen.begin(r.Peer, r.Stream, off, r.ID)
+					if !dup {
+						switch st.Result {
+						case "pending":
+							pending[seenRef{r.Peer, r.Stream, r.Offset, ""}] = res
+						case "ok":
+							res.complete("", "", settle(r))
+						default:
+							res.complete(st.Result, "", settle(r))
+						}
+					}
+					status, code := "pending", ""
+					if res.settled() {
+						status, code = res.p.Status, res.p.Code
+					}
+					if e := st.Expect; e == nil || e.Publish != !dup || e.Status != status || e.Code != code {
+						t.Fatalf("step %d: publish %v status %s code %q, want %+v", i, !dup, status, code, st.Expect)
+					}
+				case st.Settle != nil:
+					r := *st.Settle
+					res := pending[seenRef{r.Peer, r.Stream, r.Offset, ""}]
+					if res == nil {
+						t.Fatalf("step %d: nothing pending at %+v", i, r)
+					}
+					res.complete(st.Code, "", settle(r))
+				default:
+					t.Fatalf("step %d is empty", i)
+				}
+			}
+		})
+	}
 	if len(f.Auth) == 0 || len(f.Negotiate) == 0 || len(f.Puback) == 0 || len(f.PubackEncode) == 0 || len(f.Dialer) == 0 {
 		t.Fatal("acks.json: every section needs cases")
 	}

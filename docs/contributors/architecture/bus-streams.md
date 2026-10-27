@@ -596,6 +596,10 @@ a control frame over a legacy link.
 | `position` | acceptor to dialer | `stream`, `offset` | none |
 | `puback` | acceptor to dialer, on an acks link | `offset`, `status`, `id`?, `code`?, `message`? | none |
 
+A `puback` never reports `ok` for a result the acceptor does not know
+was ok: a copy whose result it no longer holds is answered `err` with
+code `unknown` (section 13.4). Puback codes are listed in 13.2.
+
 ```json
 {"type": "subscribe", "id": "s2", "patterns": ["acme.billing.invoice.*"], "scope": {"workspaces": ["ws1", "ws2"]}}
 {"type": "ack", "id": "s2", "at": "1450"}
@@ -798,7 +802,7 @@ coalesced ones.
 | `offset` | the frame's offset, a decimal string |
 | `status` | `ok` or `err` |
 | `id` | the event id of the frame, when it had one; a dialer that sent another id at that offset closes the link (`puback_id`) |
-| `code` | with `err`: `rejected` (a sync handler failed), `invalid` (the frame could not be used: undecodable event, reserved topic); unknown codes are kept |
+| `code` | with `err`: `rejected` (a sync handler failed), `invalid` (the frame could not be used: undecodable event, reserved topic), `unknown` (a copy whose first result the acceptor no longer holds); codes the dialer does not know are kept |
 | `message` | with `err`, optional, not contract |
 
 A dialer closes the link with 1002 on a malformed puback
@@ -836,18 +840,41 @@ acknowledged offset survives reconnects.
 
 ### 13.4 Acceptor
 
-The acceptor remembers, per dialer stream id, the highest offset it
-received and the outcome of recent frames. A frame at or below that
-offset is a copy:
+The acceptor remembers, per peer and dialer stream id, the highest
+offset it received and the failed results of its frames. The peer is
+the token its link presented, the one value the authenticator
+verified; the dialer's stream id and origin are its own claims. A frame
+at or below the highest offset is a copy:
 
 - still being handled: its puback waits for the first copy's result
-- handled with `err`: the stored result is sent again
-- otherwise: `ok`
+- a failed result is held: that result is sent again
+- at or below the stream's pruned floor: `err` with code `unknown`
+- otherwise: `ok` (only failures are stored, so an offset above the
+  floor without one is known to have succeeded)
 
-A copy is never published again. The memory is bounded (1 024 dialer
-streams, least recently used forgotten first; failed outcomes kept for
-1 024 offsets behind the highest), and lost on restart, after which
-dedupe falls to the event id.
+A copy is never published again. The memory is bounded, and every
+bound errs toward publishing again or answering `unknown`, never toward
+a false `ok`:
+
+- **per peer:** at most 64 dialer streams. A peer that opens more
+  forgets its own least recently used stream; it cannot evict another
+  peer's. Dialers that share one token (an `OpenAuth` hub, one key for
+  many clients) share the bound
+- **overall:** at most 1 024 dialer streams, least recently used
+  forgotten first, as a backstop
+- **per stream:** at most 1 024 failed results; past that the oldest is
+  pruned and the stream's floor rises to it
+
+A forgotten stream's frames are new again: published again, at least
+once. The memory is lost on restart, after which dedupe falls to the
+event id.
+
+`unknown` resolves the dialer's wait like any failure: its
+acknowledged offset moves past the frame, so the link does not resend
+it. A publisher that retries (the consent relay's next flush) sends a
+new frame at a new offset, which the acceptor handles as new; it cannot
+loop on the same copy. As with `timeout`, the event may have been
+delivered: retry with the same event id.
 
 Results may settle out of order (async handlers), but pubacks go out in
 offset order, which keeps them cumulative. Each acks link holds at most
@@ -857,7 +884,7 @@ which backpressures the dialer through TCP.
 ### 13.5 Ordering, idempotency and limits
 
 - publish order is unchanged: the event enters the log as any other
-- at least once per acks link, deduplicated by `(dialer stream,
+- at least once per acks link, deduplicated by `(peer, dialer stream,
   offset)` while the acceptor runs, by event `id` across restarts
 - `WithMaxPendingAcks(n)` (default 1 024) bounds unresolved
   acknowledged publishes per address; `PublishAcked` blocks for a slot
@@ -983,7 +1010,7 @@ fields, a wrong `version` and unconsumed files all fail it.
 | `inbound.json` | bounded inbound queue: overflow closes and resumes from the last delivered position |
 | `outbox.json` | ordered flush and drop-oldest counting over a scripted publish, disconnect and reconnect sequence |
 | `event_frames.json` | `offset` / `kitoffset` encode on stream links, stripping on every link |
-| `acks.json` | `caps.acks` and the dialer stream id in the auth frame, acks negotiation, puback parse and encode, the dialer's ack tracking (cumulative pubacks, rewind, unsupported, evicted) |
+| `acks.json` | `caps.acks` and the dialer stream id in the auth frame, acks negotiation, puback parse and encode, the dialer's ack tracking (cumulative pubacks, rewind, unsupported, evicted), the acceptor's dedupe memory (copies, per-peer and overall bounds, pruned results answered `unknown`) |
 | `wire/*.jsonl` | transcripts replayed against a Go acceptor: plain ack, extended ack with replay, reset in the ack, subscribe round trip, pubacks with a copy and an invalid frame |
 
 The pure vectors (all but `wire/`) need no sockets and no clock.
