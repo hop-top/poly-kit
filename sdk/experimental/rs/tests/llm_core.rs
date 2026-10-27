@@ -802,3 +802,110 @@ fn resolve_with_hermetic_reaches_the_factory() {
         .unwrap();
     assert_eq!(*seen.lock().unwrap(), [false, true]);
 }
+
+const SECRET_PROMPT: &str = "my password is hunter2 and token AKIAIOSFODNN7EXAMPLE";
+
+fn secret_request() -> Request {
+    Request {
+        model: "m".into(),
+        temperature: Some(0.0),
+        max_tokens: 64,
+        messages: vec![
+            hop_top_kit::llm::Message::system("be brief"),
+            hop_top_kit::llm::Message::user(SECRET_PROMPT),
+        ],
+        extensions: BTreeMap::from([
+            ("b".to_string(), serde_json::json!(1)),
+            ("a".to_string(), serde_json::json!("x")),
+        ]),
+        ..Request::default()
+    }
+}
+
+/// A provider answering `complete` with fixed content.
+struct Answer(&'static str);
+
+impl Provider for Answer {
+    fn capabilities(&self) -> &'static [Capability] {
+        &[Capability::Complete]
+    }
+    fn complete<'a>(&'a self, _req: &'a Request) -> BoxFuture<'a, Result<Response, LlmError>> {
+        let content = self.0.to_string();
+        Box::pin(async move {
+            Ok(Response {
+                content,
+                finish_reason: "end_turn".into(),
+                usage: hop_top_kit::llm::Usage::new(3, 4),
+                ..Response::default()
+            })
+        })
+    }
+}
+
+/// Every payload published under `kit.ai.`, by topic.
+fn capture(bus: &DynBus) -> Arc<Mutex<Vec<(String, serde_json::Value)>>> {
+    let seen: Arc<Mutex<Vec<(String, serde_json::Value)>>> = Arc::default();
+    let s = seen.clone();
+    bus.subscribe("kit.ai.#", move |e| {
+        s.lock()
+            .unwrap()
+            .push((e.topic.as_str().to_string(), e.payload.clone()));
+        Ok(())
+    });
+    seen
+}
+
+#[test]
+fn lifecycle_payloads_carry_no_content_by_default() {
+    let bus = DynBus::builder().build();
+    let seen = capture(&bus);
+    let client = Client::new(Box::new(Answer("the answer is hunter2"))).with_bus(bus);
+    block_on(client.complete(&secret_request())).unwrap();
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 2);
+    let (topic, started) = &seen[0];
+    assert_eq!(topic, "kit.ai.request.started");
+    assert!(started.get("request").is_none(), "no content by default");
+    assert_eq!(started["op"], "complete");
+    assert_eq!(started["messages"], 2);
+    assert_eq!(
+        started["roles"],
+        serde_json::json!({"system": 1, "user": 1})
+    );
+    assert_eq!(
+        started["content_bytes"],
+        "be brief".len() + SECRET_PROMPT.len()
+    );
+    assert_eq!(started["extension_keys"], serde_json::json!(["a", "b"]));
+    let (topic, ended) = &seen[1];
+    assert_eq!(topic, "kit.ai.response.received");
+    assert!(ended.get("response").is_none(), "no content by default");
+    assert_eq!(ended["finish_reason"], "end_turn");
+    assert_eq!(ended["usage"]["total_tokens"], 7);
+    assert_eq!(ended["content_bytes"], "the answer is hunter2".len());
+    for (_, p) in seen.iter() {
+        assert!(!p.to_string().contains("hunter2"), "{p}");
+    }
+}
+
+#[test]
+fn content_opt_in_transforms_a_copy() {
+    let bus = DynBus::builder().build();
+    let seen = capture(&bus);
+    let client = Client::new(Box::new(Answer("answer hunter2")))
+        .with_bus(bus)
+        .with_request_content(|mut r| {
+            r.messages[1].content = "[cut]".into();
+            r
+        })
+        .with_response_content(|r| r);
+    let req = secret_request();
+    block_on(client.complete(&req)).unwrap();
+    assert_eq!(
+        req.messages[1].content, SECRET_PROMPT,
+        "the caller's request is untouched"
+    );
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen[0].1["request"]["messages"][1]["content"], "[cut]");
+    assert_eq!(seen[1].1["response"]["content"], "answer hunter2");
+}

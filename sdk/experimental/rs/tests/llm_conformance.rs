@@ -57,10 +57,10 @@ struct Corpus {
     anthropic_hermetic: Vec<HermeticCase>,
     #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
     anthropic_stream_events: Vec<StreamEventsCase>,
-    #[allow(dead_code)]
-    bus_request_started: Vec<Value>,
-    #[allow(dead_code)]
-    bus_response_received: Vec<Value>,
+    #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+    bus_request_started: Vec<BusStartCase>,
+    #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+    bus_response_received: Vec<BusEndCase>,
     /// URL media fetch guard. Not applicable: this port has no URL media
     /// sources, so nothing is fetched (README, Known differences).
     media_fetch: Vec<Value>,
@@ -126,6 +126,39 @@ struct StreamEventsCase {
     stream_events: bool,
     want_events: Vec<Value>,
     error_kind: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+struct BusStartCase {
+    name: String,
+    op: String,
+    tools: Vec<String>,
+    request: ConfRequest,
+    want_payload: Value,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+struct BusResponse {
+    content: String,
+    finish_reason: String,
+    usage: ConfUsage,
+    #[serde(default)]
+    thinking: Vec<ConfThought>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+struct BusEndCase {
+    name: String,
+    op: String,
+    response: BusResponse,
+    tool_calls: Vec<ConfToolCall>,
+    want_payload: Value,
 }
 
 #[derive(Deserialize)]
@@ -370,6 +403,8 @@ struct ConfRequest {
     messages: Vec<ConfMessage>,
     #[serde(default)]
     thinking_budget: u32,
+    #[serde(default)]
+    extensions: BTreeMap<String, Value>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -772,6 +807,7 @@ mod anthropic {
             thinking: (r.thinking_budget > 0).then_some(Thinking {
                 budget_tokens: r.thinking_budget,
             }),
+            extensions: r.extensions.clone(),
             ..Request::default()
         }
     }
@@ -1336,6 +1372,7 @@ mod anthropic {
                     stop_sequences: Vec::new(),
                     messages: msgs.clone(),
                     thinking_budget: 0,
+                    extensions: BTreeMap::new(),
                 }),
                 None => hi(),
             };
@@ -1640,6 +1677,184 @@ mod anthropic {
                     assert_eq!(out.usage, u, "{}: the last usage is the outcome's", v.name);
                 }
             }
+        }
+    }
+
+    /// Serves every call kind the bus vectors make, with fixed results.
+    #[derive(Default)]
+    struct BusProvider {
+        resp: Response,
+        tools: hop_top_kit::llm::ToolResponse,
+    }
+
+    struct DoneStream;
+
+    impl hop_top_kit::llm::TokenStream for DoneStream {
+        fn next(
+            &mut self,
+        ) -> hop_top_kit::llm::BoxFuture<'_, Result<Option<hop_top_kit::llm::Token>, LlmError>>
+        {
+            Box::pin(async { Ok(None) })
+        }
+    }
+
+    impl Provider for BusProvider {
+        fn capabilities(&self) -> &'static [hop_top_kit::llm::Capability] {
+            use hop_top_kit::llm::Capability::*;
+            &[Complete, Stream, ToolCall, StreamTools]
+        }
+        fn complete<'a>(
+            &'a self,
+            _: &'a Request,
+        ) -> hop_top_kit::llm::BoxFuture<'a, Result<Response, LlmError>> {
+            Box::pin(async { Ok(self.resp.clone()) })
+        }
+        fn stream<'a>(
+            &'a self,
+            _: &'a Request,
+        ) -> hop_top_kit::llm::BoxFuture<'a, Result<Box<dyn hop_top_kit::llm::TokenStream>, LlmError>>
+        {
+            Box::pin(async { Ok(Box::new(DoneStream) as Box<dyn hop_top_kit::llm::TokenStream>) })
+        }
+        fn call_with_tools<'a>(
+            &'a self,
+            _: &'a Request,
+            _: &'a [ToolDef],
+        ) -> hop_top_kit::llm::BoxFuture<'a, Result<hop_top_kit::llm::ToolResponse, LlmError>>
+        {
+            Box::pin(async { Ok(self.tools.clone()) })
+        }
+        fn stream_with_tools<'a>(
+            &'a self,
+            _: &'a Request,
+            _: &'a [ToolDef],
+        ) -> hop_top_kit::llm::BoxFuture<'a, Result<Box<dyn hop_top_kit::llm::TokenStream>, LlmError>>
+        {
+            Box::pin(async { Ok(Box::new(DoneStream) as Box<dyn hop_top_kit::llm::TokenStream>) })
+        }
+    }
+
+    /// Run `op` on a client wired to a bus; every payload published on
+    /// `topic`.
+    async fn bus_payloads(
+        p: BusProvider,
+        topic: &str,
+        op: &str,
+        req: &Request,
+        tools: &[ToolDef],
+    ) -> Vec<Value> {
+        use hop_top_kit::bus::DynBus;
+        use hop_top_kit::llm::Client;
+        use std::sync::{Arc, Mutex};
+        let bus = DynBus::builder().build();
+        let got: Arc<Mutex<Vec<Value>>> = Arc::default();
+        let g = got.clone();
+        bus.subscribe(topic, move |e| {
+            g.lock().unwrap().push(e.payload.clone());
+            Ok(())
+        });
+        let c = Client::new(Box::new(p)).with_bus(bus);
+        match op {
+            "complete" => c.complete(req).await.map(|_| ()),
+            "stream" => c.stream(req).await.map(|_| ()),
+            "tool_call" => c.call_with_tools(req, tools).await.map(|_| ()),
+            "stream_tools" => c.stream_with_tools(req, tools).await.map(|_| ()),
+            other => panic!("unknown op {other:?}"),
+        }
+        .unwrap();
+        let out = got.lock().unwrap().clone();
+        out
+    }
+
+    #[tokio::test]
+    async fn bus_request_started_vectors() {
+        let c = load();
+        assert!(!c.bus_request_started.is_empty());
+        for v in &c.bus_request_started {
+            let req = to_request(&v.request);
+            let tools: Vec<ToolDef> = v.tools.iter().map(ToolDef::named).collect();
+            let got = bus_payloads(
+                BusProvider::default(),
+                "kit.ai.request.started",
+                &v.op,
+                &req,
+                &tools,
+            )
+            .await;
+            assert_eq!(got.len(), 1, "{}", v.name);
+            assert_eq!(
+                numeric(got[0].clone()),
+                numeric(v.want_payload.clone()),
+                "{}",
+                v.name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn bus_response_received_vectors() {
+        use hop_top_kit::llm::{ToolResponse, Usage};
+        let c = load();
+        assert!(!c.bus_response_received.is_empty());
+        for v in &c.bus_response_received {
+            let r = &v.response;
+            let usage = Usage {
+                prompt_tokens: r.usage.prompt_tokens,
+                completion_tokens: r.usage.completion_tokens,
+                cache_read_tokens: r.usage.cache_read_tokens,
+                cache_creation_tokens: r.usage.cache_creation_tokens,
+                total_tokens: r.usage.total_tokens,
+            };
+            let p = BusProvider {
+                resp: Response {
+                    content: r.content.clone(),
+                    finish_reason: r.finish_reason.clone(),
+                    usage,
+                    thinking: thoughts(&r.thinking),
+                    ..Response::default()
+                },
+                tools: ToolResponse {
+                    content: r.content.clone(),
+                    finish_reason: r.finish_reason.clone(),
+                    usage,
+                    thinking: thoughts(&r.thinking),
+                    tool_calls: v
+                        .tool_calls
+                        .iter()
+                        .map(|c| ToolCall {
+                            id: c.id.clone(),
+                            name: c.name.clone(),
+                            arguments: c.arguments.clone(),
+                            ..ToolCall::default()
+                        })
+                        .collect(),
+                },
+            };
+            let got = bus_payloads(
+                p,
+                "kit.ai.response.received",
+                &v.op,
+                &hi(),
+                &[ToolDef::named("get_weather")],
+            )
+            .await;
+            assert_eq!(got.len(), 1, "{}", v.name);
+            let mut payload = got[0].clone();
+            let ms = payload
+                .as_object_mut()
+                .and_then(|o| o.remove("duration_ms"))
+                .unwrap_or_else(|| panic!("{}: duration_ms", v.name));
+            assert!(
+                ms.is_u64(),
+                "{}: duration_ms is a non-negative integer: {ms}",
+                v.name
+            );
+            assert_eq!(
+                numeric(payload),
+                numeric(v.want_payload.clone()),
+                "{}",
+                v.name
+            );
         }
     }
 }

@@ -2,7 +2,13 @@
 //! fallback chain walked on fallbackable errors, and lifecycle events
 //! on a [`DynBus`]. Events are best effort: a publish failure never
 //! affects the call.
+//!
+//! The request and response events carry no content
+//! ([`RequestStartPayload`], [`RequestEndPayload`]) unless the client
+//! opts in with [`Client::with_request_content`] /
+//! [`Client::with_response_content`].
 
+use std::sync::Arc;
 use std::time::Instant;
 
 /// When a call started; `None` on wasm32-unknown-unknown, which has no
@@ -22,8 +28,14 @@ use crate::bus::topic::validate_topic;
 use crate::bus::{DynBus, Event};
 
 use super::error::LlmError;
+use super::events::{RequestEndPayload, RequestStartPayload};
 use super::provider::{BoxFuture, Capability, Provider, TokenStream};
-use super::types::{Request, Response, ToolDef, ToolResponse};
+use super::types::{Request, Response, Role, ToolCall, ToolDef, ToolResponse};
+
+/// A request transform for [`Client::with_request_content`].
+type RequestContent = Arc<dyn Fn(Request) -> Request + Send + Sync>;
+/// A response transform for [`Client::with_response_content`].
+type ResponseContent = Arc<dyn Fn(Response) -> Response + Send + Sync>;
 
 const SOURCE: &str = "kit.ai.client";
 
@@ -107,6 +119,8 @@ pub struct Client {
     chain: Vec<Box<dyn Provider>>,
     bus: Option<DynBus>,
     topics: Topics,
+    request_content: Option<RequestContent>,
+    response_content: Option<ResponseContent>,
 }
 
 impl Client {
@@ -115,6 +129,8 @@ impl Client {
             chain: vec![primary],
             bus: None,
             topics: Topics::default(),
+            request_content: None,
+            response_content: None,
         }
     }
 
@@ -128,6 +144,37 @@ impl Client {
     /// Publish lifecycle events on `bus`.
     pub fn with_bus(mut self, bus: DynBus) -> Self {
         self.bus = Some(bus);
+        self
+    }
+
+    /// Put request content on the bus (Go `WithRequestContent`): the
+    /// `kit.ai.request.started` payload's `request` is `f` applied to a
+    /// copy of the request, so `f` may rewrite it freely and the
+    /// caller's request is not touched. Pass `|r| r` to publish the
+    /// content as is. Without this the payload is metadata only
+    /// ([`RequestStartPayload`]). With feature `redact`,
+    /// [`redact_request`](super::redact_request) builds an `f` that
+    /// masks secrets.
+    ///
+    /// The content then reaches every subscriber, including sinks that
+    /// forward or store events; publish it only to a bus you control.
+    pub fn with_request_content(
+        mut self,
+        f: impl Fn(Request) -> Request + Send + Sync + 'static,
+    ) -> Self {
+        self.request_content = Some(Arc::new(f));
+        self
+    }
+
+    /// [`Client::with_request_content`] for the
+    /// `kit.ai.response.received` payload's `response`; with feature
+    /// `redact`, [`redact_response`](super::redact_response) builds a
+    /// masking `f`.
+    pub fn with_response_content(
+        mut self,
+        f: impl Fn(Response) -> Response + Send + Sync + 'static,
+    ) -> Self {
+        self.response_content = Some(Arc::new(f));
         self
     }
 
@@ -160,16 +207,44 @@ impl Client {
         }
     }
 
+    /// Publish `kit.ai.request.started` for a call of kind `cap` offering
+    /// `tools` tools.
+    fn started(&self, cap: Capability, req: &Request, tools: usize) {
+        if self.bus.is_none() {
+            return;
+        }
+        let mut p = RequestStartPayload::new(cap.as_str(), req, tools);
+        if let Some(f) = &self.request_content {
+            p.request = Some(f(req.clone()));
+        }
+        self.publish(&self.topics.request_start, to_value(&p));
+    }
+
+    /// Publish `kit.ai.response.received`.
+    fn ended(&self, cap: Capability, resp: Response, calls: &[ToolCall], start: Start) {
+        if self.bus.is_none() {
+            return;
+        }
+        let ms = start.map_or(0, |s| s.elapsed().as_millis() as u64);
+        let mut p = RequestEndPayload::new(cap.as_str(), &resp, calls, ms);
+        if let Some(f) = &self.response_content {
+            p.response = Some(f(resp));
+        }
+        self.publish(&self.topics.request_end, to_value(&p));
+    }
+
     /// Walk the chain: skip providers lacking `cap`, return the first
-    /// success, stop on a non-fallbackable error.
+    /// success, stop on a non-fallbackable error. `on_ok` publishes the
+    /// end event, if the call has one.
     async fn run<'a, T>(
         &'a self,
         req: &'a Request,
         cap: Capability,
+        tools: usize,
         call: impl Fn(&'a dyn Provider) -> BoxFuture<'a, Result<T, LlmError>>,
-        on_ok: impl Fn(&T, Start) -> Option<Value>,
+        on_ok: impl Fn(&T, Start),
     ) -> Result<T, LlmError> {
-        self.publish(&self.topics.request_start, json!({ "request": req }));
+        self.started(cap, req, tools);
         let mut errs = Vec::new();
         let last = self.chain.len() - 1;
         for (i, p) in self.chain.iter().enumerate() {
@@ -183,9 +258,7 @@ impl Client {
             let start = now();
             match call(p.as_ref()).await {
                 Ok(v) => {
-                    if let Some(payload) = on_ok(&v, start) {
-                        self.publish(&self.topics.request_end, payload);
-                    }
+                    on_ok(&v, start);
                     return Ok(v);
                 }
                 Err(e) if !e.is_fallbackable() => {
@@ -221,14 +294,21 @@ impl Client {
     }
 
     pub async fn complete(&self, req: &Request) -> Result<Response, LlmError> {
-        self.run(req, Capability::Complete, |p| p.complete(req), end_payload)
-            .await
+        let cap = Capability::Complete;
+        self.run(
+            req,
+            cap,
+            0,
+            |p| p.complete(req),
+            |r: &Response, start| self.ended(cap, r.clone(), &[], start),
+        )
+        .await
     }
 
     /// Fallback applies to opening the stream only; an error mid-stream
-    /// is the caller's.
+    /// is the caller's. A stream publishes no `kit.ai.response.received`.
     pub async fn stream(&self, req: &Request) -> Result<Box<dyn TokenStream>, LlmError> {
-        self.run(req, Capability::Stream, |p| p.stream(req), |_, _| None)
+        self.run(req, Capability::Stream, 0, |p| p.stream(req), |_, _| {})
             .await
     }
 
@@ -237,18 +317,21 @@ impl Client {
         req: &Request,
         tools: &[ToolDef],
     ) -> Result<ToolResponse, LlmError> {
+        let cap = Capability::ToolCall;
         self.run(
             req,
-            Capability::ToolCall,
+            cap,
+            tools.len(),
             |p| p.call_with_tools(req, tools),
             |r: &ToolResponse, start| {
-                end_payload(
-                    &Response {
-                        content: r.content.clone(),
-                        ..Response::default()
-                    },
-                    start,
-                )
+                let resp = Response {
+                    content: r.content.clone(),
+                    role: Role::Assistant,
+                    usage: r.usage,
+                    finish_reason: r.finish_reason.clone(),
+                    thinking: r.thinking.clone(),
+                };
+                self.ended(cap, resp, &r.tool_calls, start)
             },
         )
         .await
@@ -262,8 +345,9 @@ impl Client {
         self.run(
             req,
             Capability::StreamTools,
+            tools.len(),
             |p| p.stream_with_tools(req, tools),
-            |_, _| None,
+            |_, _| {},
         )
         .await
     }
@@ -278,9 +362,8 @@ fn event(topic: &str, payload: Value) -> Event {
     return Event::new_at(topic, SOURCE, payload, std::time::UNIX_EPOCH);
 }
 
-fn end_payload(resp: &Response, start: Start) -> Option<Value> {
-    Some(json!({
-        "response": resp,
-        "duration_ms": start.map_or(0, |s| s.elapsed().as_millis() as u64),
-    }))
+/// A payload as JSON. Payloads hold strings, numbers and maps with
+/// string keys only, so this cannot fail.
+fn to_value(p: &impl serde::Serialize) -> Value {
+    serde_json::to_value(p).expect("payload serializes")
 }
