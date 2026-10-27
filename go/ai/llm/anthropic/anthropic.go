@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 
@@ -26,20 +27,26 @@ const (
 	defaultMaxTokens = 1024
 	scheme           = "anthropic"
 	defaultBaseURL   = "https://api.anthropic.com"
+	// minThinkingBudget is the API's least thinking budget.
+	minThinkingBudget = 1024
 )
 
 // Adapter wraps an anthropic-sdk-go client.
 type Adapter struct {
 	client anthropic.Client
 	model  string
+	// secrets are the credential values sent; scrub removes them from
+	// every error message.
+	secrets []string
 }
 
 // compile-time interface checks
 var (
-	_ llm.Provider   = (*Adapter)(nil)
-	_ llm.Completer  = (*Adapter)(nil)
-	_ llm.Streamer   = (*Adapter)(nil)
-	_ llm.ToolCaller = (*Adapter)(nil)
+	_ llm.Provider     = (*Adapter)(nil)
+	_ llm.Completer    = (*Adapter)(nil)
+	_ llm.Streamer     = (*Adapter)(nil)
+	_ llm.ToolCaller   = (*Adapter)(nil)
+	_ llm.ToolStreamer = (*Adapter)(nil)
 )
 
 // New creates an Adapter from a resolved config.
@@ -55,9 +62,17 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	// ANTHROPIC_WORKSPACE_ID keep their fallback role; the workspace ID
 	// is what keys not scoped to a workspace must send. A blank key or
 	// token is no credential: the key is required, the token not sent.
+	lim, err := limitsFrom(cfg.Provider.Params)
+	if err != nil {
+		return nil, err
+	}
 	opts := []option.RequestOption{
 		option.WithoutEnvironmentDefaults(),
 		option.WithMiddleware(boundRetryAfter),
+		option.WithMiddleware(lim.middleware),
+		// Redirects are not followed: a credential never moves to a
+		// host the server names.
+		option.WithHTTPClient(&http.Client{CheckRedirect: refuseRedirect}),
 	}
 	envBase := os.Getenv("ANTHROPIC_BASE_URL")
 	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok {
@@ -86,8 +101,9 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	opts = append(opts, creds...)
 
 	return &Adapter{
-		client: anthropic.NewClient(opts...),
-		model:  cfg.Provider.Model,
+		client:  anthropic.NewClient(opts...),
+		model:   cfg.Provider.Model,
+		secrets: secretsOf(cfg.Provider.APIKey, os.Getenv("ANTHROPIC_AUTH_TOKEN")),
 	}, nil
 }
 
@@ -138,7 +154,7 @@ func (a *Adapter) Complete(
 	}
 	msg, err := a.client.Messages.New(ctx, params)
 	if err != nil {
-		return llm.Response{}, mapError(err, a.effectiveModel(req))
+		return llm.Response{}, a.mapError(err, a.effectiveModel(req))
 	}
 	return responseFromMessage(msg), nil
 }
@@ -151,13 +167,32 @@ func (a *Adapter) Stream(
 	if err != nil {
 		return nil, err
 	}
+	return a.openStream(ctx, params, req)
+}
+
+func (a *Adapter) openStream(ctx context.Context, params anthropic.MessageNewParams, req llm.Request) (*streamIter, error) {
 	stream := a.client.Messages.NewStreaming(ctx, params)
 	// The SDK returns a stream immediately; check for init error.
 	if err := stream.Err(); err != nil {
 		_ = stream.Close()
-		return nil, mapError(err, a.effectiveModel(req))
+		return nil, a.mapError(err, a.effectiveModel(req))
 	}
-	return &streamIter{stream: stream}, nil
+	return &streamIter{stream: stream, a: a, model: a.effectiveModel(req), thinking: req.Thinking != nil}, nil
+}
+
+// StreamWithTools streams a tool-use request: text deltas as tokens,
+// then the calls, stop reason and usage from Outcome.
+func (a *Adapter) StreamWithTools(
+	ctx context.Context, req llm.Request, tools []llm.ToolDef,
+) (llm.ToolStream, error) {
+	params, err := a.buildParams(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if params.Tools, err = mapTools(tools); err != nil {
+		return nil, err
+	}
+	return a.openStream(ctx, params, req)
 }
 
 // CallWithTools sends a tool-use request and maps the response back
@@ -169,10 +204,12 @@ func (a *Adapter) CallWithTools(
 	if err != nil {
 		return llm.ToolResponse{}, err
 	}
-	params.Tools = mapTools(tools)
+	if params.Tools, err = mapTools(tools); err != nil {
+		return llm.ToolResponse{}, err
+	}
 	msg, err := a.client.Messages.New(ctx, params)
 	if err != nil {
-		return llm.ToolResponse{}, mapError(err, a.effectiveModel(req))
+		return llm.ToolResponse{}, a.mapError(err, a.effectiveModel(req))
 	}
 	return toolResponseFromMessage(msg), nil
 }
@@ -194,7 +231,7 @@ func (a *Adapter) buildParams(
 		maxTokens = defaultMaxTokens
 	}
 
-	system, msgs, err := extractSystem(ctx, req.Messages)
+	system, systemCC, msgs, err := extractSystem(ctx, req.Messages)
 	if err != nil {
 		return anthropic.MessageNewParams{}, err
 	}
@@ -206,9 +243,27 @@ func (a *Adapter) buildParams(
 	}
 
 	if system != "" {
-		p.System = []anthropic.TextBlockParam{
-			{Text: system},
+		sp := anthropic.TextBlockParam{Text: system}
+		cc, ok, err := cacheParam(systemCC)
+		if err != nil {
+			return anthropic.MessageNewParams{}, err
 		}
+		if ok {
+			sp.CacheControl = cc
+		}
+		p.System = []anthropic.TextBlockParam{sp}
+	}
+
+	if t := req.Thinking; t != nil {
+		if t.BudgetTokens < minThinkingBudget {
+			return anthropic.MessageNewParams{}, fmt.Errorf(
+				"anthropic: thinking budget_tokens must be at least %d, got %d", minThinkingBudget, t.BudgetTokens)
+		}
+		if int64(t.BudgetTokens) >= maxTokens {
+			return anthropic.MessageNewParams{}, fmt.Errorf(
+				"anthropic: thinking budget_tokens (%d) must be less than max_tokens (%d)", t.BudgetTokens, maxTokens)
+		}
+		p.Thinking = anthropic.ThinkingConfigParamOfEnabled(int64(t.BudgetTokens))
 	}
 
 	if req.Temperature != nil {
@@ -222,28 +277,32 @@ func (a *Adapter) buildParams(
 	return p, nil
 }
 
-// extractSystem separates any leading system message from the
-// conversation. Anthropic requires system as a top-level field.
+// extractSystem separates any system message from the conversation
+// (the last one wins). Anthropic requires system as a top-level field.
 func extractSystem(
 	ctx context.Context, msgs []llm.Message,
-) (string, []anthropic.MessageParam, error) {
+) (string, *llm.CacheControl, []anthropic.MessageParam, error) {
 	var system string
+	var systemCC *llm.CacheControl
 	out := make([]anthropic.MessageParam, 0, len(msgs))
 
 	for i, m := range msgs {
 		if m.Role == "system" {
-			system = m.Content
+			system, systemCC = m.Content, m.CacheControl
 			continue
 		}
 
 		if err := checkLinkageRole(m); err != nil {
-			return "", nil, err
+			return "", nil, nil, err
 		}
 
 		if m.Role == "tool" {
 			block, err := toolResultBlock(m)
 			if err != nil {
-				return "", nil, err
+				return "", nil, nil, err
+			}
+			if err := setCache(&block, m.CacheControl); err != nil {
+				return "", nil, nil, err
 			}
 			// Consecutive results answer one assistant turn and belong
 			// in a single user message.
@@ -259,48 +318,77 @@ func extractSystem(
 			continue
 		}
 
-		if len(m.ToolCalls) > 0 {
-			var blocks []anthropic.ContentBlockParamUnion
-			var err error
-			if len(m.Parts) > 0 {
-				blocks, err = mapAnthropicParts(ctx, m.Parts)
-				if err != nil {
-					return "", nil, err
-				}
-			} else if m.Content != "" {
-				blocks = append(blocks, anthropic.NewTextBlock(m.Content))
-			}
-			uses, err := toolUseBlocks(m.ToolCalls)
+		var blocks []anthropic.ContentBlockParamUnion
+		var err error
+		switch {
+		case len(m.Parts) > 0:
+			blocks, err = mapAnthropicParts(ctx, m.Parts)
 			if err != nil {
-				return "", nil, err
+				return "", nil, nil, err
 			}
-			out = append(out, anthropic.MessageParam{
-				Role:    anthropic.MessageParamRoleAssistant,
-				Content: append(blocks, uses...),
-			})
-			continue
+		case len(m.ToolCalls) == 0 || m.Content != "":
+			blocks = append(blocks, anthropic.NewTextBlock(m.Content))
 		}
-
-		if len(m.Parts) == 0 {
-			out = append(out, anthropic.MessageParam{
-				Role:    anthropic.MessageParamRole(m.Role),
-				Content: []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(m.Content)},
-			})
-			continue
-		}
-
-		// Multimodal path.
-		blocks, err := mapAnthropicParts(ctx, m.Parts)
+		uses, err := toolUseBlocks(m.ToolCalls)
 		if err != nil {
-			return "", nil, err
+			return "", nil, nil, err
 		}
+		blocks = append(blocks, uses...)
+		if len(blocks) > 0 {
+			if err := setCache(&blocks[len(blocks)-1], m.CacheControl); err != nil {
+				return "", nil, nil, err
+			}
+		}
+		// Thinking blocks lead the turn, unchanged and in order.
+		blocks = append(replayThinking(m.Thinking), blocks...)
 		out = append(out, anthropic.MessageParam{
 			Role:    anthropic.MessageParamRole(m.Role),
 			Content: blocks,
 		})
 	}
 
-	return system, out, nil
+	return system, systemCC, out, nil
+}
+
+// replayThinking maps thinking blocks back to request blocks.
+func replayThinking(tbs []llm.ThinkingBlock) []anthropic.ContentBlockParamUnion {
+	out := make([]anthropic.ContentBlockParamUnion, 0, len(tbs))
+	for _, tb := range tbs {
+		if tb.Redacted != "" {
+			out = append(out, anthropic.NewRedactedThinkingBlock(tb.Redacted))
+			continue
+		}
+		out = append(out, anthropic.NewThinkingBlock(tb.Signature, tb.Thinking))
+	}
+	return out
+}
+
+// cacheParam maps a breakpoint; ok is false for none.
+func cacheParam(cc *llm.CacheControl) (anthropic.CacheControlEphemeralParam, bool, error) {
+	if cc == nil {
+		return anthropic.CacheControlEphemeralParam{}, false, nil
+	}
+	p := anthropic.NewCacheControlEphemeralParam()
+	switch cc.TTL {
+	case "":
+	case "5m", "1h":
+		p.TTL = anthropic.CacheControlEphemeralTTL(cc.TTL)
+	default:
+		return p, false, fmt.Errorf("anthropic: cache_control ttl must be \"5m\" or \"1h\", got %q", cc.TTL)
+	}
+	return p, true, nil
+}
+
+// setCache puts cc on block, when block can carry one.
+func setCache(block *anthropic.ContentBlockParamUnion, cc *llm.CacheControl) error {
+	p, ok, err := cacheParam(cc)
+	if err != nil || !ok {
+		return err
+	}
+	if dst := block.GetCacheControl(); dst != nil {
+		*dst = p
+	}
+	return nil
 }
 
 // checkLinkageRole rejects tool-call linkage on a role that cannot carry
@@ -308,6 +396,9 @@ func extractSystem(
 func checkLinkageRole(m llm.Message) error {
 	if len(m.ToolCalls) > 0 && m.Role != "assistant" {
 		return fmt.Errorf("anthropic: ToolCalls are valid only on role assistant, got %q", m.Role)
+	}
+	if len(m.Thinking) > 0 && m.Role != "assistant" {
+		return fmt.Errorf("anthropic: Thinking is valid only on role assistant, got %q", m.Role)
 	}
 	if m.ToolCallID != "" && m.Role != "tool" {
 		return fmt.Errorf("anthropic: ToolCallID is valid only on role tool, got %q", m.Role)
@@ -413,22 +504,30 @@ func anthropicReadBase64(ctx context.Context, src llm.MediaSource) (string, erro
 }
 
 // mapTools converts llm.ToolDef slice to Anthropic tool params.
-func mapTools(defs []llm.ToolDef) []anthropic.ToolUnionParam {
+func mapTools(defs []llm.ToolDef) ([]anthropic.ToolUnionParam, error) {
 	out := make([]anthropic.ToolUnionParam, 0, len(defs))
 	for _, d := range defs {
+		// The API requires input_schema: a tool without parameters, or
+		// with ones that do not decode, takes an empty object schema.
 		var schema anthropic.ToolInputSchemaParam
-		if len(d.Parameters) > 0 {
-			_ = json.Unmarshal(d.Parameters, &schema)
+		if len(d.Parameters) == 0 || json.Unmarshal(d.Parameters, &schema) != nil {
+			schema = anthropic.ToolInputSchemaParam{Properties: map[string]any{}}
 		}
-		out = append(out, anthropic.ToolUnionParam{
-			OfTool: &anthropic.ToolParam{
-				Name:        d.Name,
-				Description: param.NewOpt(d.Description),
-				InputSchema: schema,
-			},
-		})
+		tp := &anthropic.ToolParam{
+			Name:        d.Name,
+			Description: param.NewOpt(d.Description),
+			InputSchema: schema,
+		}
+		cc, ok, err := cacheParam(d.CacheControl)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			tp.CacheControl = cc
+		}
+		out = append(out, anthropic.ToolUnionParam{OfTool: tp})
 	}
-	return out
+	return out, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -446,12 +545,20 @@ func responseFromMessage(msg *anthropic.Message) llm.Response {
 		Content:      text,
 		Role:         "assistant",
 		FinishReason: string(msg.StopReason),
-		Usage: llm.Usage{
-			PromptTokens:     int(msg.Usage.InputTokens),
-			CompletionTokens: int(msg.Usage.OutputTokens),
-			TotalTokens:      int(msg.Usage.InputTokens + msg.Usage.OutputTokens),
-		},
+		Usage:        usageOf(msg.Usage),
+		Thinking:     thinkingBlocks(msg),
 	}
+}
+
+func usageOf(u anthropic.Usage) llm.Usage {
+	out := llm.Usage{
+		PromptTokens:        int(u.InputTokens),
+		CompletionTokens:    int(u.OutputTokens),
+		CacheReadTokens:     int(u.CacheReadInputTokens),
+		CacheCreationTokens: int(u.CacheCreationInputTokens),
+	}
+	out.TotalTokens = out.PromptTokens + out.CompletionTokens + out.CacheReadTokens + out.CacheCreationTokens
+	return out
 }
 
 func toolResponseFromMessage(msg *anthropic.Message) llm.ToolResponse {
@@ -472,8 +579,11 @@ func toolResponseFromMessage(msg *anthropic.Message) llm.ToolResponse {
 	}
 
 	return llm.ToolResponse{
-		Content:   text,
-		ToolCalls: calls,
+		Content:      text,
+		ToolCalls:    calls,
+		Thinking:     thinkingBlocks(msg),
+		FinishReason: string(msg.StopReason),
+		Usage:        usageOf(msg.Usage),
 	}
 }
 
@@ -483,7 +593,22 @@ func toolResponseFromMessage(msg *anthropic.Message) llm.ToolResponse {
 
 type streamIter struct {
 	stream *ssestream.Stream[anthropic.MessageStreamEventUnion]
+	a      *Adapter
+	model  string
 	done   bool
+	// thinking streams thinking deltas as tokens.
+	thinking bool
+	// msg folds every event, as the SDK's Message.Accumulate does.
+	msg     anthropic.Message
+	outcome *llm.StreamOutcome
+}
+
+// Outcome is the finished turn, once Next returned Done.
+func (s *streamIter) Outcome() (llm.StreamOutcome, bool) {
+	if s.outcome == nil {
+		return llm.StreamOutcome{}, false
+	}
+	return *s.outcome, true
 }
 
 func (s *streamIter) Next() (llm.Token, error) {
@@ -494,18 +619,28 @@ func (s *streamIter) Next() (llm.Token, error) {
 		if !s.stream.Next() {
 			s.done = true
 			if err := s.stream.Err(); err != nil {
-				return llm.Token{}, mapError(err, "")
+				return llm.Token{}, s.a.mapError(err, s.model)
 			}
-			return llm.Token{Done: true}, nil
+			// No message_stop: the response is incomplete.
+			return llm.Token{}, llmerrors.NewStreamTruncated(scheme)
 		}
 		evt := s.stream.Current()
+		if err := s.msg.Accumulate(evt); err != nil {
+			s.done = true
+			return llm.Token{}, fmt.Errorf("anthropic: %w", err)
+		}
 		switch evt.Type {
 		case "content_block_delta":
-			if evt.Delta.Type == "text_delta" {
+			switch {
+			case evt.Delta.Type == "text_delta":
 				return llm.Token{Content: evt.Delta.Text}, nil
+			case evt.Delta.Type == "thinking_delta" && s.thinking:
+				return llm.Token{Thinking: evt.Delta.Thinking}, nil
 			}
 		case "message_stop":
 			s.done = true
+			out := outcomeFromMessage(&s.msg)
+			s.outcome = &out
 			return llm.Token{Done: true}, nil
 		}
 		// skip other event types
@@ -528,6 +663,14 @@ func mapError(err error, model string) error {
 		return err
 	}
 	redactRequestURL(apiErr.Request)
+
+	// An SSE error event arrives on a 200 response: classify it by the
+	// status its error type stands for (overloaded_error is a 529).
+	if apiErr.StatusCode < 400 {
+		if st, ok := eventStatus[string(apiErr.Type())]; ok {
+			apiErr.StatusCode = st
+		}
+	}
 
 	switch apiErr.StatusCode {
 	case 401, 403:
@@ -552,4 +695,59 @@ func mapError(err error, model string) error {
 
 func init() {
 	llm.Register(scheme, New, llm.Declaration{Endpoints: []string{defaultBaseURL}})
+}
+
+// eventStatus maps an API error type to the status it stands for.
+var eventStatus = map[string]int{
+	"invalid_request_error": 400,
+	"authentication_error":  401,
+	"billing_error":         402,
+	"permission_error":      403,
+	"not_found_error":       404,
+	"request_too_large":     413,
+	"rate_limit_error":      429,
+	"api_error":             500,
+	"timeout_error":         504,
+	"overloaded_error":      529,
+}
+
+// mapError is [mapError] with every credential value scrubbed from the
+// message: a response body echoing the key never surfaces it.
+func (a *Adapter) mapError(err error, model string) error {
+	return scrub(mapError(err, model), a.secrets)
+}
+
+// refuseRedirect stops the client at a redirect: the 3xx comes back as
+// an [llmerrors.HTTPStatusError], not followed.
+func refuseRedirect(req *http.Request, _ []*http.Request) error {
+	code := 0
+	if req.Response != nil {
+		code = req.Response.StatusCode
+	}
+	return llmerrors.NewHTTPStatusError(code, "anthropic: redirect not followed")
+}
+
+// thinkingBlocks returns msg's thinking and redacted thinking blocks.
+func thinkingBlocks(msg *anthropic.Message) []llm.ThinkingBlock {
+	var out []llm.ThinkingBlock
+	for _, b := range msg.Content {
+		switch b.Type {
+		case "thinking":
+			out = append(out, llm.ThinkingBlock{Thinking: b.Thinking, Signature: b.Signature})
+		case "redacted_thinking":
+			out = append(out, llm.ThinkingBlock{Redacted: b.Data})
+		}
+	}
+	return out
+}
+
+func outcomeFromMessage(msg *anthropic.Message) llm.StreamOutcome {
+	tr := toolResponseFromMessage(msg)
+	return llm.StreamOutcome{
+		Content:      tr.Content,
+		Thinking:     thinkingBlocks(msg),
+		ToolCalls:    tr.ToolCalls,
+		FinishReason: string(msg.StopReason),
+		Usage:        usageOf(msg.Usage),
+	}
 }

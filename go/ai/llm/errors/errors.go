@@ -289,6 +289,40 @@ func NewThresholdInvalid(threshold float64) error {
 	return &ErrThresholdInvalid{Threshold: threshold}
 }
 
+// ErrStreamTruncated indicates a stream ended before the provider's
+// terminal event: the response is incomplete, never a success.
+// NOT fallbackable: tokens may already have been consumed.
+type ErrStreamTruncated struct {
+	Provider string
+}
+
+func (e *ErrStreamTruncated) Error() string {
+	return fmt.Sprintf("stream truncated (provider %q): ended before its final event", e.Provider)
+}
+
+// NewStreamTruncated creates an [ErrStreamTruncated].
+func NewStreamTruncated(provider string) error {
+	return &ErrStreamTruncated{Provider: provider}
+}
+
+// ErrResponseTooLarge indicates a response body, or one streamed event,
+// exceeded the configured size limit. NOT fallbackable.
+type ErrResponseTooLarge struct {
+	Provider string
+	Limit    int64
+	// What is the part that overran: "body" or "event".
+	What string
+}
+
+func (e *ErrResponseTooLarge) Error() string {
+	return fmt.Sprintf("response %s exceeds %d bytes (provider %q)", e.What, e.Limit, e.Provider)
+}
+
+// NewResponseTooLarge creates an [ErrResponseTooLarge].
+func NewResponseTooLarge(provider, what string, limit int64) error {
+	return &ErrResponseTooLarge{Provider: provider, What: what, Limit: limit}
+}
+
 // IsFallbackable returns true when the error should trigger fallback
 // to the next provider. Network errors, rate limits, and 5xx responses
 // are fallbackable. Auth errors, model errors, capability errors, and

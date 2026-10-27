@@ -381,6 +381,13 @@ jobs:
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features consent --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
+      # The llm core (types, URIs, keys, registry, client) is
+      # runtime-free; only the anthropic adapter is native.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features llm
+      - name: clippy (wasm32, llm core)
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features llm --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
       - name: netpolicy pulls no reqwest or tokio
         run: |
           tree=$(cargo tree --locked -e normal --no-default-features --features netpolicy)
@@ -494,6 +501,8 @@ jobs:
       # features each crate feature declares.
       - run: cargo check --locked --lib --no-default-features --features serve
       - run: cargo check --locked --lib --no-default-features --features telemetry
+      # llm-anthropic declares only tokio's timer; the retry wait needs it.
+      - run: cargo check --locked --lib --no-default-features --features llm-anthropic
       # mcp without output: serde_json keeps sorted maps.
       - run: cargo test --locked --no-default-features --features mcp
 

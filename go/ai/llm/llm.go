@@ -59,6 +59,41 @@ type ToolCaller interface {
 	CallWithTools(ctx context.Context, req Request, tools []ToolDef) (ToolResponse, error)
 }
 
+// ToolStreamer streams a tool-calling completion: text deltas as tokens,
+// then the whole turn (tool calls, stop reason, usage) from
+// [ToolStream.Outcome].
+type ToolStreamer interface {
+	StreamWithTools(ctx context.Context, req Request, tools []ToolDef) (ToolStream, error)
+}
+
+// ToolStream is a [TokenIterator] whose finished turn can be read back.
+// Outcome reports ok only once the final token (Done) was returned;
+// after an error it stays false.
+type ToolStream interface {
+	TokenIterator
+	Outcome() (StreamOutcome, bool)
+}
+
+// StreamOutcome is what a finished stream folded into.
+type StreamOutcome struct {
+	Content string
+	// Thinking holds the turn's thinking blocks in order; replay them
+	// on the assistant message, unchanged, in a follow-up turn.
+	Thinking     []ThinkingBlock
+	ToolCalls    []ToolCall
+	FinishReason string
+	Usage        Usage
+}
+
+// ThinkingBlock is one block of a model's extended thinking. Signature
+// verifies Thinking; a redacted block carries only Redacted, the
+// provider's opaque data. Pass blocks back exactly as received.
+type ThinkingBlock struct {
+	Thinking  string
+	Signature string
+	Redacted  string
+}
+
 // ---------------------------------------------------------------------------
 // Data types
 // ---------------------------------------------------------------------------
@@ -114,6 +149,28 @@ type Message struct {
 	ToolCalls []ToolCall
 	// ToolCallID links a role "tool" result to the ToolCall it answers.
 	ToolCallID string
+
+	// Thinking replays an assistant turn's thinking blocks, exactly as
+	// the provider returned them (in [Response.Thinking],
+	// [ToolResponse.Thinking] or [StreamOutcome.Thinking]). Required
+	// with tool use when thinking is enabled. Assistant only.
+	Thinking []ThinkingBlock
+
+	// CacheControl marks a prompt-cache breakpoint after this message:
+	// on a system message its text, otherwise its last content block.
+	CacheControl *CacheControl
+}
+
+// CacheControl is a prompt-cache breakpoint. TTL is "" (the provider
+// default, five minutes on Anthropic), "5m" or "1h".
+type CacheControl struct {
+	TTL string
+}
+
+// ThinkingConfig enables extended thinking with a token budget, which
+// must be below the request's max tokens.
+type ThinkingConfig struct {
+	BudgetTokens int
 }
 
 // Request carries all parameters for a completion call.
@@ -131,6 +188,9 @@ type Request struct {
 	MaxTokens     int
 	StopSequences []string
 	Extensions    map[string]any
+	// Thinking, when set, enables extended thinking; thinking deltas
+	// then stream as [Token.Thinking].
+	Thinking *ThinkingConfig
 }
 
 // Response is the result of a completion call.
@@ -141,19 +201,42 @@ type Response struct {
 	FinishReason string
 	// OutputParts holds non-text results from hooks or multimodal responses.
 	OutputParts []ContentPart
+	// Thinking holds the turn's thinking blocks, to replay unchanged.
+	Thinking []ThinkingBlock
 }
 
 // Usage reports token consumption.
 type Usage struct {
 	PromptTokens     int
 	CompletionTokens int
-	TotalTokens      int
+	// CacheReadTokens and CacheCreationTokens are input tokens read
+	// from or written to the prompt cache, apart from PromptTokens.
+	CacheReadTokens     int
+	CacheCreationTokens int
+	// TotalTokens is every input and output token, cache ones included.
+	TotalTokens int
+}
+
+// Price is a model's rate per million tokens, by kind.
+type Price struct {
+	Input, Output, CacheRead, CacheWrite float64
+}
+
+// Cost is u's cost at p, cache reads and writes at their own rates.
+func (u Usage) Cost(p Price) float64 {
+	return (float64(u.PromptTokens)*p.Input +
+		float64(u.CompletionTokens)*p.Output +
+		float64(u.CacheReadTokens)*p.CacheRead +
+		float64(u.CacheCreationTokens)*p.CacheWrite) / 1e6
 }
 
 // Token is a single streaming chunk.
 type Token struct {
 	Content string
-	Done    bool
+	// Thinking is a thinking delta, sent only when the request enabled
+	// [Request.Thinking]; Content is then empty.
+	Thinking string
+	Done     bool
 }
 
 // TokenIterator yields streaming tokens.
@@ -172,6 +255,8 @@ type ToolDef struct {
 	Name        string
 	Description string
 	Parameters  json.RawMessage
+	// CacheControl marks a prompt-cache breakpoint after this tool.
+	CacheControl *CacheControl
 }
 
 // ToolCall is a single tool invocation returned by the model.
@@ -207,6 +292,10 @@ type ProviderData map[string]json.RawMessage
 type ToolResponse struct {
 	Content   string
 	ToolCalls []ToolCall
+	// Thinking holds the turn's thinking blocks, to replay unchanged.
+	Thinking     []ThinkingBlock
+	FinishReason string
+	Usage        Usage
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +501,9 @@ func (c *Client) Capabilities() []string {
 	if _, ok := c.primary.(ToolCaller); ok {
 		caps = append(caps, "tool_call")
 	}
+	if _, ok := c.primary.(ToolStreamer); ok {
+		caps = append(caps, "stream_tools")
+	}
 	if _, ok := c.primary.(ImageGenerator); ok {
 		caps = append(caps, "image_gen")
 	}
@@ -595,4 +687,38 @@ func (c *Client) CallWithTools(
 	exhausted := llmerrors.NewFallbackExhausted(errs)
 	c.publish(ctx, c.cfg.topics.RequestError, RequestErrorPayload{Err: exhausted, ErrMessage: exhausted.Error()})
 	return ToolResponse{}, exhausted
+}
+
+// StreamWithTools delegates to the adapter's [ToolStreamer]. Fallback
+// applies to opening the stream only, as for [Client.Stream].
+func (c *Client) StreamWithTools(ctx context.Context, req Request, tools []ToolDef) (ToolStream, error) {
+	c.publish(ctx, c.cfg.topics.RequestStart, RequestStartPayload{Request: req})
+
+	chain := append([]Provider{c.primary}, c.cfg.fallbacks...)
+	var errs []error
+	for i, p := range chain {
+		ts, ok := p.(ToolStreamer)
+		if !ok {
+			errs = append(errs, llmerrors.NewCapabilityNotSupported("stream_tools", fmt.Sprintf("provider[%d]", i)))
+			continue
+		}
+		st, err := ts.StreamWithTools(ctx, req, tools)
+		if err == nil {
+			return st, nil
+		}
+		errs = append(errs, err)
+		if !llmerrors.IsFallbackable(err) {
+			c.publish(ctx, c.cfg.topics.RequestError, RequestErrorPayload{Err: err, ErrMessage: err.Error()})
+			return nil, err
+		}
+		if i < len(chain)-1 {
+			c.publish(ctx, c.cfg.topics.Fallback, FallbackPayload{From: i, To: i + 1, Err: err, ErrMessage: err.Error()})
+		}
+	}
+	if allCapabilityErrors(errs) {
+		return nil, errs[len(errs)-1]
+	}
+	exhausted := llmerrors.NewFallbackExhausted(errs)
+	c.publish(ctx, c.cfg.topics.RequestError, RequestErrorPayload{Err: exhausted, ErrMessage: exhausted.Error()})
+	return nil, exhausted
 }
