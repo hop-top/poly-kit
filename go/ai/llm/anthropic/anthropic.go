@@ -57,6 +57,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	// token is no credential: the key is required, the token not sent.
 	opts := []option.RequestOption{
 		option.WithoutEnvironmentDefaults(),
+		option.WithMiddleware(boundRetryAfter),
 	}
 	envBase := os.Getenv("ANTHROPIC_BASE_URL")
 	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok {

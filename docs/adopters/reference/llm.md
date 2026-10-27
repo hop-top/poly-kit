@@ -522,6 +522,10 @@ sends them only to loopback, the default endpoint, `ANTHROPIC_BASE_URL`,
 `llm.yaml` `base_url` or `LLM_BASE_URL`, and refuses the token over
 plain `http` to a remote host.
 
+The `anthropic` adapter honors a server's `Retry-After-Ms` or
+`Retry-After` only for a wait in (0, 60s]; any other value falls back
+to the SDK's backoff.
+
 ### Where a key came from
 
 `llm.ResolveAPIKey(ctx, store, uri)` runs the same resolution as
