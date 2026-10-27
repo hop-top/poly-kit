@@ -5,7 +5,8 @@
 use serde_json::Value;
 
 use crate::llm::{
-    BoxFuture, LlmError, StreamOutcome, ThinkingBlock, Token, TokenStream, ToolCall, Usage,
+    BoxFuture, LlmError, StreamOutcome, ThinkingBlock, Token, TokenStream, ToolCall, ToolNames,
+    Usage,
 };
 
 use super::http::map_event_error;
@@ -204,6 +205,8 @@ pub(crate) struct AnthropicStream {
     scrub: Scrub,
     /// Thinking deltas stream as tokens.
     thinking: bool,
+    /// Maps the outcome's tool names back to the caller's.
+    names: ToolNames,
 }
 
 /// Removes credential values from text bound for an error.
@@ -217,6 +220,7 @@ impl AnthropicStream {
         max_event: u64,
         scrub: Scrub,
         thinking: bool,
+        names: ToolNames,
     ) -> Self {
         AnthropicStream {
             resp,
@@ -228,12 +232,15 @@ impl AnthropicStream {
             transport,
             scrub,
             thinking,
+            names,
         }
     }
 
     fn done(&mut self) -> Result<Option<Token>, LlmError> {
         self.finished = true;
-        self.outcome = Some(self.acc.outcome());
+        let mut out = self.acc.outcome();
+        self.names.restore_calls(&mut out.tool_calls);
+        self.outcome = Some(out);
         Ok(Some(Token {
             done: true,
             ..Token::default()

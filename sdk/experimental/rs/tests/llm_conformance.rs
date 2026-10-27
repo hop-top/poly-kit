@@ -47,12 +47,68 @@ struct Corpus {
     #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
     anthropic_response: Vec<ResponseCase>,
     usage_cost: Vec<CostCase>,
-    // Tool-name validation and sanitizing: decoded so the strict corpus
-    // accepts the file; not run by this port yet (see tool_names_pending).
-    #[allow(dead_code)]
-    tool_names: Vec<Value>,
-    #[allow(dead_code)]
-    anthropic_tool_names: Vec<Value>,
+    tool_names: Vec<ToolNamesCase>,
+    #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+    anthropic_tool_names: Vec<AnthropicToolNamesCase>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ToolNameErr {
+    reason: String,
+    name: String,
+    other: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ToolNamesCase {
+    name: String,
+    rule: String,
+    #[serde(default)]
+    mode: String,
+    tools: Vec<String>,
+    #[serde(default)]
+    want: Vec<String>,
+    #[serde(default)]
+    calls: Vec<String>,
+    #[serde(default)]
+    want_calls: Vec<String>,
+    #[serde(default)]
+    error: Option<ToolNameErr>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NamedCall {
+    id: String,
+    name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+struct AnthropicToolNamesCase {
+    name: String,
+    call: String,
+    #[serde(default)]
+    params: BTreeMap<String, String>,
+    #[serde(default)]
+    messages: Option<Vec<ConfMessage>>,
+    #[serde(default)]
+    tools: Vec<String>,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    want_tools: Vec<String>,
+    #[serde(default)]
+    want_history: Vec<String>,
+    #[serde(default)]
+    want_calls: Vec<NamedCall>,
+    #[serde(default)]
+    error: Option<ToolNameErr>,
+    #[serde(default)]
+    refused: bool,
 }
 
 #[derive(Deserialize)]
@@ -404,19 +460,65 @@ fn redact_uri_vectors() {
     }
 }
 
-/// The tool_names and anthropic_tool_names sections are skipped: this
-/// port does not validate or sanitize tool names yet. Remove this test
-/// and run both sections once it does.
 #[test]
-fn tool_names_pending() {
+fn tool_names_vectors() {
+    use hop_top_kit::llm::{
+        LlmError, ToolDef, ToolNameMode, ToolNames, ANTHROPIC_TOOL_NAMES, GEMINI_TOOL_NAMES,
+        OPENAI_TOOL_NAMES,
+    };
     let c = load();
     assert!(!c.tool_names.is_empty());
-    assert!(!c.anthropic_tool_names.is_empty());
-    eprintln!(
-        "skipped: tool_names ({}) and anthropic_tool_names ({}): tool-name sanitizing not implemented in this port",
-        c.tool_names.len(),
-        c.anthropic_tool_names.len()
-    );
+    for v in &c.tool_names {
+        let rule = match v.rule.as_str() {
+            "anthropic" => ANTHROPIC_TOOL_NAMES,
+            "openai" => OPENAI_TOOL_NAMES,
+            "gemini" => GEMINI_TOOL_NAMES,
+            other => panic!("{}: unknown rule {other:?}", v.name),
+        };
+        let mode = match v.mode.as_str() {
+            "" | "sanitize" => ToolNameMode::Sanitize,
+            "strict" => ToolNameMode::Strict,
+            other => panic!("{}: unknown mode {other:?}", v.name),
+        };
+        let defs: Vec<ToolDef> = v.tools.iter().map(ToolDef::named).collect();
+        let res = ToolNames::new(rule, mode, &defs);
+        if let Some(want) = &v.error {
+            match res {
+                Err(LlmError::ToolName {
+                    provider,
+                    reason,
+                    name,
+                    other,
+                }) => {
+                    assert_eq!(reason.as_str(), want.reason, "{}", v.name);
+                    assert_eq!(name, want.name, "{}", v.name);
+                    assert_eq!(other, want.other, "{}", v.name);
+                    assert_eq!(provider, rule.provider, "{}", v.name);
+                }
+                Err(e) => panic!("{}: want a tool-name error, got {e:?}", v.name),
+                Ok(_) => panic!("{}: want a tool-name error, got none", v.name),
+            }
+            continue;
+        }
+        let names = res.unwrap_or_else(|e| panic!("{}: {e}", v.name));
+        let got: Vec<String> = v.tools.iter().map(|n| names.wire(n)).collect();
+        assert_eq!(got, v.want, "{}", v.name);
+        for w in &got {
+            assert!(rule.valid(w), "{}: wire name {w:?} invalid", v.name);
+        }
+        if mode == ToolNameMode::Sanitize {
+            for (n, want) in v.tools.iter().zip(&v.want) {
+                assert_eq!(
+                    &rule.sanitize(n).unwrap(),
+                    want,
+                    "{}: sanitize({n:?})",
+                    v.name
+                );
+            }
+        }
+        let back: Vec<&str> = v.calls.iter().map(|c| names.original(c)).collect();
+        assert_eq!(back, v.want_calls, "{}", v.name);
+    }
 }
 
 #[test]
@@ -1028,6 +1130,113 @@ mod anthropic {
                 assert_eq!(got.id, want.id, "{}", v.name);
                 let input: Value = serde_json::from_str(&got.arguments).unwrap();
                 assert_eq!(input, want.input, "{}", v.name);
+            }
+        }
+    }
+
+    /// The tool names and the history's tool_use names a request sent.
+    fn sent_tool_names(body: &Value) -> (Vec<String>, Vec<String>) {
+        let names = |v: &Value| v["name"].as_str().unwrap_or_default().to_string();
+        let tools = body["tools"].as_array().into_iter().flatten().map(names);
+        let history = body["messages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .flat_map(|m| m["content"].as_array().into_iter().flatten())
+            .filter(|c| c["type"] == "tool_use")
+            .map(names);
+        (tools.collect(), history.collect())
+    }
+
+    /// Read a stream to its done token; its outcome's calls.
+    async fn drain_calls(
+        mut s: Box<dyn hop_top_kit::llm::TokenStream>,
+    ) -> Result<Vec<ToolCall>, LlmError> {
+        while let Some(t) = s.next().await? {
+            if t.done {
+                break;
+            }
+        }
+        Ok(s.outcome().expect("outcome after done").tool_calls.clone())
+    }
+
+    #[tokio::test]
+    async fn tool_names_vectors() {
+        let c = load();
+        assert!(!c.anthropic_tool_names.is_empty());
+        for v in &c.anthropic_tool_names {
+            let streamed = v.call == "stream" || v.call == "stream_tools";
+            let canned = if streamed {
+                Canned::sse(&v.body)
+            } else {
+                Canned::json(200, &v.body)
+            };
+            let srv = serve(vec![canned]).await;
+            let mut rc = cfg(&srv.url, "m", "k");
+            rc.provider.params = v.params.clone();
+            let built = Adapter::builder(rc).env(|_| None).build();
+            if v.refused {
+                assert!(built.is_err(), "{}: not refused", v.name);
+                continue;
+            }
+            let a = built.unwrap_or_else(|e| panic!("{}: {e}", v.name));
+            let req = match &v.messages {
+                Some(msgs) => to_request(&ConfRequest {
+                    model: String::new(),
+                    temperature: None,
+                    max_tokens: 0,
+                    stop_sequences: Vec::new(),
+                    messages: msgs.clone(),
+                    thinking_budget: 0,
+                }),
+                None => hi(),
+            };
+            let defs: Vec<ToolDef> = v.tools.iter().map(ToolDef::named).collect();
+            let res = match v.call.as_str() {
+                "tools" => a.call_with_tools(&req, &defs).await.map(|r| r.tool_calls),
+                "stream_tools" => match a.stream_with_tools(&req, &defs).await {
+                    Ok(s) => drain_calls(s).await,
+                    Err(e) => Err(e),
+                },
+                "complete" => a.complete(&req).await.map(|_| Vec::new()),
+                "stream" => match a.stream(&req).await {
+                    Ok(s) => drain_calls(s).await.map(|_| Vec::new()),
+                    Err(e) => Err(e),
+                },
+                other => panic!("{}: unknown call {other:?}", v.name),
+            };
+            if let Some(want) = &v.error {
+                let e = res.expect_err(&v.name);
+                assert!(!e.is_fallbackable(), "{}", v.name);
+                match e {
+                    LlmError::ToolName {
+                        reason,
+                        name,
+                        other,
+                        ..
+                    } => {
+                        assert_eq!(reason.as_str(), want.reason, "{}", v.name);
+                        assert_eq!(name, want.name, "{}", v.name);
+                        assert_eq!(other, want.other, "{}", v.name);
+                    }
+                    e => panic!("{}: want a tool-name error, got {e:?}", v.name),
+                }
+                assert_eq!(
+                    srv.attempts(),
+                    0,
+                    "{}: a rejected request reaches no server",
+                    v.name
+                );
+                continue;
+            }
+            let calls = res.unwrap_or_else(|e| panic!("{}: {e}", v.name));
+            let (tools, history) = sent_tool_names(&srv.only().json());
+            assert_eq!(tools, v.want_tools, "{}", v.name);
+            assert_eq!(history, v.want_history, "{}", v.name);
+            assert_eq!(calls.len(), v.want_calls.len(), "{}", v.name);
+            for (got, want) in calls.iter().zip(&v.want_calls) {
+                assert_eq!(got.id, want.id, "{}", v.name);
+                assert_eq!(got.name, want.name, "{}", v.name);
             }
         }
     }
