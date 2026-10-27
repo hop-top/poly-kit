@@ -21,6 +21,7 @@ var streamConfFiles = map[string]bool{
 	"cursor.json":       true,
 	"inbound.json":      true,
 	"outbox.json":       true,
+	"acks.json":         true,
 	"event_frames.json": true,
 }
 

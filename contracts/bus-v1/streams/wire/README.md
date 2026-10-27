@@ -2,7 +2,7 @@
 
 ## What it answers
 
-Exact frame sequences between a dialer and a Go acceptor: the plain ack for legacy dialers, the extended ack with replay, a reset in the ack, and a subscribe round trip. Wrong place for pure rules; those are the JSON vectors one level up.
+Exact frame sequences between a dialer and a Go acceptor: the plain ack for legacy dialers, the extended ack with replay, a reset in the ack, a subscribe round trip, and pubacks on an acks link. Wrong place for pure rules; those are the JSON vectors one level up.
 
 ## Use it when
 

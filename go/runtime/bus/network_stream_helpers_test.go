@@ -214,7 +214,7 @@ func newHub(t *testing.T, opts ...NetworkOption) node {
 	n := NewNetworkAdapter(b, opts...)
 	srv := httptest.NewServer(n.Handler())
 	t.Cleanup(func() {
-		_ = n.Close()
+		closeBounded(t, n)
 		srv.Close()
 	})
 	return node{bus: b, n: n, url: "ws" + srv.URL[4:]}
@@ -224,8 +224,21 @@ func newClient(t *testing.T, opts ...NetworkOption) node {
 	t.Helper()
 	b := New()
 	n := NewNetworkAdapter(b, opts...)
-	t.Cleanup(func() { _ = n.Close() })
+	t.Cleanup(func() { closeBounded(t, n) })
 	return node{bus: b, n: n}
+}
+
+// closeBounded closes n in cleanup, failing (not hanging) when Close is
+// stuck, for instance behind a handler that never returns.
+func closeBounded(t *testing.T, n *NetworkAdapter) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() { _ = n.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(failAfter):
+		t.Error("adapter Close hung")
+	}
 }
 
 func connect(t *testing.T, c node, url string) {

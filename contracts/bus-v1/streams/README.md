@@ -2,7 +2,7 @@
 
 ## What it answers
 
-What every kit SDK must accept, reject, decide and emit for bus network streams: the handshake with capability advertisement, control frames and their error codes, subscription state, the per-link delivery predicate, the acceptor's resume decision, the dialer's cursor rules, the bounded inbound queue, the outbox, and offsets on event frames. The design is [bus network streams](../../../docs/contributors/architecture/bus-streams.md). Wrong place for CloudEvents codec rules (`../cloudevents`) and topic grammar (`..`).
+What every kit SDK must accept, reject, decide and emit for bus network streams: the handshake with capability advertisement, control frames and their error codes, subscription state, the per-link delivery predicate, the acceptor's resume decision, the dialer's cursor rules, the bounded inbound queue, the outbox, offsets on event frames, and acknowledged publishes. The design is [bus network streams](../../../docs/contributors/architecture/bus-streams.md). Wrong place for CloudEvents codec rules (`../cloudevents`) and topic grammar (`..`).
 
 ## Use it when
 
@@ -31,6 +31,7 @@ Go is canonical; a runner failure means the implementation drifted. Every file c
 | `inbound.json` | bounded inbound queue: overflow closes and resumes after the last delivered offset |
 | `outbox.json` | ordered flush and drop-oldest counting over the send log |
 | `event_frames.json` | `offset` / `kitoffset` on event frames: encode, strip, validate on stream links |
+| `acks.json` | acknowledged publishes: `caps.acks` and the dialer's stream id in the auth frame, negotiation, the `puback` frame, the dialer's ack tracking (cumulative pubacks, rewind on reconnect, unsupported, evicted) |
 | `wire/*.jsonl` | transcripts replayed against a Go acceptor over a real WebSocket |
 
 Conventions:

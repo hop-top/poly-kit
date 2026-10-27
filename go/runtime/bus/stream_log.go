@@ -23,6 +23,8 @@ type LogEntry struct {
 	// local events): never sent back on it. An id, not the link, so the
 	// log does not keep closed links reachable.
 	via uint64
+	// ticket follows an acknowledged publish; nil otherwise.
+	ticket *ackTicket
 }
 
 // StreamLog stores the recent part of an adapter's stream. Offsets are

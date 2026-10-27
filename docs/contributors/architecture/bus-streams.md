@@ -7,7 +7,8 @@ advertise it.
 Defines stream semantics for the bus `NetworkAdapter`
 ([`go/runtime/bus`](../../../go/runtime/bus/README.md)): capability
 advertisement, link liveness and link state, remote subscribe, resume
-from an offset, the gap signal, and an offline outbox. Go is canonical.
+from an offset, the gap signal, an offline outbox, and acknowledged
+publishes from a dialer to an acceptor. Go is canonical.
 This page and the vectors under `contracts/bus-v1/streams/` are the
 cross-SDK contract.
 
@@ -49,16 +50,20 @@ Goals:
   within one stream; an explicit gap signal whenever that breaks
 - frame format chosen per link from what the peer advertises
 - a core that is pure and clock-free: classification, cursor rules,
-  resume decision, filters, offsets and outbox are functions a port can
-  test without sockets or timers
+  resume decision, filters, offsets, outbox and ack tracking are
+  functions a port can test without sockets or timers
+- acknowledged publishes from a dialer to an acceptor, negotiated per
+  link (`caps.acks`), so a publisher can count a peer's handling as
+  delivery (section 13)
 
 Non-goals for streams v1:
 
 - a durable log ships later; v1 defines the log seam and ships a ring
-- exactly-once delivery end to end
-- acknowledged publishes from a dialer to an acceptor (a frame that was
-  written but lost in transit is not resent; writes that matter go
-  through an application's own idempotent request path)
+- exactly-once delivery end to end: acknowledged publishes are at least
+  once, deduplicated by the acceptor while it runs (section 13)
+- acknowledged publishes from an acceptor to its dialers: the `puback`
+  frame is direction-agnostic, but v1 negotiates it dialer to acceptor
+  only
 - a relay subscribing upstream on behalf of its downstream peers
 - per-tenant policy: kit provides scope, a per-link filter and an
   authorization hook; the hub decides
@@ -205,6 +210,8 @@ then a close with 1008 (`invalid session`):
 | `stream.heartbeat_ms` | acceptor's heartbeat interval in 1 000..86 400 000 (one second to one day), see 4.1 |
 | `session` | dialer's initial subscription, scope and resume request, applied atomically before the link is registered, so no event slips between ack and replay |
 | `session.resume` (ack) | outcome, see 3.3; absent when the dialer asked for no resume |
+| `caps.acks` | acknowledged-publish version, see 13; absent or `0` means none. A dialer sends it only when built with `WithAcks`; an acceptor echoes it only when the dialer sent it, so other acks keep their bytes |
+| `stream.id` (auth frame) | the dialer's own stream id, required with `caps.acks` (else `session_error` `bad_request`), so the acceptor can recognize frames sent again after a reconnect |
 
 Forward compatibility:
 
@@ -587,6 +594,7 @@ a control frame over a legacy link.
 | `error` | acceptor to dialer | `id`?, `code`, `message` | none |
 | `reset` | acceptor to dialer | `stream`, `reason`, `after`, `head` | none |
 | `position` | acceptor to dialer | `stream`, `offset` | none |
+| `puback` | acceptor to dialer, on an acks link | `offset`, `status`, `id`?, `code`?, `message`? | none |
 
 ```json
 {"type": "subscribe", "id": "s2", "patterns": ["acme.billing.invoice.*"], "scope": {"workspaces": ["ws1", "ws2"]}}
@@ -603,8 +611,8 @@ nothing.
 
 Each side ignores some frames:
 
-- an acceptor ignores `ack` and `error`, and answers `reset` and
-  `position` with `bad_request`
+- an acceptor ignores `ack`, `error` and `puback`, and answers `reset`
+  and `position` with `bad_request`
 - a dialer answers nothing, and ignores `subscribe` and `unsubscribe`
 
 Error codes are contract; messages are not.
@@ -675,8 +683,9 @@ A write that fails closes an outbox link and rewinds the send cursor to
 that frame, so the next link sends it first. If the frame's bytes had
 reached the peer before the error (a write timeout, say), the peer gets
 it twice; dedupe by event `id`. A frame that was written successfully
-but lost with the connection is not resent: there are no publish acks
-in v1.
+but lost with the connection is not resent, unless the link negotiated
+acks: then the next link starts after the last acknowledged offset
+(section 13).
 
 - **start:** for an address given to `WithNetwork` or `Dial`, the outbox
   starts when the adapter registers it, not at the first successful
@@ -707,6 +716,7 @@ until it has succeeded once.
 | acceptor restarted, ring log | no replay: new stream id, reset with reason `stream` |
 | dialer to acceptor, outbox on | queued events in order; a frame whose write failed is resent on the next link (a duplicate if its bytes had already reached the peer); a frame that was written but lost in transit is not resent; overflow drops oldest, counted |
 | dialer to acceptor, outbox off | the previous behaviour |
+| dialer to acceptor, acks link | at least once: everything after the last acknowledged offset is sent again on the next link; the acceptor publishes each frame of a dialer stream once while it runs and answers copies with the first copy's result; after an acceptor restart, dedupe by event `id` |
 | local handlers | per-sender order holds through **sync** handlers only; async handlers run one goroutine each and stay unordered |
 | end to end | no exactly-once; a sync handler veto does not hold back the position |
 
@@ -729,6 +739,8 @@ ack/error shape, but the two may converge later and do not share code.
 | new peers, no `Authenticator` | legacy link, frames as before; a reconnect (or a seeded position) publishes `invalidated` with reason `unsupported` |
 | new peers, auth, nothing configured | stream link with implicit `#`: the same events as before, plus `offset`, heartbeats and link events |
 | CloudEvents frames vectors | unchanged: control-frame classification applies only on stream links; `offset`/`kitoffset` stripping never rejects |
+| acks dialer, acceptor without acks | no `caps.acks` in the ack, so no pubacks: every acknowledged publish for that address fails with `unsupported` |
+| dialer without acks, new acceptor | no `caps.acks` sent, none echoed, no `puback` frames; the ack's bytes are unchanged |
 
 Behaviour changes for existing adopters (listed in the bus API reference and in the commit bodies):
 
@@ -745,6 +757,123 @@ Behaviour changes for existing adopters (listed in the bus API reference and in 
   an exact name, not a `kit` prefix: extension names have no separator,
   so a prefix would also reserve ordinary names such as `kitchen`
 - a failed first dial through `WithNetwork` now retries
+- an acceptor ignores `puback` frames instead of answering
+  `unknown_type`
+
+## 13. Acknowledged publishes
+
+`Publish` returning nil confirms local sync handlers only. An
+acknowledged publish also waits for local async handlers and for each
+awaited outbound address to report that its acceptor handled the
+event.
+
+### 13.1 Negotiation
+
+A dialer built with `WithAcks()` advertises `caps.acks: 1` and its own
+`stream.id` in the auth frame. An acceptor needs no option: it echoes
+`caps.acks: 1` when the dialer asked and the link is a stream link. The
+link is an acks link when both sides list `acks >= 1` (`acks.json`
+`negotiate`). Nothing changes on any other link.
+
+### 13.2 The puback frame
+
+On an acks link the acceptor answers every event frame with one
+`puback`, in offset order, once the frame's handlers are done: every
+sync handler returned and every async handler finished.
+
+```json
+{"type": "puback", "offset": "41", "id": "evt_01…", "status": "ok"}
+{"type": "puback", "offset": "42", "id": "evt_01…", "status": "err", "code": "rejected", "message": "…"}
+```
+
+Pubacks are cumulative: a puback for offset N reports N and
+acknowledges `ok` every earlier frame on the link that no puback of its
+own reported. A sender may therefore coalesce a run of `ok` pubacks
+into the last one without a wire change; an `err` must be sent on its
+own. v1 senders send one per frame; receivers must already accept
+coalesced ones.
+
+| Member | Rule |
+|--------|------|
+| `offset` | the frame's offset, a decimal string |
+| `status` | `ok` or `err` |
+| `id` | the event id of the frame, when it had one; a dialer that sent another id at that offset closes the link (`puback_id`) |
+| `code` | with `err`: `rejected` (a sync handler failed), `invalid` (the frame could not be used: undecodable event, reserved topic); unknown codes are kept |
+| `message` | with `err`, optional, not contract |
+
+A dialer closes the link with 1002 on a malformed puback
+(`puback_malformed`) or one beyond the last frame it sent
+(`puback_ahead`), and ignores one at or below its acknowledged offset.
+A frame the acceptor cannot decode is still answered (`invalid`); one
+whose offset it cannot read is a protocol error, since a later
+cumulative puback would acknowledge it.
+
+### 13.3 Dialer
+
+Per outbound address the dialer keeps an acknowledged offset (the last
+puback's) and the waits of acknowledged publishes by offset. The
+acknowledged offset survives reconnects.
+
+- **link up, acks:** the send cursor rewinds to the acknowledged
+  offset, so frames lost with the previous link go out again, in order
+  (`WithAcks` implies `WithOutbox`)
+- **link up, no acks:** every wait fails `unsupported`, and so does
+  every acknowledged publish sent on that link; the acknowledged offset
+  follows the cursor, so a later acks link does not resend what this
+  one sent
+- **not sent:** an entry the writer skips (origin, subscription, link
+  filter) fails `filtered`; one evicted before the writer reached it
+  fails `evicted`; an event the topic filter kept out of the log fails
+  `filtered`
+- **disconnect:** `Disconnect(addr)` and `Close` fail its waits
+  `unavailable`
+- **deadline:** the publisher's context, else `WithAckTimeout`
+  (default 30 s), fails what is left with `timeout`. A timeout is
+  unknown, not lost: the frame may still be delivered and acknowledged
+  later. Retry with the same event id.
+
+`acks.json` `dialer` pins these rules over a scripted sequence.
+
+### 13.4 Acceptor
+
+The acceptor remembers, per dialer stream id, the highest offset it
+received and the outcome of recent frames. A frame at or below that
+offset is a copy:
+
+- still being handled: its puback waits for the first copy's result
+- handled with `err`: the stored result is sent again
+- otherwise: `ok`
+
+A copy is never published again. The memory is bounded (1 024 dialer
+streams, least recently used forgotten first; failed outcomes kept for
+1 024 offsets behind the highest), and lost on restart, after which
+dedupe falls to the event id.
+
+Results may settle out of order (async handlers), but pubacks go out in
+offset order, which keeps them cumulative. Each acks link holds at most
+`WithMaxPendingAcks` unanswered frames; at that bound its reader stops,
+which backpressures the dialer through TCP.
+
+### 13.5 Ordering, idempotency and limits
+
+- publish order is unchanged: the event enters the log as any other
+- at least once per acks link, deduplicated by `(dialer stream,
+  offset)` while the acceptor runs, by event `id` across restarts
+- `WithMaxPendingAcks(n)` (default 1 024) bounds unresolved
+  acknowledged publishes per address; `PublishAcked` blocks for a slot
+  until its context ends, and the event is then not published
+
+### 13.6 Using it
+
+`(*NetworkAdapter).PublishAcked(ctx, e, addrs...)` waits for local
+handlers and for `addrs`, or every registered outbound address. The
+bus from `New(WithNetwork(...))` with `WithAcks` and a bus from `New()`
+implement `AckPublisher`; `AckPublisherOf(b)` returns nil when `b`
+cannot confirm delivery to everything it forwards to. The consent
+relay uses it when its publisher supports it: the ack cursor advances
+only when every awaited peer acknowledged the record, and a nack or
+timeout leaves the record for the next flush, under the same
+idempotency key.
 
 ## Go API
 
@@ -759,6 +888,9 @@ func WithScope(s Scope) NetworkOption
 func WithResumeFrom(addr string, p StreamPosition) NetworkOption
 func WithOutbox() NetworkOption
 func WithOutboxDropFunc(f func(addr string, n uint64)) NetworkOption
+func WithAcks() NetworkOption // implies WithOutbox
+func WithAckTimeout(d time.Duration) NetworkOption
+func WithMaxPendingAcks(n int) NetworkOption
 func WithSkipFunc(f func(addr string, n uint64)) NetworkOption
 func WithSubscribeAuthorizer(f func(ctx context.Context, p Peer, s Subscription) error) NetworkOption
 func WithLinkFilter(f func(p Peer, e Event) bool) NetworkOption
@@ -774,6 +906,15 @@ func (n *NetworkAdapter) Position(addr string) (StreamPosition, bool)
 func (n *NetworkAdapter) LinkState(addr string) (LinkState, bool)
 func (n *NetworkAdapter) OutboxDropped(addr string) uint64
 func (n *NetworkAdapter) Skipped(addr string) uint64
+func (n *NetworkAdapter) PublishAcked(ctx context.Context, e Event, addrs ...string) (Ack, error)
+
+// acknowledged publish, any bus
+type AckPublisher interface{ PublishAcked(ctx context.Context, e Event) (Ack, error) }
+func AckPublisherOf(b any) AckPublisher
+func PublishAcked(ctx context.Context, b Bus, e Event) (Ack, error)
+type Ack struct{ ID string; Offset uint64; Peers []PeerAck }
+type PeerAck struct{ Peer, Code, Message string } // Code "" = acknowledged
+type AckError struct{ Peer, Code, Message string } // errors.Is ErrNack; ErrAcksUnsupported for "unsupported"
 ```
 
 `Subscribe`, `Unsubscribe` and `SetScope` return the ack's `at`. They
@@ -814,6 +955,7 @@ events and channels, never sleeps. Heartbeat ticks are injected.
 | relay | per-hop offsets; upstream reset reaches subscribers that do not match its topic; origin exclusion on replay; reserved topics dropped inbound |
 | outbox | flushes in order after reconnect; overflow drops oldest and counts; off keeps the drop behaviour; offline start |
 | legacy skips | counter and callback |
+| acks | puback per frame; veto `rejected`; async handlers hold the ack (local and remote); pubacks in offset order under out-of-order completion; copies after a reconnect deduped and answered with the stored result; lost link sent again and handled once; cumulative puback resolves earlier frames; `timeout`, `evicted`, `unavailable`, `filtered`; old peer in either direction: no puback, `unsupported`; pending cap blocks |
 
 Re-break checks:
 
@@ -841,6 +983,7 @@ fields, a wrong `version` and unconsumed files all fail it.
 | `inbound.json` | bounded inbound queue: overflow closes and resumes from the last delivered position |
 | `outbox.json` | ordered flush and drop-oldest counting over a scripted publish, disconnect and reconnect sequence |
 | `event_frames.json` | `offset` / `kitoffset` encode on stream links, stripping on every link |
-| `wire/*.jsonl` | transcripts replayed against a Go acceptor: plain ack, extended ack with replay, reset in the ack, subscribe round trip |
+| `acks.json` | `caps.acks` and the dialer stream id in the auth frame, acks negotiation, puback parse and encode, the dialer's ack tracking (cumulative pubacks, rewind, unsupported, evicted) |
+| `wire/*.jsonl` | transcripts replayed against a Go acceptor: plain ack, extended ack with replay, reset in the ack, subscribe round trip, pubacks with a copy and an invalid frame |
 
 The pure vectors (all but `wire/`) need no sockets and no clock.

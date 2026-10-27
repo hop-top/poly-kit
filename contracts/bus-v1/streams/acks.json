@@ -1,0 +1,54 @@
+{
+  "version": "v1",
+  "description": "Acknowledged publishes from a dialer to an acceptor. `auth`: the dialer's auth frame with `caps.acks` must carry its own stream id (`stream.id`); without one the session is refused with the code given. `negotiate`: a link carries pubacks when it is a stream link, this side speaks acks (`mine` >= 1) and the peer advertised `caps.acks` >= 1. `puback` / `puback_encode`: the puback control frame; a malformed one is a protocol error of the kind given. `dialer`: one outbound address over a ring log of `capacity` entries with the outbox on. Ops: `publish` appends an event (named by its topic; `acked` waits for its acknowledgement), `connect` brings a link up (`acks`: whether it negotiated pubacks) and sends every entry after the cursor, `disconnect` takes it down, `puback` applies a frame from the acceptor, `fail` resolves every wait with a code. While connected, a publish is sent at once. A puback is cumulative: it reports its own offset and acknowledges every earlier frame not reported by its own puback. An acks link rewinds the cursor to the last acknowledged offset; a link without acks fails every wait with `unsupported`. `sent` lists `topic@offset` in send order (a rewound frame appears again); `resolved` lists outcomes in order (`code` empty: acknowledged); `error` is the protocol error kind that ended the case.",
+  "auth": [
+    {"name": "acks with the dialer stream", "frame": "{\"auth\":\"open\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"],\"acks\":1},\"origin\":\"d\",\"stream\":{\"id\":\"stm_dialer\"}}", "ok": true, "acks": 1, "stream": "stm_dialer"},
+    {"name": "acks without a stream", "frame": "{\"auth\":\"open\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"],\"acks\":1},\"origin\":\"d\"}", "ok": false, "error": "bad_request"},
+    {"name": "acks with an empty stream id", "frame": "{\"auth\":\"open\",\"caps\":{\"streams\":1,\"acks\":1},\"stream\":{\"id\":\"\"}}", "ok": false, "error": "bad_request"},
+    {"name": "acks with a non-object stream", "frame": "{\"auth\":\"open\",\"caps\":{\"streams\":1,\"acks\":1},\"stream\":\"stm_dialer\"}", "ok": false, "error": "bad_request"},
+    {"name": "no acks ignores the stream", "frame": "{\"auth\":\"open\",\"caps\":{\"streams\":1},\"stream\":{\"id\":7}}", "ok": true, "acks": 0, "stream": ""},
+    {"name": "acks as a string is absent", "frame": "{\"auth\":\"open\",\"caps\":{\"streams\":1,\"acks\":\"1\"}}", "ok": true, "acks": 0, "stream": ""},
+    {"name": "a later acks version keeps the stream", "frame": "{\"auth\":\"open\",\"caps\":{\"streams\":1,\"acks\":2},\"stream\":{\"id\":\"stm_dialer\"}}", "ok": true, "acks": 2, "stream": "stm_dialer"}
+  ],
+  "negotiate": [
+    {"name": "both sides", "mine": 1, "peer": {"acks": 1}, "stream_link": true, "acks": true},
+    {"name": "peer newer", "mine": 1, "peer": {"acks": 3}, "stream_link": true, "acks": true},
+    {"name": "peer without acks", "mine": 1, "peer": {"acks": 0}, "stream_link": true, "acks": false},
+    {"name": "no peer caps", "mine": 1, "peer": null, "stream_link": true, "acks": false},
+    {"name": "this side without acks", "mine": 0, "peer": {"acks": 1}, "stream_link": true, "acks": false},
+    {"name": "legacy link", "mine": 1, "peer": {"acks": 1}, "stream_link": false, "acks": false}
+  ],
+  "puback": [
+    {"name": "ok", "frame": "{\"type\":\"puback\",\"offset\":\"7\",\"status\":\"ok\"}", "ok": true, "offset": "7", "id": "", "status": "ok", "code": "", "message": ""},
+    {"name": "ok with id", "frame": "{\"type\":\"puback\",\"offset\":\"7\",\"id\":\"evt_1\",\"status\":\"ok\"}", "ok": true, "offset": "7", "id": "evt_1", "status": "ok", "code": "", "message": ""},
+    {"name": "err with code and message", "frame": "{\"type\":\"puback\",\"offset\":\"8\",\"id\":\"evt_2\",\"status\":\"err\",\"code\":\"rejected\",\"message\":\"no\"}", "ok": true, "offset": "8", "id": "evt_2", "status": "err", "code": "rejected", "message": "no"},
+    {"name": "unknown code kept", "frame": "{\"type\":\"puback\",\"offset\":\"8\",\"status\":\"err\",\"code\":\"quota\"}", "ok": true, "offset": "8", "id": "", "status": "err", "code": "quota", "message": ""},
+    {"name": "code on ok ignored", "frame": "{\"type\":\"puback\",\"offset\":\"8\",\"status\":\"ok\",\"code\":\"rejected\"}", "ok": true, "offset": "8", "id": "", "status": "ok", "code": "", "message": ""},
+    {"name": "err without code", "frame": "{\"type\":\"puback\",\"offset\":\"8\",\"status\":\"err\"}", "ok": false, "error": "puback_malformed"},
+    {"name": "unknown status", "frame": "{\"type\":\"puback\",\"offset\":\"8\",\"status\":\"maybe\"}", "ok": false, "error": "puback_malformed"},
+    {"name": "numeric offset", "frame": "{\"type\":\"puback\",\"offset\":8,\"status\":\"ok\"}", "ok": false, "error": "puback_malformed"},
+    {"name": "missing offset", "frame": "{\"type\":\"puback\",\"status\":\"ok\"}", "ok": false, "error": "puback_malformed"},
+    {"name": "id not a string", "frame": "{\"type\":\"puback\",\"offset\":\"8\",\"id\":8,\"status\":\"ok\"}", "ok": false, "error": "puback_malformed"}
+  ],
+  "puback_encode": [
+    {"name": "ok", "offset": "3", "id": "evt_3", "status": "ok", "code": "", "message": "", "frame": {"type": "puback", "offset": "3", "id": "evt_3", "status": "ok"}},
+    {"name": "ok without id", "offset": "3", "id": "", "status": "ok", "code": "", "message": "", "frame": {"type": "puback", "offset": "3", "status": "ok"}},
+    {"name": "err", "offset": "4", "id": "evt_4", "status": "err", "code": "rejected", "message": "veto", "frame": {"type": "puback", "offset": "4", "id": "evt_4", "status": "err", "code": "rejected", "message": "veto"}}
+  ],
+  "dialer": [
+    {"name": "puback resolves its frame", "capacity": 8, "ops": [{"connect": {"acks": true}}, {"publish": "e1", "acked": true}, {"puback": "{\"type\":\"puback\",\"offset\":\"1\",\"id\":\"e1\",\"status\":\"ok\"}"}], "sent": ["e1@1"], "resolved": [{"event": "e1", "code": ""}]},
+    {"name": "cumulative puback resolves every earlier frame", "capacity": 8, "ops": [{"connect": {"acks": true}}, {"publish": "e1", "acked": true}, {"publish": "e2"}, {"publish": "e3", "acked": true}, {"publish": "e4", "acked": true}, {"puback": "{\"type\":\"puback\",\"offset\":\"4\",\"status\":\"ok\"}"}], "sent": ["e1@1", "e2@2", "e3@3", "e4@4"], "resolved": [{"event": "e1", "code": ""}, {"event": "e3", "code": ""}, {"event": "e4", "code": ""}]},
+    {"name": "err reports its own offset only", "capacity": 8, "ops": [{"connect": {"acks": true}}, {"publish": "e1", "acked": true}, {"publish": "e2", "acked": true}, {"puback": "{\"type\":\"puback\",\"offset\":\"2\",\"id\":\"e2\",\"status\":\"err\",\"code\":\"rejected\"}"}], "sent": ["e1@1", "e2@2"], "resolved": [{"event": "e1", "code": ""}, {"event": "e2", "code": "rejected"}]},
+    {"name": "pubacks one per frame", "capacity": 8, "ops": [{"connect": {"acks": true}}, {"publish": "e1", "acked": true}, {"publish": "e2", "acked": true}, {"puback": "{\"type\":\"puback\",\"offset\":\"1\",\"status\":\"err\",\"code\":\"invalid\"}"}, {"puback": "{\"type\":\"puback\",\"offset\":\"2\",\"status\":\"ok\"}"}], "sent": ["e1@1", "e2@2"], "resolved": [{"event": "e1", "code": "invalid"}, {"event": "e2", "code": ""}]},
+    {"name": "stale puback ignored", "capacity": 8, "ops": [{"connect": {"acks": true}}, {"publish": "e1", "acked": true}, {"publish": "e2", "acked": true}, {"puback": "{\"type\":\"puback\",\"offset\":\"2\",\"status\":\"ok\"}"}, {"puback": "{\"type\":\"puback\",\"offset\":\"1\",\"status\":\"err\",\"code\":\"rejected\"}"}], "sent": ["e1@1", "e2@2"], "resolved": [{"event": "e1", "code": ""}, {"event": "e2", "code": ""}]},
+    {"name": "puback beyond the last frame sent", "capacity": 8, "ops": [{"connect": {"acks": true}}, {"publish": "e1", "acked": true}, {"puback": "{\"type\":\"puback\",\"offset\":\"2\",\"status\":\"ok\"}"}], "sent": ["e1@1"], "resolved": [], "error": "puback_ahead"},
+    {"name": "puback id differs from the frame sent", "capacity": 8, "ops": [{"connect": {"acks": true}}, {"publish": "e1", "acked": true}, {"puback": "{\"type\":\"puback\",\"offset\":\"1\",\"id\":\"e9\",\"status\":\"ok\"}"}], "sent": ["e1@1"], "resolved": [], "error": "puback_id"},
+    {"name": "malformed puback", "capacity": 8, "ops": [{"connect": {"acks": true}}, {"publish": "e1", "acked": true}, {"puback": "{\"type\":\"puback\",\"offset\":\"1\",\"status\":\"err\"}"}], "sent": ["e1@1"], "resolved": [], "error": "puback_malformed"},
+    {"name": "reconnect sends again after the last acknowledged offset", "capacity": 8, "ops": [{"connect": {"acks": true}}, {"publish": "e1", "acked": true}, {"publish": "e2", "acked": true}, {"puback": "{\"type\":\"puback\",\"offset\":\"1\",\"status\":\"ok\"}"}, {"disconnect": true}, {"publish": "e3", "acked": true}, {"connect": {"acks": true}}, {"puback": "{\"type\":\"puback\",\"offset\":\"3\",\"status\":\"ok\"}"}], "sent": ["e1@1", "e2@2", "e2@2", "e3@3"], "resolved": [{"event": "e1", "code": ""}, {"event": "e2", "code": ""}, {"event": "e3", "code": ""}]},
+    {"name": "offline publishes wait for the first link", "capacity": 8, "ops": [{"publish": "e1", "acked": true}, {"publish": "e2"}, {"connect": {"acks": true}}, {"puback": "{\"type\":\"puback\",\"offset\":\"2\",\"status\":\"ok\"}"}], "sent": ["e1@1", "e2@2"], "resolved": [{"event": "e1", "code": ""}]},
+    {"name": "link without acks fails waits", "capacity": 8, "ops": [{"publish": "e1", "acked": true}, {"connect": {"acks": false}}, {"publish": "e2", "acked": true}], "sent": ["e1@1", "e2@2"], "resolved": [{"event": "e1", "code": "unsupported"}, {"event": "e2", "code": "unsupported"}]},
+    {"name": "acks link after a link without acks does not rewind", "capacity": 8, "ops": [{"connect": {"acks": false}}, {"publish": "e1"}, {"disconnect": true}, {"connect": {"acks": true}}, {"publish": "e2", "acked": true}, {"puback": "{\"type\":\"puback\",\"offset\":\"2\",\"status\":\"ok\"}"}], "sent": ["e1@1", "e2@2"], "resolved": [{"event": "e2", "code": ""}]},
+    {"name": "evicted before sent", "capacity": 2, "ops": [{"connect": {"acks": true}}, {"disconnect": true}, {"publish": "e1", "acked": true}, {"publish": "e2"}, {"publish": "e3", "acked": true}, {"connect": {"acks": true}}], "sent": ["e2@2", "e3@3"], "resolved": [{"event": "e1", "code": "evicted"}]},
+    {"name": "fail resolves every wait", "capacity": 8, "ops": [{"connect": {"acks": true}}, {"publish": "e1", "acked": true}, {"disconnect": true}, {"publish": "e2", "acked": true}, {"fail": "unavailable"}], "sent": ["e1@1"], "resolved": [{"event": "e1", "code": "unavailable"}, {"event": "e2", "code": "unavailable"}]}
+  ]
+}

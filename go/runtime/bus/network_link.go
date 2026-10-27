@@ -40,6 +40,7 @@ type link struct {
 	addr     string
 	outbound bool
 	stream   bool        // negotiated a stream link
+	acks     bool        // negotiated pubacks (dialer to acceptor)
 	format   FrameFormat // send format
 	peer     Peer
 	ps       *peerState // outbound only
@@ -65,6 +66,9 @@ type link struct {
 	wroteSince bool
 	writeFail  int
 	heartbeatD time.Duration // dialer: acceptor's advertised interval
+
+	dialerStream string    // acceptor of an acks link: the dialer's stream id
+	ackq         *ackQueue // acceptor of an acks link: pubacks in frame order
 }
 
 func (n *NetworkAdapter) newLink(conn *websocket.Conn, addr string, outbound bool) *link {
@@ -77,6 +81,16 @@ func (n *NetworkAdapter) newLink(conn *websocket.Conn, addr string, outbound boo
 		done: make(chan struct{}), wdone: make(chan struct{}),
 		pending: map[string]chan dialerCtl{}, flushing: true,
 	}
+}
+
+// logAddr is the link's address for errors: a dial URL without its
+// userinfo, query and fragment, which can carry credentials. An inbound
+// address is the peer's host:port and is kept as is.
+func (l *link) logAddr() string {
+	if l.outbound {
+		return redactAddr(l.addr)
+	}
+	return l.addr
 }
 
 func (l *link) peerOrigin() string {
@@ -163,13 +177,14 @@ func (l *link) writeLoop(tick <-chan time.Time, stopTick func()) {
 	defer stopTick()
 	for {
 		wake := l.n.waitCh()
-		if !l.drain() {
+		if !l.drain() || !l.flushAcks() {
 			return
 		}
 		l.n.hook("drained:" + formatOffset(l.cursor.at))
 		select {
 		case <-l.ctx.Done():
 			return
+		case <-l.ackWait():
 		case m := <-l.ctl:
 			if !l.handleCtl(m) {
 				return
@@ -198,6 +213,9 @@ func (l *link) drain() bool {
 		if len(entries) == 0 {
 			return true
 		}
+		if gap > 0 && l.outbound {
+			l.ackGap(before, entries[0].Offset)
+		}
 		if gap > 0 {
 			switch {
 			case l.stream && !l.outbound:
@@ -218,7 +236,7 @@ func (l *link) drain() bool {
 				if n.onSkip != nil {
 					n.onSkip(l.addr, gap)
 				}
-				n.reportErr(fmt.Errorf("bus: link %s skipped %d evicted entries", l.addr, gap))
+				n.reportErr(fmt.Errorf("bus: link %s skipped %d evicted entries", l.logAddr(), gap))
 			}
 		}
 		for _, e := range entries {
@@ -235,9 +253,11 @@ func (l *link) drain() bool {
 func (l *link) send(e LogEntry) bool {
 	n := l.n
 	if e.via != 0 && e.via == l.id {
+		l.ackSkipped(e)
 		return true
 	}
 	if !entryDelivers(l.subs, l.peerOrigin(), e) {
+		l.ackSkipped(e)
 		return true
 	}
 	if e.Marker {
@@ -249,12 +269,17 @@ func (l *link) send(e LogEntry) bool {
 			"after": formatOffset(e.Offset - 1), "head": formatOffset(e.Offset)})
 	}
 	if n.linkFilter != nil && !n.linkFilter(l.peer, e.Event) {
+		l.ackSkipped(e)
 		return true
 	}
 	data, err := encodeFrameOffset(l.format, e.Event, e.Origin, e.Offset, l.stream)
 	if err != nil {
 		n.reportErr(err)
+		l.ackSkipped(e)
 		return true
+	}
+	if l.outbound {
+		l.ackSent(e)
 	}
 	l.lastSent = e.Offset
 	return l.write(data)
@@ -358,6 +383,12 @@ func (l *link) readLoop() {
 			}
 			continue
 		}
+		if l.ackq != nil {
+			if !l.onAckedEvent(data) {
+				return
+			}
+			continue
+		}
 		if !l.onEvent(data) {
 			return
 		}
@@ -375,6 +406,11 @@ func (l *link) onControl(members map[string]json.RawMessage) bool {
 			return true
 		case <-l.ctx.Done():
 			return false
+		}
+	}
+	if l.acks {
+		if typ, _ := memberString(members, "type"); typ == "puback" {
+			return l.onPuback(members)
 		}
 	}
 	dc, err := dialerControl(members)
