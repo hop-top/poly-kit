@@ -10,7 +10,7 @@ place for HTTP client wiring, timers and key stores; those are per-runtime.
 
 ## Use it when
 
-- you port or change URI parsing, redaction or the anthropic adapter in any SDK: run both runners
+- you port or change URI parsing, redaction or the anthropic adapter in any SDK: run every runner
 - you change llm behaviour in Go: add a vector first, then make every port pass it
 
 ## Quick start
@@ -20,6 +20,7 @@ make test-parity-llm
 # or separately:
 go test ./go/ai/llm/ ./go/ai/llm/anthropic/ -run '^TestConformance'
 cargo test --features llm-anthropic --test llm_conformance   # from sdk/experimental/rs
+uv run pytest tests/test_llm_conformance.py                  # from sdk/py
 ```
 
 ## Contract
@@ -34,7 +35,7 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 | `anthropic_request_error[]` | requests rejected before sending, exact message, nothing sent |
 | `anthropic_headers[]` | key, version, bearer token and workspace headers from the `ANTHROPIC_*` env |
 | `anthropic_stream[]` | text tokens of an SSE body, then done, or the typed error (`error_kind`; `truncated` without `message_stop`) |
-| `anthropic_accumulate[]` | text, thinking, tool calls, stop reason and usage of an SSE body; Go runs the SDK's `Message.Accumulate`, Rust its stream outcome |
+| `anthropic_accumulate[]` | text, thinking, tool calls, stop reason and usage of an SSE body; Go runs the SDK's `Message.Accumulate`, Rust and Python their stream outcome |
 | `anthropic_error[]` | error kind, status, fallbackable, and attempts under the default retry policy (server waits honored in (0, 60s] only); the last response repeats |
 | `anthropic_limits[]` | `max_body_bytes` / `max_event_bytes` params: a body or one SSE event over the limit is `too_large` |
 | `anthropic_response[]` | a response parsed: text, thinking blocks, tool calls, stop reason, usage with cache tokens |
@@ -47,7 +48,8 @@ Runners are strict: unknown fields, a `version` other than `v1` and a file no ru
 
 ### Known differences
 
-Not vectored. A `retry-after` HTTP date: Go honors one within 60s, Rust backs off.
+Not vectored. A `retry-after` HTTP date: Go honors one within 60s, Rust and Python back off.
+Python keeps `LLM_API_KEY` ahead of llm.yaml and `<SCHEME>_API_KEY` (Go: llm.yaml, then the provider variable, then `LLM_API_KEY`) and has no secret store.
 
 ## Tool names
 
@@ -65,9 +67,9 @@ calls carry the original name.
 |------|--------|
 | Go | `go/ai/llm/conformance_test.go`, `go/ai/llm/anthropic/conformance_test.go` (`TestConformance*`) |
 | Rust | `sdk/experimental/rs/tests/llm_conformance.rs` (anthropic sections, including `anthropic_tool_names`, need feature `llm-anthropic`) |
-| Python | `sdk/py/tests/test_llm_conformance.py`: `tool_names`; every other section skipped with its reason (no anthropic adapter in Python) |
+| Python | `sdk/py/tests/test_llm_conformance.py`: every section, anthropic ones against a loopback server |
 | TypeScript | `sdk/ts/src/llm-toolnames.conformance.test.ts`: `tool_names` only (no anthropic adapter in TypeScript) |
 
 ## See also
 
-- [`go/ai/llm`](../../go/ai/llm/README.md), [`sdk/experimental/rs/src/llm`](../../sdk/experimental/rs/src/llm/README.md)
+- [`go/ai/llm`](../../go/ai/llm/README.md), [`sdk/experimental/rs/src/llm`](../../sdk/experimental/rs/src/llm/README.md), [Python `hop_top_kit.llm`](../../docs/adopters/reference/py-sdk.md#provider-adapters)
