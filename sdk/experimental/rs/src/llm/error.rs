@@ -93,6 +93,46 @@ pub enum LlmError {
     Protocol(String),
     /// Rejected before anything was sent: a bad URI, config or request.
     Invalid(String),
+    /// A tool definition's name fails the request before anything is
+    /// sent; `other` is the earlier tool a
+    /// [`Collision`](ToolNameReason::Collision) maps to the same wire
+    /// name, else empty. Not fallbackable: the tool set needs fixing.
+    ToolName {
+        provider: String,
+        reason: ToolNameReason,
+        name: String,
+        other: String,
+    },
+}
+
+/// Why a tool name failed a request (`contracts/llm-v1/tool-names.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolNameReason {
+    /// The name is empty.
+    Empty,
+    /// The name is not valid UTF-8. A Rust `String` always is; kept for
+    /// parity with the other ports.
+    InvalidUtf8,
+    /// Mode `strict` and the provider does not accept the name.
+    Invalid,
+    /// An earlier tool has the same name.
+    Duplicate,
+    /// An earlier tool has the same wire name.
+    Collision,
+}
+
+impl ToolNameReason {
+    /// The contract's spelling: `empty`, `invalid_utf8`, `invalid`,
+    /// `duplicate`, `collision`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ToolNameReason::Empty => "empty",
+            ToolNameReason::InvalidUtf8 => "invalid_utf8",
+            ToolNameReason::Invalid => "invalid",
+            ToolNameReason::Duplicate => "duplicate",
+            ToolNameReason::Collision => "collision",
+        }
+    }
 }
 
 /// Why a credential was refused for an endpoint.
@@ -202,6 +242,30 @@ impl fmt::Display for LlmError {
             ),
             LlmError::Cancelled => f.write_str("context canceled"),
             LlmError::Protocol(m) | LlmError::Invalid(m) => f.write_str(m),
+            LlmError::ToolName {
+                provider,
+                reason,
+                name,
+                other,
+            } => match reason {
+                ToolNameReason::Empty => write!(f, "tool name is empty (provider {provider:?})"),
+                ToolNameReason::InvalidUtf8 => write!(
+                    f,
+                    "tool name {name:?} is not valid UTF-8 (provider {provider:?})"
+                ),
+                ToolNameReason::Invalid => write!(
+                    f,
+                    "tool name {name:?} is not valid for provider {provider:?}"
+                ),
+                ToolNameReason::Duplicate => write!(
+                    f,
+                    "tool name {name:?} is defined twice (provider {provider:?})"
+                ),
+                ToolNameReason::Collision => write!(
+                    f,
+                    "tool names {other:?} and {name:?} map to the same provider name (provider {provider:?})"
+                ),
+            },
         }
     }
 }

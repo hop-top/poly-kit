@@ -180,8 +180,10 @@ upgrade = ["bus", "dep:thiserror"]
 # redaction, llm.yaml < env < URI config and key resolution, the scheme
 # registry and the fallback client publishing on the bus. Nothing of its
 # own beyond `config` (llm.yaml parsing, XDG paths) and `netpolicy`;
-# wasm-safe apart from reading llm.yaml from disk.
-llm = ["config", "netpolicy", "dep:url"]
+# wasm-safe apart from reading llm.yaml from disk. sha2 (already in the
+# tree for httpcache, telemetry and redact) supplies the hash suffix of
+# shortened tool names.
+llm = ["config", "netpolicy", "dep:url", "dep:sha2"]
 # The Anthropic Messages API adapter, over the HTTP API (no SDK crate):
 # request shaping, SSE streaming, error mapping and retries with full
 # jitter through `util::retry`, all through the guarded `api` client.
