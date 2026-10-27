@@ -35,4 +35,11 @@ examples/spaced/media/*.png
 # xray catalog dumps written to repo root with bad filenames
 /*_graph_*.mmd
 /*_graph_*.txt
+
+# Task-tracker state lives in the hub, never per worktree. The marker keeps
+# `git hop add` from copying a stray worktree-local copy into new worktrees,
+# where it shadows the hub config.
+#-hop-#
 .tlc/
+#-hop-#
+.hop/

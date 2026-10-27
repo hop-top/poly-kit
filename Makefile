@@ -770,7 +770,8 @@ test-hook: ## Run bats tests for pre-push hook
 
 test-lint-scripts: ## Run bats tests for repo lint and sync scripts
 	bats .github/tests/lint-internal-refs.bats .github/tests/sync-builtins.bats \
-		.github/tests/toolchain-parity.bats .github/tests/lint-actions-pinned.bats
+		.github/tests/toolchain-parity.bats .github/tests/lint-actions-pinned.bats \
+		.github/tests/gitignore-hop-copy.bats
 
 job-test:
 	go test ./go/runtime/job/... -count=1
