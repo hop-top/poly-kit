@@ -149,7 +149,7 @@ export function isOffline(): boolean {
  * IPs (DNS names) are treated as remote: resolving them would itself be
  * network access.
  */
-function isLoopback(hostname: string): boolean {
+export function isLoopback(hostname: string): boolean {
   // URL.hostname keeps IPv6 literals bracketed and lower-cases the rest.
   const h = hostname.replace(/^\[|\]$/g, '');
   if (h === 'localhost') return true;
