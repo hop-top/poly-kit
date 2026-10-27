@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/failsafe-go/failsafe-go"
-	"github.com/failsafe-go/failsafe-go/circuitbreaker"
 )
 
 // Action is what the breaker does on trip. Halt is the safe default
@@ -40,8 +39,7 @@ func (a Action) String() string {
 	}
 }
 
-// State is the lifecycle of a breaker. 1:1 with failsafe's
-// circuitbreaker.State.
+// State is the lifecycle of a breaker's circuit.
 type State int
 
 const (
@@ -115,15 +113,15 @@ type Breaker interface {
 	Executor() failsafe.Executor[any]
 }
 
-// breakerImpl is the concrete Breaker. The failsafe executor + cb
-// give us the state machine and listeners; mu protects stats and
-// the kit-side Volume/Count counters.
+// breakerImpl is the concrete Breaker. circ is the kit-side circuit
+// state machine; the failsafe executor composes it with the other
+// policies. mu protects stats and the kit-side Volume/Count counters.
 type breakerImpl struct {
 	name string
 
 	cfg      *config
 	executor failsafe.Executor[any]
-	cb       circuitbreaker.CircuitBreaker[any]
+	circ     *circuit
 
 	mu       sync.Mutex
 	stats    Stats
@@ -146,11 +144,9 @@ func New(name string, opts ...Option) Breaker {
 		stats:    Stats{Counters: map[string]int64{}},
 		counters: map[string]int64{},
 	}
-	// Build the cb after b exists so its listeners can close over
-	// b's logger + tripsSnapshot. Then assemble policies (Volume/
-	// Count closures also need b for counterValue access).
-	b.cb = buildCircuitBreaker(b, cfg)
-	b.executor = failsafe.With(assemblePolicies(b, b.cb, cfg)...)
+	b.circ = newCircuit(cfg.clock, cfg.circFailureThreshold, cfg.circSuccessThreshold, cfg.circDelay)
+	// The circuit policy and the Volume/Count closures need b.
+	b.executor = failsafe.With(assemblePolicies(b, &circuitPolicy{b: b}, cfg)...)
 
 	registerOrPanic(name, b)
 	return b
@@ -177,15 +173,25 @@ func (b *breakerImpl) Record(success bool, n int64) {
 	b.stats.Counters["ops"] = b.counters["ops"]
 	b.mu.Unlock()
 
-	if success {
-		b.cb.RecordSuccess()
-		return
-	}
-	b.cb.RecordFailure()
+	b.recordCircuit(success)
 }
 
 func (b *breakerImpl) State() State {
-	return mapState(b.cb.State())
+	return b.circ.current()
+}
+
+// acquire asks the circuit to admit one execution and emits any
+// transition that took.
+func (b *breakerImpl) acquire() bool {
+	ok, ts := b.circ.tryAcquire()
+	b.emitTransitions(ts)
+	return ok
+}
+
+// recordCircuit feeds one outcome to the circuit and emits any
+// transition it caused.
+func (b *breakerImpl) recordCircuit(success bool) {
+	b.emitTransitions(b.circ.record(success))
 }
 
 func (b *breakerImpl) Reset() {
@@ -195,18 +201,18 @@ func (b *breakerImpl) Reset() {
 	b.mu.Unlock()
 
 	b.logReset()
-	b.cb.Close()
+	b.emitTransitions(b.circ.close())
 }
 
 func (b *breakerImpl) Trip(reason string) {
 	b.mu.Lock()
 	b.stats.Trips++
-	b.stats.LastTripAt = time.Now()
+	b.stats.LastTripAt = b.cfg.clock.Now()
 	b.stats.LastTripReason = reason
 	b.mu.Unlock()
 
 	b.logTrip(reason)
-	b.cb.Open()
+	b.emitTransitions(b.circ.open(true))
 }
 
 func (b *breakerImpl) Stats() Stats {
@@ -238,15 +244,3 @@ func (b *breakerImpl) counterValue(name string) int64 {
 // noopFn is the function we hand to the executor for Allow checks —
 // it succeeds; the policies decide whether to short-circuit.
 func noopFn() error { return nil }
-
-// mapState converts the failsafe state enum to the kit/breaker enum.
-func mapState(s circuitbreaker.State) State {
-	switch s {
-	case circuitbreaker.OpenState:
-		return Open
-	case circuitbreaker.HalfOpenState:
-		return HalfOpen
-	default:
-		return Closed
-	}
-}

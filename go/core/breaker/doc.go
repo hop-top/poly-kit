@@ -6,15 +6,13 @@
 // "where can I touch?", kit/breaker answers "how much, how fast,
 // how often before I stop?".
 //
-// The package is a thin wrapper over failsafe-go, exposing
-// kit-flavored types so callers don't need to import failsafe
-// directly and so we own the contract for the polyglot parity
-// ports (TS + Python).
-//
-// failsafe-go ships CircuitBreaker, RateLimiter, Bulkhead, Timeout,
-// Retry, Fallback, Hedge, AdaptiveLimiter, AdaptiveThrottler.
-// kit/breaker adds the two policies failsafe doesn't ship: Volume
-// (cumulative bytes) and Count (cumulative ops).
+// The circuit state machine is kit's own, reading an injectable
+// Clock (WithClock) so cooldowns are testable without sleeping and
+// the polyglot ports share one contract (contracts/breaker-v1). The
+// rate limiter, bulkhead, timeout and fallback come from failsafe-go,
+// exposed through kit-flavored types so callers don't need to import
+// failsafe directly. kit/breaker adds the two policies failsafe
+// doesn't ship: Volume (cumulative bytes) and Count (cumulative ops).
 //
 // Composition order (innermost → outermost in the executor):
 //

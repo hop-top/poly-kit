@@ -7,7 +7,6 @@ import (
 	"charm.land/log/v2"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/bulkhead"
-	"github.com/failsafe-go/failsafe-go/circuitbreaker"
 	"github.com/failsafe-go/failsafe-go/fallback"
 	"github.com/failsafe-go/failsafe-go/ratelimiter"
 	"github.com/failsafe-go/failsafe-go/timeout"
@@ -58,6 +57,7 @@ type config struct {
 	fallback FallbackFn
 
 	logger *log.Logger
+	clock  Clock
 
 	publisher domain.EventPublisher
 	topics    Topics
@@ -75,24 +75,12 @@ func newConfig(opts ...Option) *config {
 		circSuccessThreshold: 1,
 		circDelay:            30 * time.Second,
 		topics:               DefaultTopics,
+		clock:                wallClock{},
 	}
 	for _, opt := range opts {
 		opt(c)
 	}
 	return c
-}
-
-// buildCircuitBreaker constructs the base circuit policy. We always
-// build one so callers get a real state machine + listeners even
-// without explicit tuning. Listeners close over b so their log
-// events carry the breaker name + live trip count.
-func buildCircuitBreaker(b *breakerImpl, c *config) circuitbreaker.CircuitBreaker[any] {
-	bldr := circuitbreaker.NewBuilder[any]().
-		WithFailureThreshold(c.circFailureThreshold).
-		WithSuccessThreshold(c.circSuccessThreshold).
-		WithDelay(c.circDelay)
-	bldr = installCircuitListeners(bldr, b)
-	return bldr.Build()
 }
 
 // assemblePolicies returns the policy slice in failsafe.With order:
@@ -101,7 +89,7 @@ func buildCircuitBreaker(b *breakerImpl, c *config) circuitbreaker.CircuitBreake
 // inner failures), then CircuitBreaker (observes everything inner),
 // then Bulkhead, then RateLimiter, then Volume/Count last (cheapest
 // pre-flight, runs first against fn).
-func assemblePolicies(b *breakerImpl, cb circuitbreaker.CircuitBreaker[any], c *config) []failsafe.Policy[any] {
+func assemblePolicies(b *breakerImpl, cb failsafe.Policy[any], c *config) []failsafe.Policy[any] {
 	out := []failsafe.Policy[any]{}
 
 	if c.fallback != nil {
@@ -239,4 +227,15 @@ func Fallback(fn FallbackFn) Option {
 // must build a charm/log logger instead (see kit/console/log).
 func Logger(l *log.Logger) Option {
 	return func(c *config) { c.logger = l }
+}
+
+// WithClock sets the time source the circuit reads for cooldown expiry
+// and trip timestamps. Defaults to the wall clock. The rate limiter,
+// bulkhead and timeout keep failsafe-go's own clock.
+func WithClock(clk Clock) Option {
+	return func(c *config) {
+		if clk != nil {
+			c.clock = clk
+		}
+	}
 }
