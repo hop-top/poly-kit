@@ -118,6 +118,8 @@ type llmConfFile struct {
 	MediaFetch []confMediaFetch `json:"media_fetch"`
 	// Run in go/ai/llm/google.
 	GeminiStreamEvents json.RawMessage `json:"gemini_stream_events"`
+	// Run in go/ai/llm/routellm.
+	RouteLLMBaseURL json.RawMessage `json:"routellm_base_url"`
 }
 
 type confMediaFetch struct {

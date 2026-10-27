@@ -294,6 +294,8 @@ export class RouteLLMAdapter
   readonly threshold: number;
   /** Server-resolved tier name; `""` for a router pair. */
   readonly tier: string;
+  /** The API root requests go to: the resolved base URL plus `/v1`. */
+  readonly baseURL: string;
 
   private readonly inner: OpenAIAdapter;
 
@@ -322,11 +324,10 @@ export class RouteLLMAdapter
       serverModel = `router-${this.routerName}-${formatFloat(this.threshold)}`;
     }
 
-    // Resolve base URL: config > provider > default.
-    let baseUrl = this.config.baseUrl;
-    if (baseUrl === "http://localhost:6060" && cfg.provider.baseURL) {
-      baseUrl = cfg.provider.baseURL;
-    }
+    // Resolve base URL: provider (URI base_url or host, LLM_BASE_URL) >
+    // router config (ROUTELLM_BASE_URL > extras routellm.base_url) >
+    // default, as in Go.
+    this.baseURL = apiRootV1(cfg.provider.baseURL || this.config.baseUrl);
 
     // The inner adapter takes the params it owns.
     const params: Record<string, string> = {};
@@ -339,7 +340,7 @@ export class RouteLLMAdapter
         uri: { scheme: "routellm", model },
         provider: {
           apiKey: cfg.provider.apiKey,
-          baseURL: apiRootV1(baseUrl),
+          baseURL: this.baseURL,
           model: serverModel,
           params,
         },

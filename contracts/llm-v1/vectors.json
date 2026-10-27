@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON; system messages, wherever they sit, join in order with a blank line (\\n\\n) into the system field, empty ones skipped, and a cache_control on one ends a text block there, carrying that breakpoint. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds (a 403 or permission_error is permission_denied, which is also an auth error; a 401 is auth), whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode). anthropic_tool_choice: Request.ToolChoice (mode auto, any, none or tool with the tool's defined name) on the call made (complete, stream, tools, stream_tools): the body's tool_choice (want_tool_choice; null: absent; a named tool by its sent name) or the exact error before any request (no tools, unknown mode, a missing, stray or undefined name). anthropic_hermetic: the adapter built hermetic (Go ResolvedConfig.Hermetic, set by llm.Hermetic()) reads no environment and no llm.yaml: with the same env and file as credential_headers, the request goes to want_host (the configured base URL, else the default endpoint) carrying the sent headers and none of the withheld ones. anthropic_stream_events: what a stream yields when Request.StreamEvents is set (tools: the defined tool names; StreamWithTools when present, else Stream): text tokens, tool_call events (start with index, id and the original name; delta with the raw partial-JSON arguments; end with the complete call, as Outcome.ToolCalls[index]), cumulative usage snapshots (prompt, completion, cache read, cache creation, total) when the provider reports usage, then done; or, after a mid-stream error, the events so far and error_kind, with no end for an open call. Not opted in, the sequence is exactly anthropic_stream's. bus_request_started: the kit.ai.request.started payload for a request and call (op complete, stream, tool_call, stream_tools; tools: the tool names offered): metadata only (op, model when set, message count, roles and multimodal part types counted, content_bytes as the UTF-8 length of message text, text parts, tool call arguments and thinking text, tools counted, max_tokens, has_temperature, thinking, stop_sequences counted, extension_keys sorted), compared as JSON; no message text, tool names, extension values or media. bus_response_received: the kit.ai.response.received payload after a completion or tool call: op, finish_reason, usage, content_bytes (text, tool call arguments, thinking text), tool_calls counted, plus duration_ms (a non-negative integer, not compared); no content. Content appears in either only when the client opts in (Go WithRequestContent, WithResponseContent), outside these vectors. media_fetch: what a URL media source refuses to download (SSRF guard): only http and https, no userinfo, public addresses only (v4-mapped and NAT64 judged by their IPv4), redirects not followed, a byte cap (max_bytes, default 32 MiB); error_kind refused (message exact when given), redirect, http_status or too_large. A url starting with / is served by the runner's loopback server, which the runner lets past the address check, and attempts counts the requests it saw. Image and PDF url parts are sent to anthropic as url sources and never fetched. gemini_stream_events: the gemini adapter's StreamWithTools (tools: the defined tool names, sent as the gemini tool-name rule maps them; no tools: Stream) over a streamGenerateContent SSE body: text tokens; with stream_events, each functionCall part, which Gemini sends whole, as start (index, id, original name), one delta (the raw args JSON; none when a call has no args) and end (the complete call, as Outcome.ToolCalls[index]) back to back, then a cumulative usage snapshot for every chunk carrying usageMetadata (a count a chunk omits keeps its last value); then done on the chunk with a finishReason or a promptFeedback blockReason (want_outcome: content, tool_calls, finish_reason mapped as STOP stop, MAX_TOKENS length, SAFETY content_filter, usage), or error_kind (truncated: the body ended before either). Go only: no other port has a gemini adapter. openai_*: the OpenAI Chat Completions adapter (Go openai, with routellm through it). openai_request: the chat completions body for a request on each call (complete, tools, stream, stream_tools), compared as JSON; tool_choice any is \"required\", a named tool goes by its sent name; stream_options.include_usage is sent only with Request.StreamEvents. openai_stream: text tokens of an SSE body, then done, or error_kind: a stream is finished at data: [DONE] or, when the body ends without it, once a choice carried a finish_reason; else truncated; a chunk carrying error is an api error. openai_stream_events: with Request.StreamEvents, tool_calls[i] fragments map to start (the fragment carrying id and name), delta (each arguments fragment) and end (every open call, in index order, on the finish_reason chunk), usage from the usage chunk; not opted in, exactly openai_stream's tokens. openai_accumulate: the outcome a StreamWithTools body folds into (text, tool calls by index with the original names, arguments {} when none streamed, finish reason, usage). openai_error: HTTP responses mapped as anthropic_error (403 permission_denied, also auth), with the SDK's default retries. openai_limits: max_body_bytes and max_event_bytes as anthropic_limits.",
+  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON; system messages, wherever they sit, join in order with a blank line (\\n\\n) into the system field, empty ones skipped, and a cache_control on one ends a text block there, carrying that breakpoint. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds (a 403 or permission_error is permission_denied, which is also an auth error; a 401 is auth), whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode). anthropic_tool_choice: Request.ToolChoice (mode auto, any, none or tool with the tool's defined name) on the call made (complete, stream, tools, stream_tools): the body's tool_choice (want_tool_choice; null: absent; a named tool by its sent name) or the exact error before any request (no tools, unknown mode, a missing, stray or undefined name). anthropic_hermetic: the adapter built hermetic (Go ResolvedConfig.Hermetic, set by llm.Hermetic()) reads no environment and no llm.yaml: with the same env and file as credential_headers, the request goes to want_host (the configured base URL, else the default endpoint) carrying the sent headers and none of the withheld ones. anthropic_stream_events: what a stream yields when Request.StreamEvents is set (tools: the defined tool names; StreamWithTools when present, else Stream): text tokens, tool_call events (start with index, id and the original name; delta with the raw partial-JSON arguments; end with the complete call, as Outcome.ToolCalls[index]), cumulative usage snapshots (prompt, completion, cache read, cache creation, total) when the provider reports usage, then done; or, after a mid-stream error, the events so far and error_kind, with no end for an open call. Not opted in, the sequence is exactly anthropic_stream's. bus_request_started: the kit.ai.request.started payload for a request and call (op complete, stream, tool_call, stream_tools; tools: the tool names offered): metadata only (op, model when set, message count, roles and multimodal part types counted, content_bytes as the UTF-8 length of message text, text parts, tool call arguments and thinking text, tools counted, max_tokens, has_temperature, thinking, stop_sequences counted, extension_keys sorted), compared as JSON; no message text, tool names, extension values or media. bus_response_received: the kit.ai.response.received payload after a completion or tool call: op, finish_reason, usage, content_bytes (text, tool call arguments, thinking text), tool_calls counted, plus duration_ms (a non-negative integer, not compared); no content. Content appears in either only when the client opts in (Go WithRequestContent, WithResponseContent), outside these vectors. media_fetch: what a URL media source refuses to download (SSRF guard): only http and https, no userinfo, public addresses only (v4-mapped and NAT64 judged by their IPv4), redirects not followed, a byte cap (max_bytes, default 32 MiB); error_kind refused (message exact when given), redirect, http_status or too_large. A url starting with / is served by the runner's loopback server, which the runner lets past the address check, and attempts counts the requests it saw. Image and PDF url parts are sent to anthropic as url sources and never fetched. gemini_stream_events: the gemini adapter's StreamWithTools (tools: the defined tool names, sent as the gemini tool-name rule maps them; no tools: Stream) over a streamGenerateContent SSE body: text tokens; with stream_events, each functionCall part, which Gemini sends whole, as start (index, id, original name), one delta (the raw args JSON; none when a call has no args) and end (the complete call, as Outcome.ToolCalls[index]) back to back, then a cumulative usage snapshot for every chunk carrying usageMetadata (a count a chunk omits keeps its last value); then done on the chunk with a finishReason or a promptFeedback blockReason (want_outcome: content, tool_calls, finish_reason mapped as STOP stop, MAX_TOKENS length, SAFETY content_filter, usage), or error_kind (truncated: the body ended before either). Go only: no other port has a gemini adapter. openai_*: the OpenAI Chat Completions adapter (Go openai, with routellm through it). openai_request: the chat completions body for a request on each call (complete, tools, stream, stream_tools), compared as JSON; tool_choice any is \"required\", a named tool goes by its sent name; stream_options.include_usage is sent only with Request.StreamEvents. openai_stream: text tokens of an SSE body, then done, or error_kind: a stream is finished at data: [DONE] or, when the body ends without it, once a choice carried a finish_reason; else truncated; a chunk carrying error is an api error. openai_stream_events: with Request.StreamEvents, tool_calls[i] fragments map to start (the fragment carrying id and name), delta (each arguments fragment) and end (every open call, in index order, on the finish_reason chunk), usage from the usage chunk; not opted in, exactly openai_stream's tokens. openai_accumulate: the outcome a StreamWithTools body folds into (text, tool calls by index with the original names, arguments {} when none streamed, finish reason, usage). openai_error: HTTP responses mapped as anthropic_error (403 permission_denied, also auth), with the SDK's default retries. openai_limits: max_body_bytes and max_event_bytes as anthropic_limits. routellm_base_url: the API root the routellm adapter sends to: the provider base URL (a URI base_url or host, LLM_BASE_URL, llm.yaml base_url; given here as base_url), else the router config (ROUTELLM_BASE_URL over extras routellm.base_url), else http://localhost:6060; /v1 appended once; hermetic reads no ROUTELLM_* variable.",
   "redact_uri": [
     {
       "name": "api_key",
@@ -6278,6 +6278,148 @@
       "content_type": "text/event-stream",
       "body": "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
       "too_large": false
+    }
+  ],
+  "routellm_base_url": [
+    {
+      "name": "default",
+      "base_url": "",
+      "extras": {},
+      "env": {},
+      "hermetic": false,
+      "want": "http://localhost:6060/v1"
+    },
+    {
+      "name": "extras over default",
+      "base_url": "",
+      "extras": {
+        "routellm": {
+          "base_url": "http://127.0.0.1:7102"
+        }
+      },
+      "env": {},
+      "hermetic": false,
+      "want": "http://127.0.0.1:7102/v1"
+    },
+    {
+      "name": "env over default",
+      "base_url": "",
+      "extras": {},
+      "env": {
+        "ROUTELLM_BASE_URL": "http://127.0.0.1:7103"
+      },
+      "hermetic": false,
+      "want": "http://127.0.0.1:7103/v1"
+    },
+    {
+      "name": "env over extras",
+      "base_url": "",
+      "extras": {
+        "routellm": {
+          "base_url": "http://127.0.0.1:7102"
+        }
+      },
+      "env": {
+        "ROUTELLM_BASE_URL": "http://127.0.0.1:7103"
+      },
+      "hermetic": false,
+      "want": "http://127.0.0.1:7103/v1"
+    },
+    {
+      "name": "base_url over extras",
+      "base_url": "http://127.0.0.1:7101",
+      "extras": {
+        "routellm": {
+          "base_url": "http://127.0.0.1:7102"
+        }
+      },
+      "env": {},
+      "hermetic": false,
+      "want": "http://127.0.0.1:7101/v1"
+    },
+    {
+      "name": "base_url over env",
+      "base_url": "http://127.0.0.1:7101",
+      "extras": {},
+      "env": {
+        "ROUTELLM_BASE_URL": "http://127.0.0.1:7103"
+      },
+      "hermetic": false,
+      "want": "http://127.0.0.1:7101/v1"
+    },
+    {
+      "name": "base_url over extras and env",
+      "base_url": "http://127.0.0.1:7101",
+      "extras": {
+        "routellm": {
+          "base_url": "http://127.0.0.1:7102"
+        }
+      },
+      "env": {
+        "ROUTELLM_BASE_URL": "http://127.0.0.1:7103"
+      },
+      "hermetic": false,
+      "want": "http://127.0.0.1:7101/v1"
+    },
+    {
+      "name": "base_url equal to the default still wins",
+      "base_url": "http://localhost:6060",
+      "extras": {
+        "routellm": {
+          "base_url": "http://127.0.0.1:7102"
+        }
+      },
+      "env": {
+        "ROUTELLM_BASE_URL": "http://127.0.0.1:7103"
+      },
+      "hermetic": false,
+      "want": "http://localhost:6060/v1"
+    },
+    {
+      "name": "v1 suffix kept once",
+      "base_url": "http://127.0.0.1:7101/v1",
+      "extras": {},
+      "env": {},
+      "hermetic": false,
+      "want": "http://127.0.0.1:7101/v1"
+    },
+    {
+      "name": "hermetic: env ignored, extras used",
+      "base_url": "",
+      "extras": {
+        "routellm": {
+          "base_url": "http://127.0.0.1:7102"
+        }
+      },
+      "env": {
+        "ROUTELLM_BASE_URL": "http://127.0.0.1:7103"
+      },
+      "hermetic": true,
+      "want": "http://127.0.0.1:7102/v1"
+    },
+    {
+      "name": "hermetic: env ignored, default used",
+      "base_url": "",
+      "extras": {},
+      "env": {
+        "ROUTELLM_BASE_URL": "http://127.0.0.1:7103"
+      },
+      "hermetic": true,
+      "want": "http://localhost:6060/v1"
+    },
+    {
+      "name": "hermetic: base_url over extras",
+      "base_url": "http://127.0.0.1:7101",
+      "extras": {
+        "routellm": {
+          "base_url": "http://127.0.0.1:7102"
+        }
+      },
+      "env": {
+        "ROUTELLM_BASE_URL": "http://127.0.0.1:7103"
+      },
+      "hermetic": true,
+      "want": "http://127.0.0.1:7101/v1"
     }
   ]
 }

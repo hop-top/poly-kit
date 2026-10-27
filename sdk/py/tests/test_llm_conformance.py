@@ -26,6 +26,7 @@ import yaml
 from hop_top_kit import llm, llm_events
 from hop_top_kit.llm_anthropic import AnthropicAdapter
 from hop_top_kit.llm_endpoint import redact_uri
+from hop_top_kit.llm_openai import _api_root_v1
 from hop_top_kit.llm_toolnames import (
     ANTHROPIC_TOOL_NAMES,
     GEMINI_TOOL_NAMES,
@@ -33,6 +34,7 @@ from hop_top_kit.llm_toolnames import (
     ToolNameMode,
     ToolNames,
 )
+from hop_top_kit.routellm_adapter import RouteLLMAdapter, server_base_url
 from tests.llm_fakeserver import Canned, serve
 
 RULES = {
@@ -72,6 +74,7 @@ CONSUMED = {
     "openai_accumulate",
     "openai_error",
     "openai_limits",
+    "routellm_base_url",
 }
 
 _META = {"version", "description"}
@@ -960,3 +963,38 @@ def test_media_fetch(v: dict[str, Any], monkeypatch) -> None:
     body = "x" * s["body_size"] if s.get("body_size") else s.get("body", "")
     with serve(Canned(s["status"], s.get("headers", {}), body)) as srv:
         check(srv)
+
+
+# --- routellm_base_url --------------------------------------------------------
+
+
+_ROUTELLM_BASE_URL_FIELDS = {"name", "base_url", "extras", "env", "hermetic", "want"}
+
+# Vectors expecting Go's default server: with no base URL configured,
+# Python routes in-process (README, Known differences).
+_ROUTELLM_IN_PROCESS = {
+    "default": "no base URL: Python routes in-process, no default server",
+    "hermetic: env ignored, default used": "no base URL: Python routes in-process, no default server",
+}
+
+
+@pytest.mark.parametrize("v", _cases("routellm_base_url"), ids=lambda v: v["name"])
+def test_routellm_base_url(v: dict[str, Any], clean_env, monkeypatch) -> None:
+    assert not set(v) - _ROUTELLM_BASE_URL_FIELDS, (
+        f"unknown fields {sorted(set(v) - _ROUTELLM_BASE_URL_FIELDS)}"
+    )
+    monkeypatch.delenv("ROUTELLM_BASE_URL", raising=False)
+    for k, val in v["env"].items():
+        monkeypatch.setenv(k, val)
+    cfg = llm.ResolvedConfig(
+        uri=llm.URI(scheme="routellm", model="mf:0.5"),
+        provider=llm.ProviderConfig(model="mf:0.5", base_url=v["base_url"], extras=v["extras"]),
+        hermetic=v["hermetic"],
+    )
+    reason = _ROUTELLM_IN_PROCESS.get(v["name"])
+    if reason:
+        assert server_base_url(cfg) == "", "in-process: no server base URL"
+        pytest.skip(reason)
+    a = RouteLLMAdapter(cfg)
+    assert a.mode == "http"
+    assert _api_root_v1(a.base_url) == v["want"]

@@ -898,6 +898,12 @@ Same as Go ([`llm.md`](llm.md)), pinned by `contracts/llm-v1`
   included (`mf:abc` is a tier). An unknown tier fails at the server.
   `parseModelField()` returns `{ isTier, tier, routerName, threshold }`;
   `RouteLLMAdapter` exposes `tier` and `isTier()`.
+- `routellm` base URL, as in Go: the provider base URL (URI `base_url`
+  or host, `LLM_BASE_URL`, llm.yaml `base_url`) first, then `ROUTELLM_BASE_URL`, then extras
+  `routellm.base_url`, then `http://localhost:6060`; `/v1` is appended
+  once. Hermetic reads no `ROUTELLM_*` variable. `RouteLLMAdapter.baseURL`
+  is the resolved API root. (Before, `ROUTELLM_BASE_URL` and extras
+  outranked the URI.)
 
 Params on any adapter URI: `tool_names` (`sanitize` | `strict`),
 `max_body_bytes` (default 32 MiB) and `max_event_bytes` (one SSE event,

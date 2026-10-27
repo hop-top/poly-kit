@@ -115,6 +115,8 @@ const SIBLING = [
   // llm-openai.conformance.test.ts
   "openai_request", "openai_stream", "openai_stream_events",
   "openai_accumulate", "openai_error", "openai_limits",
+  // llm-routellm.conformance.test.ts
+  "routellm_base_url",
 ];
 
 const file = loadVectors<File>();
