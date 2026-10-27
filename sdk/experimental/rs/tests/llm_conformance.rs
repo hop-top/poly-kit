@@ -74,6 +74,8 @@ struct Corpus {
     anthropic_tool_choice: Vec<Value>,
     #[allow(dead_code)]
     anthropic_hermetic: Vec<Value>,
+    #[allow(dead_code)]
+    anthropic_stream_events: Vec<Value>,
 }
 
 #[derive(Deserialize)]

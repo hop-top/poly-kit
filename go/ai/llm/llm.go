@@ -191,6 +191,11 @@ type Request struct {
 	// Thinking, when set, enables extended thinking; thinking deltas
 	// then stream as [Token.Thinking].
 	Thinking *ThinkingConfig
+	// StreamEvents, when set, makes a stream also yield incremental
+	// tool-call events ([Token.ToolCall]) and usage snapshots
+	// ([Token.Usage]). Unset, a stream yields exactly the tokens it
+	// always has. Ignored by Complete and CallWithTools.
+	StreamEvents bool
 	// ToolChoice, when set, constrains tool use on a tool-calling
 	// request (CallWithTools, StreamWithTools); nil leaves the provider
 	// default. See [ToolChoice].
@@ -234,13 +239,58 @@ func (u Usage) Cost(p Price) float64 {
 		float64(u.CacheCreationTokens)*p.CacheWrite) / 1e6
 }
 
-// Token is a single streaming chunk.
+// Token is a single streaming chunk. A token carries one thing: a
+// text delta (Content), a thinking delta (Thinking), a tool-call event
+// (ToolCall), a usage snapshot (Usage), or the end (Done).
 type Token struct {
 	Content string
 	// Thinking is a thinking delta, sent only when the request enabled
 	// [Request.Thinking]; Content is then empty.
 	Thinking string
-	Done     bool
+	// ToolCall is an incremental tool-call event, sent only when the
+	// request set [Request.StreamEvents]. See [ToolCallEvent].
+	ToolCall *ToolCallEvent
+	// Usage is the turn's usage so far, sent only when the request set
+	// [Request.StreamEvents], each time the provider reports it. It is a
+	// cumulative snapshot, never a delta: counts never go down, and the
+	// last one equals the finished turn's usage ([StreamOutcome.Usage]).
+	Usage *Usage
+	Done  bool
+}
+
+// ToolCallEventKind is the step of a streamed tool call.
+type ToolCallEventKind string
+
+const (
+	// ToolCallStart opens a call: Index, ID and Name are set.
+	ToolCallStart ToolCallEventKind = "start"
+	// ToolCallDelta carries a fragment of the call's JSON arguments.
+	ToolCallDelta ToolCallEventKind = "delta"
+	// ToolCallEnd closes a call: Call holds it complete.
+	ToolCallEnd ToolCallEventKind = "end"
+)
+
+// ToolCallEvent is one step of a tool call as it streams.
+//
+// For each call: one start, then any deltas, then one end, in that
+// order; events of parallel calls may interleave and are told apart by
+// Index, the call's position in [StreamOutcome.ToolCalls]. A call that
+// started but never ended (the stream failed, was cancelled or closed)
+// did not complete: no end event is made up for it.
+type ToolCallEvent struct {
+	Kind  ToolCallEventKind
+	Index int
+	// ID and Name are set on start and end. Name is the tool's name as
+	// the caller defined it, whatever name went over the wire.
+	ID   string
+	Name string
+	// ArgumentsDelta is a raw fragment of the arguments' JSON, on delta
+	// only; fragments concatenate to the complete arguments and are not
+	// valid JSON alone.
+	ArgumentsDelta string
+	// Call is the complete call, on end only: exactly the entry at Index
+	// in [StreamOutcome.ToolCalls].
+	Call *ToolCall
 }
 
 // TokenIterator yields streaming tokens.
