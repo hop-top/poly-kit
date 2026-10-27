@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -118,40 +117,32 @@ func (r *cloudrunReady) onReady(addr string) {
 //
 // Readiness is signal-driven: it returns on OnReady, fails at once if
 // the run returns first, and fails after cloudrunMustHappen if OnReady
-// never fires. A port lost to another process between pickFreePort
-// and the adapter's bind is retried on a fresh port.
+// never fires. With no Port set the adapter binds $PORT=0, so the OS
+// picks the port at bind time: no port to lose between a probe and the
+// bind, hence no retry that would run the Mounts a second time.
 func cloudrunRun(t *testing.T, b *Bridge, cfg CloudRunConfig) (addr string, runErr <-chan error, cancel context.CancelFunc) {
 	t.Helper()
-	pickPort := cfg.Port == 0
-	onReady := cfg.OnReady
-	for attempt := 1; ; attempt++ {
-		ready := newCloudrunReady()
-		cfg.OnReady = chainOnReady(onReady, ready.onReady)
-		if pickPort {
-			// Force the resolver to pick a free port. resolveCloudRunPort
-			// would otherwise consult $PORT or fall back to 8080.
-			cfg.Port = pickFreePort(t)
-		}
-
-		ctx, cancelFn := context.WithCancel(context.Background())
-		errCh := make(chan error, 1)
-		go func() { errCh <- runCloudRunCtx(ctx, b, cfg) }()
-
-		select {
-		case addr := <-ready.ch:
-			return addr, errCh, cancelFn
-		case err := <-errCh:
-			cancelFn()
-			if pickPort && attempt < 3 && errors.Is(err, syscall.EADDRINUSE) {
-				continue
-			}
-			t.Fatalf("runCloudRunCtx returned before OnReady: %v", err)
-		case <-time.After(cloudrunMustHappen):
-			cancelFn()
-			t.Fatalf("OnReady not called within %s", cloudrunMustHappen)
-		}
-		return "", nil, nil
+	if cfg.Port == 0 {
+		t.Setenv("PORT", "0")
 	}
+	ready := newCloudrunReady()
+	cfg.OnReady = chainOnReady(cfg.OnReady, ready.onReady)
+
+	ctx, cancelFn := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() { errCh <- runCloudRunCtx(ctx, b, cfg) }()
+
+	select {
+	case addr := <-ready.ch:
+		return addr, errCh, cancelFn
+	case err := <-errCh:
+		cancelFn()
+		t.Fatalf("runCloudRunCtx returned before OnReady: %v", err)
+	case <-time.After(cloudrunMustHappen):
+		cancelFn()
+		t.Fatalf("OnReady not called within %s", cloudrunMustHappen)
+	}
+	return "", nil, nil
 }
 
 // chainOnReady composes two OnReady callbacks; either may be nil.

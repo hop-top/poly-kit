@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -178,15 +179,26 @@ func TestTelemetrySink_NonBlocking(t *testing.T) {
 		Path: []string{"x"},
 		Meta: Meta{Surface: SurfaceCLI, RequestedAt: time.Now()},
 	}
-	for i := 0; i < total; i++ {
-		start := time.Now()
-		if err := s.Emit(context.Background(), inv, Result{}, nil); err != nil {
-			t.Fatalf("Emit %d: %v", i, err)
+	// The emitter stays parked on gate throughout, so a blocking Emit
+	// could never return: all of them returning is the non-blocking
+	// proof. A wall-clock bound per call measured the scheduler too.
+	emitted := make(chan error, 1)
+	go func() {
+		for i := 0; i < total; i++ {
+			if err := s.Emit(context.Background(), inv, Result{}, nil); err != nil {
+				emitted <- fmt.Errorf("Emit %d: %w", i, err)
+				return
+			}
 		}
-		// 5ms is generous: production target is ~1ms; CI fluctuates.
-		if elapsed := time.Since(start); elapsed > 5*time.Millisecond {
-			t.Errorf("Emit %d took %v, want <5ms (non-blocking contract)", i, elapsed)
+		emitted <- nil
+	}()
+	select {
+	case err := <-emitted:
+		if err != nil {
+			t.Fatal(err)
 		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Emit blocked on a parked emitter (non-blocking contract)")
 	}
 
 	// Release the drain so Close can flush.
