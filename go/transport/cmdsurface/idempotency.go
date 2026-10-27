@@ -419,16 +419,12 @@ func markReplayed(inv Invocation) Invocation {
 }
 
 // replayEvents streams a replayed Result the way a runner streams a
-// run: one event per output line, then the done event.
+// run: one event per output line, split as a run's are (see
+// [MaxEventLineBytes]), then the done event.
 func replayEvents(res Result, out chan<- Event) {
-	now := time.Now()
 	for _, s := range []struct{ kind, text string }{{"stdout", res.Stdout}, {"stderr", res.Stderr}} {
-		for _, line := range strings.SplitAfter(s.text, "\n") {
-			if line == "" {
-				continue
-			}
-			out <- Event{Kind: s.kind, Data: strings.TrimSuffix(line, "\n"), At: now}
-		}
+		// A strings.Reader never fails, so neither does this.
+		_ = streamLines(strings.NewReader(s.text), s.kind, MaxEventLineBytes, out)
 	}
-	out <- Event{Kind: "done", Data: &res, At: now}
+	out <- Event{Kind: "done", Data: &res, At: time.Now()}
 }

@@ -327,39 +327,64 @@ func (t *Transport) handle(ctx context.Context, conn net.Conn, inv transportsvc.
 	connCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	lines := make(chan []byte, pipelineDepth)
+	lines := make(chan requestLine, pipelineDepth)
 	go func() {
 		defer close(lines)
-		// The peer closing, a read error, or the listener tearing the
-		// connection down all end the scan; each means no caller is
-		// left to answer, so the connection's work is canceled.
-		defer cancel()
 		sc := bufio.NewScanner(conn)
 		sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 		for sc.Scan() {
-			line := append([]byte(nil), sc.Bytes()...)
+			line := requestLine{line: append([]byte(nil), sc.Bytes()...)}
 			select {
 			case lines <- line:
 			case <-connCtx.Done():
+				cancel()
 				return
 			}
 		}
+		// A line past the bound is a caller still waiting: it is
+		// answered, after the lines read before it, and the
+		// connection then closes, since the rest of that line cannot
+		// be told from the next request.
+		if errors.Is(sc.Err(), bufio.ErrTooLong) {
+			select {
+			case lines <- requestLine{tooLong: true}:
+			case <-connCtx.Done():
+			}
+			return
+		}
+		// The peer closing, a read error, or the listener tearing the
+		// connection down otherwise end the scan; each means no
+		// caller is left to answer, so the connection's work is
+		// canceled.
+		cancel()
 	}()
 
 	enc := json.NewEncoder(conn)
-	for line := range lines {
+	for req := range lines {
 		if connCtx.Err() != nil {
 			return
 		}
-		if len(line) == 0 {
+		if req.tooLong {
+			_ = enc.Encode(errResponse(CodeInvalid,
+				fmt.Sprintf("request line exceeds %d bytes", maxLineBytes)))
+			return
+		}
+		if len(req.line) == 0 {
 			continue
 		}
-		if err := enc.Encode(t.dispatch(connCtx, conn, line, inv)); err != nil {
+		if err := enc.Encode(t.dispatch(connCtx, conn, req.line, inv)); err != nil {
 			// The peer is gone or the socket is torn down; there is
 			// nowhere left to report this.
 			return
 		}
 	}
+}
+
+// requestLine is one request line read from a connection, or the
+// marker that the next line exceeded maxLineBytes.
+type requestLine struct {
+	line    []byte
+	tooLong bool
 }
 
 // dispatch decodes one request line and invokes it, mapping every

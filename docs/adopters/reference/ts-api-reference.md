@@ -851,6 +851,42 @@ for (const call of resp.toolCalls) {
 Go contract and per-provider wire mapping:
 [Returning tool results](llm.md#returning-tool-results).
 
+### Tool names
+
+Providers restrict tool names; ids such as `pane.open` are fine as
+`ToolDef.name`. The rules and the sanitizer match every kit SDK
+([tool-names.md](../../../contracts/llm-v1/tool-names.md)):
+
+| Rule | Accepted names |
+|------|----------------|
+| `ANTHROPIC_TOOL_NAMES` | `^[a-zA-Z0-9_-]{1,128}$` |
+| `OPENAI_TOOL_NAMES` (`routellm`) | `^[a-zA-Z0-9_-]{1,64}$` |
+| `GEMINI_TOOL_NAMES` | `^[a-zA-Z_][a-zA-Z0-9_.:-]{0,127}$` |
+
+```ts
+import { OPENAI_TOOL_NAMES, ToolNames, sanitizeToolName } from '@hop-top/kit/llm';
+
+sanitizeToolName(OPENAI_TOOL_NAMES, 'pane.open');   // 'pane_open'
+const names = ToolNames.build(OPENAI_TOOL_NAMES, 'sanitize', tools);
+names.defs(tools);          // tools under their wire names
+names.calls(resp.toolCalls) // calls back under the original names
+```
+
+- `sanitizeToolName` works on UTF-8 bytes: each run of other bytes
+  becomes one `_`; a name still too long, or with no ASCII letter or
+  digit, is cut and ends in `_` + 8 hex of its SHA-256 (`node:crypto`).
+- `ToolNames.build` throws `ToolNameError` (an `LLMError`, never
+  fallbackable) for the first bad tool: `reason` is `empty`,
+  `invalid_utf8` (a lone surrogate), `invalid` (strict only),
+  `duplicate` or `collision`; `toolName` is the tool, `other` the
+  earlier tool a collision maps onto. (`name` is the class name, as on
+  every `Error`.)
+- `?tool_names=strict` (`toolNameModeOf(params)`) sends names as given
+  and fails an invalid one before sending; `sanitize` is the default;
+  any other value throws when the adapter is built.
+- `routellm` has no tool-calling entry point; it maps the names of
+  replayed `toolCalls` with the OpenAI rule and honours `tool_names`.
+
 ## Related pages
 
 - [`cli-api-reference.md`](cli-api-reference.md) — Go equivalent
