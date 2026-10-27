@@ -146,3 +146,26 @@ run_lint() {
     run_lint
     [ "$status" -eq 0 ]
 }
+
+# --- file arguments (changed-files scope) ---------------------------------
+
+@test "file args: only the named files are scanned" {
+    write_tracked go/x.go "// see cli-""conventions §3.5"
+    mkdir -p "$REPO/docs"; printf 'clean\n' > "$REPO/docs/ok.md"
+    run bash -c "cd '$REPO' && scripts/lint-internal-refs.sh docs/ok.md README.md"
+    [ "$status" -eq 0 ]
+}
+
+@test "file args: a named untracked file is scanned" {
+    mkdir -p "$REPO/docs"
+    printf '%s\n' "see ~/.o""ps/docs/glossary.md" > "$REPO/docs/new.md"
+    run bash -c "cd '$REPO' && scripts/lint-internal-refs.sh docs/new.md"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"docs/new.md:1:"* ]]
+}
+
+@test "file args: CHANGELOG.md stays excluded" {
+    write_tracked CHANGELOG.md "see ~/.o""ps/docs/glossary.md"
+    run bash -c "cd '$REPO' && scripts/lint-internal-refs.sh CHANGELOG.md"
+    [ "$status" -eq 0 ]
+}

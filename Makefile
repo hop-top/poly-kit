@@ -888,7 +888,7 @@ test-hook: ## Run bats tests for pre-push hook
 test-lint-scripts: ## Run bats tests for repo lint and sync scripts
 	bats .github/tests/lint-internal-refs.bats .github/tests/sync-builtins.bats \
 		.github/tests/toolchain-parity.bats .github/tests/lint-actions-pinned.bats \
-		.github/tests/gitignore-hop-copy.bats
+		.github/tests/gitignore-hop-copy.bats .github/tests/changed-files.bats
 
 # Every *.bats suite in the repo, discovered by git ls-files: the targets
 # above plus the template-script suites (templates/shared and its builtins
