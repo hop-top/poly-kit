@@ -294,6 +294,50 @@ describe("parseRouterConfig", () => {
   });
 });
 
+// ─── Base URL precedence ──────────────────────────────────────────────────────
+
+describe("RouteLLMAdapter base URL", () => {
+  const saved = process.env["ROUTELLM_BASE_URL"];
+  afterEach(() => {
+    if (saved === undefined) delete process.env["ROUTELLM_BASE_URL"];
+    else process.env["ROUTELLM_BASE_URL"] = saved;
+  });
+
+  const adapter = (baseURL?: string, hermetic = false) =>
+    new RouteLLMAdapter({
+      uri: { scheme: "routellm", model: "mf:0.5" },
+      provider: {
+        model: "mf:0.5",
+        baseURL,
+        extras: { routellm: { base_url: "http://extras.test:2" } },
+      },
+      fallbacks: [],
+      hermetic,
+    });
+
+  it("provider base URL beats extras and ROUTELLM_BASE_URL", () => {
+    process.env["ROUTELLM_BASE_URL"] = "http://env.test:3";
+    expect(adapter("http://uri.test:1").baseURL).toBe("http://uri.test:1/v1");
+  });
+
+  it("provider base URL equal to the default still wins", () => {
+    process.env["ROUTELLM_BASE_URL"] = "http://env.test:3";
+    expect(adapter("http://localhost:6060").baseURL).toBe("http://localhost:6060/v1");
+  });
+
+  it("router config applies without a provider base URL", () => {
+    process.env["ROUTELLM_BASE_URL"] = "http://env.test:3";
+    expect(adapter().baseURL).toBe("http://env.test:3/v1");
+    delete process.env["ROUTELLM_BASE_URL"];
+    expect(adapter().baseURL).toBe("http://extras.test:2/v1");
+  });
+
+  it("hermetic ignores ROUTELLM_BASE_URL", () => {
+    process.env["ROUTELLM_BASE_URL"] = "http://env.test:3";
+    expect(adapter(undefined, true).baseURL).toBe("http://extras.test:2/v1");
+  });
+});
+
 // ─── Scheme registration ──────────────────────────────────────────────────────
 
 describe("routellm scheme registration", () => {

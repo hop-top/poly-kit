@@ -74,6 +74,9 @@ struct Corpus {
     openai_accumulate: Vec<Value>,
     openai_error: Vec<Value>,
     openai_limits: Vec<Value>,
+    /// routellm adapter base URL precedence. Not applicable: this port
+    /// has no routellm adapter.
+    routellm_base_url: Vec<Value>,
 }
 
 #[derive(Deserialize)]
@@ -613,6 +616,19 @@ fn openai_vectors_not_applicable() {
             "{section}: {} vectors not applicable (no openai adapter in this port)",
             vs.len()
         );
+    }
+}
+
+/// This port has no routellm adapter. The section must still be present
+/// and well formed.
+#[test]
+fn routellm_base_url_vectors_not_applicable() {
+    let c = load();
+    assert!(!c.routellm_base_url.is_empty());
+    for v in &c.routellm_base_url {
+        let name = v.get("name").and_then(Value::as_str).unwrap_or_default();
+        assert!(!name.is_empty(), "routellm_base_url vector without a name");
+        eprintln!("routellm_base_url/{name}: not applicable (no routellm adapter in this port)");
     }
 }
 

@@ -50,6 +50,7 @@ type Adapter struct {
 	routerName string
 	threshold  float64
 	tier       string
+	baseURL    string // API root the inner adapter sends to
 }
 
 // IsTier reports whether the adapter targets a server-resolved tier
@@ -147,6 +148,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		routerName: parsed.routerName,
 		threshold:  parsed.threshold,
 		tier:       parsed.tier,
+		baseURL:    baseURL,
 	}, nil
 }
 
