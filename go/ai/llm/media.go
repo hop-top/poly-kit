@@ -3,10 +3,8 @@ package llm
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"mime"
-	"net/http"
 	"os"
 	"path/filepath"
 )
@@ -49,32 +47,47 @@ func (s *inlineSource) MimeType() string { return s.mimeType }
 // ---------------------------------------------------------------------------
 
 type urlSource struct {
-	url string
+	url      string
+	maxBytes int64
+}
+
+// URLSourceOption configures a [URLSource].
+type URLSourceOption func(*urlSource)
+
+// MediaMaxBytes caps the download at n bytes (default
+// [DefaultMaxMediaBytes]); a body over the cap fails with
+// [llmerrors.ErrMediaTooLarge]. n <= 0 keeps the default.
+func MediaMaxBytes(n int64) URLSourceOption {
+	return func(s *urlSource) {
+		if n > 0 {
+			s.maxBytes = n
+		}
+	}
 }
 
 // URLSource provides a URL-backed source. Reader() downloads lazily.
-func URLSource(url string) MediaSource {
-	return &urlSource{url: url}
+//
+// The download is guarded against server-side request forgery (see
+// media_fetch.go): http or https only, public addresses only (checked
+// on the address dialed, so DNS rebinding cannot redirect it), no
+// redirects, no proxy, at most [DefaultMaxMediaBytes] (or
+// [MediaMaxBytes]), 30s, and the --offline policy. Refusals match
+// [ErrMediaURLRefused]. Adapters whose provider accepts a URL (OpenAI
+// images, Anthropic images and PDFs) send the URL and do not download.
+func URLSource(url string, opts ...URLSourceOption) MediaSource {
+	s := &urlSource{url: url, maxBytes: DefaultMaxMediaBytes}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 func (s *urlSource) URL() string      { return s.url }
 func (s *urlSource) MimeType() string { return "" }
 
 func (s *urlSource) Reader(ctx context.Context) (io.ReadCloser, error) {
-	// The URL may be presigned: errors carry it masked by RedactURI.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url, nil)
-	if err != nil {
-		return nil, RedactURLError(err)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, RedactURLError(err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		resp.Body.Close()
-		return nil, fmt.Errorf("url source: unexpected status %d fetching %s", resp.StatusCode, RedactURI(s.url))
-	}
-	return resp.Body, nil
+	// The URL may be presigned: errors name it without query or userinfo.
+	return fetchMedia(ctx, s.url, s.maxBytes)
 }
 
 // ---------------------------------------------------------------------------
