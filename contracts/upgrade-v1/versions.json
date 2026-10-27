@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/upgrade-v1/versions.json",
+  "version": "v1",
+  "description": "Migration version order and selection (Go `core/upgrade`). A leading `v` is dropped before parsing. Build metadata after `+` is ignored. Each of major, minor and patch is the leading decimal digits of its dot-separated part (missing or non-numeric is 0; anything after the third dot belongs to patch and is ignored). A release sorts above its pre-releases; pre-release identifiers compare left to right, a numeric identifier (decimal, no leading zero) below an alphanumeric one, numbers by value, text bytewise, and a shorter list of equal identifiers first. `compare` is the sign of a against b. `pending` lists, ascending, the migrations of `schema` whose version v satisfies from < v <= to; ties have no defined order, so no vector holds one.",
+  "compare": [
+    { "name": "equal", "a": "1.0.0", "b": "1.0.0", "cmp": 0 },
+    { "name": "v prefix dropped", "a": "v1.2.3", "b": "1.2.3", "cmp": 0 },
+    { "name": "patch", "a": "1.0.0", "b": "1.0.1", "cmp": -1 },
+    { "name": "minor numeric not lexical", "a": "1.9.0", "b": "1.10.0", "cmp": -1 },
+    { "name": "major dominates", "a": "2.0.0", "b": "1.99.99", "cmp": 1 },
+    { "name": "release above pre-release", "a": "1.0.0", "b": "1.0.0-rc.1", "cmp": 1 },
+    { "name": "shorter pre-release first", "a": "1.0.0-alpha", "b": "1.0.0-alpha.1", "cmp": -1 },
+    { "name": "numeric below alphanumeric", "a": "1.0.0-alpha.1", "b": "1.0.0-alpha.beta", "cmp": -1 },
+    { "name": "text bytewise", "a": "1.0.0-alpha.beta", "b": "1.0.0-beta", "cmp": -1 },
+    { "name": "numeric by value", "a": "1.0.0-beta.2", "b": "1.0.0-beta.11", "cmp": -1 },
+    { "name": "beta below rc", "a": "1.0.0-beta.11", "b": "1.0.0-rc.1", "cmp": -1 },
+    { "name": "bare numeric below text", "a": "1.0.0-1", "b": "1.0.0-a", "cmp": -1 },
+    { "name": "leading zero identifier is text", "a": "1.0.0-01", "b": "1.0.0-1", "cmp": 1 },
+    { "name": "uppercase sorts before lowercase", "a": "1.0.0-RC", "b": "1.0.0-rc", "cmp": -1 },
+    { "name": "build metadata ignored", "a": "1.0.0+build.1", "b": "1.0.0+build.2", "cmp": 0 },
+    { "name": "build metadata after pre-release ignored", "a": "1.0.0-rc.1+sha.abc", "b": "1.0.0-rc.1", "cmp": 0 },
+    { "name": "missing minor and patch are zero", "a": "1", "b": "1.0.0", "cmp": 0 },
+    { "name": "missing patch is zero", "a": "1.2", "b": "1.2.0", "cmp": 0 },
+    { "name": "empty is zero", "a": "", "b": "0.0.0", "cmp": 0 },
+    { "name": "empty below any release", "a": "", "b": "0.0.1", "cmp": -1 },
+    { "name": "fourth part ignored", "a": "1.2.3.4", "b": "1.2.3", "cmp": 0 },
+    { "name": "non-numeric part is zero", "a": "x.y.z", "b": "0.0.0", "cmp": 0 },
+    { "name": "leading digits of a part", "a": "1a.2b.3c", "b": "1.2.3", "cmp": 0 },
+    { "name": "leading zeros in core", "a": "01.02.03", "b": "1.2.3", "cmp": 0 },
+    { "name": "empty pre-release is a release", "a": "1.0.0-", "b": "1.0.0", "cmp": 0 }
+  ],
+  "pending": [
+    {
+      "name": "range excludes from, includes to",
+      "migrations": [
+        { "schema": "db", "version": "1.0.0" },
+        { "schema": "db", "version": "1.1.0" },
+        { "schema": "db", "version": "1.2.0" },
+        { "schema": "db", "version": "2.0.0" }
+      ],
+      "schema": "db", "from": "1.0.0", "to": "1.2.0",
+      "pending": ["1.1.0", "1.2.0"]
+    },
+    {
+      "name": "other schemas skipped",
+      "migrations": [
+        { "schema": "db", "version": "1.1.0" },
+        { "schema": "config", "version": "1.1.0" },
+        { "schema": "db", "version": "1.2.0" }
+      ],
+      "schema": "config", "from": "1.0.0", "to": "2.0.0",
+      "pending": ["1.1.0"]
+    },
+    {
+      "name": "registration order does not matter",
+      "migrations": [
+        { "schema": "db", "version": "1.2.0" },
+        { "schema": "db", "version": "1.0.1" },
+        { "schema": "db", "version": "1.1.0" }
+      ],
+      "schema": "db", "from": "1.0.0", "to": "2.0.0",
+      "pending": ["1.0.1", "1.1.0", "1.2.0"]
+    },
+    {
+      "name": "pre-releases in semver order",
+      "migrations": [
+        { "schema": "db", "version": "1.0.0-rc.1" },
+        { "schema": "db", "version": "1.0.0" },
+        { "schema": "db", "version": "1.0.0-alpha.10" },
+        { "schema": "db", "version": "1.0.0-beta.1" },
+        { "schema": "db", "version": "1.0.0-alpha.beta" },
+        { "schema": "db", "version": "1.0.0-alpha.2" },
+        { "schema": "db", "version": "1.0.0-alpha.1" }
+      ],
+      "schema": "db", "from": "1.0.0-alpha.1", "to": "1.0.0",
+      "pending": ["1.0.0-alpha.2", "1.0.0-alpha.10", "1.0.0-alpha.beta", "1.0.0-beta.1", "1.0.0-rc.1", "1.0.0"]
+    },
+    {
+      "name": "empty from takes everything above 0.0.0",
+      "migrations": [
+        { "schema": "db", "version": "0.0.0" },
+        { "schema": "db", "version": "0.1.0" },
+        { "schema": "db", "version": "1.0.0" }
+      ],
+      "schema": "db", "from": "", "to": "1.0.0",
+      "pending": ["0.1.0", "1.0.0"]
+    },
+    {
+      "name": "v prefixes on bounds and versions; versions listed as registered",
+      "migrations": [
+        { "schema": "db", "version": "v1.1.0" },
+        { "schema": "db", "version": "1.2.0" },
+        { "schema": "db", "version": "v1.3.0" }
+      ],
+      "schema": "db", "from": "v1.0.0", "to": "v1.2.0",
+      "pending": ["v1.1.0", "1.2.0"]
+    },
+    {
+      "name": "from equals to",
+      "migrations": [{ "schema": "db", "version": "1.0.0" }],
+      "schema": "db", "from": "1.0.0", "to": "1.0.0",
+      "pending": []
+    },
+    {
+      "name": "from above to never goes down",
+      "migrations": [
+        { "schema": "db", "version": "1.1.0" },
+        { "schema": "db", "version": "1.2.0" }
+      ],
+      "schema": "db", "from": "2.0.0", "to": "1.0.0",
+      "pending": []
+    },
+    {
+      "name": "target pre-release excludes its release",
+      "migrations": [
+        { "schema": "db", "version": "2.0.0-rc.1" },
+        { "schema": "db", "version": "2.0.0" }
+      ],
+      "schema": "db", "from": "1.0.0", "to": "2.0.0-rc.1",
+      "pending": ["2.0.0-rc.1"]
+    },
+    {
+      "name": "no migrations",
+      "migrations": [],
+      "schema": "db", "from": "", "to": "9.9.9",
+      "pending": []
+    }
+  ]
+}

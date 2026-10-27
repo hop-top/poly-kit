@@ -6,18 +6,17 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/packages/ssestream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -47,21 +46,50 @@ type confMessage struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
 	} `json:"tool_calls"`
-	ToolCallID string `json:"tool_call_id"`
+	ToolCallID   string        `json:"tool_call_id"`
+	CacheControl *confCache    `json:"cache_control"`
+	Thinking     []confThought `json:"thinking"`
+}
+
+type confCache struct {
+	TTL string `json:"ttl"`
+}
+
+type confThought struct {
+	Thinking  string `json:"thinking"`
+	Signature string `json:"signature"`
+	Redacted  string `json:"redacted"`
+}
+
+func (c *confCache) toLLM() *llm.CacheControl {
+	if c == nil {
+		return nil
+	}
+	return &llm.CacheControl{TTL: c.TTL}
+}
+
+func thoughts(ts []confThought) []llm.ThinkingBlock {
+	var out []llm.ThinkingBlock
+	for _, t := range ts {
+		out = append(out, llm.ThinkingBlock{Thinking: t.Thinking, Signature: t.Signature, Redacted: t.Redacted})
+	}
+	return out
 }
 
 type confRequest struct {
-	Model         string        `json:"model"`
-	Temperature   *float64      `json:"temperature"`
-	MaxTokens     int           `json:"max_tokens"`
-	StopSequences []string      `json:"stop_sequences"`
-	Messages      []confMessage `json:"messages"`
+	Model          string        `json:"model"`
+	Temperature    *float64      `json:"temperature"`
+	MaxTokens      int           `json:"max_tokens"`
+	StopSequences  []string      `json:"stop_sequences"`
+	Messages       []confMessage `json:"messages"`
+	ThinkingBudget int           `json:"thinking_budget"`
 }
 
 type confTool struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Parameters  string `json:"parameters"`
+	Name         string     `json:"name"`
+	Description  string     `json:"description"`
+	Parameters   string     `json:"parameters"`
+	CacheControl *confCache `json:"cache_control"`
 }
 
 type confResponse struct {
@@ -80,10 +108,13 @@ type confAccumulated struct {
 	} `json:"tool_calls"`
 	StopReason string `json:"stop_reason"`
 	Usage      struct {
-		InputTokens  int64 `json:"input_tokens"`
-		OutputTokens int64 `json:"output_tokens"`
+		InputTokens         int64 `json:"input_tokens"`
+		OutputTokens        int64 `json:"output_tokens"`
+		CacheReadTokens     int   `json:"cache_read_tokens"`
+		CacheCreationTokens int   `json:"cache_creation_tokens"`
 	} `json:"usage"`
-	Error bool `json:"error"`
+	Error          bool           `json:"error"`
+	ThinkingBlocks *[]confThought `json:"thinking_blocks"`
 }
 
 type anthropicConfFile struct {
@@ -111,10 +142,13 @@ type anthropicConfFile struct {
 		Absent []string          `json:"absent"`
 	} `json:"anthropic_headers"`
 	AnthropicStream []struct {
-		Name       string   `json:"name"`
-		SSE        string   `json:"sse"`
-		WantTokens []string `json:"want_tokens"`
-		WantError  bool     `json:"want_error"`
+		Name           string   `json:"name"`
+		SSE            string   `json:"sse"`
+		WantTokens     []string `json:"want_tokens"`
+		WantError      bool     `json:"want_error"`
+		ErrorKind      string   `json:"error_kind"`
+		ThinkingBudget int      `json:"thinking_budget"`
+		WantThinking   []string `json:"want_thinking"`
 	} `json:"anthropic_stream"`
 	AnthropicAccumulate []struct {
 		Name    string          `json:"name"`
@@ -129,7 +163,33 @@ type anthropicConfFile struct {
 		WantStatus   int            `json:"want_status"`
 		Fallbackable bool           `json:"fallbackable"`
 		Attempts     int            `json:"attempts"`
+		Stream       bool           `json:"stream"`
 	} `json:"anthropic_error"`
+	AnthropicLimits []struct {
+		Name        string            `json:"name"`
+		Params      map[string]string `json:"params"`
+		Stream      bool              `json:"stream"`
+		ContentType string            `json:"content_type"`
+		Body        string            `json:"body"`
+		TooLarge    bool              `json:"too_large"`
+	} `json:"anthropic_limits"`
+	AnthropicResponse []struct {
+		Name  string `json:"name"`
+		Tools bool   `json:"tools"`
+		Body  string `json:"body"`
+		Want  struct {
+			Content        string        `json:"content"`
+			ThinkingBlocks []confThought `json:"thinking_blocks"`
+			ToolCalls      []struct {
+				ID    string          `json:"id"`
+				Name  string          `json:"name"`
+				Input json.RawMessage `json:"input"`
+			} `json:"tool_calls"`
+			StopReason string    `json:"stop_reason"`
+			Usage      confUsage `json:"usage"`
+		} `json:"want"`
+	} `json:"anthropic_response"`
+	UsageCost   json.RawMessage `json:"usage_cost"`
 	KeyEndpoint []struct {
 		Name    string            `json:"name"`
 		Op      string            `json:"op"`
@@ -170,8 +230,12 @@ func (r confRequest) toLLM(t *testing.T) llm.Request {
 		MaxTokens:     r.MaxTokens,
 		StopSequences: r.StopSequences,
 	}
+	if r.ThinkingBudget > 0 {
+		out.Thinking = &llm.ThinkingConfig{BudgetTokens: r.ThinkingBudget}
+	}
 	for _, m := range r.Messages {
-		msg := llm.Message{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID}
+		msg := llm.Message{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID,
+			CacheControl: m.CacheControl.toLLM(), Thinking: thoughts(m.Thinking)}
 		for _, p := range m.Parts {
 			part := llm.ContentPart{Type: llm.PartType(p.Type), Text: p.Text, MimeType: p.MimeType}
 			if p.Data != "" {
@@ -196,7 +260,7 @@ func (r confRequest) toLLM(t *testing.T) llm.Request {
 func toolDefs(tools []confTool) []llm.ToolDef {
 	var out []llm.ToolDef
 	for _, d := range tools {
-		def := llm.ToolDef{Name: d.Name, Description: d.Description}
+		def := llm.ToolDef{Name: d.Name, Description: d.Description, CacheControl: d.CacheControl.toLLM()}
 		if d.Parameters != "" {
 			def.Parameters = json.RawMessage(d.Parameters)
 		}
@@ -327,12 +391,15 @@ func TestConformanceAnthropicStream(t *testing.T) {
 		t.Run(v.Name, func(t *testing.T) {
 			clearAnthropicEnv(t)
 			p := newConfAdapter(t, sseServer(t, v.SSE).URL, "m", "k")
-			it, err := p.(llm.Streamer).Stream(context.Background(), llm.Request{
-				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
-			})
+			req := llm.Request{Messages: []llm.Message{{Role: "user", Content: "Hi"}}}
+			if v.ThinkingBudget > 0 {
+				req.MaxTokens = 4 * v.ThinkingBudget
+				req.Thinking = &llm.ThinkingConfig{BudgetTokens: v.ThinkingBudget}
+			}
+			it, err := p.(llm.Streamer).Stream(context.Background(), req)
 			require.NoError(t, err)
 			defer it.Close()
-			tokens := []string{}
+			tokens, thinking := []string{}, []string{}
 			var streamErr error
 			for {
 				tok, err := it.Next()
@@ -347,10 +414,17 @@ func TestConformanceAnthropicStream(t *testing.T) {
 					assert.ErrorIs(t, err, io.EOF, "Next after Done is EOF")
 					break
 				}
+				if tok.Thinking != "" {
+					thinking = append(thinking, tok.Thinking)
+					continue
+				}
 				tokens = append(tokens, tok.Content)
 			}
 			assert.Equal(t, v.WantTokens, tokens)
+			assert.Equal(t, v.WantThinking, thinking)
 			assert.Equal(t, v.WantError, streamErr != nil, "error: %v", streamErr)
+			kind, _ := errorKind(streamErr)
+			assert.Equal(t, v.ErrorKind, kind, "error: %v", streamErr)
 		})
 	}
 }
@@ -364,58 +438,59 @@ func TestConformanceAnthropicAccumulate(t *testing.T) {
 	}
 	for _, v := range f.AnthropicAccumulate {
 		t.Run(v.Name, func(t *testing.T) {
+			clearAnthropicEnv(t)
 			sse := v.SSE
 			if v.SSEFrom != "" {
 				var ok bool
 				sse, ok = streams[v.SSEFrom]
 				require.True(t, ok, "sse_from %q", v.SSEFrom)
 			}
-			res := &http.Response{
-				Header: http.Header{"Content-Type": []string{"text/event-stream"}},
-				Body:   io.NopCloser(strings.NewReader(sse)),
-			}
-			stream := ssestream.NewStream[sdk.MessageStreamEventUnion](ssestream.NewDecoder(res), nil)
-			var msg sdk.Message
-			var accErr error
-			for stream.Next() {
-				if accErr = msg.Accumulate(stream.Current()); accErr != nil {
+			p := newConfAdapter(t, sseServer(t, sse).URL, "m", "k")
+			st, err := p.(llm.ToolStreamer).StreamWithTools(context.Background(), llm.Request{
+				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+			}, []llm.ToolDef{{Name: "get_weather"}})
+			require.NoError(t, err)
+			defer st.Close()
+			var streamErr error
+			for {
+				tok, err := st.Next()
+				if err != nil {
+					if !errors.Is(err, io.EOF) {
+						streamErr = err
+					}
+					break
+				}
+				if tok.Done {
 					break
 				}
 			}
-			if accErr == nil {
-				accErr = stream.Err()
-			}
-			require.Equal(t, v.Want.Error, accErr != nil, "error: %v", accErr)
+			require.Equal(t, v.Want.Error, streamErr != nil, "error: %v", streamErr)
 			if v.Want.Error {
+				_, ok := st.Outcome()
+				assert.False(t, ok, "no outcome after an error")
 				return
 			}
-			var text, thinking string
-			type call struct {
-				ID    string          `json:"id"`
-				Name  string          `json:"name"`
-				Input json.RawMessage `json:"input"`
+			out, ok := st.Outcome()
+			require.True(t, ok)
+			thinking := ""
+			for _, b := range out.Thinking {
+				thinking += b.Thinking
 			}
-			calls := []call{}
-			for _, b := range msg.Content {
-				switch b.Type {
-				case "text":
-					text += b.Text
-				case "thinking":
-					thinking += b.Thinking
-				case "tool_use":
-					calls = append(calls, call{ID: b.ID, Name: b.Name, Input: b.Input})
-				}
-			}
-			assert.Equal(t, v.Want.Text, text)
+			assert.Equal(t, v.Want.Text, out.Content)
 			assert.Equal(t, v.Want.Thinking, thinking)
-			assert.Equal(t, v.Want.StopReason, string(msg.StopReason))
-			assert.Equal(t, v.Want.Usage.InputTokens, msg.Usage.InputTokens)
-			assert.Equal(t, v.Want.Usage.OutputTokens, msg.Usage.OutputTokens)
-			require.Len(t, calls, len(v.Want.ToolCalls))
+			assert.Equal(t, v.Want.StopReason, out.FinishReason)
+			assert.Equal(t, int(v.Want.Usage.InputTokens), out.Usage.PromptTokens)
+			assert.Equal(t, int(v.Want.Usage.OutputTokens), out.Usage.CompletionTokens)
+			assert.Equal(t, v.Want.Usage.CacheReadTokens, out.Usage.CacheReadTokens)
+			assert.Equal(t, v.Want.Usage.CacheCreationTokens, out.Usage.CacheCreationTokens)
+			if v.Want.ThinkingBlocks != nil {
+				assert.Equal(t, thoughts(*v.Want.ThinkingBlocks), out.Thinking)
+			}
+			require.Len(t, out.ToolCalls, len(v.Want.ToolCalls))
 			for i, want := range v.Want.ToolCalls {
-				assert.Equal(t, want.ID, calls[i].ID)
-				assert.Equal(t, want.Name, calls[i].Name)
-				assert.JSONEq(t, string(want.Input), string(calls[i].Input))
+				assert.Equal(t, want.ID, out.ToolCalls[i].ID)
+				assert.Equal(t, want.Name, out.ToolCalls[i].Name)
+				assert.JSONEq(t, string(want.Input), string(out.ToolCalls[i].Arguments))
 			}
 		})
 	}
@@ -431,6 +506,10 @@ func errorKind(err error) (kind string, status int) {
 	switch {
 	case err == nil:
 		return "", 0
+	case errors.As(err, new(*llmerrors.ErrStreamTruncated)):
+		return "truncated", 0
+	case errors.As(err, new(*llmerrors.ErrResponseTooLarge)):
+		return "too_large", 0
 	case errors.As(err, &auth):
 		return "auth", 0
 	case errors.As(err, &rl):
@@ -465,13 +544,21 @@ func TestConformanceAnthropicError(t *testing.T) {
 				_, _ = io.WriteString(w, r.Body)
 			}))
 			t.Cleanup(srv.Close)
-			p := newConfAdapter(t, srv.URL, "m", "k")
+			p := newConfAdapter(t, srv.URL, "m", confKey)
 			// A wait the client should not honor fails here, not hangs.
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			_, err := p.(llm.Completer).Complete(ctx, llm.Request{
-				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
-			})
+			req := llm.Request{Messages: []llm.Message{{Role: "user", Content: "Hi"}}}
+			var err error
+			if v.Stream {
+				err = drainStream(ctx, p, req)
+			} else {
+				_, err = p.(llm.Completer).Complete(ctx, req)
+			}
+			if err != nil {
+				assert.NotContains(t, err.Error(), confKey)
+				assert.NotContains(t, fmt.Sprintf("%+v", err), confKey)
+			}
 			kind, status := errorKind(err)
 			assert.Equal(t, v.WantKind, kind, "error: %v", err)
 			assert.Equal(t, v.WantStatus, status)
@@ -558,4 +645,109 @@ func TestConformanceCredentialHeaders(t *testing.T) {
 			}
 		})
 	}
+}
+
+// confKey is the key error vectors run with; no error text may hold it.
+const confKey = "conf-key-must-not-leak"
+
+// drainStream opens a stream and reads it to its end.
+func drainStream(ctx context.Context, p llm.Provider, req llm.Request) error {
+	it, err := p.(llm.Streamer).Stream(ctx, req)
+	if err != nil {
+		return err
+	}
+	defer it.Close()
+	for {
+		tok, err := it.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+		if tok.Done {
+			return nil
+		}
+	}
+}
+
+func TestConformanceAnthropicLimits(t *testing.T) {
+	f := loadAnthropicConf(t)
+	require.NotEmpty(t, f.AnthropicLimits)
+	for _, v := range f.AnthropicLimits {
+		t.Run(v.Name, func(t *testing.T) {
+			clearAnthropicEnv(t)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", v.ContentType)
+				_, _ = io.WriteString(w, v.Body)
+			}))
+			t.Cleanup(srv.Close)
+			p, err := anthropic.New(llm.ResolvedConfig{Provider: llm.ProviderConfig{
+				APIKey: "k", BaseURL: srv.URL, Model: "m", Params: v.Params,
+			}})
+			require.NoError(t, err)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			req := llm.Request{Messages: []llm.Message{{Role: "user", Content: "Hi"}}}
+			if v.Stream {
+				err = drainStream(ctx, p, req)
+			} else {
+				_, err = p.(llm.Completer).Complete(ctx, req)
+			}
+			if v.TooLarge {
+				kind, _ := errorKind(err)
+				assert.Equal(t, "too_large", kind, "error: %v", err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestConformanceAnthropicResponse(t *testing.T) {
+	f := loadAnthropicConf(t)
+	require.NotEmpty(t, f.AnthropicResponse)
+	for _, v := range f.AnthropicResponse {
+		t.Run(v.Name, func(t *testing.T) {
+			clearAnthropicEnv(t)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, v.Body)
+			}))
+			t.Cleanup(srv.Close)
+			p := newConfAdapter(t, srv.URL, "m", "k")
+			req := llm.Request{Messages: []llm.Message{{Role: "user", Content: "Hi"}}}
+			var content, stop string
+			var usage llm.Usage
+			var thinking []llm.ThinkingBlock
+			var calls []llm.ToolCall
+			if v.Tools {
+				r, err := p.(llm.ToolCaller).CallWithTools(context.Background(), req, []llm.ToolDef{{Name: "f"}})
+				require.NoError(t, err)
+				content, stop, usage, thinking, calls = r.Content, r.FinishReason, r.Usage, r.Thinking, r.ToolCalls
+			} else {
+				r, err := p.(llm.Completer).Complete(context.Background(), req)
+				require.NoError(t, err)
+				content, stop, usage, thinking = r.Content, r.FinishReason, r.Usage, r.Thinking
+			}
+			assert.Equal(t, v.Want.Content, content)
+			assert.Equal(t, v.Want.StopReason, stop)
+			assert.Equal(t, llm.Usage(v.Want.Usage), usage)
+			assert.Equal(t, thoughts(v.Want.ThinkingBlocks), thinking)
+			require.Len(t, calls, len(v.Want.ToolCalls))
+			for i, want := range v.Want.ToolCalls {
+				assert.Equal(t, want.ID, calls[i].ID)
+				assert.Equal(t, want.Name, calls[i].Name)
+				assert.JSONEq(t, string(want.Input), string(calls[i].Arguments))
+			}
+		})
+	}
+}
+
+type confUsage struct {
+	PromptTokens        int `json:"prompt_tokens"`
+	CompletionTokens    int `json:"completion_tokens"`
+	CacheReadTokens     int `json:"cache_read_tokens"`
+	CacheCreationTokens int `json:"cache_creation_tokens"`
+	TotalTokens         int `json:"total_tokens"`
 }

@@ -164,7 +164,7 @@ jobs:
     steps:
       # ── 1. Checkout source ────────────────────────────────────────────────────
       - name: Checkout source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # persist-credentials intentionally left on: later steps push the
         # generated media to the assets branch using this credential.
         with:
@@ -245,7 +245,7 @@ jobs:
       # ── 5a. Install VHS (default recorder) ────────────────────────────────────
       - name: Install VHS
         if: inputs.record-command == 'vhs'
-        uses: charmbracelet/vhs-action@v2
+        uses: charmbracelet/vhs-action@f6d7db07a432fcd3b06772628d36a57f96d95dcf # v2.1.1
         with:
           install-only: true
 
@@ -363,7 +363,7 @@ jobs:
       - name: Find existing comment
         id: find-comment
         if: github.event.pull_request.number != ''
-        uses: peter-evans/find-comment@v3
+        uses: peter-evans/find-comment@3eae4d37986fb5a8592848f6a574fdf654e61f9e # v3.1.0
         with:
           token: ${{ secrets.token || github.token }}
           issue-number: ${{ github.event.pull_request.number }}
@@ -437,7 +437,7 @@ jobs:
       # ── 10. Post / update PR comment ──────────────────────────────────────────
       - name: Post PR comment
         if: github.event.pull_request.number != ''
-        uses: peter-evans/create-or-update-comment@v4
+        uses: peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368bd1eff043 # v4.0.0
         with:
           token: ${{ secrets.token || github.token }}
           issue-number: ${{ github.event.pull_request.number }}

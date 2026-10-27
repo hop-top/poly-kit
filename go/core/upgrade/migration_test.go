@@ -19,10 +19,10 @@ func TestRegisterMigration(t *testing.T) {
 	}
 	RegisterMigration(m)
 
-	registryMu.Lock()
-	defer registryMu.Unlock()
-	require.Len(t, registry, 1)
-	assert.Equal(t, "1.0.0", registry[0].Version)
+	defaultRegistry.mu.Lock()
+	defer defaultRegistry.mu.Unlock()
+	require.Len(t, defaultRegistry.migrations, 1)
+	assert.Equal(t, "1.0.0", defaultRegistry.migrations[0].Version)
 }
 
 func TestRegisterMigration_NilUpPanics(t *testing.T) {

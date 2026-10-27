@@ -19,6 +19,7 @@ func newTestStore(t *testing.T) (*FileStore, string) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "_state"))
 	s, err := NewFileStore()
 	if err != nil {
 		t.Fatalf("NewFileStore: %v", err)
@@ -347,6 +348,7 @@ func TestInstall_HappyPath(t *testing.T) {
 
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "_state"))
 
 	store, err := Install()
 	if err != nil {
@@ -416,6 +418,7 @@ func TestInstall_FailureLeavesDefaultDeny(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(parent, 0o700) }) // let t.TempDir cleanup succeed
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(parent, "config"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(parent, "state"))
 	t.Setenv("HOME", parent)
 
 	store, err := Install()

@@ -15,8 +15,9 @@ import (
 // vendored corpus.
 var canonicalSecrets = map[string]string{
 	// openai-api-key wants either the proj/svcacct/admin shape or the
-	// legacy `sk-XXXX...T3BlbkFJ...` shape. Use the latter (shorter).
-	"openai":    "sk-" + strings.Repeat("a", 20) + "T3BlbkFJ" + strings.Repeat("b", 20),
+	// legacy `sk-XXXX...T3BlbkFJ...` shape. Use the latter (shorter);
+	// random halves clear the rule's entropy floor of 3.
+	"openai":    "sk-" + "Xq7Lm2Pz9Rt4Vb8Nc1Kd" + "T3BlbkFJ" + "Hy6Wj3Fs0Ga5Qe2Mu8Zo",
 	"aws":       "AKIAIOSFODNN7CLIENTX", // aws-access-token
 	"anthropic": "sk-ant-api03-" + strings.Repeat("a", 93) + "AA",
 }

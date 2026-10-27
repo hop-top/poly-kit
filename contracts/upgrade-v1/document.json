@@ -1,0 +1,822 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/upgrade-v1/document.json",
+  "version": "v1",
+  "description": "The in-memory JSON document migrator (Go `upgrade.MigrateDocument`). A document is an object with an integer version at `options.version_field` (dotted, default `version`). Steps move `from -> to`, the chain picking the step whose `from` is the current version wherever it was given; every step must have to > from and to <= latest, checked before any runs; the chain runs while the version is below the latest (`options.latest`, or the highest `to` when 0). Each scenario gives `doc` (a JSON value) or `text` (exact input bytes). Step `ops` run in order on the document, in place: `set` {path, value} (creating objects), `rename` {from, to} (a top-level key, when present), `fail` (the step fails with that message). A step's `verify` `require`s a path to exist, failing with `missing <path>`. `expect` is the migrated `doc` (compared as JSON) or `text` (byte-identical), with the `report`; or an exact `error` text and its `kind` (newer, version, gap, step, verify, invalid). On any error the caller's input is unchanged. The version is an integer literal; `missing_is_zero` reads a missing or non-integer version as 0 instead of failing.",
+  "scenarios": [
+    {
+      "name": "applies the chain in order and bumps the version",
+      "doc": {
+        "version": 1,
+        "name": "x",
+        "keep": {
+          "deep": [
+            1,
+            2
+          ]
+        }
+      },
+      "steps": [
+        {
+          "from": 1,
+          "to": 2,
+          "note": "rename name to title",
+          "ops": [
+            {
+              "rename": {
+                "from": "name",
+                "to": "title"
+              }
+            }
+          ],
+          "verify": {
+            "require": "title"
+          }
+        },
+        {
+          "from": 2,
+          "to": 3,
+          "note": "add meta.schema",
+          "ops": [
+            {
+              "set": {
+                "path": "meta.schema",
+                "value": "v3"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "doc": {
+          "version": 3,
+          "title": "x",
+          "keep": {
+            "deep": [
+              1,
+              2
+            ]
+          },
+          "meta": {
+            "schema": "v3"
+          }
+        },
+        "report": {
+          "from": 1,
+          "to": 3,
+          "applied": [
+            {
+              "from": 1,
+              "to": 2,
+              "note": "rename name to title"
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "note": "add meta.schema"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "steps are ordered by from, not as given",
+      "doc": {
+        "version": 1,
+        "name": "x"
+      },
+      "steps": [
+        {
+          "from": 2,
+          "to": 3,
+          "note": "add meta.schema",
+          "ops": [
+            {
+              "set": {
+                "path": "meta.schema",
+                "value": "v3"
+              }
+            }
+          ]
+        },
+        {
+          "from": 1,
+          "to": 2,
+          "note": "rename name to title",
+          "ops": [
+            {
+              "rename": {
+                "from": "name",
+                "to": "title"
+              }
+            }
+          ],
+          "verify": {
+            "require": "title"
+          }
+        }
+      ],
+      "expect": {
+        "doc": {
+          "version": 3,
+          "title": "x",
+          "meta": {
+            "schema": "v3"
+          }
+        },
+        "report": {
+          "from": 1,
+          "to": 3,
+          "applied": [
+            {
+              "from": 1,
+              "to": 2,
+              "note": "rename name to title"
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "note": "add meta.schema"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a step may skip versions",
+      "doc": {
+        "version": 1
+      },
+      "steps": [
+        {
+          "from": 1,
+          "to": 3,
+          "note": "jump",
+          "ops": [
+            {
+              "set": {
+                "path": "a",
+                "value": 1
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "doc": {
+          "version": 3,
+          "a": 1
+        },
+        "report": {
+          "from": 1,
+          "to": 3,
+          "applied": [
+            {
+              "from": 1,
+              "to": 3,
+              "note": "jump"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "already current returns the input bytes untouched",
+      "text": "{ \"version\" : 3,\n  \"z\": 1, \"a\": 2 }",
+      "steps": [
+        {
+          "from": 1,
+          "to": 2,
+          "note": "rename name to title",
+          "ops": [
+            {
+              "rename": {
+                "from": "name",
+                "to": "title"
+              }
+            }
+          ],
+          "verify": {
+            "require": "title"
+          }
+        },
+        {
+          "from": 2,
+          "to": 3,
+          "note": "add meta.schema",
+          "ops": [
+            {
+              "set": {
+                "path": "meta.schema",
+                "value": "v3"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "text": "{ \"version\" : 3,\n  \"z\": 1, \"a\": 2 }",
+        "report": {
+          "from": 3,
+          "to": 3,
+          "applied": []
+        }
+      }
+    },
+    {
+      "name": "latest beyond the steps: a current document needs no step",
+      "doc": {
+        "version": 1,
+        "a": true
+      },
+      "options": {
+        "latest": 1
+      },
+      "steps": [],
+      "expect": {
+        "doc": {
+          "version": 1,
+          "a": true
+        },
+        "report": {
+          "from": 1,
+          "to": 1,
+          "applied": []
+        }
+      }
+    },
+    {
+      "name": "latest beyond the steps: an older document is a gap",
+      "doc": {
+        "version": 0
+      },
+      "options": {
+        "latest": 1
+      },
+      "steps": [],
+      "expect": {
+        "error": "no migration from version 0 (highest target is 1); chain has a gap",
+        "kind": "gap"
+      }
+    },
+    {
+      "name": "a newer document is refused, never downgraded",
+      "doc": {
+        "version": 4
+      },
+      "steps": [
+        {
+          "from": 1,
+          "to": 2,
+          "note": "rename name to title",
+          "ops": [
+            {
+              "rename": {
+                "from": "name",
+                "to": "title"
+              }
+            }
+          ],
+          "verify": {
+            "require": "title"
+          }
+        },
+        {
+          "from": 2,
+          "to": 3,
+          "note": "add meta.schema",
+          "ops": [
+            {
+              "set": {
+                "path": "meta.schema",
+                "value": "v3"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": "document version 4 is newer than the latest known 3",
+        "kind": "newer"
+      }
+    },
+    {
+      "name": "a missing version is an error by default",
+      "doc": {
+        "name": "x"
+      },
+      "steps": [
+        {
+          "from": 1,
+          "to": 2,
+          "note": "rename name to title",
+          "ops": [
+            {
+              "rename": {
+                "from": "name",
+                "to": "title"
+              }
+            }
+          ],
+          "verify": {
+            "require": "title"
+          }
+        },
+        {
+          "from": 2,
+          "to": 3,
+          "note": "add meta.schema",
+          "ops": [
+            {
+              "set": {
+                "path": "meta.schema",
+                "value": "v3"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": "document has no integer version at \"version\"",
+        "kind": "version"
+      }
+    },
+    {
+      "name": "a missing version reads as 0 when asked",
+      "doc": {
+        "name": "x"
+      },
+      "options": {
+        "missing_is_zero": true
+      },
+      "steps": [
+        {
+          "from": 0,
+          "to": 1,
+          "note": "init",
+          "ops": [
+            {
+              "set": {
+                "path": "added",
+                "value": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "doc": {
+          "version": 1,
+          "name": "x",
+          "added": true
+        },
+        "report": {
+          "from": 0,
+          "to": 1,
+          "applied": [
+            {
+              "from": 0,
+              "to": 1,
+              "note": "init"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a string version is not an integer",
+      "doc": {
+        "version": "2"
+      },
+      "steps": [
+        {
+          "from": 1,
+          "to": 2,
+          "note": "rename name to title",
+          "ops": [
+            {
+              "rename": {
+                "from": "name",
+                "to": "title"
+              }
+            }
+          ],
+          "verify": {
+            "require": "title"
+          }
+        },
+        {
+          "from": 2,
+          "to": 3,
+          "note": "add meta.schema",
+          "ops": [
+            {
+              "set": {
+                "path": "meta.schema",
+                "value": "v3"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": "document has no integer version at \"version\"",
+        "kind": "version"
+      }
+    },
+    {
+      "name": "a fractional literal is not an integer",
+      "text": "{\"version\": 2.0}",
+      "steps": [
+        {
+          "from": 1,
+          "to": 2,
+          "note": "rename name to title",
+          "ops": [
+            {
+              "rename": {
+                "from": "name",
+                "to": "title"
+              }
+            }
+          ],
+          "verify": {
+            "require": "title"
+          }
+        },
+        {
+          "from": 2,
+          "to": 3,
+          "note": "add meta.schema",
+          "ops": [
+            {
+              "set": {
+                "path": "meta.schema",
+                "value": "v3"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": "document has no integer version at \"version\"",
+        "kind": "version"
+      }
+    },
+    {
+      "name": "a non-integer version reads as 0 when asked",
+      "doc": {
+        "version": "old"
+      },
+      "options": {
+        "missing_is_zero": true
+      },
+      "steps": [
+        {
+          "from": 0,
+          "to": 1,
+          "note": "init",
+          "ops": []
+        }
+      ],
+      "expect": {
+        "doc": {
+          "version": 1
+        },
+        "report": {
+          "from": 0,
+          "to": 1,
+          "applied": [
+            {
+              "from": 0,
+              "to": 1,
+              "note": "init"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a nested version field",
+      "doc": {
+        "meta": {
+          "v": 1,
+          "other": "y"
+        },
+        "body": {}
+      },
+      "options": {
+        "version_field": "meta.v"
+      },
+      "steps": [
+        {
+          "from": 1,
+          "to": 2,
+          "note": "",
+          "ops": [
+            {
+              "set": {
+                "path": "body.n",
+                "value": 2
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "doc": {
+          "meta": {
+            "v": 2,
+            "other": "y"
+          },
+          "body": {
+            "n": 2
+          }
+        },
+        "report": {
+          "from": 1,
+          "to": 2,
+          "applied": [
+            {
+              "from": 1,
+              "to": 2,
+              "note": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a missing nested version field is created when read as 0",
+      "doc": {
+        "body": {}
+      },
+      "options": {
+        "version_field": "meta.v",
+        "missing_is_zero": true
+      },
+      "steps": [
+        {
+          "from": 0,
+          "to": 1,
+          "note": "",
+          "ops": []
+        }
+      ],
+      "expect": {
+        "doc": {
+          "meta": {
+            "v": 1
+          },
+          "body": {}
+        },
+        "report": {
+          "from": 0,
+          "to": 1,
+          "applied": [
+            {
+              "from": 0,
+              "to": 1,
+              "note": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a gap in the chain stops before it, input untouched",
+      "doc": {
+        "version": 1,
+        "name": "x"
+      },
+      "steps": [
+        {
+          "from": 1,
+          "to": 2,
+          "note": "rename name to title",
+          "ops": [
+            {
+              "rename": {
+                "from": "name",
+                "to": "title"
+              }
+            }
+          ],
+          "verify": {
+            "require": "title"
+          }
+        },
+        {
+          "from": 3,
+          "to": 4,
+          "note": "",
+          "ops": []
+        }
+      ],
+      "expect": {
+        "error": "no migration from version 2 (highest target is 4); chain has a gap",
+        "kind": "gap"
+      }
+    },
+    {
+      "name": "a failing step leaves the input untouched",
+      "doc": {
+        "version": 1,
+        "name": "x"
+      },
+      "steps": [
+        {
+          "from": 1,
+          "to": 2,
+          "note": "rename name to title",
+          "ops": [
+            {
+              "rename": {
+                "from": "name",
+                "to": "title"
+              }
+            }
+          ],
+          "verify": {
+            "require": "title"
+          }
+        },
+        {
+          "from": 2,
+          "to": 3,
+          "note": "",
+          "ops": [
+            {
+              "fail": "boom"
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": "migration 2 -> 3: boom",
+        "kind": "step"
+      }
+    },
+    {
+      "name": "a nested change before a failing step leaves the input untouched",
+      "doc": {
+        "version": 1,
+        "meta": {
+          "a": 1
+        }
+      },
+      "steps": [
+        {
+          "from": 1,
+          "to": 2,
+          "note": "",
+          "ops": [
+            {
+              "set": {
+                "path": "meta.a",
+                "value": 2
+              }
+            }
+          ]
+        },
+        {
+          "from": 2,
+          "to": 3,
+          "note": "",
+          "ops": [
+            {
+              "fail": "boom"
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": "migration 2 -> 3: boom",
+        "kind": "step"
+      }
+    },
+    {
+      "name": "a failed verify fails the step, input untouched",
+      "doc": {
+        "version": 1,
+        "label": "x"
+      },
+      "steps": [
+        {
+          "from": 1,
+          "to": 2,
+          "note": "rename name to title",
+          "ops": [
+            {
+              "rename": {
+                "from": "name",
+                "to": "title"
+              }
+            }
+          ],
+          "verify": {
+            "require": "title"
+          }
+        },
+        {
+          "from": 2,
+          "to": 3,
+          "note": "add meta.schema",
+          "ops": [
+            {
+              "set": {
+                "path": "meta.schema",
+                "value": "v3"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": "migration 1 -> 2: verify: missing title",
+        "kind": "verify"
+      }
+    },
+    {
+      "name": "a step that does not move forward is invalid",
+      "doc": {
+        "version": 1
+      },
+      "steps": [
+        {
+          "from": 1,
+          "to": 1,
+          "note": "",
+          "ops": []
+        }
+      ],
+      "expect": {
+        "error": "migration 1 -> 1 does not move forward",
+        "kind": "invalid"
+      }
+    },
+    {
+      "name": "a step past the latest is invalid",
+      "doc": {
+        "version": 1
+      },
+      "options": {
+        "latest": 2
+      },
+      "steps": [
+        {
+          "from": 1,
+          "to": 3,
+          "note": "",
+          "ops": []
+        }
+      ],
+      "expect": {
+        "error": "migration 1 -> 3 goes past the latest known 2",
+        "kind": "invalid"
+      }
+    },
+    {
+      "name": "a document that is not an object is invalid",
+      "doc": [
+        1,
+        2
+      ],
+      "steps": [
+        {
+          "from": 1,
+          "to": 2,
+          "note": "rename name to title",
+          "ops": [
+            {
+              "rename": {
+                "from": "name",
+                "to": "title"
+              }
+            }
+          ],
+          "verify": {
+            "require": "title"
+          }
+        },
+        {
+          "from": 2,
+          "to": 3,
+          "note": "add meta.schema",
+          "ops": [
+            {
+              "set": {
+                "path": "meta.schema",
+                "value": "v3"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": "document is not a JSON object",
+        "kind": "invalid"
+      }
+    }
+  ]
+}

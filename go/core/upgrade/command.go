@@ -148,7 +148,7 @@ func planRollback(cmd *cobra.Command, m *Migrator) error {
 	}
 	plan := kitcli.Plan{Effects: []kitcli.Effect{}}
 	for _, d := range m.drivers {
-		latest, err := newBackupOrchestrator(m.tool, d.Name(), m.retention).latestBackup()
+		latest, err := m.backups(d.Name()).latestBackup()
 		if err != nil {
 			return fmt.Errorf("rollback %s: %w", d.Name(), err)
 		}

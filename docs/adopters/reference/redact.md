@@ -19,7 +19,13 @@ anything user-facing that may have absorbed sensitive data.
 | Use the package-level default (gitleaks + Presidio loaded) | `redact.Default()` |
 | Redact a string | `Redactor.Apply(s)` |
 | Redact bytes (no string conversion) | `Redactor.ApplyBytes(b)` |
-| Audit-mode: find without replacing | `Redactor.Scan(s)` |
+| Audit-mode: find without replacing (gitleaks detection) | `Redactor.Scan(s)` |
+| Exactly the regions `Apply` replaces | `Redactor.Spans(s)` |
+| Default policy, ignoring the env overrides | `redact.NewEmbedded()`, `redact.EmbeddedPolicy()` |
+| Build from / dump to data | `redact.NewFromPolicy(p)`, `Redactor.Policy()` |
+| Rule with gitleaks fields (secret group, entropy, keywords, allowlists) | `redact.CompileRule(redact.RuleSpec{...})` |
+| Read rule internals | `Redactor.Rules()`, `Rule.Spec()`, `Rule.Regexp()` |
+| Allowlists for every rule | `Redactor.AddAllowlists(specs...)` |
 | Pick a replacement strategy | `Redactor.SetReplacement(redact.Tag)` |
 | Pass-through known-safe values | `Redactor.AllowExact("AKIAIOSFODNN7EXAMPLE")` |
 | Audit hook (per match) | `Redactor.OnMatch(func(m){...})` |
@@ -46,8 +52,33 @@ Trade-offs:
   See `loader.go::LoadGitleaks` for the policy.
 - No PCRE / Hyperscan / `go-regexp/v2` dependency. Zero new runtime deps
   beyond what kit/scope already pulls in (`BurntSushi/toml`).
-- Allowlists are substring-only — never regex. Regex allowlists invite
-  ReDoS back in via the side door.
+- Allowlist regexes come from the vendored corpus or a `Policy`; they run
+  under the same RE2 engine, so they stay linear-time.
+
+## Rule semantics
+
+`Apply` finds every rule's spans on the original input, merges them and
+replaces once: a replacement is never scanned again. Overlapping and
+adjacent spans merge; the earliest start wins, ties go to the longest,
+then to the rule added first. Rules follow gitleaks v8.30.1:
+
+- **Keywords**: a rule runs only when the lower-cased input contains one.
+- **Secret group**: only that capture group is replaced. The loader sets
+  an unset `secretGroup` to 1 when the pattern has exactly one group;
+  with several groups the whole match is replaced.
+- **Entropy**: a secret at or below the floor is not a finding.
+- **Two modes**: `Scan` is detection and follows gitleaks exactly.
+  `Apply`, `ApplyBytes` and `Spans` fail closed: stopwords never exempt,
+  a regex exempts only when it matches the whole target, and a
+  distinctive rule skips the keyword gate and the entropy floor. A rule
+  is distinctive (`Rule.Distinctive()`) when every match starts with a
+  literal of at least 3 characters (`ghp_`, `xoxb-`, `AKIA`, `sk-ant-`);
+  of the 232 default rules 111 are, 121 are generic and keep both
+  checks. Path and commit checks never hold on text.
+- Kit patches two upstream allowlist entries at load time (an unanchored
+  `true|false|null`, and the `author`/`primary` key names in
+  `generic-api-key`). Rules scoped to a `path` run on all text; the
+  scope is kept as data.
 
 ## Replacement strategies
 
@@ -166,8 +197,8 @@ clean := r.Apply(batch)
 telemetryClient.Send(clean)
 ```
 
-The observer fires after allowlist filtering, before substitution, so it
-sees the actual matched text. Treat that text as toxic — increment
+The observer fires once per merged region, after allowlist filtering and
+before substitution, so it sees the actual matched text. Treat that text as toxic — increment
 counters, never persist it.
 
 ### Custom strategy (route by rule)

@@ -17,6 +17,7 @@ import (
 type Driver struct {
 	name    string
 	tool    string
+	dataDir string
 	dirPath string
 }
 
@@ -30,6 +31,12 @@ func New(name, dirPath string) *Driver {
 
 // Option configures a fsdir driver.
 type Option func(*Driver)
+
+// WithDataDir reads the version file under dir, for a Migrator built
+// with upgrade.WithDataDir(dir).
+func WithDataDir(dir string) Option {
+	return func(d *Driver) { d.dataDir = dir }
+}
 
 // WithTool sets the tool name for version file resolution.
 func WithTool(tool string) Option {
@@ -48,6 +55,9 @@ func NewWithOptions(name, dirPath string, opts ...Option) *Driver {
 func (d *Driver) Name() string { return d.name }
 
 func (d *Driver) Version() (string, error) {
+	if d.dataDir != "" {
+		return upgrade.ReadVersionFileIn(d.dataDir, d.name)
+	}
 	return upgrade.ReadVersionFile(d.tool, d.name)
 }
 

@@ -13,7 +13,7 @@ Exact details per API: signatures, flags, exit codes, config shapes, wire format
 - **Served middleware:** [`served-middleware`](served-middleware.md) · [`served-observability`](served-observability.md)
 - **Guardrails (paths, rate, egress, dry-run, mode, provenance):** [`scope`](scope.md) · [`breaker`](breaker.md) · [`redact`](redact.md) · [`sideeffect`](sideeffect.md) · [`stage`](stage.md) · [`provenance`](provenance.md)
 - **Conformance and parity:** [`conformance`](conformance.md) · [`compliance-api`](compliance-api.md) · [`parity-contract`](parity-contract.md)
-- **Telemetry:** [`telemetry`](telemetry.md) · [`telemetry-compliance`](telemetry-compliance.md)
+- **Consent and telemetry:** [`consent-grants`](consent-grants.md) · [`telemetry`](telemetry.md) · [`telemetry-compliance`](telemetry-compliance.md)
 - **AI and agents:** [`llm`](llm.md) · [`toolspec-api`](toolspec-api.md) · [`uxp`](uxp.md)
 - **Bus and events:** [`bus-api`](bus-api.md) · [`domain-events`](domain-events.md) · [`notify-sinks`](notify-sinks.md)
 - **Engine:** [`engine-protocol`](engine-protocol.md) · [`engine-security`](engine-security.md) · [`engine-sync`](engine-sync.md)

@@ -258,7 +258,7 @@ interchangeable — this is the table that tells them apart.
 | runtime/policy | Events on the bus, via declarative rules | Expressing "who may do what" outside Go code | `hop.top/kit/go/runtime/policy` |
 | runtime/policy/withcel | Constructs a policy engine with the CEL evaluator wired in | You want CEL rules, and want its deps isolated | `hop.top/kit/go/runtime/policy/withcel` |
 | stage | Operating mode: active, feature_freeze, maintenance, sunset, archived | Behaviour that changes with a project's lifecycle stage | `hop.top/kit/go/core/stage` |
-| consent | Telemetry consent state machine, `DO_NOT_TRACK` precedence | Asking before collecting anything | `hop.top/kit/go/core/consent` |
+| consent | Per-capability consent grants with audit and revoke; telemetry consent state machine, `DO_NOT_TRACK` precedence | Asking before tapping clipboard, screen or files, or before collecting anything | `hop.top/kit/go/core/consent` |
 | sideeffect | Four interfaces (Exec, FS, HTTP, Bus) as the canonical mutation seam | You want `--dry-run` to work by construction | `hop.top/kit/go/runtime/sideeffect` |
 | provenance | Records where each field of an output came from | Proving an answer's origin | `hop.top/kit/go/runtime/provenance` |
 | security | A hash-chained, append-only audit log and its verifier | Proving a record was not edited, deleted or reordered after the fact | `hop.top/kit/go/security` |

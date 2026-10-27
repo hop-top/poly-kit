@@ -1,11 +1,25 @@
-// Package consent implements the persisted consent state machine for
-// kit-telemetry. It owns the on-disk schema (state, decided_at,
-// prompt_version, decision_source) and exposes a Store for reading and
-// writing decisions atomically under
-// <XDG_CONFIG_HOME>/kit/config.yaml at the kit.telemetry.consent
-// partition. A legacy <XDG_CONFIG_HOME>/kit/telemetry.yaml layout
-// (bare telemetry.consent) is read as a fallback for backward
-// compatibility; writes always target the canonical config.yaml.
+// Package consent implements per-capability consent grants and the
+// persisted telemetry consent state machine.
+//
+// Grants (see Grants, Grant, GrantStore) answer "may this subject use
+// this capability now": a capability id such as io.screen.capture, a
+// subject (empty for any), allow or deny, and a duration of once,
+// session, until or always. Request asks a caller-supplied Prompter
+// when there is no standing decision; Use gates every tap and audits
+// it; every path fails closed. Refusals render on the kit exit
+// taxonomy through RefusedError.AsCLIError. Persisted grants live in
+// the per-tool <XDG_STATE_HOME>/<tool>/consent/grants.yaml; the audit
+// log next to it is the outbox a Relay delivers onto the bus with
+// confirmation. The cross-language contract is contracts/consent-v1.
+//
+// Telemetry consent is the CapTelemetry capability. It combines,
+// deny-wins, the grants file, the original record (state, decided_at,
+// prompt_version, decision_source) at kit.telemetry.consent in
+// <XDG_CONFIG_HOME>/kit/config.yaml and the legacy
+// <XDG_CONFIG_HOME>/kit/telemetry.yaml (bare telemetry.consent): a
+// refusal recorded in any of them sticks. Writes go to the grants file
+// and are mirrored into the legacy records; Clear removes the record
+// everywhere.
 //
 // The wire-level contract with kit-telemetry is the ConsentHook
 // interface — kit-telemetry owns the interface as Granted(ctx) bool.

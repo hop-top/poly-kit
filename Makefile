@@ -1,10 +1,10 @@
 .PHONY: api audit-php build builtins-sync check check-go-version check-mirror-sync check-template-sources clients \
 	clients-php clients-rs clients-test clients-ts job-integration-hatchet job-integration-restate \
 	job-integration-temporal job-test lint lint-config lint-docs lint-go lint-links lint-lock-php \
-	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
+	check-toolchain-parity lint-actions-pinned lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-beta promote-rc promote-open-line proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	completion-regen test-parity test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-py \
+	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-py \
 	test-release test-rs test-rs-wasm test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
 	vuln vuln-go vuln-go-binary vuln-osv
@@ -243,7 +243,7 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 # async pool is uncapped and close reports NotDrained instead of
 # blocking. wasm-bindgen-test-runner comes from wasm-bindgen-cli, whose
 # version must equal the wasm-bindgen in Cargo.lock.
-test-rs-wasm: ## Rust: bus and domain wasm32 smoke tests under Node (needs the matching wasm-bindgen-cli)
+test-rs-wasm: ## Rust: bus, domain and breaker wasm32 smoke tests under Node (needs the matching wasm-bindgen-cli)
 	@want=$$(awk '/^name = "wasm-bindgen"$$/ { getline; gsub(/version = |"/, ""); print }' sdk/experimental/rs/Cargo.lock); \
 	have=$$(wasm-bindgen --version 2>/dev/null | awk '{ print $$2 }'); \
 	if [ "$$want" != "$$have" ]; then \
@@ -255,8 +255,10 @@ test-rs-wasm: ## Rust: bus and domain wasm32 smoke tests under Node (needs the m
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features bus --test bus_wasm
 	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features domain --test domain_statemachine_wasm
+	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features breaker --test breaker_wasm
 
-test-parity: test-parity-typeid test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -377,11 +379,35 @@ test-parity-config: ## config-v1 conformance corpus (Go and Rust runners)
 	@echo "==> config-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --features config --test config_conformance --locked
 
+test-parity-redact: ## redact-v1 conformance corpus: rules dump, spans and output (Go and Rust runners)
+	@echo "==> redact-v1 conformance: Go"
+	go test ./go/core/redact/ -run '^TestConformanceRedact' -count=1
+	@echo "==> redact-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features redact --test redact_conformance --locked
+
 test-parity-retry: ## retry-v1 conformance corpus (Go and Rust runners)
 	@echo "==> retry-v1 conformance: Go"
 	go test ./go/core/util/ -run '^TestConformanceRetry' -count=1
 	@echo "==> retry-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --test retry_conformance --locked
+
+# Breaker corpus: circuit, budgets, rate limiter, OnTrip, logs and bus
+# events under a fake clock. Go's bus events publish on goroutines,
+# hence -race.
+test-parity-breaker: ## breaker-v1 conformance corpus (Go and Rust runners)
+	@echo "==> breaker-v1 conformance: Go"
+	go test -race ./go/core/breaker/ -run '^TestConformanceBreaker' -count=1
+	@echo "==> breaker-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features breaker --test breaker_conformance --locked
+
+# Per-capability consent corpus: on-disk grant records, decision and
+# refusal semantics, audit records, delivery and the telemetry-consent
+# migration. A port adds its runner here.
+test-parity-consent: ## consent-v1 conformance corpus (Go and Rust runners)
+	@echo "==> consent-v1 conformance: Go"
+	go test ./go/core/consent/ -run '^TestConformanceConsent' -count=1
+	@echo "==> consent-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --locked --features consent-file,output --test consent_conformance --test consent_delivery_conformance
 
 # Domain state machine corpus: transitions, error texts, the veto wrap,
 # payload JSON bytes and topic options. Go's post-transition event runs
@@ -391,6 +417,14 @@ test-parity-statemachine: ## statemachine-v1 conformance corpus (Go and Rust run
 	go test -race ./go/runtime/domain/ -run '^TestConformanceStateMachine' -count=1
 	@echo "==> statemachine-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --features domain --test domain_statemachine_conformance --locked
+
+# Versioned state migrations: version order, pending selection, and the
+# runner's backup, apply, rollback and prune sequence on a recording driver.
+test-parity-upgrade: ## upgrade-v1 conformance corpus (Go and Rust runners)
+	@echo "==> upgrade-v1 conformance: Go"
+	go test ./go/core/upgrade/ -run '^TestConformanceUpgrade' -count=1
+	@echo "==> upgrade-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features upgrade --test upgrade_conformance --locked
 
 # After a cobra bump: rewrite the completion-v1 script goldens and the
 # Rust script templates from the cobra version in go.mod, then run
@@ -412,11 +446,13 @@ test-parity-netpolicy: ## netpolicy-v1 conformance corpus (Go and Rust runners)
 
 # llm core and anthropic adapter corpus: URI parsing and redaction,
 # credential endpoint guard, request bodies, headers, SSE tokens and
-# accumulation, error mapping and retries. Go runner only until a port
-# lands; vectors served from loopback only.
-test-parity-llm: ## llm-v1 conformance corpus (Go runner)
+# accumulation, error mapping and retries. Both runners serve the
+# vectors from loopback only.
+test-parity-llm: ## llm-v1 conformance corpus (Go and Rust runners)
 	@echo "==> llm-v1 conformance: Go"
 	go test ./go/ai/llm/ ./go/ai/llm/anthropic/ -run '^TestConformance' -count=1
+	@echo "==> llm-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features llm-anthropic --test llm_conformance --locked
 
 # Cross-process kv storage-binding gate over contracts/kv-v1/keys.json.
 # The Go test drives the Rust half as a `cargo test` subprocess, so this
@@ -428,7 +464,7 @@ test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
 	@echo "==> kv-v1 parity: Go <-> Rust cross-process"
 	KV_CROSSLANG=1 go test ./go/storage/kv/sqlite/... -run '^TestCrossLang' -count=1 -timeout 300s -v
 
-lint: check-toolchain-parity lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths lint-adr-refs lint-internal-refs ## Run all linters
+lint: check-toolchain-parity lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths lint-adr-refs lint-internal-refs lint-actions-pinned ## Run all linters
 
 lint-go: check-go-version tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION + mise.toml Go pin)
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
@@ -605,6 +641,11 @@ lint-adr-refs: ## Guard against ADR-number mentions (decision records live outsi
 lint-internal-refs: ## Guard against references to documents and paths outside the repo
 	@scripts/lint-internal-refs.sh
 
+# Every workflow and composite-action `uses:` is pinned to a full commit
+# SHA, version in a trailing comment; Dependabot keeps them current.
+lint-actions-pinned: ## Fail on GitHub Actions `uses:` refs not pinned to a commit SHA
+	@scripts/lint-actions-pinned.sh
+
 # mise.toml pins the toolchain; CI and the Makefile read it. The files
 # that must carry their own copy (go.mod, rust-toolchain.toml, uv.lock's
 # ruff, workflow literals, the devcontainer) are held to it here. The
@@ -722,7 +763,7 @@ test-hook: ## Run bats tests for pre-push hook
 
 test-lint-scripts: ## Run bats tests for repo lint and sync scripts
 	bats .github/tests/lint-internal-refs.bats .github/tests/sync-builtins.bats \
-		.github/tests/toolchain-parity.bats
+		.github/tests/toolchain-parity.bats .github/tests/lint-actions-pinned.bats
 
 job-test:
 	go test ./go/runtime/job/... -count=1

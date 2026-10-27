@@ -69,6 +69,10 @@ bus-network-webpki-roots = ["bus-network", "dep:webpki-roots"]
 # veto-able pre-transition and fire-and-forget post-transition events.
 # Nothing of its own; wasm-safe.
 domain = ["bus"]
+# Circuit breaker, MaxOps/MaxBytes budgets and bursty rate limiter, a
+# port of go/core/breaker. Builds on `domain` for the event publisher;
+# nothing of its own, wasm-safe given a caller clock.
+breaker = ["domain"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
 httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
 # Dual-spec MCP surface. `rmcp` supplies the protocol vocabulary (version
@@ -131,6 +135,21 @@ telemetry = [
     "dep:thiserror",
 ]
 
+# Per-capability consent grants, a port of go/core/consent: the grant
+# model, decision logic, prompter seam, audit records, refusals and the
+# in-memory store. Wasm-safe: nothing of its own beyond the bus, and no
+# clock read (inject one with `GrantsBuilder::clock` on wasm32).
+consent = ["bus"]
+# The per-tool grants file, the telemetry-consent compat records, the
+# audit log and its relay onto the bus. Native only: builds on the
+# config YAML model and on `id` for the audit log id.
+consent-file = ["consent", "config", "id"]
+# Secret and PII redaction, a port of go/core/redact: gitleaks rule
+# semantics over Go RE2 patterns, with the default policy embedded.
+# regex-syntax rewrites Go-only pattern meanings before compiling;
+# sha2 backs the Hash strategy. No I/O, wasm-safe.
+redact = ["dep:regex", "dep:regex-syntax", "dep:serde", "dep:serde_json", "dep:sha2"]
+
 # Layered YAML configuration, a port of go/core/config. Parsing, merge,
 # scalar resolution, overrides and precedence are pure and wasm-safe;
 # file loading, paths, Set/Unset and reload are compiled off wasm32 only.
@@ -150,6 +169,25 @@ config-signal = [
     "tokio/sync",
 ]
 
+# Versioned state migrations, a port of the migration half of
+# go/core/upgrade (self-update is not ported). Version order, the
+# migration registry and the SchemaDriver seam are pure and wasm-safe;
+# the runner, its version files and backups are compiled off wasm32.
+# Builds on `bus` for the step context and lifecycle events.
+upgrade = ["bus", "dep:thiserror"]
+# Provider-neutral LLM core, a port of go/ai/llm: messages, tool
+# calls, streaming tokens, the error taxonomy, provider URIs with their
+# redaction, llm.yaml < env < URI config and key resolution, the scheme
+# registry and the fallback client publishing on the bus. Nothing of its
+# own beyond `config` (llm.yaml parsing, XDG paths) and `netpolicy`;
+# wasm-safe apart from reading llm.yaml from disk.
+llm = ["config", "netpolicy", "dep:url"]
+# The Anthropic Messages API adapter, over the HTTP API (no SDK crate):
+# request shaping, SSE streaming, error mapping and retries with full
+# jitter through `util::retry`, all through the guarded `api` client.
+# tokio supplies only the default retry timer. Native only.
+llm-anthropic = ["llm", "api", "dep:base64", "dep:tokio", "tokio/time"]
+
 [dependencies]
 hop-top-cite = { version = "0.1.0", optional = true }
 chrono = { version = "0.4", default-features = false, features = [
@@ -164,6 +202,11 @@ interim = { version = "0.2", default-features = false, features = [
 # no system-proxy, which pulls macOS/Windows proxy settings and an old core-foundation.
 reqwest = { version = "0.13", default-features = false, features = ["default-tls", "charset", "http2", "json", "query"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
+# The llm endpoint guard parses base URLs with the parser reqwest sends
+# with, so the host a credential is checked against is the host it goes
+# to. Exact pin to the version reqwest resolves in Cargo.lock: the two
+# must parse alike. servo/rust-url, MIT OR Apache-2.0, no advisories.
+url = { version = "=2.5.8", optional = true }
 # No crate-wide features: `output` adds preserve_order for itself.
 serde_json = { version = "1", optional = true }
 serde_norway = { version = "0.9", optional = true }
@@ -200,6 +243,12 @@ dirs = { version = "7", optional = true }
 # stack) never reaches a consumer through this crate.
 tokio = { version = "1", optional = true }
 regex = { version = "1", optional = true }
+# redact: the AST rewrite of Go RE2 syntax (Perl classes, word
+# boundaries, \Q..\E). Exact pin: the printer's output is what gets
+# compiled. Same repo and release train as regex (rust-lang/regex),
+# MIT OR Apache-2.0, already in the tree under regex at this version
+# (0.8.11, published 2026-06-09).
+regex-syntax = { version = "=0.8.11", optional = true }
 thiserror = { version = "2", optional = true }
 rmcp = { version = "3.1.4", default-features = false, optional = true }
 clap = { version = "4", features = ["derive", "string"], optional = true }
@@ -268,6 +317,8 @@ tokio = { version = "1", features = ["full"] }
 mockito = "1"
 tempfile = "3"
 uuid = { version = "1", features = ["v7", "serde"] }
+# Reads the YAML files the consent conformance runner asserts on.
+serde_norway = "0.9"
 
 # The wasm32 smoke test (tests/bus_wasm.rs, `make test-rs-wasm`), run
 # under Node by wasm-bindgen-test-runner. Exact pins: each must match the

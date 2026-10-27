@@ -201,24 +201,7 @@ func upsertDecision(doc *yaml.Node, d Decision) error {
 		setMappingChild(kit, keyTelemetry, telemetry)
 	}
 
-	consent := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-	scalar := func(v string) *yaml.Node {
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}
-	}
-	intScalar := func(v int) *yaml.Node {
-		return &yaml.Node{
-			Kind:  yaml.ScalarNode,
-			Tag:   "!!int",
-			Value: fmt.Sprintf("%d", v),
-		}
-	}
-	setMappingChild(consent, keyState, scalar(string(d.State)))
-	setMappingChild(consent, keyDecidedAt,
-		scalar(d.DecidedAt.UTC().Format(time.RFC3339)))
-	setMappingChild(consent, keyPromptVersion, intScalar(d.PromptVersion))
-	setMappingChild(consent, keyDecisionSource,
-		scalar(string(d.DecisionSource)))
-
+	consent := decisionNode(d)
 	setMappingChild(telemetry, keyConsent, consent)
 	return nil
 }
@@ -241,4 +224,14 @@ func removeConsent(doc *yaml.Node) {
 		return
 	}
 	deleteMappingChild(telemetry, keyConsent)
+}
+
+// decisionNode renders d as a consent: mapping.
+func decisionNode(d Decision) *yaml.Node {
+	consent := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	setMappingChild(consent, keyState, strNode(string(d.State)))
+	setMappingChild(consent, keyDecidedAt, strNode(d.DecidedAt.UTC().Format(time.RFC3339)))
+	setMappingChild(consent, keyPromptVersion, intNode(d.PromptVersion))
+	setMappingChild(consent, keyDecisionSource, strNode(string(d.DecisionSource)))
+	return consent
 }

@@ -32,13 +32,30 @@ pub mod bus;
 #[cfg(feature = "domain")]
 pub mod domain;
 
+#[cfg(feature = "breaker")]
+pub mod breaker;
+
 #[cfg(feature = "config")]
 pub mod config;
 
-// Base directories for the config loader (a port of go/core/xdg's
-// home and config-home resolution). Filesystem-only: off wasm32.
-#[cfg(all(feature = "config", not(target_arch = "wasm32")))]
+#[cfg(feature = "consent")]
+pub mod consent;
+
+// Secret and PII redaction (a port of go/core/redact). No I/O.
+#[cfg(feature = "redact")]
+pub mod redact;
+
+// Base directories for config, consent, telemetry and upgrade files (a
+// port of go/core/xdg's home, config-home, data-home and state-home
+// resolution). Filesystem-only: off wasm32.
+#[cfg(all(
+    any(feature = "config", feature = "telemetry", feature = "upgrade"),
+    not(target_arch = "wasm32")
+))]
 pub mod xdg;
+
+#[cfg(feature = "upgrade")]
+pub mod upgrade;
 
 #[cfg(feature = "sqldb")]
 pub mod sqldb;
@@ -57,6 +74,9 @@ pub mod telemetry;
 
 #[cfg(feature = "timeutil")]
 pub mod timeutil;
+
+#[cfg(feature = "llm")]
+pub mod llm;
 
 #[cfg(feature = "mcp")]
 pub mod mcp;

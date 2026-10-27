@@ -4,12 +4,17 @@
 //
 // The model:
 //
-//   - A Redactor holds an ordered list of compiled regex Rules and a single
-//     Replacement strategy (Mask / Tag / Hash / Custom).
-//   - Apply runs every rule's compiled pattern across the input via
-//     regexp.ReplaceAllStringFunc, replaces each match per the strategy,
-//     and fires registered observers. A literal prefilter skips the
-//     rules that cannot match the input before any regex runs.
+//   - A Redactor holds an ordered list of compiled Rules, global
+//     allowlists and a single Replacement strategy (Mask / Tag / Hash /
+//     Custom).
+//   - Apply finds every rule's secret spans on the original input,
+//     merges overlapping and adjacent spans, and replaces them in one
+//     pass (see spans.go). A replacement is never scanned again, so no
+//     rule sees another rule's placeholder.
+//   - Rules follow gitleaks semantics: a keyword gate, a secret group,
+//     an entropy floor and regex/stopword allowlists.
+//   - A literal prefilter skips the rules that cannot match the input
+//     before any regex runs.
 //   - The engine is stdlib regexp (RE2). Linear-time matching is the entire
 //     reason this can run on adversarial input — LLM outputs, scraped pages,
 //     attacker-supplied prompts.
@@ -20,7 +25,6 @@ package redact
 
 import (
 	"errors"
-	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,8 +51,9 @@ const (
 	Custom
 )
 
-// Match is emitted to observers for every successful redaction. Observer
-// callbacks receive the matched text BEFORE replacement is applied.
+// Match is emitted to observers for every redaction and returned by
+// Scan. Original is the text replaced (or, for Scan and OnAllowed, the
+// secret found); Start and End are its byte offsets in the input.
 type Match struct {
 	RuleID      string
 	Original    string
@@ -56,9 +61,17 @@ type Match struct {
 	Start, End  int
 }
 
+// Span is one region Apply replaces, in byte offsets of the input.
+// RuleID names the rule whose replacement is written.
+type Span struct {
+	Start, End int
+	RuleID     string
+}
+
 // Stats is a snapshot of Redactor activity.
 type Stats struct {
-	Rules   int
+	Rules int
+	// Matches counts replaced regions; merged spans count once.
 	Matches uint64
 	// Allowed counts matches that an allowlist exempted from redaction.
 	// A non-zero value means secrets left the process unredacted by
@@ -68,57 +81,31 @@ type Stats struct {
 	LastMatchAt time.Time
 }
 
-// Rule is a compiled redaction pattern. Construct via NewRule or via the
-// loader; never zero-value.
-type Rule struct {
-	id          string
-	description string
-	re          *regexp.Regexp
-	// replacement is the rule-local template used by the Tag strategy when
-	// non-empty (e.g. "<OPENAI_KEY>" overrides the default "<rule-id>").
-	replacement string
-	// exactAllowlist holds rule-scoped literals compared against the whole
-	// match. Global exact entries apply in addition.
-	exactAllowlist []string
-}
-
-// ID returns the rule identifier.
-func (r Rule) ID() string { return r.id }
-
-// Description returns the human-readable rule description.
-func (r Rule) Description() string { return r.description }
-
-// NewRule compiles pattern and returns a Rule. id must be non-empty;
-// pattern must be RE2-clean. The optional replacement template is the
-// rule-local label used by the Tag strategy (defaults to "<id>" when
-// empty).
-func NewRule(id, pattern, replacement string) (Rule, error) {
-	if id == "" {
-		return Rule{}, errors.New("redact: rule id is required")
-	}
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return Rule{}, err
-	}
-	return Rule{id: id, re: re, replacement: replacement}, nil
-}
-
 // Redactor applies a set of Rules to text, replacing matched substrings
 // per its configured strategy. Safe for concurrent Apply / Scan / Stats
-// once construction is complete; AddRule and SetReplacement are not
-// concurrency-safe with Apply running.
+// once construction is complete; AddRule, AddAllowlists and
+// SetReplacement are not concurrency-safe with Apply running.
 type Redactor struct {
 	rules    []Rule
 	strategy Replacement
 	custom   func(Match) string
 
 	exactAllowlist []string
+	allowlists     []allowlist
+	allowlistSpecs []AllowlistSpec
+	// needLine is set once any allowlist targets the line.
+	needLine bool
 
-	// pf indexes the rules' required literals (see prefilter.go).
-	// Maintained by AddRule / AddRules alongside rules.
-	pf *prefilter
+	// pf indexes the rules' required literals, kw their keyword gates
+	// and both both, for ASCII input (see prefilter.go); bothRedact
+	// leaves out the gates of distinctive rules, which redaction skips.
+	// distinct is the bitset of distinctive rules. Maintained by
+	// AddRules.
+	pf, kw, both, bothRedact *prefilter
+	distinct                 []uint64
 	// noPrefilter runs every rule on every input; the reference
-	// behavior the prefilter is tested against.
+	// behavior the prefilter is tested against. Keyword gates still
+	// apply: they are rule semantics, not an optimization.
 	noPrefilter bool
 
 	obsMu      sync.RWMutex
@@ -153,8 +140,9 @@ func New(opts ...Option) *Redactor {
 }
 
 // AddRule compiles pattern and appends a Rule with the given id and
-// optional rule-local replacement template. Returns the receiver for
-// chaining; on regex compile error returns nil and the error.
+// optional rule-local replacement template. The rule redacts the whole
+// match. Returns the receiver for chaining; on regex compile error
+// returns nil and the error.
 func (r *Redactor) AddRule(id, pattern, replacement string) (*Redactor, error) {
 	rule, err := NewRule(id, pattern, replacement)
 	if err != nil {
@@ -167,32 +155,59 @@ func (r *Redactor) AddRule(id, pattern, replacement string) (*Redactor, error) {
 // AddRules appends pre-compiled rules in bulk. Used by the loader.
 func (r *Redactor) AddRules(rules ...Rule) *Redactor {
 	if r.pf == nil {
-		r.pf = &prefilter{}
+		r.pf, r.kw, r.both, r.bothRedact = &prefilter{}, &prefilter{}, &prefilter{}, &prefilter{}
 	}
 	for _, rule := range rules {
 		pattern := "" // a zero Rule screens as always-run
 		if rule.re != nil {
 			pattern = rule.re.String()
 		}
-		r.pf.add(pattern)
+		sc := screenFor(pattern)
+		r.pf.addScreen(sc)
+		r.kw.addScreen(keywordScreen(rule.spec.Keywords))
+		r.both.addScreen(sc.withKeywords(rule.spec.Keywords))
+		if rule.spec.Distinctive {
+			r.bothRedact.addScreen(sc)
+		} else {
+			r.bothRedact.addScreen(sc.withKeywords(rule.spec.Keywords))
+		}
+		i := len(r.rules)
+		for len(r.distinct) <= i/64 {
+			r.distinct = append(r.distinct, 0)
+		}
+		if rule.spec.Distinctive {
+			r.distinct[i/64] |= 1 << (i % 64)
+		}
+		for i := range rule.allowlists {
+			r.needLine = r.needLine || rule.allowlists[i].target == "line"
+		}
 		r.rules = append(r.rules, rule)
 	}
 	return r
 }
 
-// candidateRules returns the rules that may match s, or nil when every
-// rule must run. buf is scratch space the result may alias.
-func candidateRules[T string | []byte](r *Redactor, s T, buf []uint64) []uint64 {
-	if r.noPrefilter || r.pf == nil {
-		return nil
+// AddAllowlists compiles gitleaks-style allowlists that apply to every
+// rule, in addition to each rule's own. Returns nil and the error when
+// one does not compile; none is added then.
+func (r *Redactor) AddAllowlists(specs ...AllowlistSpec) (*Redactor, error) {
+	als, err := compileAllowlists(specs)
+	if err != nil {
+		return nil, err
 	}
-	n := r.pf.words()
-	if n > len(buf) {
-		buf = make([]uint64, n)
+	for i := range als {
+		r.needLine = r.needLine || als[i].target == "line"
+		r.allowlistSpecs = append(r.allowlistSpecs, specs[i].clone())
 	}
-	buf = buf[:n]
-	candidates(r.pf, s, buf)
-	return buf
+	r.allowlists = append(r.allowlists, als...)
+	return r, nil
+}
+
+// Rules returns the rules in evaluation order. Rule values are
+// read-only; the slice is a copy.
+func (r *Redactor) Rules() []Rule {
+	out := make([]Rule, len(r.rules))
+	copy(out, r.rules)
+	return out
 }
 
 // SetReplacement chooses the replacement strategy. fn is required when
@@ -211,9 +226,10 @@ func (r *Redactor) SetReplacement(strategy Replacement, fn ...func(Match) string
 	return r, nil
 }
 
-// AllowExact adds literals to the global allowlist. A match is exempted
-// only when it equals an entry in full, so an allowlisted fixture cannot
-// be extended into a live credential that inherits the exemption.
+// AllowExact adds literals to the global allowlist. A finding is
+// exempted only when its secret or its whole match equals an entry in
+// full, so an allowlisted fixture cannot be extended into a live
+// credential that inherits the exemption.
 //
 // Prefer this over Allow. Entries are compared literally — never as
 // regex, keeping ReDoS risk confined to the rules side — and empty
@@ -226,18 +242,16 @@ func (r *Redactor) AllowExact(vals ...string) *Redactor {
 	return r
 }
 
-// OnMatch registers an observer fired for every successful redaction (after
-// allowlist filtering, before replacement substitution). Multiple calls
-// chain in registration order.
+// OnMatch registers an observer fired for every replaced region (after
+// allowlist filtering and span merging, before substitution). Multiple
+// calls chain in registration order; nil clears the chain.
 func (r *Redactor) OnMatch(fn func(Match)) *Redactor {
-	if fn == nil {
-		r.obsMu.Lock()
-		r.observers = nil
-		r.obsMu.Unlock()
-		return r
-	}
 	r.obsMu.Lock()
-	r.observers = append(r.observers, fn)
+	if fn == nil {
+		r.observers = nil
+	} else {
+		r.observers = append(r.observers, fn)
+	}
 	r.obsMu.Unlock()
 	return r
 }
@@ -249,118 +263,94 @@ func (r *Redactor) OnMatch(fn func(Match)) *Redactor {
 // stays visible to audit tooling. Callbacks receive the matched text —
 // treat it as toxic (count it, fingerprint it; do not log it verbatim).
 func (r *Redactor) OnAllowed(fn func(Match)) *Redactor {
-	if fn == nil {
-		r.obsMu.Lock()
-		r.allowedObs = nil
-		r.obsMu.Unlock()
-		return r
-	}
 	r.obsMu.Lock()
-	r.allowedObs = append(r.allowedObs, fn)
+	if fn == nil {
+		r.allowedObs = nil
+	} else {
+		r.allowedObs = append(r.allowedObs, fn)
+	}
 	r.obsMu.Unlock()
 	return r
 }
 
-// Apply returns s with every rule match replaced per the active strategy.
+// Apply returns s with every secret span replaced per the active
+// strategy, in a single pass over the original text.
 func (r *Redactor) Apply(s string) string {
 	if len(r.rules) == 0 || s == "" {
 		return s
 	}
-	var buf [4]uint64
-	cand := candidateRules(r, s, buf[:])
-	out := s
-	for i := range r.rules {
-		if cand != nil && !has(cand, i) {
-			continue
-		}
-		rule := &r.rules[i]
-		replaced := false
-		out = rule.re.ReplaceAllStringFunc(out, func(orig string) string {
-			if r.allowed(rule, orig) {
-				r.recordAllowed(rule, orig)
-				return orig
-			}
-			m := Match{
-				RuleID:   rule.id,
-				Original: orig,
-				Start:    -1, // unknown after first rule pass; Scan reports positions
-				End:      -1,
-			}
-			repl := r.format(m)
-			m.Replacement = repl
-			r.fireObservers(m)
-			r.recordMatch(rule.id)
-			replaced = true
-			return repl
-		})
-		if replaced && cand != nil {
-			// A replacement can introduce text a later rule
-			// matches; screen the rewritten input again.
-			cand = candidateRules(r, out, cand)
-		}
+	regions := regionsOf(r, s, true)
+	if len(regions) == 0 {
+		return s
 	}
-	return out
+	return string(render(r, make([]byte, 0, len(s)), s, regions))
 }
 
-// ApplyBytes is the []byte counterpart to Apply.
+// ApplyBytes is the []byte counterpart to Apply. It returns b itself
+// when nothing is redacted.
 func (r *Redactor) ApplyBytes(b []byte) []byte {
 	if len(r.rules) == 0 || len(b) == 0 {
 		return b
 	}
-	var buf [4]uint64
-	cand := candidateRules(r, b, buf[:])
-	out := b
-	for i := range r.rules {
-		if cand != nil && !has(cand, i) {
-			continue
-		}
-		rule := &r.rules[i]
-		replaced := false
-		out = rule.re.ReplaceAllFunc(out, func(orig []byte) []byte {
-			s := string(orig)
-			if r.allowed(rule, s) {
-				r.recordAllowed(rule, s)
-				return orig
-			}
-			m := Match{RuleID: rule.id, Original: s, Start: -1, End: -1}
-			repl := r.format(m)
-			m.Replacement = repl
-			r.fireObservers(m)
-			r.recordMatch(rule.id)
-			replaced = true
-			return []byte(repl)
+	regions := regionsOf(r, b, true)
+	if len(regions) == 0 {
+		return b
+	}
+	return render(r, make([]byte, 0, len(b)), b, regions)
+}
+
+// render appends s with regions replaced to out, firing observers and
+// recording stats per region.
+func render[T string | []byte](r *Redactor, out []byte, s T, regions []region) []byte {
+	last := 0
+	for _, g := range regions {
+		rule := &r.rules[g.rule]
+		m := Match{RuleID: rule.spec.ID, Original: string(s[g.start:g.end]), Start: g.start, End: g.end}
+		m.Replacement = r.format(rule, m)
+		r.fireObservers(m)
+		r.recordMatch(rule.spec.ID)
+		out = append(out, s[last:g.start]...)
+		out = append(out, m.Replacement...)
+		last = g.end
+	}
+	return append(out, s[last:]...)
+}
+
+// Scan returns every finding of every rule, before span merging,
+// without replacing or recording stats. Findings come in rule order,
+// then by position; Original is the secret span.
+//
+// Scan is detection: allowlists follow gitleaks (substring regexes,
+// stopwords), so it reports what gitleaks would. Apply fails closed and
+// can redact findings Scan leaves out; use Spans for exactly what Apply
+// replaces.
+func (r *Redactor) Scan(s string) []Match {
+	if len(r.rules) == 0 || s == "" {
+		return nil
+	}
+	hits := collect(r, s, detect)
+	out := make([]Match, 0, len(hits))
+	for _, h := range hits {
+		out = append(out, Match{
+			RuleID:   r.rules[h.rule].spec.ID,
+			Original: s[h.start:h.end],
+			Start:    h.start,
+			End:      h.end,
 		})
-		if replaced && cand != nil {
-			cand = candidateRules(r, out, cand)
-		}
 	}
 	return out
 }
 
-// Scan returns every match without replacing or recording stats. Useful
-// for audit-mode tools that need to know what would be redacted.
-func (r *Redactor) Scan(s string) []Match {
-	var out []Match
-	var buf [4]uint64
-	cand := candidateRules(r, s, buf[:])
-	for i := range r.rules {
-		if cand != nil && !has(cand, i) {
-			continue
-		}
-		rule := &r.rules[i]
-		idxs := rule.re.FindAllStringIndex(s, -1)
-		for _, ix := range idxs {
-			orig := s[ix[0]:ix[1]]
-			if r.allowed(rule, orig) {
-				continue
-			}
-			out = append(out, Match{
-				RuleID:   rule.id,
-				Original: orig,
-				Start:    ix[0],
-				End:      ix[1],
-			})
-		}
+// Spans returns the merged regions Apply would replace in s, in input
+// order, without replacing or recording stats.
+func (r *Redactor) Spans(s string) []Span {
+	if len(r.rules) == 0 || s == "" {
+		return nil
+	}
+	regions := regionsOf(r, s, false)
+	out := make([]Span, len(regions))
+	for i, g := range regions {
+		out[i] = Span{Start: g.start, End: g.end, RuleID: r.rules[g.rule].spec.ID}
 	}
 	return out
 }
@@ -382,27 +372,9 @@ func (r *Redactor) Stats() Stats {
 	}
 }
 
-// allowed reports whether orig is exempt from redaction. Comparison is
-// whole-match and literal — never substring, which would let a secret
-// embedding an entry escape redaction, and never regex, which would put
-// ReDoS risk on the allowlist side.
-func (r *Redactor) allowed(rule *Rule, orig string) bool {
-	for _, s := range r.exactAllowlist {
-		if s != "" && orig == s {
-			return true
-		}
-	}
-	for _, s := range rule.exactAllowlist {
-		if s != "" && orig == s {
-			return true
-		}
-	}
-	return false
-}
-
-// recordAllowed counts an exempted match and notifies OnAllowed
+// recordAllowed counts an exempted finding and notifies OnAllowed
 // observers, so an allowlist pass-through is never silent.
-func (r *Redactor) recordAllowed(rule *Rule, orig string) {
+func (r *Redactor) recordAllowed(rule *Rule, secret string, start, end int) {
 	r.allowedCount.Add(1)
 	r.obsMu.RLock()
 	obs := r.allowedObs
@@ -410,7 +382,7 @@ func (r *Redactor) recordAllowed(rule *Rule, orig string) {
 	if len(obs) == 0 {
 		return
 	}
-	m := Match{RuleID: rule.id, Original: orig, Start: -1, End: -1}
+	m := Match{RuleID: rule.spec.ID, Original: secret, Start: start, End: end}
 	for _, fn := range obs {
 		fn(m)
 	}
