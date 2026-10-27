@@ -56,39 +56,83 @@ type mcpCall struct {
 type httpServing struct {
 	svc *mcpService
 
-	mu     sync.Mutex
-	ln     net.Listener
-	srv    *http.Server
-	mcpSrv *mcp.Server
-	stop   context.CancelFunc
+	mu sync.Mutex
+	// addr, path, surf and prepared are what prepare resolved and
+	// built: the listen address, the endpoint path, the surface, and
+	// the server with the surface's handler behind the HTTP-plane
+	// chain.
+	addr     string
+	path     string
+	surf     *mcpsdk.Surface
+	prepared *http.Server
+	ln       net.Listener
+	srv      *http.Server
+	mcpSrv   *mcp.Server
+	stop     context.CancelFunc
 }
 
 func newHTTP(svc *mcpService) *httpServing {
 	return &httpServing{svc: svc}
 }
 
+// prepare resolves the listener's TLS, address and path, and builds
+// the server: the surface's handler at the endpoint path behind the
+// HTTP-plane chain, its timeouts from the timeouts block.
+func (h *httpServing) prepare(s *mcpsdk.Surface) error {
+	if err := h.svc.resolveTLS(); err != nil {
+		return err
+	}
+	path := h.svc.path()
+	mux := http.NewServeMux()
+	// The endpoint is a stream route: a response may stay open for
+	// server-to-client messages and for a confirmation that waits on
+	// a person, so it is exempt from the write deadline.
+	mux.Handle(path, api.LiftWriteDeadline(s.Handler()))
+	handler, err := h.handler(mux)
+	if err != nil {
+		return err
+	}
+	srv := &http.Server{Handler: handler}
+	// Server timeouts come from the timeouts block, kit defaults
+	// where it sets nothing. A client stalled mid-header or mid-body
+	// does not hold the stop (api.ReleaseStalledOnShutdown).
+	if err := service.ConfigureServeHTTP(h.svc.root, ServiceName, srv, api.DefaultServerTimeouts()); err != nil {
+		return err
+	}
+
+	h.mu.Lock()
+	h.addr = h.svc.addr()
+	h.path = path
+	h.surf = s
+	h.prepared = srv
+	h.mu.Unlock()
+	return nil
+}
+
 // bind acquires the listener and reports the endpoint URL, which is
 // what an MCP client is configured with.
 func (h *httpServing) bind(context.Context) (string, error) {
-	if err := h.svc.resolveTLS(); err != nil {
-		return "", err
-	}
-	ln, err := net.Listen("tcp", h.svc.addr())
+	h.mu.Lock()
+	addr, path := h.addr, h.path
+	h.mu.Unlock()
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return "", fmt.Errorf("listen: %w", err)
 	}
 	h.mu.Lock()
 	h.ln = ln
 	h.mu.Unlock()
-	return h.svc.tls.Scheme() + "://" + ln.Addr().String() + h.svc.path(), nil
+	return h.svc.tls.Scheme() + "://" + ln.Addr().String() + path, nil
 }
 
-// serve runs the HTTP server until ctx is canceled or close runs.
-func (h *httpServing) serve(ctx context.Context, s *mcpsdk.Surface) error {
+// serve runs the server prepare built until ctx is canceled or close
+// runs.
+func (h *httpServing) serve(ctx context.Context) error {
 	h.mu.Lock()
-	ln := h.ln
+	ln, srv, surf := h.ln, h.prepared, h.surf
+	h.prepared = nil
 	h.mu.Unlock()
-	if ln == nil {
+	if ln == nil || srv == nil {
 		return errors.New("mcp: serve called before bind")
 	}
 
@@ -96,33 +140,11 @@ func (h *httpServing) serve(ctx context.Context, s *mcpsdk.Surface) error {
 	// every open response stream — a server-to-client stream would
 	// otherwise hold Shutdown until its budget ran out.
 	base, cancelBase := context.WithCancel(context.WithoutCancel(ctx))
-	mux := http.NewServeMux()
-	// The endpoint is a stream route: a response may stay open for
-	// server-to-client messages and for a confirmation that waits on
-	// a person, so it is exempt from the write deadline.
-	mux.Handle(h.svc.path(), api.LiftWriteDeadline(s.Handler()))
-	handler, err := h.handler(mux)
-	if err != nil {
-		cancelBase()
-		_ = ln.Close()
-		return err
-	}
-	srv := &http.Server{
-		Handler:     handler,
-		BaseContext: func(net.Listener) context.Context { return base },
-	}
-	// Server timeouts come from the timeouts block, kit defaults
-	// where it sets nothing. A client stalled mid-header or mid-body
-	// does not hold the stop (api.ReleaseStalledOnShutdown).
-	if err := service.ConfigureServeHTTP(h.svc.root, ServiceName, srv, api.DefaultServerTimeouts()); err != nil {
-		cancelBase()
-		_ = ln.Close()
-		return err
-	}
+	srv.BaseContext = func(net.Listener) context.Context { return base }
 
 	h.mu.Lock()
 	h.srv = srv
-	h.mcpSrv = s.Server()
+	h.mcpSrv = surf.Server()
 	h.stop = cancelBase
 	h.mu.Unlock()
 
@@ -131,7 +153,7 @@ func (h *httpServing) serve(ctx context.Context, s *mcpsdk.Surface) error {
 	after := context.AfterFunc(ctx, func() { _ = h.close(context.Background()) })
 	defer after()
 
-	err = h.svc.tls.Serve(srv, ln)
+	err := h.svc.tls.Serve(srv, ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}

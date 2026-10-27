@@ -141,13 +141,13 @@ func newSocketService(root *cli.Root, cfg *SocketConfig) *transportsvc.Transport
 		// The zero Policy resolves identically to DefaultPolicy, so
 		// an adopter that sets nothing gets the conservative gate.
 		transportsvc.WithBridgeOptions(cmdsurface.WithPolicy(cfg.Policy)),
-		// The permission gate and audit sinks are resolved at Start:
-		// --policy is parsed and every adopter option has run only
-		// then. Validate has already refused a --policy that cannot
+		// The permission gate and audit sinks are resolved while the
+		// service prepares: --policy is parsed and every adopter
+		// option has run only then. Validate has already refused a --policy that cannot
 		// load and opened the audit chains, so the error path here is
 		// unreachable in practice; were it reached, the bridge refuses
 		// every call rather than run one unaudited or ungated.
-		// The runner is resolved at Start for the same reason: a root
+		// The runner is resolved then for the same reason: a root
 		// factory replays the operator's parsed root flags onto every
 		// tree it builds. The shared options go last so a
 		// test-injected Runner still wins.
@@ -231,27 +231,45 @@ func newSocketService(root *cli.Root, cfg *SocketConfig) *transportsvc.Transport
 	return svc
 }
 
-// lazySocket defers resolving the socket path until Bind, so a
-// --socket flag parsed after construction still wins. It is otherwise
-// exactly [socket.Transport].
+// lazySocket defers resolving the socket path and authenticator until
+// the prepare phase, so a --socket flag parsed after construction still
+// wins. It is otherwise exactly [socket.Transport].
 type lazySocket struct {
 	root *cli.Root
 	cfg  *SocketConfig
 	svc  *transportsvc.TransportService
 	tr   *socket.Transport
+	// path and auth are what Prepare resolved.
+	path     string
+	auth     socket.Authenticator
+	prepared bool
 }
 
-func (l *lazySocket) Bind(ctx context.Context) (string, error) {
+var _ transportsvc.Preparer = (*lazySocket)(nil)
+
+// Prepare resolves the socket path and authenticator and withholds
+// kit's management verbs from b. It runs in the supervisor's prepare
+// phase, before any service serves a call.
+func (l *lazySocket) Prepare(_ context.Context, b *cmdsurface.Bridge) error {
 	path, err := resolveSocketPath(l.root, l.cfg)
 	if err != nil {
-		return "", err
+		return err
 	}
 	auth, err := resolveSocketAuth(l.root, l.cfg)
 	if err != nil {
-		return "", err
+		return err
 	}
-	l.tr = socket.New(path)
-	l.tr.Auth = auth
+	l.withholdManagement(b)
+	l.path, l.auth, l.prepared = path, auth, true
+	return nil
+}
+
+func (l *lazySocket) Bind(ctx context.Context) (string, error) {
+	if !l.prepared {
+		return "", errors.New("socket: Bind called before Prepare")
+	}
+	l.tr = socket.New(l.path)
+	l.tr.Auth = l.auth
 	l.tr.OnRefused = l.refused
 	return l.tr.Bind(ctx)
 }
@@ -275,7 +293,6 @@ func (l *lazySocket) Serve(ctx context.Context, inv transportsvc.Invoker) error 
 	if l.tr == nil {
 		return errors.New("socket: Serve called before Bind")
 	}
-	l.withholdManagement()
 	return l.tr.Serve(ctx, inv)
 }
 
@@ -301,14 +318,7 @@ var socketIntrospection = map[string]bool{
 // Expose pattern brings it back. A command an adopter mounts after
 // cli.New is not reserved and is left alone, whatever its name, unless
 // kit built it and reserved the tree itself.
-func (l *lazySocket) withholdManagement() {
-	if l.svc == nil {
-		return
-	}
-	b := l.svc.Bridge()
-	if b == nil {
-		return
-	}
+func (l *lazySocket) withholdManagement(b *cmdsurface.Bridge) {
 	for _, name := range l.root.ReservedSubcommands() {
 		if socketIntrospection[name] {
 			continue

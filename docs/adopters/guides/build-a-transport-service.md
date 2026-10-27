@@ -29,7 +29,7 @@ Implement three methods and the seam supplies the rest:
 
 | You write | The seam handles |
 |---|---|
-| `Bind` — acquire the endpoint, return its address | reflecting the command tree, once, at start |
+| `Bind` — acquire the endpoint, return its address | reflecting the command tree, once, before any service starts |
 | `Serve` — accept requests, call the invoker | the safety policy on every invocation |
 | `Close` — release what `Bind` acquired | readiness reporting and the bound address |
 | | ordered, idempotent stop within the shutdown budget |
@@ -198,7 +198,7 @@ configured.
 | `Expose(pattern)` | your transport should reach commands the bridge does not enable by default — usually `Expose("*")` |
 | `Hide(pattern)` | you want an exception carved out of a broader `Expose` |
 | `WithBridgeOptions(...)` | you need a custom `cmdsurface.Policy` (to permit destructive commands) or a custom `Runner` |
-| `WithBridgeOptionsFunc(fn)` | the options exist only at Start — a `cmdsurface.WithPermission` gate built from a parsed flag, `cmdsurface.WithSinks` registered after the service |
+| `WithBridgeOptionsFunc(fn)` | the options exist only once flags are parsed — a `cmdsurface.WithPermission` gate built from a parsed flag, `cmdsurface.WithSinks` registered after the service |
 | `WithValidate(fn)` | your configuration can be wrong in a way you can detect before binding — a malformed address, a missing file |
 | `WithClass(sideEffect, network)` | your tool runs a policy table and this service should be gated by it |
 | `WithDependsOn(names...)` | your transport needs another service started first |
@@ -261,9 +261,18 @@ new transport, and that one line catches it.
 
 These are consequences for you as the author, not background theory:
 
-- **Reflection happens at `Start`, not construction.** You get the
-  complete tree, including commands mounted after
+- **Reflection happens in the prepare phase, not construction.** The
+  supervisor prepares every service, one at a time, before it starts
+  any; you get the complete tree, including commands mounted after
   `NewTransportService` was called. Do not cache leaves yourself.
+- **Read the tree and the configuration in `Prepare`, never later.**
+  If your transport builds anything from the command tree or the
+  root's configuration — a catalog narrowed by reflection, schemas
+  from flags, an HTTP handler chain whose logger reads the configured
+  level — implement `transportsvc.Preparer` and build it there. From
+  `Bind` on, other services are serving calls that write the tree's
+  flag values under its invocation lock, and a read then is a data
+  race.
 - **Your surface is pinned.** Whatever `Meta.Surface` a request
   arrives with, the seam overwrites it with the surface you
   registered. You cannot widen your own reach by setting it, and you

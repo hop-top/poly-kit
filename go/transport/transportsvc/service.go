@@ -7,9 +7,9 @@
 // transport. MCP, RPC, SSE, a bus consumer, and the built-in socket
 // service are all that same shape, and they differ only in how
 // requests arrive and how responses leave. That difference is the
-// [Transport] interface; everything else — reflecting the tree at
-// start, the policy path, readiness with the bound address, and
-// ordered idempotent stop — is centralized here.
+// [Transport] interface; everything else — reflecting the tree in
+// the supervisor's prepare phase, the policy path, readiness with the
+// bound address, and ordered idempotent stop — is centralized here.
 //
 // See README.md in this directory for the API reference, and the
 // adopter guide docs/adopters/guides/build-a-transport-service.md
@@ -104,6 +104,24 @@ type Transport interface {
 // authenticator it records what the caller claimed and the bridge
 // grants nothing on that basis.
 type Invoker func(ctx context.Context, inv cmdsurface.Invocation) (cmdsurface.Result, error)
+
+// Preparer is the optional step a [Transport] implements to build,
+// before any service of the run starts, everything it would otherwise
+// build at Bind or Serve from the command tree or the root's
+// configuration: a catalog narrowed by reflection, a handler chain
+// whose logger reads the configured level, resolved listener settings.
+//
+// The seam calls Prepare once per run, after reflecting the tree into
+// b and before Bind, during the supervisor's prepare phase
+// ([serve.Preparer]), when no other service is running. From Bind on,
+// requests the run's other services serve write the tree's flag
+// values and writers under the tree's invocation lock, so Bind and
+// Serve must only use what Prepare built.
+//
+// Prepare's error is the service's start failure.
+type Preparer interface {
+	Prepare(ctx context.Context, b *cmdsurface.Bridge) error
+}
 
 // TransportOption configures a transport service at construction.
 type TransportOption func(*transportConfig)
@@ -200,11 +218,14 @@ type TransportService struct {
 	tr      Transport
 	cfg     transportConfig
 
-	mu     sync.Mutex
-	bridge *cmdsurface.Bridge
-	addr   string
-	up     bool
-	closed bool
+	mu sync.Mutex
+	// prepared is the bridge Prepare built, which the next Start
+	// serves; Start prepares itself when it is nil.
+	prepared *cmdsurface.Bridge
+	bridge   *cmdsurface.Bridge
+	addr     string
+	up       bool
+	closed   bool
 }
 
 // NewTransportService returns the transport service named name,
@@ -277,16 +298,19 @@ func (t *TransportService) Class() (sideEffect, network string) {
 // DependsOn implements [serve.Dependent].
 func (t *TransportService) DependsOn() []string { return t.cfg.dependsOn }
 
-// Start reflects the command tree, binds the transport, reports
-// ready, and serves until ctx is canceled.
-func (t *TransportService) Start(ctx context.Context, ready func()) error {
+// Prepare implements [serve.Preparer]: it reflects the command tree
+// into the service's bridge, applies the Expose and Hide rules, and
+// runs the transport's own [Preparer], so everything the service reads
+// from the tree and the configuration is read before any service of
+// the run starts. Start serves what Prepare built; a Start without a
+// Prepare before it prepares first.
+func (t *TransportService) Prepare(ctx context.Context) error {
 	if t.root == nil {
 		return errors.New("transportsvc: no command root")
 	}
 
-	// Reflect now, not at construction: the tree is complete only
-	// once every option has mounted its commands. Deferred bridge
-	// options resolve here for the same reason.
+	// Bridge options resolved now rather than at construction, so
+	// flags parsed after construction win.
 	opts := append([]cmdsurface.Option(nil), t.cfg.bridgeOpts...)
 	for _, fn := range t.cfg.bridgeOptFuncs {
 		opts = append(opts, fn()...)
@@ -298,6 +322,29 @@ func (t *TransportService) Start(ctx context.Context, ready func()) error {
 		} else {
 			bridge.Hide(rule.pattern, t.surface)
 		}
+	}
+	if p, ok := t.tr.(Preparer); ok {
+		if err := p.Prepare(ctx, bridge); err != nil {
+			return err
+		}
+	}
+
+	t.mu.Lock()
+	t.prepared = bridge
+	t.mu.Unlock()
+	return nil
+}
+
+// Start binds the transport, reports ready, and serves until ctx is
+// canceled, over the bridge Prepare built. Started without a Prepare
+// before it — outside a supervisor — it prepares first.
+func (t *TransportService) Start(ctx context.Context, ready func()) error {
+	bridge := t.takePrepared()
+	if bridge == nil {
+		if err := t.Prepare(ctx); err != nil {
+			return err
+		}
+		bridge = t.takePrepared()
 	}
 
 	addr, err := t.tr.Bind(ctx)
@@ -316,6 +363,15 @@ func (t *TransportService) Start(ctx context.Context, ready func()) error {
 	ready()
 
 	return t.tr.Serve(ctx, t.invoke)
+}
+
+// takePrepared hands the bridge Prepare built to one Start.
+func (t *TransportService) takePrepared() *cmdsurface.Bridge {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	b := t.prepared
+	t.prepared = nil
+	return b
 }
 
 // invoke is the [Invoker] handed to the transport. It pins the
@@ -380,6 +436,7 @@ func (t *TransportService) Bridge() *cmdsurface.Bridge {
 // gate, its address, or its ordering, so the assertion is the test.
 var (
 	_ serve.Service    = (*TransportService)(nil)
+	_ serve.Preparer   = (*TransportService)(nil)
 	_ serve.Validator  = (*TransportService)(nil)
 	_ serve.Addressed  = (*TransportService)(nil)
 	_ serve.Classified = (*TransportService)(nil)

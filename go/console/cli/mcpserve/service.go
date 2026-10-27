@@ -252,7 +252,7 @@ var (
 // newService builds the service on the transport seam, with the
 // bridge wiring every kit-shipped service gets: the adopter's Policy,
 // then [service.ServeBridgeOptions] — the root factory's runner, the
-// shared permission gate and audit sinks — resolved at Start.
+// shared permission gate and audit sinks — resolved while preparing.
 func newService(root *cli.Root, cfg *Config, stdio *stdioStreams) *mcpService {
 	s := &mcpService{root: root, cfg: cfg, stdio: stdio}
 	tr := &transport{svc: s}
@@ -450,18 +450,22 @@ var mcpCORS = service.ServeCORS{
 	ExposeHeaders: []string{"Mcp-Session-Id", "Mcp-Protocol-Version"},
 }
 
-// mcpServing is one transport's half of a run: acquire, serve a surface,
-// release.
+// mcpServing is one transport's half of a run: build what serving the
+// surface needs, acquire, serve, release.
 type mcpServing interface {
+	// prepare builds, from the surface, the tree and the
+	// configuration, everything bind and serve use; it runs in the
+	// prepare phase and acquires nothing.
+	prepare(s *mcpsdk.Surface) error
 	bind(ctx context.Context) (addr string, err error)
-	serve(ctx context.Context, s *mcpsdk.Surface) error
+	serve(ctx context.Context) error
 	close(ctx context.Context) error
 }
 
 // transport is the [transportsvc.Transport] behind the service. It
-// resolves the transport at Bind, so flags parsed after construction
-// win, and builds the SDK surface at Serve over the bridge the seam
-// reflected at Start.
+// resolves the transport and builds the SDK surface over the bridge
+// the seam reflected while preparing, so flags parsed after
+// construction win, and nothing reads the tree once calls are served.
 type transport struct {
 	svc *mcpService
 
@@ -469,7 +473,13 @@ type transport struct {
 	impl mcpServing
 }
 
-func (t *transport) Bind(ctx context.Context) (string, error) {
+var _ transportsvc.Preparer = (*transport)(nil)
+
+// Prepare resolves the transport, builds the SDK surface over b — the
+// catalog narrowed, every tool's schema collected from its flags — and
+// what the transport serves it with. It runs in the supervisor's
+// prepare phase, before any service serves a call.
+func (t *transport) Prepare(ctx context.Context, b *cmdsurface.Bridge) error {
 	var impl mcpServing
 	switch t.svc.transport() {
 	case TransportStdio:
@@ -477,14 +487,27 @@ func (t *transport) Bind(ctx context.Context) (string, error) {
 	default:
 		impl = newHTTP(t.svc)
 	}
-	addr, err := impl.bind(ctx)
+	s, err := t.surface(ctx, impl, b)
 	if err != nil {
-		return "", err
+		return err
+	}
+	if err := impl.prepare(s); err != nil {
+		return err
 	}
 	t.mu.Lock()
 	t.impl = impl
 	t.mu.Unlock()
-	return addr, nil
+	return nil
+}
+
+func (t *transport) Bind(ctx context.Context) (string, error) {
+	t.mu.Lock()
+	impl := t.impl
+	t.mu.Unlock()
+	if impl == nil {
+		return "", errors.New("mcp: Bind called before Prepare")
+	}
+	return impl.bind(ctx)
 }
 
 func (t *transport) Serve(ctx context.Context, _ transportsvc.Invoker) error {
@@ -494,12 +517,7 @@ func (t *transport) Serve(ctx context.Context, _ transportsvc.Invoker) error {
 	if impl == nil {
 		return errors.New("mcp: Serve called before Bind")
 	}
-	s, err := t.surface(ctx, impl)
-	if err != nil {
-		_ = impl.close(context.Background())
-		return err
-	}
-	return impl.serve(ctx, s)
+	return impl.serve(ctx)
 }
 
 func (t *transport) Close(ctx context.Context) error {
@@ -516,11 +534,7 @@ func (t *transport) Close(ctx context.Context) error {
 // call is admitted by Bridge.Admit before it runs, so the policy,
 // invocability and permission gates the seam promises hold on both
 // transports.
-func (t *transport) surface(ctx context.Context, impl mcpServing) (*mcpsdk.Surface, error) {
-	b := t.svc.Bridge()
-	if b == nil {
-		return nil, errors.New("mcp: no bridge; the service has not started")
-	}
+func (t *transport) surface(ctx context.Context, impl mcpServing, b *cmdsurface.Bridge) (*mcpsdk.Surface, error) {
 	withholdFromCatalog(ctx, b, t.svc.root)
 
 	cfg := t.svc.cfg
