@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -34,14 +35,22 @@ func TestSubscribe_FromAsyncHandlerOnLinkConnected(t *testing.T) {
 }
 
 func TestSubscribe_ReentrantWithBackgroundUnblocksOnClose(t *testing.T) {
-	h := newHub(t, WithAuth(OpenAuth()))
+	// The hub seeing the request proves the call is past its
+	// registered-address check and waiting on the reply: a Disconnect
+	// before that point returns ErrDisconnected, by contract.
+	sent := make(chan struct{})
+	var sentOnce sync.Once
+	h := newHub(t, WithAuth(OpenAuth()), WithSubscribeAuthorizer(func(_ context.Context, _ Peer, s Subscription) error {
+		if slices.Contains(s.Patterns, "acme.other.#") {
+			sentOnce.Do(func() { close(sent) })
+		}
+		return nil
+	}))
 	cl := newClient(t, WithAuth(OpenAuth()))
 	ch := make(chan error, 1)
-	started := make(chan struct{})
 	var once sync.Once
 	cl.bus.Subscribe("acme.crm.deal.created", func(context.Context, Event) error {
 		once.Do(func() {
-			close(started)
 			// Background hides the delivery marker: the call waits for a
 			// reply only this goroutine could read, until the link closes.
 			_, err := cl.n.Subscribe(context.Background(), h.url, "acme.other.#")
@@ -51,7 +60,11 @@ func TestSubscribe_ReentrantWithBackgroundUnblocksOnClose(t *testing.T) {
 	})
 	connect(t, cl, h.url)
 	publish(t, h.bus, "acme.crm.deal.created", "")
-	<-started
+	select {
+	case <-sent:
+	case <-time.After(failAfter):
+		t.Fatal("reentrant subscribe never reached the hub")
+	}
 	within(t, func() { _ = cl.n.Disconnect(h.url) })
 	if err := recvErr(t, ch); !errors.Is(err, errLinkClosed) {
 		t.Fatalf("err = %v, want errLinkClosed", err)
