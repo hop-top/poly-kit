@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON; system messages, wherever they sit, join in order with a blank line (\\n\\n) into the system field, empty ones skipped, and a cache_control on one ends a text block there, carrying that breakpoint. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds (a 403 or permission_error is permission_denied, which is also an auth error; a 401 is auth), whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode). anthropic_tool_choice: Request.ToolChoice (mode auto, any, none or tool with the tool's defined name) on the call made (complete, stream, tools, stream_tools): the body's tool_choice (want_tool_choice; null: absent; a named tool by its sent name) or the exact error before any request (no tools, unknown mode, a missing, stray or undefined name). anthropic_hermetic: the adapter built hermetic (Go ResolvedConfig.Hermetic, set by llm.Hermetic()) reads no environment and no llm.yaml: with the same env and file as credential_headers, the request goes to want_host (the configured base URL, else the default endpoint) carrying the sent headers and none of the withheld ones. anthropic_stream_events: what a stream yields when Request.StreamEvents is set (tools: the defined tool names; StreamWithTools when present, else Stream): text tokens, tool_call events (start with index, id and the original name; delta with the raw partial-JSON arguments; end with the complete call, as Outcome.ToolCalls[index]), cumulative usage snapshots (prompt, completion, cache read, cache creation, total) when the provider reports usage, then done; or, after a mid-stream error, the events so far and error_kind, with no end for an open call. Not opted in, the sequence is exactly anthropic_stream's. bus_request_started: the kit.ai.request.started payload for a request and call (op complete, stream, tool_call, stream_tools; tools: the tool names offered): metadata only (op, model when set, message count, roles and multimodal part types counted, content_bytes as the UTF-8 length of message text, text parts, tool call arguments and thinking text, tools counted, max_tokens, has_temperature, thinking, stop_sequences counted, extension_keys sorted), compared as JSON; no message text, tool names, extension values or media. bus_response_received: the kit.ai.response.received payload after a completion or tool call: op, finish_reason, usage, content_bytes (text, tool call arguments, thinking text), tool_calls counted, plus duration_ms (a non-negative integer, not compared); no content. Content appears in either only when the client opts in (Go WithRequestContent, WithResponseContent), outside these vectors.",
+  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON; system messages, wherever they sit, join in order with a blank line (\\n\\n) into the system field, empty ones skipped, and a cache_control on one ends a text block there, carrying that breakpoint. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds (a 403 or permission_error is permission_denied, which is also an auth error; a 401 is auth), whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode). anthropic_tool_choice: Request.ToolChoice (mode auto, any, none or tool with the tool's defined name) on the call made (complete, stream, tools, stream_tools): the body's tool_choice (want_tool_choice; null: absent; a named tool by its sent name) or the exact error before any request (no tools, unknown mode, a missing, stray or undefined name). anthropic_hermetic: the adapter built hermetic (Go ResolvedConfig.Hermetic, set by llm.Hermetic()) reads no environment and no llm.yaml: with the same env and file as credential_headers, the request goes to want_host (the configured base URL, else the default endpoint) carrying the sent headers and none of the withheld ones. anthropic_stream_events: what a stream yields when Request.StreamEvents is set (tools: the defined tool names; StreamWithTools when present, else Stream): text tokens, tool_call events (start with index, id and the original name; delta with the raw partial-JSON arguments; end with the complete call, as Outcome.ToolCalls[index]), cumulative usage snapshots (prompt, completion, cache read, cache creation, total) when the provider reports usage, then done; or, after a mid-stream error, the events so far and error_kind, with no end for an open call. Not opted in, the sequence is exactly anthropic_stream's. bus_request_started: the kit.ai.request.started payload for a request and call (op complete, stream, tool_call, stream_tools; tools: the tool names offered): metadata only (op, model when set, message count, roles and multimodal part types counted, content_bytes as the UTF-8 length of message text, text parts, tool call arguments and thinking text, tools counted, max_tokens, has_temperature, thinking, stop_sequences counted, extension_keys sorted), compared as JSON; no message text, tool names, extension values or media. bus_response_received: the kit.ai.response.received payload after a completion or tool call: op, finish_reason, usage, content_bytes (text, tool call arguments, thinking text), tool_calls counted, plus duration_ms (a non-negative integer, not compared); no content. Content appears in either only when the client opts in (Go WithRequestContent, WithResponseContent), outside these vectors. media_fetch: what a URL media source refuses to download (SSRF guard): only http and https, no userinfo, public addresses only (v4-mapped and NAT64 judged by their IPv4), redirects not followed, a byte cap (max_bytes, default 32 MiB); error_kind refused (message exact when given), redirect, http_status or too_large. A url starting with / is served by the runner's loopback server, which the runner lets past the address check, and attempts counts the requests it saw. Image and PDF url parts are sent to anthropic as url sources and never fetched.",
   "redact_uri": [
     {
       "name": "api_key",
@@ -809,6 +809,86 @@
                   "type": "base64",
                   "media_type": "application/pdf",
                   "data": "JVBERi0x"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "image url part is sent as a url source, not fetched",
+      "adapter_model": "m",
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "type": "text",
+                "text": "what is this?"
+              },
+              {
+                "type": "image",
+                "mime_type": "image/png",
+                "url": "https://example.com/cat.png"
+              }
+            ]
+          }
+        ]
+      },
+      "want_body": {
+        "model": "m",
+        "max_tokens": 1024,
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "what is this?"
+              },
+              {
+                "type": "image",
+                "source": {
+                  "type": "url",
+                  "url": "https://example.com/cat.png"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "pdf url part is sent as a url document source, not fetched",
+      "adapter_model": "m",
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "type": "image",
+                "mime_type": "application/pdf",
+                "url": "https://example.com/paper.pdf"
+              }
+            ]
+          }
+        ]
+      },
+      "want_body": {
+        "model": "m",
+        "max_tokens": 1024,
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "document",
+                "source": {
+                  "type": "url",
+                  "url": "https://example.com/paper.pdf"
                 }
               }
             ]
@@ -4219,6 +4299,187 @@
         "content_bytes": 39,
         "tool_calls": 2
       }
+    }
+  ],
+  "media_fetch": [
+    {
+      "name": "file scheme",
+      "url": "file:///etc/passwd",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch file:///etc/passwd: only http or https URLs are fetched"
+    },
+    {
+      "name": "ftp scheme",
+      "url": "ftp://example.com/x.png",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch ftp://example.com/x.png: only http or https URLs are fetched"
+    },
+    {
+      "name": "data scheme",
+      "url": "data:image/png;base64,AAAA",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch data:: only http or https URLs are fetched"
+    },
+    {
+      "name": "userinfo",
+      "url": "https://user:pw@example.com/x.png",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch https://example.com/x.png: URL carries userinfo"
+    },
+    {
+      "name": "loopback v4",
+      "url": "http://127.0.0.1/x.png",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch http://127.0.0.1/x.png: non-public address 127.0.0.1"
+    },
+    {
+      "name": "loopback v6",
+      "url": "http://[::1]/x.png",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch http://[::1]/x.png: non-public address ::1"
+    },
+    {
+      "name": "localhost resolves to loopback",
+      "url": "http://localhost/x.png",
+      "error_kind": "refused"
+    },
+    {
+      "name": "unspecified",
+      "url": "http://0.0.0.0/x.png",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch http://0.0.0.0/x.png: non-public address 0.0.0.0"
+    },
+    {
+      "name": "private 10/8",
+      "url": "http://10.0.0.1/x.png",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch http://10.0.0.1/x.png: non-public address 10.0.0.1"
+    },
+    {
+      "name": "private 172.16/12",
+      "url": "http://172.16.0.1/x.png",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch http://172.16.0.1/x.png: non-public address 172.16.0.1"
+    },
+    {
+      "name": "private 192.168/16",
+      "url": "http://192.168.1.1/x.png",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch http://192.168.1.1/x.png: non-public address 192.168.1.1"
+    },
+    {
+      "name": "shared 100.64/10",
+      "url": "http://100.64.0.1/x.png",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch http://100.64.0.1/x.png: non-public address 100.64.0.1"
+    },
+    {
+      "name": "cloud metadata, query not echoed",
+      "url": "http://169.254.169.254/latest/meta-data/?X-Amz-Signature=sekrit",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch http://169.254.169.254/latest/meta-data/: non-public address 169.254.169.254"
+    },
+    {
+      "name": "multicast",
+      "url": "http://224.0.0.1/x.png",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch http://224.0.0.1/x.png: non-public address 224.0.0.1"
+    },
+    {
+      "name": "unique local v6",
+      "url": "http://[fd00::1]/x.png",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch http://[fd00::1]/x.png: non-public address fd00::1"
+    },
+    {
+      "name": "link-local v6",
+      "url": "http://[fe80::1]/x.png",
+      "error_kind": "refused",
+      "message": "media: refusing to fetch http://[fe80::1]/x.png: non-public address fe80::1"
+    },
+    {
+      "name": "v4-mapped loopback",
+      "url": "http://[::ffff:127.0.0.1]/x.png",
+      "error_kind": "refused"
+    },
+    {
+      "name": "v4-mapped metadata",
+      "url": "http://[::ffff:169.254.169.254]/x.png",
+      "error_kind": "refused"
+    },
+    {
+      "name": "nat64 metadata",
+      "url": "http://[64:ff9b::a9fe:a9fe]/x.png",
+      "error_kind": "refused"
+    },
+    {
+      "name": "public fetch",
+      "url": "/x.png",
+      "server": {
+        "status": 200,
+        "headers": {
+          "content-type": "image/png"
+        },
+        "body": "PNG"
+      },
+      "want_body": "PNG",
+      "attempts": 1
+    },
+    {
+      "name": "redirect to metadata not followed",
+      "url": "/x.png",
+      "server": {
+        "status": 302,
+        "headers": {
+          "location": "http://169.254.169.254/latest/meta-data/"
+        }
+      },
+      "error_kind": "redirect",
+      "attempts": 1
+    },
+    {
+      "name": "redirect to same server not followed",
+      "url": "/x.png",
+      "server": {
+        "status": 301,
+        "headers": {
+          "location": "/y.png"
+        }
+      },
+      "error_kind": "redirect",
+      "attempts": 1
+    },
+    {
+      "name": "error status",
+      "url": "/x.png",
+      "server": {
+        "status": 404,
+        "body": "nope"
+      },
+      "error_kind": "http_status",
+      "attempts": 1
+    },
+    {
+      "name": "over the cap",
+      "url": "/x.png",
+      "max_bytes": 1024,
+      "server": {
+        "status": 200,
+        "body_size": 2048
+      },
+      "error_kind": "too_large",
+      "attempts": 1
+    },
+    {
+      "name": "exactly the cap",
+      "url": "/x.png",
+      "max_bytes": 1024,
+      "server": {
+        "status": 200,
+        "body_size": 1024
+      },
+      "want_size": 1024,
+      "attempts": 1
     }
   ]
 }

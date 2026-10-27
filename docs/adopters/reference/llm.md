@@ -465,6 +465,40 @@ llm.URLSource("https://example.com/image.png")
 llm.InlineSource(data, "image/png")
 ```
 
+### Media URLs
+
+A media URL may come from untrusted input, so kit never fetches one
+blindly:
+
+- Passed, not fetched, where the provider accepts a URL: Anthropic
+  images and PDFs go out as `url` sources, OpenAI images as `image_url`.
+  The provider downloads them; nothing leaves this process for that host.
+- Fetched under a guard everywhere else (OpenAI PDFs, Gemini, Ollama,
+  transcription, any caller of `Source.Reader`):
+  - `http` and `https` only (no `file:`, `ftp:`, `data:`), no userinfo;
+  - every address the host resolves to must be public: loopback,
+    private, link-local (cloud metadata `169.254.169.254`), shared
+    (`100.64.0.0/10`), documentation, reserved, unspecified and
+    multicast addresses are refused, v4-mapped and NAT64 IPv6 judged
+    by their IPv4;
+  - the connection goes to the vetted address (the dialer re-checks
+    it), so DNS rebinding cannot swap it; TLS still verifies the name;
+  - no proxy, no redirects (a 3xx is `*errors.HTTPStatusError`), a
+    non-2xx status is an error;
+  - at most `llm.DefaultMaxMediaBytes` (32 MiB), or
+    `llm.URLSource(u, llm.MediaMaxBytes(n))`; over it,
+    `*errors.ErrMediaTooLarge`; 30s for the whole download;
+  - `--offline` applies.
+- Refusals match `errors.Is(err, llm.ErrMediaURLRefused)` and name the
+  destination without query or userinfo.
+
+There is no switch to allow private hosts. Media on a local or private
+host is read by the caller and passed as `llm.FileSource` or
+`llm.InlineSource`. Python and TypeScript apply the same rules (their
+`anthropic` adapters also send URLs); the Rust port has no URL sources,
+so it fetches nothing. Vectors: `media_fetch` in
+[contracts/llm-v1](../../../contracts/llm-v1/README.md).
+
 ## Event hooks
 
 ```go

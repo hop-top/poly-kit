@@ -515,6 +515,13 @@ async function mapParts(parts: ContentPart[]): Promise<Block[]> {
         const mime = p.mimeType || p.source?.mimeType() || "";
         if (!mime) throw new LLMError("anthropic: image part needs a MIME type");
         if (!p.source) throw new LLMError("anthropic: nil media source");
+        // The API takes a URL source for images and PDFs: the provider
+        // fetches it, so nothing is downloaded here.
+        const url = p.source.url();
+        if (url) {
+          out.push({ type: mime === "application/pdf" ? "document" : "image", source: { type: "url", url } });
+          break;
+        }
         const data = Buffer.from(await p.source.read()).toString("base64");
         out.push(
           mime === "application/pdf"

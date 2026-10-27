@@ -437,8 +437,12 @@ def _part(p: llm.ContentPart) -> dict[str, Any]:
         raise llm.InvalidFormatError("", SCHEME)
     if p.source is None:
         raise _invalid("content part has no media source")
-    data = base64.b64encode(p.source.read()).decode("ascii")
     kind = "document" if mime == "application/pdf" else "image"
+    if p.source.url:
+        # The API takes a URL source for images and PDFs: the provider
+        # fetches it, so nothing is downloaded here.
+        return {"type": kind, "source": {"type": "url", "url": p.source.url}}
+    data = base64.b64encode(p.source.read()).decode("ascii")
     return {"type": kind, "source": {"type": "base64", "media_type": mime, "data": data}}
 
 

@@ -1010,7 +1010,20 @@ for (const call of resp.toolCalls) {
 - `checkToolLinkage(message)` enforces the role rules and rejects a tool
   result with `parts`; call it first in a custom adapter.
 - Media for a part comes from `inlineSource(bytes, mime)`,
-  `urlSource(url)` or `fileSource(path)`.
+  `urlSource(url, { maxBytes })` or `fileSource(path)`.
+- A media URL is treated as untrusted. The anthropic adapter (images,
+  PDFs) and the openai adapter (images) send the URL to the provider and
+  never read it. `urlSource(url).read()`, used everywhere else, fetches
+  under a guard: `http` or `https` only, no userinfo, every address the
+  host resolves to public (loopback, private, link-local such as
+  `169.254.169.254`, shared, documentation, reserved and multicast
+  refused, v4-mapped and NAT64 IPv6 judged by their IPv4; the socket
+  connects to the vetted address, so DNS cannot rebind it), no proxy,
+  no redirects (`HTTPStatusError`), 30s, at most `maxBytes` (32 MiB;
+  `MediaTooLargeError` past it), and `--offline` applies. Refusals are
+  `MediaURLRefusedError`. No switch allows private hosts: read local
+  media yourself and pass `inlineSource` or `fileSource`. Same rules as
+  Go: [Media URLs](llm.md#media-urls).
 - Returned calls carry `arguments` parsed (raw text when the provider
   sent invalid JSON).
 - The openai adapter (and `routellm` through it) sends `tool_calls`

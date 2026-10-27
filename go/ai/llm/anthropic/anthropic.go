@@ -554,6 +554,19 @@ func mapAnthropicParts(
 				return nil, llmerrors.NewInvalidFormat("", "anthropic", nil)
 			}
 
+			// The API takes a URL source for images and PDFs: send the
+			// URL and let the provider fetch it, so no download (and no
+			// request to a caller-chosen host) happens here.
+			if p.Source != nil && p.Source.URL() != "" {
+				u := p.Source.URL()
+				if mime == "application/pdf" {
+					out = append(out, anthropic.NewDocumentBlock(anthropic.URLPDFSourceParam{URL: u}))
+				} else {
+					out = append(out, anthropic.NewImageBlock(anthropic.URLImageSourceParam{URL: u}))
+				}
+				continue
+			}
+
 			data, err := anthropicReadBase64(ctx, p.Source)
 			if err != nil {
 				return nil, fmt.Errorf("anthropic: read media: %w", err)

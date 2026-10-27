@@ -87,6 +87,9 @@ struct Corpus {
     bus_request_started: Vec<Value>,
     #[allow(dead_code)]
     bus_response_received: Vec<Value>,
+    /// URL media fetch guard. Not applicable: this port has no URL media
+    /// sources, so nothing is fetched (README, Known differences).
+    media_fetch: Vec<Value>,
 }
 
 #[derive(Deserialize)]
@@ -262,6 +265,10 @@ struct ConfPart {
     mime_type: String,
     #[serde(default)]
     data: String,
+    /// A URL media part. This port has no URL media sources: vectors
+    /// carrying one are skipped by name (README, Known differences).
+    #[serde(default)]
+    url: String,
 }
 
 #[derive(Deserialize, Clone)]
@@ -488,6 +495,20 @@ fn load() -> Corpus {
     c
 }
 
+/// The URL media source and its fetch guard are not ported: Rust media
+/// are bytes the caller has read, so no URL is ever fetched. The section
+/// must still be present and well formed.
+#[test]
+fn media_fetch_vectors_not_applicable() {
+    let c = load();
+    assert!(!c.media_fetch.is_empty());
+    for v in &c.media_fetch {
+        let name = v.get("name").and_then(Value::as_str).unwrap_or_default();
+        assert!(!name.is_empty(), "media_fetch vector without a name");
+        eprintln!("media_fetch/{name}: not applicable (no URL media sources in this port)");
+    }
+}
+
 #[test]
 fn redact_uri_vectors() {
     let c = load();
@@ -626,6 +647,12 @@ mod anthropic {
         }
     }
 
+    fn has_url_part(r: &ConfRequest) -> bool {
+        r.messages
+            .iter()
+            .any(|m| m.parts.iter().any(|p| !p.url.is_empty()))
+    }
+
     fn to_request(r: &ConfRequest) -> Request {
         let messages = r
             .messages
@@ -750,6 +777,10 @@ mod anthropic {
         assert!(!c.anthropic_request.is_empty());
         for v in &c.anthropic_request {
             if pending("anthropic_request", &v.name) {
+                continue;
+            }
+            if has_url_part(&v.request) {
+                eprintln!("{}: skipped, no URL media sources in this port", v.name);
                 continue;
             }
             let srv = serve(vec![ok_message()]).await;

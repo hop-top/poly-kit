@@ -40,6 +40,7 @@ type confMessage struct {
 		Text     string `json:"text"`
 		MimeType string `json:"mime_type"`
 		Data     string `json:"data"`
+		URL      string `json:"url"`
 	} `json:"parts"`
 	ToolCalls []struct {
 		ID        string `json:"id"`
@@ -122,6 +123,7 @@ type anthropicConfFile struct {
 	Description      string          `json:"description"`
 	RedactURI        json.RawMessage `json:"redact_uri"`
 	ParseURI         json.RawMessage `json:"parse_uri"`
+	MediaFetch       json.RawMessage `json:"media_fetch"` // run in go/ai/llm
 	AnthropicRequest []struct {
 		Name         string          `json:"name"`
 		AdapterModel string          `json:"adapter_model"`
@@ -294,6 +296,9 @@ func (r confRequest) toLLM(t *testing.T) llm.Request {
 				data, err := base64.StdEncoding.DecodeString(p.Data)
 				require.NoError(t, err)
 				part.Source = llm.InlineSource(data, p.MimeType)
+			}
+			if p.URL != "" {
+				part.Source = unfetchedURL{t: t, url: p.URL}
 			}
 			msg.Parts = append(msg.Parts, part)
 		}
@@ -1170,4 +1175,18 @@ func TestConformanceAnthropicStreamEvents(t *testing.T) {
 			}
 		})
 	}
+}
+
+// unfetchedURL is a URL media source the adapter must pass to the
+// provider as a URL: opening it fails the test.
+type unfetchedURL struct {
+	t   *testing.T
+	url string
+}
+
+func (u unfetchedURL) URL() string      { return u.url }
+func (u unfetchedURL) MimeType() string { return "" }
+func (u unfetchedURL) Reader(context.Context) (io.ReadCloser, error) {
+	u.t.Errorf("url source %s was fetched; it must be sent as a url source", u.url)
+	return nil, errors.New("url source fetched")
 }
