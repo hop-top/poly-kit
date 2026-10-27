@@ -52,6 +52,9 @@ class Server:
             def log_message(self, *args: Any) -> None:
                 pass
 
+            def do_GET(self) -> None:
+                self.do_POST()
+
             def do_POST(self) -> None:
                 n = int(self.headers.get("content-length") or 0)
                 body = self.rfile.read(n)

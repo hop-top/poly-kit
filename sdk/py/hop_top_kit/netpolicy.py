@@ -39,8 +39,10 @@ Scope
 -----
 :func:`guard` sits in the ``urllib.request`` opener chain, so it covers
 HTTP and HTTPS through ``urllib`` — which is every network client in the
-Python port today (``hop_top_kit.aim``, ``hop_top_kit.upgrade``,
-``hop_top_kit.llm.URLSource``). :func:`install` guards both the opener
+Python port today (``hop_top_kit.aim``, ``hop_top_kit.upgrade``, the
+llm adapters in ``hop_top_kit.llm_http``). ``hop_top_kit.llm.URLSource``
+connects through ``http.client`` to an address it vetted itself and
+checks :func:`is_offline` before resolving. :func:`install` guards both the opener
 module-level ``urlopen`` uses and every opener built afterwards through
 ``urllib.request.build_opener`` — which includes the one-off opener
 ``urlopen(..., context=...)`` builds per call. It does NOT cover code

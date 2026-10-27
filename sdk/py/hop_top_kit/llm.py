@@ -17,7 +17,6 @@ import json
 import mimetypes
 import os
 import time
-import urllib.request
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -91,6 +90,7 @@ __all__ = [  # noqa: RUF022 — grouped by category
     "KeyEndpointError",
     "UnsupportedModalityError",
     "InvalidFormatError",
+    "MediaTooLargeError",
     "is_fallbackable",
 ]
 
@@ -201,17 +201,24 @@ class InlineSource:
 
 @dataclass(frozen=True)
 class URLSource:
-    """URL-backed media; :meth:`read` downloads lazily."""
+    """URL-backed media; :meth:`read` downloads lazily.
+
+    The download is guarded (:mod:`hop_top_kit.llm_media`): http or https
+    only, public addresses only, no redirects, at most *max_bytes*.
+    Adapters that can pass a URL to the provider do so without reading.
+    """
 
     url: str
+    max_bytes: int = 32 << 20
 
     @property
     def mime_type(self) -> str:
         return ""
 
     def read(self) -> bytes:
-        with urllib.request.urlopen(self.url) as resp:
-            return resp.read()
+        from hop_top_kit.llm_media import fetch
+
+        return fetch(self.url, max_bytes=self.max_bytes)
 
 
 @dataclass(frozen=True)
@@ -691,6 +698,14 @@ class UnsupportedModalityError(LLMError):
         self.modality = modality
         self.provider = provider
         super().__init__(f"modality {modality!r} not supported by provider {provider!r}")
+
+
+class MediaTooLargeError(LLMError):
+    def __init__(self, size: int, limit: int, provider: str) -> None:
+        self.size = size
+        self.limit = limit
+        self.provider = provider
+        super().__init__(f"media too large ({size} bytes, limit {limit}) for provider {provider!r}")
 
 
 class InvalidFormatError(LLMError):

@@ -711,6 +711,15 @@ from a `MediaSource`: `InlineSource(data, mime_type)`, `URLSource(url)`
 (downloaded on `read()`) or `FileSource(path)` (MIME from the
 extension). `ContentPart.mime_type` overrides the source's.
 
+`URLSource.read()` treats the URL as untrusted: `http` or `https` only,
+no userinfo, every address the host resolves to public (loopback,
+private, link-local such as `169.254.169.254`, shared, reserved and
+multicast refused; the connection goes to the vetted address, so DNS
+cannot rebind it), no redirects, a 30s timeout, at most `max_bytes`
+(32 MiB; `llm.MediaTooLargeError` past it), and `--offline` applies.
+Adapters that pass an image URL to the provider (`openai`, `routellm`)
+never read it.
+
 ### Provider adapters
 
 `create_llm()` / `llm.resolve()` load the built-in adapters on first
