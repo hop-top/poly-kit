@@ -13,11 +13,11 @@ jobs:
   go-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       # golangci-lint is installed by `make lint-go` -> `tools-golangci-lint`
@@ -28,16 +28,16 @@ jobs:
   ts-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ steps.pins.outputs.node }}
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: ${{ steps.pins.outputs.pnpm }}
       - run: pnpm install --frozen-lockfile --ignore-scripts
@@ -46,16 +46,16 @@ jobs:
   py-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ steps.pins.outputs.python }}
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           version: ${{ steps.pins.outputs.uv }}
       # --locked fails when uv.lock disagrees with pyproject.toml instead
@@ -70,13 +70,13 @@ jobs:
   rs-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
@@ -85,7 +85,7 @@ jobs:
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: sdk/experimental/rs
       - run: make lint-rs
@@ -93,18 +93,18 @@ jobs:
   docs-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ steps.pins.outputs.node }}
       - run: make lint-docs
       - run: make lint-readmes
-      - uses: lycheeverse/lychee-action@v2
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           lycheeVersion: v${{ steps.pins.outputs.lychee }}
           args: '--config examples/spaced/lychee.toml docs/ README.md'
@@ -115,7 +115,7 @@ jobs:
   sdk-paths-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - run: make lint-sdk-paths
@@ -123,7 +123,7 @@ jobs:
   adr-refs-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - run: make lint-adr-refs
@@ -131,7 +131,7 @@ jobs:
   internal-refs-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - run: make lint-internal-refs
@@ -142,7 +142,7 @@ jobs:
   toolchain-parity:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - run: make check-toolchain-parity
@@ -150,14 +150,14 @@ jobs:
   proto-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       # buf only; lint, format and generate run inside `make proto-check`.
-      - uses: bufbuild/buf-action@v1
+      - uses: bufbuild/buf-action@8c6a16e16f12ba20b6470afa9c2ba9b5ba8c97c3 # v1.5.0
         with:
           version: ${{ steps.pins.outputs.buf }}
           setup_only: true
@@ -177,10 +177,10 @@ jobs:
   template-kit-pin:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - run: make check-template-kit-pin
@@ -190,10 +190,10 @@ jobs:
     needs: [go-lint]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - run: make test-go-integration
@@ -226,10 +226,10 @@ jobs:
     needs: [go-lint]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - run: make test-go-race
@@ -238,16 +238,16 @@ jobs:
     needs: [ts-lint]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ steps.pins.outputs.node }}
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: ${{ steps.pins.outputs.pnpm }}
       - run: pnpm install --frozen-lockfile --ignore-scripts
@@ -257,16 +257,16 @@ jobs:
     needs: [py-lint]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ steps.pins.outputs.python }}
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           version: ${{ steps.pins.outputs.uv }}
       - run: cd sdk/py && uv sync --all-extras --locked
@@ -277,13 +277,13 @@ jobs:
     needs: [rs-lint]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
@@ -291,7 +291,7 @@ jobs:
           # it reads is held equal to that file by
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: sdk/experimental/rs
       - run: make test-rs
@@ -310,14 +310,14 @@ jobs:
       run:
         working-directory: sdk/experimental/rs
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
         working-directory: .
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
@@ -327,7 +327,7 @@ jobs:
           toolchain: ${{ steps.pins.outputs.rust }}
           targets: wasm32-unknown-unknown
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: sdk/experimental/rs
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features bus
@@ -398,14 +398,14 @@ jobs:
       run:
         working-directory: sdk/experimental/rs
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
         working-directory: .
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
@@ -414,7 +414,7 @@ jobs:
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: sdk/experimental/rs
           key: ${{ matrix.target }}
@@ -443,14 +443,14 @@ jobs:
       run:
         working-directory: sdk/experimental/rs
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
         working-directory: .
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
@@ -458,7 +458,7 @@ jobs:
           # it reads is held equal to that file by
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: sdk/experimental/rs
       # --lib leaves dev-dependencies out, so tokio carries only the
@@ -471,13 +471,13 @@ jobs:
   php-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # sdk/experimental/php's composer.json requires php ^8.4
       # (for jewei/typeid-php); ubuntu-latest ships 8.3 by default,
       # so pin explicitly. Matches the parity job's PHP setup below.
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: '8.4'
       # composer only WARNS when composer.lock is stale, so drift never
@@ -505,31 +505,31 @@ jobs:
     needs: [go-race, go-test, php-test, py-test, rs-features, rs-mobile, rs-test, rs-wasm, ts-test]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ steps.pins.outputs.node }}
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: ${{ steps.pins.outputs.pnpm }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ steps.pins.outputs.python }}
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           version: ${{ steps.pins.outputs.uv }}
       # Rust toolchain + cache for the typeid-v1 contract loader.
       # test-parity (via test-parity-typeid) runs
       # `cargo test --features id --test contract` on every build.
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
@@ -537,14 +537,14 @@ jobs:
           # it reads is held equal to that file by
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: sdk/experimental/rs
       # PHP 8.4 toolchain for the typeid-v1 contract loader.
       # sdk/experimental/php's composer.json requires php ^8.4
       # (needed by jewei/typeid-php), and ubuntu-latest
       # ships PHP 8.3 by default, so we pin explicitly.
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: '8.4'
       - run: pnpm install --frozen-lockfile --ignore-scripts
@@ -556,10 +556,10 @@ jobs:
     needs: [parity]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - run: go build -buildvcs=false -o spaced ./examples/spaced/go/

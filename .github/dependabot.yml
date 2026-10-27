@@ -163,3 +163,24 @@ updates:
       minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+
+  # Workflow and composite-action `uses:` refs: every one is pinned to a
+  # commit SHA with its version in a trailing comment (make
+  # lint-actions-pinned); Dependabot moves the SHA and the comment together.
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/*"]
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    commit-message:
+      prefix: "ci(deps):"
+    ignore:
+      # The release-please pin must match `tooling-ref` and the preflight
+      # pin (see release-please.yml); moved by hand, all three together.
+      - dependency-name: "hop-top/.github"
+    groups:
+      # One PR per run for minor + patch; majors stay separate for review.
+      minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

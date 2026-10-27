@@ -32,13 +32,13 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/create-github-app-token@v3
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
@@ -116,13 +116,13 @@ jobs:
       # cannot regenerate the lockfiles those manifests are hashed into, so
       # every release PR would fail `uv lock --check` / `composer validate
       # --check-lock` and leave the base branch inconsistent after merge.
-      - uses: actions/create-github-app-token@v3
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
@@ -147,11 +147,11 @@ jobs:
       - id: pins
         if: steps.detect.outputs.py == 'true'
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         if: steps.detect.outputs.py == 'true'
         with:
           python-version: ${{ steps.pins.outputs.python }}
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         if: steps.detect.outputs.py == 'true'
         with:
           version: ${{ steps.pins.outputs.uv }}
@@ -160,7 +160,7 @@ jobs:
         run: cd sdk/py && uv lock
 
       # sdk/experimental/php requires php ^8.4; matches ci.yml.
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         if: steps.detect.outputs.php == 'true'
         with:
           php-version: '8.4'
