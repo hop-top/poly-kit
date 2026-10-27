@@ -179,6 +179,13 @@ g, _ := consent.OpenGrants(consent.WithTool("mytool"), consent.WithDelivery(b))
 go g.Relay().Run(ctx) // flushes at start, on every new record, and every 5s after a failure
 ```
 
+Records are published as read from the log. An event or reason this
+version does not know (written by a newer kit) is kept and published
+under its own topic, `kit.core.consent.<event>`, with every field it
+carries. An event name whose topic fails the bus grammar (lowercase
+segments, past-tense action, at most 128 bytes) makes the log
+unreadable: no publish, and the next `Use` is refused.
+
 Not covered by the ack: `SubscribeAsync` handlers, and peers behind a
 network adapter (the bus stream has no publisher-visible ack). Delivery
 runs after the decision and never blocks or changes it; `Use` does not

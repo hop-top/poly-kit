@@ -498,6 +498,161 @@
         }
       ],
       "published": []
+    },
+    {
+      "name": "an unknown event from a newer writer is kept and published under its own topic, payload intact",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "record",
+          "record": {
+            "event": "granted",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 1
+          }
+        },
+        {
+          "op": "append",
+          "line": "{\"v\":1,\"log\":\"$LOG\",\"seq\":2,\"event\":\"escalated\",\"at\":\"2026-03-01T00:00:00Z\",\"capability\":\"io.screen.capture\",\"subject\":\"app:dek\",\"decision_source\":\"prompt\",\"tier\":\"high\"}"
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [
+              1,
+              2
+            ],
+            "cursor": 2,
+            "pending": 0
+          }
+        }
+      ],
+      "published": [
+        {
+          "seq": 1,
+          "topic": "kit.core.consent.granted"
+        },
+        {
+          "seq": 2,
+          "topic": "kit.core.consent.escalated",
+          "payload": {
+            "v": 1,
+            "log": "$LOG",
+            "seq": 2,
+            "event": "escalated",
+            "at": "2026-03-01T00:00:00Z",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision_source": "prompt",
+            "tier": "high"
+          }
+        }
+      ],
+      "cursor_file": {
+        "seq": 2
+      }
+    },
+    {
+      "name": "an unknown reason on a known event is kept and published under the known topic",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "record",
+          "record": {
+            "event": "granted",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 1
+          }
+        },
+        {
+          "op": "append",
+          "line": "{\"v\":1,\"log\":\"$LOG\",\"seq\":2,\"event\":\"refused\",\"at\":\"2026-03-01T00:00:00Z\",\"capability\":\"io.screen.capture\",\"subject\":\"app:dek\",\"decision_source\":\"config\",\"reason\":\"quota-exceeded\"}"
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [
+              1,
+              2
+            ],
+            "cursor": 2,
+            "pending": 0
+          }
+        }
+      ],
+      "published": [
+        {
+          "seq": 1,
+          "topic": "kit.core.consent.granted"
+        },
+        {
+          "seq": 2,
+          "topic": "kit.core.consent.refused",
+          "payload": {
+            "v": 1,
+            "log": "$LOG",
+            "seq": 2,
+            "event": "refused",
+            "at": "2026-03-01T00:00:00Z",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision_source": "config",
+            "reason": "quota-exceeded"
+          }
+        }
+      ],
+      "cursor_file": {
+        "seq": 2
+      }
+    },
+    {
+      "name": "an event name outside the bus topic grammar makes the log unreadable and sends nothing",
+      "now": "2026-03-01T00:00:00Z",
+      "steps": [
+        {
+          "op": "record",
+          "record": {
+            "event": "granted",
+            "capability": "io.screen.capture",
+            "subject": "app:dek",
+            "decision": "allow",
+            "duration": "always",
+            "decision_source": "prompt",
+            "prompt_version": 1
+          },
+          "expect": {
+            "seq": 1
+          }
+        },
+        {
+          "op": "append",
+          "line": "{\"v\":1,\"log\":\"$LOG\",\"seq\":2,\"event\":\"escalate\",\"at\":\"2026-03-01T00:00:00Z\",\"capability\":\"io.screen.capture\",\"subject\":\"app:dek\",\"decision_source\":\"prompt\"}"
+        },
+        {
+          "op": "flush",
+          "expect": {
+            "delivered": [],
+            "cursor": 0,
+            "pending": 0,
+            "error": true
+          }
+        }
+      ],
+      "published": []
     }
   ]
 }
