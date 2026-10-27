@@ -12,9 +12,10 @@ import (
 
 // Driver implements upgrade.SchemaDriver for a SQLite database file.
 type Driver struct {
-	name   string
-	dbPath string
-	tool   string
+	name    string
+	dbPath  string
+	tool    string
+	dataDir string
 }
 
 // New creates a SQLite schema driver.
@@ -38,6 +39,12 @@ func WithName(name string) Option {
 	return func(d *Driver) { d.name = name }
 }
 
+// WithDataDir reads the version file under dir, for a Migrator built
+// with upgrade.WithDataDir(dir).
+func WithDataDir(dir string) Option {
+	return func(d *Driver) { d.dataDir = dir }
+}
+
 // WithTool sets the tool name for version file resolution.
 func WithTool(tool string) Option {
 	return func(d *Driver) { d.tool = tool }
@@ -46,6 +53,9 @@ func WithTool(tool string) Option {
 func (d *Driver) Name() string { return d.name }
 
 func (d *Driver) Version() (string, error) {
+	if d.dataDir != "" {
+		return upgrade.ReadVersionFileIn(d.dataDir, d.name)
+	}
 	return upgrade.ReadVersionFile(d.tool, d.name)
 }
 

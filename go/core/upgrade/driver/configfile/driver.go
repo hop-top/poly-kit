@@ -13,9 +13,10 @@ import (
 
 // Driver implements upgrade.SchemaDriver for one or more config files.
 type Driver struct {
-	name  string
-	tool  string
-	paths []string
+	name    string
+	tool    string
+	dataDir string
+	paths   []string
 }
 
 // New creates a config file schema driver that manages the given file paths.
@@ -32,6 +33,12 @@ type Option func(*Driver)
 // WithName overrides the schema name (default "config").
 func WithName(name string) Option {
 	return func(d *Driver) { d.name = name }
+}
+
+// WithDataDir reads the version file under dir, for a Migrator built
+// with upgrade.WithDataDir(dir).
+func WithDataDir(dir string) Option {
+	return func(d *Driver) { d.dataDir = dir }
 }
 
 // WithTool sets the tool name for version file resolution.
@@ -51,6 +58,9 @@ func NewWithOptions(opts []Option, paths ...string) *Driver {
 func (d *Driver) Name() string { return d.name }
 
 func (d *Driver) Version() (string, error) {
+	if d.dataDir != "" {
+		return upgrade.ReadVersionFileIn(d.dataDir, d.name)
+	}
 	return upgrade.ReadVersionFile(d.tool, d.name)
 }
 

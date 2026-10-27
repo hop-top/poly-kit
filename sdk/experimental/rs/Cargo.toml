@@ -150,6 +150,13 @@ config-signal = [
     "tokio/sync",
 ]
 
+# Versioned state migrations, a port of the migration half of
+# go/core/upgrade (self-update is not ported). Version order, the
+# migration registry and the SchemaDriver seam are pure and wasm-safe;
+# the runner, its version files and backups are compiled off wasm32.
+# Builds on `bus` for the step context and lifecycle events.
+upgrade = ["bus", "dep:thiserror"]
+
 [dependencies]
 hop-top-cite = { version = "0.1.0", optional = true }
 chrono = { version = "0.4", default-features = false, features = [

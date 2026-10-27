@@ -35,10 +35,17 @@ pub mod domain;
 #[cfg(feature = "config")]
 pub mod config;
 
-// Base directories for the config loader (a port of go/core/xdg's
-// home and config-home resolution). Filesystem-only: off wasm32.
-#[cfg(all(feature = "config", not(target_arch = "wasm32")))]
+// Base directories for the config loader and the upgrade runner (a
+// port of go/core/xdg's home, config-home and data-home resolution).
+// Filesystem-only: off wasm32.
+#[cfg(all(
+    any(feature = "config", feature = "upgrade"),
+    not(target_arch = "wasm32")
+))]
 pub mod xdg;
+
+#[cfg(feature = "upgrade")]
+pub mod upgrade;
 
 #[cfg(feature = "sqldb")]
 pub mod sqldb;
