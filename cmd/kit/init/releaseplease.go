@@ -91,7 +91,7 @@ func renderReleasePleaseCaller(s releasePleaseSettings) string {
 		b.WriteString("  workflow_dispatch: {}\n")
 	}
 	b.WriteString("\npermissions:\n  contents: read\n\njobs:\n  release-please:\n")
-	fmt.Fprintf(&b, "    uses: hop-top/.github/.github/workflows/%s@%s\n", releasePleaseReusable, workflowCallerRef)
+	fmt.Fprintf(&b, "    uses: %s\n", workflowCallerUses(releasePleaseReusable))
 	if s.ConfigFile != "" || s.ManifestFile != "" || s.TargetBranch != "" {
 		b.WriteString("    with:\n")
 		for _, kv := range [][2]string{

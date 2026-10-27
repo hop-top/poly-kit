@@ -220,6 +220,33 @@ Re-running `kit init` in a repo that still has the per-language
 `release-<lang>-caller.yml` files an earlier version generated removes
 each one that is unedited, and reports edited ones for you to delete.
 
+## Pinned action refs
+
+Every `uses:` line kit writes is pinned to a full commit SHA, with the
+version it stands for in a trailing comment:
+
+```yaml
+uses: hop-top/.github/.github/workflows/ci.yml@5ce6680ccde9878428ed6cfa24e0e8f635d829a1 # v0.15.0
+```
+
+A tag can be moved to new code; a commit cannot. The generated
+`.github/dependabot.yml` carries a `github-actions` entry that moves
+the SHA and the comment together (one grouped PR for minor + patch).
+It skips `hop-top/.github`: kit owns that pin, and a new kit release
+moves it.
+
+Repos scaffolded by an earlier kit keep their tag refs (`@v0`, `@v4`).
+Re-run `kit init` to pick up the pins:
+
+- Callers kit tracks in `.kit/generated.json` (`test-<runtime>-caller.yml`,
+  `publish.yml`, `release-please.yml`, `kit-bus-*.yml`) are rewritten in
+  place while unedited; edited ones get a `.kit-suggested` sibling.
+- `ci-<runtime>.yml` and `dependabot.yml` are never overwritten: a
+  differing file gets a `.kit-suggested.<name>` sibling to merge by hand.
+
+Or pin by hand: resolve each tag with
+`git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>`.
+
 ## Migration from `kit scaffold`
 
 `kit scaffold` was removed in this release. Map old commands:

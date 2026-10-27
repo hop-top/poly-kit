@@ -146,7 +146,7 @@ func emitJob(topic string, eventTrigger string, ifGuards []string, extraEnv map[
 		"    runs-on: ubuntu-latest\n" +
 		"    steps:\n" +
 		"      - name: install go (for kit-bus-emit)\n" +
-		"        uses: actions/setup-go@v5\n" +
+		"        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0\n" +
 		"        with:\n" +
 		"          go-version: \"stable\"\n" +
 		fmt.Sprintf("      - name: emit %s\n", topic) +

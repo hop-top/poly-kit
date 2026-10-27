@@ -643,8 +643,15 @@ lint-internal-refs: ## Guard against references to documents and paths outside t
 
 # Every workflow and composite-action `uses:` is pinned to a full commit
 # SHA, version in a trailing comment; Dependabot keeps them current.
+# Second pass: the workflow templates adopters get (kit init, scaffold.sh,
+# conform) and the example workflows; generated output is linted by
+# TestBootstrap_GeneratedWorkflowsArePinned (cmd/kit/init).
+ADOPTER_WORKFLOWS = 'templates/shared/ci/*.yml' 'templates/shared/ci/*.yml.tmpl' \
+	'templates/ci/*/github-actions.yml' 'examples/*/.github/workflows/*.yml'
+
 lint-actions-pinned: ## Fail on GitHub Actions `uses:` refs not pinned to a commit SHA
 	@scripts/lint-actions-pinned.sh
+	@scripts/lint-actions-pinned.sh $$(git ls-files -- $(ADOPTER_WORKFLOWS))
 
 # mise.toml pins the toolchain; CI and the Makefile read it. The files
 # that must carry their own copy (go.mod, rust-toolchain.toml, uv.lock's

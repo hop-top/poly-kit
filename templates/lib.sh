@@ -327,6 +327,32 @@ dependabot_ecosystem() {
   esac
 }
 
+# dependabot_actions_entry
+# Echoes the dependabot github-actions update entry every generated
+# dependabot.yml carries. Byte-identical to the entry in
+# shared/ci/dependabot.yml (kit init's copy; templates/tests/lib.bats).
+dependabot_actions_entry() {
+  cat <<'DEOF'
+  # Workflow `uses:` refs are pinned to commit SHAs with the version in a
+  # trailing comment; Dependabot moves the SHA and the comment together.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci(deps):"
+    ignore:
+      # kit init owns the hop-top/.github reusable-workflow pin and moves
+      # it on refresh; a Dependabot bump would mark those callers edited.
+      - dependency-name: "hop-top/.github"
+    groups:
+      # One PR per run for minor + patch; majors stay separate for review.
+      minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+DEOF
+}
+
 # ci_workflow_src <lang>
 # Echoes the absolute path to the per-lang CI workflow template,
 # preferring `.yml` over `.yml.tmpl`.
@@ -394,6 +420,8 @@ compose_polyglot_dependabot() {
       printf '    commit-message:\n'
       printf '      prefix: "build(deps):"\n'
     done
+    [ "$first" = true ] || printf '\n'
+    dependabot_actions_entry
   } > "$out"
 }
 

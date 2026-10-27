@@ -174,9 +174,15 @@ GOVEOF
 # Safe generated actions
 # ==========================================================
 
-# Build a dependabot ecosystem block
+# Build a dependabot ecosystem block; github-actions gets the shared
+# entry every generated dependabot.yml carries (lib.sh).
 _dependabot_block() {
   local ecosystem="$1"
+  if [ "$ecosystem" = github-actions ]; then
+    echo
+    dependabot_actions_entry
+    return
+  fi
   cat <<DEOF
 
   - package-ecosystem: $ecosystem

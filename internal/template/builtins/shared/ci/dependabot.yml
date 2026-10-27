@@ -20,3 +20,21 @@ updates:
       interval: weekly
     commit-message:
       prefix: "build(deps):"
+
+  # Workflow `uses:` refs are pinned to commit SHAs with the version in a
+  # trailing comment; Dependabot moves the SHA and the comment together.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci(deps):"
+    ignore:
+      # kit init owns the hop-top/.github reusable-workflow pin and moves
+      # it on refresh; a Dependabot bump would mark those callers edited.
+      - dependency-name: "hop-top/.github"
+    groups:
+      # One PR per run for minor + patch; majors stay separate for review.
+      minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

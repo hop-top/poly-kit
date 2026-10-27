@@ -52,12 +52,20 @@ The templates default to ctxt's `mobile/{ios,android}/` monorepo
 layout but fall back to top-level project files via shell `if` guards,
 so they work for split-repo deployments too.
 
+## Pinned action refs
+
+Every `uses:` is pinned to a full commit SHA with its version in a
+trailing comment (`owner/repo@<sha> # vX.Y.Z`); a tag can be moved to
+new code, a commit cannot. `dependabot.yml` carries a `github-actions`
+entry that moves the SHA and the comment together. New refs follow the
+same form: `make lint-actions-pinned` fails on a tag or branch ref here.
+
 ## mise-action coverage
 
-CI workflows for go/ts/py/rs/php use `jdx/mise-action@v2` to install
+CI workflows for go/ts/py/rs/php use `jdx/mise-action` (v2) to install
 the toolchain pinned in `mise.toml`.
 
 Kotlin and Swift workflows are intentionally exempt: they use
-platform-native setup actions (`actions/setup-java@v4` for
+platform-native setup actions (`actions/setup-java` for
 Kotlin, `xcode-select` for Swift) because mise does not manage
 JVM or Xcode toolchains.

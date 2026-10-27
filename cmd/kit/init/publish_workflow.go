@@ -203,7 +203,7 @@ func renderPublishWorkflow(entries []publishEntry, owner string, ownerKnown, sin
 	b.WriteString("name: publish\n\non:\n  push:\n    tags: ['*/v*']\n  workflow_dispatch: {}\n\n")
 	b.WriteString("jobs:\n  publish:\n    permissions:\n      contents: read\n")
 	b.WriteString("      id-token: write  # PyPI trusted publishing, npm provenance\n")
-	fmt.Fprintf(&b, "    uses: hop-top/.github/.github/workflows/publish-on-tag.yml@%s\n", workflowCallerRef)
+	fmt.Fprintf(&b, "    uses: %s\n", workflowCallerUses("publish-on-tag.yml"))
 	b.WriteString("    secrets:\n")
 	for _, s := range []struct{ eco, name string }{
 		{"ts", "NPM_REGISTRY_TOKEN"},
