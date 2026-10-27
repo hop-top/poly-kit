@@ -49,6 +49,15 @@ boundary is:
 - Anything outside `.github/`, `.githooks/`, `.kit/` and the explicit opt-in
   paths declared by individual generators.
 
+### Pinned refs
+
+Every `uses:` a generator writes is pinned to a full commit SHA with the
+version in a trailing comment (`owner/repo@<sha> # vX.Y.Z`). Callers of
+`hop-top/.github` share one pin (`workflowCallerRef` +
+`workflowCallerVersion`, `cmd/kit/init/workflows.go`), kept equal to
+poly-kit's own `.github/workflows/publish.yml`. A bump there reaches
+adopters through the refresh-in-place rule (Section 6).
+
 ### Compatibility note
 
 If `hop-top/.github` later changes a reusable workflow's required inputs or

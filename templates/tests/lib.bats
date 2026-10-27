@@ -184,3 +184,53 @@ JSON
   [ "$status" -eq 0 ]
   [ -d "$target" ]
 }
+
+# ==========================================================
+# dependabot github-actions entry + pinned CI workflows
+# ==========================================================
+
+LINT_PINNED="${BATS_TEST_DIRNAME}/../../scripts/lint-actions-pinned.sh"
+
+@test "dependabot_actions_entry matches kit init's shared/ci/dependabot.yml" {
+  local shared entry
+  shared="$(cat "$TEMPLATES_DIR/shared/ci/dependabot.yml")"
+  entry="$(dependabot_actions_entry)"
+  [[ "$entry" == *"package-ecosystem: github-actions"* ]]
+  [[ "$shared" == *"$entry" ]]
+}
+
+@test "compose_polyglot_dependabot appends the github-actions entry" {
+  compose_polyglot_dependabot "$TEST_DIR" go ts
+  local out="$TEST_DIR/.github/dependabot.yml"
+  grep -q 'package-ecosystem: gomod' "$out"
+  grep -q 'package-ecosystem: npm' "$out"
+  [[ "$(cat "$out")" == *"$(dependabot_actions_entry)" ]]
+}
+
+@test "copy_polyglot_ci_workflows output pins every uses: ref" {
+  copy_polyglot_ci_workflows "$TEST_DIR" go ts py rs php
+  run "$LINT_PINNED" "$TEST_DIR"/.github/workflows/*.yml
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
+}
+
+@test "build.sh single-lang dist: pinned ci.yml + github-actions dependabot" {
+  cp -R "$TEMPLATES_DIR" "$TEST_DIR/templates"
+  rm -rf "$TEST_DIR/templates/dist"
+  bash "$TEST_DIR/templates/build.sh" >/dev/null
+  local lang dist
+  for lang in go ts py rs php; do
+    dist="$TEST_DIR/templates/dist/cli-template-$lang"
+    run "$LINT_PINNED" "$dist/.github/workflows/ci.yml"
+    [ "$status" -eq 0 ] || { echo "$lang: $output"; false; }
+    [[ "$(cat "$dist/.github/dependabot.yml")" == *"$(dependabot_actions_entry)" ]] \
+      || { echo "$lang: dependabot.yml lacks github-actions entry"; false; }
+  done
+}
+
+@test "conform _dependabot_block github-actions emits the shared entry" {
+  # shellcheck source=../conform-actions.sh
+  source "$TEMPLATES_DIR/conform-actions.sh"
+  run _dependabot_block github-actions
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf '\n%s' "$(dependabot_actions_entry)")" ]
+}

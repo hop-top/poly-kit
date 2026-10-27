@@ -62,8 +62,8 @@ Every new project (and every existing one refreshed with
   UI at <http://localhost:16686>.
 - `.env.example` — five kit-managed blocks (`telemetry`, `storage`,
   `queue`, `log`, `config`). Defaults to SQLite + local XDG paths.
-- `.github/workflows/*.yml` — no version literals; CI uses
-  `jdx/mise-action@v2` and reads the project's own `mise.toml`.
+- `.github/workflows/*.yml` — CI uses `jdx/mise-action` + the project's
+  `mise.toml`; every `uses:` SHA-pinned, kept current by Dependabot.
 
 Opt-in catalog (`scaffold.sh --services <list>` or
 `kit init --add-service <name>`): `postgres`, `redis`, `minio`,

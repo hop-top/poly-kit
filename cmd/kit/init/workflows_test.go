@@ -94,7 +94,7 @@ func TestRenderWorkflowCaller_ReleaseUsesPublishOnTag(t *testing.T) {
 		Trigger:  "release",
 	})
 	assert.Contains(t, content,
-		"uses: hop-top/.github/.github/workflows/publish-on-tag.yml@"+workflowCallerRef)
+		"uses: "+workflowCallerUses("publish-on-tag.yml")+"\n")
 	assert.Contains(t, content, "secrets: inherit")
 	assert.Contains(t, content, "id-token: write")
 	assert.Contains(t, content, "tags:")
@@ -107,7 +107,7 @@ func TestRenderWorkflowCaller_TestUsesCi(t *testing.T) {
 		Trigger:  "test",
 	})
 	assert.Contains(t, content,
-		"uses: hop-top/.github/.github/workflows/ci.yml@"+workflowCallerRef)
+		"uses: "+workflowCallerUses("ci.yml")+"\n")
 	assert.Contains(t, content, "pull_request:")
 	// Test callers don't need secrets:inherit by default.
 	assert.NotContains(t, content, "secrets: inherit")
@@ -533,10 +533,19 @@ func TestWriteManifest_OverwriteIdempotent(t *testing.T) {
 }
 
 func TestRenderWorkflows_HopTopRefIsPinned(t *testing.T) {
-	// The default ref must be `v0` (matches existing poly-kit callers in
-	// .github/workflows/publish.yml). If you ever bump it, tighten the
-	// matching workflow assertions below.
-	assert.Equal(t, "v0", workflowCallerRef)
+	// A full commit SHA, never a movable tag or branch.
+	assert.Regexp(t, `^[0-9a-f]{40}$`, workflowCallerRef)
+	assert.Regexp(t, `^v\d+\.\d+\.\d+$`, workflowCallerVersion)
+	assert.Equal(t,
+		"hop-top/.github/.github/workflows/ci.yml@"+workflowCallerRef+" # "+workflowCallerVersion,
+		workflowCallerUses("ci.yml"))
+
+	// Same pin as poly-kit's own publish caller: adopters get the
+	// reusable workflows this repo runs.
+	own, err := os.ReadFile(filepath.Join("..", "..", "..", ".github", "workflows", "publish.yml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(own), "uses: "+workflowCallerUses("publish-on-tag.yml")+"\n",
+		"workflowCallerRef/workflowCallerVersion drifted from .github/workflows/publish.yml")
 }
 
 // TestBootstrap_WithGitHubWorkflows verifies the end-to-end integration:
