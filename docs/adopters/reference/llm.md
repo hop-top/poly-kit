@@ -301,6 +301,25 @@ otherwise its last content block. `Usage.CacheReadTokens` and
 `StreamWithTools` (`llm.ToolStreamer`) streams text, then the whole
 turn from `ToolStream.Outcome()`.
 
+## Errors
+
+Adapters map provider failures to `hop.top/kit/go/ai/llm/errors`
+types; `errors.IsFallbackable(err)` says whether the next provider in a
+chain should be tried.
+
+| Provider answer | Error | Fallbackable |
+|-----------------|-------|--------------|
+| 401, `authentication_error` | `*ErrAuth` | no |
+| 403, `permission_error` | `*ErrPermissionDenied`, also matched as `*ErrAuth` | no |
+| 404 | `*ErrModel` | no |
+| 429 | `*ErrRateLimit` | yes |
+| 5xx | `*HTTPStatusError` | yes |
+
+A 403 means the key was accepted but may not do what was asked (no
+access to the model, workspace or feature). Test for
+`*ErrPermissionDenied` first to tell it from a bad key;
+`errors.As(err, new(*ErrAuth))` matches both, as it did before the split.
+
 ## Fallback chains
 
 ```go

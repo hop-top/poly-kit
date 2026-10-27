@@ -531,6 +531,11 @@ func errorKind(err error) (kind string, status int) {
 		return "truncated", 0
 	case errors.As(err, new(*llmerrors.ErrResponseTooLarge)):
 		return "too_large", 0
+	case errors.As(err, new(*llmerrors.ErrPermissionDenied)):
+		if !errors.As(err, &auth) {
+			return "permission_denied without auth", 0
+		}
+		return "permission_denied", 0
 	case errors.As(err, &auth):
 		return "auth", 0
 	case errors.As(err, &rl):

@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds, whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode).",
+  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds (a 403 or permission_error is permission_denied, which is also an auth error; a 401 is auth), whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode).",
   "redact_uri": [
     {
       "name": "api_key",
@@ -1290,6 +1290,17 @@
       "want_thinking": []
     },
     {
+      "name": "permission error event mid-stream",
+      "sse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hel\"}}\n\nevent: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"permission_error\",\"message\":\"m\"}}\n\n",
+      "want_tokens": [
+        "Hel"
+      ],
+      "want_error": true,
+      "error_kind": "permission_denied",
+      "thinking_budget": 0,
+      "want_thinking": []
+    },
+    {
       "name": "invalid request error event mid-stream",
       "sse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hel\"}}\n\nevent: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"m\"}}\n\n",
       "want_tokens": [
@@ -1447,7 +1458,7 @@
       "stream": false
     },
     {
-      "name": "403 auth",
+      "name": "403 permission denied",
       "responses": [
         {
           "status": 403,
@@ -1455,7 +1466,7 @@
           "body": "{\"type\":\"error\",\"error\":{\"type\":\"permission_error\",\"message\":\"no\"}}"
         }
       ],
-      "want_kind": "auth",
+      "want_kind": "permission_denied",
       "want_status": 0,
       "fallbackable": false,
       "attempts": 1,
@@ -1845,6 +1856,21 @@
         }
       ],
       "want_kind": "auth",
+      "want_status": 0,
+      "fallbackable": false,
+      "attempts": 1,
+      "stream": true
+    },
+    {
+      "name": "stream: 403 before any event",
+      "responses": [
+        {
+          "status": 403,
+          "headers": {},
+          "body": "{\"type\":\"error\",\"error\":{\"type\":\"permission_error\",\"message\":\"no\"}}"
+        }
+      ],
+      "want_kind": "permission_denied",
       "want_status": 0,
       "fallbackable": false,
       "attempts": 1,

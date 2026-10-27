@@ -51,7 +51,9 @@ func NewCapabilityNotSupported(capability, provider string) error {
 	}
 }
 
-// ErrAuth indicates an authentication/authorization failure (401/403).
+// ErrAuth indicates an authentication failure (401). A 403 is the
+// narrower [ErrPermissionDenied], which errors.As still matches as an
+// ErrAuth.
 type ErrAuth struct {
 	Provider string
 	Err      error
@@ -66,6 +68,35 @@ func (e *ErrAuth) Unwrap() error { return e.Err }
 // NewAuth creates an [ErrAuth] wrapping the underlying cause.
 func NewAuth(provider string, err error) error {
 	return &ErrAuth{Provider: provider, Err: err}
+}
+
+// ErrPermissionDenied indicates the credential was accepted but may not
+// do what was asked (403): a key without access to the model, workspace
+// or feature. Retrying with the same key will not help.
+//
+// It is an auth error too: errors.As(err, new(*ErrAuth)) matches it,
+// with the same Provider and cause, so code written before the split
+// keeps treating a 403 as an auth failure. Match ErrPermissionDenied
+// first to tell the two apart.
+type ErrPermissionDenied struct {
+	Provider string
+	Err      error
+}
+
+func (e *ErrPermissionDenied) Error() string {
+	return fmt.Sprintf("permission denied (provider %q): %v", e.Provider, e.Err)
+}
+
+// Unwrap yields the [ErrAuth] this denial also is, which unwraps to
+// the cause.
+func (e *ErrPermissionDenied) Unwrap() error {
+	return &ErrAuth{Provider: e.Provider, Err: e.Err}
+}
+
+// NewPermissionDenied creates an [ErrPermissionDenied] wrapping the
+// underlying cause.
+func NewPermissionDenied(provider string, err error) error {
+	return &ErrPermissionDenied{Provider: provider, Err: err}
 }
 
 // ErrRateLimit indicates a 429 response.

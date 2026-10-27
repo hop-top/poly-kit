@@ -829,8 +829,12 @@ func (a *Adapter) checkStatus(
 
 	// Fall back to HTTP status code mapping.
 	switch {
-	case resp.StatusCode == 401 || resp.StatusCode == 403:
+	case resp.StatusCode == 401:
 		return llmerrors.NewAuth(
+			"gemini", fmt.Errorf("%s", resp.Status),
+		)
+	case resp.StatusCode == 403:
+		return llmerrors.NewPermissionDenied(
 			"gemini", fmt.Errorf("%s", resp.Status),
 		)
 	case resp.StatusCode == 404:
@@ -851,8 +855,12 @@ func (a *Adapter) checkStatus(
 // fallback decisions work consistently for streaming.
 func mapStreamError(e *apiError, model string) error {
 	switch e.Code {
-	case 401, 403:
+	case 401:
 		return llmerrors.NewAuth(
+			"gemini", fmt.Errorf("%s", e.Message),
+		)
+	case 403:
+		return llmerrors.NewPermissionDenied(
 			"gemini", fmt.Errorf("%s", e.Message),
 		)
 	case 404:
@@ -871,8 +879,12 @@ func mapStreamError(e *apiError, model string) error {
 
 func (a *Adapter) mapAPIError(e *apiError, model string) error {
 	switch e.Code {
-	case 401, 403:
+	case 401:
 		return llmerrors.NewAuth(
+			"gemini", fmt.Errorf("%s", e.Message),
+		)
+	case 403:
+		return llmerrors.NewPermissionDenied(
 			"gemini", fmt.Errorf("%s", e.Message),
 		)
 	case 404:

@@ -566,8 +566,10 @@ func mapError(err error, scheme, model string) error {
 	if errors.As(err, &apiErr) {
 		redactRequestURL(apiErr.Request)
 		switch apiErr.StatusCode {
-		case 401, 403:
+		case 401:
 			return llmerrors.NewAuth(scheme, err)
+		case 403:
+			return llmerrors.NewPermissionDenied(scheme, err)
 		case 429:
 			return llmerrors.NewRateLimit(scheme, 0)
 		case 404:
