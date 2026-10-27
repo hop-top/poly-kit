@@ -103,7 +103,9 @@ if [ $# -eq 0 ]; then
     exit 0
 fi
 
-version=$(printf '%s\n' "$pins" | awk -F= -v want="$1" '$1 == want { print $2; exit }')
+# A here-string, not a pipe: awk exits on the first match, and under
+# pipefail a writer still feeding a pipe awk has closed fails the lookup.
+version=$(awk -F= -v want="$1" '$1 == want { print $2; exit }' <<<"$pins")
 if [ -z "$version" ]; then
     echo "toolchain-pins: $1 is not pinned in ${files[*]}" >&2
     exit 1
