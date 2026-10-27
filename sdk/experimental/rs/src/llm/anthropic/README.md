@@ -23,6 +23,10 @@ scheme in `default_registry()`. Feature `llm-anthropic`, native only.
 - Body: system messages lift to `system` (the last wins); consecutive tool results merge into one
   user turn; `max_tokens` 0 sends 1024; `temperature: Some(0.0)` is sent.
 - A tool without parameters sends `input_schema: {"type":"object","properties":{}}`, as Go does.
+- Tool names follow `ANTHROPIC_TOOL_NAMES` (`^[a-zA-Z0-9_-]{1,128}$`): definitions and replayed
+  `tool_use` blocks go out sanitized, tool calls come back under the caller's names; collisions,
+  duplicates and empty names fail before sending. `?tool_names=strict` sends names as given and
+  rejects invalid ones; any other value fails `build`.
 - Errors: 401/403 auth, 404 model, 429 rate limit, 5xx (529 included) `HttpStatus`, other `Api`.
   An SSE `error` event maps by its type (`overloaded_error` as 529, `rate_limit_error` as 429). A
   stream ending before `message_stop` is `Truncated`, never a success. 3xx: not followed, `HttpStatus`.

@@ -17,6 +17,8 @@ bus events. A port of Go `ai/llm` core; the only adapter is
 - you observe calls → `Client::with_bus(bus)`; topics `kit.ai.request.started` and friends, `Topics::with_prefix`
 - you add a provider → implement `Provider`, then `Registry::register(scheme, factory, Declaration)`
 - you print a URI or base URL → `redact_uri(uri)`; config types and errors already mask keys
+- your tool ids are dotted or namespaced (`pane.open`) → nothing to do; adapters sanitize them and return your names. Already valid and want them checked, never rewritten → `?tool_names=strict`
+- you write an adapter for a provider that restricts tool names → `ToolNames::new(rule, mode, tools)?` per request (every entry point, tools or not); send `wire(name)`, map results with `restore_calls`
 
 ## Quick start
 
@@ -38,7 +40,7 @@ let calls = &s.outcome().unwrap().tool_calls; // replay with Message::assistant_
 
 ## Contract
 
-- Feature `llm` builds on `config`, `netpolicy` and `url` (reqwest's parser); wasm32-safe apart from
+- Feature `llm` builds on `config`, `netpolicy`, `url` (reqwest's parser) and `sha2`; wasm32-safe apart from
   `ConfigFile::load` and the process wrappers. `llm-anthropic` adds `api`, `base64` and tokio's timer.
 - `TokenStream`: text tokens, one `done` token, then `None`; an error ends it the same way.
   Dropping a future or stream cancels it. `outcome()` (stream, tool calls, usage) is Rust-only.
@@ -52,6 +54,15 @@ let calls = &s.outcome().unwrap().tool_calls; // replay with Message::assistant_
 - `Request::thinking` (budget below `max_tokens`) streams `Token::thinking`; replay the returned
   `ThinkingBlock`s on `Message::thinking`. `cache_control` on messages and tools; `Usage` counts
   cache tokens, `Usage::cost(&Price)` prices them.
+- Tool names ([`tool-names.md`](../../../../../contracts/llm-v1/tool-names.md)): rules
+  `ANTHROPIC_TOOL_NAMES`, `OPENAI_TOOL_NAMES`, `GEMINI_TOOL_NAMES`. `ToolNameRule::sanitize`
+  collapses each run of disallowed bytes to `_`, prefixes `_` where the rule needs a leading
+  letter, and shortens an overlong (or letterless) result to `max_len - 9` bytes + `_` + 8 hex of
+  SHA-256(name). Per request, `ToolNames::new` fails the first bad tool with `LlmError::ToolName`
+  (`ToolNameReason`: empty, invalid in strict mode, duplicate, collision) before any network call;
+  never fallbackable. Replayed history goes out under wire names; returned calls (whole or in a
+  stream outcome) carry the original; unknown names pass through. Provider param `tool_names`:
+  `sanitize` (default) or `strict`; anything else fails adapter construction.
 - Fallbackable: rate limits, transport failures, 5xx (529 included). Offline refusals are not.
 - Keys never reach `Debug` or error text. Parity:
   [`contracts/llm-v1`](../../../../../contracts/llm-v1/README.md).

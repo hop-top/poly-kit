@@ -64,7 +64,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `serve` (`serve-cli`) | `output` + `tokio`, `serde_json` (+ `cli`) | 37 (50) |
 | `mcp` | `rmcp` (default-features off) + `serde`, `serde_json` | 39 |
 | `uri` | `hop-top-cite` | 41 |
-| `llm` (`llm-anthropic`) | `config` + `netpolicy` + `url` (+ `api`, `base64`, `tokio` time; native only) | 46 (115) |
+| `llm` (`llm-anthropic`) | `config` + `netpolicy` + `url`, `sha2` (+ `api`, `base64`, `tokio` time; native only) | 53 (114) |
 | `telemetry` | `api` + `serde_norway`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
 
 Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`. `api` and `telemetry` are heaviest (`reqwest` brings `tokio` and TLS); bundled `rusqlite` builds SQLite from source (needs a C compiler). `llm-anthropic` is native only and retries on tokio's timer unless given a `Sleeper`. `bus-network` runs one shared current-thread tokio runtime on its own thread, where its blocking methods panic (use the `_async` variants); `ring` needs a C compiler for the target; `wss://` on Android needs `NetworkOptions::tls_config` or `bus-network-webpki-roots`.
