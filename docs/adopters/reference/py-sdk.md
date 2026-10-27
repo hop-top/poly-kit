@@ -779,7 +779,11 @@ Transport rules, every adapter:
 - **Truncation**: a stream ending without its final event (Anthropic
   `message_stop`; OpenAI `[DONE]` or a `finish_reason`) raises
   `llm.StreamTruncatedError`.
-- **Errors**: 401/403 `AuthError`, 404 `ModelError`, 429
+- **System messages** (anthropic): every system message, in order,
+  joined with a blank line, empty ones skipped; a `cache_control` on one
+  ends a system text block there.
+- **Errors**: 401 `AuthError`, 403 `PermissionDeniedError` (a subclass
+  of `AuthError`), 404 `ModelError`, 429
   `RateLimitError`, 5xx `HTTPStatusError` (`overloaded`, 529, among
   them), other 4xx `APIError`, transport `TransportError`; an SSE error
   event maps by its type. `llm.is_fallbackable()` is true for rate

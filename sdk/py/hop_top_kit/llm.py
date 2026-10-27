@@ -73,6 +73,7 @@ __all__ = [  # noqa: RUF022 — grouped by category
     "ProviderNotFoundError",
     "CapabilityNotSupportedError",
     "AuthError",
+    "PermissionDeniedError",
     "RateLimitError",
     "ModelError",
     "FallbackExhaustedError",
@@ -505,14 +506,26 @@ class CapabilityNotSupportedError(LLMError):
 
 
 class AuthError(LLMError):
-    """The provider refused the credential (HTTP 401 or 403). ``detail``
-    is the provider's error text, credentials scrubbed."""
+    """The provider refused the credential (HTTP 401). A 403 is the
+    narrower :class:`PermissionDeniedError`, still an ``AuthError``.
+    ``detail`` is the provider's error text, credentials scrubbed."""
+
+    _what = "authentication error"
 
     def __init__(self, provider: str, detail: str = "") -> None:
         self.provider = provider
         self.detail = detail
-        msg = f"authentication error for provider {provider!r}"
+        msg = f"{self._what} for provider {provider!r}"
         super().__init__(f"{msg}: {detail}" if detail else msg)
+
+
+class PermissionDeniedError(AuthError):
+    """The credential was accepted but may not do what was asked (HTTP
+    403, ``permission_error``): no access to the model, workspace or
+    feature. A subclass of :class:`AuthError`, so ``except AuthError``
+    still catches it; catch this first to tell the two apart."""
+
+    _what = "permission denied"
 
 
 class RateLimitError(LLMError):
