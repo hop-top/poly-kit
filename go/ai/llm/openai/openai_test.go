@@ -849,6 +849,9 @@ func TestLoadConfig_OpenAIHostForm(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("LLM_BASE_URL", tt.env)
+			// No key: one would be refused over plain http to gpu-box.
+			t.Setenv("OPENAI_API_KEY", "")
+			t.Setenv(llm.FallbackEnvKey, "")
 			cfg, err := llm.LoadConfig(tt.uri)
 			require.NoError(t, err)
 			p, err := New(cfg)

@@ -33,7 +33,16 @@ func TestBaseURLCredentialsNotInAPIErrors(t *testing.T) {
 				_, _ = io.WriteString(w, `{"type":"error","error":{"type":"invalid_request_error","message":"nope"}}`)
 			}))
 			t.Cleanup(srv.Close)
-			base := "http://user:" + baseURLSecret + "@" + strings.TrimPrefix(srv.URL, "http://")
+			// A base URL with userinfo gets no credential: refused up
+			// front, without echoing the secret.
+			withUser := "http://user:" + baseURLSecret + "@" + strings.TrimPrefix(srv.URL, "http://")
+			_, err := New(llm.ResolvedConfig{
+				Provider: llm.ProviderConfig{BaseURL: withUser, Model: "claude-sonnet-4-20250514", APIKey: "k"},
+			})
+			require.ErrorIs(t, err, llm.ErrKeyEndpoint)
+			assert.NotContains(t, err.Error(), baseURLSecret)
+
+			base := srv.URL + "/?key=" + baseURLSecret
 			p, err := New(llm.ResolvedConfig{
 				Provider: llm.ProviderConfig{BaseURL: base, Model: "claude-sonnet-4-20250514", APIKey: "k"},
 			})

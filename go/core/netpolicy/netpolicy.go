@@ -128,6 +128,11 @@ func IsOffline(ctx context.Context) bool {
 // host may carry a port. Without one, a URL keeps an IPv6 literal
 // bracketed ("[::1]"); the brackets are dropped only when what they hold
 // is an IPv6 address, so "[127.0.0.1]" and "[localhost]" stay remote.
+// IsLoopback reports whether host (with or without a port) names a
+// loopback address, by the rules above; DNS names other than
+// "localhost" are remote.
+func IsLoopback(host string) bool { return isLoopback(host) }
+
 func isLoopback(host string) bool {
 	h, _, err := net.SplitHostPort(host)
 	if err != nil {

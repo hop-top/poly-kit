@@ -218,6 +218,9 @@ func LoadConfig(uri string) (ResolvedConfig, error) {
 	// only error is a missing key, which is the caller's to report.
 	key, _ := DefaultRegistry.resolveKey(ctx, nil, parsed)
 	pc.APIKey = key.Value
+	if err := DefaultRegistry.guardKeyEndpoint(ctx, parsed, key.Source, key.Value); err != nil {
+		return ResolvedConfig{}, err
+	}
 
 	if parsed.Model != "" {
 		pc.Model = parsed.Model
@@ -239,6 +242,10 @@ func LoadConfig(uri string) (ResolvedConfig, error) {
 		for k, v := range parsed.Params {
 			pc.Params[k] = v
 		}
+	}
+
+	if err := CheckKeyEndpoint(parsed.Scheme, pc.APIKey, pc.BaseURL); err != nil {
+		return ResolvedConfig{}, err
 	}
 
 	// Fallbacks: env > config file.

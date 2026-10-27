@@ -44,6 +44,11 @@ type Declaration struct {
 	// resolves through the factory claiming its protocol, with the
 	// catalog's base URL. A protocol has at most one claimant.
 	Protocols []string
+
+	// Endpoints lists further base URLs, beyond BaseURL, that may
+	// receive the scheme's key when a URI names them: the adapter's own
+	// default when it picks one itself. Compared by origin.
+	Endpoints []string
 }
 
 // Registry maps URI schemes to adapter factories.
@@ -100,6 +105,7 @@ func (r *Registry) Register(scheme string, f Factory, decl ...Declaration) {
 			d.Key = &ProviderKey{EnvVars: slices.Clone(d.Key.EnvVars), Optional: d.Key.Optional}
 		}
 		d.Protocols = slices.Clone(d.Protocols)
+		d.Endpoints = slices.Clone(d.Endpoints)
 	}
 	for _, p := range d.Protocols {
 		if owner, ok := r.protocols[p]; ok {
@@ -260,5 +266,9 @@ func (r *Registry) Resolve(uri string) (Provider, error) {
 		cfg.Provider.BaseURL = base
 	}
 
+	// A key never crosses the network in clear.
+	if err := CheckKeyEndpoint(parsed.Scheme, cfg.Provider.APIKey, cfg.Provider.BaseURL); err != nil {
+		return nil, err
+	}
 	return rt.factory(cfg)
 }
