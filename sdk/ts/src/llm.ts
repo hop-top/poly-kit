@@ -4,8 +4,10 @@
  * LLM client facade — mirrors Go `llm` package interfaces as TS types.
  *
  * Provides URI parsing, config loading, provider registry, Client facade
- * with fallback, and typed errors. Adapter implementations (OpenAI,
- * Anthropic, Ollama) are deferred; register them via {@link register}.
+ * with fallback, and typed errors. Adapters register their URI schemes
+ * on import: `@hop-top/kit/anthropic` (`anthropic://`),
+ * `@hop-top/kit/openai` (`openai://` and OpenAI-compatible schemes)
+ * and `@hop-top/kit/routellm`. Register your own via {@link register}.
  *
  * @example
  * ```ts
@@ -20,9 +22,34 @@
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { LLMError } from "./llm-error";
+import {
+  APIError,
+  HTTPStatusError,
+  KeyEndpointError,
+  ResponseTooLargeError,
+  StreamTruncatedError,
+} from "./llm-errors";
 import { ToolNameError } from "./llm-toolnames";
 
 export * from "./llm-toolnames";
+export {
+  APIError,
+  HTTPStatusError,
+  KeyEndpointError,
+  ResponseTooLargeError,
+  StreamTruncatedError,
+};
+import {
+  clearDeclarations,
+  declarationOf,
+  setDeclaration,
+  type Declaration,
+} from "./llm-endpoint";
+export {
+  checkKeyEndpoint,
+  credentialsTrusted,
+  redactURI,
+} from "./llm-endpoint";
 
 // ─── Data types ──────────────────────────────────────────────────────────────
 
@@ -86,6 +113,45 @@ export interface Message {
   toolCalls?: ToolCall[];
   /** Links a role `"tool"` result to the {@link ToolCall} it answers. */
   toolCallId?: string;
+  /**
+   * Replays an assistant turn's thinking blocks, exactly as the provider
+   * returned them ({@link Response.thinking}, {@link ToolResponse.thinking}
+   * or {@link StreamOutcome.thinking}). Required with tool use when
+   * thinking is enabled. Assistant only.
+   */
+  thinking?: ThinkingBlock[];
+  /**
+   * Marks a prompt-cache breakpoint after this message: on a system
+   * message its text, otherwise its last content block.
+   */
+  cacheControl?: CacheControl;
+}
+
+/**
+ * One block of a model's extended thinking. `signature` verifies
+ * `thinking`; a redacted block carries only `redacted`, the provider's
+ * opaque data. Pass blocks back exactly as received.
+ */
+export interface ThinkingBlock {
+  thinking: string;
+  signature: string;
+  redacted: string;
+}
+
+/**
+ * A prompt-cache breakpoint. `ttl` is `""` or absent (the provider
+ * default, five minutes on Anthropic), `"5m"` or `"1h"`.
+ */
+export interface CacheControl {
+  ttl?: string;
+}
+
+/**
+ * Enables extended thinking with a token budget, which must be below
+ * the request's max tokens.
+ */
+export interface ThinkingConfig {
+  budgetTokens: number;
 }
 
 export interface Request {
@@ -95,6 +161,8 @@ export interface Request {
   maxTokens?: number;
   stopSequences?: string[];
   extensions?: Record<string, unknown>;
+  /** Enables extended thinking; thinking deltas then stream as {@link Token.thinking}. */
+  thinking?: ThinkingConfig;
 }
 
 export interface Response {
@@ -102,16 +170,53 @@ export interface Response {
   role: string;
   usage?: Usage;
   finishReason?: string;
+  /** The turn's thinking blocks, to replay unchanged. */
+  thinking?: ThinkingBlock[];
 }
 
 export interface Usage {
   promptTokens: number;
   completionTokens: number;
+  /**
+   * Input tokens read from or written to the prompt cache, apart from
+   * `promptTokens`.
+   */
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+  /** Every input and output token, cache ones included. */
   totalTokens: number;
 }
 
+/** A model's rate per million tokens, by kind. */
+export interface Price {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+/** Cost of `u` at `p`, cache reads and writes at their own rates. */
+export function usageCost(u: Usage, p: Price): number {
+  return (
+    (u.promptTokens * p.input +
+      u.completionTokens * p.output +
+      (u.cacheReadTokens ?? 0) * p.cacheRead +
+      (u.cacheCreationTokens ?? 0) * p.cacheWrite) /
+    1e6
+  );
+}
+
+/**
+ * A single streaming chunk. The final token has `done: true`; nothing
+ * follows it.
+ */
 export interface Token {
   content: string;
+  /**
+   * A thinking delta, sent only when the request enabled
+   * {@link Request.thinking}; `content` is then empty.
+   */
+  thinking?: string;
   done: boolean;
 }
 
@@ -119,6 +224,8 @@ export interface ToolDef {
   name: string;
   description: string;
   parameters: unknown;
+  /** Marks a prompt-cache breakpoint after this tool. */
+  cacheControl?: CacheControl;
 }
 
 /**
@@ -138,6 +245,29 @@ export interface ToolCall {
 export interface ToolResponse {
   content: string;
   toolCalls: ToolCall[];
+  /** The turn's thinking blocks, to replay unchanged. */
+  thinking?: ThinkingBlock[];
+  finishReason?: string;
+  usage?: Usage;
+}
+
+/** What a finished stream folded into. */
+export interface StreamOutcome {
+  content: string;
+  /** The turn's thinking blocks in order; replay them unchanged. */
+  thinking: ThinkingBlock[];
+  toolCalls: ToolCall[];
+  finishReason: string;
+  usage: Usage;
+}
+
+/**
+ * A token stream whose finished turn can be read back: `outcome()` is
+ * defined only once the final token (`done`) was yielded; after an
+ * error it stays undefined.
+ */
+export interface ToolStream extends AsyncIterable<Token> {
+  outcome(): StreamOutcome | undefined;
 }
 
 // ─── Core interfaces ─────────────────────────────────────────────────────────
@@ -154,8 +284,17 @@ export interface ToolCaller {
   callWithTools(req: Request, tools: ToolDef[]): Promise<ToolResponse>;
 }
 
+/**
+ * Streams a tool-calling completion: text deltas as tokens, then the
+ * whole turn (tool calls, stop reason, usage) from
+ * {@link ToolStream.outcome}.
+ */
+export interface ToolStreamer {
+  streamWithTools(req: Request, tools: ToolDef[]): ToolStream;
+}
+
 export interface Provider
-  extends Partial<Completer & Streamer & ToolCaller> {
+  extends Partial<Completer & Streamer & ToolCaller & ToolStreamer> {
   close(): void;
 }
 
@@ -213,10 +352,15 @@ export class CapabilityNotSupportedError extends LLMError {
 export class AuthError extends LLMError {
   provider: string;
 
-  constructor(provider: string) {
-    super(`authentication failed for provider: ${provider}`);
+  /** `cause` is the provider's error response, when there is one. */
+  constructor(provider: string, cause?: Error) {
+    super(
+      `authentication failed for provider: ${provider}` +
+        (cause ? `: ${cause.message}` : "")
+    );
     this.name = "AuthError";
     this.provider = provider;
+    if (cause) this.cause = cause;
   }
 }
 
@@ -261,11 +405,15 @@ export class FallbackExhaustedError extends LLMError {
  * Returns true when `err` should trigger a fallback attempt.
  *
  * Fallbackable conditions:
- * - LLMError with statusCode >= 500
+ * - LLMError with statusCode >= 500 (an {@link HTTPStatusError} from a
+ *   5xx response or an overloaded stream)
  * - RateLimitError (429)
  * - Connection/timeout errors (ECONNREFUSED, ETIMEDOUT, ECONNRESET)
  *
- * A {@link ToolNameError} never is: the caller's tool set needs fixing.
+ * Never fallbackable: a {@link ToolNameError} (the caller's tool set
+ * needs fixing), a {@link StreamTruncatedError} (tokens may already be
+ * consumed), a {@link ResponseTooLargeError}, a {@link KeyEndpointError}
+ * and an {@link APIError} below 500.
  */
 export function isFallbackable(err: Error): boolean {
   if (err instanceof ToolNameError) return false;
@@ -515,15 +663,29 @@ export function loadConfig(uriStr?: string): ResolvedConfig {
 
 export type Factory = (cfg: ResolvedConfig) => Provider;
 
+/**
+ * What an adapter states about its scheme: the endpoints its
+ * credentials may go to besides loopback, `LLM_BASE_URL` and the
+ * adapter's own base URL variable (see {@link credentialsTrusted}).
+ */
+export type { Declaration };
+
 const registry = new Map<string, Factory>();
 
 /** Register a provider factory for the given URI scheme. */
-export function register(scheme: string, factory: Factory): void {
+export function register(
+  scheme: string,
+  factory: Factory,
+  decl?: Declaration
+): void {
   if (registry.has(scheme)) {
     throw new LLMError(`provider already registered for scheme: ${scheme}`);
   }
   registry.set(scheme, factory);
+  if (decl) setDeclaration(scheme, decl);
 }
+
+export { declarationOf };
 
 /** Resolve a URI to a Provider instance via the registry. */
 export function resolve(uriStr: string): Provider {
@@ -538,6 +700,7 @@ export function resolve(uriStr: string): Provider {
 /** Clear the registry (for tests). */
 export function clearRegistry(): void {
   registry.clear();
+  clearDeclarations();
 }
 
 // ─── Client ──────────────────────────────────────────────────────────────────
@@ -554,6 +717,11 @@ export interface Client {
   complete(req: Request): Promise<Response>;
   stream(req: Request): AsyncIterable<Token>;
   callWithTools(req: Request, tools: ToolDef[]): Promise<ToolResponse>;
+  /**
+   * Streams a tool-calling completion; falls back like {@link stream},
+   * before the first token only.
+   */
+  streamWithTools(req: Request, tools: ToolDef[]): ToolStream;
   capabilities(): string[];
   provider(): Provider;
   close(): void;
@@ -625,6 +793,76 @@ export function createLLM(uri: string, opts?: ClientOptions): Client {
     throw new FallbackExhaustedError(errors);
   }
 
+  // Routes a stream through fallback: on creation or first-token
+  // failure with a fallbackable/capability error, the next provider is
+  // tried. Once a token arrived, errors pass through.
+  function fallbackStream(
+    request: Request,
+    op: "stream" | "streamWithTools",
+    open: (p: Provider) => AsyncIterable<Token>
+  ): ToolStream {
+    let inner: AsyncIterator<Token> | null = null;
+    let source: AsyncIterable<Token> | null = null;
+    let initialized = false;
+
+    async function first(): Promise<IteratorResult<Token>> {
+      opts?.onRequest?.(request);
+      const errors: Error[] = [];
+      for (let i = 0; i < allURIs.length; i++) {
+        try {
+          const p = resolveAt(i);
+          if (typeof p[op] !== "function") {
+            throw new CapabilityNotSupportedError(
+              op,
+              parseURI(allURIs[i]).scheme
+            );
+          }
+          const iterable = open(p);
+          const iter = iterable[Symbol.asyncIterator]();
+          // Attempt first read to detect immediate failures
+          const head = await iter.next();
+          inner = iter;
+          source = iterable;
+          return head;
+        } catch (err) {
+          const e = err instanceof Error ? err : new Error(String(err));
+          errors.push(e);
+          opts?.onError?.(e);
+          const canContinue =
+            isFallbackable(e) || e instanceof CapabilityNotSupportedError;
+          if (!canContinue || i === allURIs.length - 1) {
+            if (errors.length > 1) throw new FallbackExhaustedError(errors);
+            throw e;
+          }
+          opts?.onFallback?.(i, i + 1, e);
+        }
+      }
+      throw new FallbackExhaustedError(errors);
+    }
+
+    return {
+      [Symbol.asyncIterator]() {
+        return {
+          async next(): Promise<IteratorResult<Token>> {
+            if (!initialized) {
+              initialized = true;
+              return first();
+            }
+            return inner!.next();
+          },
+          async return(): Promise<IteratorResult<Token>> {
+            await inner?.return?.();
+            return { value: undefined, done: true };
+          },
+        };
+      },
+      outcome(): StreamOutcome | undefined {
+        const s = source as Partial<ToolStream> | null;
+        return typeof s?.outcome === "function" ? s.outcome() : undefined;
+      },
+    };
+  }
+
   return {
     async complete(request: Request): Promise<Response> {
       opts?.onRequest?.(request);
@@ -637,63 +875,13 @@ export function createLLM(uri: string, opts?: ClientOptions): Client {
     },
 
     stream(request: Request): AsyncIterable<Token> {
-      // Route stream through fallback. On creation or first-token
-      // failure with a fallbackable/capability error, try next provider.
-      return {
-        [Symbol.asyncIterator]() {
-          let inner: AsyncIterator<Token> | null = null;
-          let initialized = false;
+      return fallbackStream(request, "stream", (p) => p.stream!(request));
+    },
 
-          return {
-            async next(): Promise<IteratorResult<Token>> {
-              if (!initialized) {
-                initialized = true;
-                opts?.onRequest?.(request);
-
-                const errors: Error[] = [];
-                for (let i = 0; i < allURIs.length; i++) {
-                  try {
-                    const p = resolveAt(i);
-                    if (
-                      !("stream" in p) ||
-                      typeof p.stream !== "function"
-                    ) {
-                      throw new CapabilityNotSupportedError(
-                        "stream",
-                        parseURI(allURIs[i]).scheme
-                      );
-                    }
-                    const iterable = p.stream(request);
-                    const iter = iterable[Symbol.asyncIterator]();
-                    // Attempt first read to detect immediate failures
-                    const first = await iter.next();
-                    inner = iter;
-                    return first;
-                  } catch (err) {
-                    const e =
-                      err instanceof Error
-                        ? err
-                        : new Error(String(err));
-                    errors.push(e);
-                    opts?.onError?.(e);
-                    const canContinue =
-                      isFallbackable(e) ||
-                      e instanceof CapabilityNotSupportedError;
-                    if (!canContinue || i === allURIs.length - 1) {
-                      if (errors.length > 1)
-                        throw new FallbackExhaustedError(errors);
-                      throw e;
-                    }
-                    opts?.onFallback?.(i, i + 1, e);
-                  }
-                }
-                throw new FallbackExhaustedError(errors);
-              }
-              return inner!.next();
-            },
-          };
-        },
-      };
+    streamWithTools(request: Request, tools: ToolDef[]): ToolStream {
+      return fallbackStream(request, "streamWithTools", (p) =>
+        p.streamWithTools!(request, tools)
+      );
     },
 
     async callWithTools(
@@ -717,6 +905,7 @@ export function createLLM(uri: string, opts?: ClientOptions): Client {
       if (primary.complete) caps.push("complete");
       if (primary.stream) caps.push("stream");
       if (primary.callWithTools) caps.push("callWithTools");
+      if (primary.streamWithTools) caps.push("streamWithTools");
       return caps;
     },
 
