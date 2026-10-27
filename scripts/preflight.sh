@@ -11,7 +11,7 @@
 #   php       →  sdk/experimental/php/composer.json   `require.php`
 #   composer  →  presence + `composer --version` (>= 2)
 #   cargo     →  presence
-#   bats      →  presence (templates/tests)
+#   bats      →  presence (every *.bats suite; pinned in .config/mise.toml)
 #   jq        →  presence (lint-config)
 #   yq        →  presence (lint-config)
 #   buf       →  presence (proto generation)
@@ -244,7 +244,7 @@ check_optional() {  # tool, what-it-enables, install-hint
 
 check_present jq "brew install jq"
 check_optional yq "lint-config uses yq as a fallback to jq" "brew install yq"
-check_present bats "brew install bats-core"
+check_present bats "mise install bats    # pinned in .config/mise.toml"
 check_optional buf "needed for 'make proto'; skip unless touching contracts/proto" "brew install buf"
 check_optional lychee "needed for 'make lint-links'" "brew install lychee   # or: cargo install lychee"
 
