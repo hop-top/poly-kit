@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"syscall"
 	"testing"
 	"time"
 
@@ -31,17 +32,20 @@ func TestNewSMTPMailer_OptionsThreadThrough(t *testing.T) {
 	}
 }
 
-// TestSMTPMailer_DialFailure_ReturnsError points the mailer at a port
-// nothing's listening on. Send should return an error wrapped around
-// ErrSMTPDial within a reasonable timeout.
+// TestSMTPMailer_DialFailure_ReturnsError fails the mailer's dial. Send
+// should return an error wrapped around ErrSMTPDial within a reasonable
+// timeout. The dialer refuses before connecting: a port freed for the
+// test could be taken by another listener before Send dials it.
 func TestSMTPMailer_DialFailure_ReturnsError(t *testing.T) {
 	t.Parallel()
 
-	port := unusedPort(t)
-
-	m := emailsink.NewSMTPMailer("127.0.0.1", port,
+	refused := errors.New("refused by the test dialer")
+	m := emailsink.NewSMTPMailer("127.0.0.1", 25,
 		emailsink.WithSMTPFrom("noreply@example.com"),
-		emailsink.WithSMTPDialer(&net.Dialer{Timeout: 500 * time.Millisecond}),
+		emailsink.WithSMTPDialer(&net.Dialer{
+			Timeout: 500 * time.Millisecond,
+			Control: func(string, string, syscall.RawConn) error { return refused },
+		}),
 	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -58,6 +62,9 @@ func TestSMTPMailer_DialFailure_ReturnsError(t *testing.T) {
 	}
 	if !errors.Is(err, emailsink.ErrSMTPDial) {
 		t.Errorf("err = %v; want errors.Is(ErrSMTPDial) true", err)
+	}
+	if !errors.Is(err, refused) {
+		t.Errorf("err = %v; want the dial's own error kept", err)
 	}
 }
 
@@ -88,20 +95,4 @@ func TestSMTPMailer_EmptyTo_Errors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error on empty To")
 	}
-}
-
-// unusedPort returns a TCP port currently bound by the kernel but
-// immediately released, giving the test a port that is highly likely
-// to be unbound by the time Send dials.
-func unusedPort(t *testing.T) int {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	port := l.Addr().(*net.TCPAddr).Port
-	if err := l.Close(); err != nil {
-		t.Fatalf("close: %v", err)
-	}
-	return port
 }
