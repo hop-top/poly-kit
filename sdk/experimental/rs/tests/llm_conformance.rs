@@ -384,7 +384,7 @@ fn load() -> Corpus {
     for entry in std::fs::read_dir(corpus_dir()).unwrap() {
         let name = entry.unwrap().file_name().into_string().unwrap();
         assert!(
-            name == "vectors.json" || name == "README.md",
+            name == "vectors.json" || name == "README.md" || name == "tool-names.md",
             "contracts/llm-v1/{name}: no runner consumes it"
         );
     }
