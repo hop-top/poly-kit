@@ -26,6 +26,8 @@
 //! the model picker and router, media URL/file sources, and adapters
 //! other than Anthropic.
 
+#[cfg(feature = "redact")]
+mod buscontent;
 mod client;
 mod config;
 mod endpoint;
@@ -42,6 +44,8 @@ mod uri;
 #[cfg(feature = "llm-anthropic")]
 pub mod anthropic;
 
+#[cfg(feature = "redact")]
+pub use buscontent::{redact_request, redact_response};
 pub use client::{Client, Topics};
 pub use config::{
     process_env, ConfigFile, ProviderBlock, ProviderConfig, ResolvedConfig, SecretStore, Sources,
