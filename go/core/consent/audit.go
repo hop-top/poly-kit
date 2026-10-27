@@ -60,6 +60,11 @@ type AuditEvent struct {
 	DecisionSource DecisionSource
 	PromptVersion  int
 	Cause          RefusalCause
+
+	// raw is the record as read from the log. A record read back
+	// marshals to it byte for byte, so fields and values a newer writer
+	// added reach the bus unchanged.
+	raw []byte
 }
 
 // Key returns the idempotency key "<Log>:<Seq>", or "" for an event no
@@ -89,8 +94,12 @@ type auditWire struct {
 	Reason         RefusalCause   `json:"reason,omitempty"`
 }
 
-// MarshalJSON writes the contracts/consent-v1 audit shape.
+// MarshalJSON writes the contracts/consent-v1 audit shape; a record
+// read back from the log is written as read.
 func (e AuditEvent) MarshalJSON() ([]byte, error) {
+	if len(e.raw) > 0 {
+		return append([]byte(nil), e.raw...), nil
+	}
 	w := auditWire{
 		V: auditVersion, Log: e.Log, Seq: e.Seq, Event: e.Event, At: formatTime(e.At),
 		Capability: e.Capability, Subject: e.Subject,
@@ -116,6 +125,9 @@ func (e *AuditEvent) UnmarshalJSON(b []byte) error {
 	if w.V != auditVersion {
 		return fmt.Errorf("consent: audit record version %d (want %d)", w.V, auditVersion)
 	}
+	if err := checkEventName(w.Event); err != nil {
+		return err
+	}
 	at, err := time.Parse(time.RFC3339, w.At)
 	if err != nil {
 		return fmt.Errorf("consent: audit record at: %w", err)
@@ -133,9 +145,37 @@ func (e *AuditEvent) UnmarshalJSON(b []byte) error {
 	if w.PromptVersion != nil {
 		out.PromptVersion = *w.PromptVersion
 	}
+	out.raw = append([]byte(nil), b...)
 	*e = out
 	return nil
 }
+
+// knownKinds are the audit kinds this version writes.
+var knownKinds = map[AuditKind]bool{
+	AuditGranted: true, AuditDenied: true, AuditRevoked: true, AuditUsed: true, AuditRefused: true,
+}
+
+// checkEventName accepts a known kind, or an unknown one (a newer
+// writer's) whose topic kit.core.consent.<event> passes the bus topic
+// grammar: bus.Validate (four ^[a-z][a-z0-9_]*$ segments, <= 128 bytes)
+// and bus.ValidateTopic (a past-tense action). Anything else makes the
+// record malformed, so a hostile line cannot invent a topic.
+func checkEventName(k AuditKind) error {
+	if knownKinds[k] {
+		return nil
+	}
+	t := eventTopic(k)
+	if err := bus.Validate(t); err != nil {
+		return fmt.Errorf("consent: audit record event %q: %w", k, err)
+	}
+	if err := bus.ValidateTopic(t); err != nil {
+		return fmt.Errorf("consent: audit record event %q: %w", k, err)
+	}
+	return nil
+}
+
+// eventTopic is kit.core.consent.<event>.
+func eventTopic(k AuditKind) bus.Topic { return bus.Topic("kit.core.consent." + string(k)) }
 
 func auditFromGrant(kind AuditKind, g Grant, at time.Time) AuditEvent {
 	return AuditEvent{
@@ -202,8 +242,12 @@ func (t Topics) topic(k AuditKind) bus.Topic {
 			return DefaultTopics.Refused
 		}
 		return t.Refused
-	default:
+	case AuditUsed:
 		return t.Used
+	default:
+		// A newer writer's event, checked against the topic grammar
+		// when it was read: its own topic, never mapped to another.
+		return eventTopic(k)
 	}
 }
 
