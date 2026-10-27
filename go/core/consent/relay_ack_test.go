@@ -23,6 +23,27 @@ func flushAsync(ctx context.Context, r *Relay) <-chan error {
 	return ch
 }
 
+// runRelay runs r until the test ends. The cleanup stops Run and waits
+// for it to return, so no flush writes into a removed TempDir; call it
+// after t.TempDir so its cleanup runs first.
+func runRelay(t *testing.T, r *Relay) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Errorf("Run = %v, want context.Canceled", err)
+			}
+		case <-time.After(relayWait):
+			t.Error("Run did not return after cancel")
+		}
+	})
+}
+
 func waitFlush(t *testing.T, ch <-chan error) error {
 	t.Helper()
 	select {
