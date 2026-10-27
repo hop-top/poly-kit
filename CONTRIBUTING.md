@@ -103,6 +103,24 @@ about three minutes from a cold cache. One package, `go/core/projects`,
 is excluded because it races today for a reason of its own; the Makefile
 target carries the detail and the condition for dropping the exclusion.
 
+### Shell suites (bats)
+
+`make test-bats` runs every `*.bats` suite in the repo: template scripts
+(`templates/`, and the embed mirror under `internal/template/builtins/`),
+the pre-push hook, workflow `run:` logic and the repo's lint and sync
+scripts. Suites are found with `git ls-files`, so a new suite needs no
+registration. They run several at a time (`BATS_JOBS=<n>` caps it; the
+default is the CPU count) and print whole, in path order; on a 10-core
+laptop the set takes under three minutes, bounded by the pre-push hook
+suite. bats is pinned in `.config/mise.toml`; `mise install` gets it.
+
+`make test` includes it, `make test-affected` runs it when a change
+touches shell, a suite, `templates/`, `scripts/`, `.githooks/` or a
+workflow, and the `bats-tests` CI job runs it on every pull request. The
+narrower targets (`test-templates`, `lint-templates`, `test-workflow`,
+`test-hook`, `test-lint-scripts`) still run their subsets. Pre-push does
+not run it, for the reason it runs no tests (see `.githooks/pre-push`).
+
 ## Vulnerability scans
 
 `.github/workflows/vulnerability-scan.yml` runs on every pull request and

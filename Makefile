@@ -6,7 +6,7 @@
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
 	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-py \
 	test-release test-rs test-rs-wasm test-templates test-ts \
-	test-affected test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
+	test-affected test-bats test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
 	vuln vuln-go vuln-go-binary vuln-osv
 
 # Tool versions — the mise config (mise.toml, plus .config/mise.toml for
@@ -147,7 +147,7 @@ setup: preflight ## Initialize all sub-projects and dependencies
 
 check: preflight lint test ## Run all linters and tests (full gate)
 
-test: preflight test-go test-ts test-py test-workflow test-hook ## Run all tests
+test: preflight test-go test-ts test-py test-bats ## Run all tests
 
 test-affected: ## Tests for the languages this branch actually touched (BASE=<ref>)
 	@BASE="$(BASE)" scripts/test-affected.sh
@@ -771,6 +771,13 @@ test-hook: ## Run bats tests for pre-push hook
 test-lint-scripts: ## Run bats tests for repo lint and sync scripts
 	bats .github/tests/lint-internal-refs.bats .github/tests/sync-builtins.bats \
 		.github/tests/toolchain-parity.bats .github/tests/lint-actions-pinned.bats
+
+# Every *.bats suite in the repo, discovered by git ls-files: the targets
+# above plus the template-script suites (templates/shared and its builtins
+# mirror) and any suite added later. Suites run BATS_JOBS at a time
+# (default: CPU count); the bats-tests CI job runs this.
+test-bats: ## Run every bats suite in the repo (BATS_JOBS=<n> to cap parallelism)
+	@scripts/test-bats.sh
 
 job-test:
 	go test ./go/runtime/job/... -count=1
