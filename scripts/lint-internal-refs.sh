@@ -27,9 +27,10 @@
 # so this file never matches itself and needs no exclusion.
 #
 # Scope: every tracked text file except CHANGELOG.md files, which are
-# generated from commit history and never hand-edited.
+# generated from commit history and never hand-edited; or, given file
+# arguments (repo-relative, tracked or not), just those files.
 #
-# Usage: scripts/lint-internal-refs.sh   (from anywhere inside the repo)
+# Usage: scripts/lint-internal-refs.sh [file...]   (from inside the repo)
 # Exit:  0 clean, 1 findings, 2 scan error.
 set -euo pipefail
 
@@ -79,6 +80,13 @@ CITATIONS=(
 NAMES_FILE='[A-Za-z0-9_-][.](md|go|proto|ya?ml|json|rs|py|ts|php|sh|toml)([^A-Za-z0-9]|$)'
 
 SCOPE=(-- . ':(exclude,glob)**/CHANGELOG.md')
+UNTRACKED=()
+if [ $# -gt 0 ]; then
+  # Named files may be new and not yet tracked; git grep skips those
+  # unless told otherwise.
+  SCOPE=(-- "$@" ':(exclude,glob)**/CHANGELOG.md')
+  UNTRACKED=(--untracked)
+fi
 
 found=0
 
@@ -86,7 +94,7 @@ found=0
 # completed scan.
 run_grep() {
   local status=0
-  git grep -nIE "$@" "${SCOPE[@]}" || status=$?
+  git grep ${UNTRACKED[@]+"${UNTRACKED[@]}"} -nIE "$@" "${SCOPE[@]}" || status=$?
   if [ "$status" -gt 1 ]; then
     echo "error: git grep failed (exit $status); scan did not run." >&2
     exit 2
