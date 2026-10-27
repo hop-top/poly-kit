@@ -352,6 +352,13 @@ jobs:
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features bus,netpolicy,domain --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
+      # The consent core: grant model, decisions and the memory store.
+      # The per-tool files and the relay (`consent-file`) are native only.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features consent
+      - name: clippy (wasm32, consent)
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features consent --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
       - name: netpolicy pulls no reqwest or tokio
         run: |
           tree=$(cargo tree --locked -e normal --no-default-features --features netpolicy)

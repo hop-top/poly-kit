@@ -23,6 +23,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`bus/`](src/bus/README.md) | in-process event bus with topic grammar (feature `bus`); peers over WebSocket in [`bus/network/`](src/bus/network/README.md) (feature `bus-network`) | components publish or subscribe to named events, across processes too |
 | [`domain/`](src/domain/README.md) | state machine with veto-able pre and fire-and-forget post transition events (feature `domain`) | an entity has a lifecycle others react to |
 | [`config/`](src/config/README.md) | layered YAML config: load, get/set/unset keeping comments, hot reload (feature `config`; `config-signal`, `config-pkl`) | a CLI reads or writes its config files |
+| [`consent/`](src/consent/README.md) | per-capability consent grants: check, request through a prompter, use with audit, revoke; grants file, audit log and bus relay (feature `consent`; `consent-file` for the files) | a tool reads the screen, camera, mic, clipboard or files for the user |
 | [`mcp/`](src/mcp/README.md) | dual-spec MCP surface over a bridged command tree (feature `mcp`) | MCP clients must call your commands as tools |
 | [`sqlstore/`](src/sqlstore/README.md) | typed JSON store over `sqldb` with backup and encryption (feature `sqlstore`) | a CLI keeps typed records locally |
 | [`httpcache/`](src/httpcache/README.md) | HTTP response cache over a `kv` TTL store (feature `httpcache`) | responses must be reused across runs |
@@ -49,6 +50,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `kv` | `sqldb` — nothing of its own | 12 |
 | `bus` (`domain`, `bus-network`, `bus-network-axum`, `bus-network-webpki-roots`) | `serde`, `serde_json` (`domain`: nothing of its own, wasm-safe; + `netpolicy`, `tokio` rt/net/time/sync/macros, `tokio-tungstenite`, `futures-util`, `getrandom`, `rustls` (ring), `rustls-native-certs`; + `axum`, `hyper`, `hyper-util`; + `webpki-roots`) | 14 (14, 60, 76, 61) |
 | `config` (`config-pkl`, `config-signal`) | `bus` + `saphyr-parser`, `thiserror` (+ `regex`; + `tokio` rt, signal, sync) | 18 (22, 25) |
+| `consent` (`consent-file`) | `bus` — nothing of its own, wasm-safe (+ `config`, `id`; native only) | 11 (27) |
 | `timeutil` | `chrono`, `interim`, `thiserror` | 19 |
 | `output` | `serde`, `serde_json`, `serde_norway`, `comfy-table`, `thiserror` | 22 |
 | `sqlstore` | `sqldb` + `serde`, `serde_json` | 22 |
@@ -63,8 +65,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `serve-cli` | `serve` + `cli` | 50 |
 | `telemetry` | `api` + `serde_norway`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
 
-Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`.
-`api` and `telemetry` are heaviest (`reqwest` brings `tokio` and TLS); bundled `rusqlite` builds SQLite from source (needs a C compiler). `bus-network` runs one shared current-thread tokio runtime on its own thread, where its blocking methods panic (use the `_async` variants); `ring` needs a C compiler for the target; `wss://` on Android needs `NetworkOptions::tls_config` or `bus-network-webpki-roots`.
+Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`. `api` and `telemetry` are heaviest (`reqwest` brings `tokio` and TLS); bundled `rusqlite` builds SQLite from source (needs a C compiler). `bus-network` runs one shared current-thread tokio runtime on its own thread, where its blocking methods panic (use the `_async` variants); `ring` needs a C compiler for the target; `wss://` on Android needs `NetworkOptions::tls_config` or `bus-network-webpki-roots`.
 
 ## Contract
 
@@ -72,9 +73,8 @@ Counts are non-dev crates, root excluded, from `cargo tree --no-default-features
 - `output` ships `table`, `json` and `yaml` only; `csv` and `text` are not implemented in Rust.
 - Column order comes from an explicit `ColumnSpec` list; `--cols` reorders as well as selects; `header` must equal `key`.
 - MCP exposure is default-closed: the default policy blocks every destructive leaf on every remote surface.
-- Telemetry is default-denied: nothing emits without both a granted consent decision and a non-`off` mode.
+- Telemetry is default-denied: nothing emits without both a granted consent decision and a non-`off` mode. Consent grants fail closed: no prompter, an unreadable store or a failed audit is a refusal.
 
 ## See also
 
-- [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md): serve, URI facade, output, MCP mount, storage and the cross-process gate, httpcache, offline, telemetry, bus, config
-- [Serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md), [Serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md)
+- [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md): serve, URI facade, output, MCP mount, storage and the cross-process gate, httpcache, offline, telemetry, bus, config; [Serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md), [Serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md)

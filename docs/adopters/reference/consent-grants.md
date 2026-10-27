@@ -18,6 +18,10 @@ The cross-language contract is
 [`contracts/consent-v1`](../../../contracts/consent-v1/README.md); every
 SDK port runs it.
 
+Rust: `hop_top_kit::consent` (feature `consent`, wasm-safe core;
+`consent-file` for the files and the relay) follows this page; see
+[its README](../../../sdk/experimental/rs/src/consent/README.md).
+
 ## Grant model
 
 | Field | Values | Notes |

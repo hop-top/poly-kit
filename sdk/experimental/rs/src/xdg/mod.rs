@@ -1,6 +1,6 @@
 //! Per-user base directories, as Go `go/core/xdg` resolves them through
-//! github.com/adrg/xdg. Only what the config loader needs is ported:
-//! the home directory and the config home.
+//! github.com/adrg/xdg. Only what the config loader and consent need is
+//! ported: the home directory, the config home and the state home.
 //!
 //! Resolution reads the environment on every call, like Go's, so a
 //! changed `XDG_CONFIG_HOME` is seen on the next call.
@@ -10,6 +10,9 @@
 //!   or `$HOME` expands), else the platform default:
 //!   `~/Library/Application Support` (macOS), `%LOCALAPPDATA%`
 //!   (Windows), `~/.config` (other Unix).
+//! - state home: `$XDG_STATE_HOME` when absolute, else
+//!   `~/Library/Application Support` (macOS), `%LOCALAPPDATA%`
+//!   (Windows), `~/.local/state` (other Unix).
 //!
 //! Gated behind `config`, off wasm32.
 
@@ -61,7 +64,9 @@ fn env_path(name: &str, fallback: impl FnOnce() -> PathBuf) -> PathBuf {
     fallback()
 }
 
-fn default_config_home(home: &Path) -> PathBuf {
+/// The platform default: macOS and Windows share one root for config
+/// and state; other Unix uses `unix` under home.
+fn platform_home(home: &Path, unix: &[&str]) -> PathBuf {
     if cfg!(target_os = "macos") {
         home.join("Library").join("Application Support")
     } else if cfg!(windows) {
@@ -72,13 +77,25 @@ fn default_config_home(home: &Path) -> PathBuf {
             PathBuf::from(local)
         }
     } else {
-        home.join(".config")
+        unix.iter().fold(home.to_path_buf(), |p, s| p.join(s))
     }
 }
 
 /// `$XDG_CONFIG_HOME` or the platform default.
 pub fn config_home() -> PathBuf {
-    env_path("XDG_CONFIG_HOME", || default_config_home(&home()))
+    env_path("XDG_CONFIG_HOME", || platform_home(&home(), &[".config"]))
+}
+
+/// `$XDG_STATE_HOME` or the platform default.
+pub fn state_home() -> PathBuf {
+    env_path("XDG_STATE_HOME", || {
+        platform_home(&home(), &[".local", "state"])
+    })
+}
+
+/// `<state home>/<tool>` (Go `RawStateDir`; no guard runs here).
+pub fn raw_state_dir(tool: &str) -> PathBuf {
+    state_home().join(tool)
 }
 
 /// `<config home>/<tool>`, for building paths (Go `RawConfigDir`; no

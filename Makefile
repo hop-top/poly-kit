@@ -384,11 +384,13 @@ test-parity-retry: ## retry-v1 conformance corpus (Go and Rust runners)
 	cd sdk/experimental/rs && cargo test --test retry_conformance --locked
 
 # Per-capability consent corpus: on-disk grant records, decision and
-# refusal semantics, audit records and the telemetry-consent migration.
-# Go runner only; a port adds its runner here.
-test-parity-consent: ## consent-v1 conformance corpus (Go runner; ports add theirs)
+# refusal semantics, audit records, delivery and the telemetry-consent
+# migration. A port adds its runner here.
+test-parity-consent: ## consent-v1 conformance corpus (Go and Rust runners)
 	@echo "==> consent-v1 conformance: Go"
 	go test ./go/core/consent/ -run '^TestConformanceConsent' -count=1
+	@echo "==> consent-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --locked --features consent-file,output --test consent_conformance --test consent_delivery_conformance
 
 # Domain state machine corpus: transitions, error texts, the veto wrap,
 # payload JSON bytes and topic options. Go's post-transition event runs
