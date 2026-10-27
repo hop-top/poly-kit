@@ -69,6 +69,7 @@ func TestURLSource_MimeType(t *testing.T) {
 }
 
 func TestURLSource_Reader(t *testing.T) {
+	llm.AllowLoopbackMedia(t) // the server is loopback; see media_fetch_test.go
 	body := []byte("url content")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(body)

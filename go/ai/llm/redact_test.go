@@ -176,6 +176,7 @@ func TestResolve_InvalidURIRedactsCredentials(t *testing.T) {
 // bad status, a transport failure nor an unparseable URL may echo its
 // credentials.
 func TestURLSource_ErrorRedactsCredentials(t *testing.T) {
+	llm.AllowLoopbackMedia(t) // reach the status and transport paths
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 	}))
@@ -185,7 +186,8 @@ func TestURLSource_ErrorRedactsCredentials(t *testing.T) {
 
 	for name, raw := range map[string]string{
 		"bad status":  srv.URL + "/a.png?X-Amz-Signature=" + fakeSecret,
-		"transport":   "http://" + fakeSecret + "@" + closedURL[len("http://"):] + "/a.png?sig=" + fakeSecret,
+		"transport":   closedURL + "/a.png?sig=" + fakeSecret,
+		"userinfo":    "http://" + fakeSecret + "@" + closedURL[len("http://"):] + "/a.png?sig=" + fakeSecret,
 		"unparseable": "http://h\x7f/a.png?token=" + fakeSecret,
 	} {
 		t.Run(name, func(t *testing.T) {
