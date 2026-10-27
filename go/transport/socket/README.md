@@ -42,6 +42,7 @@ constructing the service by hand.
 - The peer authenticator's principal is `uid:<n>` (the user name with `ResolveNames`, falling back to `uid:<n>`); it records `peer_uid`, `peer_gid`, `peer_pid` in `Meta.Extra`, on refusals too. A peer holds no scopes unless `Scopes` grants them. Linux (`SO_PEERCRED`), macOS and FreeBSD (`LOCAL_PEERCRED`); elsewhere `NewPeerAuthenticator` returns `ErrPeerCredUnsupported`.
 - `ok:true` with a non-zero `exit_code` means the command ran and failed; `ok:false` means it never ran.
 - A malformed line does not close the connection; the next request is served normally.
+- A request line longer than **1 MiB** is answered with `CodeInvalid`, after the requests read before it, and the connection then closes.
 - The resolved path is made absolute. Paths longer than **103 bytes** are refused at startup with exit `2` (the lower of the platform `sun_path` bounds, so a configuration is portable).
 - The socket file is created with mode **`0600`**. A stale socket file is removed and reclaimed at start; one a live process is listening on is refused with `already in use`; a path that exists and is not a socket is refused and left untouched. `Close` unlinks the file.
 - A client that hangs up mid-command cancels it: up to 16 requests are read ahead, past which a flooding client is not observed until the backlog drains.
