@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"hop.top/kit/go/ai/toolspec"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/peers"
 	"hop.top/kit/go/runtime/peer"
 )
 
@@ -22,7 +23,7 @@ func TestCommandsExist(t *testing.T) {
 		DisableValidate: true,
 	},
 		cli.WithIdentity(cli.IdentityConfig{}),
-		cli.WithPeers(cli.PeerConfig{
+		peers.With(peers.Config{
 			Service:   mdnsService,
 			Discovery: &peer.StaticDiscoverer{},
 		}),

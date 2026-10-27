@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/bus-v1/validate.json",
+  "version": "v1",
+  "description": "Published-topic validator (Go `Validate`, Rust `validate`): 4 segments, each ^[a-z][a-z0-9_]*$, total length <= 128 bytes, no wildcards, no tense rule. `error` is the full error string (the InvalidTopicError message, which wraps the ErrInvalidTopic sentinel); `ok` true means no error. Violations are reported in order: empty, length, segment count, then segments left to right.",
+  "cases": [
+    {
+      "name": "'crm.sales.deal.created'",
+      "topic": "crm.sales.deal.created",
+      "ok": true
+    },
+    {
+      "name": "'kit.runtime.entity.created'",
+      "topic": "kit.runtime.entity.created",
+      "ok": true
+    },
+    {
+      "name": "'a.b.c.d'",
+      "topic": "a.b.c.d",
+      "ok": true
+    },
+    {
+      "name": "'a1.b_2.c3.d_'",
+      "topic": "a1.b_2.c3.d_",
+      "ok": true
+    },
+    {
+      "name": "'kit.runtime.entity.create'",
+      "topic": "kit.runtime.entity.create",
+      "ok": true
+    },
+    {
+      "name": "'a.b.c.sent'",
+      "topic": "a.b.c.sent",
+      "ok": true
+    },
+    {
+      "name": "exactly 128 chars",
+      "topic": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ok": true
+    },
+    {
+      "name": "131 chars",
+      "topic": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ok": false,
+      "error": "bus: invalid topic: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" (length 131 exceeds max 128)"
+    },
+    {
+      "name": "''",
+      "topic": "",
+      "ok": false,
+      "error": "bus: invalid topic: \"\" (empty topic)"
+    },
+    {
+      "name": "'a'",
+      "topic": "a",
+      "ok": false,
+      "error": "bus: invalid topic: \"a\" (expected 4 segments [Source].[Category].[Object].[Action], got 1)"
+    },
+    {
+      "name": "'a.b.c'",
+      "topic": "a.b.c",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c\" (expected 4 segments [Source].[Category].[Object].[Action], got 3)"
+    },
+    {
+      "name": "'a.b.c.d.e'",
+      "topic": "a.b.c.d.e",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.d.e\" (expected 4 segments [Source].[Category].[Object].[Action], got 5)"
+    },
+    {
+      "name": "'a..c.d'",
+      "topic": "a..c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \"a..c.d\" (segment 2 (\"\"): empty segment)"
+    },
+    {
+      "name": "'.b.c.d'",
+      "topic": ".b.c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \".b.c.d\" (segment 1 (\"\"): empty segment)"
+    },
+    {
+      "name": "'a.b.c.'",
+      "topic": "a.b.c.",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.\" (segment 4 (\"\"): empty segment)"
+    },
+    {
+      "name": "'a.*.c.d'",
+      "topic": "a.*.c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.*.c.d\" (segment 2 (\"*\"): wildcards are not allowed in published topics)"
+    },
+    {
+      "name": "'a.b.c.#'",
+      "topic": "a.b.c.#",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.#\" (segment 4 (\"#\"): wildcards are not allowed in published topics)"
+    },
+    {
+      "name": "'*.b.c.d'",
+      "topic": "*.b.c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \"*.b.c.d\" (segment 1 (\"*\"): wildcards are not allowed in published topics)"
+    },
+    {
+      "name": "'a.b.c.#.#'",
+      "topic": "a.b.c.#.#",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.#.#\" (expected 4 segments [Source].[Category].[Object].[Action], got 5)"
+    },
+    {
+      "name": "'1a.b.c.d'",
+      "topic": "1a.b.c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \"1a.b.c.d\" (segment 1 (\"1a\"): must start with a lowercase letter)"
+    },
+    {
+      "name": "'a.b._c.d'",
+      "topic": "a.b._c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b._c.d\" (segment 3 (\"_c\"): must start with a lowercase letter)"
+    },
+    {
+      "name": "'a.b.c.9'",
+      "topic": "a.b.c.9",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.9\" (segment 4 (\"9\"): must start with a lowercase letter)"
+    },
+    {
+      "name": "'A.b.c.d'",
+      "topic": "A.b.c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \"A.b.c.d\" (segment 1 (\"A\"): invalid character 'A' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "'a-b.c.d.e'",
+      "topic": "a-b.c.d.e",
+      "ok": false,
+      "error": "bus: invalid topic: \"a-b.c.d.e\" (segment 1 (\"a-b\"): invalid character '-' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "'a.b*.c.d'",
+      "topic": "a.b*.c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b*.c.d\" (segment 2 (\"b*\"): invalid character '*' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "'a.b.c.d '",
+      "topic": "a.b.c.d ",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.d \" (segment 4 (\"d \"): invalid character ' ' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "'a.b.c.d\\n'",
+      "topic": "a.b.c.d\n",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.d\\n\" (segment 4 (\"d\\n\"): invalid character '\\n' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "'é.b.c.d'",
+      "topic": "é.b.c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \"é.b.c.d\" (segment 1 (\"é\"): invalid character 'é' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "'a.bB.c.d'",
+      "topic": "a.bB.c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.bB.c.d\" (segment 2 (\"bB\"): invalid character 'B' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "first violation wins",
+      "topic": "A.b*.c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \"A.b*.c.d\" (segment 1 (\"A\"): invalid character 'A' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "ctrl: \"a\\u0000.b.c.d\"",
+      "topic": "a\u0000.b.c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \"a\\x00.b.c.d\" (segment 1 (\"a\\x00\"): invalid character '\\x00' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "ctrl: \"a.b.c.d\\u007f\"",
+      "topic": "a.b.c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.d\\x7f\" (segment 4 (\"d\\x7f\"): invalid character '\\x7f' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "ctrl: \"a.b.c.\\\"d\"",
+      "topic": "a.b.c.\"d",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.\\\"d\" (segment 4 (\"\\\"d\"): invalid character '\"' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "ctrl: \"a.b.c.d\\u00e9\"",
+      "topic": "a.b.c.dé",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.dé\" (segment 4 (\"dé\"): invalid character 'é' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "ctrl: \"a.b.c.\\u200bd\"",
+      "topic": "a.b.c.\u200bd",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.\\u200bd\" (segment 4 (\"\\u200bd\"): invalid character '\\u200b' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "ctrl: \"a.b.c.\\u2028\"",
+      "topic": "a.b.c.\u2028",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.\\u2028\" (segment 4 (\"\\u2028\"): invalid character '\\u2028' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "ctrl: \"a\\tb.c.d.e\"",
+      "topic": "a\tb.c.d.e",
+      "ok": false,
+      "error": "bus: invalid topic: \"a\\tb.c.d.e\" (segment 1 (\"a\\tb\"): invalid character '\\t' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "ctrl: \"a.b.c.\\\\d\"",
+      "topic": "a.b.c.\\d",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.\\\\d\" (segment 4 (\"\\\\d\"): invalid character '\\\\' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "ctrl: \"a.b.c.d\\u0007\"",
+      "topic": "a.b.c.d\u0007",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.d\\a\" (segment 4 (\"d\\a\"): invalid character '\\a' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "ctrl: \"a.b.c.\\ud83d\\ude42\"",
+      "topic": "a.b.c.🙂",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.🙂\" (segment 4 (\"🙂\"): invalid character '🙂' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "ctrl: \"a.b.c.\\u00a0\"",
+      "topic": "a.b.c.\u00a0",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.\\u00a0\" (segment 4 (\"\\u00a0\"): invalid character '\\u00a0' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "ctrl: \"a.b\\u0000.c.d.e\"",
+      "topic": "a.b\u0000.c.d.e",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b\\x00.c.d.e\" (expected 4 segments [Source].[Category].[Object].[Action], got 5)"
+    },
+    {
+      "name": "ctrl: \"a\\u001b.b.c.d\"",
+      "topic": "a\u001b.b.c.d",
+      "ok": false,
+      "error": "bus: invalid topic: \"a\\x1b.b.c.d\" (segment 1 (\"a\\x1b\"): invalid character '\\x1b' (allowed: a-z, 0-9, _))"
+    },
+    {
+      "name": "ctrl: \"a.b.c.d\\nx\"",
+      "topic": "a.b.c.d\nx",
+      "ok": false,
+      "error": "bus: invalid topic: \"a.b.c.d\\nx\" (segment 4 (\"d\\nx\"): invalid character '\\n' (allowed: a-z, 0-9, _))"
+    }
+  ]
+}

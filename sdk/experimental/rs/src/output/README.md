@@ -34,7 +34,7 @@ assert_eq!(serde_json::from_slice::<serde_json::Value>(&buf).unwrap(), json!([{"
 
 ## Contract
 
-- Feature `output` pulls in `serde`, `serde_json` (`preserve_order`), `serde_yaml`, `thiserror`,
+- Feature `output` pulls in `serde`, `serde_json` (`preserve_order`), `serde_norway`, `thiserror`,
   `comfy-table`; `register_output_flags` and `dispatch` need feature `cli` (clap). Authority: the crate
   [feature table](../../README.md#features).
 - Resolution order: `--output` extension infers the format, an explicit `--format` that conflicts with it

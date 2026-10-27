@@ -4,9 +4,10 @@
 	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-beta promote-rc promote-open-line proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	test-parity test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-typeid test-py \
-	test-release test-rs test-templates test-ts \
-	test-affected test-workflow tools tools-golangci-lint
+	completion-regen test-parity test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-py \
+	test-release test-rs test-rs-wasm test-templates test-ts \
+	test-affected test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
+	vuln vuln-go vuln-go-binary vuln-osv
 
 # Tool versions — the mise config (mise.toml, plus .config/mise.toml for
 # tools only this repo's CI uses) is the single source of truth for local
@@ -52,6 +53,20 @@ GO_VERSION_PIN_MINOR := $(shell echo '$(GO_VERSION_PIN)' | awk -F. '{ print $$1"
 LOCAL_BIN := $(CURDIR)/bin
 GOLANGCI_LINT := $(LOCAL_BIN)/golangci-lint
 
+# Vulnerability scanners. Their pins live in the `env:` block of
+# .github/workflows/vulnerability-scan.yml (govulncheck has no mise registry
+# name; that workflow's header says why they stay out of mise.toml) and are
+# read from there, so a bump in the workflow is a bump here too.
+VULN_WORKFLOW := $(CURDIR)/.github/workflows/vulnerability-scan.yml
+ifndef GOVULNCHECK_VERSION
+GOVULNCHECK_VERSION := $(shell sed -n 's/^  GOVULNCHECK_VERSION: *//p' $(VULN_WORKFLOW))
+endif
+ifndef OSV_SCANNER_VERSION
+OSV_SCANNER_VERSION := $(shell sed -n 's/^  OSV_SCANNER_VERSION: *//p' $(VULN_WORKFLOW))
+endif
+GOVULNCHECK := $(LOCAL_BIN)/govulncheck
+OSV_SCANNER := $(LOCAL_BIN)/osv-scanner
+
 preflight: ## Verify host toolchain matches the repo's declared minimum reqs
 	@scripts/preflight.sh
 
@@ -84,7 +99,7 @@ check-go-version: ## Fail fast when the active Go minor differs from mise.toml's
 	fi; \
 	echo "==> go $$have matches pin $(GO_VERSION_PIN_MINOR) (mise.toml and CI: $(GO_VERSION_PIN))"
 
-tools: tools-golangci-lint ## Install pinned dev tools into bin/
+tools: tools-golangci-lint tools-govulncheck tools-osv-scanner ## Install pinned dev tools into bin/
 
 tools-golangci-lint: check-go-version ## Install the pinned golangci-lint version into bin/
 	@mkdir -p $(LOCAL_BIN)
@@ -93,6 +108,30 @@ tools-golangci-lint: check-go-version ## Install the pinned golangci-lint versio
 		GOBIN=$(LOCAL_BIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
 	else \
 		echo "==> golangci-lint $(GOLANGCI_LINT_VERSION) already installed"; \
+	fi
+
+# govulncheck and osv-scanner print no module version, so a stamp file next
+# to each binary records the pin it was built from; a changed pin reinstalls.
+tools-govulncheck: ## Install the pinned govulncheck version into bin/
+	@mkdir -p $(LOCAL_BIN)
+	@if [ -z "$(GOVULNCHECK_VERSION)" ]; then echo "ERROR: no GOVULNCHECK_VERSION in $(VULN_WORKFLOW)" >&2; exit 1; fi
+	@if [ ! -x $(GOVULNCHECK) ] || [ "$$(cat $(GOVULNCHECK).version 2>/dev/null)" != "$(GOVULNCHECK_VERSION)" ]; then \
+		echo "==> Installing govulncheck $(GOVULNCHECK_VERSION) into $(LOCAL_BIN)"; \
+		GOBIN=$(LOCAL_BIN) go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) \
+			&& echo "$(GOVULNCHECK_VERSION)" > $(GOVULNCHECK).version; \
+	else \
+		echo "==> govulncheck $(GOVULNCHECK_VERSION) already installed"; \
+	fi
+
+tools-osv-scanner: ## Install the pinned osv-scanner version into bin/
+	@mkdir -p $(LOCAL_BIN)
+	@if [ -z "$(OSV_SCANNER_VERSION)" ]; then echo "ERROR: no OSV_SCANNER_VERSION in $(VULN_WORKFLOW)" >&2; exit 1; fi
+	@if [ ! -x $(OSV_SCANNER) ] || [ "$$(cat $(OSV_SCANNER).version 2>/dev/null)" != "$(OSV_SCANNER_VERSION)" ]; then \
+		echo "==> Installing osv-scanner $(OSV_SCANNER_VERSION) into $(LOCAL_BIN)"; \
+		GOBIN=$(LOCAL_BIN) go install github.com/google/osv-scanner/v2/cmd/osv-scanner@$(OSV_SCANNER_VERSION) \
+			&& echo "$(OSV_SCANNER_VERSION)" > $(OSV_SCANNER).version; \
+	else \
+		echo "==> osv-scanner $(OSV_SCANNER_VERSION) already installed"; \
 	fi
 
 setup: preflight ## Initialize all sub-projects and dependencies
@@ -200,7 +239,24 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/experimental/rs && cargo test --all-features --locked
 
-test-parity: test-parity-typeid test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
+# The bus on wasm32-unknown-unknown, run under Node: one thread, so the
+# async pool is uncapped and close reports NotDrained instead of
+# blocking. wasm-bindgen-test-runner comes from wasm-bindgen-cli, whose
+# version must equal the wasm-bindgen in Cargo.lock.
+test-rs-wasm: ## Rust: bus and domain wasm32 smoke tests under Node (needs the matching wasm-bindgen-cli)
+	@want=$$(awk '/^name = "wasm-bindgen"$$/ { getline; gsub(/version = |"/, ""); print }' sdk/experimental/rs/Cargo.lock); \
+	have=$$(wasm-bindgen --version 2>/dev/null | awk '{ print $$2 }'); \
+	if [ "$$want" != "$$have" ]; then \
+		echo "wasm-bindgen-cli '$$have' does not match Cargo.lock wasm-bindgen $$want:"; \
+		echo "  cargo install wasm-bindgen-cli --version $$want --locked"; \
+		exit 1; \
+	fi
+	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features bus --test bus_wasm
+	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features domain --test domain_statemachine_wasm
+
+test-parity: test-parity-typeid test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -290,6 +346,70 @@ test-parity-taxonomy: ## exit-code taxonomy across Go + 4 SDKs
 		echo "==> exit-taxonomy parity: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
 
+# Shared bus conformance corpus: the Go and Rust runners read the same
+# vectors under contracts/bus-v1.
+test-parity-bus: ## bus-v1 conformance corpus, CloudEvents, streams and sinks included (Go and Rust runners)
+	@echo "==> bus-v1 conformance: Go"
+	go test ./go/runtime/bus/ -run '^(TestConformance|TestCloudEventsConformance|TestStreamConformance|TestSinkConformance)' -count=1
+	@echo "==> bus-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --test bus_conformance --test bus_cloudevents_conformance --test 'bus_stream_conformance*' --test bus_sinks_conformance --all-features --locked
+
+# Bus network across languages: Go hub <-> Rust client, Rust hub <-> Go
+# client and mixed three-node relays, with and without auth. The Go peer
+# is sdk/tests/cross-lang/bus-network/gonode; BUS_NETWORK_CROSSLANG gates
+# the cases so a plain `cargo test` needs no Go toolchain.
+test-parity-bus-network: ## bus network cross-language e2e (Go <-> Rust hubs, clients, mixed relay)
+	@echo "==> bus network: Go <-> Rust over WebSocket"
+	cd sdk/experimental/rs && BUS_NETWORK_CROSSLANG=1 cargo test --locked --features bus-network --test bus_network_crosslang -- --test-threads=1
+
+# Completion-spec exports (Fig module, Usage KDL) over one fixture tree.
+# Go runner only; a port adds its runner here.
+test-parity-completion-spec: ## completion-spec-v1 corpus: Fig and Usage exports, byte for byte (Go and Rust runners)
+	@echo "==> completion-spec-v1 conformance: Go"
+	go test ./go/console/cli/completionspec/ -run '^TestConformanceCompletionSpec' -count=1
+	@echo "==> completion-spec-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features cli --test cli_completion_spec_conformance --locked
+
+# Shared retry-v1 backoff corpus: Go and Rust runners read the same vectors.
+test-parity-config: ## config-v1 conformance corpus (Go and Rust runners)
+	@echo "==> config-v1 conformance: Go"
+	go test ./go/core/config/ -run '^TestConformance' -count=1
+	@echo "==> config-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features config --test config_conformance --locked
+
+test-parity-retry: ## retry-v1 conformance corpus (Go and Rust runners)
+	@echo "==> retry-v1 conformance: Go"
+	go test ./go/core/util/ -run '^TestConformanceRetry' -count=1
+	@echo "==> retry-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --test retry_conformance --locked
+
+# Domain state machine corpus: transitions, error texts, the veto wrap,
+# payload JSON bytes and topic options. Go's post-transition event runs
+# on a goroutine, hence -race.
+test-parity-statemachine: ## statemachine-v1 conformance corpus (Go and Rust runners)
+	@echo "==> statemachine-v1 conformance: Go"
+	go test -race ./go/runtime/domain/ -run '^TestConformanceStateMachine' -count=1
+	@echo "==> statemachine-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features domain --test domain_statemachine_conformance --locked
+
+# After a cobra bump: rewrite the completion-v1 script goldens and the
+# Rust script templates from the cobra version in go.mod, then run
+# test-parity-completion. Review the diff; both runners pin the result.
+completion-regen: ## Regenerate completion-v1 script goldens and the Rust completion templates from cobra
+	go test ./go/console/cli/completion/ -run '^(TestConformanceCompletionScripts|TestCompletionTemplatesInSync)$$' -count=1 -update
+
+test-parity-completion: ## completion-v1 conformance corpus (Go and Rust runners)
+	@echo "==> completion-v1 conformance: Go"
+	go test -race ./go/console/cli/completion/ -run '^TestConformanceCompletion' -count=1
+	@echo "==> completion-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features cli,config --test cli_completion_conformance --locked
+
+test-parity-netpolicy: ## netpolicy-v1 conformance corpus (Go and Rust runners)
+	@echo "==> netpolicy-v1 conformance: Go"
+	go test ./go/core/netpolicy/ -run '^TestConformanceNetpolicy' -count=1
+	@echo "==> netpolicy-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features api --test netpolicy_conformance --locked
+
 # Cross-process kv storage-binding gate over contracts/kv-v1/keys.json.
 # The Go test drives the Rust half as a `cargo test` subprocess, so this
 # target needs BOTH toolchains — hence its home in test-parity rather
@@ -337,6 +457,54 @@ lint-lock-php: ## PHP: composer.lock consistent with composer.json
 audit-php: ## PHP: composer.lock free of medium+ security advisories
 	cd sdk/experimental/php && composer audit --locked --no-dev \
 		--ignore-severity=low --abandoned=report --ignore-unreachable
+
+# Local mirror of .github/workflows/vulnerability-scan.yml: same scanners,
+# same pins, same scope, same verdicts; text output instead of the
+# workflow's JSON/SARIF/Markdown artifacts. Every scan queries osv.dev or
+# vuln.go.dev, and an advisory can land without a code change, so `vuln` is
+# kept out of `check` and `lint`; CI gates it on every pull request and
+# weekly. `make -k` runs every scan before `vuln` fails, like the workflow's
+# independent jobs and fail-fast: false matrix.
+vuln: ## Run every vulnerability scan CI runs (needs network)
+	@$(MAKE) --no-print-directory -k vuln-osv vuln-go vuln-go-binary
+
+# Lockfiles outside examples/ gate (exit 1 = findings); examples/ is
+# report-only and fails only when the scanner itself fails (exit > 1).
+# Ignores: osv-scanner.toml.
+vuln-osv: tools-osv-scanner ## osv-scanner over every lockfile (examples/ report-only)
+	@lock_rc=0; ex_rc=0; \
+	echo "==> osv-scanner: lockfiles outside examples/ (gating)"; \
+	$(OSV_SCANNER) scan source --config osv-scanner.toml --no-call-analysis go \
+		-r --experimental-exclude examples . || lock_rc=$$?; \
+	if [ -d examples ]; then \
+		echo "==> osv-scanner: examples/ (report only)"; \
+		$(OSV_SCANNER) scan source --config osv-scanner.toml --no-call-analysis go \
+			--allow-no-lockfiles -r examples || ex_rc=$$?; \
+	fi; \
+	if [ "$$lock_rc" -eq 1 ]; then echo "ERROR: osv-scanner: advisories in lockfiles outside examples/" >&2; \
+	elif [ "$$lock_rc" -ne 0 ]; then echo "ERROR: osv-scanner failed on lockfiles (exit $$lock_rc)" >&2; fi; \
+	if [ "$$ex_rc" -gt 1 ]; then echo "ERROR: osv-scanner failed on examples/ (exit $$ex_rc)" >&2; fi; \
+	[ "$$lock_rc" -eq 0 ] && [ "$$ex_rc" -le 1 ]
+
+# Every tracked go.mod outside testdata/, as the workflow's go-modules job
+# finds them. Fails (exit 3) only on a vulnerability the code calls.
+vuln-go: check-go-version tools-govulncheck ## govulncheck source scan of every tracked Go module
+	@rc=0; \
+	for mod in $$(git ls-files -- 'go.mod' ':(glob)**/go.mod' | grep -v '/testdata/'); do \
+		dir=$$(dirname "$$mod"); \
+		echo "==> govulncheck source: $$dir/go.mod"; \
+		$(GOVULNCHECK) -C "$$dir" -show verbose ./... || rc=1; \
+	done; \
+	if [ "$$rc" -ne 0 ]; then echo "ERROR: govulncheck: a module calls vulnerable code" >&2; fi; \
+	exit $$rc
+
+# A bare cli.Root built with the active toolchain (check-go-version keeps it
+# on the repo pin, as setup-go does in CI) and scanned in binary mode.
+vuln-go-binary: check-go-version tools-govulncheck ## govulncheck binary scan of a bare cli.Root (rootprobe)
+	@tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+	go build -buildvcs=false -o "$$tmp/rootprobe" ./go/console/cli/testdata/rootprobe && \
+	echo "==> govulncheck binary: bare cli.Root ($$(go version))" && \
+	$(GOVULNCHECK) -mode binary -show verbose "$$tmp/rootprobe"
 
 # Two passes: src/ at level 5, tests/ at 2 (see phpstan.neon for why they
 # differ). Both run via `composer analyse`, so this target and a bare

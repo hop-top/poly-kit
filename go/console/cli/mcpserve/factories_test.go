@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/console/cli/mcpserve"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/core/upgrade"
 	"hop.top/kit/go/runtime/bus"
@@ -32,7 +32,7 @@ func TestMigrateCommandIsNeverAnMCPTool(t *testing.T) {
 		}
 		return nil
 	})
-	r := newServeRoot(t, mcpserve.With(mcpserve.Config{}), cli.WithServiceBus(b))
+	r := newServeRoot(t, mcpserve.With(mcpserve.Config{}), service.WithServiceBus(b))
 	mcpCommands(r)
 	r.Cmd.AddCommand(upgrade.MigrateCommand(upgrade.NewMigrator("test", "1.0.0"), r.Viper))
 

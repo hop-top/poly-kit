@@ -21,7 +21,7 @@ cross-tool correlation.
 | Lang | Module | Upstream lib |
 |------|--------|---------------|
 | Go   | [`go/core/id`](../../go/core/id/)                         | `go.jetify.com/typeid` v1.3.0 |
-| Rust | [`sdk/experimental/rs/src/id`](../../sdk/experimental/rs/src/id/) | `mti` v1.1.1 |
+| Rust | [`sdk/experimental/rs/src/id`](../../sdk/experimental/rs/src/id/) | `type-safe-id` v0.3.3 |
 | TS   | [`sdk/ts/src/id`](../../sdk/ts/src/id/)                   | `typeid-js` v1.2.0 |
 | Py   | [`sdk/py/hop_top_kit/id`](../../sdk/py/hop_top_kit/id/)   | `typeid-python` >=0.3.9 |
 | PHP  | [`sdk/experimental/php/src/Id`](../../sdk/experimental/php/src/Id/) | `jewei/typeid-php` v1.1.5 |
@@ -65,7 +65,7 @@ time-sortable), KSUID (no prefix), a home-grown scheme (parity cost).
   underscore separates prefix from suffix.
 - **Empty prefix** — Go, TypeScript and Python accept `new("")` and
   emit the bare suffix, as their upstream libraries do. Rust rejects
-  it (`IdError::InvalidPrefix`); build suffix-only IDs with `mti`
+  it (`IdError::InvalidPrefix`); build suffix-only IDs with `type-safe-id`
   directly. PHP follows `jewei/typeid-php`. Bus payloads should
   always carry a prefix.
 - **Wire form** — JSON fields, bus payloads and CLI output (human and

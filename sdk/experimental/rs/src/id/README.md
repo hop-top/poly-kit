@@ -31,7 +31,7 @@ assert!(matches!(new("Task"), Err(IdError::InvalidPrefix(_))));
 
 ## Contract
 
-- Feature `id` pulls in `mti`, `uuid`, `serde`, `thiserror`. Authority: the crate
+- Feature `id` pulls in `type-safe-id`, `uuid`, `serde`, `thiserror`. Authority: the crate
   [feature table](../../README.md#features).
 - Jetify TypeID v0.3.0: UUIDv7 by default, 26-char Crockford base32 suffix,
   prefix grammar `^[a-z]([a-z0-9_]*[a-z0-9])?$` with at most 63 chars.

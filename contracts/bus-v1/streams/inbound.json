@@ -1,0 +1,10 @@
+{
+  "version": "v1",
+  "description": "Bounded inbound queue for dialers without backpressure (browsers). Frames are received into a queue of `capacity`; `deliver` hands the oldest n to the application and advances the position. Receiving into a full queue overflows: the queue is discarded, the link is closed, and the reconnect resumes after the last delivered position (`after`, the starting position when nothing was delivered). Offsets are decimal strings.",
+  "cases": [
+    {"name": "no overflow", "after": "10", "capacity": 3, "ops": [{"recv": "11"}, {"recv": "12"}, {"deliver": 2}, {"recv": "13"}, {"deliver": 1}], "delivered": ["11", "12", "13"], "overflow": false, "resume_after": "13"},
+    {"name": "overflow resumes from delivered", "after": "10", "capacity": 2, "ops": [{"recv": "11"}, {"deliver": 1}, {"recv": "12"}, {"recv": "13"}, {"recv": "14"}], "delivered": ["11"], "overflow": true, "resume_after": "11"},
+    {"name": "overflow before any delivery", "after": "10", "capacity": 1, "ops": [{"recv": "11"}, {"recv": "12"}], "delivered": [], "overflow": true, "resume_after": "10"},
+    {"name": "ops after overflow are ignored", "after": "0", "capacity": 1, "ops": [{"recv": "1"}, {"recv": "2"}, {"deliver": 1}, {"recv": "3"}], "delivered": [], "overflow": true, "resume_after": "0"}
+  ]
+}

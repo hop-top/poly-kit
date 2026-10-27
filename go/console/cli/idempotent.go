@@ -10,9 +10,10 @@ import (
 // retained on r.IdemStore and consumed by WrapRunE; pass nil to
 // explicitly disable replay.
 //
-// Adopters typically call this with idemstore.OpenSQLite(path, ttl)
-// where path is xdg.StateFile("<tool>", "idempotency.db"). Tests
-// pass idemstore.Memory() for an in-process backend.
+// Adopters typically call this with sqlite.Open(path, ttl) from
+// hop.top/kit/go/console/cli/idemstore/sqlite, where path is
+// xdg.StateFile("<tool>", "idempotency.db"). Tests pass
+// idemstore.Memory() for an in-process backend.
 func WithIdempotencyStore(store idemstore.Store) func(*Root) {
 	return func(r *Root) {
 		r.IdemStore = store

@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 	"hop.top/kit/go/console/cli/policy"
 	"hop.top/kit/go/console/output"
 )
@@ -695,5 +696,91 @@ func TestResolveConfirmMode_TerminalDecidesDefault(t *testing.T) {
 	} {
 		assert.Equal(t, tc.want, resolveConfirmMode(noTTY, tc.raw), tc.raw)
 		assert.Equal(t, tc.want, resolveConfirmMode(withTTY, tc.raw), tc.raw)
+	}
+}
+
+// TestDestructiveTokenRefusal_MachineFormatIsSingleDocument pins the
+// stderr contract for the typed-token refusal: under a machine format
+// the stream must be exactly one parseable document. The token preview
+// is a human affordance and previously went out as bare prose ahead of
+// the envelope, leaving stderr unparseable as JSON and unreadable as
+// prose for every adopter running --format json.
+//
+// Parses the WHOLE stream deliberately. Seeking to the first "{" would
+// re-admit the defect, since prose before the envelope would go
+// unnoticed.
+func TestDestructiveTokenRefusal_MachineFormatIsSingleDocument(t *testing.T) {
+	for _, format := range []string{"json", "yaml"} {
+		t.Run(format, func(t *testing.T) {
+			r := New(Config{Name: "ptool", Version: "0.0.0", Short: "p"})
+			leaf := &cobra.Command{
+				Use:         "drop-db",
+				Short:       "drop db",
+				RunE:        func(*cobra.Command, []string) error { return nil },
+				Annotations: map[string]string{destructiveTokenAnnotation: "required"},
+			}
+			SetSideEffect(leaf, SideEffectDestructive)
+			SetIdempotency(leaf, IdempotencyYes)
+			r.Cmd.AddCommand(leaf)
+
+			_, stderr, err := runWithStdin(t, r,
+				[]string{"drop-db", "--confirm", "yes", "--format", format},
+				"", true)
+			require.Error(t, err)
+
+			expected := sha256SumPath("ptool drop-db")
+
+			var got output.Error
+			switch format {
+			case "json":
+				require.NoError(t, json.Unmarshal([]byte(stderr), &got),
+					"stderr must be one JSON document, got: %q", stderr)
+			case "yaml":
+				require.NoError(t, yaml.Unmarshal([]byte(stderr), &got),
+					"stderr must be one YAML document, got: %q", stderr)
+			}
+
+			assert.Equal(t, output.CodeUnauthorized, got.Code)
+			// The token stays recoverable without the prose preview.
+			assert.Contains(t, got.Message, "--confirm-token="+expected)
+			assert.Contains(t, got.SuggestedFix, "--confirm-token="+expected,
+				"the envelope must carry the re-run instruction the preview used to print")
+		})
+	}
+}
+
+// TestDestructiveTokenRefusal_HumanFormatKeepsPreview guards the common
+// path: human formats keep the preview verbatim and must NOT gain a
+// duplicate "Fix:" line repeating it.
+func TestDestructiveTokenRefusal_HumanFormatKeepsPreview(t *testing.T) {
+	for _, format := range []string{"", "table", "text"} {
+		t.Run("format="+format, func(t *testing.T) {
+			r := New(Config{Name: "ptool", Version: "0.0.0", Short: "p"})
+			leaf := &cobra.Command{
+				Use:         "drop-db",
+				Short:       "drop db",
+				RunE:        func(*cobra.Command, []string) error { return nil },
+				Annotations: map[string]string{destructiveTokenAnnotation: "required"},
+			}
+			SetSideEffect(leaf, SideEffectDestructive)
+			SetIdempotency(leaf, IdempotencyYes)
+			r.Cmd.AddCommand(leaf)
+
+			args := []string{"drop-db", "--confirm", "yes"}
+			if format != "" {
+				args = append(args, "--format", format)
+			}
+			_, stderr, err := runWithStdin(t, r, args, "", true)
+			require.Error(t, err)
+
+			expected := sha256SumPath("ptool drop-db")
+			assert.Contains(t, stderr,
+				"This is a destructive operation requiring typed confirmation.")
+			assert.Contains(t, stderr, "Token: "+expected)
+			assert.Contains(t, stderr,
+				"Re-run with --confirm-token="+expected+" to proceed.")
+			assert.NotContains(t, stderr, "Fix:",
+				"the preview already states the fix; a Fix: line would repeat it")
+		})
 	}
 }

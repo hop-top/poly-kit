@@ -5,21 +5,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net"
-	"os"
 	"strings"
+
+	"hop.top/kit/go/transport/cmdsurface/admitted"
 )
 
 // EnvIdempotencyScope is the environment variable [SubprocessRunner]
 // hands a child process: the [IdempotencyScope] of the invocation it
-// runs. The child is a separate process with no context to carry the
-// invocation's Meta, so this is how its --idempotency-key replay
-// middleware learns whose key it holds (see [ScopeIdempotencyKey]).
-const EnvIdempotencyScope = "KIT_IDEMPOTENCY_SCOPE"
-
-// servedKeyPrefix marks a store key derived for a served invocation.
-// A key a local user typed is used as typed, so the prefix keeps the
-// two namespaces visibly apart in the store.
-const servedKeyPrefix = "served:"
+// runs. It is [admitted.EnvIdempotencyScope].
+const EnvIdempotencyScope = admitted.EnvIdempotencyScope
 
 // callerScope is who a per-caller store or bucket counts a call
 // against: the one decision idempotency ([IdempotencyScope]), the
@@ -97,28 +91,14 @@ func IdempotencyScope(m Meta) string {
 }
 
 // ScopeIdempotencyKey returns the store key an --idempotency-key
-// replay middleware records and looks key up under.
-//
-// Outside a served invocation it is key itself: a local user's own
-// keys are theirs. Inside one — ctx carries the admitted Meta
-// ([AdmittedMeta]), or
-// the process is a [SubprocessRunner] child holding
-// [EnvIdempotencyScope] — it is key confined to the caller's
+// replay middleware records and looks key up under. It is
+// [admitted.ScopeIdempotencyKey]: key itself outside a served
+// invocation; inside one — ctx carries the caller the bridge admitted,
+// or the process is a [SubprocessRunner] child holding
+// [EnvIdempotencyScope] — key confined to the caller's
 // [IdempotencyScope] and hashed, so a caller who sends another
-// caller's key is not answered with that caller's recorded output,
-// and no served key meets a local one. An empty key stays empty.
+// caller's key is not answered with that caller's recorded output, and
+// no served key meets a local one. An empty key stays empty.
 func ScopeIdempotencyKey(ctx context.Context, key string) string {
-	if key == "" {
-		return ""
-	}
-	var scope string
-	if m, ok := AdmittedMeta(ctx); ok {
-		scope = IdempotencyScope(m)
-	} else if s := os.Getenv(EnvIdempotencyScope); s != "" {
-		scope = s
-	} else {
-		return key
-	}
-	sum := sha256.Sum256([]byte(scope + "\x00" + key))
-	return servedKeyPrefix + hex.EncodeToString(sum[:])
+	return admitted.ScopeIdempotencyKey(ctx, key)
 }

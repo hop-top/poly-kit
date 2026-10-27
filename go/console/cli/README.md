@@ -1,6 +1,6 @@
 # cli
 
-standardized CLI framework and flag parsing. A `write`/`destructive` leaf previews under `--dry-run` (`cli.RenderPlan`) or calls `cli.OptOutDryRun`; the confirm gate skips only for a leaf that previews ([sideeffect.md](../../../docs/adopters/reference/sideeffect.md#--dry-run-and-the-confirm-gate)).
+standardized CLI framework and flag parsing. A `write`/`destructive` leaf previews under `--dry-run` (`cli.RenderPlan`) or calls `cli.OptOutDryRun`; the confirm gate skips only for a leaf that previews ([sideeffect.md](../../../docs/adopters/reference/sideeffect.md#--dry-run-and-the-confirm-gate)). `cli.WithIdentity` mounts the kit-reserved `token create|decode|claims` (self-signed EdDSA tokens another tool trusts via `auth.jwt.public_key_files`) without linking the serve plane, which adds `verify` and `key` ([bearer tokens](../../../docs/contracts/serve-lifecycle.md#bearer-tokens)).
 
 ## Flag validators
 
@@ -43,21 +43,17 @@ envelope and re-dispatches through every gate. See [flag-enums.md](../../../docs
 ## Served commands
 
 `<tool> service start` supervises services; kit ships four, each projecting the
-command tree through the same gates (policy, `WithPermission`, `WithAuditSinks`,
-`WithRootFactory`), none serving kit's management commands — the socket keeps
-`help`, `spec`, `status`, `version` — or trees marked `kit/reserved` (`cmdmeta`):
+command tree through the same gates (policy, `service.WithPermission`,
+`service.WithAuditSinks`, `service.WithRootFactory`), none serving `kit/reserved`:
 
 | Option | Service | Reached by |
 |--------|---------|------------|
-| `WithAPI(APIConfig{})` | `api` (on by default) | REST under `/v1/commands`, `127.0.0.1:8080` |
-| `WithSocket(SocketConfig{})` | `socket` | NDJSON over a `0600` Unix socket |
+| `service.WithAPI(service.APIConfig{})` | `api` (on by default) | REST under `/v1/commands`, `127.0.0.1:8080` |
+| `service.WithSocket(service.SocketConfig{})` | `socket` | NDJSON over a `0600` Unix socket |
 | `mcpserve.With(mcpserve.Config{})` | `mcp` | MCP tools over streamable HTTP (`127.0.0.1:8081/mcp`), or stdio with `service start mcp --stdio` |
 | `rpcserve.With(rpcserve.Config{})` | `rpc` | `cmdsurface.v1.Commands` over Connect, gRPC and gRPC-Web, h2c on `127.0.0.1:8082` |
 
-`service list` reports on this process; `service status`, `stop`, `restart` drive the running instance
-([guide](../../../docs/adopters/guides/manage-the-service-lifecycle.md)). The kit-owned `token` group, never served: `token claims`,
-`decode`, `verify`, plus `create` (`WithIdentity`) and `key create|list|revoke` (`WithAPIKeys`) ([guide](../../../docs/adopters/guides/secure-remote-serving.md)).
-
+`service list` reports on this process; `service status`, `stop`, `restart` drive the running instance ([guide](../../../docs/adopters/guides/manage-the-service-lifecycle.md)).
 `mcp` lives in [`mcpserve/`](mcpserve/) and `rpc` in [`rpcserve/`](rpcserve/), so only a CLI that serves them links the MCP SDK
 or `go/transport/rpc`; [`celpermission.With()`](celpermission/) likewise links CEL for `--policy` rules. `mcp` over stdio admits
 `kit/auth-required` leaves on the spawn's trust and keeps stdout for the protocol; `kit/requires-confirmation` leaves need an
@@ -71,10 +67,13 @@ accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text: [the mcp 
 | [`breaker/`](breaker/README.md) | `breaker` subcommand tree: which breakers are registered, their state, closing one |
 | [`cmdmeta/`](cmdmeta/README.md) | read the `kit/*` annotations on a cobra command without importing `cli` |
 | [`completion/`](completion/README.md) | dynamic shell completions for flags and positionals |
+| [`completionspec/`](completionspec/README.md) | `completion fig` / `completion usage`: the command tree as a Fig or Usage completion spec |
 | [`config/`](config/README.md) | `config path` and `config paths` subcommands: which file loads and the precedence chain |
 | [`conformance/`](conformance/README.md) | the `kit conformance` command tree and its exit codes |
 | [`idemstore/`](idemstore/README.md) | storage backend for `--idempotency-key` recorded results |
+| [`peers/`](peers/README.md) | peer discovery on a Root: `peers.With`, the mesh, registry and trust via `peers.Of`, the `peer` commands |
 | [`policy/`](policy/README.md) | delegation-safety policy YAML enforced per agent-driven invocation |
 | [`router/`](router/README.md) | `kit llm router` subtree: start, stop, list, inspect RouteLLM instances |
 | [`scope/`](scope/README.md) | `kit scope show`, `check`, `test`: would the path policy allow this path |
+| [`service/`](service/README.md) | the serve plane (`service` group, api and socket services, auth, audit, quota); `cli` never imports it ([migrating](../../../docs/adopters/guides/migrate-to-cli-service.md)) |
 | [`svcconfig/`](svcconfig/README.md) | which value a served service's middleware key resolves to, and whether the `services` block is valid |

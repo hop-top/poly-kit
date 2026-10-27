@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/console/cli/mcpserve"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/runtime/bus"
@@ -102,7 +102,7 @@ func coreAndMCPWhile(t *testing.T, cfg mcpserve.Config, keys map[string]any, dur
 	})
 
 	core := &coreService{}
-	r := newServeRoot(t, cli.WithService(core), mcpserve.With(cfg), cli.WithServiceBus(b))
+	r := newServeRoot(t, service.WithService(core), mcpserve.With(cfg), service.WithServiceBus(b))
 	r.Cmd.SetErr(&lockedWriter{w: &strings.Builder{}})
 	r.Viper.Set("services.core.enabled", true)
 	r.Viper.Set("services.mcp.enabled", true)
@@ -184,7 +184,7 @@ func TestMCPOptionalKeyOverridesTheRegistrationDefault(t *testing.T) {
 func serviceStatusOf(t *testing.T, args ...string) string {
 	t.Helper()
 	var out strings.Builder
-	c := newServeRoot(t, cli.WithService(&coreService{}), mcpserve.With(mcpserve.Config{}))
+	c := newServeRoot(t, service.WithService(&coreService{}), mcpserve.With(mcpserve.Config{}))
 	c.Cmd.SetOut(&out)
 	c.Cmd.SetErr(&strings.Builder{})
 	c.SetArgs(append([]string{"service", "status"}, args...))

@@ -179,7 +179,7 @@ func rateTierOf(leaf *Leaf) RateTier {
 // the gate is off, the surface is local, or a token was taken.
 func (b *Bridge) rateLimit(inv Invocation, leaf *Leaf) error {
 	rl := b.cfg.rateLimit
-	if rl == nil || !inv.Meta.Surface.remote() {
+	if rl == nil || !isRemote(inv.Meta.Surface) {
 		return nil
 	}
 	tier := rateTierOf(leaf)

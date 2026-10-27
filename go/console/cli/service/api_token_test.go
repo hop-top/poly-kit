@@ -1,0 +1,455 @@
+package service_test
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/internal/testhome"
+	"hop.top/kit/go/console/cli/peers"
+	"hop.top/kit/go/console/cli/service"
+	"hop.top/kit/go/console/output"
+	"hop.top/kit/go/core/identity"
+	"hop.top/kit/go/transport/authn"
+)
+
+// tokenRoot is a root with the api service and, when withIdentity, an
+// identity keypair in a directory of its own.
+func tokenRoot(t *testing.T, withIdentity bool, keys map[string]any) *cli.Root {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
+	opts := []func(*cli.Root){service.WithAPI(service.APIConfig{})}
+	if withIdentity {
+		// Before WithAPI on purpose: the order must not matter.
+		opts = append([]func(*cli.Root){cli.WithIdentity(cli.IdentityConfig{Dir: filepath.Join(home, "id")})}, opts...)
+	}
+	r := cli.New(cli.Config{Name: "tool", Version: "1.0.0", DisableValidate: true}, opts...)
+	for k, v := range keys {
+		r.Viper.Set(k, v)
+	}
+	return r
+}
+
+// runToken executes `token <args>` and returns stdout and the error.
+func runToken(t *testing.T, r *cli.Root, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	r.Cmd.SetOut(&out)
+	r.Cmd.SetErr(io.Discard)
+	r.SetArgs(append([]string{"token"}, args...))
+	err := r.Execute(context.Background())
+	return out.String(), err
+}
+
+func exitCode(t *testing.T, err error) int {
+	t.Helper()
+	if err == nil {
+		return 0
+	}
+	var oe *output.Error
+	require.ErrorAs(t, err, &oe, err.Error())
+	return oe.ExitCode
+}
+
+func payloadOf(t *testing.T, raw string) map[string]any {
+	t.Helper()
+	parts := strings.Split(raw, ".")
+	require.Len(t, parts, 3)
+	data, err := base64.RawURLEncoding.DecodeString(parts[1])
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m))
+	return m
+}
+
+func headerOf(t *testing.T, raw string) map[string]any {
+	t.Helper()
+	data, err := base64.RawURLEncoding.DecodeString(strings.Split(raw, ".")[0])
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m))
+	return m
+}
+
+// TestTokenCreateSignsWithTheIdentityKeypair pins token create: an
+// EdDSA JWT the identity keypair signed, its kid in the header, with
+// the subject, tenant, audience, issuer, expiry, and the scopes both as
+// the standard space-delimited scope claim and as the scopes list.
+func TestTokenCreateSignsWithTheIdentityKeypair(t *testing.T) {
+	r := tokenRoot(t, true, nil)
+	require.NotNil(t, r.Identity)
+	out, err := runToken(t, r, "create", "--sub", "alice", "--scopes", "items:read,items:write",
+		"--tenant", "acme", "--audience", "kit-api", "--issuer", "tool", "--expires", "1h")
+	require.NoError(t, err)
+	raw := strings.TrimSpace(out)
+
+	hdr := headerOf(t, raw)
+	assert.Equal(t, "EdDSA", hdr["alg"])
+	assert.Equal(t, r.Identity.PublicKeyID(), hdr["kid"])
+
+	v, err := authn.NewJWT([]authn.Key{authn.IdentityKey(r.Identity)},
+		authn.Options{Issuer: "tool", Audience: []string{"kit-api"}})
+	require.NoError(t, err)
+	tok, err := v.Verify(t.Context(), raw)
+	require.NoError(t, err)
+	assert.Equal(t, "alice", tok.Subject)
+	assert.Equal(t, "acme", tok.Tenant)
+	assert.Equal(t, []string{"items:read", "items:write"}, tok.Scopes)
+	assert.WithinDuration(t, time.Now().Add(time.Hour), tok.Expiry, 5*time.Second)
+
+	p := payloadOf(t, raw)
+	assert.Equal(t, "items:read items:write", p["scope"], "the standard claim")
+	assert.Equal(t, []any{"items:read", "items:write"}, p["scopes"], "the list, for older consumers")
+}
+
+// TestTokenCreateRefusals pins the usage errors, exit 2.
+func TestTokenCreateRefusals(t *testing.T) {
+	for name, args := range map[string][]string{
+		"no subject":         {"create"},
+		"no lifetime":        {"create", "--sub", "a", "--expires", "0s"},
+		"a scope with space": {"create", "--sub", "a", "--scopes", "items read"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := runToken(t, tokenRoot(t, true, nil), args...)
+			assert.Equal(t, 2, exitCode(t, err), "%v", err)
+		})
+	}
+}
+
+// tokenTree lists the leaves of r's token commands, and how many token
+// commands r has.
+func tokenTree(r *cli.Root) (map[string]bool, int) {
+	var out map[string]bool
+	n := 0
+	for _, c := range r.Cmd.Commands() {
+		if c.Name() == "token" {
+			n++
+			if out == nil {
+				out = map[string]bool{}
+			}
+			for _, l := range c.Commands() {
+				out[l.Name()] = true
+			}
+		}
+	}
+	return out, n
+}
+
+// adopterToken mounts a token command of the adopter's own, with a
+// hello leaf, through an option, as a tool that had one before kit
+// shipped its own does.
+func adopterToken(r *cli.Root) {
+	c := &cobra.Command{Use: "token", Short: "the adopter's own"}
+	c.AddCommand(&cobra.Command{Use: "hello", Short: "hi", RunE: func(*cobra.Command, []string) error { return nil }})
+	r.Cmd.AddCommand(c)
+}
+
+// TestTokenCommandMounting pins where token and its leaves appear. The
+// signing leaves (create, decode, claims) mount with an identity
+// keypair alone, cli-side; verify joins them once a serve option or the
+// peer mesh puts the Root in front of others; key with API keys. Every
+// combination is one token command, and an adopter's own token command
+// gets the kit's leaves grafted into it, still one command, reserved.
+func TestTokenCommandMounting(t *testing.T) {
+	auth := service.WithAPI(service.APIConfig{Auth: func(*http.Request) (any, error) { return nil, nil }})
+	mcp := service.WithService(&stubService{name: "mcp"})
+	set := func(names ...string) map[string]bool {
+		out := map[string]bool{}
+		for _, n := range names {
+			out[n] = true
+		}
+		return out
+	}
+	cases := []struct {
+		name string
+		opts func(t *testing.T) []func(*cli.Root)
+		want map[string]bool
+	}{
+		{"api auth", func(*testing.T) []func(*cli.Root) { return []func(*cli.Root){auth} },
+			set("claims", "decode", "verify")},
+		{"identity after WithAPI", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){service.WithAPI(service.APIConfig{}), identityOpt(t)}
+		}, set("claims", "decode", "verify", "create")},
+		{"identity before api auth", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){identityOpt(t), auth}
+		}, set("claims", "decode", "verify", "create")},
+		{"identity with a served service", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){identityOpt(t), mcp}
+		}, set("claims", "decode", "verify", "create")},
+		{"api keys alone", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){apiKeysOpt(t)}
+		}, set("claims", "decode", "verify", "key")},
+		{"identity, api keys and a service: all five", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){apiKeysOpt(t), mcp, identityOpt(t)}
+		}, set("claims", "decode", "verify", "create", "key")},
+		{"bare identity: the signing leaves", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){identityOpt(t)}
+		}, set("claims", "decode", "create")},
+		{"peers with identity: the serve-side leaves", func(t *testing.T) []func(*cli.Root) {
+			return []func(*cli.Root){peers.With(peers.Config{DataDir: t.TempDir()}), identityOpt(t)}
+		}, set("claims", "decode", "verify", "create")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			testhome.Isolate(t)
+			r := cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true}, tc.opts(t)...)
+			got, n := tokenTree(r)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, 1, n, "one token command")
+			assert.True(t, r.IsReserved("token"))
+		})
+		t.Run(tc.name+", grafted", func(t *testing.T) {
+			testhome.Isolate(t)
+			r := cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true},
+				append([]func(*cli.Root){adopterToken}, tc.opts(t)...)...)
+			got, n := tokenTree(r)
+			want := set("hello")
+			for k := range tc.want {
+				want[k] = true
+			}
+			assert.Equal(t, want, got)
+			assert.Equal(t, 1, n, "the kit's leaves grafted onto the adopter's token, not a second one")
+			assert.True(t, r.IsReserved("token"))
+		})
+	}
+
+	for name, opts := range map[string][]func(*cli.Root){
+		"WithAPI alone":      {service.WithAPI(service.APIConfig{})},
+		"a service, no key":  {mcp},
+		"peers, no identity": {peers.With(peers.Config{DataDir: t.TempDir()})},
+	} {
+		t.Run("no token: "+name, func(t *testing.T) {
+			testhome.Isolate(t)
+			got, n := tokenTree(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true}, opts...))
+			assert.Zero(t, n, "%v", got)
+		})
+	}
+}
+
+func identityOpt(t *testing.T) func(*cli.Root) {
+	t.Helper()
+	return cli.WithIdentity(cli.IdentityConfig{Dir: filepath.Join(t.TempDir(), "id")})
+}
+
+func apiKeysOpt(t *testing.T) func(*cli.Root) {
+	t.Helper()
+	return service.WithAPIKeys(service.APIKeysConfig{Path: filepath.Join(t.TempDir(), "apikeys.db")})
+}
+
+// verdict is what token verify prints.
+type verdict struct {
+	Valid  bool           `json:"valid"`
+	Error  string         `json:"error"`
+	Mode   string         `json:"mode"`
+	Sub    string         `json:"sub"`
+	Scopes []string       `json:"scopes"`
+	Claims map[string]any `json:"claims"`
+}
+
+func decodeVerdict(t *testing.T, out string) verdict {
+	t.Helper()
+	var v verdict
+	require.NoError(t, json.Unmarshal([]byte(out), &v), out)
+	return v
+}
+
+// TestTokenVerify pins token verify against the tool's own keypair: a
+// token create made is valid, exit 0; expired, tampered, another
+// signer's and garbage are refused, exit 5, with the reason and the
+// unverified claims printed.
+func TestTokenVerify(t *testing.T) {
+	r := tokenRoot(t, true, nil)
+	out, err := runToken(t, r, "create", "--sub", "alice", "--scopes", "items:read")
+	require.NoError(t, err)
+	good := strings.TrimSpace(out)
+
+	out, err = runToken(t, r, "verify", good)
+	require.NoError(t, err)
+	v := decodeVerdict(t, out)
+	assert.True(t, v.Valid)
+	assert.Equal(t, "jwt", v.Mode)
+	assert.Equal(t, "alice", v.Sub)
+	assert.Equal(t, []string{"items:read"}, v.Scopes)
+
+	now := time.Now()
+	expired, err := r.Identity.SignJWT(identityClaims("alice", now.Add(-2*time.Hour), now.Add(-time.Hour)))
+	require.NoError(t, err)
+	parts := strings.Split(good, ".")
+	tampered := parts[0] + "." + base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"root","exp":9999999999}`)) + "." + parts[2]
+	other := tokenRoot(t, true, nil)
+	foreign, err := other.Identity.SignJWT(identityClaims("mallory", now, now.Add(time.Hour)))
+	require.NoError(t, err)
+
+	for name, c := range map[string]struct{ token, want string }{
+		"expired":        {expired, "expired"},
+		"tampered":       {tampered, "signature"},
+		"another signer": {foreign, "signature"},
+		"garbage":        {"not-a-jwt", "invalid token"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			out, err := runToken(t, r, "verify", c.token)
+			assert.Equal(t, 5, exitCode(t, err))
+			v := decodeVerdict(t, out)
+			assert.False(t, v.Valid)
+			assert.Contains(t, v.Error, c.want)
+		})
+	}
+	out, _ = runToken(t, r, "verify", expired)
+	assert.Equal(t, "alice", decodeVerdict(t, out).Claims["sub"], "the unverified claims show why")
+}
+
+// TestTokenVerifyUsesTheServiceMode pins that token verify checks a
+// token as the named service would: under auth.mode jwks it verifies
+// against the key set, and a service with no bearer mode and a tool
+// with no keypair has nothing to verify with, exit 2.
+func TestTokenVerifyUsesTheServiceMode(t *testing.T) {
+	url, raw := jwksFixture(t)
+	r := tokenRoot(t, true, map[string]any{
+		"services.rpc.auth.mode":          "jwks",
+		"services.rpc.auth.jwks.url":      url,
+		"services.rpc.auth.jwks.audience": "kit-api",
+	})
+	out, err := runToken(t, r, "verify", "--service", "rpc", raw)
+	require.NoError(t, err, out)
+	v := decodeVerdict(t, out)
+	assert.True(t, v.Valid)
+	assert.Equal(t, "jwks", v.Mode)
+
+	_, err = runToken(t, r, "verify", raw)
+	assert.Equal(t, 5, exitCode(t, err), "the api service has no jwks mode: the identity key does not verify it")
+
+	bare := cli.New(cli.Config{Name: "tool", Version: "1.0.0", DisableValidate: true},
+		service.WithAPI(service.APIConfig{Auth: func(*http.Request) (any, error) { return nil, nil }}))
+	_, err = runToken(t, bare, "verify", raw)
+	assert.Equal(t, 2, exitCode(t, err))
+}
+
+// jwksFixture serves a one-key JWKS on loopback for the test's
+// lifetime and returns its URL and a token that key signed for the
+// kit-api audience.
+func jwksFixture(t *testing.T) (url, raw string) {
+	t.Helper()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{
+			{Key: &priv.PublicKey, KeyID: "r1", Algorithm: "RS256", Use: "sig"},
+		}})
+	}))
+	t.Cleanup(srv.Close)
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: priv},
+		(&jose.SignerOptions{}).WithHeader("kid", "r1"))
+	require.NoError(t, err)
+	raw, err = jwt.Signed(signer).Claims(map[string]any{
+		"sub": "svc-a", "aud": "kit-api", "exp": time.Now().Add(time.Hour).Unix(),
+	}).Serialize()
+	require.NoError(t, err)
+	return srv.URL, raw
+}
+
+// TestTokenVerifyReadsTheServiceConfigSources pins that token verify
+// reads services.<svc>.auth from the sources `service start` reads —
+// the user config file, -c and the environment — so it checks a token
+// with the verifier the service would use. --service stays api by
+// default.
+func TestTokenVerifyReadsTheServiceConfigSources(t *testing.T) {
+	for _, source := range []string{"config file", "-c", "environment"} {
+		t.Run(source, func(t *testing.T) {
+			url, raw := jwksFixture(t)
+			// The identity key does not verify a token the JWKS key
+			// signed: only the configured verifier does.
+			r := tokenRoot(t, true, nil)
+			args := []string{"verify", raw}
+			switch source {
+			case "config file":
+				dir := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "tool")
+				require.NoError(t, os.MkdirAll(dir, 0o700))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(
+					"services:\n  api:\n    auth:\n      mode: jwks\n      jwks:\n        url: "+url+
+						"\n        audience: kit-api\n"), 0o600))
+			case "-c":
+				args = append(args, "-c", "services.api.auth.mode=jwks",
+					"-c", "services.api.auth.jwks.url="+url, "-c", "services.api.auth.jwks.audience=kit-api")
+			case "environment":
+				t.Setenv("TOOL_SERVICES_API_AUTH_MODE", "jwks")
+				t.Setenv("TOOL_SERVICES_API_AUTH_JWKS_URL", url)
+				t.Setenv("TOOL_SERVICES_API_AUTH_JWKS_AUDIENCE", "kit-api")
+			}
+			out, err := runToken(t, r, args...)
+			require.NoError(t, err, out)
+			v := decodeVerdict(t, out)
+			assert.True(t, v.Valid)
+			assert.Equal(t, "jwks", v.Mode)
+			assert.Equal(t, "svc-a", v.Sub)
+		})
+	}
+}
+
+func identityClaims(sub string, iat, exp time.Time) identity.Claims {
+	return identity.Claims{Subject: sub, IssuedAt: iat.Unix(), ExpiresAt: exp.Unix()}
+}
+
+// TestTokenCreatePrintsTheBareTokenForHumanFormats pins the output
+// scripts capture with $(tool token create ...): the signed JWT and a
+// newline, nothing else, under the default format and every human
+// one. Only a data format (json, yaml) wraps it in a document.
+func TestTokenCreatePrintsTheBareTokenForHumanFormats(t *testing.T) {
+	for _, format := range []string{"", "table", "text"} {
+		t.Run("format="+format, func(t *testing.T) {
+			r := tokenRoot(t, true, nil)
+			args := []string{"create", "--sub", "alice"}
+			if format != "" {
+				args = append(args, "--format", format)
+			}
+			out, err := runToken(t, r, args...)
+			require.NoError(t, err)
+			raw := strings.TrimSuffix(out, "\n")
+			assert.Equal(t, raw+"\n", out, "exactly one line")
+			assert.Regexp(t, `^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`, raw, "a bare compact JWT")
+			v, err := authn.NewJWT([]authn.Key{authn.IdentityKey(r.Identity)}, authn.Options{})
+			require.NoError(t, err)
+			_, err = v.Verify(t.Context(), raw)
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestTokenCreateStructuredFormatsWrapTheToken pins the data-format
+// shape: {"token": <jwt>}, the same token the bare form prints.
+func TestTokenCreateStructuredFormatsWrapTheToken(t *testing.T) {
+	r := tokenRoot(t, true, nil)
+	out, err := runToken(t, r, "create", "--sub", "alice", "--format", "json")
+	require.NoError(t, err)
+	var doc map[string]string
+	require.NoError(t, json.Unmarshal([]byte(out), &doc), out)
+	require.Len(t, doc, 1, out)
+	v, err := authn.NewJWT([]authn.Key{authn.IdentityKey(r.Identity)}, authn.Options{})
+	require.NoError(t, err)
+	_, err = v.Verify(t.Context(), doc["token"])
+	require.NoError(t, err)
+
+	out, err = runToken(t, r, "create", "--sub", "alice", "--format", "yaml")
+	require.NoError(t, err)
+	assert.Regexp(t, `^token: [A-Za-z0-9_.-]+\n$`, out)
+}

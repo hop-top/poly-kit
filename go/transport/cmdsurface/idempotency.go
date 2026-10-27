@@ -217,7 +217,7 @@ type idemRecord struct {
 // the confirmation) does not hold its key.
 func (b *Bridge) admitIdempotency(ctx context.Context, inv Invocation) (*idemClaim, error) {
 	cfg := b.cfg.idempotency
-	if cfg == nil || inv.Meta.IdempotencyKey == "" || !inv.Meta.Surface.remote() {
+	if cfg == nil || inv.Meta.IdempotencyKey == "" || !isRemote(inv.Meta.Surface) {
 		return nil, nil
 	}
 	l := cfg.ledger

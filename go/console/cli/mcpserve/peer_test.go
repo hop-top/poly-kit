@@ -12,6 +12,7 @@ import (
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/console/cli/mcpserve"
+	"hop.top/kit/go/console/cli/peers"
 	"hop.top/kit/go/core/identity"
 	"hop.top/kit/go/runtime/peer"
 )
@@ -24,14 +25,14 @@ func TestPeerIsNeverAnMCPTool(t *testing.T) {
 	dir := t.TempDir()
 	run, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
 		cli.WithIdentity(cli.IdentityConfig{Dir: filepath.Join(dir, "identity")}),
-		cli.WithPeers(cli.PeerConfig{DataDir: filepath.Join(dir, "peers")}))
+		peers.With(peers.Config{DataDir: filepath.Join(dir, "peers")}))
 
 	stranger, err := identity.Generate()
 	require.NoError(t, err)
 	pub, err := stranger.MarshalPublicKey()
 	require.NoError(t, err)
 	id := stranger.PublicKeyID()
-	require.NoError(t, run.root.PeerTrust.AcceptTOFU(peer.PeerInfo{
+	require.NoError(t, peers.Of(run.root).Trust.AcceptTOFU(peer.PeerInfo{
 		ID: id, Name: "evil", Addrs: []string{"127.0.0.1:1"}, PublicKey: pub,
 	}))
 
@@ -47,7 +48,7 @@ func TestPeerIsNeverAnMCPTool(t *testing.T) {
 		})
 		assert.True(t, err != nil || res.IsError, "peer.%s must be refused", verb)
 	}
-	rec, err := run.root.PeerRegistry.Get(id)
+	rec, err := peers.Of(run.root).Registry.Get(id)
 	require.NoError(t, err)
 	require.NotNil(t, rec)
 	assert.Equal(t, peer.PendingTOFU, rec.Trust, "the peer is still waiting on a person")

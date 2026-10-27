@@ -13,7 +13,9 @@ import (
 	breakercmd "hop.top/kit/go/console/cli/breaker"
 	configcmd "hop.top/kit/go/console/cli/config"
 	conformancecmd "hop.top/kit/go/console/cli/conformance"
+	"hop.top/kit/go/console/cli/peers"
 	scopecmd "hop.top/kit/go/console/cli/scope"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/output"
 	coreconfig "hop.top/kit/go/core/config"
 	uxpcmd "hop.top/kit/go/core/uxp/invoke/cmd/uxp"
@@ -95,7 +97,7 @@ func newKitRoot(version string) (*cli.Root, *engine) {
 		},
 	},
 		cli.WithIdentity(cli.IdentityConfig{}),
-		cli.WithPeers(cli.PeerConfig{}),
+		peers.With(peers.Config{}),
 		// Mount the reserved `kit status` subcommand so the kit
 		// binary itself dogfoods the the static-conformance contract surface. Six
 		// default providers (profile/env/workspace/auth/effective-
@@ -107,7 +109,7 @@ func newKitRoot(version string) (*cli.Root, *engine) {
 		// loopback port keeps `kit service start` auto-assigning as the leaf
 		// command did; Auth is the engine's own rule (reads open, writes
 		// need the run's bearer token).
-		cli.WithAPI(cli.APIConfig{
+		service.WithAPI(service.APIConfig{
 			Addr: "127.0.0.1:0",
 			Auth: eng.auth,
 			// root is assigned by the time the service starts; the
@@ -116,8 +118,8 @@ func newKitRoot(version string) (*cli.Root, *engine) {
 		}),
 		// The socket service: kit's own commands over an owner-only Unix
 		// socket. Registered, not enabled; `kit service start socket` starts it.
-		cli.WithSocket(cli.SocketConfig{}),
-		cli.WithServiceBus(eng.bus),
+		service.WithSocket(service.SocketConfig{}),
+		service.WithServiceBus(eng.bus),
 	)
 	eng.mountFlags(root)
 	eng.announce(os.Stdout)

@@ -16,14 +16,13 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"hop.top/kit/contracts/parity"
+	"hop.top/kit/go/console/cli/completionspec"
 	"hop.top/kit/go/console/cli/idemstore"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/progress"
-	"hop.top/kit/go/console/serve"
 	configoverrides "hop.top/kit/go/core/config"
 	"hop.top/kit/go/core/identity"
 	"hop.top/kit/go/core/netpolicy"
-	"hop.top/kit/go/runtime/peer"
 )
 
 // Disable controls which built-in global flags are suppressed.
@@ -60,10 +59,10 @@ type Flag struct {
 // Hooks bundles optional hook functions that compose into the cobra root's
 // PersistentPreRunE chain. Adopters use these slots instead of assigning to
 // r.Cmd.PersistentPreRunE directly, which would silently overwrite kit's
-// built-in chain (chdir → identity → peer init).
+// built-in chain (chdir → identity → extension init).
 type Hooks struct {
 	// PrePersistentRunE runs after kit's built-in chain (chdir →
-	// identity → peer init) and before subcommand RunE. If it returns
+	// identity → extension init) and before subcommand RunE. If it returns
 	// an error the command short-circuits.
 	PrePersistentRunE func(cmd *cobra.Command, args []string) error
 }
@@ -299,13 +298,6 @@ type Root struct {
 	// Identity holds the resolved keypair when WithIdentity is used.
 	// Nil when identity management is not enabled.
 	Identity *identity.Keypair
-	// Mesh holds the peer mesh when WithPeers is used.
-	// Nil when peer management is not enabled.
-	Mesh *peer.Mesh
-	// PeerRegistry holds the peer registry when WithPeers is used.
-	PeerRegistry *peer.Registry
-	// PeerTrust holds the trust manager when WithPeers is used.
-	PeerTrust *peer.TrustManager
 	// IdemStore is the idempotency-key replay backend used by the
 	// RunE middleware. nil disables replay (default); adopters wire
 	// one up via WithIdempotencyStore. Each tool MUST own its own
@@ -318,55 +310,9 @@ type Root struct {
 	policyLoader PolicyLoader
 	// promptSource supplies the terminal interactive prompts use.
 	// nil means the real controlling terminal (ControllingTTY).
-	promptSource PromptSource
-	apiCfg       *APIConfig
-	// serveReg is the registry `serve` children register into, nil
-	// until the first WithService/WithServices/WithAPI option runs.
-	// Its presence is what mounts the kit-owned serve parent.
-	serveReg *serve.Registry
-	// serviceCmd is the kit-owned `service` group, serveCmd its
-	// `start` leaf, and serveAlias the hidden deprecated root `serve`
-	// that runs the same thing; all nil until the registry exists.
-	// Every behavior keyed to kit's serve command (the per-service
-	// flags, the policy exemption, the help addendum) finds it
-	// through these pointers, never by name.
-	serviceCmd *cobra.Command
-	serveCmd   *cobra.Command
-	serveAlias *cobra.Command
-	// servePolicy is the third validation gate for service selection;
-	// nil passes every service.
-	servePolicy serve.PolicyGate
-	// serveBus is the bus the supervisor publishes lifecycle events
-	// to; nil leaves only the log counterpart.
-	serveBus serve.Publisher
-	// serveOwnConfig records WithOwnServiceConfig: the tool layers
-	// services.* into Viper itself and serve reads no source of its own.
-	serveOwnConfig bool
-	// controlScope resolves the scope of the instance a `service`
-	// command addresses; nil is the one default instance. See
-	// WithServiceControlScope.
-	controlScope ServiceControlScope
-	// socketCfg is the built-in socket service's configuration, nil
-	// until WithSocket runs.
-	socketCfg *SocketConfig
-	// socketFlag is the --socket value when the operator passed one;
-	// it wins over config at bind time.
-	socketFlag string
-	// serveRateLimitCode is the rate_limit code default; see
-	// WithServeRateLimit.
-	serveRateLimitCode rateLimitCode
-	// serveAuth is the permission gate and audit sinks every
-	// kit-shipped transport service shares; see serve_auth.go.
-	serveAuth    serveAuthState
-	serveObs     ServeObservability // tracing and metrics; see serve_observability.go
-	identityCfg  *IdentityConfig
-	apiKeysCfg   *APIKeysConfig
-	peerCfg      *PeerConfig
-	telemetryCfg *TelemetryConfig
-	// rootFactory rebuilds the tool's root for one served invocation;
-	// nil serves every invocation on this Root's tree. See
-	// root_factory.go.
-	rootFactory        func() *Root
+	promptSource       PromptSource
+	identityCfg        *IdentityConfig
+	telemetryCfg       *TelemetryConfig
 	aliases            map[string]string
 	aliasCompletionSet bool              // guards single ValidArgsFunction wrap
 	hiddenGroups       map[string]bool   // group IDs hidden from default --help
@@ -439,6 +385,9 @@ type Root struct {
 	// on every invocation that was not corrected, which is every
 	// invocation under the default policy. See autocorrect.go.
 	pending *pendingCorrection
+
+	// exts holds the attached extensions in attach order; see ext.go.
+	exts []extEntry
 }
 
 // New returns a Root pre-configured to the hop-top CLI contract:
@@ -717,19 +666,15 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	for _, o := range opts {
 		o(r)
 	}
-	// The deprecated `serve` shares the flags the options put on
-	// `service start`; Prepare repeats this for later registrations.
-	r.syncServeAlias()
-	// The token command, once every option has run, so the options may
-	// come in any order. A key source mounts it on its own: a tool that
-	// serves only mcp or rpc under auth.mode apikey or jwt must be able
-	// to issue what its service accepts without registering a REST api
-	// that exposes the whole tree. Mounted here, before the reserved
-	// snapshot, it stays kit-reserved, so no served surface lists or
-	// runs it.
-	if r.identityCfg != nil || r.apiKeysCfg != nil || (r.apiCfg != nil && r.apiCfg.Auth != nil) {
-		r.mountTokenCmd()
+	// An identity keypair mounts the signing token leaves on its own,
+	// serve plane or not; the plane's hook below completes the same
+	// command with verify and key.
+	if IdentityConfigured(r) {
+		MountTokenCommand(r)
 	}
+	// Extensions finish what needs every option, in whatever order the
+	// options came, before the snapshot below reserves what they mount.
+	extHooks(r, func(h OptionsHook) { h.OptionsApplied(r) })
 	// Snapshot kit-shipped subcommands now, BEFORE adopters mount
 	// their own commands (which happen AFTER cli.New returns).
 	// Subsequent late-mount factories (e.g. RegisterSpecCommand) call
@@ -741,8 +686,10 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	// order; the first error short-circuits the chain. Order:
 	//   1. chdir (so XDG paths / peer registry see the resolved cwd)
 	//   2. identity init failure (deferred so --help still works)
-	//   3. peer init failure (deferred for the same reason)
-	//   4. cfg.Hooks.PrePersistentRunE (adopter-supplied)
+	//   3. extension init failures (InitHook, e.g. peers), in attach
+	//      order, deferred for the same reason
+	//   4. progress reporter, dry-run, session globals
+	//   5. cfg.Hooks.PrePersistentRunE (adopter-supplied)
 	var hooks []func(cmd *cobra.Command, args []string) error
 
 	if !cfg.Disable.Chdir {
@@ -764,11 +711,13 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 			return err
 		})
 	}
-	if err := r.initPeers(); err != nil {
-		hooks = append(hooks, func(_ *cobra.Command, _ []string) error {
-			return err
-		})
-	}
+	extHooks(r, func(h InitHook) {
+		if err := h.Init(r); err != nil {
+			hooks = append(hooks, func(_ *cobra.Command, _ []string) error {
+				return err
+			})
+		}
+	})
 
 	if !cfg.Disable.Progress {
 		hooks = append(hooks, func(cmd *cobra.Command, _ []string) error {
@@ -793,7 +742,7 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	// Transport, rather than relying on each leaf to remember to check.
 	//
 	// Once per process: Install is a read-modify-write of a package
-	// global, and a root factory (see root_factory.go) runs New on
+	// global, and a root factory (service.WithRootFactory) runs New on
 	// every served invocation, concurrently with commands whose HTTP
 	// clients read that global. Guarding twice is a no-op anyway.
 	installNetPolicyOnce.Do(netpolicy.Install)
@@ -1105,11 +1054,13 @@ func (r *Root) prepareTree() {
 	}
 
 	// Eagerly register cobra's completion command and place it in the
-	// management group so it's hidden from default --help.
+	// management group so it's hidden from default --help. The Fig and
+	// Usage spec exports sit under it, next to the shell scripts.
 	r.Cmd.InitDefaultCompletionCmd()
 	for _, c := range r.Cmd.Commands() {
 		if c.Name() == "completion" {
 			c.GroupID = "management"
+			completionspec.Register(c)
 			break
 		}
 	}
@@ -1136,14 +1087,11 @@ func (r *Root) prepareTree() {
 	// know which leaves accept --dry-run. Idempotent.
 	r.applyDryRunHelpAddendum()
 
-	// List the registered services on `service start --help`, so the question
-	// "which services can I name?" is answered without a second
-	// invocation. Idempotent.
-	r.serveHelpAddendum()
-
-	// The deprecated `serve` takes every flag the services put on
-	// `service start`, whichever option registered them. Idempotent.
-	r.syncServeAlias()
+	// Extensions finish their part of the tree: the serve plane lists
+	// the registered services on `service start --help` and gives the
+	// deprecated `serve` every flag the services put on `service
+	// start`. Idempotent.
+	extHooks(r, func(h PrepareHook) { h.PrepareTree(r) })
 
 	// Emit a one-time deprecation warning when any leaf still uses
 	// the legacy kit/dry-run: supported annotation. The

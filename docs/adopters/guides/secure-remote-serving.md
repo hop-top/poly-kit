@@ -26,7 +26,8 @@ You need:
 
 - A kit project with a cobra root (see
   [create-cli-project.md](create-cli-project.md))
-- `hop.top/kit/go/console/cli`, `hop.top/kit/go/transport/api`, and
+- `hop.top/kit/go/console/cli`, `hop.top/kit/go/console/cli/service`,
+  `hop.top/kit/go/transport/api`, and
   `hop.top/kit/go/transport/cmdsurface` importable
 - Commands annotated with `kit/side-effect`; commands that need an
   entitlement additionally annotated with `kit/permissions`
@@ -103,11 +104,12 @@ import (
     "log"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
 )
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
-        cli.WithAPI(cli.APIConfig{}), // listens on 127.0.0.1:8080
+        service.WithAPI(service.APIConfig{}), // listens on 127.0.0.1:8080
     )
     root.Cmd.AddCommand(widgetCmd())
 
@@ -139,9 +141,12 @@ port (`:8080`), `0.0.0.0`, `::`, or any other host is not.
 Change the address and nothing else:
 
 ```go
-import "hop.top/kit/go/console/cli"
+import (
+    "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
+)
 
-cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080"})
+service.WithAPI(service.APIConfig{Addr: "0.0.0.0:8080"})
 ```
 
 ```console
@@ -265,13 +270,17 @@ own permission decision as `Meta.Extra["scopes"]`, comma-joined.
 
 **Issue your own tokens with `jwt`.** It trusts the tool's identity
 keypair (`cli.WithIdentity`) and any keys in
-`auth.jwt.public_key_files`. `WithIdentity` alone mounts
-`token create`, which signs with the keypair, and `token verify`,
-which checks a token the way a service would (`--service rpc` for
-another one; exit `5` when refused). `token verify` reads the
-`services.*` configuration from the sources `service start` does (the
-config files, `-c` and the environment), so its verdict is the one the
-running service reaches:
+`auth.jwt.public_key_files`. `WithIdentity` mounts `token create`,
+which signs with the keypair, on any tool, serving or not; with any
+serve option (`WithAPI`, or only mcp, rpc or socket) or `peers.With`
+it adds `token verify`, which checks a token the way a service would
+(`--service rpc` for another one; exit `5` when refused). `token
+verify` and `token key` need `go/transport/authn`, so only a binary
+that imports `go/console/cli/service` has them; bare `cli` and `peers`
+deliberately do not link it. `token verify` reads the `services.*`
+configuration from the sources `service start` does (the config files,
+`-c` and the environment), so its verdict is the one the running
+service reaches:
 
 ```console
 $ export TOKEN=$(mytool token create --sub ci-bot --tenant acme --scopes widgets:read --expires 1h)
@@ -291,8 +300,27 @@ resource servers read) and as `scopes` (a list). `token claims`
 prints an unsigned template for an external signer. `token` itself is
 never served: remote callers cannot mint tokens.
 
+**Trust another tool's self-signed tokens.** The model above has the
+serving tool issue and verify its own. A client tool that serves
+nothing can sign its own instead: give it `cli.WithIdentity`, and its
+`token create` mints EdDSA tokens with its key. On the serving tool,
+name the client's public key under `jwt`, and its tokens are accepted
+beside the tool's own:
+
+```yaml
+services:
+  api:
+    auth:
+      mode: jwt
+      jwt:
+        public_key_files: [/etc/mytool/trusted/ci-client.pub]
+```
+
+The client never links the serve plane; `examples/relay` uses the same
+token to authenticate its bus connections.
+
 **Hand out API keys with `apikey`.** Add
-`cli.WithAPIKeys(cli.APIKeysConfig{})` and import the store's driver
+`service.WithAPIKeys(service.APIKeysConfig{})` and import the store's driver
 (`_ "hop.top/kit/go/storage/kv/sqlite"`); then
 `mytool token key create --sub ci-bot --scopes widgets:read` prints a
 key once, callers send it as `X-API-Key`, `token key list` shows every
@@ -310,7 +338,7 @@ default `sqlite` store is created owner-only (`0600`) and can be
 written while the service runs; a `badger` store is locked by the
 running service, so stop it before running `token key`.
 
-**Revoke before expiry.** `cli.WithTokenCheck(fn)` runs on every
+**Revoke before expiry.** `service.WithTokenCheck(fn)` runs on every
 credential an `auth.mode` verifier accepted, API keys included; an
 error refuses the call `401`.
 
@@ -342,6 +370,7 @@ import (
     "strings"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
     "hop.top/kit/go/transport/api"
 )
 
@@ -367,7 +396,7 @@ func authenticate(r *http.Request) (any, error) {
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
-        cli.WithAPI(cli.APIConfig{
+        service.WithAPI(service.APIConfig{
             Addr: "0.0.0.0:8080",
             Auth: authenticate,
         }),
@@ -430,9 +459,12 @@ To serve **without** authentication on a non-loopback address, say
 so by name, in code, config, or on the command line:
 
 ```go
-import "hop.top/kit/go/console/cli"
+import (
+    "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
+)
 
-cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", InsecureRemote: true})
+service.WithAPI(service.APIConfig{Addr: "0.0.0.0:8080", InsecureRemote: true})
 ```
 
 ```yaml
@@ -458,9 +490,12 @@ To serve on a non-loopback address with **no delegation policy**, say
 that separately:
 
 ```go
-import "hop.top/kit/go/console/cli"
+import (
+    "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
+)
 
-cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", InsecureNoPolicy: true})
+service.WithAPI(service.APIConfig{Addr: "0.0.0.0:8080", InsecureNoPolicy: true})
 ```
 
 ```yaml
@@ -516,6 +551,7 @@ import (
     "github.com/spf13/cobra"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
 )
 
 func widgetPurgeCmd() *cobra.Command {
@@ -535,8 +571,8 @@ func widgetPurgeCmd() *cobra.Command {
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
-        cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
-        cli.WithSocket(cli.SocketConfig{}),
+        service.WithAPI(service.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
+        service.WithSocket(service.SocketConfig{}),
     )
     widget := &cobra.Command{Use: "widget", Short: "Manage widgets"}
     widget.AddCommand(widgetPurgeCmd())
@@ -606,6 +642,7 @@ import (
     "net"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
     "hop.top/kit/go/transport/socket"
 )
 
@@ -617,7 +654,7 @@ func identifyPeer(_ context.Context, _ net.Conn, _ socket.Request) (socket.Ident
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
-        cli.WithSocket(cli.SocketConfig{Path: "/run/mytool/shared.sock", Auth: identifyPeer}),
+        service.WithSocket(service.SocketConfig{Path: "/run/mytool/shared.sock", Auth: identifyPeer}),
     )
     root.Cmd.AddCommand(widgetCmd())
 
@@ -631,7 +668,7 @@ A command that declares no `kit/permissions` is not checked for
 scopes at all.
 
 For anything a scope list cannot say — a suspended account, a tenant
-boundary — install a decision of your own. `cli.WithPermission` runs
+boundary — install a decision of your own. `service.WithPermission` runs
 it inside the bridge on every kit-shipped service, after the scope
 check, and it can only narrow: it is asked only about calls the scope
 check admitted.
@@ -644,6 +681,7 @@ import (
     "log"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
     "hop.top/kit/go/transport/cmdsurface"
 )
 
@@ -657,9 +695,9 @@ func notSuspended(_ context.Context, meta cmdsurface.Meta, _ *cmdsurface.Leaf) c
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
-        cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
-        cli.WithSocket(cli.SocketConfig{}),
-        cli.WithPermission(notSuspended),
+        service.WithAPI(service.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
+        service.WithSocket(service.SocketConfig{}),
+        service.WithPermission(notSuspended),
     )
     root.Cmd.AddCommand(widgetCmd())
 
@@ -757,9 +795,9 @@ $ mytool service start api --policy=team
 `max_ops` gives each matching principal, per tenant, a budget of write
 and destructive calls per window. Only a call every permission decider
 admits — the policy, its `permissions:` rules and your
-`cli.WithPermission` gate — spends from it. It is counted in
+`service.WithPermission` gate — spends from it. It is counted in
 `$XDG_STATE_HOME/mytool/usage.db`, so restarting the server does not
-reset it; pass `cli.WithUsageStore(store)` to count in a store several
+reset it; pass `service.WithUsageStore(store)` to count in a store several
 instances share. A caller who has spent it is refused until the window
 resets:
 
@@ -786,13 +824,14 @@ import (
     "log"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
     "hop.top/kit/go/console/cli/celpermission"
 )
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
         cli.WithPolicy(cli.DefaultPolicyLoader("mytool")),
-        cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
+        service.WithAPI(service.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
         celpermission.With(),
     )
     root.Cmd.AddCommand(widgetCmd())
@@ -849,7 +888,7 @@ What a rule can read:
 Any rule that denies refuses the call. A rule that cannot be evaluated
 denies too, so guard a flag the caller may not have set with `has()`.
 Rules run after the scope check and the policy's `allow` lists, and
-before your `cli.WithPermission` decision: they can only narrow. The
+before your `service.WithPermission` decision: they can only narrow. The
 refusal names the rule, over the wire and in the audit record:
 
 ```json
@@ -874,7 +913,7 @@ for the budget.
 
 ### 6. Read the audit trail
 
-Register a sink. `cli.WithAuditSinks` applies it to the api service
+Register a sink. `service.WithAuditSinks` applies it to the api service
 and the socket service; a JSON-Lines file on stderr is the smallest
 useful one:
 
@@ -887,14 +926,15 @@ import (
     "os"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
     "hop.top/kit/go/transport/cmdsurface"
 )
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
-        cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
-        cli.WithSocket(cli.SocketConfig{}),
-        cli.WithAuditSinks(cmdsurface.SinkSpec{
+        service.WithAPI(service.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
+        service.WithSocket(service.SocketConfig{}),
+        service.WithAuditSinks(cmdsurface.SinkSpec{
             Sink:    &cmdsurface.FileSink{W: os.Stderr},
             OnOK:    true, // executions
             OnError: true, // refusals and failed executions
@@ -982,9 +1022,9 @@ command that checks it when you build the root:
 
 ```go
 root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
-    cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
-    cli.WithSocket(cli.SocketConfig{}),
-    cli.WithAuditCommand(), // <tool> audit verify
+    service.WithAPI(service.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
+    service.WithSocket(service.SocketConfig{}),
+    service.WithAuditCommand(), // <tool> audit verify
 )
 ```
 
@@ -1260,8 +1300,8 @@ provider once in `main`:
 
 ```go
 root := cli.New(cfg,
-    cli.WithAPI(apiCfg),
-    cli.WithObservability(observability.NewServe()), // hop.top/kit/go/transport/observability
+    service.WithAPI(apiCfg),
+    service.WithObservability(observability.NewServe()), // hop.top/kit/go/transport/observability
 )
 ```
 
@@ -1527,7 +1567,7 @@ configured key still wins, key by key, and the code does not switch
 the limit on where it is off:
 
 ```go
-cli.New(cfg, cli.WithServeRateLimit(cmdsurface.RateLimit{
+cli.New(cfg, service.WithServeRateLimit(cmdsurface.RateLimit{
     Destructive: cmdsurface.RateRule{PerMinute: 6, Burst: 1},
 }))
 ```
@@ -1538,7 +1578,7 @@ A rate limit bounds bursts and forgets on restart. A quota bounds
 totals, and remembers: set how many calls, or how many bytes of
 output, each caller may use per window, and kit counts them in
 `$XDG_STATE_HOME/mytool/usage.db` (or the store
-`cli.WithUsageStore` names), so a restart resets nothing. It is off
+`service.WithUsageStore` names), so a restart resets nothing. It is off
 until you set a limit:
 
 ```yaml
@@ -1577,7 +1617,7 @@ and `QUOTA_EXCEEDED` with `retry_after_ms` on the socket; exit class
 `64`. In Go, `errors.Is(err, cmdsurface.ErrQuotaExceeded)` holds, and
 so does `errors.Is(err, cmdsurface.ErrRateLimited)`.
 
-Mount the management verbs with `cli.WithQuotaCommand()` to read and
+Mount the management verbs with `service.WithQuotaCommand()` to read and
 clear the counts. Like `audit verify` they are management-only: no
 served surface reaches them.
 
@@ -1662,7 +1702,7 @@ hint is how long the queue ahead would take to drain, from recent run
 times: between 1s and 30s.
 
 How many actually run at once depends on how your tool builds its
-tree. Without `cli.WithRootFactory` every call runs on one shared
+tree. Without `service.WithRootFactory` every call runs on one shared
 tree, one at a time: the service runs one and queues the rest, as the
 `1 running` above shows. With a root factory, up to `max_inflight`
 run in parallel. Either way the time a call waits counts against its
@@ -1708,16 +1748,16 @@ keys, defaults and refusals.
 | `SocketConfig.PeerScopes` | none | Scopes of a peer-authenticated socket caller when `auth.peer.scopes` is unset. |
 | `kit/permissions` annotation | none | Scopes a verified caller must all hold; otherwise `403 insufficient_scope`. The owner (socket file, stdio, CLI) is not asked. |
 | `--policy=<name>` | `kit-default` beyond loopback, none on loopback | The tool's policy engine, applied to remote calls; its `callers` section answers per caller. `kit-default` is reserved for the shipped policy. |
-| `cli.WithPermission(fn)` | permit all | Permission decision on every kit-shipped transport service, after the scope check and `--policy`; can only narrow. |
-| `cli.WithIdentity(cfg)` | none | The keypair `auth.mode: jwt` trusts; mounts `token create` and `token verify`, no `WithAPI` needed. |
-| `cli.WithAPIKeys(cfg)` | not mounted | Mounts `token key create`, `list` and `revoke` for `auth.mode: apikey`. |
-| `cli.WithTokenCheck(fn)` | none | Revocation check on every credential the `auth.mode` verifier accepted (`jwt`, `jwks`, `oidc`, `apikey`); an error refuses it `401`. |
-| `cli.WithServeRateLimit(cfg)` | kit tiers | The tool's own tier numbers below `rate_limit.*`; does not switch the limit on. |
-| `cli.WithUsageStore(store)` | `$XDG_STATE_HOME/<tool>/usage.db` | Where quotas and the `max_ops` budgets of a policy's caller rules are counted. |
-| `cli.WithQuotaCommand()` | not mounted | Mounts `<tool> quota show` and `quota reset`; management-only when served. |
-| `cli.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service, beside `audit.sinks`. Records are always redacted. |
-| `cli.WithAuditCommand()` | not mounted | Mounts `<tool> audit verify` (exit 71 `TAMPER_DETECTED` on a broken chain); management-only when served. |
-| `cli.WithObservability(p)` | none | Links a tracing and metrics provider; `tracing.enabled` / `metrics.enabled` turn it on. |
+| `service.WithPermission(fn)` | permit all | Permission decision on every kit-shipped transport service, after the scope check and `--policy`; can only narrow. |
+| `cli.WithIdentity(cfg)` | none | The keypair `auth.mode: jwt` trusts; mounts `token create`, `decode` and `claims` on any tool, and `token verify` with any serve option or `peers.With`. |
+| `service.WithAPIKeys(cfg)` | not mounted | Mounts `token key create`, `list` and `revoke` for `auth.mode: apikey`. |
+| `service.WithTokenCheck(fn)` | none | Revocation check on every credential the `auth.mode` verifier accepted (`jwt`, `jwks`, `oidc`, `apikey`); an error refuses it `401`. |
+| `service.WithServeRateLimit(cfg)` | kit tiers | The tool's own tier numbers below `rate_limit.*`; does not switch the limit on. |
+| `service.WithUsageStore(store)` | `$XDG_STATE_HOME/<tool>/usage.db` | Where quotas and the `max_ops` budgets of a policy's caller rules are counted. |
+| `service.WithQuotaCommand()` | not mounted | Mounts `<tool> quota show` and `quota reset`; management-only when served. |
+| `service.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service, beside `audit.sinks`. Records are always redacted. |
+| `service.WithAuditCommand()` | not mounted | Mounts `<tool> audit verify` (exit 71 `TAMPER_DETECTED` on a broken chain); management-only when served. |
+| `service.WithObservability(p)` | none | Links a tracing and metrics provider; `tracing.enabled` / `metrics.enabled` turn it on. |
 
 Precedence for either opt-in is flag, then config key, then code.
 Middleware keys have no flags: the service's key, then
@@ -1727,14 +1767,14 @@ Middleware keys have no flags: the service's key, then
 
 - **An identity provider.** Kit verifies tokens and keys but runs no
   login, consent or token endpoint. Plug a revocation list into
-  `cli.WithTokenCheck`.
+  `service.WithTokenCheck`.
 - **OCSP.** Under `auth.mode: mtls` kit checks client certificates
   against the revocation lists you name (`auth.mtls.crl_file`) and
   queries no OCSP responder.
 - **Limits shared across replicas.** Rate-limit buckets and
   concurrency slots live in memory, per process. Idempotency records
   are shared when replicas share a store
-  (`cli.WithServeIdempotencyStore`), but a call still running is known
+  (`service.WithServeIdempotencyStore`), but a call still running is known
   only to its own process: the same key sent to two replicas at the
   same moment runs on both.
 - **Socket peer credentials on Windows and most BSDs.**

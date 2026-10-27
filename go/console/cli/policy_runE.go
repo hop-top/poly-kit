@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/cli/policy"
 	"hop.top/kit/go/console/output"
-	"hop.top/kit/go/transport/cmdsurface"
+	"hop.top/kit/go/transport/cmdsurface/admitted"
 )
 
 // Policy globals. Registered automatically on the root in
@@ -138,12 +138,21 @@ func destructiveTokenSha(cmd *cobra.Command) string {
 	return hex.EncodeToString(h[:6])
 }
 
-// newPolicyEngine builds a policy.Engine from the active flags. When
-// --policy is unset it returns an Engine with an empty Policy
-// (default-permit) parameterized by --max-ops only.
-func (r *Root) newPolicyEngine(cmd *cobra.Command) (*policy.Engine, error) {
-	maxOps := flagInt(cmd, maxOpsFlag)
-	policyName := flagValue(cmd, policyFlag)
+// PolicyFlags returns the delegation policy flags visible to cmd: the
+// --policy name (empty when unset) and the --max-ops budget (0 when
+// unset or unparseable).
+func PolicyFlags(cmd *cobra.Command) (name string, maxOps int) {
+	return flagValue(cmd, policyFlag), flagInt(cmd, maxOpsFlag)
+}
+
+// PolicyEngine builds the policy.Engine r enforces for cmd from the
+// active flags ([PolicyFlags]), resolving a named --policy through
+// the loader WithPolicy wired. When --policy is unset it returns an
+// Engine with an empty Policy (default-permit) parameterized by
+// --max-ops only. A --policy that names no loadable policy is a usage
+// error.
+func PolicyEngine(r *Root, cmd *cobra.Command) (*policy.Engine, error) {
+	policyName, maxOps := PolicyFlags(cmd)
 
 	var p policy.Policy
 	switch {
@@ -185,12 +194,27 @@ func (r *Root) newPolicyEngine(cmd *cobra.Command) (*policy.Engine, error) {
 // exemption: that is the word the serve-lifecycle contract gives the
 // supervisor. Once kit owns the services, only kit's commands are
 // exempt, by identity rather than by name.
+//
+// The extension that owns the services decides ([PolicyExemption]);
+// the first one that owns the decision answers. Without one, the
+// depth-1 `serve` is exempt by name.
 func (r *Root) startsServices(cmd *cobra.Command) bool {
-	if r.serveCmd != nil {
-		return cmd == r.serveCmd || cmd == r.serveAlias
+	decided, exempt := false, false
+	extHooks(r, func(h PolicyExemption) {
+		if decided {
+			return
+		}
+		exempt, decided = h.ExemptFromPolicy(r, cmd)
+	})
+	if decided {
+		return exempt
 	}
-	return r.Cmd != nil && cmd.Parent() == r.Cmd && cmd.Name() == serveAliasName
+	return r.Cmd != nil && cmd.Parent() == r.Cmd && cmd.Name() == supervisorCommandName
 }
+
+// supervisorCommandName is the depth-1 word the serve-lifecycle
+// contract gives a tool's own supervisor.
+const supervisorCommandName = "serve"
 
 // runCaller is the caller a served run executes for: the identity the
 // transport established for the invocation the bridge admitted, so
@@ -198,11 +222,36 @@ func (r *Root) startsServices(cmd *cobra.Command) bool {
 // answered at the bridge's permission gate. nil on the CLI and for a
 // served caller nobody established.
 func runCaller(cmd *cobra.Command) *policy.Caller {
-	meta, ok := cmdsurface.AdmittedMeta(cmd.Context())
+	c, ok := admitted.CallerFrom(cmd.Context())
 	if !ok {
 		return nil
 	}
-	return policyCaller(meta)
+	return PolicyCaller(c)
+}
+
+// PolicyCaller is the policy's view of an admitted caller: nil unless
+// the transport established it. A caller the transport itself vouches
+// for (the owner-only socket, stdio) holds the owner's authority and is
+// named by nothing it claims: it matches no rule and spends no budget
+// of another's name. A verified caller — by any verifier, peer
+// credentials on the socket included — holds its credential's scopes
+// only.
+//
+// The --policy check inside a served command and the served permission
+// gate both map the caller through it, so the two cannot disagree.
+func PolicyCaller(c admitted.Caller) *policy.Caller {
+	switch c.Established {
+	case admitted.EstablishedTransport:
+		return &policy.Caller{Owner: true}
+	case admitted.EstablishedVerified:
+		return &policy.Caller{
+			Principal: c.Principal,
+			Tenant:    c.Tenant,
+			Scopes:    c.Scopes,
+		}
+	default:
+		return nil
+	}
 }
 
 // renderPolicyError writes ce to cmd's stderr in the active --format
@@ -310,7 +359,7 @@ func (r *Root) wrapPolicyRunE(
 
 		// Build the policy engine for this invocation. Cheap; it just
 		// reads the flag values and (optionally) loads YAML.
-		engine, err := r.newPolicyEngine(cmd)
+		engine, err := PolicyEngine(r, cmd)
 		if err != nil {
 			if ce, ok := err.(*output.Error); ok {
 				return renderPolicyError(cmd, ce)
@@ -381,12 +430,28 @@ func (r *Root) gateConfirm(cmd *cobra.Command, se SideEffect) error {
 		expected := destructiveTokenSha(cmd)
 		got := flagValue(cmd, confirmTokenFlag)
 		if got == "" {
-			fmt.Fprintf(cmd.ErrOrStderr(),
-				"This is a destructive operation requiring typed confirmation.\nToken: %s\nRe-run with --confirm-token=%s to proceed.\n",
-				expected, expected)
-			return renderPolicyError(cmd, output.UnauthorizedError(
-				"destructive command "+cmd.CommandPath()+" requires --confirm-token="+expected,
-			))
+			// The token preview is a human affordance. Under a machine
+			// format it would prepend prose to stderr ahead of the
+			// envelope, leaving the stream unparseable as JSON/YAML and
+			// unreadable as prose. Machine callers recover the token
+			// from the envelope instead: Message names it and
+			// SuggestedFix carries the re-run instruction verbatim.
+			refusal := output.UnauthorizedError(
+				"destructive command " + cmd.CommandPath() + " requires --confirm-token=" + expected,
+			)
+			if isMachineFormat(activeFormat(cmd)) {
+				// The preview is replaced by SuggestedFix, which carries
+				// the same instruction inside the envelope.
+				refusal.SuggestedFix = "re-run with --confirm-token=" +
+					expected + " to proceed"
+			} else {
+				// Human format keeps the preview verbatim; adding a Fix
+				// line as well would only repeat it.
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"This is a destructive operation requiring typed confirmation.\nToken: %s\nRe-run with --confirm-token=%s to proceed.\n",
+					expected, expected)
+			}
+			return renderPolicyError(cmd, refusal)
 		}
 		if got != expected {
 			return renderPolicyError(cmd, output.UnauthorizedError(

@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/peers"
 	"hop.top/kit/go/runtime/peer"
 )
 
@@ -73,7 +74,7 @@ func TestKitBinary_LeavesHonorDryRunOrOptOut(t *testing.T) {
 
 	root, eng := newKitRoot("dev")
 	eng.close()
-	require.NoError(t, root.PeerRegistry.Add(peer.PeerInfo{
+	require.NoError(t, peers.Of(root).Registry.Add(peer.PeerInfo{
 		ID: "p1", PublicKey: []byte("key"), Addrs: []string{"127.0.0.1:1"},
 	}))
 	var applied []string

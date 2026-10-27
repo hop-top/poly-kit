@@ -23,7 +23,7 @@ generated Connect handler for
 
 ```go
 root := cli.New(cli.Config{Name: "mytool", Version: version},
-    cli.WithAPI(cli.APIConfig{}),
+    service.WithAPI(service.APIConfig{}),
     rpcserve.With(rpcserve.Config{}),
 )
 ```

@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/config-v1/parse_scalar.json",
+  "version": "v1",
+  "description": "`ParseScalar`: raw CLI text to a typed value. Narrow and never lossy: decimal ints that fit int64, decimal float spellings (with . or e) that are finite, lowercase true/false, null/Null/NULL/~, and the .inf/.nan spellings; everything else (YAML 1.1 lookalikes, hex/octal/binary, underscores, dates, out-of-range numbers, padded text) stays the input string. Values are {kind, repr}: kind is int, float, bool, null or string; repr is Go's %v of the value.",
+  "cases": [
+    {
+      "name": "float",
+      "input": "0.9",
+      "want": {
+        "kind": "float",
+        "repr": "0.9"
+      }
+    },
+    {
+      "name": "negative float",
+      "input": "-0.5",
+      "want": {
+        "kind": "float",
+        "repr": "-0.5"
+      }
+    },
+    {
+      "name": "scientific",
+      "input": "1e3",
+      "want": {
+        "kind": "float",
+        "repr": "1000"
+      }
+    },
+    {
+      "name": "int",
+      "input": "123",
+      "want": {
+        "kind": "int",
+        "repr": "123"
+      }
+    },
+    {
+      "name": "negative int",
+      "input": "-7",
+      "want": {
+        "kind": "int",
+        "repr": "-7"
+      }
+    },
+    {
+      "name": "plus sign int",
+      "input": "+5",
+      "want": {
+        "kind": "int",
+        "repr": "5"
+      }
+    },
+    {
+      "name": "zero",
+      "input": "0",
+      "want": {
+        "kind": "int",
+        "repr": "0"
+      }
+    },
+    {
+      "name": "true",
+      "input": "true",
+      "want": {
+        "kind": "bool",
+        "repr": "true"
+      }
+    },
+    {
+      "name": "false",
+      "input": "false",
+      "want": {
+        "kind": "bool",
+        "repr": "false"
+      }
+    },
+    {
+      "name": "null",
+      "input": "null",
+      "want": {
+        "kind": "null",
+        "repr": "<nil>"
+      }
+    },
+    {
+      "name": "Null",
+      "input": "Null",
+      "want": {
+        "kind": "null",
+        "repr": "<nil>"
+      }
+    },
+    {
+      "name": "NULL",
+      "input": "NULL",
+      "want": {
+        "kind": "null",
+        "repr": "<nil>"
+      }
+    },
+    {
+      "name": "tilde",
+      "input": "~",
+      "want": {
+        "kind": "null",
+        "repr": "<nil>"
+      }
+    },
+    {
+      "name": "inf",
+      "input": "+.inf",
+      "want": {
+        "kind": "float",
+        "repr": "+Inf"
+      }
+    },
+    {
+      "name": "neg inf",
+      "input": "-.Inf",
+      "want": {
+        "kind": "float",
+        "repr": "-Inf"
+      }
+    },
+    {
+      "name": "nan",
+      "input": ".NaN",
+      "want": {
+        "kind": "float",
+        "repr": "NaN"
+      }
+    },
+    {
+      "name": "yes",
+      "input": "yes",
+      "want": {
+        "kind": "string",
+        "repr": "yes"
+      }
+    },
+    {
+      "name": "off",
+      "input": "off",
+      "want": {
+        "kind": "string",
+        "repr": "off"
+      }
+    },
+    {
+      "name": "hex",
+      "input": "0x1F",
+      "want": {
+        "kind": "string",
+        "repr": "0x1F"
+      }
+    },
+    {
+      "name": "octal",
+      "input": "0o17",
+      "want": {
+        "kind": "string",
+        "repr": "0o17"
+      }
+    },
+    {
+      "name": "binary",
+      "input": "0b101",
+      "want": {
+        "kind": "string",
+        "repr": "0b101"
+      }
+    },
+    {
+      "name": "date",
+      "input": "2024-01-01",
+      "want": {
+        "kind": "string",
+        "repr": "2024-01-01"
+      }
+    },
+    {
+      "name": "underscore",
+      "input": "1_000",
+      "want": {
+        "kind": "string",
+        "repr": "1_000"
+      }
+    },
+    {
+      "name": "max int64",
+      "input": "9223372036854775807",
+      "want": {
+        "kind": "int",
+        "repr": "9223372036854775807"
+      }
+    },
+    {
+      "name": "max int64 plus one",
+      "input": "9223372036854775808",
+      "want": {
+        "kind": "string",
+        "repr": "9223372036854775808"
+      }
+    },
+    {
+      "name": "min int64",
+      "input": "-9223372036854775808",
+      "want": {
+        "kind": "int",
+        "repr": "-9223372036854775808"
+      }
+    },
+    {
+      "name": "float overflow",
+      "input": "1e400",
+      "want": {
+        "kind": "string",
+        "repr": "1e400"
+      }
+    },
+    {
+      "name": "True",
+      "input": "True",
+      "want": {
+        "kind": "string",
+        "repr": "True"
+      }
+    },
+    {
+      "name": "empty",
+      "input": "",
+      "want": {
+        "kind": "string",
+        "repr": ""
+      }
+    },
+    {
+      "name": "padded",
+      "input": " 1 ",
+      "want": {
+        "kind": "string",
+        "repr": " 1 "
+      }
+    },
+    {
+      "name": "version",
+      "input": "1.2.3",
+      "want": {
+        "kind": "string",
+        "repr": "1.2.3"
+      }
+    },
+    {
+      "name": "lone dot",
+      "input": ".",
+      "want": {
+        "kind": "string",
+        "repr": "."
+      }
+    },
+    {
+      "name": "lone dash",
+      "input": "-",
+      "want": {
+        "kind": "string",
+        "repr": "-"
+      }
+    },
+    {
+      "name": "leading dot float",
+      "input": ".5",
+      "want": {
+        "kind": "float",
+        "repr": "0.5"
+      }
+    },
+    {
+      "name": "trailing dot float",
+      "input": "5.",
+      "want": {
+        "kind": "float",
+        "repr": "5"
+      }
+    },
+    {
+      "name": "big float",
+      "input": "1e21",
+      "want": {
+        "kind": "float",
+        "repr": "1e+21"
+      }
+    },
+    {
+      "name": "small float",
+      "input": "0.00001",
+      "want": {
+        "kind": "float",
+        "repr": "1e-05"
+      }
+    }
+  ]
+}

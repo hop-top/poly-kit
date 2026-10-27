@@ -115,13 +115,17 @@ type Root struct {
     Auth    AuthIntrospector // defaults to NoAuth
 
     // Non-nil only when the matching option is used.
-    Identity     *identity.Keypair // WithIdentity
-    Mesh         *peer.Mesh        // WithPeers
-    PeerRegistry *peer.Registry    // WithPeers
-    PeerTrust    *peer.TrustManager // WithPeers
-    IdemStore    idemstore.Store   // WithIdempotencyStore
+    Identity  *identity.Keypair // WithIdentity
+    IdemStore idemstore.Store   // WithIdempotencyStore
 }
 ```
+
+The peer mesh, registry and trust manager are not Root fields: they
+live in `hop.top/kit/go/console/cli/peers`. `peers.With(peers.Config{})`
+enables them (it requires `WithIdentity`) and `peers.Of(root)` returns
+them as `Mesh`, `Registry` and `Trust`. `Of` never returns nil; its
+fields are nil when peers are not enabled, so test
+`peers.Of(root).Mesh != nil`.
 
 #### New
 
@@ -130,8 +134,9 @@ func New(cfg Config, opts ...func(*Root)) *Root
 ```
 
 Returns a Root pre-configured to the hop-top CLI contract. The
-variadic options are the `With*` helpers (`WithIdentity`, `WithPeers`,
-`WithIdempotencyStore`, …). `NewE` is the variant that runs
+variadic options are the `With*` helpers (`WithIdentity`,
+`WithIdempotencyStore`, …) and the options of the packages that attach
+to a Root (`service.WithAPI`, `peers.With`, …). `NewE` is the variant that runs
 `Validate` at construction and returns the error instead of exiting.
 
 - The `help` subcommand is registered hidden; `-h`/`--help` is the

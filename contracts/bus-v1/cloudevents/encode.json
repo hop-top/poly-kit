@@ -1,0 +1,469 @@
+{
+  "version": "v1",
+  "description": "kit Event to CloudEvent (ToCloudEvent). `cloudevent` is compared as a JSON value; `text`, when present, is the exact MarshalJSON output (fixed member order, extensions by ascending name, no HTML escaping). `mint_id`: the event has no id, the result id must be a fresh `evt_` TypeID and is removed before comparing. Extension integers in `event` are JSON integers. Failing cases: `error` is the exact text.",
+  "cases": [
+    {
+      "name": "all fields",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "timestamp": "2026-10-25T12:00:00.5Z",
+        "subject": "order-42",
+        "dataschema": "https://example.com/order.json",
+        "payload": {
+          "total": 3
+        },
+        "workspace_id": "ws1",
+        "extensions": {
+          "tenantid": "t1",
+          "seq": 7,
+          "replay": true
+        }
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created",
+        "subject": "order-42",
+        "time": "2026-10-25T12:00:00.5Z",
+        "datacontenttype": "application/json",
+        "dataschema": "https://example.com/order.json",
+        "replay": true,
+        "seq": 7,
+        "tenantid": "t1",
+        "workspaceid": "ws1",
+        "data": {
+          "total": 3
+        }
+      },
+      "text": "{\"specversion\":\"1.0\",\"id\":\"evt_01jg000000e008000000000000\",\"source\":\"kit.checkout\",\"type\":\"kit.test.order.created\",\"subject\":\"order-42\",\"time\":\"2026-10-25T12:00:00.5Z\",\"datacontenttype\":\"application/json\",\"dataschema\":\"https://example.com/order.json\",\"replay\":true,\"seq\":7,\"tenantid\":\"t1\",\"workspaceid\":\"ws1\",\"data\":{\"total\":3}}"
+    },
+    {
+      "name": "no HTML escaping",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "subject": "a<b&c>d",
+        "payload": "<x>"
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created",
+        "subject": "a<b&c>d",
+        "datacontenttype": "application/json",
+        "data": "<x>"
+      },
+      "text": "{\"specversion\":\"1.0\",\"id\":\"evt_01jg000000e008000000000000\",\"source\":\"kit.checkout\",\"type\":\"kit.test.order.created\",\"subject\":\"a<b&c>d\",\"datacontenttype\":\"application/json\",\"data\":\"<x>\"}"
+    },
+    {
+      "name": "missing id is minted",
+      "event": {
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout"
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created"
+      },
+      "mint_id": true
+    },
+    {
+      "name": "no payload: no data, no datacontenttype",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout"
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created"
+      }
+    },
+    {
+      "name": "null payload is no payload",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "payload": null
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created"
+      }
+    },
+    {
+      "name": "zero timestamp: no time",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout"
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created"
+      }
+    },
+    {
+      "name": "timestamp normalised to UTC",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "timestamp": "2026-10-25T08:00:00.120-04:00"
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created",
+        "time": "2026-10-25T12:00:00.12Z"
+      }
+    },
+    {
+      "name": "string payload defaults to application/json",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "payload": "hi"
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created",
+        "datacontenttype": "application/json",
+        "data": "hi"
+      }
+    },
+    {
+      "name": "string payload with text/plain",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "payload": "hi",
+        "datacontenttype": "text/plain"
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created",
+        "datacontenttype": "text/plain",
+        "data": "hi"
+      }
+    },
+    {
+      "name": "binary payload: data_base64, no default content type",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "payload_base64": "3q0="
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created",
+        "data_base64": "3q0="
+      }
+    },
+    {
+      "name": "binary payload with content type",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "payload_base64": "3q0=",
+        "datacontenttype": "application/octet-stream"
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created",
+        "datacontenttype": "application/octet-stream",
+        "data_base64": "3q0="
+      }
+    },
+    {
+      "name": "empty binary payload",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "payload_base64": ""
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created",
+        "data_base64": ""
+      }
+    },
+    {
+      "name": "+json content type takes structured data",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "payload": [
+          1
+        ],
+        "datacontenttype": "application/cloudevents+json; charset=utf-8"
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created",
+        "datacontenttype": "application/cloudevents+json; charset=utf-8",
+        "data": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "json content type is case-insensitive",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "payload": {
+          "a": 1
+        },
+        "datacontenttype": "TEXT/JSON"
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created",
+        "datacontenttype": "TEXT/JSON",
+        "data": {
+          "a": 1
+        }
+      }
+    },
+    {
+      "name": "year 9999 after UTC conversion",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "timestamp": "9999-12-31T22:00:00-01:00"
+      },
+      "ok": true,
+      "cloudevent": {
+        "specversion": "1.0",
+        "id": "evt_01jg000000e008000000000000",
+        "source": "kit.checkout",
+        "type": "kit.test.order.created",
+        "time": "9999-12-31T23:00:00Z"
+      }
+    },
+    {
+      "name": "year past 9999 after UTC conversion",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "timestamp": "9999-12-31T23:00:00-02:00"
+      },
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "non-JSON content type with object payload",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "payload": {
+          "k": 1
+        },
+        "datacontenttype": "text/plain"
+      },
+      "ok": false,
+      "error": "cloudevents: data: non-JSON datacontenttype needs a string or binary payload"
+    },
+    {
+      "name": "non-JSON content type with number payload",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "payload": 1,
+        "datacontenttype": "application/xml"
+      },
+      "ok": false,
+      "error": "cloudevents: data: non-JSON datacontenttype needs a string or binary payload"
+    },
+    {
+      "name": "content type without slash is not JSON",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "payload": [
+          1
+        ],
+        "datacontenttype": "jsonish"
+      },
+      "ok": false,
+      "error": "cloudevents: data: non-JSON datacontenttype needs a string or binary payload"
+    },
+    {
+      "name": "empty source",
+      "event": {
+        "id": "x",
+        "topic": "kit.test.order.created"
+      },
+      "ok": false,
+      "error": "cloudevents: source: required"
+    },
+    {
+      "name": "empty topic",
+      "event": {
+        "id": "x",
+        "source": "s"
+      },
+      "ok": false,
+      "error": "cloudevents: type: required"
+    },
+    {
+      "name": "workspaceid set as extension",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "extensions": {
+          "workspaceid": "x"
+        }
+      },
+      "ok": false,
+      "error": "cloudevents: workspaceid: reserved for the workspace id"
+    },
+    {
+      "name": "kitorigin set as extension",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "extensions": {
+          "kitorigin": "x"
+        }
+      },
+      "ok": false,
+      "error": "cloudevents: kitorigin: reserved for the network origin"
+    },
+    {
+      "name": "kitoffset set as extension",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "extensions": {
+          "kitoffset": "1"
+        }
+      },
+      "ok": false,
+      "error": "cloudevents: kitoffset: reserved for the stream offset"
+    },
+    {
+      "name": "reserved attribute name as extension",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "extensions": {
+          "subject": "x"
+        }
+      },
+      "ok": false,
+      "error": "cloudevents: subject: reserved attribute name"
+    },
+    {
+      "name": "invalid extension name",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "extensions": {
+          "tenant_id": "x"
+        }
+      },
+      "ok": false,
+      "error": "cloudevents: tenant_id: invalid extension name"
+    },
+    {
+      "name": "fractional extension",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "extensions": {
+          "ratio": 1.5
+        }
+      },
+      "ok": false,
+      "error": "cloudevents: ratio: unsupported extension value type"
+    },
+    {
+      "name": "null extension",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "extensions": {
+          "gone": null
+        }
+      },
+      "ok": false,
+      "error": "cloudevents: gone: unsupported extension value type"
+    },
+    {
+      "name": "extension above int32",
+      "event": {
+        "id": "evt_01jg000000e008000000000000",
+        "topic": "kit.test.order.created",
+        "source": "kit.checkout",
+        "extensions": {
+          "n": 2147483648
+        }
+      },
+      "ok": false,
+      "error": "cloudevents: n: integer out of range"
+    }
+  ]
+}

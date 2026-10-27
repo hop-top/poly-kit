@@ -24,6 +24,7 @@ import (
 
 	"hop.top/kit/go/ai/cmdreflect"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
@@ -32,14 +33,14 @@ import (
 )
 
 // ServiceName is the identifier the rpc service registers under. Like
-// [cli.APIServiceName] it is a CLI word, a config key segment
+// [service.APIServiceName] it is a CLI word, a config key segment
 // (services.rpc.*), and a bus payload value at once, so it is stable
 // across releases.
 const ServiceName = "rpc"
 
 // DefaultAddr is the listen address when neither Config.Addr,
 // services.rpc.addr, nor --rpc-addr sets one. It is a loopback address
-// for the same reason [cli.DefaultAPIAddr] is.
+// for the same reason [service.DefaultAPIAddr] is.
 const DefaultAddr = "127.0.0.1:8082"
 
 // DefaultMaxBodyBytes bounds one request message when
@@ -145,7 +146,7 @@ type Config struct {
 // links go/transport/rpc and the protobuf types it registers;
 // go/console/cli itself does not depend on it.
 //
-// Like [cli.WithSocket], the service is NOT enabled by default. Start
+// Like [service.WithSocket], the service is NOT enabled by default. Start
 // it with `<tool> service start rpc`, or set services.rpc.enabled.
 func With(cfg Config) func(*cli.Root) {
 	return with(cfg, nil)
@@ -156,7 +157,7 @@ func with(cfg Config, serverOpts []rpc.ServerOption) func(*cli.Root) {
 	return func(r *cli.Root) {
 		svc := newService(r, &cfg)
 		svc.serverOpts = serverOpts
-		cli.WithService(svc)(r)
+		service.WithService(svc)(r)
 		mountServeFlags(r)
 	}
 }
@@ -165,7 +166,7 @@ func with(cfg Config, serverOpts []rpc.ServerOption) func(*cli.Root) {
 // flags go on (the deprecated root `serve` shares them), or nil before
 // one is mounted.
 func serveCmd(r *cli.Root) *cobra.Command {
-	return r.ServeCommand()
+	return service.ServeCommand(r)
 }
 
 // mountServeFlags puts --rpc-addr on the serve parent, the way
@@ -188,7 +189,7 @@ type rpcService struct {
 	serverOpts []rpc.ServerOption
 	// tls is the listener's resolved services.rpc.tls and auth.mode,
 	// set by validate and again by Bind.
-	tls *cli.ServeTLS
+	tls *service.ServeTLS
 }
 
 var (
@@ -213,8 +214,8 @@ func newService(root *cli.Root, cfg *Config) *rpcService {
 			// On error these refuse every call. Validate has already
 			// refused the configuration that errs here, so this is
 			// unreachable in practice.
-			shared, _ := cli.ServeBridgeOptionsExposed(root, ServiceName, cli.ServeExposure{
-				Loopback:         cli.IsLoopbackAddr(s.addr()),
+			shared, _ := service.ServeBridgeOptionsExposed(root, ServiceName, service.ServeExposure{
+				Loopback:         service.IsLoopbackAddr(s.addr()),
 				InsecureNoPolicy: s.optIn(subkeyInsecureNoPolicy, s.cfg.InsecureNoPolicy),
 			})
 			return shared
@@ -286,7 +287,7 @@ func (s *rpcService) auth() api.AuthFunc {
 
 // resolveTLS resolves services.rpc.tls and auth.mode into s.tls.
 func (s *rpcService) resolveTLS() error {
-	t, err := cli.ResolveServeTLS(s.root, ServiceName)
+	t, err := service.ResolveServeTLS(s.root, ServiceName)
 	if err != nil {
 		return err
 	}
@@ -307,8 +308,8 @@ func (s *rpcService) codeMaxBodyBytes() int64 {
 // chain kit's listeners share: its blocks are services.rpc.*, its
 // readiness the service's, and its refusals Connect errors in the
 // caller's protocol.
-func (s *rpcService) httpListener() cli.ServeHTTPListener {
-	return cli.ServeHTTPListener{
+func (s *rpcService) httpListener() service.ServeHTTPListener {
+	return service.ServeHTTPListener{
 		Service:      ServiceName,
 		Addr:         s.addr(),
 		Ready:        s.Ready,
@@ -321,7 +322,7 @@ func (s *rpcService) httpListener() cli.ServeHTTPListener {
 // rpcCORS is what a browser client of Connect or gRPC-Web needs from
 // the cors block: the methods, request headers and response headers
 // the Connect project lists for its protocols.
-var rpcCORS = cli.ServeCORS{
+var rpcCORS = service.ServeCORS{
 	Methods:       connectcors.AllowedMethods(),
 	AllowHeaders:  connectcors.AllowedHeaders(),
 	ExposeHeaders: connectcors.ExposedHeaders(),
@@ -332,7 +333,7 @@ var rpcCORS = cli.ServeCORS{
 // message led by the stable code. PermissionDenied for the Host and
 // Origin checks, ResourceExhausted for the body limit
 // (serve-lifecycle.md §"Refusals"). The refusal is decided before
-// anything reads the body; the stall guard cli.ConfigureServeHTTP
+// anything reads the body; the stall guard service.ConfigureServeHTTP
 // installs gives a body still arriving a bounded wait before the
 // refusal goes out, and ends the connection after it when the body
 // has not ended (api.ReleaseStalledOnShutdown), so a client stalled
@@ -357,7 +358,7 @@ func (s *rpcService) validate() error {
 	if err := s.resolveTLS(); err != nil {
 		return err
 	}
-	if !cli.IsLoopbackAddr(addr) {
+	if !service.IsLoopbackAddr(addr) {
 		if s.auth() == nil && !s.optIn(subkeyInsecureRemote, s.cfg.InsecureRemote) {
 			return fmt.Errorf(
 				"addr: %q is not a loopback address and the rpc service has no authentication; "+
@@ -368,10 +369,10 @@ func (s *rpcService) validate() error {
 		}
 	}
 	// The HTTP-plane blocks under services.rpc (and services.all).
-	if err := cli.ValidateServeHTTPListener(s.root, s.httpListener()); err != nil {
+	if err := service.ValidateServeHTTPListener(s.root, s.httpListener()); err != nil {
 		return err
 	}
-	return cli.ValidateServeBridge(s.root, ServiceName)
+	return service.ValidateServeBridge(s.root, ServiceName)
 }
 
 // rpcTransport is the [transportsvc.Transport] behind the service: its
@@ -420,7 +421,7 @@ func (t *rpcTransport) Serve(ctx context.Context, _ transportsvc.Invoker) error 
 	withholdUnserved(b, t.svc.root, cmdsurface.SurfaceRPC)
 
 	l := t.svc.httpListener()
-	set, err := cli.ResolveServeHTTPListener(t.svc.root, l)
+	set, err := service.ResolveServeHTTPListener(t.svc.root, l)
 	if err != nil {
 		_ = ln.Close()
 		return err
@@ -433,7 +434,7 @@ func (t *rpcTransport) Serve(ctx context.Context, _ transportsvc.Invoker) error 
 	// The HTTP-plane chain every kit listener shares, slots 1-11, in
 	// front of the Commands handler; authentication (12) is the
 	// interceptor mountOptions installs.
-	handler, err := cli.ServeHTTPHandler(t.svc.root, l,
+	handler, err := service.ServeHTTPHandler(t.svc.root, l,
 		protectedResourceDocument(t.svc.tls.ProtectedResource(), liftStreamWriteDeadline(rs)))
 	if err != nil {
 		_ = ln.Close()
@@ -452,7 +453,7 @@ func (t *rpcTransport) Serve(ctx context.Context, _ transportsvc.Invoker) error 
 	// read-header default.
 	fallback := api.ServerTimeoutsOf(srv)
 	fallback.ReadHeader = api.DefaultReadHeaderTimeout
-	if err := cli.ConfigureServeHTTP(t.svc.root, ServiceName, srv, fallback); err != nil {
+	if err := service.ConfigureServeHTTP(t.svc.root, ServiceName, srv, fallback); err != nil {
 		cancelBase()
 		_ = ln.Close()
 		return err
@@ -508,7 +509,7 @@ func (t *rpcTransport) Close(ctx context.Context) error {
 // own read limit and per-message compression, set from the body_limit
 // and compression blocks; then the adopter's interceptors, inside
 // them all.
-func (t *rpcTransport) mountOptions(b *cmdsurface.Bridge, set cli.ServeHTTPSettings) []cmdsurface.RPCOption {
+func (t *rpcTransport) mountOptions(b *cmdsurface.Bridge, set service.ServeHTTPSettings) []cmdsurface.RPCOption {
 	opts := []cmdsurface.RPCOption{
 		cmdsurface.WithRPCCallMeta(rpcCallMeta),
 		cmdsurface.WithRPCAuthenticated(func(ctx context.Context, _ connect.AnyRequest) bool {

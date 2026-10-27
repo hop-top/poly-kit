@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"hop.top/kit/go/transport/cmdsurface"
+	"hop.top/kit/go/console/cli/cmdmeta"
 )
 
 // SetCacheTTL declares that the served result cache may answer cmd, a
@@ -22,18 +22,18 @@ func SetCacheTTL(cmd *cobra.Command, ttl time.Duration) {
 	if cmd.Annotations == nil {
 		cmd.Annotations = make(map[string]string)
 	}
-	cmd.Annotations[cmdsurface.AnnotationCacheTTL] = ttl.String()
+	cmd.Annotations[cmdmeta.KeyCacheTTL] = ttl.String()
 }
 
 // checkCacheTTL reports a kit/cache-ttl annotation Root.Validate
 // refuses: a value that is not a duration greater than zero, or one on
 // a command not declared read, whose results are never cached.
 func checkCacheTTL(cmd *cobra.Command) (string, bool) {
-	raw, ok := cmd.Annotations[cmdsurface.AnnotationCacheTTL]
+	raw, ok := cmd.Annotations[cmdmeta.KeyCacheTTL]
 	if !ok {
 		return "", false
 	}
-	if _, err := cmdsurface.ParseCacheTTL(raw); err != nil {
+	if _, err := cmdmeta.ParseCacheTTL(raw); err != nil {
 		return fmt.Sprintf("%s=%q", cmd.CommandPath(), raw), true
 	}
 	if s, _ := GetSideEffect(cmd); s != SideEffectRead {

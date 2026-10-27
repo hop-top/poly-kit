@@ -3,24 +3,29 @@
 ## What it answers
 
 How do in-process components publish and subscribe to named events under a validated four-segment topic
-grammar? Service lifecycle events are emitted by `hop_top_kit::serve`; cross-process transport (the Go
-`NetworkAdapter` and SQLite adapter) is not ported.
+grammar? Service lifecycle events are emitted by `hop_top_kit::serve`; peers across processes link over
+WebSocket through `network/` (feature `bus-network`); the SQLite adapter is out of scope; see
+[rust-bus-parity.md](../../../../../docs/contributors/architecture/rust-bus-parity.md).
 
 ## Use it when
 
-- one component must react to another's state change without a direct call → `Bus::subscribe` with a
-  pattern, `Bus::publish` an `Event`
-- handlers register in one place and publishers live elsewhere → wrap in `SharedBus`, clone it
+- one component must react to another's state change without a direct call → `DynBus::subscribe` with a
+  pattern, `DynBus::publish` an `Event`; clones share one bus, so register and publish anywhere
 - an adopter rebrands topics under its own prefix → `prefix_topics(prefix, actions)`, which validates tense
-- a publish must fail on a malformed topic rather than warn → `Bus::builder().enforce(Mode::Strict)`
+- a publish must fail on a malformed topic rather than warn → `DynBus::builder().enforce(Mode::Strict)`
+- a handler must not hold up the publisher → `DynBus::subscribe_async` with a `Spawn` for your executor
+- the transport must be swappable → `DynBus::builder().with_adapter(a)`; `MemoryAdapter` is in-process
+- processes (Go or Rust) must share events → `DynBus::builder().with_network(addrs)` or `NetworkAdapter`
+- you need only the in-memory core, no layers → `Bus`, or `SharedBus` to share it
+- events must also reach a log → `TeeBus` with `JsonlSink` or `StdoutSink`; env: `KIT_BUS_SINK=jsonl`
 
 ## Quick start
 
 ```rust
-use hop_top_kit::bus::{Bus, Event, Mode};
+use hop_top_kit::bus::{DynBus, Event, Mode};
 use serde_json::json;
 
-let mut bus = Bus::builder().enforce(Mode::Strict).build();
+let bus = DynBus::builder().enforce(Mode::Strict).build();
 bus.subscribe("crm.sales.deal.*", |e| {
     println!("{} from {}", e.topic, e.source);
     Ok(())
@@ -40,17 +45,32 @@ bus.publish(&event).unwrap();
 - Subscribe patterns: `*` matches exactly one segment, `#` matches zero or more trailing segments and must
   be last.
 - `Mode` defaults to `Warn` (validate, report, still deliver); `Strict` rejects; `Off` skips validation.
-- Dispatch is synchronous: handlers run inline in subscription order on the publisher's thread and the
-  first handler error vetoes the publish. `Bus` is `Rc`-backed and `!Send`.
-- `publish` after `close` is `BusError::Closed`.
-- Parity: [event-topics.md](../../../../../docs/contracts/event-topics.md); the topic grammar is the
-  parity obligation, there is no loaded fixture row.
+- Sync dispatch: handlers run inline in subscription order on the publisher's thread and the first
+  handler error vetoes the publish. `Bus` and `SharedBus` are `Send + Sync`, handlers must be too.
+- Async (`SharedBus::subscribe_async`, Go's `SubscribeAsync`): launched in subscription order after every
+  sync handler succeeded, never failing a publish. No runtime is pulled in: a `Spawn` puts each task on your
+  executor, e.g. `handle.spawn(t)` on a captured `tokio::runtime::Handle` (bare `tokio::spawn` panics off
+  the runtime) or `wasm_bindgen_futures::spawn_local`. At most `max_async` run at once (Go's
+  `WithMaxAsync`, default 256); a publish blocks while the pool is full. Details, wasm32 included, are in
+  the `async_dispatch` module docs.
+- `Context` is the Rust form of Go's `context.Context`: cancellation, a deadline, typed values and Go's
+  error texts. Handlers get it unread, as in Go. No deadline on `wasm32-unknown-unknown` (no clock).
+- `SharedBus::unsubscribe` waits until no in-flight publish can still call that handler, as Go's closure
+  always locks, and admits no new async task. `close_ctx(&ctx)` waits for sync publishes with no deadline,
+  then for async tasks until `ctx` is done (Go's `ctx.Err()` text; the bus stays closed). On
+  `wasm32-unknown-unknown` it returns `BusError::NotDrained` instead of blocking.
+- `DynBus` layers in Go's `New` order: adapter behind topic enforcement (else the in-memory `SharedBus`),
+  then network (`bus-network`; without it `with_network` panics on any address), then env sinks.
+- Sinks drain after a successful publish; errors go to the reporter. Output byte-equal to Go's (`contracts/bus-v1/sinks`);
+  bad `KIT_BUS_SINK` → `set_env_sink_err_reporter`, skipped; none on wasm32. After close: subscribe no-ops, publish is `BusError::Closed`.
+- Re-entrancy: a handler may publish, subscribe, unsubscribe and close on the `SharedBus` dispatching to
+  it; Go deadlocks on all but the nested publish. Two handlers closing at once deadlock, as in Go.
+- Parity: [event-topics.md](../../../../../docs/contracts/event-topics.md) (topic grammar).
 
 ## Neighbours
 
 - `hop_top_kit::serve`: publishes the six `kit.serve.*` transitions through its own `Publisher` trait
-- `hop_top_kit::bus::qualifiers`: `reason`, `mechanism`, `property`, `circumstance` lifted from a payload by
-  `qualifiers_from`
+- `hop_top_kit::bus::qualifiers`: `reason`, `mechanism`, `property`, `circumstance` from a payload
 
 ## See also
 

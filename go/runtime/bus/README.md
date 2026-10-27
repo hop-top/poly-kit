@@ -5,9 +5,9 @@
 How does one package tell the rest of the process that something
 happened, without knowing who listens? In-process publish/subscribe
 with MQTT-style wildcards (`*` one segment, `#` zero or more trailing
-segments); optional adapters fan events out to SQLite or to peer
-processes. Wrong package for request/response (call the function) and
-for durable cross-process queueing (`go/runtime/job`).
+segments); optional adapters fan events out to SQLite (`go/runtime/bus/sqlite`,
+`sqlite.NewAdapter` via `WithAdapter`) or to peer processes. Wrong package for
+request/response (call the function) or durable cross-process queueing (`go/runtime/job`).
 
 ## Use it when
 
@@ -16,6 +16,7 @@ for durable cross-process queueing (`go/runtime/job`).
 - events must reach a log, a file or a human → `bus.NewTeeBus` with a `bus.Sink` (`JSONLSink`, `StdoutSink`, or `go/runtime/notify`)
 - you mint topics for a new emitter → `bus.TopicOf(...).Action(...)`, or `bus.PrefixTopics` for a rebrandable prefix
 - an event needs why / how / with-what / during-what → embed `bus.Qualifiers` in the payload
+- an event must leave as a CloudEvent → `bus.ToCloudEvent` / `bus.MarshalCloudEvent`; peers speak it with `WithFrameFormat(bus.FrameCloudEvents)`
 
 ## Quick start
 
@@ -56,6 +57,14 @@ Verified by `example_test.go` in this directory.
 - Qualifiers (`Reason`, `Mechanism`, `Property`, `Circumstance`) travel
   in the payload, never in the topic string.
 - After `Close`, `Publish` returns `ErrBusClosed`.
+- `NewEvent` mints an `evt_` TypeID. CloudEvents: `type` = topic,
+  `workspaceid` = `WorkspaceID`, extensions `[a-z0-9]+` (string, bool,
+  int32). Network frames default to the kit format;
+  `WithFrameFormat(FrameCloudEvents)` sends CloudEvents (origin in
+  `kitorigin`), kit to peers that do not advertise it. Both are read.
+- Network streams (auth on both sides): ordered per sender, offsets
+  via `StreamPositionFrom`, remote subscribe, resume or
+  `kit.runtime.stream.invalidated`; see [bus network streams](../../../docs/contributors/architecture/bus-streams.md).
 
 ## Neighbours
 

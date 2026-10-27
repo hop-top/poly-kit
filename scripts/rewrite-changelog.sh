@@ -117,7 +117,7 @@ entry=$(echo "$entry" | awk '
 contributors=""
 if command -v gh >/dev/null 2>&1; then
   LOGIN_TMP=$(mktemp)
-  trap "rm -f '$LOGIN_TMP'" EXIT
+  trap 'rm -f "$LOGIN_TMP"' EXIT
   logins=""
   if gh api "repos/${REPO}/compare/${compare_ref}" \
        --jq '[.commits[].author.login // empty] | unique | .[]' \

@@ -1,0 +1,34 @@
+{
+  "version": "v1",
+  "description": "KIT_BUS_SINK / KIT_BUS_SINK_PATH values that skip the env sink. env_reports.txt holds the reporter lines they produce, in order; a case may report nothing.",
+  "cases": [
+    {
+      "kind": "jsonl",
+      "path": ""
+    },
+    {
+      "kind": " JSONL ",
+      "path": "   "
+    },
+    {
+      "kind": "parquet",
+      "path": "x"
+    },
+    {
+      "kind": " Csv ",
+      "path": ""
+    },
+    {
+      "kind": "\"q\"\u0001é",
+      "path": ""
+    },
+    {
+      "kind": "   ",
+      "path": "x"
+    },
+    {
+      "kind": "",
+      "path": ""
+    }
+  ]
+}

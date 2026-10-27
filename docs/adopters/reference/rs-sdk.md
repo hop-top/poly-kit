@@ -732,7 +732,7 @@ Two validators exist, deliberately, with different strictness:
 
 | Function | Contract | Used by |
 |----------|----------|---------|
-| `validate` | 4 segments matching `^[a-z][a-z0-9_]*$`, total length <= 128, wildcards rejected. Does not check verb tense. | `Bus::publish`, per the configured `Mode`. |
+| `validate` | 4 segments matching `^[a-z][a-z0-9_]*$`, total length <= 128, wildcards rejected. Does not check verb tense. | `publish`, per the configured `Mode`. |
 | `validate_topic` | Additionally requires a past-tense action segment (ends in `ed`, or appears in `PAST_TENSE_WHITELIST`). | `prefix_topics`, so misconfigured topic maps fail during adopter wiring. |
 
 Subscribe patterns keep wildcard support: `*` matches exactly one
@@ -741,10 +741,10 @@ segment, `#` matches zero or more trailing segments and must come last.
 ### Quick start
 
 ```rust
-use hop_top_kit::bus::{Bus, Event, Mode};
+use hop_top_kit::bus::{DynBus, Event, Mode};
 use serde_json::json;
 
-let mut bus = Bus::builder().enforce(Mode::Strict).build();
+let bus = DynBus::builder().enforce(Mode::Strict).build();
 bus.subscribe("crm.sales.deal.*", |e| {
     println!("{} from {}", e.topic, e.source);
     Ok(())
@@ -752,40 +752,151 @@ bus.subscribe("crm.sales.deal.*", |e| {
 
 let event = Event::new("crm.sales.deal.created", "crm", json!({"id": 1}));
 bus.publish(&event).unwrap();
+bus.close().unwrap();
 ```
 
-`Bus::subscribe` needs `&mut self` while `publish` needs `&self`. When
-handlers are registered in one place and events published in another,
-wrap the bus in `SharedBus`, which hands out cheap clones over a single
-`RefCell`.
+`DynBus` is the front door, the counterpart of Go's `bus.New`. Every
+method takes `&self`, and clones share one bus, so handlers can be
+registered in one place and events published in another. `DynBus::new()`
+is `New()` with no options. `Bus` and `SharedBus` remain as the
+in-memory building block underneath, with no adapter, network or sink
+layers.
 
-### Dispatch is synchronous
+### Adapter seam
 
-Delivery runs inline on the publisher's thread, in subscription order,
-and the first handler error vetoes the publish. The Go package's
-async-handler path — goroutine pool, bounding semaphore, `WaitGroup`
-drained by `Close` under a deadline — is **not** ported. No Rust consumer
-needs concurrent delivery, and a faithful port would make an async
-runtime a hard dependency of this feature. See the `bus::mem` module
-docs for the decision in full.
+`Adapter` is the transport trait, Go's `Adapter` interface:
+`publish`, `subscribe`, `subscribe_async`, `unsubscribe` and `close`.
+`MemoryAdapter` is the in-process implementation, as Go's
+`NewMemoryAdapter`. `DynBus` implements `Adapter` too.
 
-Consequence: a slow handler blocks the publisher, and `publish` returns
-only once every matching subscriber has run. Handlers that want to defer
-work should spawn a task themselves.
+```rust
+use hop_top_kit::bus::{DynBus, MemoryAdapter};
+
+let bus = DynBus::builder().with_adapter(MemoryAdapter::new()).build();
+```
+
+`build()` stacks the layers in Go's `New` order: the adapter behind
+topic enforcement (or, with none, the in-memory bus), then the network
+layer, then the env sinks. With an adapter, `max_async` does not apply,
+as in Go.
+
+`with_network(addrs)` is Go's `WithNetwork` (feature `bus-network`):
+`build()` dials each address once and keeps retrying a failed one in
+the background; `network_options(...)` is Go's `WithNetworkOption`.
+Without the feature it panics on any address, so a bus can't silently
+stay local; an empty list is a no-op.
+
+### Dispatch
+
+Sync handlers run inline on the publisher's thread, in subscription
+order, and the first handler error vetoes the publish. Async handlers
+(`subscribe_async`, Go's `SubscribeAsync`) run after every sync handler
+succeeds, on a `Spawn` you supply for your executor, from a pool sized
+by `max_async` (default 256). `close_ctx` drains them until its context
+is done. No async runtime is pulled in; see
+[rust-bus-parity.md](../../contributors/architecture/rust-bus-parity.md).
+
+### Network
+
+`bus::network::NetworkAdapter` is Go's `NetworkAdapter` over a native
+WebSocket: local events go to linked peers, peer events are published
+locally, and origin ids stop loops. Go and Rust peers mix in either
+role.
+
+| Feature | Adds |
+|---------|------|
+| `bus-network` | the adapter: `bus` + `netpolicy`, `tokio` (rt, net, time, sync, macros), `tokio-tungstenite`, `futures-util`, `getrandom`, `rustls` (ring provider), `rustls-native-certs` |
+| `bus-network-axum` | `NetworkAdapter::axum_handler()`: `axum`, `hyper`, `hyper-util` |
+| `bus-network-webpki-roots` | Mozilla's roots (`webpki-roots`) added to the default TLS roots |
+
+```rust
+use hop_top_kit::bus::network::{NetworkAdapter, NetworkOptions};
+use hop_top_kit::bus::{Context, DynBus};
+
+let bus = DynBus::new();
+let net = NetworkAdapter::new(bus.clone(), NetworkOptions::new().relay(true));
+let addr = net.listen("127.0.0.1:0")?;              // serve peers
+net.connect(&Context::background(), "ws://hub:8080/bus")?; // or dial one
+```
+
+- **Runtime.** The adapter's I/O runs on one shared current-thread tokio
+  runtime, on its own `kit-bus-network` thread; callers need no runtime.
+  `connect`, `disconnect`, `close` and `listen` block the calling thread
+  and panic when called on that runtime; from async code use
+  `connect_async`, `disconnect_async` and `close_async`. Bus handlers
+  run for inbound events on tokio's blocking pool. `TokioSpawn` is a
+  `Spawn` for `subscribe_async` on your own tokio runtime.
+- **TLS.** `wss://` uses rustls on the ring provider with the
+  platform's roots, as Go's default transport does. Android has no root
+  store rustls can read: pass `NetworkOptions::tls_config(config)` with
+  an `Arc<rustls::ClientConfig>` (from `rustls-platform-verifier`, or
+  your CA in a `RootCertStore`), or enable `bus-network-webpki-roots`.
+  `ring` compiles C for the target (Xcode for iOS, the NDK for Android).
+- **Events.** `kit.runtime.link.connected`, `kit.runtime.link.disconnected`
+  and `kit.runtime.stream.invalidated` are published locally as Go
+  publishes them; `NetworkOptions::error_func` gets failed handshakes.
+- Accepting: `listen`, `accept_upgraded` after `check_upgrade`, or the
+  axum handler. A second inbound link under an address already linked
+  is refused with 1000 `duplicate`; behind a proxy, key links by the
+  client's own address.
+- Not yet ported: stream semantics (remote subscribe, resume, outbox),
+  CloudEvents outbound frames, and the browser transport.
 
 ### Not ported
 
-The Go package's `NetworkAdapter` (WebSocket peer relay, reconnect and
-backoff, star topology, auth handshake) and its SQLite adapter are
-deliberately absent, as are kv's etcd/TiDB backends and blob's S3
-backend. No Rust consumer needs them today, and unported code is a
-maintenance liability. Should cross-process eventing become a real
-requirement, prefer a Unix-socket or SQLite-backed adapter over
-reimplementing the WebSocket star topology.
+The Go package's SQLite bus adapter is deliberately absent, as are kv's
+etcd/TiDB backends and blob's S3 backend. See
+[rust-bus-parity.md](../../contributors/architecture/rust-bus-parity.md).
 
 ### Cross-references
 
 - Go canonical implementation:
   [`go/runtime/bus/README.md`](../../../go/runtime/bus/README.md).
+
+## Config
+
+Layered YAML configuration, feature-gated. Ports Go `go/core/config`:
+`load` merges defaults, system, user and project files, extra `-c`
+paths, an env override hook and `-c key=value` overrides into a typed
+serde struct with yaml.v3's merge rules; `get`, `list`, `set`,
+`set_value` and `unset` read and write single keys; `Reloadable` hot
+reloads with an immutability veto and bus events.
+
+```toml
+[dependencies]
+hop-top-kit = { version = "0.5.0-alpha.2", features = ["config"] } # x-release-please-version
+```
+
+| Feature | Adds |
+|---------|------|
+| `config` | the module (builds on `bus`); YAML via `saphyr-parser` |
+| `config-signal` | `Reloadable::watch_signal` on tokio Unix signals |
+| `config-pkl` | PKL schema parsing, validation, completion, `resolve` via the `pkl` binary |
+
+Merge, precedence, scalar typing, overrides and edits are pinned by the
+[`config-v1`](../../../contracts/config-v1/README.md) corpus
+(`make test-parity-config`). The pure parts build on wasm32; files,
+paths, writes and reload do not.
+
+### Differences from Go
+
+- Writes splice only the targeted entry: values, kept comments and key
+  order match Go, bytes do not (Go re-emits the document). An edit that
+  cannot keep every comment and anchor outside the entry is refused
+  with `ErrorKind::EditUnsupported`, file untouched.
+- No viper: `EnvLookup` (`bind_env`, `seed_defaults`, `sync`,
+  `Options::env_lookup`) keeps viper's lookup order and implements the
+  bus's `ConfigGetter`, as does a loaded `Value`.
+- Reload mutability comes from the `ReloadFields` trait, not
+  `reload:"true"` tags; pin each list with `check_reload_fields` in a
+  test. Config structs derive `Default` with `#[serde(default)]`.
+- `watch_signal` is called on an `Arc<Reloadable<T>>` and reloads on
+  tokio's blocking pool.
+- Timestamps stay text; decode errors name Rust types.
+- Not ported yet: the PKL wizard, `RunWizard` and the config command
+  (they need a console wizard and a CLI root), and the rest of
+  `go/core/xdg` beyond home and config home.
+
+The full list is in the `hop_top_kit::config` module docs.
 
 <!-- release: track hop-top-cite 0.1.0 -->

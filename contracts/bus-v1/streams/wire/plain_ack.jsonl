@@ -1,0 +1,5 @@
+{"version":"v1","description":"A dialer that sends no caps gets the exact pre-streams ack and kit frames without offsets.","setup":{"log_size":8,"publish":[]}}
+{"send":{"auth":"open"}}
+{"recv":{"type":"auth_ok"},"bytes":"{\"type\":\"auth_ok\"}"}
+{"publish":{"id":"evt_01jg000000e008000000000001","topic":"acme.crm.deal.created","source":"crm","timestamp":"2026-10-25T12:00:01Z","payload":{"n":1}}}
+{"recv":{"id":"evt_01jg000000e008000000000001","topic":"acme.crm.deal.created","source":"crm","timestamp":"2026-10-25T12:00:01Z","payload":{"n":1},"origin":"hub"}}

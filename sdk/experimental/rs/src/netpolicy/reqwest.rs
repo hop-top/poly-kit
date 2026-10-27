@@ -1,0 +1,294 @@
+//! The reqwest half of the policy: [`GuardedClient`], the construction
+//! path every user-traffic request in this crate is issued through, and
+//! the URL stripping its errors share with `api`. Gated on `api`.
+
+use thiserror::Error;
+
+use super::core::{NetPolicy, OfflineError};
+
+impl NetPolicy {
+    /// Whether a request to `url` is permitted under this policy.
+    /// Loopback destinations are always permitted; a URL with no host
+    /// is refused while offline.
+    ///
+    /// The host is judged as Go's `URL.Host`: with `:port` when the URL
+    /// names one. The url crate drops a scheme's default port, so
+    /// `http://[::1]:80/` is judged as `[::1]`; both are loopback.
+    pub fn allows(&self, url: &reqwest::Url) -> bool {
+        !self.is_offline()
+            || url.host_str().is_some_and(|h| match url.port() {
+                Some(port) => self.allows_host(&format!("{h}:{port}")),
+                None => self.allows_host(h),
+            })
+    }
+}
+
+/// Errors surfaced by [`GuardedClient`]. Refusals are a distinct,
+/// matchable variant; everything else is reqwest's own error, with its
+/// URL stripped the same way as a refusal's.
+#[derive(Debug, Error)]
+pub enum NetError {
+    /// The request was refused by the offline policy.
+    #[error(transparent)]
+    Offline(#[from] OfflineError),
+    /// The request was attempted and reqwest failed it (or rejected it
+    /// while building, e.g. an unsupported scheme).
+    ///
+    /// reqwest quotes the request URL in its Display and Debug output,
+    /// so the guard replaces it before the error is returned:
+    /// `reqwest::Error::url` holds scheme, host (with port) and path
+    /// only. Query, fragment and userinfo are gone and cannot be
+    /// recovered from the error, as they may carry credentials.
+    #[error(transparent)]
+    Transport(#[from] reqwest::Error),
+}
+
+impl NetError {
+    /// The offline refusal, if this error is one. The analogue of
+    /// `errors.Is(err, netpolicy.ErrOffline)`.
+    pub fn as_offline(&self) -> Option<&OfflineError> {
+        match self {
+            NetError::Offline(e) => Some(e),
+            NetError::Transport(_) => None,
+        }
+    }
+
+    /// Whether this error is an offline refusal.
+    pub fn is_offline(&self) -> bool {
+        self.as_offline().is_some()
+    }
+}
+
+/// Render `url` as scheme, host (with port) and path only: enough to say
+/// where a request was going, nothing it carried. Query, fragment and
+/// userinfo are dropped because they may hold credentials (an API key
+/// param, basic-auth userinfo). An opaque URL (`mailto:`) keeps its
+/// scheme alone. Mirrors Go's `netpolicy` refusal; also names the
+/// destination of a failed request in `api`'s transport errors.
+pub(crate) fn destination(url: &reqwest::Url) -> String {
+    stripped(url).to_string()
+}
+
+/// [`destination`] as a URL, for handing back on a reqwest error.
+fn stripped(url: &reqwest::Url) -> reqwest::Url {
+    if url.cannot_be_a_base() {
+        // A bare scheme always parses.
+        return format!("{}:", url.scheme())
+            .parse()
+            .expect("scheme-only URL");
+    }
+    let mut d = url.clone();
+    d.set_query(None);
+    d.set_fragment(None);
+    // Both fail only on URLs that cannot carry userinfo at all.
+    let _ = d.set_username("");
+    let _ = d.set_password(None);
+    d
+}
+
+/// Swap the URL on a reqwest error for its [`stripped`] form, so the
+/// error's Display, Debug and `url()` name where the request was going
+/// and nothing it carried.
+fn scrub(e: reqwest::Error) -> reqwest::Error {
+    match e.url().map(stripped) {
+        Some(url) => e.with_url(url),
+        None => e,
+    }
+}
+
+/// The port's shared HTTP client: the construction path through which
+/// every user-traffic reqwest request in this crate is issued (the
+/// telemetry sink's own client is the deliberate exception).
+///
+/// It deliberately does not expose its inner `reqwest::Client`. Handing
+/// one out would let a caller send a request that never reaches
+/// [`GuardedClient::execute`], which is the only place the policy is
+/// applied.
+///
+/// Errors it returns never carry the request's query, fragment or
+/// userinfo: see [`NetError::Transport`]. A `reqwest::Response` it hands
+/// back is reqwest's own, so its `url()` and the errors of its body
+/// methods (`json`, `text`, `bytes`) still carry the full URL; callers
+/// that surface those must strip it themselves.
+#[derive(Debug, Clone)]
+pub struct GuardedClient {
+    inner: reqwest::Client,
+    policy: NetPolicy,
+}
+
+impl GuardedClient {
+    /// Build a client under `policy` with reqwest's defaults.
+    pub fn new(policy: NetPolicy) -> Result<Self, reqwest::Error> {
+        Self::build(policy, reqwest::Client::builder())
+    }
+
+    /// Build a client under `policy` from a configured
+    /// `reqwest::ClientBuilder`, for callers that need timeouts or other
+    /// transport settings. The policy is applied regardless of how the
+    /// builder was configured.
+    pub fn build(
+        policy: NetPolicy,
+        builder: reqwest::ClientBuilder,
+    ) -> Result<Self, reqwest::Error> {
+        Ok(Self {
+            inner: builder.build()?,
+            policy,
+        })
+    }
+
+    /// The policy this client enforces.
+    pub fn policy(&self) -> NetPolicy {
+        self.policy
+    }
+
+    /// Start a request. The returned builder is reqwest's own, so the
+    /// full builder surface stays available; it must be handed back to
+    /// [`RequestBuilder::send`] (or [`GuardedClient::execute`]) to be
+    /// issued.
+    pub fn request(&self, method: reqwest::Method, url: impl reqwest::IntoUrl) -> RequestBuilder {
+        RequestBuilder {
+            client: self.clone(),
+            inner: self.inner.request(method, url),
+        }
+    }
+
+    /// Start a GET request.
+    pub fn get(&self, url: impl reqwest::IntoUrl) -> RequestBuilder {
+        self.request(reqwest::Method::GET, url)
+    }
+
+    /// Start a POST request.
+    pub fn post(&self, url: impl reqwest::IntoUrl) -> RequestBuilder {
+        self.request(reqwest::Method::POST, url)
+    }
+
+    /// Issue `req`, refusing it when the policy forbids the
+    /// destination. This is the chokepoint: no request leaves this
+    /// crate without passing through here. A failure's URL is stripped
+    /// to scheme, host and path (see [`NetError::Transport`]).
+    pub async fn execute(&self, req: reqwest::Request) -> Result<reqwest::Response, NetError> {
+        if !self.policy.allows(req.url()) {
+            return Err(OfflineError {
+                method: req.method().to_string(),
+                url: destination(req.url()),
+            }
+            .into());
+        }
+        self.inner
+            .execute(req)
+            .await
+            .map_err(|e| NetError::Transport(scrub(e)))
+    }
+}
+
+/// A request under construction against a [`GuardedClient`].
+///
+/// Wraps reqwest's builder so the only way to issue the request is
+/// [`RequestBuilder::send`], which routes through the guard.
+#[derive(Debug)]
+pub struct RequestBuilder {
+    client: GuardedClient,
+    inner: reqwest::RequestBuilder,
+}
+
+impl RequestBuilder {
+    /// Set a header. Takes the string forms rather than reqwest's full
+    /// generic bound, which would require a direct `http` dependency
+    /// this crate does not otherwise carry.
+    pub fn header(self, key: &str, value: &str) -> Self {
+        Self {
+            inner: self.inner.header(key, value),
+            ..self
+        }
+    }
+
+    /// Set a bearer authorization header.
+    pub fn bearer_auth<T: std::fmt::Display>(self, token: T) -> Self {
+        Self {
+            inner: self.inner.bearer_auth(token),
+            ..self
+        }
+    }
+
+    /// Set the request body.
+    pub fn body<T: Into<reqwest::Body>>(self, body: T) -> Self {
+        Self {
+            inner: self.inner.body(body),
+            ..self
+        }
+    }
+
+    /// Serialize `json` as the JSON request body.
+    pub fn json<T: serde::Serialize + ?Sized>(self, json: &T) -> Self {
+        Self {
+            inner: self.inner.json(json),
+            ..self
+        }
+    }
+
+    /// Append serialized `query` to the URL's query string.
+    pub fn query<T: serde::Serialize + ?Sized>(self, query: &T) -> Self {
+        Self {
+            inner: self.inner.query(query),
+            ..self
+        }
+    }
+
+    /// Issue the request through the guard.
+    pub async fn send(self) -> Result<reqwest::Response, NetError> {
+        let req = self.inner.build().map_err(scrub)?;
+        self.client.execute(req).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn policy_allows_loopback_while_offline() {
+        let p = NetPolicy::offline();
+        assert!(p.allows(&"http://127.0.0.1:8080/x".parse().unwrap()));
+        assert!(p.allows(&"http://localhost/x".parse().unwrap()));
+        assert!(p.allows(&"http://[::1]:9000/x".parse().unwrap()));
+        assert!(!p.allows(&"https://example.com/x".parse().unwrap()));
+    }
+
+    #[test]
+    fn online_policy_allows_everything() {
+        let p = NetPolicy::online();
+        assert!(p.allows(&"https://example.com/x".parse().unwrap()));
+        assert!(p.allows(&"http://127.0.0.1/x".parse().unwrap()));
+    }
+
+    #[test]
+    fn destination_keeps_scheme_host_port_path_only() {
+        let cases = [
+            (
+                "https://alice:pw-secret@example.invalid:8443/v1/m:generate?key=q-secret#frag",
+                "https://example.invalid:8443/v1/m:generate",
+            ),
+            ("https://example.invalid", "https://example.invalid/"),
+            (
+                "http://[2001:db8::1]:9000/x?y",
+                "http://[2001:db8::1]:9000/x",
+            ),
+            ("mailto:alice@example.invalid?subject=q-secret", "mailto:"),
+        ];
+        for (raw, want) in cases {
+            let url: reqwest::Url = raw.parse().unwrap();
+            assert_eq!(destination(&url), want, "{raw}");
+        }
+    }
+
+    #[test]
+    fn net_error_discriminates() {
+        let e: NetError = OfflineError {
+            method: "GET".into(),
+            url: "https://example.com/x".into(),
+        }
+        .into();
+        assert!(e.is_offline());
+        assert_eq!(e.as_offline().unwrap().method, "GET");
+    }
+}

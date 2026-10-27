@@ -33,7 +33,6 @@
 //   - Streams: output.Streams (stdout/stderr wrappers)
 //   - Auth: JWT token from identity store (when WithIdentity used)
 //   - Identity: *identity.Keypair (when WithIdentity used)
-//   - Mesh: *peer.Mesh (when WithPeers used)
 //
 // Key accessors:
 //   - [Root.InvokedAs]: caller-context signal read from the
@@ -45,21 +44,22 @@
 //
 // # Options
 //
-//   - [WithAPI]: scaffolds an HTTP API server (single listener) — adds
-//     a "serve" subcommand wiring kit's canonical middleware stack
-//     (RequestID → Logger → Recovery → JSON content-type → optional
-//     Auth) on top of [api.NewRouter]; adds "token claims/decode"
-//     subcommands when Auth is configured. For servers that need a
-//     custom lifecycle, per-route auth carve-outs, or multiple
-//     listeners, wire [api.NewRouter] directly instead (see
-//     docs/adopters/reference/transport-api.md).
 //   - [WithIdentity]: loads or generates an Ed25519 keypair, signs a JWT
-//   - [WithPeers]: starts mDNS discovery and trust mesh
+//
+// Peer discovery is not in this package: peers.With in
+// hop.top/kit/go/console/cli/peers adds the mDNS mesh, its trust
+// manager and the `peer` commands, and peers.Of(root) reads them.
+//
+// Serving is not in this package. The `service` group, the api and
+// socket services and every gate they share live in
+// hop.top/kit/go/console/cli/service, which attaches to a Root through
+// the extension slot ([Extend], [Extension] and the hook interfaces in
+// ext.go), so a CLI that never serves links none of it.
 //
 // # Execution
 //
 // Execute wires context cancellation (SIGINT/SIGTERM), applies persistent
-// pre-run logic (identity load, mesh start), and delegates to cobra:
+// pre-run logic (chdir, identity load, extension init), and delegates to cobra:
 //
 //	root.Cmd.AddCommand(serveCmd(), syncCmd())
 //	if err := root.Execute(context.Background()); err != nil {

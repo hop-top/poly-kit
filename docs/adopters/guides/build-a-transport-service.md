@@ -158,6 +158,7 @@ import (
 
     "example.com/mytool/internal/tcptransport"
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
     "hop.top/kit/go/transport/cmdsurface"
     "hop.top/kit/go/transport/transportsvc"
 )
@@ -168,7 +169,7 @@ func main() {
 
     tcp := &tcptransport.Transport{Addr: "127.0.0.1:9000"}
 
-    cli.WithService(transportsvc.NewTransportService(
+    service.WithService(transportsvc.NewTransportService(
         "tcp",                  // the CLI word, config key, and event payload value
         root.Cmd,               // the tree to project
         cmdsurface.SurfaceRPC,  // the surface this transport invokes as

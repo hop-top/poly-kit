@@ -16,6 +16,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/mcpserve"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/internal/testpki"
 )
@@ -101,7 +102,7 @@ func TestMCPServiceHTTPMutualTLS(t *testing.T) {
 		return nil
 	})
 	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
-		p.with(), cli.WithAuditSinks(cmdsurface.SinkSpec{Sink: sink, OnError: true, OnOK: true}))
+		p.with(), service.WithAuditSinks(cmdsurface.SinkSpec{Sink: sink, OnError: true, OnOK: true}))
 
 	_, err := p.connect(t.Context(), endpoint)
 	require.Error(t, err, "a client without a certificate must not connect")

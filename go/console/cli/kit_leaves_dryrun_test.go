@@ -28,8 +28,10 @@ import (
 	breakercmd "hop.top/kit/go/console/cli/breaker"
 	configcmd "hop.top/kit/go/console/cli/config"
 	conformancecmd "hop.top/kit/go/console/cli/conformance"
+	"hop.top/kit/go/console/cli/peers"
 	routercmd "hop.top/kit/go/console/cli/router"
 	scopecmd "hop.top/kit/go/console/cli/scope"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/ps"
 	stagecmd "hop.top/kit/go/console/stage"
 	"hop.top/kit/go/core/config/pkl"
@@ -99,11 +101,11 @@ func newKitLeavesRoot(t *testing.T, sandbox string) *cli.Root {
 	t.Helper()
 	r := cli.New(cli.Config{Name: "ktool", Version: "0.0.0", Short: "kit leaves", DisableValidate: true},
 		cli.WithIdentity(cli.IdentityConfig{Dir: filepath.Join(sandbox, "identity")}),
-		cli.WithPeers(cli.PeerConfig{DataDir: filepath.Join(sandbox, "peers")}),
-		cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}),
-		cli.WithAPIKeys(cli.APIKeysConfig{Path: filepath.Join(sandbox, "apikeys.db")}),
-		cli.WithQuotaCommand(),
-		cli.WithAuditCommand(),
+		peers.With(peers.Config{DataDir: filepath.Join(sandbox, "peers")}),
+		service.WithAPI(service.APIConfig{Addr: "127.0.0.1:0"}),
+		service.WithAPIKeys(service.APIKeysConfig{Path: filepath.Join(sandbox, "apikeys.db")}),
+		service.WithQuotaCommand(),
+		service.WithAuditCommand(),
 		cli.WithStatus(cli.StatusConfig{}),
 		cli.WithURI(cli.URIConfig{
 			Policy: scheme.Policy{DefaultNamespaceSegments: 1},
@@ -192,7 +194,7 @@ func TestKitLeaves_HonorDryRunOrOptOut(t *testing.T) {
 	r := newKitLeavesRoot(t, sandbox)
 	// The peer the peer leaves name: a dry run reads it as the real
 	// run would, and refuses an unknown one the same way.
-	require.NoError(t, r.PeerRegistry.Add(peer.PeerInfo{
+	require.NoError(t, peers.Of(r).Registry.Add(peer.PeerInfo{
 		ID: "p1", PublicKey: []byte("key"), Addrs: []string{"127.0.0.1:1"},
 	}))
 	var applied []string

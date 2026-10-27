@@ -1,0 +1,26 @@
+[2025-03-15T10:30:45] llm.request llm.client: hello world
+[2025-03-15T10:30:45] test.nil src: <nil>
+[2025-03-15T10:30:45] test.absent src: <nil>
+[2025-03-15T10:30:45] test.empty : 42
+[2025-03-15T10:30:45] num.neg n: -7
+[2025-03-15T10:30:45] num.big n: 18446744073709551615
+[2025-03-15T10:30:45] num.float n: 1.5
+[2025-03-15T10:30:45] num.whole n: 123456
+[2025-03-15T10:30:45] num.million n: 1e+06
+[2025-03-15T10:30:45] num.e21 n: 1e+21
+[2025-03-15T10:30:45] num.e20 n: 1e+20
+[2025-03-15T10:30:45] num.tiny n: 1e-07
+[2025-03-15T10:30:45] num.micro n: 1e-06
+[2025-03-15T10:30:45] num.milli n: 0.0001
+[2025-03-15T10:30:45] num.negzero n: -0
+[2025-03-15T10:30:45] num.frac n: 1.23456789e+07
+[2025-03-15T10:30:45] bool.t b: true
+[2025-03-15T10:30:45] str.escape s: <a>&b    "q" \ 	   é 🙂
+[2025-03-15T10:30:45] big.payload test: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...
+[2025-03-15T10:30:45] big.runes test: éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé...
+[2025-03-15T10:30:45] map.nested m: map[a:[x <nil> true map[]] b:1 c:map[z:1.5]]
+[2025-03-15T10:30:45] map.empty m: map[]
+[2025-03-15T10:30:45] list.empty m: []
+[2025-03-15T10:30:45] ts.offset t: z
+[2025-03-15T10:30:45] ts.trailing t: z
+[0001-01-01T00:00:00] ts.zero t: z

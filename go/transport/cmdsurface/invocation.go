@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"hop.top/kit/go/transport/cmdsurface/admitted"
 )
 
 // Invocation is a single addressable command call, transport-agnostic.
@@ -120,25 +122,14 @@ type Meta struct {
 }
 
 // Establishment is how a transport established a caller's identity,
-// as recorded in [Meta.Established].
-type Establishment string
+// as recorded in [Meta.Established]. It is the leaf type
+// [admitted.Establishment]; each constant is documented there.
+type Establishment = admitted.Establishment
 
 const (
-	// EstablishedNone is the zero value: the transport established
-	// nothing. Caller and Tenant, when present, are claims.
-	EstablishedNone Establishment = ""
-	// EstablishedVerified: a verifier the deployment configured
-	// accepted a credential the caller presented (an api.AuthFunc, a
-	// socket Authenticator, a webhook signature, a signed URL, a
-	// consumed OAuth state).
-	EstablishedVerified Establishment = "verified"
-	// EstablishedTransport: the transport proves the caller by
-	// construction, with no credential to check. The socket's
-	// owner-only file admits only the owner's processes; the stdio
-	// peer spawned the process and runs as its user; a platform
-	// invocation (Lambda) was authorized by the platform's IAM; a
-	// cron job was scheduled by the operator.
-	EstablishedTransport Establishment = "transport"
+	EstablishedNone      = admitted.EstablishedNone
+	EstablishedVerified  = admitted.EstablishedVerified
+	EstablishedTransport = admitted.EstablishedTransport
 )
 
 // Authenticated reports whether the transport established the

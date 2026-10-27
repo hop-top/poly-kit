@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/cli/cmdmeta"
 )
 
 // AnnotationWithholdFrom is the cobra annotation a command sets to keep
@@ -30,7 +32,7 @@ import (
 // services refuse to start ([ValidateWithholdFrom]), and a bridge that
 // discovers the command anyway withholds it from every surface but
 // [SurfaceCLI] and [SurfaceLib].
-const AnnotationWithholdFrom = "kit/withhold-from"
+const AnnotationWithholdFrom = cmdmeta.KeyWithholdFrom
 
 // ReasonWithheldByCommand is the discovery reason for a command whose
 // leaf is not exposed on SurfaceREST because the command itself names

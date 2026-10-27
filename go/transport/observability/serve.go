@@ -15,7 +15,7 @@ import (
 )
 
 // Serve is the provider the kit CLI's served services report to. Link
-// it with cli.WithObservability(observability.NewServe()); `serve`
+// it with service.WithObservability(observability.NewServe()); `serve`
 // then starts it with the tool's configuration and every kit-shipped
 // service picks up its instrumentation.
 //
@@ -111,7 +111,7 @@ func (s *Serve) HTTPMiddleware(service string) func(http.Handler) http.Handler {
 // RecordHTTPRefusal counts one refusal decided on service's HTTP
 // listener before any request exists — a failed TLS handshake — with
 // its code; see [Provider.RecordHTTPRefusal]. The kit CLI's listeners
-// call it through cli.ServeHTTPRefusals.
+// call it through service.ServeHTTPRefusals.
 func (s *Serve) RecordHTTPRefusal(ctx context.Context, service, code string) {
 	s.Provider(service).RecordHTTPRefusal(ctx, service, code)
 }

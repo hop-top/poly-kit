@@ -16,7 +16,8 @@ import (
 func TestNetworkAdapter_Relay_3Node_Fanout(t *testing.T) {
 	// Hub: relay enabled.
 	hubBus := New()
-	hub := NewNetworkAdapter(hubBus, WithOriginID("hub"), WithRelay(true))
+	accepted := make(chan string, 16)
+	hub := NewNetworkAdapter(hubBus, WithOriginID("hub"), WithRelay(true), withHook(accepted))
 	srv := httptest.NewServer(hub.Handler())
 	defer srv.Close()
 	defer hub.Close()
@@ -39,8 +40,9 @@ func TestNetworkAdapter_Relay_3Node_Fanout(t *testing.T) {
 		t.Fatalf("B connect: %v", err)
 	}
 
-	// Allow connections + first messages (peerOriginID learning) to settle.
-	time.Sleep(150 * time.Millisecond)
+	// No auth, so no ack: wait until the hub registered both links.
+	waitHook(t, accepted, "accepted")
+	waitHook(t, accepted, "accepted")
 
 	var bGot atomic.Int32
 	busB.Subscribe("test.ping", func(_ context.Context, _ Event) error {
@@ -75,7 +77,8 @@ func TestNetworkAdapter_Relay_3Node_Fanout(t *testing.T) {
 // the hub re-forwards inbound events.
 func TestNetworkAdapter_Relay_OriginExcluded(t *testing.T) {
 	hubBus := New()
-	hub := NewNetworkAdapter(hubBus, WithOriginID("hub"), WithRelay(true))
+	accepted := make(chan string, 16)
+	hub := NewNetworkAdapter(hubBus, WithOriginID("hub"), WithRelay(true), withHook(accepted))
 	srv := httptest.NewServer(hub.Handler())
 	defer srv.Close()
 	defer hub.Close()
@@ -96,7 +99,9 @@ func TestNetworkAdapter_Relay_OriginExcluded(t *testing.T) {
 		t.Fatalf("B connect: %v", err)
 	}
 
-	time.Sleep(150 * time.Millisecond)
+	// No auth, so no ack: wait until the hub registered both links.
+	waitHook(t, accepted, "accepted")
+	waitHook(t, accepted, "accepted")
 
 	var aGot atomic.Int32
 	busA.Subscribe("echo.test", func(_ context.Context, _ Event) error {
@@ -117,7 +122,8 @@ func TestNetworkAdapter_Relay_OriginExcluded(t *testing.T) {
 // behavior: without WithRelay, hub does NOT re-forward A→B.
 func TestNetworkAdapter_Relay_Disabled_Default(t *testing.T) {
 	hubBus := New()
-	hub := NewNetworkAdapter(hubBus, WithOriginID("hub")) // relay off
+	accepted := make(chan string, 16)
+	hub := NewNetworkAdapter(hubBus, WithOriginID("hub"), withHook(accepted)) // relay off
 	srv := httptest.NewServer(hub.Handler())
 	defer srv.Close()
 	defer hub.Close()
@@ -138,7 +144,9 @@ func TestNetworkAdapter_Relay_Disabled_Default(t *testing.T) {
 		t.Fatalf("B connect: %v", err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	// No auth, so no ack: wait until the hub registered both links.
+	waitHook(t, accepted, "accepted")
+	waitHook(t, accepted, "accepted")
 
 	var bGot atomic.Int32
 	busB.Subscribe("noreplay.ping", func(_ context.Context, _ Event) error {

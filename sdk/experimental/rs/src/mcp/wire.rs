@@ -6,12 +6,14 @@
 //! (`sdk/tests/cross-lang/fixtures/mcp-wire.json`), and Go's
 //! `encoding/json` has two properties this crate does not get for free:
 //!
-//! 1. **`map[string]any` keys are emitted lexicographically.** This
-//!    crate enables serde_json's `preserve_order`, which backs
-//!    [`serde_json::Map`] with an `IndexMap` — insertion order, not
-//!    sorted order. Emitting a map built in a natural order would put
-//!    the keys in the wrong sequence. [`to_wire_bytes`] therefore sorts
-//!    every object it writes, at every depth.
+//! 1. **`map[string]any` keys are emitted lexicographically.** When the
+//!    `output` feature is enabled, it turns on serde_json's
+//!    `preserve_order`, which backs [`serde_json::Map`] with an
+//!    `IndexMap` — insertion order, not sorted order — and Cargo
+//!    unifies that into this module's build too. Emitting a map built
+//!    in a natural order would then put the keys in the wrong sequence.
+//!    [`to_wire_bytes`] therefore sorts every object it writes, at every
+//!    depth, so the output is the same with or without `output`.
 //! 2. **Struct fields are emitted in declaration order.** The top-level
 //!    envelope is a Go *struct* (`jsonrpc`, `id`, `result`/`error`) and
 //!    the error object is a struct (`code`, `message`, `data`), so those
@@ -337,11 +339,14 @@ mod tests {
         );
     }
 
+    // Only `output` enables preserve_order; without it serde_json sorts
+    // on its own and this premise does not hold.
+    #[cfg(feature = "output")]
     #[test]
     fn preserve_order_is_active_so_sorting_is_load_bearing() {
-        // Guards the assumption the whole module rests on: if this
-        // crate ever dropped `preserve_order`, serde_json would sort on
-        // its own and a regression in write_sorted would go unnoticed.
+        // Guards the assumption the sorting tests rest on: if `output`
+        // ever dropped `preserve_order`, serde_json would sort on its
+        // own and a regression in write_sorted would go unnoticed.
         let mut map = Map::new();
         map.insert("z".into(), json!(1));
         map.insert("a".into(), json!(2));

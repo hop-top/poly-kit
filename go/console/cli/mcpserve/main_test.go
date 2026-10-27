@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/service"
 )
 
 // TestMain gives the test binary a runtime directory of its own. Every
@@ -35,7 +36,7 @@ func TestMain(m *testing.M) {
 // other's start.
 func ownScope() func(*cli.Root) {
 	s := fmt.Sprintf("t%d", scopeSeq.Add(1))
-	return cli.WithServiceControlScope(func(*cobra.Command) (string, error) { return s, nil })
+	return service.WithServiceControlScope(func(*cobra.Command) (string, error) { return s, nil })
 }
 
 var scopeSeq atomic.Int64

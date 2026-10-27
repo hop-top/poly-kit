@@ -46,6 +46,7 @@ import (
 	"hop.top/kit/go/console/cli/celpermission"
 	"hop.top/kit/go/console/cli/mcpserve"
 	"hop.top/kit/go/console/cli/rpcserve"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/runtime/bus"
 	"hop.top/kit/go/transport/cmdsurface"
@@ -156,18 +157,18 @@ func newRoot(opts options) *cli.Root {
 
 	wiring := []func(*cli.Root){
 		cli.WithStatus(cli.StatusConfig{}),
-		cli.WithAuditCommand(),
+		service.WithAuditCommand(),
 		cli.WithPolicy(cli.DefaultPolicyLoader("served")),
 		celpermission.With(),
-		cli.WithAPI(cli.APIConfig{Policy: policy}),
-		cli.WithSocket(cli.SocketConfig{Policy: policy}),
+		service.WithAPI(service.APIConfig{Policy: policy}),
+		service.WithSocket(service.SocketConfig{Policy: policy}),
 		mcpserve.With(mcpserve.Config{Policy: policy}),
 		rpcserve.With(rpcserve.Config{Policy: policy}),
-		cli.WithService(opts.heartbeat),
-		cli.WithServiceBus(opts.bus),
-		cli.WithObservability(opts.observe),
-		cli.WithAPIKeys(cli.APIKeysConfig{Path: opts.apiKeys}),
-		cli.WithServiceControlScope(func(*cobra.Command) (string, error) {
+		service.WithService(opts.heartbeat),
+		service.WithServiceBus(opts.bus),
+		service.WithObservability(opts.observe),
+		service.WithAPIKeys(service.APIKeysConfig{Path: opts.apiKeys}),
+		service.WithServiceControlScope(func(*cobra.Command) (string, error) {
 			return os.Getenv(profileEnv), nil
 		}),
 	}

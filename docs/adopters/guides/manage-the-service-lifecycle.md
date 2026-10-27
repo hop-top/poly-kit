@@ -1,7 +1,7 @@
 # Manage the service lifecycle
 
-Your tool registers services (`cli.WithAPI`, `cli.WithSocket`,
-`mcpserve.With`, `rpcserve.With`, `cli.WithService`). Kit gives every
+Your tool registers services (`service.WithAPI`, `service.WithSocket`,
+`mcpserve.With`, `rpcserve.With`, `service.WithService`). Kit gives every
 such tool one command group to run and control them:
 
 ```sh
@@ -89,15 +89,15 @@ is not a socket, is never removed.
 
 A tool that runs one daemon per profile (or workspace, or tenant) on
 one host gives each instance its own control socket with
-`cli.WithServiceControlScope`. Kit calls your function from each
+`service.WithServiceControlScope`. Kit calls your function from each
 `service` leaf, after flags are parsed and your pre-run hooks ran, and
 uses the scope it returns for `start` (listen) and `stop`, `restart`,
 `status` (dial):
 
 ```go
 root := cli.New(cfg,
-    cli.WithAPI(cli.APIConfig{}),
-    cli.WithServiceControlScope(func(cmd *cobra.Command) (string, error) {
+    service.WithAPI(service.APIConfig{}),
+    service.WithServiceControlScope(func(cmd *cobra.Command) (string, error) {
         return activeProfile(cmd) // "" is the default, unscoped instance
     }),
 )
@@ -130,7 +130,7 @@ by side distinct scopes. The option is a plain `func(*cli.Root)`, so a
 test can apply it to a root it already built:
 
 ```go
-cli.WithServiceControlScope(func(*cobra.Command) (string, error) { return "t2", nil })(root)
+service.WithServiceControlScope(func(*cobra.Command) (string, error) { return "t2", nil })(root)
 ```
 
 ## Add sections to `service status`
@@ -230,7 +230,7 @@ The group is the place for your own lifecycle commands, such as
 installing a service unit:
 
 ```go
-root := cli.New(cfg, cli.WithAPI(cli.APIConfig{}))
+root := cli.New(cfg, service.WithAPI(service.APIConfig{}))
 
 setup := &cobra.Command{
     Use:   "setup",
@@ -240,7 +240,7 @@ setup := &cobra.Command{
 }
 cli.SetSideEffect(setup, cli.SideEffectWriteLocal)
 cli.SetIdempotency(setup, cli.IdempotencyYes)
-root.ServiceCommand().AddCommand(setup) // mytool service setup
+service.ServiceCommand(root).AddCommand(setup) // mytool service setup
 ```
 
 `ServiceCommand` returns nil on a tool with no registered service. The
@@ -251,7 +251,7 @@ checks, and left out of `spec coverage`. Mark it with
 `kit/self-hosting` if it must never run from a served invocation even
 when reflected without the reserved lookup.
 
-`root.ServeCommand()` returns `service start` itself, for putting your
+`service.ServeCommand(root)` returns `service start` itself, for putting your
 own flags beside the built-in ones.
 
 ## Migrate from `serve`
@@ -276,7 +276,7 @@ What changes for your code and your tests:
 - A test or hook that found the serve command by walking the root for
   a child named `serve` now finds the hidden alias, which carries the
   service flags only once the tree is prepared. Use
-  `root.ServeCommand()`.
+  `service.ServeCommand(root)`.
 - Served discovery lists `service start`, `service stop`, `service
   restart`, `service status` and `service list` as withheld; `serve` is
   withheld as hidden.
