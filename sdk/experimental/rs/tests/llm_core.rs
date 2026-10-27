@@ -550,6 +550,10 @@ fn fallbackable_classification() {
             provider: "p".into(),
             message: "x".into(),
         },
+        LlmError::PermissionDenied {
+            provider: "p".into(),
+            message: "x".into(),
+        },
         LlmError::Model {
             model: "m".into(),
             provider: "p".into(),
@@ -563,6 +567,24 @@ fn fallbackable_classification() {
     for e in no {
         assert!(!e.is_fallbackable(), "{e:?}");
     }
+}
+
+#[test]
+fn permission_denied_is_an_auth_error() {
+    let denied = LlmError::PermissionDenied {
+        provider: "anthropic".into(),
+        message: "permission_error: no".into(),
+    };
+    let auth = LlmError::Auth {
+        provider: "anthropic".into(),
+        message: "authentication_error: bad key".into(),
+    };
+    assert!(denied.is_auth() && auth.is_auth());
+    assert!(!LlmError::Cancelled.is_auth());
+    assert_eq!(
+        denied.to_string(),
+        "permission denied (provider \"anthropic\"): permission_error: no"
+    );
 }
 
 /// A provider answering `complete` with a fixed outcome, counting calls.

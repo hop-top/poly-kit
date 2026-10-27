@@ -20,9 +20,6 @@ mod llm_support;
 /// passes it.
 #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
 const PENDING_RUST_PORT: &[(&str, &str)] = &[
-    ("anthropic_error", "403 permission denied"),
-    ("anthropic_error", "stream: 403 before any event"),
-    ("anthropic_stream", "permission error event mid-stream"),
     ("anthropic_request", "system messages join in order"),
     ("anthropic_request", "empty system messages are skipped"),
     (
@@ -1035,6 +1032,12 @@ mod anthropic {
     fn kind(e: &LlmError) -> (&'static str, u16) {
         match e {
             LlmError::Truncated { .. } => ("truncated", 0),
+            // A permission denial is an auth error too (Go: errors.As
+            // matches both); a kind that is not reports itself.
+            LlmError::PermissionDenied { .. } if !e.is_auth() => {
+                ("permission_denied without auth", 0)
+            }
+            LlmError::PermissionDenied { .. } => ("permission_denied", 0),
             LlmError::ResponseTooLarge { .. } => ("too_large", 0),
             LlmError::Auth { .. } => ("auth", 0),
             LlmError::RateLimit { .. } => ("rate_limit", 0),
