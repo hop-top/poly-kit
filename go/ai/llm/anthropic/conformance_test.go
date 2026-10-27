@@ -189,7 +189,28 @@ type anthropicConfFile struct {
 			Usage      confUsage `json:"usage"`
 		} `json:"want"`
 	} `json:"anthropic_response"`
-	UsageCost   json.RawMessage `json:"usage_cost"`
+	UsageCost          json.RawMessage `json:"usage_cost"`
+	ToolNames          json.RawMessage `json:"tool_names"`
+	AnthropicToolNames []struct {
+		Name        string            `json:"name"`
+		Call        string            `json:"call"`
+		Params      map[string]string `json:"params"`
+		Messages    []confMessage     `json:"messages"`
+		Tools       []string          `json:"tools"`
+		Body        string            `json:"body"`
+		WantTools   []string          `json:"want_tools"`
+		WantHistory []string          `json:"want_history"`
+		WantCalls   []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"want_calls"`
+		Error *struct {
+			Reason string `json:"reason"`
+			Name   string `json:"name"`
+			Other  string `json:"other"`
+		} `json:"error"`
+		Refused bool `json:"refused"`
+	} `json:"anthropic_tool_names"`
 	KeyEndpoint []struct {
 		Name    string            `json:"name"`
 		Op      string            `json:"op"`
@@ -750,4 +771,134 @@ type confUsage struct {
 	CacheReadTokens     int `json:"cache_read_tokens"`
 	CacheCreationTokens int `json:"cache_creation_tokens"`
 	TotalTokens         int `json:"total_tokens"`
+}
+
+// sentToolNames reads the tool names and the tool_use names of the
+// history from a Messages API request body.
+func sentToolNames(t *testing.T, body []byte) (tools, history []string) {
+	t.Helper()
+	var b struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+		Messages []struct {
+			Content []struct {
+				Type string `json:"type"`
+				Name string `json:"name"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	require.NoError(t, json.Unmarshal(body, &b))
+	for _, tl := range b.Tools {
+		tools = append(tools, tl.Name)
+	}
+	for _, m := range b.Messages {
+		for _, c := range m.Content {
+			if c.Type == "tool_use" {
+				history = append(history, c.Name)
+			}
+		}
+	}
+	return tools, history
+}
+
+func TestConformanceAnthropicToolNames(t *testing.T) {
+	f := loadAnthropicConf(t)
+	require.NotEmpty(t, f.AnthropicToolNames)
+	for _, v := range f.AnthropicToolNames {
+		t.Run(v.Name, func(t *testing.T) {
+			clearAnthropicEnv(t)
+			var body []byte
+			var hits atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+				body, _ = io.ReadAll(r.Body)
+				if v.Call == "stream" || v.Call == "stream_tools" {
+					w.Header().Set("Content-Type", "text/event-stream")
+				} else {
+					w.Header().Set("Content-Type", "application/json")
+				}
+				_, _ = io.WriteString(w, v.Body)
+			}))
+			t.Cleanup(srv.Close)
+			p, err := anthropic.New(llm.ResolvedConfig{Provider: llm.ProviderConfig{
+				APIKey: "k", BaseURL: srv.URL, Model: "m", Params: v.Params,
+			}})
+			if v.Refused {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = p.Close() })
+
+			req := llm.Request{Messages: []llm.Message{{Role: "user", Content: "Hi"}}}
+			if v.Messages != nil {
+				req = confRequest{Messages: v.Messages}.toLLM(t)
+			}
+			var defs []llm.ToolDef
+			for _, n := range v.Tools {
+				defs = append(defs, llm.ToolDef{Name: n})
+			}
+			ctx := context.Background()
+			var calls []llm.ToolCall
+			switch v.Call {
+			case "tools":
+				var r llm.ToolResponse
+				r, err = p.(llm.ToolCaller).CallWithTools(ctx, req, defs)
+				calls = r.ToolCalls
+			case "stream_tools":
+				var st llm.ToolStream
+				st, err = p.(llm.ToolStreamer).StreamWithTools(ctx, req, defs)
+				if err == nil {
+					for {
+						tok, nerr := st.Next()
+						require.NoError(t, nerr)
+						if tok.Done {
+							break
+						}
+					}
+					out, ok := st.Outcome()
+					require.True(t, ok)
+					calls = out.ToolCalls
+					_ = st.Close()
+				}
+			case "complete":
+				_, err = p.(llm.Completer).Complete(ctx, req)
+			case "stream":
+				var it llm.TokenIterator
+				it, err = p.(llm.Streamer).Stream(ctx, req)
+				if err == nil {
+					for {
+						tok, nerr := it.Next()
+						require.NoError(t, nerr)
+						if tok.Done {
+							break
+						}
+					}
+					_ = it.Close()
+				}
+			default:
+				t.Fatalf("unknown call %q", v.Call)
+			}
+			if v.Error != nil {
+				var te *llmerrors.ErrToolName
+				require.ErrorAs(t, err, &te)
+				assert.Equal(t, v.Error.Reason, te.Reason)
+				assert.Equal(t, v.Error.Name, te.Name)
+				assert.Equal(t, v.Error.Other, te.Other)
+				assert.False(t, llmerrors.IsFallbackable(err))
+				assert.Zero(t, hits.Load(), "a rejected request reaches no server")
+				return
+			}
+			require.NoError(t, err)
+			tools, history := sentToolNames(t, body)
+			assert.Equal(t, v.WantTools, tools)
+			assert.Equal(t, v.WantHistory, history)
+			require.Len(t, calls, len(v.WantCalls))
+			for i, want := range v.WantCalls {
+				assert.Equal(t, want.ID, calls[i].ID)
+				assert.Equal(t, want.Name, calls[i].Name)
+			}
+		})
+	}
 }

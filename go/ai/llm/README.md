@@ -38,10 +38,7 @@ fmt.Println(resp.Message.Content)
 - Provider URI: `scheme://model[?param=val]`; 14 schemes, aim aliases, catalog
   providers by protocol: [Provider URIs](../../../docs/adopters/reference/llm.md#provider-uris).
 - Config merge (`LoadConfig`): the URI outranks all; base URL then `LLM_BASE_URL` > llm.yaml; the key as `ApplyAPIKey` resolves it; an llm.yaml provider block also configures the provider's aliases, `llm.ProviderSettingsFor(uri)` returns it as written: [Provider blocks](../../../docs/adopters/reference/llm.md#provider-blocks-and-aliases). Pool: file < env (`LLM_POOL_DISABLE`) < CLI (`ResolvePool`).
-- Bus topics default to `kit.ai.{request.started, response.received,
-  request.errored, fallback.applied, route.selected, eva.evaluated}`;
-  `WithTopicPrefix` rebrands the `source.category` prefix,
-  `WithTopics` overrides individual topics.
+- Bus topics default to `kit.ai.{request.started, response.received, request.errored, fallback.applied, route.selected, eva.evaluated}`; `WithTopicPrefix` rebrands the `source.category` prefix, `WithTopics` overrides individual topics.
 - Tool round trip: replay the model's calls as
   `{Role: "assistant", ToolCalls: resp.ToolCalls}`, then one
   `{Role: "tool", ToolCallID: call.ID, Content: result}` per call.
@@ -49,6 +46,7 @@ fmt.Println(resp.Message.Content)
   adapters return an error for linkage their provider cannot express
   instead of sending it as plain text:
   [Tool calling](../../../docs/adopters/reference/llm.md#tool-calling).
+- Tool names: any `ToolDef.Name` (`pane.open`) goes out in a form the provider accepts and comes back original in every `ToolCall`; empty, duplicate and colliding names fail with `*errors.ErrToolName` before sending; `?tool_names=strict` checks instead of rewriting: [Tool names](../../../docs/adopters/reference/llm.md#tool-names).
 - Replay `resp.ToolCalls` verbatim: `ToolCall.ProviderData` holds
   provider-opaque state keyed by adapter (Gemini thought signatures
   under `google`) that the provider requires back; each adapter reads

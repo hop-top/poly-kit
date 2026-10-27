@@ -123,6 +123,10 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 			Model:   serverModel,
 		},
 	}
+	// The inner adapter applies the tool-name mode the URI asks for.
+	if v, ok := cfg.Provider.Params[llm.ToolNamesParam]; ok {
+		innerCfg.Provider.Params = map[string]string{llm.ToolNamesParam: v}
+	}
 
 	inner, err := openai.New(innerCfg)
 	if err != nil {

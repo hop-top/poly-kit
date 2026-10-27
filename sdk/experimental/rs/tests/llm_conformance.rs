@@ -47,6 +47,12 @@ struct Corpus {
     #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
     anthropic_response: Vec<ResponseCase>,
     usage_cost: Vec<CostCase>,
+    // Tool-name validation and sanitizing: decoded so the strict corpus
+    // accepts the file; not run by this port yet (see tool_names_pending).
+    #[allow(dead_code)]
+    tool_names: Vec<Value>,
+    #[allow(dead_code)]
+    anthropic_tool_names: Vec<Value>,
 }
 
 #[derive(Deserialize)]
@@ -396,6 +402,21 @@ fn redact_uri_vectors() {
     for v in &c.redact_uri {
         assert_eq!(redact_uri(&v.input), v.want, "{}", v.name);
     }
+}
+
+/// The tool_names and anthropic_tool_names sections are skipped: this
+/// port does not validate or sanitize tool names yet. Remove this test
+/// and run both sections once it does.
+#[test]
+fn tool_names_pending() {
+    let c = load();
+    assert!(!c.tool_names.is_empty());
+    assert!(!c.anthropic_tool_names.is_empty());
+    eprintln!(
+        "skipped: tool_names ({}) and anthropic_tool_names ({}): tool-name sanitizing not implemented in this port",
+        c.tool_names.len(),
+        c.anthropic_tool_names.len()
+    );
 }
 
 #[test]

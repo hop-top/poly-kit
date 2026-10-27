@@ -40,6 +40,8 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 | `anthropic_response[]` | a response parsed: text, thinking blocks, tool calls, stop reason, usage with cache tokens |
 | `usage_cost[]` | `Usage` priced per million tokens, each kind (input, output, cache read, cache write) at its rate |
 | `key_endpoint[]` | where a resolved key may go: `apply` (resulting URI), `load`, `resolve` (refused or not) |
+| `tool_names[]` | tool-name checks and the sanitizer per rule and mode: wire names, the first error (`reason`, `name`, `other`), calls mapped back ([tool-names.md](tool-names.md)) |
+| `anthropic_tool_names[]` | the anthropic adapter end to end: tool and history `tool_use` names sent, calls returned (`tools`, `stream_tools`) with the original name, errors with no request sent, the `tool_names` param |
 
 Runners are strict: unknown fields, a `version` other than `v1` and a file no runner consumes fail the run. Servers are loopback only; no vector reaches the network.
 
@@ -47,12 +49,22 @@ Runners are strict: unknown fields, a `version` other than `v1` and a file no ru
 
 Not vectored. A `retry-after` HTTP date: Go honors one within 60s, Rust backs off.
 
+## Tool names
+
+Normative spec: [tool-names.md](tool-names.md). Rules `anthropic`
+(`[a-zA-Z0-9_-]`, 128), `openai` (same set, 64), `gemini` (adds `.:`,
+leading letter or `_`, 128). An invalid name: each disallowed byte run
+becomes `_`; too long or no letter/digit left: cut and append `_` + 8
+hex of SHA-256. Empty, non-UTF-8, duplicate, colliding (and in
+`?tool_names=strict`, invalid) names fail before sending; returned
+calls carry the original name.
+
 ## Runners
 
 | Port | Runner |
 |------|--------|
 | Go | `go/ai/llm/conformance_test.go`, `go/ai/llm/anthropic/conformance_test.go` (`TestConformance*`) |
-| Rust | `sdk/experimental/rs/tests/llm_conformance.rs` (anthropic sections need feature `llm-anthropic`) |
+| Rust | `sdk/experimental/rs/tests/llm_conformance.rs` (anthropic sections need feature `llm-anthropic`; `tool_names` and `anthropic_tool_names` decoded and skipped until the port implements them) |
 
 ## See also
 

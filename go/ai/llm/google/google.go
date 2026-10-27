@@ -60,6 +60,9 @@ type Adapter struct {
 	model   string
 	apiKey  string
 	client  *http.Client
+	// toolNames is the tool_names param: how tool names the API
+	// rejects are handled.
+	toolNames llm.ToolNameMode
 }
 
 // New creates a new Google Gemini adapter from resolved config.
@@ -89,11 +92,17 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		)
 	}
 
+	toolNames, err := llm.ToolNameModeOf(cfg.Provider.Params)
+	if err != nil {
+		return nil, fmt.Errorf("gemini: %w", err)
+	}
+
 	return &Adapter{
-		baseURL: base,
-		model:   model,
-		apiKey:  apiKey,
-		client:  http.DefaultClient,
+		baseURL:   base,
+		model:     model,
+		apiKey:    apiKey,
+		client:    http.DefaultClient,
+		toolNames: toolNames,
 	}, nil
 }
 
@@ -233,7 +242,7 @@ func (a *Adapter) Complete(
 	ctx context.Context, req llm.Request,
 ) (llm.Response, error) {
 	model := a.effectiveModel(req)
-	body, err := a.buildBody(ctx, req, nil)
+	body, _, err := a.buildBody(ctx, req, nil)
 	if err != nil {
 		return llm.Response{}, err
 	}
@@ -275,7 +284,7 @@ func (a *Adapter) Stream(
 	ctx context.Context, req llm.Request,
 ) (llm.TokenIterator, error) {
 	model := a.effectiveModel(req)
-	body, err := a.buildBody(ctx, req, nil)
+	body, _, err := a.buildBody(ctx, req, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -383,7 +392,7 @@ func (a *Adapter) CallWithTools(
 	ctx context.Context, req llm.Request, tools []llm.ToolDef,
 ) (llm.ToolResponse, error) {
 	model := a.effectiveModel(req)
-	body, err := a.buildBody(ctx, req, tools)
+	body, names, err := a.buildBody(ctx, req, tools)
 	if err != nil {
 		return llm.ToolResponse{}, err
 	}
@@ -414,16 +423,23 @@ func (a *Adapter) CallWithTools(
 		return llm.ToolResponse{}, a.mapAPIError(gr.Error, model)
 	}
 
-	return a.parseToolResponse(gr), nil
+	return a.parseToolResponse(gr, names), nil
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+// buildBody maps req and tools to a generateContent body. Tool names,
+// in declarations and replayed history alike, go out as names maps
+// them; see [llm.NewToolNames].
 func (a *Adapter) buildBody(
 	ctx context.Context, req llm.Request, tools []llm.ToolDef,
-) ([]byte, error) {
+) ([]byte, *llm.ToolNames, error) {
+	names, err := llm.NewToolNames(llm.GeminiToolNames, a.toolNames, tools)
+	if err != nil {
+		return nil, nil, err
+	}
 	contents := make([]content, 0, len(req.Messages))
 	var systemParts []part
 	// callNames resolves a tool result's ToolCallID to the function
@@ -436,9 +452,9 @@ func (a *Adapter) buildBody(
 			continue
 		}
 		if m.Role == "tool" {
-			p, err := functionResponsePart(m, callNames)
+			p, err := functionResponsePart(m, callNames, names)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			// Consecutive results answer one model turn and belong in
 			// a single content.
@@ -450,9 +466,9 @@ func (a *Adapter) buildBody(
 			contents = append(contents, content{Role: "user", Parts: []part{p}})
 			continue
 		}
-		c, err := mapMessage(ctx, m, i >= turn)
+		c, err := mapMessage(ctx, m, i >= turn, names)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, tc := range m.ToolCalls {
 			callNames[tc.ID] = tc.Name
@@ -494,7 +510,7 @@ func (a *Adapter) buildBody(
 		decls := make([]functionDecl, 0, len(tools))
 		for _, t := range tools {
 			decls = append(decls, functionDecl{
-				Name:        t.Name,
+				Name:        names.Wire(t.Name),
 				Description: t.Description,
 				Parameters:  t.Parameters,
 			})
@@ -502,7 +518,11 @@ func (a *Adapter) buildBody(
 		gr.Tools = []toolDecl{{FunctionDeclarations: decls}}
 	}
 
-	return json.Marshal(gr)
+	out, err := json.Marshal(gr)
+	if err != nil {
+		return nil, nil, err
+	}
+	return out, names, nil
 }
 
 // mapMessage converts an llm.Message to a Gemini content object.
@@ -513,7 +533,7 @@ func (a *Adapter) buildBody(
 // call's thought signature goes back on its own part. In the current
 // turn, a step without any signed call gets the skip value on its first
 // call, the only one Gemini validates.
-func mapMessage(ctx context.Context, m llm.Message, currentTurn bool) (content, error) {
+func mapMessage(ctx context.Context, m llm.Message, currentTurn bool, names *llm.ToolNames) (content, error) {
 	if m.ToolCallID != "" {
 		return content{}, fmt.Errorf("gemini: ToolCallID is valid only on role tool, got %q", m.Role)
 	}
@@ -545,7 +565,7 @@ func mapMessage(ctx context.Context, m llm.Message, currentTurn bool) (content, 
 		}
 		signed = signed || sig != ""
 		c.Parts = append(c.Parts, part{
-			FunctionCall:     &functionCall{Name: tc.Name, Args: args},
+			FunctionCall:     &functionCall{Name: names.Wire(tc.Name), Args: args},
 			ThoughtSignature: sig,
 		})
 	}
@@ -599,7 +619,7 @@ func signatureData(sig string) llm.ProviderData {
 // resolved from the earlier call whose ID matches ToolCallID. A result
 // that is a JSON object is sent as the response struct; anything else
 // is wrapped as {"output": Content}.
-func functionResponsePart(m llm.Message, callNames map[string]string) (part, error) {
+func functionResponsePart(m llm.Message, callNames map[string]string, names *llm.ToolNames) (part, error) {
 	if m.ToolCallID == "" {
 		return part{}, fmt.Errorf("gemini: tool result needs ToolCallID")
 	}
@@ -622,7 +642,7 @@ func functionResponsePart(m llm.Message, callNames map[string]string) (part, err
 		}
 		resp = wrapped
 	}
-	return part{FunctionResponse: &functionResponse{Name: name, Response: resp}}, nil
+	return part{FunctionResponse: &functionResponse{Name: names.Wire(name), Response: resp}}, nil
 }
 
 // mapContent maps a message's role and text or Parts.
@@ -713,7 +733,9 @@ func (a *Adapter) parseResponse(gr generateResponse) llm.Response {
 	return resp
 }
 
-func (a *Adapter) parseToolResponse(gr generateResponse) llm.ToolResponse {
+// parseToolResponse maps gr; each call carries the name the caller
+// defined, through names.
+func (a *Adapter) parseToolResponse(gr generateResponse, names *llm.ToolNames) llm.ToolResponse {
 	resp := llm.ToolResponse{}
 
 	if len(gr.Candidates) == 0 {
@@ -733,7 +755,7 @@ func (a *Adapter) parseToolResponse(gr generateResponse) llm.ToolResponse {
 			}
 			resp.ToolCalls = append(resp.ToolCalls, llm.ToolCall{
 				ID:           id,
-				Name:         p.FunctionCall.Name,
+				Name:         names.Original(p.FunctionCall.Name),
 				Arguments:    p.FunctionCall.Args,
 				ProviderData: signatureData(p.ThoughtSignature),
 			})

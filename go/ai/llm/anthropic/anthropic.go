@@ -38,6 +38,9 @@ type Adapter struct {
 	// secrets are the credential values sent; scrub removes them from
 	// every error message.
 	secrets []string
+	// toolNames is the tool_names param: how tool names the API
+	// rejects are handled.
+	toolNames llm.ToolNameMode
 }
 
 // compile-time interface checks
@@ -65,6 +68,10 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	lim, err := limitsFrom(cfg.Provider.Params)
 	if err != nil {
 		return nil, err
+	}
+	toolNames, err := llm.ToolNameModeOf(cfg.Provider.Params)
+	if err != nil {
+		return nil, fmt.Errorf("anthropic: %w", err)
 	}
 	opts := []option.RequestOption{
 		option.WithoutEnvironmentDefaults(),
@@ -101,9 +108,10 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	opts = append(opts, creds...)
 
 	return &Adapter{
-		client:  anthropic.NewClient(opts...),
-		model:   cfg.Provider.Model,
-		secrets: secretsOf(cfg.Provider.APIKey, os.Getenv("ANTHROPIC_AUTH_TOKEN")),
+		client:    anthropic.NewClient(opts...),
+		model:     cfg.Provider.Model,
+		secrets:   secretsOf(cfg.Provider.APIKey, os.Getenv("ANTHROPIC_AUTH_TOKEN")),
+		toolNames: toolNames,
 	}, nil
 }
 
@@ -148,7 +156,11 @@ func (a *Adapter) effectiveModel(req llm.Request) string {
 func (a *Adapter) Complete(
 	ctx context.Context, req llm.Request,
 ) (llm.Response, error) {
-	params, err := a.buildParams(ctx, req)
+	names, err := a.toolNameMap(nil)
+	if err != nil {
+		return llm.Response{}, err
+	}
+	params, err := a.buildParams(ctx, req, names)
 	if err != nil {
 		return llm.Response{}, err
 	}
@@ -163,21 +175,29 @@ func (a *Adapter) Complete(
 func (a *Adapter) Stream(
 	ctx context.Context, req llm.Request,
 ) (llm.TokenIterator, error) {
-	params, err := a.buildParams(ctx, req)
+	names, err := a.toolNameMap(nil)
 	if err != nil {
 		return nil, err
 	}
-	return a.openStream(ctx, params, req)
+	params, err := a.buildParams(ctx, req, names)
+	if err != nil {
+		return nil, err
+	}
+	return a.openStream(ctx, params, req, names)
 }
 
-func (a *Adapter) openStream(ctx context.Context, params anthropic.MessageNewParams, req llm.Request) (*streamIter, error) {
+func (a *Adapter) openStream(
+	ctx context.Context, params anthropic.MessageNewParams, req llm.Request, names *llm.ToolNames,
+) (*streamIter, error) {
 	stream := a.client.Messages.NewStreaming(ctx, params)
 	// The SDK returns a stream immediately; check for init error.
 	if err := stream.Err(); err != nil {
 		_ = stream.Close()
 		return nil, a.mapError(err, a.effectiveModel(req))
 	}
-	return &streamIter{stream: stream, a: a, model: a.effectiveModel(req), thinking: req.Thinking != nil}, nil
+	return &streamIter{
+		stream: stream, a: a, model: a.effectiveModel(req), thinking: req.Thinking != nil, names: names,
+	}, nil
 }
 
 // StreamWithTools streams a tool-use request: text deltas as tokens,
@@ -185,14 +205,18 @@ func (a *Adapter) openStream(ctx context.Context, params anthropic.MessageNewPar
 func (a *Adapter) StreamWithTools(
 	ctx context.Context, req llm.Request, tools []llm.ToolDef,
 ) (llm.ToolStream, error) {
-	params, err := a.buildParams(ctx, req)
+	names, err := a.toolNameMap(tools)
 	if err != nil {
 		return nil, err
 	}
-	if params.Tools, err = mapTools(tools); err != nil {
+	params, err := a.buildParams(ctx, req, names)
+	if err != nil {
 		return nil, err
 	}
-	return a.openStream(ctx, params, req)
+	if params.Tools, err = mapTools(names.Defs(tools)); err != nil {
+		return nil, err
+	}
+	return a.openStream(ctx, params, req, names)
 }
 
 // CallWithTools sends a tool-use request and maps the response back
@@ -200,18 +224,28 @@ func (a *Adapter) StreamWithTools(
 func (a *Adapter) CallWithTools(
 	ctx context.Context, req llm.Request, tools []llm.ToolDef,
 ) (llm.ToolResponse, error) {
-	params, err := a.buildParams(ctx, req)
+	names, err := a.toolNameMap(tools)
 	if err != nil {
 		return llm.ToolResponse{}, err
 	}
-	if params.Tools, err = mapTools(tools); err != nil {
+	params, err := a.buildParams(ctx, req, names)
+	if err != nil {
+		return llm.ToolResponse{}, err
+	}
+	if params.Tools, err = mapTools(names.Defs(tools)); err != nil {
 		return llm.ToolResponse{}, err
 	}
 	msg, err := a.client.Messages.New(ctx, params)
 	if err != nil {
 		return llm.ToolResponse{}, a.mapError(err, a.effectiveModel(req))
 	}
-	return toolResponseFromMessage(msg), nil
+	return toolResponseFromMessage(msg, names), nil
+}
+
+// toolNameMap checks tools against the API's name rule and maps them,
+// per the tool_names param; see [llm.NewToolNames].
+func (a *Adapter) toolNameMap(tools []llm.ToolDef) (*llm.ToolNames, error) {
+	return llm.NewToolNames(llm.AnthropicToolNames, a.toolNames, tools)
 }
 
 // ---------------------------------------------------------------------------
@@ -219,7 +253,7 @@ func (a *Adapter) CallWithTools(
 // ---------------------------------------------------------------------------
 
 func (a *Adapter) buildParams(
-	ctx context.Context, req llm.Request,
+	ctx context.Context, req llm.Request, names *llm.ToolNames,
 ) (anthropic.MessageNewParams, error) {
 	model := a.model
 	if req.Model != "" {
@@ -231,7 +265,7 @@ func (a *Adapter) buildParams(
 		maxTokens = defaultMaxTokens
 	}
 
-	system, systemCC, msgs, err := extractSystem(ctx, req.Messages)
+	system, systemCC, msgs, err := extractSystem(ctx, req.Messages, names)
 	if err != nil {
 		return anthropic.MessageNewParams{}, err
 	}
@@ -280,7 +314,7 @@ func (a *Adapter) buildParams(
 // extractSystem separates any system message from the conversation
 // (the last one wins). Anthropic requires system as a top-level field.
 func extractSystem(
-	ctx context.Context, msgs []llm.Message,
+	ctx context.Context, msgs []llm.Message, names *llm.ToolNames,
 ) (string, *llm.CacheControl, []anthropic.MessageParam, error) {
 	var system string
 	var systemCC *llm.CacheControl
@@ -329,7 +363,7 @@ func extractSystem(
 		case len(m.ToolCalls) == 0 || m.Content != "":
 			blocks = append(blocks, anthropic.NewTextBlock(m.Content))
 		}
-		uses, err := toolUseBlocks(m.ToolCalls)
+		uses, err := toolUseBlocks(m.ToolCalls, names)
 		if err != nil {
 			return "", nil, nil, err
 		}
@@ -427,8 +461,9 @@ func toolResultBlock(m llm.Message) (anthropic.ContentBlockParamUnion, error) {
 	return anthropic.ContentBlockParamUnion{OfToolResult: &res}, nil
 }
 
-// toolUseBlocks maps an assistant turn's calls to tool_use blocks.
-func toolUseBlocks(calls []llm.ToolCall) ([]anthropic.ContentBlockParamUnion, error) {
+// toolUseBlocks maps an assistant turn's calls to tool_use blocks,
+// each under the name the request sends for it.
+func toolUseBlocks(calls []llm.ToolCall, names *llm.ToolNames) ([]anthropic.ContentBlockParamUnion, error) {
 	out := make([]anthropic.ContentBlockParamUnion, 0, len(calls))
 	for _, tc := range calls {
 		if tc.ID == "" {
@@ -441,7 +476,7 @@ func toolUseBlocks(calls []llm.ToolCall) ([]anthropic.ContentBlockParamUnion, er
 			}
 			input = tc.Arguments
 		}
-		out = append(out, anthropic.NewToolUseBlock(tc.ID, input, tc.Name))
+		out = append(out, anthropic.NewToolUseBlock(tc.ID, input, names.Wire(tc.Name)))
 	}
 	return out, nil
 }
@@ -561,7 +596,9 @@ func usageOf(u anthropic.Usage) llm.Usage {
 	return out
 }
 
-func toolResponseFromMessage(msg *anthropic.Message) llm.ToolResponse {
+// toolResponseFromMessage maps msg; each call carries the name the
+// caller defined, through names.
+func toolResponseFromMessage(msg *anthropic.Message, names *llm.ToolNames) llm.ToolResponse {
 	var text string
 	var calls []llm.ToolCall
 
@@ -572,7 +609,7 @@ func toolResponseFromMessage(msg *anthropic.Message) llm.ToolResponse {
 		case "tool_use":
 			calls = append(calls, llm.ToolCall{
 				ID:        block.ID,
-				Name:      block.Name,
+				Name:      names.Original(block.Name),
 				Arguments: block.Input,
 			})
 		}
@@ -601,6 +638,8 @@ type streamIter struct {
 	// msg folds every event, as the SDK's Message.Accumulate does.
 	msg     anthropic.Message
 	outcome *llm.StreamOutcome
+	// names maps returned tool names back to the caller's.
+	names *llm.ToolNames
 }
 
 // Outcome is the finished turn, once Next returned Done.
@@ -639,7 +678,7 @@ func (s *streamIter) Next() (llm.Token, error) {
 			}
 		case "message_stop":
 			s.done = true
-			out := outcomeFromMessage(&s.msg)
+			out := outcomeFromMessage(&s.msg, s.names)
 			s.outcome = &out
 			return llm.Token{Done: true}, nil
 		}
@@ -741,8 +780,8 @@ func thinkingBlocks(msg *anthropic.Message) []llm.ThinkingBlock {
 	return out
 }
 
-func outcomeFromMessage(msg *anthropic.Message) llm.StreamOutcome {
-	tr := toolResponseFromMessage(msg)
+func outcomeFromMessage(msg *anthropic.Message, names *llm.ToolNames) llm.StreamOutcome {
+	tr := toolResponseFromMessage(msg, names)
 	return llm.StreamOutcome{
 		Content:      tr.Content,
 		Thinking:     thinkingBlocks(msg),

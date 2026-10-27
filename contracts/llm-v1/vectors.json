@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds, whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind.",
+  "description": "Provider-neutral llm core and the anthropic adapter. Go is canonical. redact_uri: credential masking of provider URIs (RedactURI). parse_uri: scheme://[host:port/]model[?params] parsing; error is the exact message. anthropic_request: the Messages API body an adapter sends for a request (tools present: tool-calling call, else completion), compared as JSON. anthropic_request_error: requests the adapter rejects before sending, exact message. anthropic_headers: auth and routing headers from the key and the ANTHROPIC_* environment. anthropic_stream: text tokens a stream yields from an SSE body, then done or an error. anthropic_accumulate: the message an SSE body folds into (the Go SDK's Message.Accumulate). anthropic_error: how HTTP responses map to error kinds, whether the kind is fallbackable, and how many attempts the default retry policy makes; the last response repeats. Retry waits a server asks for are honored only within (0, 60s]; other values fall back to backoff. key_endpoint: where a resolved key may go (op apply: ApplyAPIKey's URI, or refused; op load: LoadConfig refused or not; op resolve: Resolve with the URI's own key refused or not): a key from llm.yaml or the environment reaches a URI-named endpoint only when loopback or the same origin as the provider's default or configured endpoint, a URI's own key any https host, and no key goes over plain http to a remote host. credential_headers: the credentials the anthropic adapter sends for a base URL; ANTHROPIC_AUTH_TOKEN and ANTHROPIC_WORKSPACE_ID go only to a trusted origin (the default endpoint, ANTHROPIC_BASE_URL, llm.yaml base_url, LLM_BASE_URL, loopback), and plain http to a remote host is refused. Endpoints parse with each client's own URL parser; an endpoint with userinfo, a backslash, a percent-escape, whitespace or control characters never receives a credential. anthropic_stream error_kind names the typed error a stream ends with (an SSE error event by its type; a body ending without message_stop is truncated). anthropic_error runs with the key conf-key-must-not-leak, which no error text may contain; stream marks a streamed call; redirects are not followed. anthropic_limits: max_body_bytes and max_event_bytes provider params bound what a response may hold. Requests may carry thinking_budget (extended thinking), cache_control on messages and tools, and thinking blocks to replay. anthropic_response: Messages API responses parsed (text, thinking blocks, tool calls, stop reason, usage with cache tokens). usage_cost: usage priced per million tokens by kind. tool_names: tool-name validation and the deterministic sanitizer (README, Tool names): a rule (anthropic, openai, gemini), a mode (sanitize, the default, or strict), the tools' names in order, then the wire names (want) or the first error (reason, name, other); calls map back to want_calls. anthropic_tool_names: the adapter end to end: tool and history tool_use names sent, tool calls returned (call, stream_tools) carrying the original name, errors before any request, and the tool_names provider param (refused for an unknown mode).",
   "redact_uri": [
     {
       "name": "api_key",
@@ -2468,6 +2468,771 @@
         "cache_write": 3.75
       },
       "want": 0.021
+    }
+  ],
+  "tool_names": [
+    {
+      "name": "valid names are unchanged",
+      "rule": "anthropic",
+      "tools": [
+        "get_weather",
+        "search-docs",
+        "A1"
+      ],
+      "want": [
+        "get_weather",
+        "search-docs",
+        "A1"
+      ]
+    },
+    {
+      "name": "valid at the 128 limit is unchanged",
+      "rule": "anthropic",
+      "tools": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "want": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    {
+      "name": "valid at the 64 limit is unchanged",
+      "rule": "openai",
+      "tools": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "want": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    {
+      "name": "dotted name replaces the dot",
+      "rule": "anthropic",
+      "tools": [
+        "pane.open"
+      ],
+      "want": [
+        "pane_open"
+      ]
+    },
+    {
+      "name": "dotted name is valid on gemini",
+      "rule": "gemini",
+      "tools": [
+        "pane.open"
+      ],
+      "want": [
+        "pane.open"
+      ]
+    },
+    {
+      "name": "namespaced uri collapses each run to one separator",
+      "rule": "anthropic",
+      "tools": [
+        "mcp://fs/read_file"
+      ],
+      "want": [
+        "mcp_fs_read_file"
+      ]
+    },
+    {
+      "name": "namespaced capability id",
+      "rule": "anthropic",
+      "tools": [
+        "capability:files.read"
+      ],
+      "want": [
+        "capability_files_read"
+      ]
+    },
+    {
+      "name": "namespaced capability id is valid on gemini",
+      "rule": "gemini",
+      "tools": [
+        "capability:files.read"
+      ],
+      "want": [
+        "capability:files.read"
+      ]
+    },
+    {
+      "name": "slash is replaced on gemini",
+      "rule": "gemini",
+      "tools": [
+        "ns/tool"
+      ],
+      "want": [
+        "ns_tool"
+      ]
+    },
+    {
+      "name": "gemini leading digit gets an underscore",
+      "rule": "gemini",
+      "tools": [
+        "1tool"
+      ],
+      "want": [
+        "_1tool"
+      ]
+    },
+    {
+      "name": "gemini leading dash gets an underscore",
+      "rule": "gemini",
+      "tools": [
+        "-x"
+      ],
+      "want": [
+        "_-x"
+      ]
+    },
+    {
+      "name": "one over the 64 limit truncates with a hash",
+      "rule": "openai",
+      "tools": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "want": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_635361c4"
+      ]
+    },
+    {
+      "name": "overlong valid charset truncates with a hash",
+      "rule": "openai",
+      "tools": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "want": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_6bd5e503"
+      ]
+    },
+    {
+      "name": "overlong for anthropic truncates at 128",
+      "rule": "anthropic",
+      "tools": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "want": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_1e3c4f47"
+      ]
+    },
+    {
+      "name": "70 chars fit anthropic unchanged",
+      "rule": "anthropic",
+      "tools": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "want": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    {
+      "name": "overlong dotted namespace",
+      "rule": "openai",
+      "tools": [
+        "ns.very_long_namespace_segment.another_segment.and_one_more_segment.read"
+      ],
+      "want": [
+        "ns_very_long_namespace_segment_another_segment_and_one__b076f47d"
+      ]
+    },
+    {
+      "name": "overlong dotted runs",
+      "rule": "openai",
+      "tools": [
+        "x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x."
+      ],
+      "want": [
+        "x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_x_38ea4a95"
+      ]
+    },
+    {
+      "name": "unicode letters are replaced",
+      "rule": "anthropic",
+      "tools": [
+        "café.menu",
+        "tool🔧"
+      ],
+      "want": [
+        "caf_menu",
+        "tool_"
+      ]
+    },
+    {
+      "name": "all non-ascii gets a hash",
+      "rule": "anthropic",
+      "tools": [
+        "検索",
+        "翻訳"
+      ],
+      "want": [
+        "__1b6b1a6f",
+        "__a22140a7"
+      ]
+    },
+    {
+      "name": "only separators gets a hash",
+      "rule": "anthropic",
+      "tools": [
+        "..."
+      ],
+      "want": [
+        "__ab5df625"
+      ]
+    },
+    {
+      "name": "dotted and colon collide",
+      "rule": "anthropic",
+      "tools": [
+        "pane.open",
+        "pane:open"
+      ],
+      "error": {
+        "reason": "collision",
+        "name": "pane:open",
+        "other": "pane.open"
+      }
+    },
+    {
+      "name": "sanitized collides with a valid name",
+      "rule": "anthropic",
+      "tools": [
+        "a.b",
+        "a_b"
+      ],
+      "error": {
+        "reason": "collision",
+        "name": "a_b",
+        "other": "a.b"
+      }
+    },
+    {
+      "name": "valid name first then colliding sanitized",
+      "rule": "openai",
+      "tools": [
+        "a_b",
+        "a.b"
+      ],
+      "error": {
+        "reason": "collision",
+        "name": "a.b",
+        "other": "a_b"
+      }
+    },
+    {
+      "name": "exact duplicate",
+      "rule": "anthropic",
+      "tools": [
+        "x",
+        "y",
+        "x"
+      ],
+      "error": {
+        "reason": "duplicate",
+        "name": "x",
+        "other": ""
+      }
+    },
+    {
+      "name": "duplicate invalid name is a duplicate, not a collision",
+      "rule": "anthropic",
+      "tools": [
+        "p.q",
+        "p.q"
+      ],
+      "error": {
+        "reason": "duplicate",
+        "name": "p.q",
+        "other": ""
+      }
+    },
+    {
+      "name": "empty name",
+      "rule": "anthropic",
+      "tools": [
+        "ok",
+        ""
+      ],
+      "error": {
+        "reason": "empty",
+        "name": "",
+        "other": ""
+      }
+    },
+    {
+      "name": "empty name in strict mode",
+      "rule": "anthropic",
+      "mode": "strict",
+      "tools": [
+        ""
+      ],
+      "error": {
+        "reason": "empty",
+        "name": "",
+        "other": ""
+      }
+    },
+    {
+      "name": "strict keeps valid names",
+      "rule": "anthropic",
+      "mode": "strict",
+      "tools": [
+        "pane_open",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "want": [
+        "pane_open",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    {
+      "name": "strict rejects a dotted name",
+      "rule": "anthropic",
+      "mode": "strict",
+      "tools": [
+        "ok",
+        "pane.open"
+      ],
+      "error": {
+        "reason": "invalid",
+        "name": "pane.open",
+        "other": ""
+      }
+    },
+    {
+      "name": "strict rejects an overlong name",
+      "rule": "openai",
+      "mode": "strict",
+      "tools": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "error": {
+        "reason": "invalid",
+        "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "other": ""
+      }
+    },
+    {
+      "name": "strict duplicate",
+      "rule": "openai",
+      "mode": "strict",
+      "tools": [
+        "x",
+        "x"
+      ],
+      "error": {
+        "reason": "duplicate",
+        "name": "x",
+        "other": ""
+      }
+    },
+    {
+      "name": "strict accepts dots on gemini",
+      "rule": "gemini",
+      "mode": "strict",
+      "tools": [
+        "pane.open"
+      ],
+      "want": [
+        "pane.open"
+      ]
+    },
+    {
+      "name": "reverse mapping of tool calls",
+      "rule": "anthropic",
+      "tools": [
+        "pane.open",
+        "files.read",
+        "plain"
+      ],
+      "want": [
+        "pane_open",
+        "files_read",
+        "plain"
+      ],
+      "calls": [
+        "pane_open",
+        "files_read",
+        "plain",
+        "unknown.tool",
+        "unknown_tool"
+      ],
+      "want_calls": [
+        "pane.open",
+        "files.read",
+        "plain",
+        "unknown.tool",
+        "unknown_tool"
+      ]
+    },
+    {
+      "name": "reverse mapping of a truncated name",
+      "rule": "openai",
+      "tools": [
+        "ns.very_long_namespace_segment.another_segment.and_one_more_segment.read"
+      ],
+      "want": [
+        "ns_very_long_namespace_segment_another_segment_and_one__b076f47d"
+      ],
+      "calls": [
+        "ns_very_long_namespace_segment_another_segment_and_one__b076f47d"
+      ],
+      "want_calls": [
+        "ns.very_long_namespace_segment.another_segment.and_one_more_segment.read"
+      ]
+    },
+    {
+      "name": "reverse mapping of non-ascii",
+      "rule": "anthropic",
+      "tools": [
+        "検索"
+      ],
+      "want": [
+        "__1b6b1a6f"
+      ],
+      "calls": [
+        "__1b6b1a6f"
+      ],
+      "want_calls": [
+        "検索"
+      ]
+    }
+  ],
+  "anthropic_tool_names": [
+    {
+      "name": "call sends sanitized names and returns the original",
+      "call": "tools",
+      "tools": [
+        "pane.open",
+        "files.read"
+      ],
+      "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"pane_open\",\"input\":{}}],\"stop_reason\":\"tool_use\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}",
+      "want_tools": [
+        "pane_open",
+        "files_read"
+      ],
+      "want_calls": [
+        {
+          "id": "toolu_1",
+          "name": "pane.open"
+        }
+      ]
+    },
+    {
+      "name": "stream outcome carries the original name",
+      "call": "stream_tools",
+      "tools": [
+        "pane.open",
+        "files.read"
+      ],
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"usage\":{\"input_tokens\":2,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"files_read\",\"input\":{}}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"input_tokens\":2,\"output_tokens\":3}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+      "want_tools": [
+        "pane_open",
+        "files_read"
+      ],
+      "want_calls": [
+        {
+          "id": "toolu_1",
+          "name": "files.read"
+        }
+      ]
+    },
+    {
+      "name": "history tool calls are mapped forward",
+      "call": "tools",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hi"
+        },
+        {
+          "role": "assistant",
+          "tool_calls": [
+            {
+              "id": "toolu_0",
+              "name": "pane.open",
+              "arguments": "{}"
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "toolu_0",
+          "content": "opened"
+        },
+        {
+          "role": "user",
+          "content": "again"
+        }
+      ],
+      "tools": [
+        "pane.open"
+      ],
+      "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"pane_open\",\"input\":{}}],\"stop_reason\":\"tool_use\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}",
+      "want_tools": [
+        "pane_open"
+      ],
+      "want_history": [
+        "pane_open"
+      ],
+      "want_calls": [
+        {
+          "id": "toolu_1",
+          "name": "pane.open"
+        }
+      ]
+    },
+    {
+      "name": "history is mapped forward without tools",
+      "call": "complete",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hi"
+        },
+        {
+          "role": "assistant",
+          "tool_calls": [
+            {
+              "id": "toolu_0",
+              "name": "pane.open",
+              "arguments": "{}"
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "toolu_0",
+          "content": "opened"
+        },
+        {
+          "role": "user",
+          "content": "again"
+        }
+      ],
+      "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}",
+      "want_history": [
+        "pane_open"
+      ]
+    },
+    {
+      "name": "streamed history is mapped forward",
+      "call": "stream",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hi"
+        },
+        {
+          "role": "assistant",
+          "tool_calls": [
+            {
+              "id": "toolu_0",
+              "name": "pane.open",
+              "arguments": "{}"
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "toolu_0",
+          "content": "opened"
+        },
+        {
+          "role": "user",
+          "content": "again"
+        }
+      ],
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"usage\":{\"input_tokens\":2,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"x\",\"input\":{}}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"input_tokens\":2,\"output_tokens\":3}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+      "want_history": [
+        "pane_open"
+      ]
+    },
+    {
+      "name": "a name the request did not define passes through",
+      "call": "tools",
+      "tools": [
+        "pane.open"
+      ],
+      "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"other_tool\",\"input\":{}}],\"stop_reason\":\"tool_use\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}",
+      "want_tools": [
+        "pane_open"
+      ],
+      "want_calls": [
+        {
+          "id": "toolu_1",
+          "name": "other_tool"
+        }
+      ]
+    },
+    {
+      "name": "overlong name round-trips",
+      "call": "tools",
+      "tools": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_1e3c4f47\",\"input\":{}}],\"stop_reason\":\"tool_use\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}",
+      "want_tools": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_1e3c4f47"
+      ],
+      "want_calls": [
+        {
+          "id": "toolu_1",
+          "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "collision fails before sending",
+      "call": "tools",
+      "tools": [
+        "pane.open",
+        "pane:open"
+      ],
+      "error": {
+        "reason": "collision",
+        "name": "pane:open",
+        "other": "pane.open"
+      }
+    },
+    {
+      "name": "collision fails a stream before sending",
+      "call": "stream_tools",
+      "tools": [
+        "pane.open",
+        "pane:open"
+      ],
+      "error": {
+        "reason": "collision",
+        "name": "pane:open",
+        "other": "pane.open"
+      }
+    },
+    {
+      "name": "duplicate fails before sending",
+      "call": "tools",
+      "tools": [
+        "x",
+        "x"
+      ],
+      "error": {
+        "reason": "duplicate",
+        "name": "x",
+        "other": ""
+      }
+    },
+    {
+      "name": "empty fails before sending",
+      "call": "tools",
+      "tools": [
+        ""
+      ],
+      "error": {
+        "reason": "empty",
+        "name": "",
+        "other": ""
+      }
+    },
+    {
+      "name": "strict sends valid names unchanged",
+      "call": "tools",
+      "params": {
+        "tool_names": "strict"
+      },
+      "tools": [
+        "pane_open"
+      ],
+      "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"pane_open\",\"input\":{}}],\"stop_reason\":\"tool_use\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}",
+      "want_tools": [
+        "pane_open"
+      ],
+      "want_calls": [
+        {
+          "id": "toolu_1",
+          "name": "pane_open"
+        }
+      ]
+    },
+    {
+      "name": "strict rejects an invalid name before sending",
+      "call": "tools",
+      "params": {
+        "tool_names": "strict"
+      },
+      "tools": [
+        "pane.open"
+      ],
+      "error": {
+        "reason": "invalid",
+        "name": "pane.open",
+        "other": ""
+      }
+    },
+    {
+      "name": "strict sends history names unchanged",
+      "call": "complete",
+      "params": {
+        "tool_names": "strict"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hi"
+        },
+        {
+          "role": "assistant",
+          "tool_calls": [
+            {
+              "id": "toolu_0",
+              "name": "pane.open",
+              "arguments": "{}"
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "toolu_0",
+          "content": "opened"
+        },
+        {
+          "role": "user",
+          "content": "again"
+        }
+      ],
+      "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}",
+      "want_history": [
+        "pane.open"
+      ]
+    },
+    {
+      "name": "explicit sanitize mode",
+      "call": "tools",
+      "params": {
+        "tool_names": "sanitize"
+      },
+      "tools": [
+        "pane.open"
+      ],
+      "body": "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"pane_open\",\"input\":{}}],\"stop_reason\":\"tool_use\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}",
+      "want_tools": [
+        "pane_open"
+      ],
+      "want_calls": [
+        {
+          "id": "toolu_1",
+          "name": "pane.open"
+        }
+      ]
+    },
+    {
+      "name": "unknown mode is refused",
+      "call": "tools",
+      "params": {
+        "tool_names": "loose"
+      },
+      "tools": [
+        "pane.open"
+      ],
+      "refused": true
     }
   ]
 }
