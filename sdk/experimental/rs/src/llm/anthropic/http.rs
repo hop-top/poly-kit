@@ -55,7 +55,10 @@ impl Adapter {
                     let status = resp.status().as_u16();
                     let retry = should_retry(status, resp.headers());
                     let after = retry_after(resp.headers());
-                    let text = resp.text().await.unwrap_or_default();
+                    // An error body is read no further than the limit, and
+                    // never quoted with a credential in it.
+                    let text = self.read_body(resp).await.unwrap_or_default();
+                    let text = (self.scrub)(&String::from_utf8_lossy(&text));
                     (map_status(status, after, &text, model), retry, after)
                 }
             };
@@ -71,6 +74,23 @@ impl Adapter {
             }
         }
         unreachable!("attempt counter exhausted")
+    }
+
+    /// The body, refused past `limits.max_body_bytes`.
+    pub(crate) async fn read_body(&self, mut resp: reqwest::Response) -> Result<Vec<u8>, LlmError> {
+        let limit = self.limits.max_body_bytes;
+        let mut out = Vec::new();
+        while let Some(chunk) = resp.chunk().await.map_err(|e| self.transport_error(e))? {
+            if (out.len() + chunk.len()) as u64 > limit {
+                return Err(LlmError::ResponseTooLarge {
+                    provider: SCHEME.into(),
+                    what: "body",
+                    limit,
+                });
+            }
+            out.extend_from_slice(&chunk);
+        }
+        Ok(out)
     }
 
     /// A transport failure named by method and stripped destination:
@@ -151,6 +171,10 @@ fn classify(
         401 | 403 => LlmError::Auth {
             provider: SCHEME.into(),
             message: format!("{error_type}: {message}"),
+        },
+        300..=399 => LlmError::HttpStatus {
+            status,
+            message: format!("{SCHEME}: redirect not followed"),
         },
         429 => LlmError::RateLimit {
             provider: SCHEME.into(),

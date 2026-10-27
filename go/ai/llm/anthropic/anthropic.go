@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 
@@ -32,6 +33,9 @@ const (
 type Adapter struct {
 	client anthropic.Client
 	model  string
+	// secrets are the credential values sent; scrub removes them from
+	// every error message.
+	secrets []string
 }
 
 // compile-time interface checks
@@ -55,9 +59,17 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	// ANTHROPIC_WORKSPACE_ID keep their fallback role; the workspace ID
 	// is what keys not scoped to a workspace must send. A blank key or
 	// token is no credential: the key is required, the token not sent.
+	lim, err := limitsFrom(cfg.Provider.Params)
+	if err != nil {
+		return nil, err
+	}
 	opts := []option.RequestOption{
 		option.WithoutEnvironmentDefaults(),
 		option.WithMiddleware(boundRetryAfter),
+		option.WithMiddleware(lim.middleware),
+		// Redirects are not followed: a credential never moves to a
+		// host the server names.
+		option.WithHTTPClient(&http.Client{CheckRedirect: refuseRedirect}),
 	}
 	envBase := os.Getenv("ANTHROPIC_BASE_URL")
 	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok {
@@ -86,8 +98,9 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	opts = append(opts, creds...)
 
 	return &Adapter{
-		client: anthropic.NewClient(opts...),
-		model:  cfg.Provider.Model,
+		client:  anthropic.NewClient(opts...),
+		model:   cfg.Provider.Model,
+		secrets: secretsOf(cfg.Provider.APIKey, os.Getenv("ANTHROPIC_AUTH_TOKEN")),
 	}, nil
 }
 
@@ -138,7 +151,7 @@ func (a *Adapter) Complete(
 	}
 	msg, err := a.client.Messages.New(ctx, params)
 	if err != nil {
-		return llm.Response{}, mapError(err, a.effectiveModel(req))
+		return llm.Response{}, a.mapError(err, a.effectiveModel(req))
 	}
 	return responseFromMessage(msg), nil
 }
@@ -155,9 +168,9 @@ func (a *Adapter) Stream(
 	// The SDK returns a stream immediately; check for init error.
 	if err := stream.Err(); err != nil {
 		_ = stream.Close()
-		return nil, mapError(err, a.effectiveModel(req))
+		return nil, a.mapError(err, a.effectiveModel(req))
 	}
-	return &streamIter{stream: stream}, nil
+	return &streamIter{stream: stream, a: a, model: a.effectiveModel(req)}, nil
 }
 
 // CallWithTools sends a tool-use request and maps the response back
@@ -172,7 +185,7 @@ func (a *Adapter) CallWithTools(
 	params.Tools = mapTools(tools)
 	msg, err := a.client.Messages.New(ctx, params)
 	if err != nil {
-		return llm.ToolResponse{}, mapError(err, a.effectiveModel(req))
+		return llm.ToolResponse{}, a.mapError(err, a.effectiveModel(req))
 	}
 	return toolResponseFromMessage(msg), nil
 }
@@ -483,6 +496,8 @@ func toolResponseFromMessage(msg *anthropic.Message) llm.ToolResponse {
 
 type streamIter struct {
 	stream *ssestream.Stream[anthropic.MessageStreamEventUnion]
+	a      *Adapter
+	model  string
 	done   bool
 }
 
@@ -494,9 +509,10 @@ func (s *streamIter) Next() (llm.Token, error) {
 		if !s.stream.Next() {
 			s.done = true
 			if err := s.stream.Err(); err != nil {
-				return llm.Token{}, mapError(err, "")
+				return llm.Token{}, s.a.mapError(err, s.model)
 			}
-			return llm.Token{Done: true}, nil
+			// No message_stop: the response is incomplete.
+			return llm.Token{}, llmerrors.NewStreamTruncated(scheme)
 		}
 		evt := s.stream.Current()
 		switch evt.Type {
@@ -529,6 +545,14 @@ func mapError(err error, model string) error {
 	}
 	redactRequestURL(apiErr.Request)
 
+	// An SSE error event arrives on a 200 response: classify it by the
+	// status its error type stands for (overloaded_error is a 529).
+	if apiErr.StatusCode < 400 {
+		if st, ok := eventStatus[string(apiErr.Type())]; ok {
+			apiErr.StatusCode = st
+		}
+	}
+
 	switch apiErr.StatusCode {
 	case 401, 403:
 		return llmerrors.NewAuth(scheme, err)
@@ -552,4 +576,34 @@ func mapError(err error, model string) error {
 
 func init() {
 	llm.Register(scheme, New, llm.Declaration{Endpoints: []string{defaultBaseURL}})
+}
+
+// eventStatus maps an API error type to the status it stands for.
+var eventStatus = map[string]int{
+	"invalid_request_error": 400,
+	"authentication_error":  401,
+	"billing_error":         402,
+	"permission_error":      403,
+	"not_found_error":       404,
+	"request_too_large":     413,
+	"rate_limit_error":      429,
+	"api_error":             500,
+	"timeout_error":         504,
+	"overloaded_error":      529,
+}
+
+// mapError is [mapError] with every credential value scrubbed from the
+// message: a response body echoing the key never surfaces it.
+func (a *Adapter) mapError(err error, model string) error {
+	return scrub(mapError(err, model), a.secrets)
+}
+
+// refuseRedirect stops the client at a redirect: the 3xx comes back as
+// an [llmerrors.HTTPStatusError], not followed.
+func refuseRedirect(req *http.Request, _ []*http.Request) error {
+	code := 0
+	if req.Response != nil {
+		code = req.Response.StatusCode
+	}
+	return llmerrors.NewHTTPStatusError(code, "anthropic: redirect not followed")
 }

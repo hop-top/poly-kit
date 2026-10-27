@@ -75,6 +75,18 @@ pub enum LlmError {
     Transport {
         message: String,
     },
+    /// A stream ended before its final event: incomplete, never a
+    /// success. Not fallbackable.
+    Truncated {
+        provider: String,
+    },
+    /// A response body, or one streamed event, exceeded its limit.
+    ResponseTooLarge {
+        provider: String,
+        /// `body` or `event`.
+        what: &'static str,
+        limit: u64,
+    },
     /// A retry wait was cancelled (Go's context error).
     Cancelled,
     /// The provider's response could not be understood.
@@ -176,6 +188,18 @@ impl fmt::Display for LlmError {
             LlmError::MissingKey(e) => e.fmt(f),
             LlmError::Offline(e) => e.fmt(f),
             LlmError::Transport { message } => f.write_str(message),
+            LlmError::Truncated { provider } => write!(
+                f,
+                "stream truncated (provider {provider:?}): ended before its final event"
+            ),
+            LlmError::ResponseTooLarge {
+                provider,
+                what,
+                limit,
+            } => write!(
+                f,
+                "response {what} exceeds {limit} bytes (provider {provider:?})"
+            ),
             LlmError::Cancelled => f.write_str("context canceled"),
             LlmError::Protocol(m) | LlmError::Invalid(m) => f.write_str(m),
         }

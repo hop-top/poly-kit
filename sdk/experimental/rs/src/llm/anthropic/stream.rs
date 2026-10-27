@@ -160,22 +160,29 @@ pub(crate) struct AnthropicStream {
     finished: bool,
     outcome: Option<StreamOutcome>,
     transport: Box<dyn Fn(reqwest::Error) -> LlmError + Send>,
+    scrub: Scrub,
 }
+
+/// Removes credential values from text bound for an error.
+pub(crate) type Scrub = std::sync::Arc<dyn Fn(&str) -> String + Send + Sync>;
 
 impl AnthropicStream {
     pub fn new(
         resp: reqwest::Response,
         model: String,
         transport: Box<dyn Fn(reqwest::Error) -> LlmError + Send>,
+        max_event: u64,
+        scrub: Scrub,
     ) -> Self {
         AnthropicStream {
             resp,
-            decoder: SseDecoder::default(),
+            decoder: SseDecoder::with_limit(max_event),
             acc: Accumulator::default(),
             model,
             finished: false,
             outcome: None,
             transport,
+            scrub,
         }
     }
 
@@ -196,7 +203,7 @@ impl AnthropicStream {
     /// Handle one event: `Some` when it ends the call or yields a token.
     fn event(&mut self, ev: SseEvent) -> Option<Result<Option<Token>, LlmError>> {
         if ev.event == "error" {
-            let e = map_event_error(&ev.data, &self.model);
+            let e = map_event_error(&(self.scrub)(&ev.data), &self.model);
             return Some(self.fail(e));
         }
         if !EVENTS.contains(&ev.event.as_str()) {
@@ -232,11 +239,20 @@ impl AnthropicStream {
             }
             match self.resp.chunk().await {
                 Ok(Some(bytes)) => {
-                    if let Err(msg) = self.decoder.feed(&bytes) {
-                        return self.fail(protocol(msg));
+                    if let Err(limit) = self.decoder.feed(&bytes) {
+                        return self.fail(LlmError::ResponseTooLarge {
+                            provider: super::SCHEME.into(),
+                            what: "event",
+                            limit,
+                        });
                     }
                 }
-                Ok(None) => return self.done(),
+                // No message_stop: the response is incomplete.
+                Ok(None) => {
+                    return self.fail(LlmError::Truncated {
+                        provider: super::SCHEME.into(),
+                    })
+                }
                 Err(e) => {
                     let e = (self.transport)(e);
                     return self.fail(e);

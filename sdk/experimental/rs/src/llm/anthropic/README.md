@@ -25,8 +25,10 @@ scheme in `default_registry()`. Feature `llm-anthropic`, native only.
 - A tool without parameters sends `input_schema: {"type":"object"}`; Go omits the field, which the
   API rejects.
 - Errors: 401/403 auth, 404 model, 429 rate limit, 5xx (529 included) `HttpStatus`, other `Api`.
-  An SSE `error` event maps by its type (`overloaded_error` as 529, `rate_limit_error` as 429);
-  Go leaves these unclassified.
+  An SSE `error` event maps by its type (`overloaded_error` as 529, `rate_limit_error` as 429). A
+  stream ending before `message_stop` is `Truncated`, never a success. 3xx: not followed, `HttpStatus`.
+- Limits: body 32 MiB, one SSE event 8 MiB (`Limits`, or params `max_body_bytes`/`max_event_bytes`);
+  over is `ResponseTooLarge`. Credential values are scrubbed from every error text.
 - Retries: 2 more attempts on 408, 409, 429, 5xx and transport failures; `x-should-retry` wins;
   wait `retry-after-ms`/`retry-after` when in (0, 60s], else 500ms backoff capped at 8s with full jitter. Offline
   refusals are never retried.

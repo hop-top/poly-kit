@@ -33,16 +33,17 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 | `anthropic_request[]` | the request body, compared as JSON (numbers by value) |
 | `anthropic_request_error[]` | requests rejected before sending, exact message, nothing sent |
 | `anthropic_headers[]` | key, version, bearer token and workspace headers from the `ANTHROPIC_*` env |
-| `anthropic_stream[]` | text tokens of an SSE body, then done, or an error |
+| `anthropic_stream[]` | text tokens of an SSE body, then done, or the typed error (`error_kind`; `truncated` without `message_stop`) |
 | `anthropic_accumulate[]` | text, thinking, tool calls, stop reason and usage of an SSE body; Go runs the SDK's `Message.Accumulate`, Rust its stream outcome |
 | `anthropic_error[]` | error kind, status, fallbackable, and attempts under the default retry policy (server waits honored in (0, 60s] only); the last response repeats |
+| `anthropic_limits[]` | `max_body_bytes` / `max_event_bytes` params: a body or one SSE event over the limit is `too_large` |
 | `key_endpoint[]` | where a resolved key may go: `apply` (resulting URI), `load`, `resolve` (refused or not) |
 
 Runners are strict: unknown fields, a `version` other than `v1` and a file no runner consumes fail the run. Servers are loopback only; no vector reaches the network.
 
 ### Known differences
 
-Not vectored. A tool without parameters: Go sends no `input_schema` (the API rejects it), Rust sends `{"type":"object"}`. An SSE `error` event: Go returns it unclassified, Rust maps it by error type (`overloaded_error` as a fallbackable 529). Rust's text stream also fails on malformed block indexes, which Go's ignores.
+Not vectored. A tool without parameters: Go sends no `input_schema` (the API rejects it), Rust sends `{"type":"object"}`. A `retry-after` HTTP date: Go honors one within 60s, Rust backs off. Rust's text stream also fails on malformed block indexes, which Go's ignores.
 
 ## Runners
 

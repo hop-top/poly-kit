@@ -29,6 +29,43 @@ pub const DEFAULT_MAX_TOKENS: u32 = 1024;
 /// Retries after the first attempt, as the Anthropic SDKs default.
 pub const DEFAULT_MAX_RETRIES: u32 = 2;
 
+/// Bounds on what a response may hold, to bound memory. Provider params
+/// `max_body_bytes` and `max_event_bytes` set them from a URI or config;
+/// [`Builder::limits`] outranks both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// A whole non-streamed body (and an error body, read no further).
+    pub max_body_bytes: u64,
+    /// One SSE event of a stream.
+    pub max_event_bytes: u64,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Limits {
+            max_body_bytes: 32 << 20,
+            max_event_bytes: sse::DEFAULT_MAX_EVENT,
+        }
+    }
+}
+
+impl Limits {
+    fn from_params(params: &std::collections::BTreeMap<String, String>) -> Result<Self, LlmError> {
+        let mut l = Limits::default();
+        for (name, dst) in [
+            ("max_body_bytes", &mut l.max_body_bytes),
+            ("max_event_bytes", &mut l.max_event_bytes),
+        ] {
+            if let Some(v) = params.get(name) {
+                *dst = v.trim().parse().ok().filter(|n| *n > 0).ok_or_else(|| {
+                    LlmError::invalid(format!("anthropic: {name} must be a positive byte count"))
+                })?;
+            }
+        }
+        Ok(l)
+    }
+}
+
 /// Waits the given delay; resolves `false` when cancelled.
 pub type Sleeper = Arc<dyn Fn(Duration) -> BoxFuture<'static, bool> + Send + Sync>;
 
@@ -45,6 +82,8 @@ pub struct Adapter {
     model: String,
     max_retries: u32,
     sleeper: Option<Sleeper>,
+    limits: Limits,
+    scrub: stream::Scrub,
 }
 
 impl std::fmt::Debug for Adapter {
@@ -66,6 +105,7 @@ pub struct Builder {
     sleeper: Option<Sleeper>,
     max_retries: u32,
     file: Option<crate::llm::ConfigFile>,
+    limits: Option<Limits>,
 }
 
 /// The default retry timer: tokio's, which reqwest already runs on.
@@ -102,6 +142,12 @@ impl Builder {
     /// trusted origin; the default reads it from disk at build.
     pub fn config_file(mut self, file: crate::llm::ConfigFile) -> Self {
         self.file = Some(file);
+        self
+    }
+
+    /// Response size limits; outranks the `max_*_bytes` params.
+    pub fn limits(mut self, limits: Limits) -> Self {
+        self.limits = Some(limits);
         self
     }
 
@@ -168,11 +214,30 @@ impl Builder {
             ))
         })?;
         let credentials = self.credentials(&base, &url)?;
+        let limits = match self.limits {
+            Some(l) => l,
+            None => Limits::from_params(&p.params)?,
+        };
+        // Redirects are not followed: a credential never moves to a host
+        // the server names. Proxies come from the environment only.
         let client = match self.client {
             Some(c) => c,
-            None => GuardedClient::new(self.cfg.net_policy)
-                .map_err(|e| LlmError::invalid(format!("anthropic: http client: {e}")))?,
+            None => GuardedClient::build(
+                self.cfg.net_policy,
+                reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()),
+            )
+            .map_err(|e| LlmError::invalid(format!("anthropic: http client: {e}")))?,
         };
+        let secrets: Vec<String> = credentials
+            .iter()
+            .map(|(_, v)| v.strip_prefix("Bearer ").unwrap_or(v).to_string())
+            .filter(|v| !v.trim().is_empty())
+            .collect();
+        let scrub: stream::Scrub = std::sync::Arc::new(move |text: &str| {
+            secrets
+                .iter()
+                .fold(text.to_string(), |t, s| t.replace(s.as_str(), "REDACTED"))
+        });
         Ok(Adapter {
             destination: crate::netpolicy::destination(&url),
             url,
@@ -181,6 +246,8 @@ impl Builder {
             model: p.model.clone(),
             max_retries: self.max_retries,
             sleeper: self.sleeper,
+            limits,
+            scrub,
         })
     }
 }
@@ -199,6 +266,7 @@ impl Adapter {
             sleeper: Some(tokio_sleeper()),
             max_retries: DEFAULT_MAX_RETRIES,
             file: None,
+            limits: None,
         }
     }
 
@@ -223,8 +291,8 @@ impl Adapter {
     ) -> Result<wire::Parsed, LlmError> {
         let body = wire::body(&self.model, req, tools, false)?;
         let resp = self.send(&body, false, self.model_for(req)).await?;
-        let text = resp.text().await.map_err(|e| self.transport_error(e))?;
-        let v: serde_json::Value = serde_json::from_str(&text)
+        let text = self.read_body(resp).await?;
+        let v: serde_json::Value = serde_json::from_slice(&text)
             .map_err(|e| LlmError::Protocol(format!("anthropic: decode response: {e}")))?;
         Ok(wire::parse_message(&v))
     }
@@ -248,6 +316,8 @@ impl Adapter {
             resp,
             model,
             Box::new(transport),
+            self.limits.max_event_bytes,
+            self.scrub.clone(),
         )))
     }
 }

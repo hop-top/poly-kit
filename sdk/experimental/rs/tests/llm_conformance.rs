@@ -42,6 +42,8 @@ struct Corpus {
     key_endpoint: Vec<KeyEndpointCase>,
     #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
     credential_headers: Vec<CredentialCase>,
+    #[cfg_attr(not(feature = "llm-anthropic"), allow(dead_code))]
+    anthropic_limits: Vec<LimitCase>,
 }
 
 #[derive(Deserialize)]
@@ -201,6 +203,7 @@ struct StreamCase {
     sse: String,
     want_tokens: Vec<String>,
     want_error: bool,
+    error_kind: String,
 }
 
 #[derive(Deserialize)]
@@ -268,6 +271,19 @@ struct ErrorCase {
     want_status: u16,
     fallbackable: bool,
     attempts: usize,
+    stream: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct LimitCase {
+    name: String,
+    params: BTreeMap<String, String>,
+    stream: bool,
+    content_type: String,
+    body: String,
+    too_large: bool,
 }
 
 fn load() -> Corpus {
@@ -320,7 +336,7 @@ mod anthropic {
     use hop_top_kit::llm::anthropic::Adapter;
     use hop_top_kit::llm::{
         LlmError, Media, MediaKind, Message, Part, Provider, ProviderConfig, Request,
-        ResolvedConfig, Role, ToolCall, ToolDef,
+        ResolvedConfig, Response, Role, ToolCall, ToolDef,
     };
     use llm_support::{serve, Canned};
 
@@ -530,6 +546,8 @@ mod anthropic {
                 "{}: {stream_err:?}",
                 v.name
             );
+            let k = stream_err.as_ref().map_or("", |e| kind(e).0);
+            assert_eq!(k, v.error_kind, "{}: {stream_err:?}", v.name);
             let body = srv.only().json();
             assert_eq!(body["stream"], Value::Bool(true), "{}", v.name);
         }
@@ -611,6 +629,8 @@ mod anthropic {
 
     fn kind(e: &LlmError) -> (&'static str, u16) {
         match e {
+            LlmError::Truncated { .. } => ("truncated", 0),
+            LlmError::ResponseTooLarge { .. } => ("too_large", 0),
             LlmError::Auth { .. } => ("auth", 0),
             LlmError::RateLimit { .. } => ("rate_limit", 0),
             LlmError::Model { .. } => ("model", 0),
@@ -646,11 +666,22 @@ mod anthropic {
                 })
                 .collect();
             let srv = serve(canned).await;
-            let a = adapter(&srv.url, "m", "k");
+            let a = adapter(&srv.url, "m", CONF_KEY);
             // A wait the client should not honor fails here, not hangs.
-            let res = tokio::time::timeout(std::time::Duration::from_secs(10), a.complete(&hi()))
+            let call = async {
+                if v.stream {
+                    drain(&a).await.map(|_| Response::default())
+                } else {
+                    a.complete(&hi()).await
+                }
+            };
+            let res = tokio::time::timeout(std::time::Duration::from_secs(10), call)
                 .await
                 .unwrap_or_else(|_| panic!("{}: timed out", v.name));
+            if let Err(e) = &res {
+                assert!(!e.to_string().contains(CONF_KEY), "{}: {e}", v.name);
+                assert!(!format!("{e:?}").contains(CONF_KEY), "{}: {e:?}", v.name);
+            }
             let (k, status) = match &res {
                 Ok(_) => ("", 0),
                 Err(e) => kind(e),
@@ -719,6 +750,49 @@ mod anthropic {
             }
             for h in &v.withheld {
                 assert!(!names.contains(&h.as_str()), "{}: {h} withheld", v.name);
+            }
+        }
+    }
+
+    /// The key error vectors run with; no error text may hold it.
+    const CONF_KEY: &str = "conf-key-must-not-leak";
+
+    /// Open a stream and read it to its end.
+    async fn drain(a: &Adapter) -> Result<(), LlmError> {
+        let mut s = a.stream(&hi()).await?;
+        loop {
+            match s.next().await? {
+                Some(t) if t.done => return Ok(()),
+                Some(_) => {}
+                None => return Ok(()),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn limit_vectors() {
+        let c = load();
+        assert!(!c.anthropic_limits.is_empty());
+        for v in &c.anthropic_limits {
+            let srv = serve(vec![Canned {
+                status: 200,
+                headers: vec![("content-type".into(), v.content_type.clone())],
+                body: v.body.clone(),
+                hang: false,
+            }])
+            .await;
+            let mut rc = cfg(&srv.url, "m", "k");
+            rc.provider.params = v.params.clone();
+            let a = Adapter::builder(rc).env(|_| None).build().unwrap();
+            let res = if v.stream {
+                drain(&a).await
+            } else {
+                a.complete(&hi()).await.map(|_| ())
+            };
+            match res {
+                Err(LlmError::ResponseTooLarge { .. }) => assert!(v.too_large, "{}", v.name),
+                Err(e) => panic!("{}: {e}", v.name),
+                Ok(()) => assert!(!v.too_large, "{}: not refused", v.name),
             }
         }
     }

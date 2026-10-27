@@ -6,8 +6,9 @@
 
 use std::collections::VecDeque;
 
-/// Longest line accepted, the Go SDK's scanner cap.
-const MAX_LINE: usize = 32 << 20;
+/// Default cap on one event: bytes, `\r` aside, since the last blank
+/// line. Provider param `max_event_bytes` overrides it.
+pub(crate) const DEFAULT_MAX_EVENT: u64 = 8 << 20;
 
 /// One dispatched event.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,8 +17,11 @@ pub(crate) struct SseEvent {
     pub data: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct SseDecoder {
+    max_event: u64,
+    event_bytes: u64,
+    prev: u8,
     line: Vec<u8>,
     event: String,
     data: String,
@@ -25,14 +29,42 @@ pub(crate) struct SseDecoder {
     ready: VecDeque<SseEvent>,
 }
 
+impl Default for SseDecoder {
+    fn default() -> Self {
+        Self::with_limit(DEFAULT_MAX_EVENT)
+    }
+}
+
 impl SseDecoder {
+    pub fn with_limit(max_event: u64) -> Self {
+        SseDecoder {
+            max_event,
+            event_bytes: 0,
+            prev: 0,
+            line: Vec::new(),
+            event: String::new(),
+            data: String::new(),
+            has_data: false,
+            ready: VecDeque::new(),
+        }
+    }
+
     /// Feed body bytes; complete events queue for [`SseDecoder::pop`].
-    pub fn feed(&mut self, bytes: &[u8]) -> Result<(), String> {
+    /// `Err` carries the limit when one event outgrows it.
+    pub fn feed(&mut self, bytes: &[u8]) -> Result<(), u64> {
         for &b in bytes {
-            if b != b'\n' {
-                if self.line.len() >= MAX_LINE {
-                    return Err("anthropic: stream line exceeds 32 MiB".into());
+            if b != b'\r' {
+                if b == b'\n' && self.prev == b'\n' {
+                    self.event_bytes = 0;
+                } else {
+                    self.event_bytes += 1;
                 }
+                self.prev = b;
+                if self.event_bytes > self.max_event {
+                    return Err(self.max_event);
+                }
+            }
+            if b != b'\n' {
                 self.line.push(b);
                 continue;
             }

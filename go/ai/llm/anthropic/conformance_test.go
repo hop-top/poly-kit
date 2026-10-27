@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -115,6 +116,7 @@ type anthropicConfFile struct {
 		SSE        string   `json:"sse"`
 		WantTokens []string `json:"want_tokens"`
 		WantError  bool     `json:"want_error"`
+		ErrorKind  string   `json:"error_kind"`
 	} `json:"anthropic_stream"`
 	AnthropicAccumulate []struct {
 		Name    string          `json:"name"`
@@ -129,7 +131,16 @@ type anthropicConfFile struct {
 		WantStatus   int            `json:"want_status"`
 		Fallbackable bool           `json:"fallbackable"`
 		Attempts     int            `json:"attempts"`
+		Stream       bool           `json:"stream"`
 	} `json:"anthropic_error"`
+	AnthropicLimits []struct {
+		Name        string            `json:"name"`
+		Params      map[string]string `json:"params"`
+		Stream      bool              `json:"stream"`
+		ContentType string            `json:"content_type"`
+		Body        string            `json:"body"`
+		TooLarge    bool              `json:"too_large"`
+	} `json:"anthropic_limits"`
 	KeyEndpoint []struct {
 		Name    string            `json:"name"`
 		Op      string            `json:"op"`
@@ -351,6 +362,8 @@ func TestConformanceAnthropicStream(t *testing.T) {
 			}
 			assert.Equal(t, v.WantTokens, tokens)
 			assert.Equal(t, v.WantError, streamErr != nil, "error: %v", streamErr)
+			kind, _ := errorKind(streamErr)
+			assert.Equal(t, v.ErrorKind, kind, "error: %v", streamErr)
 		})
 	}
 }
@@ -431,6 +444,10 @@ func errorKind(err error) (kind string, status int) {
 	switch {
 	case err == nil:
 		return "", 0
+	case errors.As(err, new(*llmerrors.ErrStreamTruncated)):
+		return "truncated", 0
+	case errors.As(err, new(*llmerrors.ErrResponseTooLarge)):
+		return "too_large", 0
 	case errors.As(err, &auth):
 		return "auth", 0
 	case errors.As(err, &rl):
@@ -465,13 +482,21 @@ func TestConformanceAnthropicError(t *testing.T) {
 				_, _ = io.WriteString(w, r.Body)
 			}))
 			t.Cleanup(srv.Close)
-			p := newConfAdapter(t, srv.URL, "m", "k")
+			p := newConfAdapter(t, srv.URL, "m", confKey)
 			// A wait the client should not honor fails here, not hangs.
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			_, err := p.(llm.Completer).Complete(ctx, llm.Request{
-				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
-			})
+			req := llm.Request{Messages: []llm.Message{{Role: "user", Content: "Hi"}}}
+			var err error
+			if v.Stream {
+				err = drainStream(ctx, p, req)
+			} else {
+				_, err = p.(llm.Completer).Complete(ctx, req)
+			}
+			if err != nil {
+				assert.NotContains(t, err.Error(), confKey)
+				assert.NotContains(t, fmt.Sprintf("%+v", err), confKey)
+			}
 			kind, status := errorKind(err)
 			assert.Equal(t, v.WantKind, kind, "error: %v", err)
 			assert.Equal(t, v.WantStatus, status)
@@ -556,6 +581,63 @@ func TestConformanceCredentialHeaders(t *testing.T) {
 			for _, h := range v.Withheld {
 				assert.Empty(t, req.Header.Values(h), h)
 			}
+		})
+	}
+}
+
+// confKey is the key error vectors run with; no error text may hold it.
+const confKey = "conf-key-must-not-leak"
+
+// drainStream opens a stream and reads it to its end.
+func drainStream(ctx context.Context, p llm.Provider, req llm.Request) error {
+	it, err := p.(llm.Streamer).Stream(ctx, req)
+	if err != nil {
+		return err
+	}
+	defer it.Close()
+	for {
+		tok, err := it.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+		if tok.Done {
+			return nil
+		}
+	}
+}
+
+func TestConformanceAnthropicLimits(t *testing.T) {
+	f := loadAnthropicConf(t)
+	require.NotEmpty(t, f.AnthropicLimits)
+	for _, v := range f.AnthropicLimits {
+		t.Run(v.Name, func(t *testing.T) {
+			clearAnthropicEnv(t)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", v.ContentType)
+				_, _ = io.WriteString(w, v.Body)
+			}))
+			t.Cleanup(srv.Close)
+			p, err := anthropic.New(llm.ResolvedConfig{Provider: llm.ProviderConfig{
+				APIKey: "k", BaseURL: srv.URL, Model: "m", Params: v.Params,
+			}})
+			require.NoError(t, err)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			req := llm.Request{Messages: []llm.Message{{Role: "user", Content: "Hi"}}}
+			if v.Stream {
+				err = drainStream(ctx, p, req)
+			} else {
+				_, err = p.(llm.Completer).Complete(ctx, req)
+			}
+			if v.TooLarge {
+				kind, _ := errorKind(err)
+				assert.Equal(t, "too_large", kind, "error: %v", err)
+				return
+			}
+			assert.NoError(t, err)
 		})
 	}
 }
