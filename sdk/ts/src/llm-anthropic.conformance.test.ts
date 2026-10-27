@@ -95,10 +95,27 @@ const NOT_RUN: Record<string, string> = {
     "core parseURI keeps its own error texts and rejects an empty model; adapters are unaffected",
   key_endpoint:
     "core has no llm.yaml, ApplyAPIKey or Resolve-time key guard; adapters guard keys instead",
+  anthropic_tool_choice:
+    "pending the TypeScript port of the Go 403 split / system joining / stream events / hermetic / metadata-only bus changes",
+  anthropic_hermetic:
+    "pending the TypeScript port of the Go 403 split / system joining / stream events / hermetic / metadata-only bus changes",
+  anthropic_stream_events:
+    "pending the TypeScript port of the Go 403 split / system joining / stream events / hermetic / metadata-only bus changes",
+  bus_request_started:
+    "pending the TypeScript port of the Go 403 split / system joining / stream events / hermetic / metadata-only bus changes",
+  bus_response_received:
+    "pending the TypeScript port of the Go 403 split / system joining / stream events / hermetic / metadata-only bus changes",
 };
 /** Single vectors not run, with why. */
 const NOT_RUN_VECTORS: Record<string, string> = {
   "credential_headers/llm.yaml base_url": "core has no llm.yaml layer",
+  "anthropic_error/403 permission denied": "403 permission-denied split pending the TypeScript port",
+  "anthropic_error/stream: 403 before any event": "403 permission-denied split pending the TypeScript port",
+  "anthropic_stream/permission error event mid-stream": "403 permission-denied split pending the TypeScript port",
+  "anthropic_request/system messages join in order": "system-message joining pending the TypeScript port",
+  "anthropic_request/empty system messages are skipped": "system-message joining pending the TypeScript port",
+  "anthropic_request/only empty system messages send no system": "system-message joining pending the TypeScript port",
+  "anthropic_request/system cache breakpoints split the joined text": "system-message joining pending the TypeScript port",
 };
 
 const file = loadVectors<File>();
@@ -308,6 +325,11 @@ describe("llm-v1 conformance: anthropic_request", () => {
     want_body: unknown;
   };
   for (const v of section("anthropic_request") as V[]) {
+    const why = NOT_RUN_VECTORS[`anthropic_request/${v.name}`];
+    if (why) {
+      it.skip(`${v.name} (${why})`, () => {});
+      continue;
+    }
     it(v.name, async () => {
       strictKeys(v, ["name", "adapter_model", "request", "tools", "want_body"], v.name);
       const s = await server((_h, res) => reply(res, "application/json", OK_MESSAGE));
@@ -423,6 +445,11 @@ describe("llm-v1 conformance: anthropic_stream", () => {
     want_thinking: string[];
   };
   for (const v of section("anthropic_stream") as V[]) {
+    const why = NOT_RUN_VECTORS[`anthropic_stream/${v.name}`];
+    if (why) {
+      it.skip(`${v.name} (${why})`, () => {});
+      continue;
+    }
     it(v.name, async () => {
       strictKeys(v, [
         "name", "sse", "want_tokens", "want_error", "error_kind", "thinking_budget", "want_thinking",
@@ -512,6 +539,11 @@ describe("llm-v1 conformance: anthropic_error", () => {
     stream: boolean;
   };
   for (const v of section("anthropic_error") as V[]) {
+    const why = NOT_RUN_VECTORS[`anthropic_error/${v.name}`];
+    if (why) {
+      it.skip(`${v.name} (${why})`, () => {});
+      continue;
+    }
     it(v.name, { timeout: 10_000 }, async () => {
       strictKeys(v, [
         "name", "responses", "want_kind", "want_status", "fallbackable", "attempts", "stream",
