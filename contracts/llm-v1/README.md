@@ -2,7 +2,7 @@
 
 ## What it answers
 
-What the llm core and the Anthropic adapter must do, independent of language: provider URI parsing and
+What the llm core and the Anthropic and OpenAI adapters must do, independent of language: provider URI parsing and
 credential masking, what a URL media source refuses to fetch (SSRF guard), the Messages API body for a
 request, auth headers, text tokens and events from an SSE body, what it accumulates into, how error
 responses map and retry, and what the client's bus events carry. Wrong place for HTTP client wiring,
@@ -10,7 +10,7 @@ timers and key stores; those are per-runtime.
 
 ## Use it when
 
-- you port or change URI parsing, redaction or the anthropic adapter in any SDK: run every runner
+- you port or change URI parsing, redaction, the anthropic or the openai adapter in any SDK: run every runner
 - you change llm behaviour in Go: add a vector first, then make every port pass it
 
 ## Quick start
@@ -18,10 +18,10 @@ timers and key stores; those are per-runtime.
 ```sh
 make test-parity-llm
 # or separately:
-go test ./go/ai/llm/ ./go/ai/llm/anthropic/ ./go/ai/llm/google/ -run '^TestConformance'
+go test ./go/ai/llm/ ./go/ai/llm/anthropic/ ./go/ai/llm/google/ ./go/ai/llm/openai/ -run '^TestConformance'
 cargo test --features llm-anthropic --test llm_conformance   # from sdk/experimental/rs
-pnpm vitest run src/llm-anthropic.conformance.test.ts src/llm-toolnames.conformance.test.ts src/llm-media.conformance.test.ts   # from sdk/ts
-uv run pytest tests/test_llm_conformance.py                  # from sdk/py
+pnpm vitest run src/llm-anthropic.conformance.test.ts src/llm-toolnames.conformance.test.ts src/llm-media.conformance.test.ts src/llm-openai.conformance.test.ts   # from sdk/ts
+uv run pytest tests/test_llm_conformance.py tests/test_llm_openai_conformance.py   # from sdk/py
 ```
 
 ## Contract
@@ -51,29 +51,29 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 | `media_fetch[]` | a URL media source's download guard: http(s) only, no userinfo, public addresses only (v4-mapped and NAT64 by their IPv4), no redirects, a byte cap (`max_bytes`, default 32 MiB); `error_kind` `refused` (exact `message` when given), `redirect`, `http_status`, `too_large`; a `url` starting with `/` is served by the runner's loopback server, let past the address check, and `attempts` counts its requests |
 | `gemini_stream_events[]` | the gemini adapter's `StreamWithTools` (no tools: `Stream`) over a `streamGenerateContent` SSE body: text; with `stream_events`, each whole `functionCall` as `start`, one `delta` (none without args), `end` back to back, and a cumulative `usage` per chunk with `usageMetadata`; then `done` on a `finishReason` or prompt `blockReason` (`want_outcome`), or `error_kind` (`truncated` before either). Go only |
 | `anthropic_tool_names[]` | the anthropic adapter end to end: tool and history `tool_use` names sent, calls returned (`tools`, `stream_tools`) with the original name, errors with no request sent, the `tool_names` param |
+| `openai_request[]`, `openai_error[]`, `openai_limits[]` | the Chat Completions body per call (`complete`, `tools`, `stream`, `stream_tools`) as JSON: tools by wire name, `tool_choice` (`any` is `"required"`, a named tool by its sent name), the tool round trip, `stream_options.include_usage` only with `stream_events`; errors as `anthropic_error` (403 `permission_denied`); `max_body_bytes` / `max_event_bytes` as `anthropic_limits` (a stream bounded per event only) |
+| `openai_stream[]`, `openai_stream_events[]`, `openai_accumulate[]` | text tokens then done, or `error_kind`: finished at `data: [DONE]` or, without it, once a choice carried a `finish_reason`, else `truncated`; an error chunk is `api` (status 0). With `stream_events`: tool-call `start` (the fragment completing id and name), `delta` (each arguments fragment), `end` (open calls, index order, on the `finish_reason` chunk), `usage` from the final chunk, no end for a call open at an error; not opted in, exactly the tokens. The `StreamWithTools` outcome: text, calls by index with original names (arguments `{}` when none streamed), finish reason, usage |
 
 Runners are strict: unknown fields, a `version` other than `v1` and a file no runner consumes fail the run. Servers are loopback only; no vector reaches the network.
 
 ### Known differences
 
-Not vectored. A `retry-after` HTTP date: Go and TypeScript honor one within 60s, Rust and Python back off. Python keeps `LLM_API_KEY` ahead of llm.yaml and `<SCHEME>_API_KEY` (Go: llm.yaml, then the provider variable, then `LLM_API_KEY`) and has no secret store. TypeScript resolves keys in Go's order with no secret store. Both find an llm.yaml block by scheme name only (Go also reads the block of a provider alias). Rust has no URL media sources (media are bytes the caller read): `media_fetch` is not applicable, and `anthropic_request` vectors with a `url` part are skipped by name. `routellm` is not vectored: every port parses the model field alike (router pair or tier name) and sends it over the openai adapter when a RouteLLM base URL is set; with none, Go and TypeScript use `http://localhost:6060` while Python routes in-process through the `routellm` Controller, which takes no tier name. Only Go has a gemini adapter: `gemini_stream_events` is not applicable in Rust, Python and TypeScript, whose runners list it as such.
+Not vectored. A `retry-after` HTTP date: Go and TypeScript honor one within 60s, Rust and Python back off. Python keeps `LLM_API_KEY` ahead of llm.yaml and `<SCHEME>_API_KEY` (Go: llm.yaml, then the provider variable, then `LLM_API_KEY`) and has no secret store. TypeScript resolves keys in Go's order with no secret store. Both find an llm.yaml block by scheme name only (Go also reads the block of a provider alias). Rust has no URL media sources (media are bytes the caller read): `media_fetch` is not applicable, and `anthropic_request` vectors with a `url` part are skipped by name. `routellm` is not vectored: every port parses the model field alike (router pair or tier name) and sends it over the openai adapter when a RouteLLM base URL is set; with none, Go and TypeScript use `http://localhost:6060` while Python routes in-process through the `routellm` Controller, which takes no tier name. Only Go has a gemini adapter: `gemini_stream_events` is not applicable in Rust, Python and TypeScript, whose runners list it as such. Rust has no openai adapter: the `openai_*` sections are not applicable there. Python and TypeScript's openai adapters stream no tool-call or usage events and send no `stream_options` yet: the `openai_request` and `openai_stream_events` vectors that set `stream_events` are pending there, listed by name. An openai error chunk with a numeric `code`: Python takes it as the status, Go and TypeScript report status 0 (only uncoded chunks are vectored). Go's openai adapter follows redirects and does not scrub a key a response body echoes; the Python and TypeScript openai adapters refuse redirects and scrub (not vectored for openai).
 
 ## Tool names
 
-Normative spec: [tool-names.md](tool-names.md). Rules `anthropic` (`[a-zA-Z0-9_-]`, 128), `openai` (same
-set, 64), `gemini` (adds `.:`, leading letter or `_`, 128). An invalid name: each disallowed byte run
-becomes `_`; too long or no letter/digit left: cut and append `_` + 8 hex of SHA-256. Empty, non-UTF-8,
-duplicate, colliding (and in `?tool_names=strict`, invalid) names fail before sending; returned calls
-carry the original name.
+Normative spec: [tool-names.md](tool-names.md). Rules `anthropic` (`[a-zA-Z0-9_-]`, 128), `openai` (same set, 64), `gemini` (adds `.:`, leading letter or `_`, 128).
+An invalid name: each disallowed byte run becomes `_`; too long or no letter/digit left: cut and append `_` + 8 hex of SHA-256.
+Empty, non-UTF-8, duplicate, colliding (and in `?tool_names=strict`, invalid) names fail before sending; returned calls carry the original name.
 
 ## Runners
 
 | Port | Runner |
 |------|--------|
-| Go | `go/ai/llm/conformance_test.go` (provider-neutral sections, `media_fetch`), `go/ai/llm/anthropic/conformance_test.go` (`TestConformance*`), `go/ai/llm/google/conformance_test.go` (`gemini_*`) |
-| Rust | `sdk/experimental/rs/tests/llm_conformance.rs` (anthropic sections, including `anthropic_tool_names`, need feature `llm-anthropic`; `anthropic_tool_choice`, `anthropic_hermetic`, `anthropic_stream_events`, `bus_request_started`, `bus_response_received` and the vectors in `PENDING_RUST_PORT` skipped, pending the Rust port; `media_fetch` checked present, not applicable) |
-| Python | `sdk/py/tests/test_llm_conformance.py`: every section, anthropic ones and served `media_fetch` vectors against a loopback server; `bus_*` against the `hop_top_kit.llm_events` payload builders (the Python client publishes no bus events) |
-| TypeScript | `sdk/ts/src/llm-anthropic.conformance.test.ts` (every `anthropic_*` section, `credential_headers`, `key_endpoint`, `parse_uri`, `redact_uri`, `usage_cost`; `bus_request_started` and `bus_response_received` against the pure payload builders `requestStartedPayload` / `responseReceivedPayload`, as the TS client publishes no bus events) and `sdk/ts/src/llm-toolnames.conformance.test.ts` (`tool_names`) and `sdk/ts/src/llm-media.conformance.test.ts` (`media_fetch`); every vector runs. `key_endpoint`'s `resolve` op runs `resolve`, which in TS is `loadConfig` plus the adapter |
+| Go | `go/ai/llm/conformance_test.go` (provider-neutral sections, `media_fetch`), `go/ai/llm/anthropic/conformance_test.go` (`TestConformance*`), `go/ai/llm/google/conformance_test.go` (`gemini_*`), `go/ai/llm/openai/conformance_test.go` (`openai_*`) |
+| Rust | `sdk/experimental/rs/tests/llm_conformance.rs` (anthropic sections, including `anthropic_tool_names`, need feature `llm-anthropic`; `anthropic_tool_choice`, `anthropic_hermetic`, `anthropic_stream_events`, `bus_request_started`, `bus_response_received` and the vectors in `PENDING_RUST_PORT` skipped, pending the Rust port; `media_fetch` and the `openai_*` sections checked present, not applicable) |
+| Python | `sdk/py/tests/test_llm_conformance.py`: every section, anthropic ones and served `media_fetch` vectors against a loopback server; `bus_*` against the `hop_top_kit.llm_events` payload builders (the Python client publishes no bus events); `openai_*` in `sdk/py/tests/test_llm_openai_conformance.py`, its `PENDING` vectors skipped with the reason |
+| TypeScript | `sdk/ts/src/llm-anthropic.conformance.test.ts` (every `anthropic_*` section, `credential_headers`, `key_endpoint`, `parse_uri`, `redact_uri`, `usage_cost`; `bus_request_started` and `bus_response_received` against the pure payload builders `requestStartedPayload` / `responseReceivedPayload`, as the TS client publishes no bus events) and `sdk/ts/src/llm-toolnames.conformance.test.ts` (`tool_names`) and `sdk/ts/src/llm-media.conformance.test.ts` (`media_fetch`) and `sdk/ts/src/llm-openai.conformance.test.ts` (`openai_*`, its `PENDING` vectors skipped with the reason); every other vector runs. `key_endpoint`'s `resolve` op runs `resolve`, which in TS is `loadConfig` plus the adapter |
 
 ## See also
 

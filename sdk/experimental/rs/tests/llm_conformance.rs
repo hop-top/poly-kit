@@ -93,6 +93,14 @@ struct Corpus {
     /// Gemini stream events. Not applicable: this port has no gemini
     /// adapter (README, Known differences).
     gemini_stream_events: Vec<Value>,
+    // openai_* sections. Not applicable: this port has no openai
+    // adapter (README, Runners); checked present only.
+    openai_request: Vec<Value>,
+    openai_stream: Vec<Value>,
+    openai_stream_events: Vec<Value>,
+    openai_accumulate: Vec<Value>,
+    openai_error: Vec<Value>,
+    openai_limits: Vec<Value>,
 }
 
 #[derive(Deserialize)]
@@ -525,6 +533,24 @@ fn gemini_stream_events_vectors_not_applicable() {
             "gemini_stream_events vector without a name"
         );
         eprintln!("gemini_stream_events/{name}: not applicable (no gemini adapter in this port)");
+    }
+}
+
+/// The openai_* sections pin the openai adapter, which this port does
+/// not have. They must still be present and well formed.
+#[test]
+fn openai_vectors_not_applicable() {
+    let c = load();
+    for (section, vs) in [
+        ("openai_request", &c.openai_request),
+        ("openai_stream", &c.openai_stream),
+        ("openai_stream_events", &c.openai_stream_events),
+        ("openai_accumulate", &c.openai_accumulate),
+        ("openai_error", &c.openai_error),
+        ("openai_limits", &c.openai_limits),
+    ] {
+        assert!(!vs.is_empty(), "{section} is empty");
+        eprintln!("{section}: {} vectors not applicable (no openai adapter in this port)", vs.len());
     }
 }
 

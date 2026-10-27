@@ -119,12 +119,19 @@ type confAccumulated struct {
 }
 
 type anthropicConfFile struct {
-	Version          string          `json:"version"`
-	Description      string          `json:"description"`
-	RedactURI        json.RawMessage `json:"redact_uri"`
-	ParseURI         json.RawMessage `json:"parse_uri"`
-	MediaFetch       json.RawMessage `json:"media_fetch"` // run in go/ai/llm
-	AnthropicRequest []struct {
+	Version     string          `json:"version"`
+	Description string          `json:"description"`
+	RedactURI   json.RawMessage `json:"redact_uri"`
+	ParseURI    json.RawMessage `json:"parse_uri"`
+	MediaFetch  json.RawMessage `json:"media_fetch"` // run in go/ai/llm
+	// Run in go/ai/llm/openai.
+	OpenAIRequest      json.RawMessage `json:"openai_request"`
+	OpenAIStream       json.RawMessage `json:"openai_stream"`
+	OpenAIStreamEvents json.RawMessage `json:"openai_stream_events"`
+	OpenAIAccumulate   json.RawMessage `json:"openai_accumulate"`
+	OpenAIError        json.RawMessage `json:"openai_error"`
+	OpenAILimits       json.RawMessage `json:"openai_limits"`
+	AnthropicRequest   []struct {
 		Name         string          `json:"name"`
 		AdapterModel string          `json:"adapter_model"`
 		Request      confRequest     `json:"request"`
