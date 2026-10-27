@@ -253,20 +253,34 @@ func (r *subprocessRunner) Run(ctx context.Context, inv Invocation) (Result, err
 	cmd := exec.CommandContext(ctx, r.binary, argv...)
 	cmd.Env = childEnv(inv.Meta)
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	pipes, err := newChildPipes(cmd)
+	if err != nil {
+		return Result{}, err
+	}
+	defer pipes.close()
 
 	applySubprocessAttrs(cmd)
 	// Cancel callback: on ctx.Done, kill the whole process group so
 	// any grandchildren the binary spawned do not leak. Falls back
 	// to cmd.Process.Kill() on platforms without process groups.
 	cmd.Cancel = func() error { return killProcessTree(cmd) }
-	// WaitDelay gives the kernel a brief window between the cancel
-	// signal and a hard SIGKILL on the parent, so stdio is drained.
+	// WaitDelay bounds a child that outlives its Cancel. Output is
+	// drained by childPipes, not os/exec, so it never cuts output.
 	cmd.WaitDelay = 100 * time.Millisecond
 
-	runErr := cmd.Run()
+	var stdout, stderr bytes.Buffer
+	runErr := cmd.Start()
+	pipes.started()
+	if runErr == nil {
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); _, _ = io.Copy(&stdout, pipes.stdout) }()
+		go func() { defer wg.Done(); _, _ = io.Copy(&stderr, pipes.stderr) }()
+		runErr = cmd.Wait()
+		pipes.exited()
+		wg.Wait()
+		runErr = pipes.waitErr(runErr)
+	}
 
 	res := Result{
 		Stdout: stdout.String(),
@@ -309,23 +323,23 @@ func (r *subprocessRunner) Stream(ctx context.Context, inv Invocation, out chan<
 	cmd := exec.CommandContext(ctx, r.binary, argv...)
 	cmd.Env = childEnv(inv.Meta)
 
-	// Use io.Pipe pairs rather than cmd.StdoutPipe()/StderrPipe() so
-	// cmd.Wait() does NOT close the read end before scanLinesTee
-	// goroutines have drained it. With StdoutPipe(), a race exists:
-	// if the process exits before goroutines are scheduled, Wait
-	// closes the pipe and the readers see EOF with zero events.
-	stdoutR, stdoutW := io.Pipe()
-	stderrR, stderrW := io.Pipe()
-	cmd.Stdout = stdoutW
-	cmd.Stderr = stderrW
+	// childPipes rather than cmd.StdoutPipe()/StderrPipe(): Wait
+	// closes StdoutPipe's read end, racing readers not yet scheduled,
+	// and an io.Writer would put os/exec's copy, and so the WaitDelay
+	// cut, behind this channel's consumer.
+	pipes, err := newChildPipes(cmd)
+	if err != nil {
+		return err
+	}
+	defer pipes.close()
 
 	applySubprocessAttrs(cmd)
 	cmd.Cancel = func() error { return killProcessTree(cmd) }
 	cmd.WaitDelay = 100 * time.Millisecond
 
-	if err := cmd.Start(); err != nil {
-		_ = stdoutW.Close()
-		_ = stderrW.Close()
+	err = cmd.Start()
+	pipes.started()
+	if err != nil {
 		return fmt.Errorf("cmdsurface: subprocess start: %w", err)
 	}
 
@@ -334,13 +348,13 @@ func (r *subprocessRunner) Stream(ctx context.Context, inv Invocation, out chan<
 	var stdoutBuf, stderrBuf bytes.Buffer
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go scanLinesTee(stdoutR, &stdoutBuf, "stdout", out, &wg)
-	go scanLinesTee(stderrR, &stderrBuf, "stderr", out, &wg)
+	go scanLinesTee(pipes.stdout, &stdoutBuf, "stdout", out, &wg)
+	go scanLinesTee(pipes.stderr, &stderrBuf, "stderr", out, &wg)
 
 	waitErr := cmd.Wait()
-	_ = stdoutW.Close()
-	_ = stderrW.Close()
+	pipes.exited()
 	wg.Wait()
+	waitErr = pipes.waitErr(waitErr)
 
 	res := &Result{
 		Stdout: stdoutBuf.String(),
