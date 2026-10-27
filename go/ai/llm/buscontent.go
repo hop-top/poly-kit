@@ -3,6 +3,8 @@ package llm
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"slices"
 
 	"hop.top/kit/go/core/redact"
@@ -98,10 +100,19 @@ func redactCalls(r *redact.Redactor, calls []ToolCall) []ToolCall {
 //   - every string, key and number is masked on its decoded text, so a
 //     secret needing escapes on the wire (a quote, a backslash, a \u
 //     escape) still matches; a number r masks becomes the masked text;
-//   - each object member is also checked in key context, as
-//     "key":value and key=value, for rules that need the key beside the
-//     value (generic API keys, keyword-gated rules); a member r flags
-//     there gets its value replaced whole;
+//   - each object member with a string or number value is always also
+//     checked in key context, as "key":value and key=value, for rules
+//     that need the key beside the value, whether or not the key or the
+//     value alone matches; a member r flags there gets its value
+//     replaced whole, and if it still matches with the value replaced
+//     the whole value is the placeholder;
+//   - members keep their order (two keys masked to the same text keep
+//     the first one's place and the later value), so the final check
+//     sees the input's adjacency;
+//   - the input, written back compact in order, is scanned too: a match
+//     that is not inside one token, or inside one member the key-context
+//     check replaced, could be broken up by masking a neighbor, so it
+//     fails the whole value;
 //   - if raw does not decode, or r still finds anything in the result,
 //     the whole value is the fixed placeholder "REDACTED". Nothing is
 //     ever derived from raw's wire text.
@@ -109,21 +120,220 @@ func redactJSON(r *redact.Redactor, raw json.RawMessage) json.RawMessage {
 	placeholder, _ := json.Marshal(redacted)
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
-	var v any
-	if err := dec.Decode(&v); err != nil || dec.More() {
+	v, err := decodeOrdered(dec)
+	if err != nil {
 		return placeholder
 	}
-	out, err := json.Marshal(redactValue(r, v))
-	if err != nil || r.Apply(string(out)) != string(out) {
+	if _, err := dec.Token(); err != io.EOF {
 		return placeholder
 	}
-	return out
+	w := &argsWalk{r: r}
+	out, ok := w.value(v)
+	if !ok {
+		return placeholder
+	}
+	for _, s := range r.Spans(w.compact.String()) {
+		if !w.covers(s) {
+			return placeholder
+		}
+	}
+	var buf bytes.Buffer
+	writeOrdered(&buf, out)
+	if r.Apply(buf.String()) != buf.String() {
+		return placeholder
+	}
+	return buf.Bytes()
 }
 
-// redactValue masks every string, key and number in a decoded JSON
-// value; see [redactJSON]. Two keys masked to the same text keep one
-// value: the copy only describes.
-func redactValue(r *redact.Redactor, v any) any {
+// member is one object member, in input order.
+type member struct {
+	key   string
+	value any
+}
+
+// orderedObject is a decoded JSON object that keeps member order.
+type orderedObject []member
+
+// decodeOrdered reads one JSON value from dec: objects as
+// orderedObject, numbers as json.Number.
+func decodeOrdered(dec *json.Decoder) (any, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	switch t := tok.(type) {
+	case json.Delim:
+		switch t {
+		case '{':
+			obj := orderedObject{}
+			for dec.More() {
+				kt, err := dec.Token()
+				if err != nil {
+					return nil, err
+				}
+				k, ok := kt.(string)
+				if !ok {
+					return nil, errors.New("object key is not a string")
+				}
+				v, err := decodeOrdered(dec)
+				if err != nil {
+					return nil, err
+				}
+				obj = append(obj, member{k, v})
+			}
+			if _, err := dec.Token(); err != nil {
+				return nil, err
+			}
+			return obj, nil
+		case '[':
+			arr := []any{}
+			for dec.More() {
+				v, err := decodeOrdered(dec)
+				if err != nil {
+					return nil, err
+				}
+				arr = append(arr, v)
+			}
+			if _, err := dec.Token(); err != nil {
+				return nil, err
+			}
+			return arr, nil
+		}
+		return nil, errors.New("unexpected delimiter")
+	}
+	return tok, nil // string, json.Number, bool, nil
+}
+
+// writeOrdered encodes v compact, objects in member order.
+func writeOrdered(buf *bytes.Buffer, v any) {
+	switch x := v.(type) {
+	case orderedObject:
+		buf.WriteByte('{')
+		for i, m := range x {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			k, _ := json.Marshal(m.key)
+			buf.Write(k)
+			buf.WriteByte(':')
+			writeOrdered(buf, m.value)
+		}
+		buf.WriteByte('}')
+	case []any:
+		buf.WriteByte('[')
+		for i, e := range x {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			writeOrdered(buf, e)
+		}
+		buf.WriteByte(']')
+	case json.Number:
+		buf.WriteString(x.String())
+	default:
+		b, _ := json.Marshal(x)
+		buf.Write(b)
+	}
+}
+
+// argsWalk masks a decoded value while writing the input back compact,
+// in order, noting the ranges of it the masking clears on its own: each
+// scalar token, and each member the key-context check replaced.
+type argsWalk struct {
+	r       *redact.Redactor
+	compact bytes.Buffer
+	cleared [][2]int
+}
+
+// covers reports whether s lies inside one cleared range.
+func (w *argsWalk) covers(s redact.Span) bool {
+	for _, c := range w.cleared {
+		if c[0] <= s.Start && s.End <= c[1] {
+			return true
+		}
+	}
+	return false
+}
+
+// token writes a scalar token, noting its range as cleared.
+func (w *argsWalk) token(v any) {
+	start := w.compact.Len()
+	writeOrdered(&w.compact, v)
+	w.cleared = append(w.cleared, [2]int{start, w.compact.Len()})
+}
+
+// value returns v masked; false fails the whole value closed.
+func (w *argsWalk) value(v any) (any, bool) {
+	switch x := v.(type) {
+	case nil, bool:
+		writeOrdered(&w.compact, x)
+		return x, true
+	case string, json.Number:
+		w.token(x)
+		return maskScalar(w.r, x), true
+	case []any:
+		w.compact.WriteByte('[')
+		out := make([]any, 0, len(x))
+		for i, e := range x {
+			if i > 0 {
+				w.compact.WriteByte(',')
+			}
+			m, ok := w.value(e)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, m)
+		}
+		w.compact.WriteByte(']')
+		return out, true
+	case orderedObject:
+		w.compact.WriteByte('{')
+		out := orderedObject{}
+		for i, mem := range x {
+			if i > 0 {
+				w.compact.WriteByte(',')
+			}
+			start := w.compact.Len()
+			w.token(mem.key)
+			w.compact.WriteByte(':')
+			var masked any
+			switch e := mem.value.(type) {
+			case string, json.Number:
+				w.token(e)
+				if inContext(w.r, mem.key, e) {
+					// Replaced whole; still matching with the value
+					// gone means the key holds it.
+					if inContext(w.r, mem.key, redacted) {
+						return nil, false
+					}
+					w.cleared = append(w.cleared, [2]int{start, w.compact.Len()})
+					masked = redacted
+				} else {
+					masked = maskScalar(w.r, e)
+				}
+			default:
+				m, ok := w.value(e)
+				if !ok {
+					return nil, false
+				}
+				masked = m
+			}
+			key := w.r.Apply(mem.key)
+			if i := slices.IndexFunc(out, func(m member) bool { return m.key == key }); i >= 0 {
+				out[i].value = masked
+			} else {
+				out = append(out, member{key, masked})
+			}
+		}
+		w.compact.WriteByte('}')
+		return out, true
+	}
+	return nil, false // not a decoded JSON value: fail closed
+}
+
+// maskScalar masks a string or number on its decoded text; a number r
+// masks becomes the masked text. Bools and nulls hold nothing.
+func maskScalar(r *redact.Redactor, v any) any {
 	switch x := v.(type) {
 	case string:
 		return r.Apply(x)
@@ -132,28 +342,14 @@ func redactValue(r *redact.Redactor, v any) any {
 			return m
 		}
 		return x
-	case []any:
-		for i := range x {
-			x[i] = redactValue(r, x[i])
-		}
-		return x
-	case map[string]any:
-		out := make(map[string]any, len(x))
-		for k, e := range x {
-			if flaggedInContext(r, k, e) {
-				out[r.Apply(k)] = redacted
-				continue
-			}
-			out[r.Apply(k)] = redactValue(r, e)
-		}
-		return out
 	}
-	return v // bool, nil
+	return v
 }
 
-// flaggedInContext reports whether r flags the member k: e rendered
-// with its key, for a scalar e.
-func flaggedInContext(r *redact.Redactor, k string, e any) bool {
+// inContext reports whether r matches the member k with the scalar e
+// rendered beside its key, as "key":value or key=value. Always checked,
+// whether or not the key or value alone matches.
+func inContext(r *redact.Redactor, k string, e any) bool {
 	var text string
 	switch x := e.(type) {
 	case string:
@@ -161,12 +357,12 @@ func flaggedInContext(r *redact.Redactor, k string, e any) bool {
 	case json.Number:
 		text = x.String()
 	default:
-		return false // containers are walked; bool and null hold nothing
+		return false
 	}
 	jk, _ := json.Marshal(k)
 	je, _ := json.Marshal(e)
 	for _, s := range []string{string(jk) + ":" + string(je), k + "=" + text} {
-		if r.Apply(s) != s && r.Apply(k) == k && r.Apply(text) == text {
+		if r.Apply(s) != s {
 			return true
 		}
 	}
