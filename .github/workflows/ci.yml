@@ -352,6 +352,13 @@ jobs:
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features bus,netpolicy,domain --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
+      # The breaker builds on domain alone; it reads only the clock its
+      # caller gives it, so the clock-read lint holds it to that here.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features breaker
+      - name: clippy (wasm32, breaker)
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features breaker --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
       - name: netpolicy pulls no reqwest or tokio
         run: |
           tree=$(cargo tree --locked -e normal --no-default-features --features netpolicy)

@@ -32,6 +32,9 @@ pub mod bus;
 #[cfg(feature = "domain")]
 pub mod domain;
 
+#[cfg(feature = "breaker")]
+pub mod breaker;
+
 #[cfg(feature = "config")]
 pub mod config;
 
