@@ -25,7 +25,8 @@ make setup
 ## Code Style
 
 - Follow existing conventions in the codebase
-- Run linters before submitting: `make lint`
+- Run linters before submitting: `make lint` (changed files only;
+  `make lint-all` for the whole tree; see the root `CONTRIBUTING.md`)
 - Keep changes focused; one concern per PR
 
 ## Commit Messages
