@@ -26,8 +26,6 @@ on:
   schedule:
     - cron: '17 2 * * 0'  # Sundays 02:17 UTC
   workflow_dispatch:
-  push:
-    branches: [ci/weekly-full-lint]
 
 permissions:
   contents: read
