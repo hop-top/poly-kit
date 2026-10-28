@@ -104,6 +104,10 @@ updates:
       time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    ignore:
+      # ruff is a mise tool: the locked ruff must equal the mise.toml pin
+      # (toolchain-parity). Moved by hand with the pin, never alone.
+      - dependency-name: ruff
     groups:
       # mcp pins mcp-types exactly: they must move together.
       mcp:
@@ -122,6 +126,10 @@ updates:
       time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    ignore:
+      # ruff is a mise tool: the locked ruff must equal the mise.toml pin
+      # (toolchain-parity). Moved by hand with the pin, never alone.
+      - dependency-name: ruff
     groups:
       # One PR per run for minor + patch; majors stay separate for review.
       minor-patch:
