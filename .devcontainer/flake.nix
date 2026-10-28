@@ -19,7 +19,7 @@
             golangci-lint
 
             # Node / TypeScript
-            nodejs_22
+            nodejs_24
             nodePackages.pnpm
 
             # Python

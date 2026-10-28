@@ -57,9 +57,9 @@ COPY --from=builder /nix/store/*-golangci-lint*/bin/* \
     ${TOOLS_DIR}/bin/
 
 # Copy Node + pnpm
-COPY --from=builder /nix/store/*-nodejs-22*/bin/* \
+COPY --from=builder /nix/store/*-nodejs-24*/bin/* \
     ${TOOLS_DIR}/node/bin/
-COPY --from=builder /nix/store/*-nodejs-22*/lib \
+COPY --from=builder /nix/store/*-nodejs-24*/lib \
     ${TOOLS_DIR}/node/lib/
 COPY --from=builder /nix/store/*-pnpm*/bin/* \
     ${TOOLS_DIR}/bin/
