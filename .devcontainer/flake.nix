@@ -36,7 +36,7 @@
           go-task
 
           # VCS & GitHub
-          git
+          gitMinimal # full git pulls python and perl into the closure
           gh
 
           # DX utilities
