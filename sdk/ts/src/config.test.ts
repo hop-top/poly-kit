@@ -1,6 +1,8 @@
 /**
  * Tests for layered config loader (config.ts).
- * Covers: merge order, missing-file skip, bad YAML error, envOverride, empty opts.
+ * Covers: merge order, missing-file skip, bad YAML error, envOverride, empty opts,
+ * and the per-layer merge rules (objects recursive, arrays/scalars replace,
+ * null, type conflicts, non-plain objects).
  */
 
 import * as fs from "fs";
@@ -106,5 +108,136 @@ describe("load", () => {
     const dst = { x: 1 };
     const result = load(dst, {});
     expect(result).toBe(dst);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Merge rules
+// ---------------------------------------------------------------------------
+
+/** Writes each YAML body to a temp file, loads them in order, cleans up. */
+function loadLayers<T extends object>(dst: T, ...bodies: string[]): T {
+  const files = bodies.map(tmpYaml);
+  try {
+    const [systemConfigPath, userConfigPath, projectConfigPath] = files;
+    return load(dst, { systemConfigPath, userConfigPath, projectConfigPath });
+  } finally {
+    cleanup(...files);
+  }
+}
+
+describe("load merge rules", () => {
+  it("merges nested maps across layers instead of replacing them", () => {
+    const got = loadLayers<Record<string, unknown>>(
+      {},
+      "",
+      "db:\n  host: x\n  port: 1\n",
+      "db:\n  port: 2\n",
+    );
+    expect(got).toEqual({ db: { host: "x", port: 2 } });
+  });
+
+  it("merges at every depth and keeps dst defaults", () => {
+    const dst = { a: { b: { c: 1, d: 2 }, keep: true } };
+    loadLayers(dst, "a:\n  b:\n    d: 3\n    e: 4\n");
+    expect(dst).toEqual({ a: { b: { c: 1, d: 3, e: 4 }, keep: true } });
+  });
+
+  it("an empty mapping leaves the object as is", () => {
+    const dst = { m: { a: 1 } };
+    loadLayers(dst, "m: {}\n");
+    expect(dst).toEqual({ m: { a: 1 } });
+  });
+
+  it("replaces arrays wholesale, including with an empty one", () => {
+    const dst = { tags: ["d"] };
+    loadLayers(dst, "tags: [a, b]\n", "tags: [c]\n");
+    expect(dst.tags).toEqual(["c"]);
+    loadLayers(dst, "tags: []\n");
+    expect(dst.tags).toEqual([]);
+  });
+
+  it("replaces scalars", () => {
+    const dst = { name: "d", port: 1, debug: false };
+    loadLayers(dst, "name: a\nport: 2\n", "name: b\ndebug: true\n");
+    expect(dst).toEqual({ name: "b", port: 2, debug: true });
+  });
+
+  it("null leaves a scalar untouched", () => {
+    const dst = { name: "d", port: 1 };
+    loadLayers(dst, "name: a\n", "name: ~\nport: null\n");
+    expect(dst).toEqual({ name: "a", port: 1 });
+  });
+
+  it("null clears objects and arrays", () => {
+    const dst = { m: { a: 1 }, tags: ["x"], deep: { inner: { k: "v" } } };
+    loadLayers(dst, "m: ~\ntags: ~\ndeep:\n  inner: ~\n");
+    expect(dst).toEqual({ m: null, tags: null, deep: { inner: null } });
+  });
+
+  it("null sets a key that is absent or already null", () => {
+    const dst: Record<string, unknown> = { n: null };
+    loadLayers(dst, "n: ~\nfresh: ~\n");
+    expect(dst).toEqual({ n: null, fresh: null });
+  });
+
+  it("type conflicts: the later value replaces the earlier one", () => {
+    const dst: Record<string, unknown> = {
+      objToScalar: { a: 1 },
+      scalarToObj: 5,
+      objToArray: { a: 1 },
+      arrayToObj: [1],
+    };
+    loadLayers(
+      dst,
+      "objToScalar: 7\nscalarToObj: {b: 2}\nobjToArray: [x]\narrayToObj: {c: 3}\n",
+    );
+    expect(dst).toEqual({
+      objToScalar: 7,
+      scalarToObj: { b: 2 },
+      objToArray: ["x"],
+      arrayToObj: { c: 3 },
+    });
+  });
+
+  it("does not merge into non-plain objects; replaces them", () => {
+    class Endpoint {
+      host = "h";
+      port = 1;
+    }
+    const dst: Record<string, unknown> = {
+      when: new Date(0),
+      ep: new Endpoint(),
+      map: new Map([["k", "v"]]),
+    };
+    loadLayers(dst, "when: {y: 1}\nep: {port: 2}\nmap: {k: w}\n");
+    expect(dst).toEqual({ when: { y: 1 }, ep: { port: 2 }, map: { k: "w" } });
+    expect(Object.getPrototypeOf(dst.ep)).toBe(Object.prototype);
+  });
+
+  it("a YAML timestamp (Date) replaces a plain object", () => {
+    const dst: Record<string, unknown> = { when: { y: 1 } };
+    loadLayers(dst, "when: 2026-01-02\n");
+    expect(dst.when).toBeInstanceOf(Date);
+  });
+
+  it("aliased mappings are copied, so later merges do not leak across keys", () => {
+    const dst: Record<string, unknown> = {};
+    loadLayers(dst, "a: &x {k: v}\nb: *x\n", "a:\n  k: changed\n");
+    expect(dst).toEqual({ a: { k: "changed" }, b: { k: "v" } });
+  });
+
+  it("does not let __proto__ keys reach Object.prototype", () => {
+    const dst: Record<string, unknown> = {};
+    loadLayers(dst, "__proto__:\n  polluted: yes\n", "__proto__:\n  polluted2: yes\n");
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(({} as Record<string, unknown>).polluted2).toBeUndefined();
+    expect(Object.getPrototypeOf(dst)).toBe(Object.prototype);
+  });
+
+  it("ignores a document whose root is not a mapping", () => {
+    const dst = { a: 1 };
+    loadLayers(dst, "- x\n- y\n", "just a string\n");
+    expect(dst).toEqual({ a: 1 });
   });
 });
