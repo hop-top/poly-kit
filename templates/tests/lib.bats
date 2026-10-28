@@ -147,6 +147,63 @@ JSON
 }
 
 # ==========================================================
+# strip_template_comments
+# ==========================================================
+# kit init renders every template file through Go text/template, where
+# {{/* ... */}} is a comment and {{- / -}} trim adjacent whitespace
+# (newlines included). The shell path must drop the same text.
+
+@test "strip_template_comments drops {{/* */}} in place" {
+  mkdir -p "$TEST_DIR/proj"
+  printf '  "kit": "^1.2.3",{{/* x-release-please-version */}}\n  "b": 1\n' >"$TEST_DIR/proj/package.json"
+  PROJECT_DIR="$TEST_DIR/proj"
+  strip_template_comments
+  [ "$(cat "$TEST_DIR/proj/package.json")" = "$(printf '  "kit": "^1.2.3",\n  "b": 1')" ]
+}
+
+@test "strip_template_comments: {{- trims preceding whitespace" {
+  mkdir -p "$TEST_DIR/proj"
+  printf 'require (\n\thop.top/kit v0.5.0 {{- /* x-release-please-version */}}\n)\n' >"$TEST_DIR/proj/go.mod"
+  PROJECT_DIR="$TEST_DIR/proj"
+  strip_template_comments
+  [ "$(cat "$TEST_DIR/proj/go.mod")" = "$(printf 'require (\n\thop.top/kit v0.5.0\n)')" ]
+}
+
+@test "strip_template_comments: -}} trims following whitespace across lines" {
+  mkdir -p "$TEST_DIR/proj"
+  printf 'a {{/* c */ -}}\n\n  b\n' >"$TEST_DIR/proj/f.txt"
+  PROJECT_DIR="$TEST_DIR/proj"
+  strip_template_comments
+  [ "$(cat "$TEST_DIR/proj/f.txt")" = "a b" ]
+}
+
+@test "strip_template_comments leaves non-comment actions and lone /* alone" {
+  mkdir -p "$TEST_DIR/proj"
+  printf '{{ .Version }} /* c */ {{`{{x}}`}} {{ /* not a comment */ }}\n' >"$TEST_DIR/proj/f.txt"
+  PROJECT_DIR="$TEST_DIR/proj"
+  strip_template_comments
+  [ "$(cat "$TEST_DIR/proj/f.txt")" = '{{ .Version }} /* c */ {{`{{x}}`}} {{ /* not a comment */ }}' ]
+}
+
+@test "strip_template_comments: no marker in any shipped template survives" {
+  out="$TEST_DIR/proj"
+  mkdir -p "$out"
+  for t in cli-go cli-ts cli-rs cli-php; do
+    cp -R "$TEMPLATES_DIR/$t" "$out/$t"
+  done
+  PROJECT_DIR="$out"
+  strip_template_comments
+  ! grep -rqF 'x-release-please-version */' "$out"
+  # The rendered package.json bodies parse once tokens are filled in.
+  sed 's/{{\.[A-Za-z]*}}/x/g' "$out/cli-ts/package.json.tmpl" >"$out/p.json"
+  if command -v node >/dev/null 2>&1; then
+    node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$out/p.json"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$out/p.json"
+  fi
+}
+
+# ==========================================================
 # file_exists_and_nonempty
 # ==========================================================
 
