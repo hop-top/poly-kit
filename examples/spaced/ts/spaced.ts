@@ -102,7 +102,6 @@ program.hook('postAction', async (_thisCommand, actionCommand) => {
   if (client === null) return;
   // Walk parents to reconstruct the full command path (e.g. ["spaced", "mission", "inspect"]).
   const path: string[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let cur: any = actionCommand;
   while (cur) {
     path.unshift(cur.name());
