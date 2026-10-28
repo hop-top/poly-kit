@@ -3,7 +3,7 @@ name = "probe-example"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
-  "pyyaml>=6",
+  "pyyaml>=6.0.3",
   "structlog>=26.1.0",
 ]
 
