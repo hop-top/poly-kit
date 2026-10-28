@@ -6,9 +6,9 @@ package kitinit_test
 //   2. kit-template.yaml + tiers.yaml are removed.
 //   3. Core targets (main.go, go.mod, Makefile) survive token substitution.
 //
-// Layout mirrors templates/scaffold.sh: the rendered project dir lives
-// under a tmp parent, and lib.sh is placed at that parent so init.sh's
-// `source "$SCRIPT_DIR/../lib.sh"` resolves.
+// Layout mirrors a built template (templates/build.sh): lib.sh sits
+// next to init.sh, which sources it from its own dir and removes both
+// on success.
 //
 // Skipped under `go test -short` since it shells out and requires bash + git.
 
@@ -68,8 +68,8 @@ func TestInitSh_StripsTmplAndManifests(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Place lib.sh at the parent so `source "$SCRIPT_DIR/../lib.sh"` resolves.
-	if err := copyFile(libSrc, filepath.Join(parent, "lib.sh")); err != nil {
+	// lib.sh ships beside init.sh, as build.sh lays it out.
+	if err := copyFile(libSrc, filepath.Join(project, "lib.sh")); err != nil {
 		t.Fatalf("copy lib.sh: %v", err)
 	}
 
@@ -123,8 +123,8 @@ func TestInitSh_StripsTmplAndManifests(t *testing.T) {
 			strings.Join(leftovers, "\n  "))
 	}
 
-	// Manifests must be removed.
-	for _, rel := range []string{"kit-template.yaml", "tiers.yaml"} {
+	// Manifests and scaffolding helpers must be removed.
+	for _, rel := range []string{"kit-template.yaml", "tiers.yaml", "init.sh", "lib.sh"} {
 		if _, err := os.Stat(filepath.Join(project, rel)); !os.IsNotExist(err) {
 			t.Errorf("expected %s to be removed by init.sh, stat err: %v", rel, err)
 		}

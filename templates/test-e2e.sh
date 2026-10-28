@@ -94,6 +94,12 @@ for tpl in cli-template-go cli-template-ts cli-template-py cli-template-base; do
   assert_dir_exists "$DIST/$tpl" "dist/$tpl"
 done
 
+# Every built template ships lib.sh next to init.sh so a copied or
+# cloned template inits standalone, with no templates/ checkout around.
+for tpl in "$DIST"/cli-template-*; do
+  assert_file_exists "$tpl/lib.sh" "$(basename "$tpl") lib.sh"
+done
+
 # --- Test values ---------------------------------------
 
 export INIT_APP_NAME="testcli"
@@ -147,6 +153,13 @@ if [ ! -f "$GO_DIR/init.sh" ]; then
   pass "go init.sh self-deleted"
 else
   fail "go init.sh still present"
+fi
+
+# Verify lib.sh (scaffolding helpers) removed with init.sh
+if [ ! -f "$GO_DIR/lib.sh" ]; then
+  pass "go lib.sh removed"
+else
+  fail "go lib.sh still present"
 fi
 
 # ======================================================
@@ -223,6 +236,16 @@ assert_dir_exists "$POLY_ALL_DIR/py/src/testcli" "poly-all py src renamed"
 assert_file_contains "$POLY_ALL_DIR/.github/dependabot.yml" '"/go"' "poly-all dependabot watches /go"
 assert_file_contains "$POLY_ALL_DIR/.github/dependabot.yml" '"/ts"' "poly-all dependabot watches /ts"
 assert_file_contains "$POLY_ALL_DIR/.github/dependabot.yml" '"/py"' "poly-all dependabot watches /py"
+
+# scaffold.sh leaves no scaffolding helpers behind, in the project or
+# beside it.
+for f in "$POLY_ALL_DIR/init.sh" "$POLY_ALL_DIR/lib.sh" "$TMPDIR_BASE/lib.sh"; do
+  if [ ! -e "$f" ]; then
+    pass "poly-all no leftover ${f#"$TMPDIR_BASE"/}"
+  else
+    fail "poly-all leftover $f"
+  fi
+done
 
 # ======================================================
 # Test: Polyglot scaffold (go,py — ts left out)

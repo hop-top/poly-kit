@@ -17,8 +17,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
 YEAR="$(date +%Y)"
 
+# lib.sh ships next to init.sh in every built template (copy_shared);
+# init.sh removes both once it succeeds.
 # shellcheck source=../lib.sh
-source "$SCRIPT_DIR/../lib.sh"
+source "$SCRIPT_DIR/lib.sh"
 
 # --- Detect polyglot -----------------------------------
 
@@ -317,7 +319,7 @@ git -C "$PROJECT_DIR" commit -m \
 # --- Cleanup -------------------------------------------
 
 echo "Cleaning up..."
-rm -f "$0"
+rm -f "$SCRIPT_DIR/lib.sh" "$0"
 
 echo ""
 echo "Done! ${app_name} is ready."

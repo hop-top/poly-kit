@@ -541,11 +541,8 @@ if [ "$IS_POLYGLOT" = true ]; then
   export INIT_LANGUAGES="$LANG"
 fi
 
-# init.sh sources ../lib.sh relative to its location
-_lib_tmp="$(cd "$OUTPUT" && cd .. && pwd)/lib.sh"
-cp "$SCRIPT_DIR/lib.sh" "$_lib_tmp"
+# init.sh sources the lib.sh build.sh ships beside it, then removes both.
 (cd "$OUTPUT" && bash init.sh)
-rm -f "$_lib_tmp"
 
 # --- Devcontainer / compose emission --------------------
 
