@@ -9,7 +9,8 @@ scaffolding and conformance tools for kit projects.
 
 ## Shared
 
-- [lib.sh](lib.sh): shared utilities (sourced by scaffold + conform).
+- [lib.sh](lib.sh): shared utilities (sourced by scaffold + conform; shipped
+  beside init.sh in each built template, removed after init).
 - [shared/](shared/README.md): common infrastructure (CI, docs, scripts).
 - [ci/](ci/README.md): drop-in CI workflows for the `kit conformance` leaves.
 

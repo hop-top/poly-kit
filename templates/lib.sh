@@ -345,7 +345,8 @@ compose_gitattributes() {
 }
 
 # copy_shared <dest>
-# Copies community files, docs, devcontainer artifacts, init.sh.
+# Copies community files, docs, devcontainer artifacts, init.sh, and
+# lib.sh (sourced by init.sh from its own dir; init.sh removes both).
 copy_shared() {
   local dest="$1"
   local src="$KIT_TEMPLATES_SHARED"
@@ -357,6 +358,7 @@ copy_shared() {
   cp "$src/RELEASING.md" "$dest/"
   cp "$src/init.sh" "$dest/"
   chmod +x "$dest/init.sh"
+  cp "$KIT_TEMPLATES_DIR/lib.sh" "$dest/"
 
   # Docs
   cp -r "$src/docs" "$dest/"

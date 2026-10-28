@@ -117,7 +117,7 @@ func TestParity_GoEngineVsBashInitSh(t *testing.T) {
 	initSrc := filepath.Join(repoRoot, "internal", "template", "builtins", "shared", "init.sh")
 	libSrc := filepath.Join(repoRoot, "templates", "lib.sh")
 	require.NoError(t, copyFileTo(initSrc, filepath.Join(bashTarget, "init.sh")))
-	require.NoError(t, copyFileTo(libSrc, filepath.Join(bashParent, "lib.sh")))
+	require.NoError(t, copyFileTo(libSrc, filepath.Join(bashTarget, "lib.sh")))
 	require.NoError(t, os.Chmod(filepath.Join(bashTarget, "init.sh"), 0o755))
 
 	home := t.TempDir()
@@ -142,12 +142,11 @@ func TestParity_GoEngineVsBashInitSh(t *testing.T) {
 		t.Fatalf("bash init.sh failed: %v\n%s", runErr, out)
 	}
 
-	// 3. init.sh additionally creates .git/, runs initial commit, and
-	// removes itself. Strip those before comparing — they're outside
-	// the render_rules pipeline and the Go engine never produces them.
+	// 3. init.sh additionally creates .git/ and runs initial commit.
+	// Strip it before comparing — it's outside the render_rules
+	// pipeline and the Go engine never produces it. init.sh removes
+	// itself and lib.sh, so any leftover is a real diff.
 	require.NoError(t, os.RemoveAll(filepath.Join(bashTarget, ".git")))
-	_ = os.Remove(filepath.Join(bashTarget, "init.sh"))
-	_ = os.Remove(filepath.Join(bashParent, "lib.sh"))
 
 	// 4. Compare the two trees byte-for-byte.
 	goTree := snapshotTree(t, goTarget)
