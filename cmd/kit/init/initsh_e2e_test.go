@@ -130,6 +130,27 @@ func TestInitSh_StripsTmplAndManifests(t *testing.T) {
 		}
 	}
 
+	// The initial commit holds no scaffolding helper, and nothing is
+	// left uncommitted.
+	gitOut := func(args ...string) string {
+		t.Helper()
+		c := exec.Command("git", append([]string{"-C", project}, args...)...)
+		c.Env = cmd.Env
+		b, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, b)
+		}
+		return string(b)
+	}
+	for _, name := range strings.Fields(gitOut("ls-tree", "-r", "--name-only", "HEAD")) {
+		if name == "init.sh" || name == "lib.sh" {
+			t.Errorf("initial commit tracks %s", name)
+		}
+	}
+	if st := gitOut("status", "--porcelain"); st != "" {
+		t.Errorf("tree dirty after init.sh:\n%s", st)
+	}
+
 	// Core rendered files must exist.
 	for _, rel := range []string{"main.go", "go.mod", "Makefile"} {
 		if _, err := os.Stat(filepath.Join(project, rel)); err != nil {
