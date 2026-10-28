@@ -8,8 +8,11 @@
 // gopkg.in/yaml.v3: struct fields are matched by their yaml tag, or by
 // lower-cased field name if no tag is present.
 //
-// Warning: YAML unmarshal replaces slice and array fields entirely rather than
-// appending to them. Each layer overwrites the previous value for those types.
+// Merging follows yaml.v3 decoding into an existing value: struct fields merge
+// one by one at any depth, while scalars, slices, arrays, each map entry and
+// any (interface) values are replaced whole by the later layer. A null clears
+// pointer, slice, map and interface fields and leaves scalars and structs.
+// A value of the wrong kind for a typed field is a decode error.
 package config
 
 import (
@@ -29,8 +32,10 @@ import (
 type Options struct {
 	// Defaults, when non-nil, is a pointer to a struct whose values seed dst
 	// before any file is read. Yaml round-trip merge semantics apply (same
-	// as a file layer): scalars and slices replaced, maps merged. Use this
-	// to keep typed defaults colocated with the Config struct itself.
+	// as a file layer): struct fields merge one by one at any depth; scalars,
+	// slices, map entries and any values are replaced whole (a map entry is
+	// not merged, even when it is itself a map). Use this to keep typed
+	// defaults colocated with the Config struct itself.
 	Defaults any
 
 	// SystemConfigPath is the path to the system-wide config file (e.g. /etc/tool/config.yaml).

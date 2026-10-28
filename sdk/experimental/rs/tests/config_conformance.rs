@@ -310,6 +310,14 @@ fn precedence_vectors() {
 struct Inner {
     a: String,
     b: i64,
+    deep: Deep,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+struct Deep {
+    x: String,
+    y: String,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -322,6 +330,7 @@ struct Shape {
     tags: Option<Vec<String>>,
     inner: Inner,
     labels: Option<BTreeMap<String, String>>,
+    nest: Option<BTreeMap<String, BTreeMap<String, String>>>,
     opt: Option<String>,
     extra: Option<Value>,
 }
