@@ -44,20 +44,8 @@ export const OPENAI_SECTIONS = [
   "openai_accumulate", "openai_error", "openai_limits",
 ];
 
-const EVENTS =
-  "the openai adapter streams no tool-call or usage events and sends no stream_options";
-
 /** Vectors not run here, by section/name, with why. */
-const PENDING: Record<string, string> = {
-  "openai_request/stream with events asks for usage": EVENTS,
-  "openai_request/stream_tools with events and tool_choice auto": EVENTS,
-  "openai_stream_events/plain stream: usage from the final chunk": EVENTS,
-  "openai_stream_events/tool call start, deltas, end on finish": EVENTS,
-  "openai_stream_events/parallel calls interleave and end in index order": EVENTS,
-  "openai_stream_events/call with no argument fragments ends with {}": EVENTS,
-  "openai_stream_events/truncated: no end for the open call": EVENTS,
-  "openai_stream_events/error chunk: no end for the open call": EVENTS,
-};
+const PENDING: Record<string, string> = {};
 
 type Section = { name: string }[];
 const file = loadVectors<Record<string, unknown>>();
