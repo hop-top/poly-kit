@@ -241,3 +241,56 @@ describe("load merge rules", () => {
     expect(dst).toEqual({ a: 1 });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Resource bounds
+// ---------------------------------------------------------------------------
+
+/** `levels` anchors, each a list of `width` aliases of the previous one. */
+function aliasBomb(levels: number, width = 9): string {
+  const row = (ref: string): string => `[${Array(width).fill(ref).join(", ")}]`;
+  let out = `a0: &a0 ${row("lol")}\n`;
+  for (let i = 1; i < levels; i++) out += `a${i}: &a${i} ${row(`*a${i - 1}`)}\n`;
+  return out;
+}
+
+describe("load resource bounds", () => {
+  it("fails fast on an exponential alias bomb", () => {
+    const started = Date.now();
+    expect(() => loadLayers({}, aliasBomb(10))).toThrow(
+      /failed to parse .*: document contains excessive aliasing/,
+    );
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it("fails on the shared config-v1 excessive aliasing vector", () => {
+    const corpus = JSON.parse(
+      fs.readFileSync(path.join(__dirname, "../../../contracts/config-v1/load.json"), "utf8"),
+    ) as { cases: { name: string; files: string[] }[] };
+    const c = corpus.cases.find((x) => x.name === "excessive aliasing");
+    expect(c).toBeDefined();
+    expect(() => loadLayers({}, ...(c?.files ?? []))).toThrow(/excessive aliasing/);
+  });
+
+  it("allows ordinary alias use", () => {
+    const got = loadLayers<Record<string, unknown>>({}, aliasBomb(2) + "x: *a1\n");
+    expect((got.x as unknown[]).length).toBe(9);
+  });
+
+  it("fails on nesting deeper than the limit", () => {
+    const deep = "x: " + "[".repeat(150) + "]".repeat(150) + "\n";
+    expect(() => loadLayers({}, deep)).toThrow(/failed to parse .*: nesting exceeded maxDepth \(100\)/);
+  });
+
+  it("fails on alias chains that nest deeper than the limit", () => {
+    let doc = "a0: &a0 [x]\n";
+    for (let i = 1; i < 150; i++) doc += `a${i}: &a${i} [*a${i - 1}]\n`;
+    expect(() => loadLayers({}, doc)).toThrow(/failed to parse .*: nesting exceeded maxDepth \(100\)/);
+  });
+
+  it("accepts nesting at the limit", () => {
+    const ok = "x: " + "[".repeat(98) + "]".repeat(98) + "\n";
+    expect(() => loadLayers({}, ok)).not.toThrow();
+  });
+});
+
