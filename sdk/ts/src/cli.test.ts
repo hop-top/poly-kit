@@ -247,6 +247,45 @@ describe('help structure — line-by-line parity', () => {
   });
 });
 
+describe('help ARGUMENTS section', () => {
+  /** Plain help lines for a `gen` command with the given arguments. */
+  function genHelpLines(withDescriptions: boolean): string[] {
+    const { program } = createCLI({ name: 'mytool', version: '1.2.3', description: 'A tool' });
+    const gen = program.command('gen').description('Generate');
+    if (withDescriptions) {
+      gen.argument('<shell>', 'shell to generate for')
+        .argument('[out]', 'output path');
+    } else {
+      gen.argument('<shell>').argument('[out]');
+    }
+    gen.option('--force', 'overwrite');
+    return stripANSI(gen.helpInformation()).split('\n');
+  }
+
+  it('lists described arguments with their descriptions', () => {
+    const lines = genHelpLines(true);
+    const argIdx = lines.findIndex(l => l.trim() === 'ARGUMENTS:');
+    expect(argIdx).toBeGreaterThanOrEqual(0);
+    expect(lines[argIdx + 1]).toMatch(/^\s+shell\s+shell to generate for$/);
+    expect(lines[argIdx + 2]).toMatch(/^\s+out\s+output path$/);
+  });
+
+  it('ARGUMENTS: appears after the description and before FLAGS:', () => {
+    const lines = genHelpLines(true);
+    const descIdx = lines.findIndex(l => l.trim() === 'Generate');
+    const argIdx = lines.findIndex(l => l.trim() === 'ARGUMENTS:');
+    const flagIdx = lines.findIndex(l => l.trim() === 'FLAGS:');
+    expect(descIdx).toBeLessThan(argIdx);
+    expect(argIdx).toBeLessThan(flagIdx);
+  });
+
+  it('omits ARGUMENTS: when no argument has a description', () => {
+    const lines = genHelpLines(false);
+    expect(lines.some(l => l.trim() === 'ARGUMENTS:')).toBe(false);
+    expect(lines.some(l => l.trim() === 'Arguments:')).toBe(false);
+  });
+});
+
 describe('CLIConfig disable', () => {
   it('disable.format=true → no format key in opts after parse', () => {
     const { program } = createCLI({
