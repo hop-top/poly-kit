@@ -10,7 +10,7 @@
     "@hop-top/kit-engine": "file:../../engine/sdk/ts-kit-engine"
   },
   "devDependencies": {
-    "tsx": "^4.0.0",
-    "typescript": "^5.5.0"
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
   }
 }
