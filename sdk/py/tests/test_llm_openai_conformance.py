@@ -29,19 +29,8 @@ SECTIONS = {
     "openai_limits",
 }
 
-_EVENTS = "the openai adapter streams no tool-call or usage events and sends no stream_options"
-
 # Vectors not run here, by section/name, with why.
-PENDING = {
-    "openai_request/stream with events asks for usage": _EVENTS,
-    "openai_request/stream_tools with events and tool_choice auto": _EVENTS,
-    "openai_stream_events/plain stream: usage from the final chunk": _EVENTS,
-    "openai_stream_events/tool call start, deltas, end on finish": _EVENTS,
-    "openai_stream_events/parallel calls interleave and end in index order": _EVENTS,
-    "openai_stream_events/call with no argument fragments ends with {}": _EVENTS,
-    "openai_stream_events/truncated: no end for the open call": _EVENTS,
-    "openai_stream_events/error chunk: no end for the open call": _EVENTS,
-}
+PENDING: dict[str, str] = {}
 
 _FIELDS = {
     "openai_request": {"name", "call", "adapter_model", "request", "tools", "want_body"},

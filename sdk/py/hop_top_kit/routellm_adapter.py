@@ -488,8 +488,9 @@ class RouteLLMAdapter:
             tools=llm_openai.map_tools(tools, names),
             stream=True,
             **self._tool_kwargs(req, tools, names),
+            **({"stream_options": {"include_usage": True}} if req.stream_events else {}),
         )
-        return RouteLLMToolStream(iter(result), names)
+        return RouteLLMToolStream(iter(result), names, events=req.stream_events)
 
     # -- Eva validation ----------------------------------------
 
@@ -522,15 +523,18 @@ class RouteLLMAdapter:
 
 
 class RouteLLMToolStream:
-    """A streamed tool-calling turn from the Controller: content tokens,
-    then one ``done`` token; :meth:`outcome` is the folded turn after it.
+    """A streamed tool-calling turn from the Controller: content tokens
+    (and, with *events*, tool-call events and usage snapshots, as
+    :class:`~hop_top_kit.llm_openai.ChunkAccumulator` yields them), then
+    one ``done`` token; :meth:`outcome` is the folded turn after it.
     The chunks ending before any carried a ``finish_reason`` raises
     :class:`~hop_top_kit.llm.StreamTruncatedError`."""
 
-    def __init__(self, chunks: Iterator[Any], names: ToolNames) -> None:
+    def __init__(self, chunks: Iterator[Any], names: ToolNames, *, events: bool = False) -> None:
         self._chunks = chunks
         self._names = names
-        self._acc = llm_openai.ChunkAccumulator()
+        self._acc = llm_openai.ChunkAccumulator(events=events, names=names)
+        self._queue: list[llm.Token] = []
         self._finished = False
         self._outcome: llm.StreamOutcome | None = None
 
@@ -542,12 +546,15 @@ class RouteLLMToolStream:
 
     def close(self) -> None:
         self._finished = True
+        self._queue.clear()
         closer = getattr(self._chunks, "close", None)
         if callable(closer):
             closer()
 
     def __next__(self) -> llm.Token:
         while not self._finished:
+            if self._queue:
+                return self._queue.pop(0)
             try:
                 chunk = next(self._chunks)
             except StopIteration:
@@ -556,9 +563,7 @@ class RouteLLMToolStream:
                     raise llm.StreamTruncatedError("routellm") from None
                 self._outcome = self._acc.outcome(self._names)
                 return llm.Token(done=True)
-            text = self._acc.apply(_plain(chunk))
-            if text:
-                return llm.Token(content=text)
+            self._queue.extend(self._acc.feed(_plain(chunk)))
         raise StopIteration
 
 

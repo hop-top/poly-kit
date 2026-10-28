@@ -541,6 +541,82 @@ class TestRouteLLMTools:
         assert out is not None
         assert [(c.id, c.name) for c in out.tool_calls] == [("c1", "pane.open")]
 
+    def test_stream_with_tools_events(self):
+        controller = mock.MagicMock()
+        controller.completion.return_value = iter(
+            [
+                {
+                    "choices": [
+                        {"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{"}}]}}
+                    ]
+                },
+                {
+                    "choices": [
+                        {
+                            "delta": {
+                                "tool_calls": [
+                                    {"index": 0, "id": "c1", "function": {"name": "pane_open"}}
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "choices": [
+                        {"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "}"}}]}}
+                    ]
+                },
+                {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
+                {
+                    "choices": [],
+                    "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
+                },
+            ]
+        )
+        a = _routellm(controller)
+        req = llm.Request(messages=[llm.Message(role="user", content="Hi")], stream_events=True)
+        toks = list(a.stream_with_tools(req, [llm.ToolDef(name="pane.open", description="")]))
+        assert controller.completion.call_args.kwargs["stream_options"] == {"include_usage": True}
+        evs = [(t.tool_call.kind, t.tool_call.index) for t in toks if t.tool_call]
+        assert evs == [("start", 0), ("delta", 0), ("delta", 0), ("end", 0)]
+        start, end = toks[0].tool_call, toks[3].tool_call
+        assert (start.id, start.name) == ("c1", "pane.open")
+        assert [t.tool_call.arguments_delta for t in toks[1:3]] == ["{", "}"]
+        assert end.call == llm.ToolCall(id="c1", name="pane.open", arguments="{}")
+        assert toks[4].usage == llm.Usage(prompt_tokens=3, completion_tokens=2, total_tokens=5)
+        assert toks[5].done and len(toks) == 6
+
+    def test_stream_with_tools_no_events_unchanged(self):
+        controller = mock.MagicMock()
+        controller.completion.return_value = iter(
+            [
+                {
+                    "choices": [
+                        {
+                            "delta": {
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "id": "c1",
+                                        "function": {"name": "x", "arguments": "{}"},
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "choices": [{"delta": {}, "finish_reason": "tool_calls"}],
+                    "usage": {"total_tokens": 5},
+                },
+            ]
+        )
+        toks = list(
+            _routellm(controller).stream_with_tools(_hi(), [llm.ToolDef(name="x", description="")])
+        )
+        assert "stream_options" not in controller.completion.call_args.kwargs
+        assert [(t.content, t.done, t.tool_call, t.usage) for t in toks] == [("", True, None, None)]
+
     def test_stream_with_tools_truncated(self):
         controller = mock.MagicMock()
         controller.completion.return_value = iter([{"choices": [{"delta": {"content": "x"}}]}])
