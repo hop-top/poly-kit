@@ -20,7 +20,7 @@
 
             # Node / TypeScript
             nodejs_24
-            nodePackages.pnpm
+            pnpm_12
 
             # Python
             python313
@@ -29,7 +29,7 @@
             ruff
 
             # Linting
-            nodePackages.eslint
+            eslint
 
             # Task runner
             go-task
