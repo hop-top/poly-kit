@@ -1,4 +1,5 @@
 """commands/alias.py — alias list/add/remove management commands."""
+
 from __future__ import annotations
 
 import os
@@ -7,8 +8,8 @@ import sys
 import typer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../sdk/py"))
-from hop_top_kit.alias import load_from, save_to  # noqa: E402
-from hop_top_kit.xdg import config_dir  # noqa: E402
+from hop_top_kit.alias import load_from, save_to
+from hop_top_kit.xdg import config_dir
 
 app = typer.Typer(help="Manage command aliases.", add_completion=False)
 

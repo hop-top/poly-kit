@@ -22,7 +22,9 @@ def _load_module(name: str, file_path: str) -> types.ModuleType:
     return mod
 
 
-_KIT_PY = os.path.join(os.path.dirname(__file__), "..", "..", "..", "sdk", "py", "hop_top_kit")
+_KIT_PY = os.path.join(
+    os.path.dirname(__file__), "..", "..", "..", "sdk", "py", "hop_top_kit"
+)
 
 
 def kit_config() -> types.ModuleType:

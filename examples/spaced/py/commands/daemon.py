@@ -1,14 +1,17 @@
 """commands/daemon.py — daemon list, status <id>, stop <id>, stop --all."""
+
 from __future__ import annotations
 
 import sys
-from typing import Optional
 
 import typer
 
-sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py"))
-from hop_top_kit.bus import Bus, create_event  # noqa: E402
-from data import DAEMONS, find_daemon  # noqa: E402
+sys.path.insert(
+    0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py")
+)
+from hop_top_kit.bus import Bus, create_event
+
+from data import DAEMONS, find_daemon
 
 app = typer.Typer(help="Manage background controversy processes", add_completion=False)
 
@@ -69,12 +72,12 @@ def daemon_status(
 
 @app.command("stop")
 def daemon_stop(
-    daemon_id: Optional[str] = typer.Argument(None, help="Daemon ID to stop (omit with --all)"),
+    daemon_id: str | None = typer.Argument(None, help="Daemon ID to stop (omit with --all)"),
     all: bool = typer.Option(False, "--all", help="Attempt to stop all daemons"),
     force: bool = typer.Option(False, "--force", help="Bypass safety guard"),
 ) -> None:
     """Attempt to stop a controversy daemon. Results may vary."""
-    from hop_top_kit.safety import SafetyLevel, safety_guard  # noqa: PLC0415
+    from hop_top_kit.safety import SafetyLevel, safety_guard
 
     level = SafetyLevel.DANGEROUS if all else SafetyLevel.CAUTION
     safety_guard(level, force=force)
@@ -109,9 +112,13 @@ def daemon_stop(
         raise typer.Exit(1)
 
     if _bus is not None:
-        _bus.publish(create_event(
-            "kit.spaced.daemon.stopped", "spaced", {"daemon": daemon_id},
-        ))
+        _bus.publish(
+            create_event(
+                "kit.spaced.daemon.stopped",
+                "spaced",
+                {"daemon": daemon_id},
+            )
+        )
 
     typer.echo(f"""
   ✗ STOP FAILED: {d.id}

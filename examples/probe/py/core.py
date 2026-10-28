@@ -24,6 +24,7 @@ ProgressEvent = _progress_mod.ProgressEvent
 # Result
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Result:
     target: str
@@ -37,6 +38,7 @@ class Result:
 # Parse timeout
 # ---------------------------------------------------------------------------
 
+
 def _parse_timeout_s(s: str) -> float:
     m = re.match(r"^(\d+)(s|ms)$", s)
     if not m:
@@ -49,6 +51,7 @@ def _parse_timeout_s(s: str) -> float:
 # Single target check
 # ---------------------------------------------------------------------------
 
+
 def _check_target(t: dict) -> Result:
     timeout = _parse_timeout_s(t.get("timeout", "5s"))
     url = t["url"]
@@ -58,25 +61,31 @@ def _check_target(t: dict) -> Result:
     start = time.monotonic()
     try:
         req = Request(url, method=method)
-        resp = urlopen(req, timeout=timeout)  # noqa: S310
+        resp = urlopen(req, timeout=timeout)
         latency_ms = (time.monotonic() - start) * 1000
         status = resp.status
         ok = status == expect_status
         return Result(
-            target=t["name"], ok=ok, status=status,
+            target=t["name"],
+            ok=ok,
+            status=status,
             latency_ms=round(latency_ms, 1),
         )
     except URLError as exc:
         latency_ms = (time.monotonic() - start) * 1000
         return Result(
-            target=t["name"], ok=False, status=0,
+            target=t["name"],
+            ok=False,
+            status=0,
             latency_ms=round(latency_ms, 1),
             error=str(exc.reason),
         )
     except Exception as exc:  # noqa: BLE001
         latency_ms = (time.monotonic() - start) * 1000
         return Result(
-            target=t["name"], ok=False, status=0,
+            target=t["name"],
+            ok=False,
+            status=0,
             latency_ms=round(latency_ms, 1),
             error=str(exc),
         )
@@ -85,6 +94,7 @@ def _check_target(t: dict) -> Result:
 # ---------------------------------------------------------------------------
 # Run all targets
 # ---------------------------------------------------------------------------
+
 
 def check_targets(
     cfg: dict,
@@ -96,14 +106,16 @@ def check_targets(
     prev_failing: set[str] = set()
 
     for i, t in enumerate(targets):
-        progress.emit(ProgressEvent(
-            phase="probe",
-            step=t["name"],
-            current=i + 1,
-            total=len(targets),
-            percent=round(((i + 1) / len(targets)) * 100),
-            message=f"checking {t['url']}",
-        ))
+        progress.emit(
+            ProgressEvent(
+                phase="probe",
+                step=t["name"],
+                current=i + 1,
+                total=len(targets),
+                percent=round(((i + 1) / len(targets)) * 100),
+                message=f"checking {t['url']}",
+            )
+        )
 
         r = _check_target(t)
         results.append(r)

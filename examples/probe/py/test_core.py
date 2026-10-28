@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 
@@ -18,21 +17,21 @@ load = _config.load
 create_bus = _bus_mod.create_bus
 ProgressReporter = _progress_mod.ProgressReporter
 
-from core import Result, check_targets  # noqa: E402
-
+from core import check_targets
 
 # ---------------------------------------------------------------------------
 # Mock server helper
 # ---------------------------------------------------------------------------
 
+
 class _Handler(BaseHTTPRequestHandler):
     status_code = 200
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         self.send_response(self.status_code)
         self.end_headers()
 
-    def log_message(self, *_args: object) -> None:  # noqa: ANN002
+    def log_message(self, *_args: object) -> None:
         pass  # suppress stderr
 
 
@@ -59,11 +58,14 @@ class _DevNull:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestConfigLoading:
     def test_load_probe_yaml(self) -> None:
         cfg: dict = {"interval": "", "targets": []}
         cfg_path = os.path.join(
-            os.path.dirname(__file__), "..", "probe.yaml",
+            os.path.dirname(__file__),
+            "..",
+            "probe.yaml",
         )
         load(cfg, Options(project_config_path=cfg_path))
         assert len(cfg["targets"]) > 0

@@ -1,4 +1,5 @@
 """commands/toolspec_cmd.py — load and validate spaced.toolspec.yaml."""
+
 from __future__ import annotations
 
 import os
@@ -10,10 +11,12 @@ sys.path.insert(
     0,
     os.path.join(os.path.dirname(__file__), "../../../../sdk/py"),
 )
-from hop_top_kit.toolspec import (  # noqa: E402
+from hop_top_kit.toolspec import (
+    Command as TSCmd,
+)
+from hop_top_kit.toolspec import (
     load_toolspec,
     validate_toolspec,
-    Command as TSCmd,
 )
 
 app = typer.Typer(help="Toolspec validation.", add_completion=False)
@@ -32,7 +35,8 @@ def _count_commands(cmds: list[TSCmd]) -> int:
 def toolspec() -> None:
     """Load and validate spaced.toolspec.yaml."""
     yaml_path = os.path.join(
-        os.path.dirname(__file__), "../../spaced.toolspec.yaml",
+        os.path.dirname(__file__),
+        "../../spaced.toolspec.yaml",
     )
 
     spec = load_toolspec(yaml_path)

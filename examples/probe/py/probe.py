@@ -20,7 +20,7 @@ create_bus = _bus_mod.create_bus
 create_logger = _log_mod.create_logger
 ProgressReporter = _progress_mod.ProgressReporter
 
-from core import Result, check_targets  # noqa: E402
+from core import Result, check_targets
 
 
 def main() -> None:
@@ -29,7 +29,9 @@ def main() -> None:
     cfg: dict = {"interval": "30s", "targets": []}
 
     cfg_path = os.path.join(
-        os.path.dirname(__file__), '..', 'probe.yaml',
+        os.path.dirname(__file__),
+        "..",
+        "probe.yaml",
     )
     load(cfg, Options(project_config_path=cfg_path))
 
@@ -38,7 +40,7 @@ def main() -> None:
     progress = ProgressReporter(sys.stderr, sys.stderr.isatty())
 
     # Subscribe to all probe events
-    def on_event(event) -> None:  # noqa: ANN001
+    def on_event(event) -> None:
         p = event.payload
         logger.info(
             "event",

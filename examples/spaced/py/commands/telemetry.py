@@ -1,20 +1,23 @@
 """commands/telemetry.py — telemetry get <mission>."""
+
 from __future__ import annotations
 
 import json
 import sys
-from typing import Optional
 
 import typer
 
-sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py"))
-from data import find_mission  # noqa: E402
+sys.path.insert(
+    0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py")
+)
+from data import find_mission
 
 app = typer.Typer(help="Mission telemetry streams", add_completion=False)
 
 
 def _mock_telemetry(mission_name: str) -> dict:
     import hashlib
+
     seed = int(hashlib.md5(mission_name.encode()).hexdigest(), 16) % 1000
     return {
         "mission": mission_name,
@@ -33,7 +36,7 @@ def _mock_telemetry(mission_name: str) -> dict:
 @app.command("get")
 def telemetry_get(
     mission: str = typer.Argument(..., help="Mission name"),
-    format: Optional[str] = typer.Option(None, "--format", help="Output format: table|json|yaml"),
+    format: str | None = typer.Option(None, "--format", help="Output format: table|json|yaml"),
 ) -> None:
     """Retrieve live (simulated) telemetry for a mission."""
     m = find_mission(mission)
@@ -49,7 +52,8 @@ def telemetry_get(
         return
 
     if fmt == "yaml":
-        import yaml  # noqa: PLC0415
+        import yaml
+
         typer.echo(yaml.dump(telem, default_flow_style=False).rstrip())
         return
 

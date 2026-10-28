@@ -102,7 +102,10 @@ def test_telemetry_flag_accepted_anon(tmp_path: Path) -> None:
         # green-path. The hard wiring assertion is "flag parsed without
         # crash" — sink write depends on consent + mode resolution
         # which the SDK owns.
-        print(f"sink not written (consent or path issue): {list(tmp_path.rglob('*.jsonl'))}", file=sys.stderr)
+        print(
+            f"sink not written (consent or path issue): {list(tmp_path.rglob('*.jsonl'))}",
+            file=sys.stderr,
+        )
         return
 
     body = sink.read_text().strip()

@@ -3,16 +3,16 @@ data.py — hardcoded mission/vehicle/competitor/daemon data for spaced CLI.
 
 All pools use index: int(time.time()) % len(pool) for deterministic-ish rotation.
 """
+
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Optional
-
 
 # ---------------------------------------------------------------------------
 # Pool helper
 # ---------------------------------------------------------------------------
+
 
 def _pick(pool: list[str]) -> str:
     idx = int(time.time()) % len(pool)
@@ -22,6 +22,7 @@ def _pick(pool: list[str]) -> str:
 # ---------------------------------------------------------------------------
 # Missions
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class Mission:
@@ -54,7 +55,7 @@ MISSIONS: list[Mission] = [
         market_mood_pool=["📈 briefly", "📈 then down", "🚀 irrational"],
         notes_pool=[
             "First Falcon Heavy flight. Starman now past Mars. Car in space. Fine.",
-            "\"That's one small step for mannequin, one giant leap for automotive PR.\"",
+            '"That\'s one small step for mannequin, one giant leap for automotive PR."',
             "FAA declined to comment on the traffic violation.",
         ],
     ),
@@ -79,10 +80,10 @@ MISSIONS: list[Mission] = [
         outcome="RUD*",
         orbit="Suborbital (attempted)",
         payload="none",
-        market_mood_pool=["🔥 \"nominal\"", "📉 technically", "🔥 beautiful failure"],
+        market_mood_pool=['🔥 "nominal"', "📉 technically", "🔥 beautiful failure"],
         notes_pool=[
             "* RUD = Rapid Unscheduled Disassembly (company terminology, not ours).",
-            "Belly flop maneuver worked. Landing did not. Elon called it \"nominal\".",
+            'Belly flop maneuver worked. Landing did not. Elon called it "nominal".',
             "The fireball was, objectively, very photogenic.",
         ],
     ),
@@ -107,7 +108,11 @@ MISSIONS: list[Mission] = [
         outcome="SUCCESS",
         orbit="LEO",
         payload="4 civilians",
-        market_mood_pool=["📈 retail investor approved", "💰 Netflix deal confirmed", "📈 feel-good rally"],
+        market_mood_pool=[
+            "📈 retail investor approved",
+            "💰 Netflix deal confirmed",
+            "📈 feel-good rally",
+        ],
         notes_pool=[
             "All-civilian crew. No professional astronauts. Went fine. Suspicious.",
             "Netflix documentary. SpaceX's best PR since the Starman roadster.",
@@ -180,7 +185,7 @@ MISSIONS: list[Mission] = [
         market_mood_pool=["🦾 Mechazilla works", "📈 catch confirmed", "🦾 jaws dropped"],
         notes_pool=[
             "Mechazilla caught the booster with chopstick arms. As designed. Somehow.",
-            "\"It caught it with the arms.\" — everyone, repeatedly, for weeks.",
+            '"It caught it with the arms." — everyone, repeatedly, for weeks.',
             "OSHA was not consulted. The booster didn't care.",
         ],
     ),
@@ -246,6 +251,7 @@ MISSIONS: list[Mission] = [
 # ---------------------------------------------------------------------------
 # Vehicles
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class Vehicle:
@@ -367,6 +373,7 @@ VEHICLES: list[Vehicle] = [
 # Competitors
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Competitor:
     name: str
@@ -408,7 +415,7 @@ COMPETITORS: list[Competitor] = [
             "reliability": "improving",
             "cost_per_kg": "undisclosed (a theme)",
             "reusability": "yes (New Shepard), partial (New Glenn)",
-            "bezos_involvement": "\"founder\", now board member",
+            "bezos_involvement": '"founder", now board member',
             "launch_cadence": "SpaceX does more before 9am than BO does all quarter",
         },
     ),
@@ -467,6 +474,7 @@ COMPETITORS: list[Competitor] = [
 # Daemons
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Daemon:
     id: str
@@ -489,8 +497,11 @@ DAEMONS: list[Daemon] = [
         status="RUNNING",
         description="SEC investigation re: 2018 'funding secured' tweet. $420M, 420/share.",
         started="2018-08-07",
-        refs=["SEC v. Musk (2018)", "NYT: 'Elon Musk Settles SEC Fraud Charges'",
-              "Reuters: 'Musk pays $20M fine, steps down as Tesla chairman'"],
+        refs=[
+            "SEC v. Musk (2018)",
+            "NYT: 'Elon Musk Settles SEC Fraud Charges'",
+            "Reuters: 'Musk pays $20M fine, steps down as Tesla chairman'",
+        ],
         notes_pool=[
             "Settled for $20M + chairman resign. Did not stop tweeting. Lesson: unclear.",
             "420. The number. On purpose? SEC thought so. Jury (literally) still out.",
@@ -503,13 +514,15 @@ DAEMONS: list[Daemon] = [
         status="RUNNING",
         description="$44B Twitter acquisition fallout: mass layoffs, advertiser exodus, rebranding to X.",
         started="2022-10-27",
-        refs=["WSJ: 'Elon Musk Completes Twitter Takeover'",
-              "The Verge: 'Twitter is X now'",
-              "Bloomberg: 'Twitter Revenue Down 50% Post-Acquisition'"],
+        refs=[
+            "WSJ: 'Elon Musk Completes Twitter Takeover'",
+            "The Verge: 'Twitter is X now'",
+            "Bloomberg: 'Twitter Revenue Down 50% Post-Acquisition'",
+        ],
         notes_pool=[
             "$44B. Half the advertisers left. Rebranded to X. The bird is gone.",
             "Laid off ~80% of staff. Service still mostly works. Twitter engineers haunted.",
-            "\"The bird is freed.\" — Elon. Bird logo: retired. Freedom: debated.",
+            '"The bird is freed." — Elon. Bird logo: retired. Freedom: debated.',
         ],
     ),
     Daemon(
@@ -518,9 +531,11 @@ DAEMONS: list[Daemon] = [
         status="RUNNING",
         description="DOGE advisory role conflicts with SpaceX/Tesla govt contracts. Watchdogs watching.",
         started="2025-01-20",
-        refs=["ProPublica: 'Musk's DOGE Role and His Federal Contracts'",
-              "NYT: 'The Conflict at the Heart of DOGE'",
-              "WaPo: 'Musk's Expanding Government Footprint'"],
+        refs=[
+            "ProPublica: 'Musk's DOGE Role and His Federal Contracts'",
+            "NYT: 'The Conflict at the Heart of DOGE'",
+            "WaPo: 'Musk's Expanding Government Footprint'",
+        ],
         notes_pool=[
             "DOGE cuts agencies that regulate SpaceX. Coincidence: <3% confidence.",
             "SpaceX contracts: $15B+. DOGE budget authority: TBD. Ethics: also TBD.",
@@ -533,9 +548,11 @@ DAEMONS: list[Daemon] = [
         status="RUNNING",
         description="FAA environmental review + license delays for Starship launches at Boca Chica.",
         started="2021-09-01",
-        refs=["Reuters: 'FAA Delays SpaceX Starship Launch License'",
-              "Ars Technica: 'The FAA vs Starship: A timeline'",
-              "The Guardian: 'SpaceX Boca Chica Environmental Impact'"],
+        refs=[
+            "Reuters: 'FAA Delays SpaceX Starship Launch License'",
+            "Ars Technica: 'The FAA vs Starship: A timeline'",
+            "The Guardian: 'SpaceX Boca Chica Environmental Impact'",
+        ],
         notes_pool=[
             "IFT-1 delayed ~7 months for FAA review. Elon tweeted through it.",
             "75-point corrective action plan. SpaceX completed it. FAA: 'good, more forms'.",
@@ -548,9 +565,11 @@ DAEMONS: list[Daemon] = [
         status="RUNNING",
         description="NHTSA/DOJ probes into Autopilot/FSD crashes, recall, and marketing claims.",
         started="2021-08-16",
-        refs=["NHTSA: 'Tesla Autopilot Investigation ODI PE21006'",
-              "WaPo: 'Tesla's Self-Driving Claims Under Federal Scrutiny'",
-              "NYT: 'Tesla Recalls 2M Vehicles Over Autopilot Safety'"],
+        refs=[
+            "NHTSA: 'Tesla Autopilot Investigation ODI PE21006'",
+            "WaPo: 'Tesla's Self-Driving Claims Under Federal Scrutiny'",
+            "NYT: 'Tesla Recalls 2M Vehicles Over Autopilot Safety'",
+        ],
         notes_pool=[
             "2M vehicle recall. 'Autopilot' does not drive itself. NHTSA noted this.",
             "DOJ subpoena issued. 'Full Self-Driving' still in beta. Naming: generous.",
@@ -563,9 +582,11 @@ DAEMONS: list[Daemon] = [
         status="RUNNING",
         description="NLRB complaint: SpaceX fired employees who circulated open letter criticizing Musk.",
         started="2022-06-16",
-        refs=["NLRB Complaint: SpaceX Case 31-CA-290646",
-              "Bloomberg: 'SpaceX Faces Labor Board Complaint Over Employee Firings'",
-              "Reuters: 'SpaceX fired workers who wrote letter about Musk conduct'"],
+        refs=[
+            "NLRB Complaint: SpaceX Case 31-CA-290646",
+            "Bloomberg: 'SpaceX Faces Labor Board Complaint Over Employee Firings'",
+            "Reuters: 'SpaceX fired workers who wrote letter about Musk conduct'",
+        ],
         notes_pool=[
             "8 employees fired after open letter re: Musk conduct. NLRB called it illegal.",
             "Letter asked SpaceX leadership to distance from Musk's tweets. Then: fired.",
@@ -578,8 +599,10 @@ DAEMONS: list[Daemon] = [
         status="RUNNING",
         description="Neuralink animal testing welfare concerns; FDA approval process scrutiny.",
         started="2022-12-05",
-        refs=["Reuters: 'Neuralink Faces Federal Probe for Potential Animal-Welfare Violations'",
-              "WaPo: 'Inside Neuralink's Animal Testing Program'"],
+        refs=[
+            "Reuters: 'Neuralink Faces Federal Probe for Potential Animal-Welfare Violations'",
+            "WaPo: 'Inside Neuralink's Animal Testing Program'",
+        ],
         notes_pool=[
             "1,500+ animals dead during testing per Reuters. FDA probe ongoing.",
             "USDA probe opened 2022. Neuralink: 'compliant'. Reuters: 'here are the documents'.",
@@ -592,9 +615,11 @@ DAEMONS: list[Daemon] = [
         status="RUNNING",
         description="SEC subpoena re: Musk's 2021 Twitter poll on Tesla stock sale.",
         started="2021-11-06",
-        refs=["SEC Subpoena: In the Matter of Elon Musk (2022)",
-              "Bloomberg: 'SEC Investigating Musk's Tesla Stock Poll Tweet'",
-              "NYT: 'Elon Musk and the SEC's Long-Running Feud'"],
+        refs=[
+            "SEC Subpoena: In the Matter of Elon Musk (2022)",
+            "Bloomberg: 'SEC Investigating Musk's Tesla Stock Poll Tweet'",
+            "NYT: 'Elon Musk and the SEC's Long-Running Feud'",
+        ],
         notes_pool=[
             "Poll: 'Should I sell 10% of Tesla stock?' 58% yes. SEC: 'we have questions'.",
             "Musk sold $8B in Tesla after the poll. SEC subpoena followed. Timing noted.",
@@ -608,7 +633,8 @@ DAEMONS: list[Daemon] = [
 # Lookup helpers
 # ---------------------------------------------------------------------------
 
-def find_mission(name: str) -> Optional[Mission]:
+
+def find_mission(name: str) -> Mission | None:
     name_lower = name.lower()
     for m in MISSIONS:
         if m.name.lower() == name_lower:
@@ -620,7 +646,7 @@ def find_mission(name: str) -> Optional[Mission]:
     return None
 
 
-def find_vehicle(name: str) -> Optional[Vehicle]:
+def find_vehicle(name: str) -> Vehicle | None:
     name_lower = name.lower()
     for v in VEHICLES:
         if v.name.lower() == name_lower:
@@ -631,7 +657,7 @@ def find_vehicle(name: str) -> Optional[Vehicle]:
     return None
 
 
-def find_competitor(name: str) -> Optional[Competitor]:
+def find_competitor(name: str) -> Competitor | None:
     name_lower = name.lower()
     for c in COMPETITORS:
         if c.name.lower() == name_lower:
@@ -642,7 +668,7 @@ def find_competitor(name: str) -> Optional[Competitor]:
     return None
 
 
-def find_daemon(id_or_name: str) -> Optional[Daemon]:
+def find_daemon(id_or_name: str) -> Daemon | None:
     key = id_or_name.lower()
     for d in DAEMONS:
         if d.id == key or d.name.lower() == key:

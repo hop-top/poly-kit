@@ -1,7 +1,9 @@
 """commands/ipo.py — ipo status."""
+
 from __future__ import annotations
 
 import time
+
 import typer
 
 app = typer.Typer(help="Spacex IPO status tracker", add_completion=False)
