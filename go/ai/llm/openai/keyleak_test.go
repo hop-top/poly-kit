@@ -97,3 +97,50 @@ func TestNew_UnparseableBaseURLRedacted(t *testing.T) {
 		})
 	}
 }
+
+// A key a response echoes never surfaces in an error: a non-streamed
+// error body or a streamed error chunk.
+func TestEchoedKeyScrubbed(t *testing.T) {
+	const key = "sk-echoed-key-must-not-leak"
+	cases := map[string]struct {
+		stream bool
+		status int
+		body   string
+	}{
+		"error body":         {status: http.StatusBadRequest, body: `{"error":{"message":"bad key ` + key + `","type":"invalid_request_error"}}`},
+		"stream error chunk": {stream: true, status: http.StatusOK, body: "data: {\"error\":{\"message\":\"bad key " + key + "\",\"type\":\"server_error\"}}\n\n"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv := fakeServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				ct := "application/json"
+				if c.stream {
+					ct = "text/event-stream"
+				}
+				w.Header().Set("Content-Type", ct)
+				w.WriteHeader(c.status)
+				_, _ = io.WriteString(w, c.body)
+			})
+			p, err := New(llm.ResolvedConfig{
+				URI:      llm.URI{Scheme: "openai"},
+				Provider: llm.ProviderConfig{BaseURL: srv.URL, Model: "gpt-4o", APIKey: key},
+			})
+			require.NoError(t, err)
+			req := llm.Request{Messages: []llm.Message{{Role: "user", Content: "hi"}}}
+			if c.stream {
+				var it llm.TokenIterator
+				if it, err = p.(llm.Streamer).Stream(context.Background(), req); err == nil {
+					for err == nil {
+						_, err = it.Next()
+					}
+				}
+			} else {
+				_, err = p.(llm.Completer).Complete(context.Background(), req)
+			}
+			require.Error(t, err)
+			assert.NotErrorIs(t, err, io.EOF)
+			assert.NotContains(t, err.Error(), key)
+			assert.NotContains(t, fmt.Sprintf("%+v", err), key)
+		})
+	}
+}

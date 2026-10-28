@@ -22,6 +22,7 @@ import (
 	"hop.top/kit/go/ai/llm"
 	llmerrors "hop.top/kit/go/ai/llm/errors"
 	"hop.top/kit/go/ai/llm/internal/bodylimit"
+	"hop.top/kit/go/ai/llm/internal/secret"
 )
 
 const (
@@ -118,7 +119,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	return &Adapter{
 		client:    anthropic.NewClient(opts...),
 		model:     cfg.Provider.Model,
-		secrets:   secretsOf(cfg.Provider.APIKey, authToken),
+		secrets:   secret.Of(cfg.Provider.APIKey, authToken),
 		toolNames: toolNames,
 	}, nil
 }
@@ -903,7 +904,7 @@ var eventStatus = map[string]int{
 // mapError is [mapError] with every credential value scrubbed from the
 // message: a response body echoing the key never surfaces it.
 func (a *Adapter) mapError(err error, model string) error {
-	return scrub(mapError(err, model), a.secrets)
+	return secret.Scrub(mapError(err, model), a.secrets)
 }
 
 // refuseRedirect stops the client at a redirect: the 3xx comes back as

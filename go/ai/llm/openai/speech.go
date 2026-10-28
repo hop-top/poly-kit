@@ -67,7 +67,7 @@ func (a *Adapter) Transcribe(
 
 	resp, err := a.client.Audio.Transcriptions.New(ctx, p)
 	if err != nil {
-		return llm.TranscribeResponse{}, mapError(err, a.scheme, string(model))
+		return llm.TranscribeResponse{}, a.mapError(err, string(model))
 	}
 
 	// Parse raw JSON for segments (SDK Transcription only exposes .Text).
@@ -144,7 +144,7 @@ func (a *Adapter) Synthesize(
 
 	httpResp, err := a.client.Audio.Speech.New(ctx, p)
 	if err != nil {
-		return llm.SynthesizeResponse{}, mapError(err, a.scheme, string(model))
+		return llm.SynthesizeResponse{}, a.mapError(err, string(model))
 	}
 	defer httpResp.Body.Close()
 

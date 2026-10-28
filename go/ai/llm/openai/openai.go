@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 
 	oai "github.com/openai/openai-go"
@@ -39,6 +40,7 @@ import (
 	"hop.top/kit/go/ai/llm"
 	llmerrors "hop.top/kit/go/ai/llm/errors"
 	"hop.top/kit/go/ai/llm/internal/bodylimit"
+	"hop.top/kit/go/ai/llm/internal/secret"
 )
 
 // schemes registered by this adapter.
@@ -104,6 +106,9 @@ type Adapter struct {
 	// toolNames is the tool_names param: how tool names the API
 	// rejects are handled.
 	toolNames llm.ToolNameMode
+	// secrets are the credential values sent; errors carry none of
+	// them ([Adapter.mapError]).
+	secrets []string
 }
 
 // compile-time interface checks.
@@ -132,7 +137,13 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	if err != nil {
 		return nil, err
 	}
-	opts := []option.RequestOption{auth, option.WithMiddleware(lim.Middleware)}
+	opts := []option.RequestOption{
+		auth,
+		option.WithMiddleware(lim.Middleware),
+		// Redirects are not followed: a credential never moves to a
+		// host the server names.
+		option.WithHTTPClient(&http.Client{Transport: defaultTransport{}, CheckRedirect: refuseRedirect}),
+	}
 	if cfg.Hermetic {
 		// The SDK reads these from OPENAI_ORG_ID and OPENAI_PROJECT_ID;
 		// a hermetic adapter sends neither.
@@ -172,6 +183,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		model:     model,
 		scheme:    cfg.URI.Scheme,
 		toolNames: toolNames,
+		secrets:   secret.Of(cfg.Provider.APIKey),
 	}, nil
 }
 
@@ -231,7 +243,7 @@ func (a *Adapter) Complete(
 	}
 	comp, err := a.client.Chat.Completions.New(ctx, params)
 	if err != nil {
-		return llm.Response{}, mapError(err, a.scheme, model)
+		return llm.Response{}, a.mapError(err, model)
 	}
 	return mapCompletion(comp), nil
 }
@@ -285,7 +297,7 @@ func (a *Adapter) CallWithTools(
 
 	comp, err := a.client.Chat.Completions.New(ctx, params)
 	if err != nil {
-		return llm.ToolResponse{}, mapError(err, a.scheme, a.effectiveModel(req))
+		return llm.ToolResponse{}, a.mapError(err, a.effectiveModel(req))
 	}
 
 	return mapToolResponse(comp, names), nil
@@ -581,6 +593,34 @@ func mapToolResponse(c *oai.ChatCompletion, names *llm.ToolNames) llm.ToolRespon
 }
 
 // ---------- error mapping ----------
+
+// mapError is [mapError] with every credential value scrubbed from the
+// message: a response body echoing the key never surfaces it.
+func (a *Adapter) mapError(err error, model string) error {
+	return secret.Scrub(mapError(err, a.scheme, model), a.secrets)
+}
+
+// defaultTransport sends through http.DefaultClient's transport, as
+// read at request time: the client the SDK would use otherwise, so a
+// transport installed there (a proxy, a recorder) still applies.
+type defaultTransport struct{}
+
+func (defaultTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if rt := http.DefaultClient.Transport; rt != nil {
+		return rt.RoundTrip(r)
+	}
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+// refuseRedirect stops the client at a redirect: the 3xx comes back as
+// an [llmerrors.HTTPStatusError], not followed.
+func refuseRedirect(req *http.Request, _ []*http.Request) error {
+	code := 0
+	if req.Response != nil {
+		code = req.Response.StatusCode
+	}
+	return llmerrors.NewHTTPStatusError(code, "openai: redirect not followed")
+}
 
 func mapError(err error, scheme, model string) error {
 	// Errors quote the request URL; a base URL may carry a credential.

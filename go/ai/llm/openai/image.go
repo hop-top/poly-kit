@@ -11,6 +11,7 @@ import (
 
 	"hop.top/kit/go/ai/llm"
 	llmerrors "hop.top/kit/go/ai/llm/errors"
+	"hop.top/kit/go/ai/llm/internal/secret"
 )
 
 // compile-time check.
@@ -57,7 +58,7 @@ func (a *Adapter) GenerateImage(
 
 	resp, err := a.client.Images.Generate(ctx, p)
 	if err != nil {
-		return llm.ImageResponse{}, mapImageError(err, a.scheme, model)
+		return llm.ImageResponse{}, secret.Scrub(mapImageError(err, a.scheme, model), a.secrets)
 	}
 
 	images, err := mapImages(ctx, resp.Data, useURL)
