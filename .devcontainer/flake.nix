@@ -30,10 +30,8 @@
           nodejs_24
           pnpm_12
 
-          # Python
-          python314
-          python314Packages.pip
-          python314Packages.virtualenv
+          # Python: the interpreter comes from uv (Dockerfile) or mise, at
+          # the exact mise.toml pin; nixpkgs lags security releases
           ruff
 
           # Linting
@@ -66,7 +64,6 @@
             echo "hop.top/kit dev shell active"
             echo "  go:     $(go version | cut -d' ' -f3)"
             echo "  node:   $(node --version)"
-            echo "  python: $(python3 --version)"
           '';
         };
       }

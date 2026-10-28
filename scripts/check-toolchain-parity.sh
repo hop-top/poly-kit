@@ -33,7 +33,10 @@
 #                          -go-/-nodejs-/-python3- store path in its
 #                          Dockerfile, name the pinned go minor, node
 #                          major and python minor (nixpkgs picks the patch
-#                          release, so only the line is held)
+#                          release, so only the line is held); the
+#                          Dockerfile's `PYTHON_VERSION=` (installed by uv)
+#                          and `astral-sh/uv:` image tag equal the python
+#                          and uv pins exactly
 #   .nvmrc, .node-version, name the pinned node major / python minor, or
 #   .python-version        the exact pin; another patch release fails
 #                          (setup-node/setup-python and mise read them)
@@ -132,6 +135,7 @@ rust_pin=$(pin rust)
 ruff_pin=$(pin ruff)
 node_pin=$(pin node)
 python_pin=$(pin python)
+uv_pin=$(pin uv)
 
 # --- go.mod ---------------------------------------------------------------
 if [ -n "$go_pin" ]; then
@@ -278,8 +282,16 @@ if [ -n "$go_pin" ] && [ -n "$node_pin" ] && [ -n "$python_pin" ]; then
                 go) [ "$ver" = "$go_mm" ] || report "$dockerfile:$line" go "$ver" "$go_mm" "mise.toml go (minor)" ;;
                 node) [ "$ver" = "$node_major" ] || report "$dockerfile:$line" node "$ver" "$node_major" "mise.toml node (major)" ;;
                 python) [ "$ver" = "$py_mm" ] || report "$dockerfile:$line" python "$ver" "$py_mm" "mise.toml python (minor)" ;;
+                python-exact) [ "$ver" = "$python_pin" ] || report "$dockerfile:$line" python "$ver" "$python_pin" "mise.toml python" ;;
+                uv) [ "$ver" = "$uv_pin" ] || report "$dockerfile:$line" uv "$ver" "${uv_pin:-(unpinned)}" "mise.toml uv" ;;
             esac
         done < <(awk '
+            match($0, /PYTHON_VERSION=[0-9][0-9A-Za-z.+-]*/) {
+                s = substr($0, RSTART, RLENGTH); sub(/^PYTHON_VERSION=/, "", s); print NR "\tpython-exact\t" s
+            }
+            match($0, /astral-sh\/uv:[0-9][0-9A-Za-z.+-]*/) {
+                s = substr($0, RSTART, RLENGTH); sub(/^astral-sh\/uv:/, "", s); print NR "\tuv\t" s
+            }
             match($0, /-go-[0-9]+\.[0-9]+/) {
                 s = substr($0, RSTART, RLENGTH); sub(/^-go-/, "", s); print NR "\tgo\t" s
             }

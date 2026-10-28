@@ -104,7 +104,8 @@ hadolint             = "2.12"     # only the manifest pins this
     write examples/app/py/.python-version '3.13'
     write .devcontainer/Dockerfile 'COPY --from=builder /nix/store/*-go-1.26*/bin/* /go/bin/
 COPY --from=builder /nix/store/*-nodejs-22*/bin/* /node/bin/
-COPY --from=builder /nix/store/*-python3-3.13*/bin/* /py/bin/'
+ARG PYTHON_VERSION=3.13.5
+COPY --from=ghcr.io/astral-sh/uv:0.12.3@sha256:0000 /uv /uvx /usr/local/bin/'
 }
 
 teardown() {
@@ -285,11 +286,25 @@ run_pins() {
     has ".devcontainer/flake.nix:3: node 20"
 }
 
-@test "devcontainer Dockerfile is held to the pinned families" {
-    edit .devcontainer/Dockerfile 's/python3-3.13/python3-3.12/'
+@test "devcontainer Dockerfile store paths are held to the pinned families" {
+    edit .devcontainer/Dockerfile 's/nodejs-22/nodejs-20/'
     run_check
     [ "$status" -eq 1 ]
-    has ".devcontainer/Dockerfile:3: python 3.12"
+    has ".devcontainer/Dockerfile:2: node 20"
+}
+
+@test "devcontainer Dockerfile python is held to the exact pin" {
+    edit .devcontainer/Dockerfile 's/PYTHON_VERSION=3.13.5/PYTHON_VERSION=3.13.4/'
+    run_check
+    [ "$status" -eq 1 ]
+    has ".devcontainer/Dockerfile:3: python 3.13.4"
+}
+
+@test "devcontainer Dockerfile uv image is held to the exact pin" {
+    edit .devcontainer/Dockerfile 's|astral-sh/uv:0.12.3|astral-sh/uv:0.12.2|'
+    run_check
+    [ "$status" -eq 1 ]
+    has ".devcontainer/Dockerfile:4: uv 0.12.2"
 }
 
 @test "templates/ pins scaffolded projects and is out of scope" {
