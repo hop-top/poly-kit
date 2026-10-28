@@ -36,7 +36,7 @@ no socket open.
 | Go | `hop.top/kit` | `modelcontextprotocol/go-sdk` v1.8.0 | `cmdsurface.MountMCP` |
 | PHP | `hop-top/kit` | implemented directly — see below | `new RequestHandler(...)` |
 | Python | `hop-top-kit[mcp]` | `mcp>=2.0,<3` + `mcp-types>=2.0,<3` | `mount_mcp` |
-| Rust | `hop-top-kit` feature `mcp` | `rmcp` 3.1.4 | `Surface::mount` |
+| Rust | `hop-top-kit` feature `mcp` | `rmcp` 3.7.0 | `Surface::mount` |
 | TypeScript | `@hop-top/kit/mcp` | `@modelcontextprotocol/core` + `@modelcontextprotocol/server` 2.3.1 | `createMcpHandler` |
 
 ### TypeScript
