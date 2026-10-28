@@ -671,6 +671,18 @@ assert_file_contains "$TEST2_DIR/.12fc.json" "ungradable" \
 assert_file_exists "$TEST2_DIR/go/.12fc.json" \
   "test2 polyglot 12fcc seed under go/"
 assert_no_placeholders "$TEST2_DIR" "test2"
+# Template comments (release-please annotations) render to nothing, as
+# under kit init; left in, ts/package.json is not JSON.
+assert_file_excludes "$TEST2_DIR/ts/package.json" '{{' \
+  "test2 ts/package.json has no template action left"
+assert_file_excludes "$TEST2_DIR/go/go.mod" '{{' \
+  "test2 go/go.mod has no template action left"
+if node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' \
+  "$TEST2_DIR/ts/package.json" 2>/dev/null; then
+  pass "test2 ts/package.json parses as JSON"
+else
+  fail "test2 ts/package.json does not parse as JSON"
+fi
 assert_license_file "$TEST2_DIR" "Apache-2.0" "Test Author"
 
 # ======================================================

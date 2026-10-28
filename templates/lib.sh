@@ -110,6 +110,65 @@ replace_token() {
   done <<<"$files"
 }
 
+# Drop Go text/template comment actions from every file under
+# $PROJECT_DIR, as kit init's text/template render does:
+# {{/* ... */}} renders to nothing; a {{- or -}} trim marker also
+# removes the whitespace (newlines included) on that side. Templates use
+# them for release-please annotations (x-release-please-version) that
+# must not reach a generated project. Same skips as replace_token.
+strip_template_comments() {
+  local dir="${PROJECT_DIR:-.}"
+  local files f tmp
+  files="$(find "$dir" -type f \
+    ! -path '*/.git/*' \
+    ! -path '*/node_modules/*' \
+    ! -path '*/vendor/*' \
+    ! -name 'init.sh' \
+    -exec grep -lI -e '{{/\*' -e '{{- /\*' {} + 2>/dev/null || true)"
+  [ -z "$files" ] && return 0
+  while IFS= read -r f; do
+    tmp="$(mktemp)"
+    awk '
+      { buf = buf (NR > 1 ? "\n" : "") $0 }
+      END {
+        out = ""
+        while ((i = index(buf, "{{")) > 0) {
+          rest = substr(buf, i)
+          ltrim = 0
+          if (substr(rest, 1, 4) == "{{/*") {
+            open = 4
+          } else if (substr(rest, 1, 6) == "{{- /*") {
+            open = 6
+            ltrim = 1
+          } else {
+            out = out substr(buf, 1, i + 1)
+            buf = substr(buf, i + 2)
+            continue
+          }
+          j = index(substr(rest, open + 1), "*/")
+          after = substr(rest, open + j + 2)
+          rtrim = 0
+          if (j > 0 && substr(after, 1, 2) == "}}") {
+            after = substr(after, 3)
+          } else if (j > 0 && substr(after, 1, 4) == " -}}") {
+            after = substr(after, 5)
+            rtrim = 1
+          } else {
+            out = out substr(buf, 1, i + 1)
+            buf = substr(buf, i + 2)
+            continue
+          }
+          out = out substr(buf, 1, i - 1)
+          if (ltrim) sub(/[ \t\r\n]+$/, "", out)
+          if (rtrim) sub(/^[ \t\r\n]+/, "", after)
+          buf = after
+        }
+        printf "%s\n", out buf
+      }' "$f" >"$tmp" && cat "$tmp" >"$f"
+    rm -f "$tmp"
+  done <<<"$files"
+}
+
 # ==========================================================
 # Language / project detection
 # ==========================================================

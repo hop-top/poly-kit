@@ -104,6 +104,10 @@ module="${module_prefix:+${module_prefix}/}${app_name}"
 
 echo "Replacing tokens..."
 
+# Template comments ({{/* x-release-please-version */}} and the like)
+# render to nothing under kit init's text/template; drop them first.
+strip_template_comments
+
 # Go text/template dot-notation tokens used across cli-*/templates and
 # shared/. Order matters: substitute longer/qualified tokens before shorter
 # ones to avoid partial matches (e.g. NameUpper before Name).
