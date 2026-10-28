@@ -235,7 +235,7 @@ func renderTable(w io.Writer, v any, selected []string) error {
 		elems = make([]reflect.Value, rv.Len())
 		for i := range rv.Len() {
 			e := rv.Index(i)
-			if e.Kind() == reflect.Ptr {
+			if e.Kind() == reflect.Pointer {
 				e = e.Elem()
 			}
 			elems[i] = e
@@ -320,7 +320,7 @@ type column struct {
 // exported field. Tag form: "Header" or "Header,priority=N" (N=0-9).
 // Fields without a tag, or with tag value "-", are excluded.
 func tableColumns(t reflect.Type) []column {
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	var cols []column

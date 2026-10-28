@@ -42,7 +42,7 @@ func RenderPlan(w io.Writer, format string, p any) error {
 // fitting match every other table output.
 func renderPlanTable(w io.Writer, p any) error {
 	rv := reflect.ValueOf(p)
-	if rv.Kind() == reflect.Ptr {
+	if rv.Kind() == reflect.Pointer {
 		if rv.IsNil() {
 			return fmt.Errorf("RenderPlan: nil plan")
 		}

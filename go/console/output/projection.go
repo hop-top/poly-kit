@@ -54,13 +54,13 @@ func projectToMaps(data any) any {
 		out := make([]map[string]any, rv.Len())
 		for i := range rv.Len() {
 			e := rv.Index(i)
-			if e.Kind() == reflect.Ptr {
+			if e.Kind() == reflect.Pointer {
 				e = e.Elem()
 			}
 			out[i] = structToMap(e)
 		}
 		return out
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return data
 		}
@@ -91,7 +91,7 @@ func projectToOrdered(data any, cols []string) (any, error) {
 		out := make([]orderedMap, rv.Len())
 		for i := range rv.Len() {
 			e := rv.Index(i)
-			if e.Kind() == reflect.Ptr {
+			if e.Kind() == reflect.Pointer {
 				if e.IsNil() {
 					return nil, fmt.Errorf("--cols %s: element %d is a nil pointer, nothing to project",
 						strings.Join(cols, ","), i)
@@ -101,7 +101,7 @@ func projectToOrdered(data any, cols []string) (any, error) {
 			out[i] = structToOrdered(e, cols)
 		}
 		return out, nil
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return data, nil
 		}
@@ -124,7 +124,7 @@ func projectToOrdered(data any, cols []string) (any, error) {
 func TableHeaders(t reflect.Type) []string {
 	for t != nil {
 		switch t.Kind() {
-		case reflect.Ptr, reflect.Slice, reflect.Array:
+		case reflect.Pointer, reflect.Slice, reflect.Array:
 			t = t.Elem()
 		default:
 			goto done
