@@ -112,3 +112,81 @@ func TestCLIGoKitPin_BumpedByTheReleasePR(t *testing.T) {
 		}
 	}
 }
+
+// cliPyPinFiles hold the cli-py template's hop-top-kit requirement.
+// They are extra-files of the sdk/py package, whose paths release-please
+// resolves against the package directory unless they start with "/".
+var cliPyPinFiles = []string{
+	"/templates/cli-py/pyproject.toml.tmpl",
+	"/internal/template/builtins/cli-py/pyproject.toml.tmpl",
+}
+
+// releasedPySDKVersion reads the sdk/py package's version from the
+// release-please manifest.
+func releasedPySDKVersion(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(kitRepoRoot(t), ".github", ".release-please-manifest.json"))
+	require.NoError(t, err)
+	var manifest map[string]string
+	require.NoError(t, json.Unmarshal(raw, &manifest))
+	v := manifest["sdk/py"]
+	require.NotEmpty(t, v, "the manifest carries the sdk/py package's version")
+	return v
+}
+
+// The generated cli.py imports hop_top_kit, so the project must declare
+// it, at least at the Python SDK release the template ships with.
+func TestBootstrap_CLIPy_DeclaresTheKitReleaseItShipsWith(t *testing.T) {
+	want := releasedPySDKVersion(t)
+	target, _ := runBootstrapFor(t, "cli-py")
+
+	pyproject, err := os.ReadFile(filepath.Join(target, "pyproject.toml"))
+	require.NoError(t, err)
+	assert.Regexp(t, `(?m)^\s+"hop-top-kit>=`+regexp.QuoteMeta(want)+`",$`, string(pyproject),
+		"a generated project depends on the Python kit it imports")
+	assert.NotContains(t, string(pyproject), releaseMarker,
+		"the release annotation is a template comment and must not reach the project")
+}
+
+// TestCLIPyKitPin_BumpedByTheReleasePR pins the release wiring for the
+// cli-py requirement, as TestCLIGoKitPin_BumpedByTheReleasePR does for
+// cli-go.
+func TestCLIPyKitPin_BumpedByTheReleasePR(t *testing.T) {
+	root := kitRepoRoot(t)
+	raw, err := os.ReadFile(filepath.Join(root, ".github", "release-please-config.json"))
+	require.NoError(t, err)
+	var cfg struct {
+		Packages map[string]struct {
+			ExtraFiles []json.RawMessage `json:"extra-files"`
+		} `json:"packages"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &cfg))
+	generic := map[string]bool{}
+	for _, entry := range cfg.Packages["sdk/py"].ExtraFiles {
+		var f struct {
+			Type string `json:"type"`
+			Path string `json:"path"`
+		}
+		if json.Unmarshal(entry, &f) == nil && f.Type == "generic" {
+			generic[f.Path] = true
+		}
+	}
+
+	for _, path := range cliPyPinFiles {
+		assert.True(t, generic[path],
+			"%s must be a generic extra-file of the sdk/py package", path)
+
+		body, err := os.ReadFile(filepath.Join(root, strings.TrimPrefix(path, "/")))
+		require.NoError(t, err)
+		var marked []string
+		for _, line := range strings.Split(string(body), "\n") {
+			if strings.Contains(line, releaseMarker) {
+				marked = append(marked, line)
+			}
+		}
+		if assert.Len(t, marked, 1, "%s marks exactly one line", path) {
+			assert.Contains(t, marked[0], `"hop-top-kit>=`,
+				"%s marks the pin's own line", path)
+		}
+	}
+}
