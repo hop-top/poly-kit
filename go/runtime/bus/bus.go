@@ -113,7 +113,7 @@ func isNilAdapter(a Adapter) bool {
 		return true
 	}
 	v := reflect.ValueOf(a)
-	return v.Kind() == reflect.Ptr && v.IsNil()
+	return v.Kind() == reflect.Pointer && v.IsNil()
 }
 
 // New returns a new Bus. Without options it uses MemoryAdapter.
