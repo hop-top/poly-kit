@@ -550,7 +550,10 @@ fn openai_vectors_not_applicable() {
         ("openai_limits", &c.openai_limits),
     ] {
         assert!(!vs.is_empty(), "{section} is empty");
-        eprintln!("{section}: {} vectors not applicable (no openai adapter in this port)", vs.len());
+        eprintln!(
+            "{section}: {} vectors not applicable (no openai adapter in this port)",
+            vs.len()
+        );
     }
 }
 
