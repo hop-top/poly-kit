@@ -12,7 +12,7 @@ LLM harnesses) can consume.
 
 - Go 1.26 or newer (compatibility floor — see `go.mod`).
 - `git`, `gh` CLI on `PATH`.
-- Optional: Node 22.12+ if you plan to mirror the CLI in TS; for Python,
+- Optional: Node 22.12+ for the TS SDK, 22.13+ for a scaffolded TS CLI; for Python,
   the SDK needs 3.11+ and a scaffolded Python CLI needs 3.12+.
 
 ## Step 1: scaffold a new kit binary
