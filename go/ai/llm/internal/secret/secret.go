@@ -1,4 +1,7 @@
-package anthropic
+// Package secret scrubs credential values from adapter errors: a
+// response body that echoes a key never surfaces it in an error
+// message.
+package secret
 
 import (
 	"fmt"
@@ -6,8 +9,8 @@ import (
 	"strings"
 )
 
-// secretsOf lists the non-blank credential values to scrub.
-func secretsOf(vals ...string) []string {
+// Of lists the non-blank credential values to scrub.
+func Of(vals ...string) []string {
 	var out []string
 	for _, v := range vals {
 		if strings.TrimSpace(v) != "" {
@@ -17,9 +20,9 @@ func secretsOf(vals ...string) []string {
 	return out
 }
 
-// scrub returns err with every secret replaced by REDACTED in its
+// Scrub returns err with every secret replaced by REDACTED in its
 // message; errors.Is and errors.As still reach err.
-func scrub(err error, secrets []string) error {
+func Scrub(err error, secrets []string) error {
 	if err == nil {
 		return nil
 	}

@@ -17,6 +17,7 @@ import (
 
 	"hop.top/kit/go/ai/llm"
 	llmerrors "hop.top/kit/go/ai/llm/errors"
+	"hop.top/kit/go/ai/llm/internal/secret"
 )
 
 // openStream sends params as a streamed request. The SSE body is read
@@ -37,7 +38,7 @@ func (a *Adapter) openStream(
 		if res != nil && res.Body != nil {
 			_ = res.Body.Close()
 		}
-		return nil, mapError(err, a.scheme, model)
+		return nil, a.mapError(err, model)
 	}
 	dec := ssestream.NewDecoder(res)
 	if dec == nil {
@@ -45,7 +46,7 @@ func (a *Adapter) openStream(
 	}
 	return &streamIter{
 		dec: dec, res: res, scheme: a.scheme, model: model, names: names,
-		events: req.StreamEvents, byWire: map[int64]int{},
+		secrets: a.secrets, events: req.StreamEvents, byWire: map[int64]int{},
 	}, nil
 }
 
@@ -66,6 +67,8 @@ type streamIter struct {
 	scheme string
 	model  string
 	names  *llm.ToolNames
+	// secrets are scrubbed from every error ([Adapter.mapError]).
+	secrets []string
 	// events streams tool-call events and usage snapshots
 	// ([llm.Request.StreamEvents]).
 	events bool
@@ -109,7 +112,7 @@ func (s *streamIter) Next() (llm.Token, error) {
 		}
 		if !s.dec.Next() {
 			if err := s.dec.Err(); err != nil {
-				return s.fail(mapError(err, s.scheme, s.model))
+				return s.fail(s.mapError(err))
 			}
 			// Some compatible servers end without [DONE] once a choice
 			// finished; any other end is incomplete.
@@ -297,7 +300,12 @@ func (s *streamIter) endCalls() {
 func (s *streamIter) chunkError(raw json.RawMessage) error {
 	apiErr := &oai.Error{Request: s.res.Request, Response: s.res}
 	if err := apiErr.UnmarshalJSON(raw); err != nil {
-		return fmt.Errorf("%s: stream error: %s", s.scheme, raw)
+		return secret.Scrub(fmt.Errorf("%s: stream error: %s", s.scheme, raw), s.secrets)
 	}
-	return mapError(apiErr, s.scheme, s.model)
+	return s.mapError(apiErr)
+}
+
+// mapError is [Adapter.mapError] for the stream's model.
+func (s *streamIter) mapError(err error) error {
+	return secret.Scrub(mapError(err, s.scheme, s.model), s.secrets)
 }
