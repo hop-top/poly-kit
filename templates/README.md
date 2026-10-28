@@ -47,9 +47,8 @@ means "any 2+ langs you chose", not "all 5".
 
 - [test-scaffold-e2e.sh](test-scaffold-e2e.sh): e2e tests for scaffold.sh.
 - [test-kit-init-idempotency.sh](test-kit-init-idempotency.sh): idempotency tests for `kit init`.
-- [test-e2e.sh](test-e2e.sh): top-level e2e harness (build, init the dist
-  copies, scaffold polyglot subsets); the `templates-e2e` CI job runs it when
-  `templates/` changes.
+- [test-e2e.sh](test-e2e.sh): top-level e2e harness (build, init dists,
+  scaffold polyglot subsets); CI job `templates-e2e` runs it on template changes.
 
 ## What scaffold emits
 
@@ -74,10 +73,8 @@ Opt-in catalog (`scaffold.sh --services <list>` or
 `./.data/<service>/` bind mounts.
 
 See [folder-structure.md §4](folder-structure.md#4-what-scaffoldsh--kit-init-emits)
-for the full layout and
-[shared/README.md](shared/README.md) for the emitter library API.
+for the full layout, [shared/README.md](shared/README.md) for the emitter API.
 
 ## Bring an old project up to date
 
-See [RUNBOOK-UPGRADE.md](RUNBOOK-UPGRADE.md) for the
-`kit init --check` / `kit init --update` procedure.
+See [RUNBOOK-UPGRADE.md](RUNBOOK-UPGRADE.md) (`kit init --check` / `--update`).
