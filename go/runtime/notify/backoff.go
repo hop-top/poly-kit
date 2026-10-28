@@ -37,7 +37,7 @@ type BackoffFunc func(attempt int) time.Duration
 // appropriate for retry spreading; do NOT rely on it for
 // cryptographic unpredictability. The global math/rand source is
 // seeded automatically by the runtime in Go 1.20+ (this module
-// targets go 1.26.1 — see go.mod), so no manual seeding is needed.
+// targets go 1.27.3 — see go.mod), so no manual seeding is needed.
 func ExponentialBackoff(base time.Duration, factor float64, jitter bool) BackoffFunc {
 	return func(attempt int) time.Duration {
 		if base <= 0 {

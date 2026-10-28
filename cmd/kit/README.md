@@ -21,7 +21,7 @@ This page covers two intents:
 
 You need:
 
-- Go 1.26 or newer (`go install`; toolchain pinned via `go.mod`)
+- Go 1.27 or newer (`go install`; toolchain pinned via `go.mod`)
   **or** Homebrew (`brew install`) **or** the prebuilt release
   tarball.
 - `git` and `gh` on `PATH` for `kit init` repo creation.

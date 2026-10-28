@@ -3,7 +3,7 @@
 # masked CI/CD variables.
 conformance-grade:
   stage: test
-  image: golang:1.26
+  image: golang:1.27
   script:
     - go install hop.top/kit/cmd/kit@latest
     - go test ./e2e/conformance/...
