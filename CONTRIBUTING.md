@@ -167,7 +167,7 @@ and `make test-affected` runs the same scope locally:
   counts when Go code names its path (a contract vector, a fixture, a
   doc a test checks; [`scripts/path-refs.awk`](scripts/path-refs.awk)).
   A changed `go.mod`/`go.sum` or a deleted package runs the module whole.
-- **SDKs** (`ts-test`, `py-test`, `rs-*`, `php-test`): a package runs
+- **SDKs** (`ts-test`, `ts-node-floor`, `py-test`, `rs-*`, `php-test`): a package runs
   when a file under it changed or a file its sources name by path
   (contracts, shared fixtures). Rust and PHP are crate level; TypeScript
   and Python per package.
