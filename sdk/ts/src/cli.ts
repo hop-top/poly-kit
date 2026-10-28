@@ -28,6 +28,7 @@
 import { Command, Help } from 'commander';
 import { parity, type ParityData } from './tui/parity.js';
 import { registerOutputFlags } from './output/flags.js';
+import { EXIT_USAGE } from './output/error.js';
 import { install as installNetPolicy, setProcessOffline } from './netpolicy.js';
 import './output/builtins.js';
 export { ErrOffline, OfflineError, guardFetch, isOffline, isOfflineError,
@@ -706,6 +707,22 @@ export function applyHelpTheme(
   });
 }
 
+/**
+ * Resolves operands as a command path below root, matching names and
+ * aliases. Only a fully-resolved path counts: "remote nosuch" names no
+ * command rather than falling back to "remote".
+ */
+function findHelpTarget(root: Command, operands: string[]): Command | undefined {
+  let cmd: Command | undefined;
+  let scope = root;
+  for (const word of operands) {
+    cmd = scope.commands.find(c => c.name() === word || c.aliases().includes(word));
+    if (!cmd) return undefined;
+    scope = cmd;
+  }
+  return cmd;
+}
+
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -825,21 +842,34 @@ export function createCLI(cfg: CLIConfig): CLIResult {
     });
   }
 
-  // help <group> subcommand (hidden from default help).
+  // help [command | group] subcommand (hidden from default help).
+  // Operands resolve in order: "all", a fully-resolved command path
+  // (a command wins over a group of the same name), a group ID; else a
+  // usage error (exit 2).
   if (cfg.groups && cfg.groups.length > 0) {
     const groupIds = cfg.groups.map(g => g.id);
-    const helpCmd = program.command('help [group]')
-      .description('Show help for a command group')
-      .action((group?: string) => {
-        if (group === 'all') {
-          process.argv.push('--help-all');
-          program.help();
-        } else if (group && groupIds.includes(group)) {
-          process.argv.push(`--help-${group}`);
-          program.help();
-        } else {
+    const helpCmd = program.command('help [operands...]')
+      .description('Show help for a command or command group')
+      .action((operands: string[]) => {
+        if (operands.length === 0) {
           program.help();
         }
+        if (operands.length === 1 && operands[0] === 'all') {
+          process.argv.push('--help-all');
+          program.help();
+        }
+        const target = findHelpTarget(program, operands);
+        if (target) {
+          target.help();
+        }
+        if (operands.length === 1 && groupIds.includes(operands[0]!)) {
+          process.argv.push(`--help-${operands[0]}`);
+          program.help();
+        }
+        program.error(
+          `error: unknown help topic '${operands.join(' ')}' for '${program.name()}'`,
+          { exitCode: EXIT_USAGE, code: 'commander.unknownCommand' },
+        );
       });
     // Hide from default help output.
     (helpCmd as any).hideHelp = true;
