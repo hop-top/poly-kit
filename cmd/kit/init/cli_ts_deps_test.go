@@ -220,3 +220,17 @@ func TestCLITSTiers_PNPMWorkspaceShipsWithPackageJSON(t *testing.T) {
 			"%s/tiers.yaml ships pnpm-workspace.yaml on package.json's tiers", dir)
 	}
 }
+
+// TestBootstrap_CLITS_ShipsAStarterTest pins the starter unit test: the
+// scaffold's `make test` runs `vitest run`, which exits non-zero when it
+// collects no test file, so a fresh project must ship one.
+func TestBootstrap_CLITS_ShipsAStarterTest(t *testing.T) {
+	target, _, _ := renderCLITSPackageJSON(t)
+
+	raw, err := os.ReadFile(filepath.Join(target, "tests", "unit", "cli.test.ts"))
+	require.NoError(t, err, "generated project ships tests/unit/cli.test.ts")
+	body := string(raw)
+	assert.Contains(t, body, `from "../../src/cli.js"`, "starter test exercises the generated program")
+	assert.Contains(t, body, `toBe("demo")`, "project name rendered into the starter test")
+	assert.NotContains(t, body, "{{", "no template action left in the starter test")
+}
