@@ -4,20 +4,23 @@ This guide covers setting up the development environment for `hop.top/kit`.
 
 ## Recommended: VS Code Dev Containers
 
-The easiest way to get started is to use VS Code Dev Containers. The repository includes a pre-configured environment with all necessary tools (Go, golangci-lint, Node.js, pnpm, Python, uv, ruff, eslint, go-task, git, gh).
+The easiest way to get started is to use VS Code Dev Containers. The repository includes a pre-configured environment with all necessary tools (Go, golangci-lint, Node.js, pnpm, Python, uv, ruff, go-task, git, gh). eslint runs from each package's lockfile: `pnpm eslint`.
 
 1. Install the **Dev Containers** extension in VS Code.
 2. Open the project folder in VS Code.
 3. Click "Reopen in Container" when prompted.
 
-The toolchains come from the [Nix](https://nixos.org/) flake in this
+Most toolchains come from the [Nix](https://nixos.org/) flake in this
 directory (`flake.nix`, `flake.lock`). The Dockerfile builds the flake's
 `packages.default` profile in a `nixos/nix` stage and copies it, with its
 whole store closure, into a Debian image at `/usr/local/tools`.
-Python is the exception: nixpkgs lags its security releases, so the
-image installs the exact `mise.toml` pin with uv (`PYTHON_VERSION` in the
-Dockerfile, uv copied from the pinned `ghcr.io/astral-sh/uv` image) as the
-default `python3`; create venvs with `python3 -m venv`. To build
+Node.js, pnpm and Python are the exception: nixpkgs lags their security
+releases, so the image installs the exact `mise.toml` pins outside Nix.
+Node (`NODE_VERSION`) and pnpm (`PNPM_VERSION`, standalone binary) come
+from their upstream release archives, checked against per-arch sha256s
+pinned in the Dockerfile. Python (`PYTHON_VERSION`) is installed by uv,
+copied from the pinned `ghcr.io/astral-sh/uv` image, as the default
+`python3`; create venvs with `python3 -m venv`. To build
 the image outside VS Code (the context is this directory):
 
 ```bash

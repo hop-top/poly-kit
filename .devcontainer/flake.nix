@@ -26,16 +26,11 @@
           go_1_27 # the override above, not pkgs.go_1_27
           golangci-lint
 
-          # Node / TypeScript
-          nodejs_24
-          pnpm_12
-
-          # Python: the interpreter comes from uv (Dockerfile) or mise, at
-          # the exact mise.toml pin; nixpkgs lags security releases
+          # Node, pnpm and Python come from their upstream releases
+          # (Dockerfile) or mise, at the exact mise.toml pins: nixpkgs lags
+          # security releases. eslint runs from each package's lockfile
+          # (`pnpm eslint`), on that Node.
           ruff
-
-          # Linting
-          eslint
 
           # Task runner
           go-task
@@ -63,7 +58,6 @@
           shellHook = ''
             echo "hop.top/kit dev shell active"
             echo "  go:     $(go version | cut -d' ' -f3)"
-            echo "  node:   $(node --version)"
           '';
         };
       }

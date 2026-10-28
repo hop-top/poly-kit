@@ -105,7 +105,9 @@ hadolint             = "2.12"     # only the manifest pins this
     write .devcontainer/Dockerfile 'COPY --from=builder /nix/store/*-go-1.26*/bin/* /go/bin/
 COPY --from=builder /nix/store/*-nodejs-22*/bin/* /node/bin/
 ARG PYTHON_VERSION=3.13.5
-COPY --from=ghcr.io/astral-sh/uv:0.12.3@sha256:0000 /uv /uvx /usr/local/bin/'
+COPY --from=ghcr.io/astral-sh/uv:0.12.3@sha256:0000 /uv /uvx /usr/local/bin/
+ARG NODE_VERSION=22.23.2
+ARG PNPM_VERSION=11.4.0'
 }
 
 teardown() {
@@ -305,6 +307,20 @@ run_pins() {
     run_check
     [ "$status" -eq 1 ]
     has ".devcontainer/Dockerfile:4: uv 0.12.2"
+}
+
+@test "devcontainer Dockerfile node is held to the exact pin" {
+    edit .devcontainer/Dockerfile 's/NODE_VERSION=22.23.2/NODE_VERSION=22.23.1/'
+    run_check
+    [ "$status" -eq 1 ]
+    has ".devcontainer/Dockerfile:5: node 22.23.1"
+}
+
+@test "devcontainer Dockerfile pnpm is held to the exact pin" {
+    edit .devcontainer/Dockerfile 's/PNPM_VERSION=11.4.0/PNPM_VERSION=11.3.0/'
+    run_check
+    [ "$status" -eq 1 ]
+    has ".devcontainer/Dockerfile:6: pnpm 11.3.0"
 }
 
 @test "templates/ pins scaffolded projects and is out of scope" {
