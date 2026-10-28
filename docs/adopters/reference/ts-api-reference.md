@@ -909,8 +909,7 @@ Params on any adapter URI: `tool_names` (`sanitize` | `strict`),
 `max_body_bytes` (default 32 MiB) and `max_event_bytes` (one SSE event,
 default 8 MiB).
 
-Transport guarantees, the same as Go (except that Go's openai adapter
-follows redirects and does not scrub a key a response echoes):
+Transport guarantees, the same as Go:
 
 - A key goes over plain http only to loopback, and never to an endpoint
   with userinfo, a backslash, a percent-escape, whitespace or a control
@@ -952,8 +951,9 @@ test `PermissionDeniedError` first to tell them apart.
 
 ### Stream events
 
-Set `Request.streamEvents` and the anthropic adapter's `stream` and
-`streamWithTools` also yield tool-call events and usage snapshots
+Set `Request.streamEvents` and `stream` and `streamWithTools` on the
+anthropic and openai adapters (and `routellm`, through the openai
+adapter) also yield tool-call events and usage snapshots
 (Go [Tool-call and usage events](llm.md#tool-call-and-usage-events)):
 
 ```ts
@@ -970,11 +970,15 @@ for await (const tok of llm.streamWithTools({ messages, streamEvents: true }, to
   `delta` (`argumentsDelta`, raw JSON fragments), one `end` (`call`,
   exactly `outcome().toolCalls[index]`). Parallel calls interleave by
   `index`. A call open when the stream fails gets no `end`.
-- `usage`: when the provider reports it (message start, message delta);
+- `usage`: when the provider reports it (anthropic: message start,
+  message delta; openai: one chunk after the last choice, asked for
+  with `stream_options.include_usage` only when `streamEvents` is set);
   the last one equals `outcome().usage`.
+- openai calls start on the fragment that completes their id and name
+  (earlier argument fragments follow as one delta) and end, in index
+  order, on the `finish_reason` chunk.
 - Unset, the stream yields exactly the tokens it did before. `complete`
-  and `callWithTools` ignore it; the openai adapter does not emit events
-  yet (Go's does).
+  and `callWithTools` ignore it.
 
 ### Tool choice
 

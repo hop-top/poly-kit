@@ -768,15 +768,14 @@ sending for an unknown mode, a name missing with `tool` or set with
 another mode, a name no tool has, or any choice on `complete` / `stream`
 (no tools); `llm.check_tool_choice(choice, tools)` returns the reason.
 
-`Request.stream_events=True` (anthropic) adds two kinds of token to a
-stream; unset, a stream yields exactly what it always has. The openai
-adapter does not emit them yet (Go's does). Each token
-carries one thing:
+`Request.stream_events=True` (anthropic, the OpenAI-compatible adapter
+and `routellm`) adds two kinds of token to a stream; unset, a stream
+yields exactly what it always has. Each token carries one thing:
 
 | Field | When | Holds |
 |-------|------|-------|
-| `tool_call` | a `tool_use` block starts, gets argument JSON, stops | `llm.ToolCallEvent`: `kind` `start` (`index`, `id`, `name`), `delta` (`arguments_delta`, a raw fragment), `end` (`call`, exactly `outcome().tool_calls[index]`) |
-| `usage` | the provider reports usage (`message_start`, `message_delta`) | the turn's usage so far: cumulative, never a delta; the last equals `outcome().usage` |
+| `tool_call` | a `tool_use` block starts, gets argument JSON, stops (openai: a `tool_calls[i]` fragment completes its id and name, adds arguments; every open call ends, in index order, on the `finish_reason` chunk) | `llm.ToolCallEvent`: `kind` `start` (`index`, `id`, `name`), `delta` (`arguments_delta`, a raw fragment), `end` (`call`, exactly `outcome().tool_calls[index]`) |
+| `usage` | the provider reports usage (`message_start`, `message_delta`; openai: the chunk after the last choice, asked for with `stream_options.include_usage` only when opted in) | the turn's usage so far: cumulative, never a delta; the last equals `outcome().usage` |
 
 `name` is the tool's name as defined. Parallel calls interleave, told
 apart by `index`. A call open when the stream fails gets no `end`.
