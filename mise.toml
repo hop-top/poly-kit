@@ -7,24 +7,24 @@
 # and `make check-toolchain-parity` fails when go.mod, rust-toolchain.toml,
 # a workflow, the devcontainer or the scaffold manifest
 # (templates/shared/tool-versions.toml, which the block below is emitted
-# from) disagrees.
+# from) disagrees, or a pin is not an exact release.
 
 # >>> kit-managed >>>
 [tools]
 go = "1.27.3"
-node = "24"
-pnpm = "12"
-python = "3.14"
-uv = "0.13"
+node = "24.22.1"
+pnpm = "12.16.0"
+python = "3.14.10"
+uv = "0.13.5"
 rust = "1.99.0"
 golangci-lint = "2.14.0"
 ruff = "0.17.1"
 lychee = "0.24.2"
-hadolint = "2.12"
-actionlint = "1.7"
-shellcheck = "0.10"
-shfmt = "3.10"
-"npm:release-please" = "17"
+hadolint = "2.12.0"
+actionlint = "1.7.12"
+shellcheck = "0.10.0"
+shfmt = "3.10.0"
+"npm:release-please" = "17.11.2"
 
 [env]
 _.file = ".env"

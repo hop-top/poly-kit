@@ -31,9 +31,12 @@
 #   devcontainer           the nixpkgs attributes in .devcontainer/flake.nix
 #                          (go_1_NN, nodejs_NN, python3NN) and the store
 #                          globs in its Dockerfile name the pinned
-#                          go minor, node major and python minor
-#   .nvmrc, .node-version, name the pinned node major / python minor
-#   .python-version        (setup-node/setup-python and mise can read them)
+#                          go minor, node major and python minor (nixpkgs
+#                          picks the patch release, so only the line is
+#                          held)
+#   .nvmrc, .node-version, name the pinned node major / python minor, or
+#   .python-version        the exact pin; another patch release fails
+#                          (setup-node/setup-python and mise read them)
 #   scaffold manifest      templates/shared/tool-versions.toml and its
 #                          embedded copy in cmd/kit/init/managed_assets/
 #                          pin every tool they share with mise.toml at the
@@ -54,6 +57,9 @@
 # Other files under templates/ and internal/template/ describe
 # SCAFFOLDED projects (their workflows, go.mod templates) and are out of
 # scope.
+#
+# Every pin in the mise config must itself be an exact version
+# (MAJOR.MINOR.PATCH, optionally with a pre-release suffix).
 #
 # Usage: scripts/check-toolchain-parity.sh   (from anywhere inside the repo)
 # Exit:  0 agree, 1 disagreement found, 2 a pin or file could not be read.
@@ -109,6 +115,17 @@ for t in $required; do
         findings=$((findings + 1))
     fi
 done
+
+# Every pin names one release. A partial pin ("24", "0.13") lets mise
+# and the setup actions take a new release the day it ships, before
+# the dependency age gate clears it, and two machines can disagree.
+while IFS='=' read -r t v; do
+    [ -n "$t" ] || continue
+    if ! printf '%s\n' "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+        printf 'mise config: %s %s is not an exact version (pin MAJOR.MINOR.PATCH)\n' "$t" "$v"
+        findings=$((findings + 1))
+    fi
+done <<<"$pins"
 
 go_pin=$(pin go)
 rust_pin=$(pin rust)
@@ -284,13 +301,15 @@ if [ -n "$node_pin" ] && [ -n "$python_pin" ]; then
         [ -n "$f" ] || continue
         ver=$(awk 'NF && $1 !~ /^#/ { print $1; exit }' "$f")
         ver=${ver#v}
+        # The pinned line alone (python 3.14, node 24), or the exact pin.
+        # Another release in that line is a second toolchain.
         case "$f" in
             *.python-version)
-                [ "$(major_minor "$ver")" = "$py_mm" ] ||
-                    report "$f:1" python "$ver" "$py_mm" "mise.toml python (minor)" ;;
+                [ "$ver" = "$py_mm" ] || [ "$ver" = "$python_pin" ] ||
+                    report "$f:1" python "$ver" "$python_pin (or $py_mm)" "mise.toml python" ;;
             *)
-                [ "${ver%%.*}" = "$node_major" ] ||
-                    report "$f:1" node "$ver" "$node_major" "mise.toml node (major)" ;;
+                [ "$ver" = "$node_major" ] || [ "$ver" = "$node_pin" ] ||
+                    report "$f:1" node "$ver" "$node_pin (or $node_major)" "mise.toml node" ;;
         esac
     done < <(tracked '*.nvmrc' '*.node-version' '*.python-version')
 fi

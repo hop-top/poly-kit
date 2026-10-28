@@ -59,6 +59,12 @@ the repo root gives you what CI runs.
 - The check also fails when `mise.toml` and the scaffold manifest
   disagree, when the manifest lists a `.config/mise.toml`-only tool, or
   when the two mise files pin one tool differently.
+- Every pin is an exact release (`node = "24.22.1"`, not `"24"`), so a
+  new release reaches CI only through a bump that passed the age gate;
+  the check rejects a partial pin. `.nvmrc` / `.python-version` may
+  name the pinned line (`24`, `3.14`) or the exact pin, not another
+  patch release. The devcontainer is held to the line only: nixpkgs
+  picks its patch release.
 
 ## Git Hooks
 
