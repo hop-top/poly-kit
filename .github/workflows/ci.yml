@@ -280,6 +280,41 @@ jobs:
       - run: scripts/test-affected.sh bats
         if: steps.scope.outputs.run == 'true'
 
+  # templates/test-e2e.sh: build every template, init the dist copies
+  # outside the repo, scaffold the polyglot subsets. Bash, git and coreutils
+  # only (no toolchain), on a runner without tlc, the way an adopter's
+  # clone runs init.sh. No test-scope.sh suite covers templates/, so the
+  # gate is a changed-files.sh pathspec; like --gate it skips to a green
+  # job, and TEST_ALL (push, nightly, dispatch) or an unknown base runs it.
+  templates-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # History for the merge-base of the change.
+          fetch-depth: 0
+          filter: blob:none
+      - id: scope
+        run: |
+          run=true
+          if [ -z "$TEST_ALL" ]; then
+            rc=0
+            changed=$(scripts/changed-files.sh --include-deleted \
+              --trigger .github/workflows/ci.yml -- templates/) || rc=$?
+            if [ "$rc" -eq 0 ] && [ -z "$changed" ]; then
+              run=false
+              {
+                echo "### templates-e2e: skipped"
+                echo
+                echo "No change in this pull request reaches templates/."
+              } >>"$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "run=$run" >>"$GITHUB_OUTPUT"
+      - run: templates/test-e2e.sh
+        if: steps.scope.outputs.run == 'true'
+
   proto-check:
     runs-on: ubuntu-latest
     steps:
@@ -880,7 +915,7 @@ jobs:
   # The failed jobs carry the red; this job fails only when it cannot
   # report.
   nightly-report:
-    needs: [go-lint, ts-lint, py-lint, rs-lint, docs-lint, sdk-paths-lint, adr-refs-lint, internal-refs-lint, actions-pinned-lint, toolchain-parity, bats-tests, proto-check, template-kit-pin, go-test, go-race, ts-test, py-test, rs-test, rs-wasm, rs-mobile, rs-features, php-test, parity, compliance]
+    needs: [go-lint, ts-lint, py-lint, rs-lint, docs-lint, sdk-paths-lint, adr-refs-lint, internal-refs-lint, actions-pinned-lint, toolchain-parity, bats-tests, templates-e2e, proto-check, template-kit-pin, go-test, go-race, ts-test, py-test, rs-test, rs-wasm, rs-mobile, rs-features, php-test, parity, compliance]
     if: ${{ github.event_name == 'schedule' && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

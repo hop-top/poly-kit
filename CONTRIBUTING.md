@@ -221,6 +221,11 @@ narrower targets (`test-templates`, `lint-templates`, `test-workflow`,
 `test-hook`, `test-lint-scripts`) still run their subsets. Pre-push does
 not run it, for the reason it runs no tests (see `.githooks/pre-push`).
 
+`templates/test-e2e.sh` builds the templates, runs `init.sh` in the
+built copies outside the repo and scaffolds the polyglot subsets. The
+`templates-e2e` CI job runs it when a change touches `templates/` (and on
+pushes and the nightly run); it needs only bash and git.
+
 ## Vulnerability scans
 
 `.github/workflows/vulnerability-scan.yml` runs on every pull request and
