@@ -5,9 +5,9 @@ name: release-please-preflight
 # `paths:` filter) so it can be a required check: a required check whose
 # workflow is filtered out never reports and leaves the PR pending.
 #
-# Pinned with release-please.yml to the same hop-top/.github commit: v0's
-# preflight does not know `versioning: "target"` and fails the config. Move
-# the pin together with release-please.yml's.
+# Pinned with release-please.yml to the same hop-top/.github release commit:
+# a preflight older than the extension does not know `versioning: "target"`
+# and fails the config. Move the pin together with release-please.yml's.
 on:
   pull_request:
   workflow_dispatch: {}
@@ -24,4 +24,4 @@ jobs:
   preflight:
     permissions:
       contents: read
-    uses: hop-top/.github/.github/workflows/release-please-preflight.yml@c6261e6832cbc71e72574433fb1a8650ae2e6616
+    uses: hop-top/.github/.github/workflows/release-please-preflight.yml@5ce6680ccde9878428ed6cfa24e0e8f635d829a1 # v0.15.0
