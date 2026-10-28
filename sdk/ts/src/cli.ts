@@ -557,6 +557,21 @@ export function applyHelpTheme(
         output.push('');
       }
 
+      // Arguments — only listed when at least one carries a description
+      // (Commander's visibleArguments rule); title from parity.json.
+      const argList = helper.visibleArguments(cmd);
+      if (argList.length > 0) {
+        const title = parity.help.sections?.['arguments']?.title ?? 'ARGUMENTS';
+        output.push(helper.styleTitle(`${title}:`));
+        for (const a of argList) {
+          output.push(callFormatItem(
+            helper.styleArgumentTerm(helper.argumentTerm(a)),
+            helper.styleArgumentDescription(helper.argumentDescription(a)),
+          ));
+        }
+        output.push('');
+      }
+
       // Collect sections in parity order.
       const helpSections: { name: string; items: string[] }[] = [];
 
