@@ -59,13 +59,13 @@ func (textFormatter) Render(w io.Writer, data any, opts Options, cols []string) 
 		elems = make([]reflect.Value, rv.Len())
 		for i := range rv.Len() {
 			e := rv.Index(i)
-			if e.Kind() == reflect.Ptr {
+			if e.Kind() == reflect.Pointer {
 				e = e.Elem()
 			}
 			elems[i] = e
 		}
 	} else {
-		if rv.Kind() == reflect.Ptr {
+		if rv.Kind() == reflect.Pointer {
 			if rv.IsNil() {
 				return nil
 			}

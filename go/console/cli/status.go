@@ -721,7 +721,7 @@ func summarizeByReflection(data any) string {
 	switch rv.Kind() {
 	case reflect.Slice, reflect.Array:
 		return fmt.Sprintf("%d item(s)", rv.Len())
-	case reflect.Ptr, reflect.Interface:
+	case reflect.Pointer, reflect.Interface:
 		if rv.IsNil() {
 			return ""
 		}
