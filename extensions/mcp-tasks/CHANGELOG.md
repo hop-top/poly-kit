@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0-alpha.2](https://github.com/hop-top/poly-kit/compare/mcp-tasks/v0.1.0-alpha.1...mcp-tasks/v0.1.0-alpha.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* **deps:** raise extensions/mcp-tasks to go 1.26 ([4039968](https://github.com/hop-top/poly-kit/commit/4039968bd8e52377191c1c03c177e7363ed756bf))
+
 ## [0.1.0-alpha.1](https://github.com/hop-top/poly-kit/compare/mcp-tasks/v0.1.0-alpha.0...mcp-tasks/v0.1.0-alpha.1) (2026-09-18)
 
 The hop-top team is happy to announce Kit 0.1.0-alpha.1. This release includes maintenance release with bug fixes.
