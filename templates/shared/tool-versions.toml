@@ -14,7 +14,7 @@ uv     = "0.13"  # Python package + project manager
 rust   = "1.99.0"  # Rust toolchain (stable; matches rust-toolchain.toml)
 
 [workflow]
-golangci-lint        = "2.11.4"  # Go linter aggregator (v2.x — required for Go 1.26+ targets; v1.x refuses)
+golangci-lint        = "2.14.0"  # Go linter aggregator (v2.x — required for Go 1.26+ targets; v1.x refuses)
 ruff                 = "0.17.1"   # Python linter + formatter
 lychee               = "0.24.2"  # Markdown / URL link checker
 hadolint             = "2.12"  # Dockerfile linter
