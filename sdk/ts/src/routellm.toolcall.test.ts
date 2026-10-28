@@ -475,3 +475,47 @@ describe("routellm tool calling", () => {
     expect(st.outcome()?.toolCalls).toEqual([{ id: "c1", name: "pane.open", arguments: {} }]);
   });
 });
+
+describe("routellm stream events (through the openai adapter)", () => {
+  const sse = [
+    { choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "pane_open", arguments: "{}" } }] } }] },
+    { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+    { choices: [], usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 } },
+  ].map((c) => `data: ${JSON.stringify(c)}\n\n`).join("") + "data: [DONE]\n\n";
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new globalThis.Response(sse, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }) as unknown as typeof globalThis.fetch;
+  });
+
+  async function run(streamEvents: boolean) {
+    const s = new RouteLLMAdapter(cfg).streamWithTools(
+      { messages: [{ role: "user", content: "Hi" }], streamEvents },
+      [{ name: "pane.open", description: "", parameters: {} }]
+    );
+    const toks = [];
+    for await (const t of s) toks.push(t);
+    return toks;
+  }
+
+  it("asks for usage and yields tool-call and usage events when opted in", async () => {
+    const toks = await run(true);
+    expect((bodies[0] as Record<string, unknown>)["stream_options"]).toEqual({ include_usage: true });
+    expect(toks.map((t) => t.toolCall?.kind ?? (t.usage ? "usage" : t.done ? "done" : "text"))).toEqual(
+      ["start", "delta", "end", "usage", "done"]
+    );
+    expect(toks[0]!.toolCall).toMatchObject({ index: 0, id: "c1", name: "pane.open" });
+    expect(toks[3]!.usage).toMatchObject({ promptTokens: 3, completionTokens: 2, totalTokens: 5 });
+  });
+
+  it("yields today's tokens when not opted in", async () => {
+    const toks = await run(false);
+    expect((bodies[0] as Record<string, unknown>)["stream_options"]).toBeUndefined();
+    expect(toks).toEqual([{ content: "", done: true }]);
+  });
+});

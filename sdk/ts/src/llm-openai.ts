@@ -249,15 +249,20 @@ export class OpenAIAdapter
     const body = await this.buildBody(req, names, tools ?? []);
     if (tools) body["tools"] = mapTools(names.defs(tools));
     body["stream"] = true;
+    if (req.streamEvents) {
+      // Usage streams only when asked for, in a chunk after the last
+      // choice; a stream without events does not ask.
+      body["stream_options"] = { include_usage: true };
+    }
     const resp = await post(this.transport(req), this.url(), {
       ...this.headers,
       accept: "text/event-stream",
     }, body);
-    const acc = new Accumulator();
+    const acc = new Accumulator(names, req.streamEvents === true);
     try {
       for await (const ev of sseEvents(resp, this.limits.event, this.label)) {
         if (ev.data === "[DONE]") {
-          done(acc.outcome(names));
+          done(acc.outcome());
           yield { content: "", done: true };
           return;
         }
@@ -276,8 +281,7 @@ export class OpenAIAdapter
             `${this.label}: stream error: ${e.type ?? "error"}: ${e.message ?? ""}`
           );
         }
-        const content = acc.add(chunk);
-        if (content) yield { content, done: false };
+        yield* acc.add(chunk);
       }
     } catch (err) {
       throw scrubError(err as Error, this.secrets);
@@ -285,7 +289,7 @@ export class OpenAIAdapter
     // Some compatible servers end without [DONE] once a choice
     // finished; a stream that ends before any finish is incomplete.
     if (!acc.finished()) throw new StreamTruncatedError(this.label);
-    done(acc.outcome(names));
+    done(acc.outcome());
     yield { content: "", done: true };
   }
 
@@ -514,48 +518,135 @@ function parseArguments(raw: string | undefined): unknown {
   }
 }
 
-/** Folds stream chunks: text, tool-call deltas by index, finish, usage. */
+/** A tool call as its fragments arrive. */
+interface PartialCall {
+  /** The chunk's `tool_calls[].index`. */
+  wire: number;
+  id: string;
+  name: string;
+  args: string;
+  /** Argument fragments that came before the call started (no id and name yet). */
+  pending: string;
+  started: boolean;
+}
+
+/**
+ * Folds stream chunks: text, tool calls (in order of first fragment,
+ * arguments concatenated), finish, usage. With `events`
+ * ({@link Request.streamEvents}), {@link Accumulator.add} also yields
+ * tool-call events and usage snapshots: a call starts on the fragment
+ * that completes its id and name (argument fragments before that follow
+ * the start as one delta), then a delta per arguments fragment; every
+ * open call ends, in index order, when a choice finishes. A finished
+ * choice's calls are closed: later fragments are not folded.
+ */
 class Accumulator {
   private text = "";
   private finish = "";
   private usage: WireUsage | undefined;
-  private calls = new Map<number, { id: string; name: string; args: string }>();
+  private calls: PartialCall[] = [];
+  private byWire = new Map<number, number>();
 
-  /** Folds `c`; returns its text delta. */
-  add(c: WireChunk): string {
-    if (c.usage) this.usage = c.usage;
+  constructor(
+    private readonly names: ToolNames,
+    private readonly events: boolean
+  ) {}
+
+  /** Folds `c`; returns the tokens it yields: text, then tool-call events, then usage. */
+  add(c: WireChunk): Token[] {
+    const out: Token[] = [];
     const choice = c.choices?.[0];
-    if (!choice) return "";
-    if (choice.finish_reason) this.finish = choice.finish_reason;
-    for (const d of choice.delta?.tool_calls ?? []) {
-      const i = d.index ?? this.calls.size;
-      const cur = this.calls.get(i) ?? { id: "", name: "", args: "" };
-      if (d.id) cur.id = d.id;
-      cur.name += d.function?.name ?? "";
-      cur.args += d.function?.arguments ?? "";
-      this.calls.set(i, cur);
+    if (choice) {
+      const content = choice.delta?.content ?? "";
+      if (content) {
+        this.text += content;
+        out.push({ content, done: false });
+      }
+      if (!this.finish) {
+        for (const d of choice.delta?.tool_calls ?? []) this.fragment(d, out);
+      }
+      if (choice.finish_reason && !this.finish) {
+        this.finish = choice.finish_reason;
+        this.endCalls(out);
+      }
     }
-    const content = choice.delta?.content ?? "";
-    this.text += content;
-    return content;
+    if (c.usage) {
+      this.usage = c.usage;
+      if (this.events) out.push({ content: "", done: false, usage: usageOf(c.usage) });
+    }
+    return out;
+  }
+
+  private fragment(d: WireToolCall, out: Token[]): void {
+    const wire = d.index ?? this.calls.length;
+    let i = this.byWire.get(wire);
+    if (i === undefined) {
+      i = this.calls.length;
+      this.byWire.set(wire, i);
+      this.calls.push({ wire, id: "", name: "", args: "", pending: "", started: false });
+    }
+    const cur = this.calls[i]!;
+    if (!cur.id) cur.id = d.id ?? "";
+    if (!cur.name) cur.name = d.function?.name ?? "";
+    const frag = d.function?.arguments ?? "";
+    cur.args += frag;
+    if (!this.events) return;
+    if (!cur.started) {
+      cur.pending += frag;
+      if (cur.id && cur.name) this.start(i, cur, out);
+      return;
+    }
+    if (frag) {
+      out.push({ content: "", done: false, toolCall: { kind: "delta", index: i, argumentsDelta: frag } });
+    }
+  }
+
+  private start(i: number, cur: PartialCall, out: Token[]): void {
+    cur.started = true;
+    out.push({
+      content: "",
+      done: false,
+      toolCall: { kind: "start", index: i, id: cur.id, name: this.names.original(cur.name) },
+    });
+    if (cur.pending) {
+      out.push({
+        content: "",
+        done: false,
+        toolCall: { kind: "delta", index: i, argumentsDelta: cur.pending },
+      });
+      cur.pending = "";
+    }
+  }
+
+  /** Closes every open call, in index order; a call that never got its id or name starts first. */
+  private endCalls(out: Token[]): void {
+    if (!this.events) return;
+    const order = this.calls.map((_, i) => i).sort((a, b) => this.calls[a]!.wire - this.calls[b]!.wire);
+    for (const i of order) {
+      const cur = this.calls[i]!;
+      if (!cur.started) this.start(i, cur, out);
+      const call = this.call(cur);
+      out.push({
+        content: "",
+        done: false,
+        toolCall: { kind: "end", index: i, id: call.id, name: call.name, call },
+      });
+    }
+  }
+
+  private call(c: PartialCall): ToolCall {
+    return { id: c.id, name: this.names.original(c.name), arguments: parseArguments(c.args) };
   }
 
   finished(): boolean {
     return this.finish !== "";
   }
 
-  outcome(names: ToolNames): StreamOutcome {
-    const calls = [...this.calls.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([, c]) => ({
-        id: c.id,
-        name: names.original(c.name),
-        arguments: parseArguments(c.args),
-      }));
+  outcome(): StreamOutcome {
     return {
       content: this.text,
       thinking: [],
-      toolCalls: calls,
+      toolCalls: this.calls.map((c) => this.call(c)),
       finishReason: this.finish,
       usage: usageOf(this.usage),
     };
