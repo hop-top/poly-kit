@@ -1,6 +1,6 @@
 # Per-file tier mapping for cli-ts template.
 files:
-  ".eslintrc.cjs": [1, 2, 3, 4]
+  "eslint.config.js": [1, 2, 3, 4]
   ".prettierrc": [1, 2, 3, 4]
   ".npmrc": [1, 2, 3, 4]
   "Makefile": [1, 2, 3, 4]

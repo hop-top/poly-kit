@@ -164,7 +164,7 @@ assert_file_exists "$TS_DIR/RELEASING.md" "ts RELEASING.md"
 assert_file_exists "$TS_DIR/.git/config" "ts git init"
 assert_file_contains "$TS_DIR/package.json" '"name": "testcli"' "ts package name"
 assert_file_contains "$TS_DIR/package.json" '"license": "MIT"' "ts license in package.json"
-assert_file_contains "$TS_DIR/package.json" '@typescript-eslint/parser' "ts eslint parser dep"
+assert_file_contains "$TS_DIR/package.json" '"typescript-eslint"' "ts typescript-eslint dep"
 
 # ======================================================
 # Test: Python template
