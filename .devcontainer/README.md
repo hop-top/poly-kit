@@ -4,13 +4,24 @@ This guide covers setting up the development environment for `hop.top/kit`.
 
 ## Recommended: VS Code Dev Containers
 
-The easiest way to get started is to use VS Code Dev Containers. The repository includes a pre-configured environment with all necessary tools (Go, Nix, Devbox, pnpm, uv).
+The easiest way to get started is to use VS Code Dev Containers. The repository includes a pre-configured environment with all necessary tools (Go, golangci-lint, Node.js, pnpm, Python, ruff, eslint, go-task, git, gh).
 
 1. Install the **Dev Containers** extension in VS Code.
 2. Open the project folder in VS Code.
 3. Click "Reopen in Container" when prompted.
 
-The setup process uses [Devbox](https://www.jetpack.io/devbox/) and [Nix](https://nixos.org/) to provide a reproducible environment.
+The toolchains come from the [Nix](https://nixos.org/) flake in this
+directory (`flake.nix`, `flake.lock`). The Dockerfile builds the flake's
+`packages.default` profile in a `nixos/nix` stage and copies it, with its
+whole store closure, into a Debian image at `/usr/local/tools`. To build
+the image outside VS Code (the context is this directory):
+
+```bash
+docker build -t kit-dev .devcontainer
+```
+
+The same flake backs `nix develop ./.devcontainer` and the
+[Devbox](https://www.jetpack.io/devbox/) shell (`devbox.json`).
 
 ### Post-Creation Automation
 The `post-create.sh` script runs automatically to:

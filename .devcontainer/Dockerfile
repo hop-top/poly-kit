@@ -1,8 +1,19 @@
 # Stage 1 — nix builder: build closure with all toolchains
 FROM nixos/nix:2.24.14 AS builder
 
+# Image ships without flakes; enable them for this stage.
+ENV NIX_CONFIG="experimental-features = nix-command flakes"
+
+# Own dir: a flake at / makes nix copy the whole filesystem into the store.
+WORKDIR /build
 COPY flake.nix flake.lock ./
-RUN nix build ".#devShells.$(nix eval --impure --raw --expr builtins.currentSystem).default" --no-link
+# Profile of every flake tool, plus its full store closure: Nix binaries
+# load their libraries (and ELF interpreter) from /nix/store, so copying
+# bin/ dirs alone leaves them unrunnable.
+RUN mkdir -p /out /closure \
+    && nix build .#default --out-link /out/tools \
+    && nix-store -qR /out/tools > closure.txt \
+    && xargs cp -a -t /closure/ < closure.txt
 
 # Stage 2 — runtime: slim debian with copied toolchains
 FROM debian:bookworm-slim
@@ -41,49 +52,15 @@ RUN groupadd --gid ${USER_GID} ${USERNAME} \
        >> /etc/sudoers.d/${USERNAME} \
     && chmod 0440 /etc/sudoers.d/${USERNAME}
 
-# Toolchain install paths
+# Toolchains from the nix builder: closure at its store path, profile
+# symlink at /usr/local/tools
+COPY --from=builder /closure /nix/store
+COPY --from=builder /out/ /usr/local/
+
 ENV TOOLS_DIR=/usr/local/tools
-RUN mkdir -p ${TOOLS_DIR}/go \
-    ${TOOLS_DIR}/node \
-    ${TOOLS_DIR}/python \
-    ${TOOLS_DIR}/bin
-
-# Copy Go toolchain + golangci-lint from nix closure
-COPY --from=builder /nix/store/*-go-1.27*/bin/* \
-    ${TOOLS_DIR}/go/bin/
-COPY --from=builder /nix/store/*-go-1.27*/share/go \
-    ${TOOLS_DIR}/go/share/go/
-COPY --from=builder /nix/store/*-golangci-lint*/bin/* \
-    ${TOOLS_DIR}/bin/
-
-# Copy Node + pnpm
-COPY --from=builder /nix/store/*-nodejs-24*/bin/* \
-    ${TOOLS_DIR}/node/bin/
-COPY --from=builder /nix/store/*-nodejs-24*/lib \
-    ${TOOLS_DIR}/node/lib/
-COPY --from=builder /nix/store/*-pnpm*/bin/* \
-    ${TOOLS_DIR}/bin/
-
-# Copy Python + ruff
-COPY --from=builder /nix/store/*-python3-3.14*/bin/* \
-    ${TOOLS_DIR}/python/bin/
-COPY --from=builder /nix/store/*-python3-3.14*/lib \
-    ${TOOLS_DIR}/python/lib/
-COPY --from=builder /nix/store/*-ruff*/bin/* \
-    ${TOOLS_DIR}/bin/
-
-# Copy go-task, git, gh CLI
-COPY --from=builder /nix/store/*-go-task*/bin/* \
-    ${TOOLS_DIR}/bin/
-COPY --from=builder /nix/store/*-git-minimal*/bin/* \
-    ${TOOLS_DIR}/bin/
-COPY --from=builder /nix/store/*-gh*/bin/* \
-    ${TOOLS_DIR}/bin/
-
-# Set up PATH for all toolchains
-ENV GOROOT=${TOOLS_DIR}/go
+ENV GOROOT=${TOOLS_DIR}/share/go
 ENV GOPATH=/home/${USERNAME}/go
-ENV PATH=${TOOLS_DIR}/go/bin:${TOOLS_DIR}/node/bin:${TOOLS_DIR}/python/bin:${TOOLS_DIR}/bin:${GOPATH}/bin:${PATH}
+ENV PATH=${TOOLS_DIR}/bin:${GOPATH}/bin:${PATH}
 
 # Install starship prompt
 RUN curl -fsSL \

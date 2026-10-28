@@ -17,7 +17,7 @@
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "zsh",
-        "go.goroot": "/usr/local/tools/go",
+        "go.goroot": "/usr/local/tools/share/go",
         "go.toolsManagement.autoUpdate": false,
         "python.defaultInterpreterPath": "/workspace/sdk/py/.venv/bin/python"
       }
