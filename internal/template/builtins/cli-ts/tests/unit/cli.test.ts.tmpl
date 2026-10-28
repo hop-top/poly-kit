@@ -1,0 +1,13 @@
+import { describe, expect, it } from "vitest";
+import { createProgram } from "../../src/cli.js";
+
+describe("createProgram", () => {
+  it("names the program after the project", () => {
+    expect(createProgram().name()).toBe("{{.Name}}");
+  });
+
+  it("registers the kit output flags", () => {
+    const flags = createProgram().options.map((o) => o.long);
+    expect(flags).toContain("--format");
+  });
+});
