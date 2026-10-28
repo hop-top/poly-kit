@@ -222,7 +222,16 @@ Subpath imports follow the package's `exports` map (see
   [TypeID primitive](../../announcements/2026-05-typeid-primitive.md)). Source:
   [`sdk/ts/src/id/`](../../../sdk/ts/src/id/).
 - `@hop-top/kit/xdg` — XDG Base Directory paths.
-- `@hop-top/kit/config` — config-file loading.
+- `@hop-top/kit/config` — layered YAML config loading
+  (`load(dst, {systemConfigPath, userConfigPath, projectConfigPath,
+  envOverride})`). Each layer merges into `dst`: plain objects merge
+  recursively, so `db: {port: 2}` keeps an earlier `db.host`; arrays and
+  scalars are replaced; a null clears an object or array and leaves a
+  scalar; a value of a different kind replaces the earlier one. `Date`,
+  `Map` and class instances are replaced, never merged into. Go merges only
+  struct fields this way: it replaces map entries and `any` values whole and
+  fails on a kind mismatch (see
+  [Layer merge rules](config.md#layer-merge-rules)).
 - `@hop-top/kit/sqlstore` — embedded SQLite key/value store. Its types
   reference `better-sqlite3`: install `@types/better-sqlite3` (an optional
   peer dependency) or type-checking with `skipLibCheck: false` fails with

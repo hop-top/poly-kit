@@ -6,9 +6,25 @@
  * Merges configuration from up to three file layers in priority order:
  *   system → user → project → envOverride
  *
- * Each later layer's values overwrite earlier ones via {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign | Object.assign}.
+ * Each layer merges into `dst` with these rules:
+ *
+ * - Plain objects merge recursively, key by key, so a later layer only
+ *   overrides the keys it sets (`db: {port: 2}` keeps an earlier `db.host`).
+ * - Arrays and scalars are replaced wholesale.
+ * - `null` clears an object or array; it leaves a scalar untouched.
+ * - On a type conflict (object vs non-object) the later value replaces the
+ *   earlier one.
+ * - Non-plain objects (`Date`, `Map`, class instances) are never merged
+ *   into; a later value replaces them.
+ *
+ * This matches Go's `kit/core/config` for struct fields. Go differs where its
+ * target type differs: a `map[...]` value or an `any` field is replaced
+ * whole rather than merged, and a type conflict on a typed field is a decode
+ * error rather than a replacement.
+ *
  * Missing files are silently skipped. A file that exists but contains invalid
- * YAML causes {@link load} to throw.
+ * YAML causes {@link load} to throw. A document whose root is not a mapping
+ * is ignored.
  *
  * @example
  * ```ts
@@ -59,13 +75,13 @@ export interface Options<T extends object = object> {
 
   /**
    * Path to the per-user config file, e.g. `~/.config/mytool/config.yaml`.
-   * Applied second; overwrites system values for shared keys.
+   * Applied second; merges over system values (see the module merge rules).
    */
   userConfigPath?: string;
 
   /**
    * Path to the project-level config file, e.g. `.mytool.yaml`.
-   * Applied third; overwrites system and user values for shared keys.
+   * Applied third; merges over system and user values.
    */
   projectConfigPath?: string;
 
@@ -85,6 +101,8 @@ export interface Options<T extends object = object> {
  * Merge order: `systemConfigPath` → `userConfigPath` → `projectConfigPath` →
  * `envOverride`.
  *
+ * - Objects merge recursively; arrays and scalars replace; `null` clears
+ *   objects and arrays but not scalars (see the module docs for details).
  * - Missing files (ENOENT) are silently skipped.
  * - A file that exists but is not valid YAML causes this function to throw
  *   a descriptive error wrapping the parse failure.
@@ -128,7 +146,7 @@ export function load<T extends object>(dst: T, opts: Options<T> = {}): T {
 // ---------------------------------------------------------------------------
 
 /**
- * Read `path`, parse as YAML, and shallow-merge into `dst`.
+ * Read `path`, parse as YAML, and merge into `dst` with {@link mergeInto}.
  * ENOENT is silently ignored; other errors propagate.
  */
 function mergeFile<T extends object>(dst: T, filePath: string): void {
@@ -149,9 +167,61 @@ function mergeFile<T extends object>(dst: T, filePath: string): void {
     );
   }
 
-  if (parsed !== null && parsed !== undefined && typeof parsed === "object") {
-    Object.assign(dst, parsed);
+  if (isPlainObject(parsed)) {
+    mergeInto(dst as Record<string, unknown>, parsed);
   }
+}
+
+/**
+ * Merges `src` into `dst` in place: plain objects recurse, everything else
+ * replaces, and `null` clears only objects and arrays.
+ */
+function mergeInto(dst: Record<string, unknown>, src: Record<string, unknown>): void {
+  for (const key of Object.keys(src)) {
+    const next = src[key];
+    const has = Object.prototype.hasOwnProperty.call(dst, key);
+    const cur = has ? dst[key] : undefined;
+    if (next === null) {
+      if (has && cur !== null && cur !== undefined && typeof cur !== "object") {
+        continue; // null leaves a scalar untouched
+      }
+      setOwn(dst, key, null);
+    } else if (isPlainObject(next) && isPlainObject(cur)) {
+      mergeInto(cur, next);
+    } else {
+      setOwn(dst, key, copy(next));
+    }
+  }
+}
+
+/** Own data property even for keys like `__proto__`, never a setter call. */
+function setOwn(dst: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(dst, key, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
+}
+
+/**
+ * Copies plain objects and arrays so YAML aliases do not share one instance
+ * in `dst` (a later merge into one key would otherwise leak into another).
+ */
+function copy(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(copy);
+  if (isPlainObject(v)) {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(v)) setOwn(out, k, copy(v[k]));
+    return out;
+  }
+  return v;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  const proto: unknown = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
 }
 
 function isEnoent(err: unknown): boolean {

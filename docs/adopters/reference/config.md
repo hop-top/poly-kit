@@ -1,9 +1,9 @@
 # Config Reference
 
 > Hierarchical configuration loading and validation
-> (`hop.top/kit/go/core/config`): the `-c` / `--config` wiring, typed
-> writes with `Set` vs `SetValue`, `ParseScalar` coercion rules, and
-> signal-driven hot reload with `Reloadable[T]`.
+> (`hop.top/kit/go/core/config`): the `-c` / `--config` wiring, layer
+> merge rules, typed writes with `Set` vs `SetValue`, `ParseScalar`
+> coercion rules, and signal-driven hot reload with `Reloadable[T]`.
 
 ## Who this is for
 
@@ -35,6 +35,31 @@ adapter there and pass `root.ConfigArgs()` through directly. Avoid reading
 `viper.GetString("config")` or re-parsing the flag in each binary; that loses
 repeatable config layers and key overrides, and can collide with Kit's built-in
 flag registration.
+
+## Layer merge rules
+
+Each layer (defaults, files, `-c` overrides) decodes into the same struct
+with yaml.v3, so what a later layer does depends on the target field's type:
+
+| Target field | Later layer's value |
+|--------------|---------------------|
+| struct | merges field by field, at any depth |
+| scalar | replaces; a null leaves it unchanged |
+| slice | replaces whole (`[]` empties it); a null clears it |
+| `map[K]V` | keys merge; each entry is replaced whole, even when `V` is itself a map; a null clears the map |
+| `any` | replaces whole; a null clears it |
+| typed field given the wrong kind (a map into a `string`) | decode error naming the file |
+
+To get a nested merge, declare the nested block as a struct, not as
+`map[string]any`. The shared vectors in `contracts/config-v1/load.json` pin
+these rules for every port.
+
+The TypeScript `load` from `@hop-top/kit/config` has no field types, so it
+merges every plain object recursively (Go's struct rule), replaces arrays
+and scalars, and lets a null clear objects and arrays but not scalars.
+Unlike Go, a value of a different kind replaces the earlier one instead of
+failing, and a nested object is merged where Go would replace a map entry or
+an `any` value.
 
 ## Writing values
 
