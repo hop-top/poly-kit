@@ -1,4 +1,14 @@
 version: 2
+# Every entry below sets:
+#   cooldown         a new release is proposed only once it is 14 days old
+#                    (the dependency age gate). It holds back version
+#                    updates only: Dependabot security updates ignore it and
+#                    open as soon as an advisory lands. Owned packages are
+#                    excluded, as they are from the age gate.
+#   rebase-strategy  disabled: an open PR is not rebased, and its CI not
+#                    re-run, each time next moves. Comment `@dependabot
+#                    rebase` on a PR to refresh it. This applies to security
+#                    PRs as well.
 updates:
   - package-ecosystem: gomod
     directory: "/"
@@ -8,6 +18,11 @@ updates:
       time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    # Version updates only; security updates are exempt.
+    cooldown:
+      default-days: 14
+      exclude: ["hop.top/*", "github.com/hop-top/*"]
+    rebase-strategy: disabled
     groups:
       # otelconnect pins an exact otel release and a connect floor; the otel
       # api, sdk and exporters must share a version: bump the set together.
@@ -27,6 +42,11 @@ updates:
       time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    # Version updates only; security updates are exempt.
+    cooldown:
+      default-days: 14
+      exclude: ["hop.top/*", "github.com/hop-top/*"]
+    rebase-strategy: disabled
     groups:
       # One PR per run for minor + patch; majors stay separate for review.
       minor-patch:
@@ -41,22 +61,37 @@ updates:
       time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    # Version updates only; security updates are exempt.
+    cooldown:
+      default-days: 14
+      exclude: ["hop.top/*", "github.com/hop-top/*"]
+    rebase-strategy: disabled
     groups:
       # One PR per run for minor + patch; majors stay separate for review.
       minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
-  # pnpm workspace: the root lockfile covers sdk/ts, engine/sdk/ts-kit-engine
-  # and the examples.
+  # "/" is the pnpm workspace: its lockfile covers sdk/ts,
+  # engine/sdk/ts-kit-engine and examples/spaced/ts. The other directories
+  # are standalone examples outside it (package-lock.json or none).
   - package-ecosystem: npm
-    directory: "/"
+    directories:
+      - "/"
+      - "/examples/notebook-ts"
+      - "/examples/probe/ts"
+      - "/examples/spaced/web"
     schedule:
       interval: weekly
       day: monday
       time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    # Version updates only; security updates are exempt.
+    cooldown:
+      default-days: 14
+      exclude: ["@hop-top/*"]
+    rebase-strategy: disabled
     ignore:
       # TypeScript 7 (native compiler) has no classic JS API; typescript-eslint
       # (peer <6.1) and tsup's dts build cannot run on it yet. Lift once
@@ -104,6 +139,11 @@ updates:
       time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    # Version updates only; security updates are exempt.
+    cooldown:
+      default-days: 14
+      exclude: ["hop-top-*"]
+    rebase-strategy: disabled
     groups:
       # mcp pins mcp-types exactly: they must move together.
       mcp:
@@ -122,20 +162,34 @@ updates:
       time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    # Version updates only; security updates are exempt.
+    cooldown:
+      default-days: 14
+      exclude: ["hop-top-*"]
+    rebase-strategy: disabled
     groups:
       # One PR per run for minor + patch; majors stay separate for review.
       minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
+  # The cross-lang runner builds against the SDK by path and shares its
+  # serde_json and tokio requirements.
   - package-ecosystem: cargo
-    directory: "/sdk/experimental/rs"
+    directories:
+      - "/sdk/experimental/rs"
+      - "/sdk/tests/cross-lang/runners/rs"
     schedule:
       interval: weekly
       day: monday
       time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    # Version updates only; security updates are exempt.
+    cooldown:
+      default-days: 14
+      exclude: ["hop-top-*"]
+    rebase-strategy: disabled
     groups:
       # RustCrypto hash/KDF/MAC crates share the `digest` major: bump together.
       rustcrypto:
@@ -150,6 +204,28 @@ updates:
       - dependency-name: crypto_secretbox
         versions: [">= 0.2.0-pre.0, < 0.2.0"]
 
+  # Example apps: pyproject.toml without a uv.lock.
+  - package-ecosystem: pip
+    directories:
+      - "/examples/probe/py"
+      - "/examples/spaced/py"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    commit-message:
+      prefix: "build(deps):"
+    # Version updates only; security updates are exempt.
+    cooldown:
+      default-days: 14
+      exclude: ["hop-top-*"]
+    rebase-strategy: disabled
+    groups:
+      # One PR per run for minor + patch; majors stay separate for review.
+      minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
   - package-ecosystem: composer
     directory: "/sdk/experimental/php"
     schedule:
@@ -158,6 +234,11 @@ updates:
       time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    # Version updates only; security updates are exempt.
+    cooldown:
+      default-days: 14
+      exclude: ["hop-top/*"]
+    rebase-strategy: disabled
     groups:
       # One PR per run for minor + patch; majors stay separate for review.
       minor-patch:
@@ -175,10 +256,17 @@ updates:
       time: "06:00"
     commit-message:
       prefix: "ci(deps):"
+    # Version updates only; security updates are exempt.
+    cooldown:
+      default-days: 14
+      exclude: ["hop-top/*"]
+    rebase-strategy: disabled
     ignore:
       # The release-please pin must match `tooling-ref` and the preflight
       # pin (see release-please.yml); moved by hand, all three together.
+      # Reusable workflows are named by their path, so match those too.
       - dependency-name: "hop-top/.github"
+      - dependency-name: "hop-top/.github/.github/workflows/release-please-*"
     groups:
       # One PR per run for minor + patch; majors stay separate for review.
       minor-patch:
