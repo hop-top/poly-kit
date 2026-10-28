@@ -834,8 +834,9 @@ for a server that closes without it, a choice carried a
 {...}}`) to an `*openai.Error` with status 0, not fallbackable; bounds
 a response body to 32 MiB and one SSE event to 8 MiB (params
 `max_body_bytes`, `max_event_bytes`), past which it fails with
-`*llmerrors.ErrResponseTooLarge`, not retried. Unlike `anthropic`, it
-follows redirects and does not scrub a key a response body echoes.
+`*llmerrors.ErrResponseTooLarge`, not retried. As `anthropic`, it
+follows no redirect (a 3xx is an `HTTPStatusError`) and scrubs its key
+from every error message, a response body echoing it included.
 
 ### Where a key came from
 
