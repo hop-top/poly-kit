@@ -10,12 +10,22 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
+        # The locked nixpkgs carries go 1.27.2; mise.toml pins 1.27.3 (a
+        # security release). Same derivation, newer source; drop this
+        # override once the lock moves to a nixpkgs with go_1_27 >= 1.27.3.
+        go_1_27 = pkgs.go_1_27.overrideAttrs (_: rec {
+          version = "1.27.3";
+          src = pkgs.fetchurl {
+            url = "https://go.dev/dl/go${version}.src.tar.gz";
+            hash = "sha256-bndJA1zzYPBrJXXRYup535/ajvZxiJ5cN1+OUHd/Jrs=";
+          };
+        });
       in
       {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             # Go
-            go_1_27
+            go_1_27 # the override above, not pkgs.go_1_27
             golangci-lint
 
             # Node / TypeScript
