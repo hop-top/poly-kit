@@ -34,9 +34,10 @@
 #                          Dockerfile, name the pinned go minor, node
 #                          major and python minor (nixpkgs picks the patch
 #                          release, so only the line is held); the
-#                          Dockerfile's `PYTHON_VERSION=` (installed by uv)
-#                          and `astral-sh/uv:` image tag equal the python
-#                          and uv pins exactly
+#                          Dockerfile's `NODE_VERSION=`, `PNPM_VERSION=`,
+#                          `PYTHON_VERSION=` (installed outside Nix) and
+#                          `astral-sh/uv:` image tag equal the node, pnpm,
+#                          python and uv pins exactly
 #   .nvmrc, .node-version, name the pinned node major / python minor, or
 #   .python-version        the exact pin; another patch release fails
 #                          (setup-node/setup-python and mise read them)
@@ -136,6 +137,7 @@ ruff_pin=$(pin ruff)
 node_pin=$(pin node)
 python_pin=$(pin python)
 uv_pin=$(pin uv)
+pnpm_pin=$(pin pnpm)
 
 # --- go.mod ---------------------------------------------------------------
 if [ -n "$go_pin" ]; then
@@ -283,9 +285,17 @@ if [ -n "$go_pin" ] && [ -n "$node_pin" ] && [ -n "$python_pin" ]; then
                 node) [ "$ver" = "$node_major" ] || report "$dockerfile:$line" node "$ver" "$node_major" "mise.toml node (major)" ;;
                 python) [ "$ver" = "$py_mm" ] || report "$dockerfile:$line" python "$ver" "$py_mm" "mise.toml python (minor)" ;;
                 python-exact) [ "$ver" = "$python_pin" ] || report "$dockerfile:$line" python "$ver" "$python_pin" "mise.toml python" ;;
+                node-exact) [ "$ver" = "$node_pin" ] || report "$dockerfile:$line" node "$ver" "$node_pin" "mise.toml node" ;;
+                pnpm) [ "$ver" = "$pnpm_pin" ] || report "$dockerfile:$line" pnpm "$ver" "${pnpm_pin:-(unpinned)}" "mise.toml pnpm" ;;
                 uv) [ "$ver" = "$uv_pin" ] || report "$dockerfile:$line" uv "$ver" "${uv_pin:-(unpinned)}" "mise.toml uv" ;;
             esac
         done < <(awk '
+            match($0, /NODE_VERSION=[0-9][0-9A-Za-z.+-]*/) {
+                s = substr($0, RSTART, RLENGTH); sub(/^NODE_VERSION=/, "", s); print NR "\tnode-exact\t" s
+            }
+            match($0, /PNPM_VERSION=[0-9][0-9A-Za-z.+-]*/) {
+                s = substr($0, RSTART, RLENGTH); sub(/^PNPM_VERSION=/, "", s); print NR "\tpnpm\t" s
+            }
             match($0, /PYTHON_VERSION=[0-9][0-9A-Za-z.+-]*/) {
                 s = substr($0, RSTART, RLENGTH); sub(/^PYTHON_VERSION=/, "", s); print NR "\tpython-exact\t" s
             }

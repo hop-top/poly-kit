@@ -51,7 +51,8 @@ the repo root gives you what CI runs.
   directive in `go.mod`, `channel` in
   `sdk/experimental/rs/rust-toolchain.toml`, the locked `ruff` in the
   `uv.lock` files, the devcontainer's Nix attributes, and its
-  Dockerfile's `PYTHON_VERSION` and uv image tag.
+  Dockerfile's `NODE_VERSION`, `PNPM_VERSION`, `PYTHON_VERSION` and uv
+  image tag.
   `make check-toolchain-parity` names each one that disagrees; it runs
   in CI (the `toolchain-parity` job) and in the pre-push hook.
 - PHP is the exception: mise would build it from source, so CI installs
@@ -65,8 +66,9 @@ the repo root gives you what CI runs.
   the check rejects a partial pin. `.nvmrc` / `.python-version` may
   name the pinned line (`24`, `3.14`) or the exact pin, not another
   patch release. The devcontainer's Nix attributes are held to the line only
-  (nixpkgs picks the patch release); its Python (`PYTHON_VERSION`, installed
-  by uv) and uv image tag are held to the exact pins.
+  (nixpkgs picks the patch release); its Node, pnpm and Python
+  (`NODE_VERSION`, `PNPM_VERSION`, `PYTHON_VERSION`, installed outside
+  Nix) and uv image tag are held to the exact pins.
 
 ## Git Hooks
 

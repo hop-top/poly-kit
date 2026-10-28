@@ -62,6 +62,39 @@ ENV GOROOT=${TOOLS_DIR}/share/go
 ENV GOPATH=/home/${USERNAME}/go
 ENV PATH=${TOOLS_DIR}/bin:${GOPATH}/bin:${PATH}
 
+# Node and pnpm at the exact mise.toml pins (check-toolchain-parity holds
+# NODE_VERSION / PNPM_VERSION to them), from upstream release archives
+# checked against pinned per-arch sha256s. Bumping a version means
+# replacing its hashes: Node's come from the release's SHASUMS256.txt
+# (verify its .sig with the nodejs/release-keys keyring), pnpm's from the
+# GitHub release asset digests.
+ARG NODE_VERSION=24.22.1
+ARG NODE_SHA256_ARM64=33c37be234ba8bee041961047b19160f4d7d0f164e8e246f78bdd10feff148b3
+ARG NODE_SHA256_X64=eb6728e77c576a35162c122c45ccadf224d89ff00abc8dae46cc2897c6002d7c
+ARG PNPM_VERSION=12.16.0
+ARG PNPM_SHA256_ARM64=be414eee035c3cc4f0a8fe20cbfc44b7fae9e4545aec6f45565a24789aebca93
+ARG PNPM_SHA256_X64=4492070f381f5cc42b977b968d8d72b970ffd17bef2523c229170b2cd4ece44a
+RUN set -eu; \
+    case "$(dpkg --print-architecture)" in \
+      arm64) arch=arm64; node_sum=${NODE_SHA256_ARM64}; pnpm_sum=${PNPM_SHA256_ARM64} ;; \
+      amd64) arch=x64; node_sum=${NODE_SHA256_X64}; pnpm_sum=${PNPM_SHA256_X64} ;; \
+      *) echo "unsupported arch: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSLo /tmp/node.tar.gz \
+      "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${arch}.tar.gz"; \
+    printf "%s  /tmp/node.tar.gz\n" "${node_sum}" > /tmp/node.sha256; \
+    sha256sum -c /tmp/node.sha256; \
+    tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1 \
+      --no-same-owner --exclude=CHANGELOG.md --exclude=README.md --exclude=LICENSE; \
+    curl -fsSLo /tmp/pnpm.tar.gz \
+      "https://github.com/pnpm/pnpm/releases/download/v${PNPM_VERSION}/pnpm-linux-${arch}.tar.gz"; \
+    printf "%s  /tmp/pnpm.tar.gz\n" "${pnpm_sum}" > /tmp/pnpm.sha256; \
+    sha256sum -c /tmp/pnpm.sha256; \
+    mkdir -p /usr/local/lib/pnpm; \
+    tar -xzf /tmp/pnpm.tar.gz -C /usr/local/lib/pnpm --no-same-owner; \
+    ln -s /usr/local/lib/pnpm/pnpm /usr/local/bin/pnpm; \
+    rm /tmp/node.tar.gz /tmp/node.sha256 /tmp/pnpm.tar.gz /tmp/pnpm.sha256
+
 # Python at the exact mise.toml pin (check-toolchain-parity holds this and
 # the uv tag to it): uv's python-build-standalone build, installed for all
 # users as the default python3/python in /usr/local/bin. Venvs come from
