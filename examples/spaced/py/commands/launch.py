@@ -1,27 +1,40 @@
 """commands/launch.py — launch <mission> with flags."""
+
 from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import typer
 
-sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py"))
-from hop_top_kit.bus import Bus, create_event  # noqa: E402
-from hop_top_kit.cli import is_quiet  # noqa: E402
-from hop_top_kit.log import create_logger  # noqa: E402
-from hop_top_kit.setflag import SetFlag  # noqa: E402
-from hop_top_kit.wizard import (  # noqa: E402
-    Wizard, Option as WizOpt, text_input, select, confirm, summary,
+sys.path.insert(
+    0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py")
 )
-from hop_top_kit.completion import (  # noqa: E402
-    CompletionItem, CompletionRegistry, static_values, func_completer,
+from hop_top_kit.bus import Bus, create_event
+from hop_top_kit.cli import is_quiet
+from hop_top_kit.completion import (
+    CompletionItem,
+    CompletionRegistry,
+    func_completer,
+    static_values,
     to_typer_autocompletion,
 )
-from data import find_mission, MISSIONS  # noqa: E402
+from hop_top_kit.log import create_logger
+from hop_top_kit.setflag import SetFlag
+from hop_top_kit.wizard import (
+    Option as WizOpt,
+)
+from hop_top_kit.wizard import (
+    Wizard,
+    confirm,
+    select,
+    summary,
+    text_input,
+)
+
+from data import MISSIONS, find_mission
 
 log = None  # created lazily in command to read --quiet
 
@@ -39,11 +52,7 @@ _orbit_completer = static_values("LEO", "GTO", "GEO", "SSO", "Heliocentric")
 
 def _mission_complete(prefix: str) -> list[CompletionItem]:
     low = prefix.lower()
-    return [
-        CompletionItem(m.name, m.vehicle)
-        for m in MISSIONS
-        if m.name.lower().startswith(low)
-    ]
+    return [CompletionItem(m.name, m.vehicle) for m in MISSIONS if m.name.lower().startswith(low)]
 
 
 launch_completions = CompletionRegistry()
@@ -64,24 +73,30 @@ def _tag_callback(ctx: typer.Context, param: typer.CallbackParam, value: tuple) 
 @app.command("launch")
 def launch(
     mission: str = typer.Argument(
-        ..., help="Mission name",
+        ...,
+        help="Mission name",
         autocompletion=to_typer_autocompletion(
             launch_completions.for_arg("launch", 0),
         ),
     ),
-    payload: Optional[str] = typer.Option(
+    payload: str | None = typer.Option(
         None, "--payload", help="Comma-separated payload items (e.g. cargo,crew)"
     ),
-    orbit: Optional[str] = typer.Option(
-        None, "--orbit", help="Target orbit (e.g. LEO, GTO)",
+    orbit: str | None = typer.Option(
+        None,
+        "--orbit",
+        help="Target orbit (e.g. LEO, GTO)",
         autocompletion=to_typer_autocompletion(_orbit_completer),
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Simulate launch without committing"),
-    output: Optional[Path] = typer.Option(
+    output: Path | None = typer.Option(
         None, "-o", "--output", help="Write launch report JSON to file"
     ),
-    tag: Optional[list[str]] = typer.Option(
-        None, "--tag", callback=_tag_callback, expose_value=False,
+    tag: list[str] | None = typer.Option(
+        None,
+        "--tag",
+        callback=_tag_callback,
+        expose_value=False,
         help="Launch tags (+append/-remove/=replace)",
     ),
 ) -> None:
@@ -90,9 +105,13 @@ def launch(
     log = create_logger(quiet=is_quiet())
 
     if _bus is not None:
-        _bus.publish(create_event(
-            "kit.spaced.launch.initiated", "spaced", {"mission": mission},
-        ))
+        _bus.publish(
+            create_event(
+                "kit.spaced.launch.initiated",
+                "spaced",
+                {"mission": mission},
+            )
+        )
     log.info("resolving mission", name=mission)
     m = find_mission(mission)
     if m is None:
@@ -123,7 +142,7 @@ def launch(
   Dry run complete. No actual rockets were harmed.""")
         return
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     typer.echo(f"""
   ▶ LAUNCH SEQUENCE INITIATED: {m.name}
   Vehicle  : {m.vehicle}
@@ -143,7 +162,7 @@ def launch(
         "tags": tag_list,
         "outcome": m.outcome,
         "note": m.notes,
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
     }
 
     if output:
@@ -196,7 +215,8 @@ def run_launch_wizard() -> None:
         _, err = w.advance(val)
         if err is not None:
             typer.echo(
-                f'  error: wizard step "{s.key}": {err}', err=True,
+                f'  error: wizard step "{s.key}": {err}',
+                err=True,
             )
             raise typer.Exit(1)
 

@@ -1,12 +1,15 @@
 """commands/countdown.py — countdown <mission>."""
+
 from __future__ import annotations
 
 import sys
 
 import typer
 
-sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py"))
-from data import find_mission  # noqa: E402
+sys.path.insert(
+    0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py")
+)
+from data import find_mission
 
 app = typer.Typer(help="Launch countdown display.", add_completion=False)
 
@@ -31,6 +34,7 @@ def countdown(
         raise typer.Exit(1)
 
     import time
+
     hold = _HOLDS[int(time.time()) % len(_HOLDS)]
 
     typer.echo(f"""

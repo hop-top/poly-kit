@@ -1,4 +1,5 @@
 """commands/config.py — config show: XDG paths + user preferences."""
+
 from __future__ import annotations
 
 import os
@@ -7,8 +8,8 @@ import sys
 import typer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../sdk/py"))
-from hop_top_kit.xdg import config_dir, data_dir  # noqa: E402
-from hop_top_kit.config import Options, load  # noqa: E402
+from hop_top_kit.config import Options, load
+from hop_top_kit.xdg import config_dir, data_dir
 
 app = typer.Typer(help="Configuration commands.", add_completion=False)
 

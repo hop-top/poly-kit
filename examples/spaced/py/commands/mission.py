@@ -1,15 +1,19 @@
 """commands/mission.py — mission list, inspect, search."""
+
 from __future__ import annotations
 
 import json
 import os
 import sys
-from typing import Optional
 
 import typer
 
-sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py"))
-from data import MISSIONS, find_mission  # noqa: E402 — relative import via sys.path
+sys.path.insert(
+    0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py")
+)
+from datetime import UTC
+
+from data import MISSIONS, find_mission
 
 app = typer.Typer(help="Query mission history", add_completion=False)
 
@@ -22,21 +26,20 @@ def _outcome_icon(outcome: str) -> str:
 
 
 def _table_row(name: str, vehicle: str, date: str, outcome: str, mood: str) -> str:
-    return (
-        f"  {name:<18}{vehicle:<15}{date:<12}{outcome:<10}{mood}"
-    )
+    return f"  {name:<18}{vehicle:<15}{date:<12}{outcome:<10}{mood}"
 
 
 @app.command("list")
 def mission_list(
-    format: Optional[str] = typer.Option(None, "--format", help="Output format: table|json|yaml"),
+    format: str | None = typer.Option(None, "--format", help="Output format: table|json|yaml"),
 ) -> None:
     """List all known SpaceX missions."""
     fmt = (format or "table").lower()
 
     if fmt == "json":
-        from datetime import datetime, timezone  # noqa: PLC0415
-        from hop_top_kit.provenance import Provenance, with_provenance  # noqa: PLC0415
+        from datetime import datetime
+
+        from hop_top_kit.provenance import Provenance, with_provenance
 
         data = [
             {
@@ -52,14 +55,15 @@ def mission_list(
         ]
         prov = Provenance(
             source="spaced-cli",
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             method="mission.list",
         )
         typer.echo(json.dumps(with_provenance(data, prov), indent=2))
         return
 
     if fmt == "yaml":
-        import yaml  # noqa: PLC0415
+        import yaml
+
         data = [
             {
                 "name": m.name,
@@ -93,7 +97,7 @@ def mission_inspect(
     """Inspect a single mission in detail."""
     m = find_mission(name)
     if m is None:
-        from hop_top_kit.errcorrect import CorrectedError  # noqa: PLC0415
+        from hop_top_kit.errcorrect import CorrectedError
 
         available = [ms.name for ms in MISSIONS]
         # prefix matches for alternatives
@@ -130,9 +134,13 @@ def mission_search(
     """Search missions by name, vehicle, or outcome."""
     q = query.lower()
     results = [
-        m for m in MISSIONS
-        if q in m.name.lower() or q in m.vehicle.lower() or q in m.outcome.lower()
-        or q in m.orbit.lower() or q in m.payload.lower()
+        m
+        for m in MISSIONS
+        if q in m.name.lower()
+        or q in m.vehicle.lower()
+        or q in m.outcome.lower()
+        or q in m.orbit.lower()
+        or q in m.payload.lower()
     ]
     if not results:
         typer.echo(f"  No missions matched: {query!r}", err=True)

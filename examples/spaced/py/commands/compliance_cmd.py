@@ -1,4 +1,5 @@
 """commands/compliance_cmd.py — 12-factor AI CLI compliance."""
+
 from __future__ import annotations
 
 import os
@@ -10,26 +11,33 @@ sys.path.insert(
     0,
     os.path.join(os.path.dirname(__file__), "../../../../sdk/py"),
 )
-from hop_top_kit.compliance import (  # noqa: E402
-    run,
+from hop_top_kit.compliance import (
     format_report,
+    run,
 )
 
 app = typer.Typer(
-    help="12-factor compliance checks.", add_completion=False,
+    help="12-factor compliance checks.",
+    add_completion=False,
 )
 
 
 @app.command("compliance")
 def compliance(
     static: bool = typer.Option(
-        False, "--static", help="Run static checks only",
+        False,
+        "--static",
+        help="Run static checks only",
     ),
     fmt: str = typer.Option(
-        "text", "--format", help="Output format (text, json)",
+        "text",
+        "--format",
+        help="Output format (text, json)",
     ),
     spec: str = typer.Option(
-        "", "--spec", help="Path to toolspec YAML",
+        "",
+        "--spec",
+        help="Path to toolspec YAML",
     ),
 ) -> None:
     """Run 12-factor AI CLI compliance checks."""

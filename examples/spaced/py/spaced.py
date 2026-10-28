@@ -5,6 +5,7 @@ spaced — satirical SpaceX CLI historian and hop-top-kit parity test vehicle.
 Usage:
     python examples/spaced/py/spaced.py [OPTIONS] COMMAND [ARGS]...
 """
+
 from __future__ import annotations
 
 import json
@@ -18,27 +19,27 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../../../ur
 # Also ensure commands can find data.py via their own sys.path injection.
 sys.path.insert(0, os.path.dirname(__file__))
 
-import typer  # noqa: E402
-import typer.core  # noqa: E402
-from hop_top_kit.alias import bridge_to_click  # noqa: E402
-from hop_top_kit.bus import create_bus  # noqa: E402
-from hop_top_kit.cli import create_app, GroupConfig, HelpConfig, set_command_group  # noqa: E402
-from hop_top_kit.telemetry import Client as TelemetryClient, Mode as TelemetryMode, parse_mode as _parse_tel_mode  # noqa: E402
+import typer
+import typer.core
+from hop_top_kit.alias import bridge_to_click
+from hop_top_kit.bus import create_bus
+from hop_top_kit.cli import GroupConfig, HelpConfig, create_app, set_command_group
+from hop_top_kit.telemetry import Client as TelemetryClient
+from hop_top_kit.telemetry import Mode as TelemetryMode
+from hop_top_kit.telemetry import parse_mode as _parse_tel_mode
 
-from commands.alias import app as alias_app  # noqa: E402
-from commands.abort import app as abort_app  # noqa: E402
-from commands.competitor import app as competitor_app  # noqa: E402
-from commands.config import app as config_app  # noqa: E402
-from commands.countdown import app as countdown_app  # noqa: E402
-from commands.daemon import app as daemon_app  # noqa: E402
-from commands.elon import app as elon_app  # noqa: E402
-from commands.fleet import app as fleet_app  # noqa: E402
-from commands.ipo import app as ipo_app  # noqa: E402
-from commands.launch import app as launch_app, _tags as _launch_tags  # noqa: E402
-from commands.mission import app as mission_app  # noqa: E402
-from commands.starship import app as starship_app  # noqa: E402
-from commands.telemetry import app as telemetry_app  # noqa: E402
-from commands.uri_cmd import app as uri_app  # noqa: E402
+from commands.alias import app as alias_app
+from commands.competitor import app as competitor_app
+from commands.config import app as config_app
+from commands.daemon import app as daemon_app
+from commands.elon import app as elon_app
+from commands.fleet import app as fleet_app
+from commands.ipo import app as ipo_app
+from commands.launch import _tags as _launch_tags
+from commands.mission import app as mission_app
+from commands.starship import app as starship_app
+from commands.telemetry import app as telemetry_app
+from commands.uri_cmd import app as uri_app
 
 _DISCLAIMER = """\
 Not affiliated with, endorsed by, or in any way authorized by SpaceX,
@@ -165,6 +166,7 @@ def _record_invocation() -> None:
         # Never let telemetry crash exit.
         pass
 
+
 app, theme = create_app(
     name="spaced",
     version="0.1.0",
@@ -190,15 +192,17 @@ set_command_group("uri", "management")
 
 bus = create_bus()
 
-bus.subscribe("kit.spaced.launch.#", lambda e: print(
-    f"  [bus] {e.topic} → {json.dumps(e.payload)}"
-))
-bus.subscribe("kit.spaced.daemon.#", lambda e: print(
-    f"  [bus] {e.topic} → {json.dumps(e.payload)}"
-))
+bus.subscribe(
+    "kit.spaced.launch.#", lambda e: print(f"  [bus] {e.topic} → {json.dumps(e.payload)}")
+)
+bus.subscribe(
+    "kit.spaced.daemon.#", lambda e: print(f"  [bus] {e.topic} → {json.dumps(e.payload)}")
+)
 
 # Wire bus into command modules.
-from commands import launch as _launch_mod, daemon as _daemon_mod  # noqa: E402
+from commands import daemon as _daemon_mod  # noqa: E402
+from commands import launch as _launch_mod  # noqa: E402
+
 _launch_mod._bus = bus
 _daemon_mod._bus = bus
 
@@ -225,9 +229,10 @@ app.add_typer(uri_app, name="uri")
 # name matching the Typer app's single command — add directly.
 # ---------------------------------------------------------------------------
 
+
 def _tag_callback(ctx: typer.Context, param: typer.CallbackParam, value: tuple) -> list[str]:
     # Typer passes all --tag values as a tuple; process each through SetFlag.
-    for v in (value or ()):
+    for v in value or ():
         _launch_tags.set(v)
     return _launch_tags.values()
 
@@ -247,13 +252,17 @@ def launch_cmd(
         False, "-i", "--interactive", help="Run interactive launch wizard"
     ),
     tag: list[str] | None = typer.Option(
-        None, "--tag", callback=_tag_callback, expose_value=False,
+        None,
+        "--tag",
+        callback=_tag_callback,
+        expose_value=False,
         help="Launch tags (+append/-remove/=replace)",
     ),
 ) -> None:
     """Launch a mission"""
     if interactive:
         from commands.launch import run_launch_wizard
+
         run_launch_wizard()
         return
 
@@ -265,7 +274,9 @@ def launch_cmd(
         raise typer.Exit(1)
 
     from pathlib import Path
+
     from commands.launch import launch as _launch
+
     _launch(
         mission=mission,
         payload=payload,
@@ -282,6 +293,7 @@ def abort_cmd(
 ) -> None:
     """Abort a mission"""
     from commands.abort import abort as _abort
+
     _abort(mission=mission, reason=reason)
 
 
@@ -291,13 +303,16 @@ def countdown_cmd(
 ) -> None:
     """Show countdown status for a mission"""
     from commands.countdown import countdown as _countdown
+
     _countdown(mission=mission)
 
 
 @app.command("status")
 def status_cmd(
     fmt: str = typer.Option(
-        "text", "--format", help="Output format (text, json)",
+        "text",
+        "--format",
+        help="Output format (text, json)",
     ),
 ) -> None:
     """Show spaced runtime status."""
@@ -325,28 +340,37 @@ def status_cmd(
 def toolspec_cmd() -> None:
     """Load and validate spaced.toolspec.yaml"""
     from commands.toolspec_cmd import toolspec as _toolspec
+
     _toolspec()
 
 
 @app.command("compliance")
 def compliance_cmd(
     static: bool = typer.Option(
-        False, "--static", help="Run static checks only",
+        False,
+        "--static",
+        help="Run static checks only",
     ),
     fmt: str = typer.Option(
-        "text", "--format", help="Output format (text, json)",
+        "text",
+        "--format",
+        help="Output format (text, json)",
     ),
     spec: str = typer.Option(
-        "", "--spec", help="Path to toolspec YAML",
+        "",
+        "--spec",
+        help="Path to toolspec YAML",
     ),
 ) -> None:
     """Run 12-factor AI CLI compliance checks"""
     from commands.compliance_cmd import compliance as _compliance
+
     _compliance(static=static, fmt=fmt, spec=spec)
 
 
 if __name__ == "__main__":
     import atexit
+
     import typer.main as _typer_main
 
     _cmd = _typer_main.get_command(app)
@@ -357,9 +381,7 @@ if __name__ == "__main__":
 
     # Bridge aliases into Click's get_command/list_commands so tab
     # completion resolves them natively.
-    _alias_path = os.path.expanduser(
-        "~/.config/spaced/config.yaml"
-    )
+    _alias_path = os.path.expanduser("~/.config/spaced/config.yaml")
     bridge_to_click(_cmd, _alias_path)
 
     # --telemetry={off,anon,full} persistent flag.

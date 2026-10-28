@@ -1,19 +1,21 @@
 """commands/elon.py — elon status."""
+
 from __future__ import annotations
 
 import time
+
 import typer
 
 app = typer.Typer(help="Elon Musk current status", add_completion=False)
 
 _QUOTES = [
-    "\"The probability that we are not living in a computer simulation is one in billions.\"",
-    "\"I would like to die on Mars. Just not on impact.\"",
-    "\"When something is important enough, you do it even if the odds are not in your favour.\"",
-    "\"Failure is an option here. If things are not failing, you are not innovating enough.\"",
-    "\"I think it's very important to have a feedback loop.\" (tweets 47,000 times)",
+    '"The probability that we are not living in a computer simulation is one in billions."',
+    '"I would like to die on Mars. Just not on impact."',
+    '"When something is important enough, you do it even if the odds are not in your favour."',
+    '"Failure is an option here. If things are not failing, you are not innovating enough."',
+    '"I think it\'s very important to have a feedback loop." (tweets 47,000 times)',
     "\"We're going to make it. I don't know exactly when, but we're going to make it.\"",
-    "\"The first step is to establish that something is possible; then probability will occur.\"",
+    '"The first step is to establish that something is possible; then probability will occur."',
     "\"Going from PayPal, I thought: 'Well, what are some of the other problems that are likely"
     " to most affect the future of humanity?'\" (answer: rockets, cars, tunnels, AI, brain chips)",
 ]

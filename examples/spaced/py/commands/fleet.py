@@ -1,13 +1,15 @@
 """commands/fleet.py — fleet list, fleet vehicle inspect <name>."""
+
 from __future__ import annotations
 
 import sys
-from typing import Optional
 
 import typer
 
-sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py"))
-from data import VEHICLES, find_vehicle  # noqa: E402
+sys.path.insert(
+    0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py")
+)
+from data import VEHICLES, find_vehicle
 
 app = typer.Typer(help="Inspect the SpaceX vehicle fleet", add_completion=False)
 vehicle_app = typer.Typer(help="Vehicle-level commands.", add_completion=False)
@@ -23,14 +25,16 @@ def fleet_list() -> None:
     typer.echo(f"  {_RULER}")
     for v in VEHICLES:
         reusable = "yes" if v.reusable else "no"
-        typer.echo(f"  {v.name:<18}{v.status:<12}{v.flights:<10}{reusable:<10}{v.payload_leo_kg:,} kg")
+        typer.echo(
+            f"  {v.name:<18}{v.status:<12}{v.flights:<10}{reusable:<10}{v.payload_leo_kg:,} kg"
+        )
     typer.echo("")
 
 
 @vehicle_app.command("inspect")
 def vehicle_inspect(
     name: str = typer.Argument(..., help="Vehicle name (case-insensitive)"),
-    systems: Optional[str] = typer.Option(
+    systems: str | None = typer.Option(
         None, "--systems", help="Comma-separated system filters (e.g. propulsion,recovery)"
     ),
 ) -> None:

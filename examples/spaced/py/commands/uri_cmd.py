@@ -1,10 +1,10 @@
 """URI command wiring for spaced."""
+
 from __future__ import annotations
 
 import json
 
 import typer
-
 from hop_top_kit import uri
 
 app = typer.Typer(help="Inspect spaced custom URI scheme metadata", add_completion=False)
@@ -52,8 +52,7 @@ def parse_cmd(
         typer.echo(json.dumps(parsed.__dict__, indent=2))
         return
     typer.echo(
-        f"scheme={parsed.scheme} namespace={parsed.namespace} "
-        f"id={parsed.id} action={parsed.action}"
+        f"scheme={parsed.scheme} namespace={parsed.namespace} id={parsed.id} action={parsed.action}"
     )
 
 

@@ -1,30 +1,33 @@
 """commands/starship.py — starship status, starship history."""
+
 from __future__ import annotations
 
 import sys
 
 import typer
 
-sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py"))
-from data import MISSIONS, find_vehicle  # noqa: E402
+sys.path.insert(
+    0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py")
+)
+from data import find_vehicle
 
 app = typer.Typer(help="Starship program status and history", add_completion=False)
 
 _HISTORY_SUMMARY = [
-    ("SN1",  "2020-02-28", "Pressure test → RUD. Tradition established."),
-    ("SN4",  "2020-06-04", "Static fire. Then: explosion. Not sequential."),
-    ("SN5",  "2020-08-04", "150m hop. The one that worked. Much rejoicing."),
-    ("SN8",  "2020-12-09", "Belly flop. Landed. Then exploded. Nominal."),
-    ("SN9",  "2021-02-02", "SN8 but slightly more on fire. Also nominal."),
+    ("SN1", "2020-02-28", "Pressure test → RUD. Tradition established."),
+    ("SN4", "2020-06-04", "Static fire. Then: explosion. Not sequential."),
+    ("SN5", "2020-08-04", "150m hop. The one that worked. Much rejoicing."),
+    ("SN8", "2020-12-09", "Belly flop. Landed. Then exploded. Nominal."),
+    ("SN9", "2021-02-02", "SN8 but slightly more on fire. Also nominal."),
     ("SN10", "2021-03-03", "Landed. Then: detonated 8 min later. Nominaler."),
     ("SN11", "2021-03-30", "Flew in fog. Exploded in fog. Mystery."),
     ("SN15", "2021-05-05", "Landed. Stayed landed. Historic understatement."),
-    ("IFT-1","2023-04-20", "Full stack. Stage sep failed. RUD. 420. Noted."),
-    ("IFT-2","2023-11-18", "Stage sep ok. Vehicle lost. Progress."),
-    ("IFT-3","2024-03-14", "Reached space. Reentry: partial. Pi Day."),
-    ("IFT-4","2024-06-06", "Both survived. Ocean splashdown. First real win."),
-    ("IFT-5","2024-10-13", "Mechazilla catch. Jaws: dropped. Globally."),
-    ("IFT-6","2025-01-16", "Booster caught. Ship lost. 1.5/2. Partial."),
+    ("IFT-1", "2023-04-20", "Full stack. Stage sep failed. RUD. 420. Noted."),
+    ("IFT-2", "2023-11-18", "Stage sep ok. Vehicle lost. Progress."),
+    ("IFT-3", "2024-03-14", "Reached space. Reentry: partial. Pi Day."),
+    ("IFT-4", "2024-06-06", "Both survived. Ocean splashdown. First real win."),
+    ("IFT-5", "2024-10-13", "Mechazilla catch. Jaws: dropped. Globally."),
+    ("IFT-6", "2025-01-16", "Booster caught. Ship lost. 1.5/2. Partial."),
 ]
 
 

@@ -1,13 +1,15 @@
 """commands/abort.py — abort <mission> --reason."""
+
 from __future__ import annotations
 
 import sys
-from typing import Optional
 
 import typer
 
-sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py"))
-from data import find_mission  # noqa: E402
+sys.path.insert(
+    0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py")
+)
+from data import find_mission
 
 app = typer.Typer(help="Mission abort commands.", add_completion=False)
 
@@ -24,9 +26,7 @@ _ABORT_CODES = [
 @app.command("abort")
 def abort(
     mission: str = typer.Argument(..., help="Mission name"),
-    reason: Optional[str] = typer.Option(
-        None, "--reason", help="Abort reason (for the record)"
-    ),
+    reason: str | None = typer.Option(None, "--reason", help="Abort reason (for the record)"),
 ) -> None:
     """Abort a mission. Abort codes will be filed with the FAA."""
     m = find_mission(mission)
@@ -35,6 +35,7 @@ def abort(
         raise typer.Exit(1)
 
     import time
+
     code = _ABORT_CODES[int(time.time()) % len(_ABORT_CODES)]
     stated_reason = reason or "operator discretion (tweet-related)"
 

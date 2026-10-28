@@ -1,13 +1,15 @@
 """commands/competitor.py — competitor compare <name>."""
+
 from __future__ import annotations
 
 import sys
-from typing import Optional
 
 import typer
 
-sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py"))
-from data import COMPETITORS, find_competitor  # noqa: E402
+sys.path.insert(
+    0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py")
+)
+from data import COMPETITORS, find_competitor
 
 app = typer.Typer(help="Compare SpaceX against its competitors", add_completion=False)
 
@@ -15,7 +17,7 @@ app = typer.Typer(help="Compare SpaceX against its competitors", add_completion=
 @app.command("compare")
 def competitor_compare(
     name: str = typer.Argument(..., help="Competitor name (Boeing, Blue Origin, ULA, ...)"),
-    metric: Optional[str] = typer.Option(
+    metric: str | None = typer.Option(
         None, "--metric", help="Comma-separated metrics to show (e.g. reliability,cost_per_kg)"
     ),
 ) -> None:
