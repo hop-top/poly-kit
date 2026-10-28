@@ -183,7 +183,8 @@ shared input changed: the scope scripts, the Makefile, the mise pins,
 `ci.yml`, the root `go.mod`/`go.sum`, the pnpm lockfile or workspace,
 `uv.toml`. When nothing relevant changed, a CI job skips its remaining
 steps and still succeeds, with the reason in its job summary, so
-`needs:` and status checks see green.
+status checks see green. The lint, test and parity jobs run in
+parallel; none waits on another.
 
 | Run | Tests |
 | --- | --- |
