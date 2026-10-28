@@ -14,11 +14,12 @@ name: release-please
 # (release PRs by release-bot[bot] trigger downstream workflows and sidestep
 # the CODEOWNERS self-approval block). Labels come from the config.
 #
-# Pin: a full commit SHA on hop-top/.github main that carries the
-# target-versioning extension (v0 does not yet, so `tooling-ref` names the
-# same commit). scripts/promote-release.sh and release-promote-gate.yml read
-# the pin from the `uses:` line and accept only a full SHA;
-# release-please-preflight.yml carries the same pin. Move all three together.
+# Pin: the full commit SHA of a hop-top/.github release that carries the
+# target-versioning extension (v0.15.0 and later), version in a trailing
+# comment; `tooling-ref` names the same commit. scripts/promote-release.sh
+# and release-promote-gate.yml read the pin from the `uses:` line and accept
+# only a full SHA; release-please-preflight.yml carries the same pin. Move all
+# three together (Dependabot ignores them for that reason).
 
 on:
   push:
@@ -56,7 +57,7 @@ jobs:
   release-please:
     needs: branch-role
     if: needs.branch-role.outputs.release == 'true'
-    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@c6261e6832cbc71e72574433fb1a8650ae2e6616
+    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@5ce6680ccde9878428ed6cfa24e0e8f635d829a1 # v0.15.0
     secrets:
       RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
       RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
@@ -64,4 +65,4 @@ jobs:
       config-file: .github/release-please-config.json
       manifest-file: .github/.release-please-manifest.json
       versioning-extension: true
-      tooling-ref: c6261e6832cbc71e72574433fb1a8650ae2e6616
+      tooling-ref: 5ce6680ccde9878428ed6cfa24e0e8f635d829a1 # v0.15.0
