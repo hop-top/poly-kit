@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hop.top/kit/contracts/config-v1/load.json",
   "version": "v1",
-  "description": "`Load` into a fixed struct shape (name string, port int, ratio float, debug bool, tags []string, inner {a string, b int}, labels map[string]string, opt *string, extra any, all keyed by these lower-case names), starting from `start`, merging each YAML in `files` as an extra config file in order, then the `overrides` pairs. Merge rules are yaml.v3 decoding into an existing value: struct fields merge one by one; scalars, lists and each map entry are replaced; a null clears only the pointer, list and map fields and leaves scalars; unknown keys are ignored; `<<` merge keys expand with explicit keys winning. Each file is first decoded on its own as Go does: a duplicate key or a non-scalar key in a mapping the target reads fails, and decoding counts aliases with yaml.v3's budget (more than 100 aliased of more than 1000 decoded nodes, at a share above 0.99 up to 400k decoded, falling linearly to 0.10 at 4M, is `excessive aliasing`). Mappings under keys the target ignores are not decoded. A leading BOM, a tab after `:` and quoted-scalar continuation lines at column 0 read as libyaml reads them. `want` is the struct as JSON. `generate` ({prefix, line, count, suffix?}) adds one more file after `files`: `prefix`, then `line` repeated `count` times with `{i}` replaced by 0..count-1, then `suffix` (large inputs without a large corpus). A failing case gives `error_contains` substrings; `<path>` stands for the failing file's path.",
+  "description": "`Load` into a fixed struct shape (name string, port int, ratio float, debug bool, tags []string, inner {a string, b int, deep {x string, y string}}, labels map[string]string, nest map[string]map[string]string, opt *string, extra any, all keyed by these lower-case names), starting from `start`, merging each YAML in `files` as an extra config file in order, then the `overrides` pairs. Merge rules are yaml.v3 decoding into an existing value: struct fields merge one by one at any depth; scalars, lists, `any` values and each map entry are replaced whole (an entry of a map of maps is not merged); a value of the wrong kind for a typed field fails rather than replacing it; a null clears only the pointer, list and map fields and leaves scalars; unknown keys are ignored; `<<` merge keys expand with explicit keys winning. Each file is first decoded on its own as Go does: a duplicate key or a non-scalar key in a mapping the target reads fails, and decoding counts aliases with yaml.v3's budget (more than 100 aliased of more than 1000 decoded nodes, at a share above 0.99 up to 400k decoded, falling linearly to 0.10 at 4M, is `excessive aliasing`). Mappings under keys the target ignores are not decoded. A leading BOM, a tab after `:` and quoted-scalar continuation lines at column 0 read as libyaml reads them. `want` is the struct as JSON. `generate` ({prefix, line, count, suffix?}) adds one more file after `files`: `prefix`, then `line` repeated `count` times with `{i}` replaced by 0..count-1, then `suffix` (large inputs without a large corpus). A failing case gives `error_contains` substrings; `<path>` stands for the failing file's path.",
   "cases": [
     {
       "name": "later file wins per field",
@@ -19,9 +19,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -41,9 +46,14 @@
         "tags": null,
         "inner": {
           "a": "x",
-          "b": 2
+          "b": 2,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -65,9 +75,14 @@
         ],
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -87,12 +102,17 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": {
           "x": "1",
           "y": "3"
         },
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -112,9 +132,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -134,12 +159,140 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
+    },
+    {
+      "name": "nested struct fields merge",
+      "files": [
+        "inner:\n  a: x\n  deep: {x: '1', y: '2'}\n",
+        "inner:\n  deep: {y: '3'}\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "x",
+          "b": 0,
+          "deep": {
+            "x": "1",
+            "y": "3"
+          }
+        },
+        "labels": null,
+        "nest": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "map of maps entry replaced whole",
+      "files": [
+        "nest:\n  k: {p: '1', q: '2'}\n  j: {z: '0'}\n",
+        "nest:\n  k: {q: '3'}\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
+        },
+        "labels": null,
+        "nest": {
+          "k": {
+            "q": "3"
+          },
+          "j": {
+            "z": "0"
+          }
+        },
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "any value takes another kind",
+      "files": [
+        "extra: {a: 1}\n",
+        "extra: [x]\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
+        },
+        "labels": null,
+        "nest": null,
+        "opt": null,
+        "extra": [
+          "x"
+        ]
+      }
+    },
+    {
+      "name": "map into a scalar field fails",
+      "files": [
+        "name: a\n",
+        "name: {x: 1}\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!map into string"
+      ]
+    },
+    {
+      "name": "scalar into a struct field fails",
+      "files": [
+        "inner: {a: x}\n",
+        "inner: 5\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!int `5` into "
+      ]
+    },
+    {
+      "name": "map into a list field fails",
+      "files": [
+        "tags: [a]\n",
+        "tags: {x: 1}\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!map into "
+      ]
     },
     {
       "name": "start survives",
@@ -154,9 +307,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       },
@@ -169,9 +327,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -190,9 +353,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -211,9 +379,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -232,9 +405,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -253,9 +431,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -274,9 +457,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -295,9 +483,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -316,9 +509,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       },
@@ -331,9 +529,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -356,9 +559,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -380,9 +588,14 @@
         "tags": null,
         "inner": {
           "a": "x",
-          "b": 2
+          "b": 2,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -421,7 +634,7 @@
     {
       "name": "utf-8 bom",
       "files": [
-        "﻿name: x\n"
+        "\ufeffname: x\n"
       ],
       "ok": true,
       "want": {
@@ -432,9 +645,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -453,9 +671,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 2
+          "b": 2,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -474,9 +697,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -495,9 +723,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -516,11 +749,16 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": {
           "k": "x y"
         },
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -559,9 +797,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -621,9 +864,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -642,9 +890,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": [
           1,
@@ -666,9 +919,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": {
           "k": "v",
@@ -690,9 +948,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -734,9 +997,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -757,9 +1025,14 @@
         ],
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }
@@ -778,9 +1051,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": "what? 'tis"
       }
@@ -799,9 +1077,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": "a - \"b"
       }
@@ -840,9 +1123,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": "a 'b"
       }
@@ -865,9 +1153,14 @@
         "tags": null,
         "inner": {
           "a": "",
-          "b": 0
+          "b": 0,
+          "deep": {
+            "x": "",
+            "y": ""
+          }
         },
         "labels": null,
+        "nest": null,
         "opt": null,
         "extra": null
       }

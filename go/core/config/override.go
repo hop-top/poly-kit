@@ -203,8 +203,8 @@ func setDottedKey(dst map[string]any, key string, val any) error {
 // ApplyOverrides merges overrides onto dst. dst must be a non-nil pointer to a
 // struct (the same shape passed to Load). The merge round-trips through YAML,
 // reusing the existing yaml.v3 unmarshal rules so override semantics match
-// file-loading semantics exactly: maps merge recursively, scalars and slices
-// replace.
+// file-loading semantics exactly: struct fields merge per field; scalars,
+// slices, map entries and any values replace.
 //
 // A nil or empty overrides map is a no-op.
 func ApplyOverrides(dst any, overrides map[string]any) error {

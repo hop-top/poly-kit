@@ -31,6 +31,7 @@ err = config.Load(&cfg, config.Options{
 ## Contract
 
 - Do not register your own `-c` / `--config` flag: the console root owns it as a repeatable flag (extra config file path or dotted `key=value` override). Pass `root.ConfigArgs()` through; never re-read `viper.GetString("config")`.
+- Layers merge as yaml.v3 decodes into an existing value: struct fields merge per field at any depth; scalars, slices, each map entry and `any` values are replaced whole; a null clears pointer, slice, map and `any` fields only; a wrong-kind value for a typed field is an error. Pinned by `contracts/config-v1/load.json`.
 - `Set` writes every scalar as `!!str`, so `Set("k", "0.9", ...)` emits `k: "0.9"` and a consumer decoding into `float64` fails at the next load. `SetValue` infers the tag from the Go type.
 - `ParseScalar` recognises floats, ints, bools and null only; oversized numbers (`9223372036854775808`, `1e400`) and YAML 1.1 lookalikes (`yes`, `on`, `off`, `no`) stay strings.
 - Reload: fields are immutable unless tagged `reload:"true"`; a changed immutable field returns `*ErrImmutableChanged` and keeps the old snapshot. Treat every `*T` from `Snapshot()` as immutable.

@@ -13,9 +13,9 @@ import (
 // defaults' YAML representation).
 //
 // The implementation round-trips through YAML so the merge semantics match
-// every other layer in Load: per-leaf overlay, slices replaced, maps merged
-// recursively. This keeps "defaults" indistinguishable from "an extra file
-// loaded first" for the caller.
+// every other layer in Load: struct fields merge per field, while slices, map
+// entries and any values are replaced whole. This keeps "defaults"
+// indistinguishable from "an extra file loaded first" for the caller.
 func applyDefaults(dst, defaults any) error {
 	if defaults == nil {
 		return nil

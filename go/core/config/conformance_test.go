@@ -335,20 +335,27 @@ func TestConformancePrecedence(t *testing.T) {
 }
 
 type confShape struct {
-	Name   string            `yaml:"name" json:"name"`
-	Port   int               `yaml:"port" json:"port"`
-	Ratio  float64           `yaml:"ratio" json:"ratio"`
-	Debug  bool              `yaml:"debug" json:"debug"`
-	Tags   []string          `yaml:"tags" json:"tags"`
-	Inner  confInner         `yaml:"inner" json:"inner"`
-	Labels map[string]string `yaml:"labels" json:"labels"`
-	Opt    *string           `yaml:"opt" json:"opt"`
-	Extra  any               `yaml:"extra" json:"extra"`
+	Name   string                       `yaml:"name" json:"name"`
+	Port   int                          `yaml:"port" json:"port"`
+	Ratio  float64                      `yaml:"ratio" json:"ratio"`
+	Debug  bool                         `yaml:"debug" json:"debug"`
+	Tags   []string                     `yaml:"tags" json:"tags"`
+	Inner  confInner                    `yaml:"inner" json:"inner"`
+	Labels map[string]string            `yaml:"labels" json:"labels"`
+	Nest   map[string]map[string]string `yaml:"nest" json:"nest"`
+	Opt    *string                      `yaml:"opt" json:"opt"`
+	Extra  any                          `yaml:"extra" json:"extra"`
 }
 
 type confInner struct {
-	A string `yaml:"a" json:"a"`
-	B int    `yaml:"b" json:"b"`
+	A    string   `yaml:"a" json:"a"`
+	B    int      `yaml:"b" json:"b"`
+	Deep confDeep `yaml:"deep" json:"deep"`
+}
+
+type confDeep struct {
+	X string `yaml:"x" json:"x"`
+	Y string `yaml:"y" json:"y"`
 }
 
 func TestConformanceLoad(t *testing.T) {
