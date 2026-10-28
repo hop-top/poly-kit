@@ -47,7 +47,9 @@ means "any 2+ langs you chose", not "all 5".
 
 - [test-scaffold-e2e.sh](test-scaffold-e2e.sh): e2e tests for scaffold.sh.
 - [test-kit-init-idempotency.sh](test-kit-init-idempotency.sh): idempotency tests for `kit init`.
-- [test-e2e.sh](test-e2e.sh): top-level e2e harness.
+- [test-e2e.sh](test-e2e.sh): top-level e2e harness (build, init the dist
+  copies, scaffold polyglot subsets); the `templates-e2e` CI job runs it when
+  `templates/` changes.
 
 ## What scaffold emits
 
