@@ -238,7 +238,7 @@ getrandom = { version = "0.4", optional = true }
 # editor behind `set`/`unset`; scalars resolve through this crate's own
 # yaml.v3-compatible rules, not the parser's. Exact pin: 0.x and the
 # editor depends on span semantics.
-saphyr-parser = { version = "=0.1.0", optional = true }
+saphyr-parser = { version = "=0.2.1", optional = true }
 dirs = { version = "7", optional = true }
 # No crate-wide features: each feature that uses tokio names the pieces it
 # needs, so `full` (and its socket, process and multi-thread runtime
