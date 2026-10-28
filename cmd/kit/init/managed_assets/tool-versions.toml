@@ -7,7 +7,7 @@
 
 [runtimes]
 go     = "1.27.3"  # Go toolchain (exact; matches kit's go.mod and CI)
-node   = "22"    # Node.js runtime
+node   = "24"    # Node.js runtime (LTS)
 pnpm   = "11"    # Node package manager
 python = "3.13"  # CPython
 uv     = "0.13"  # Python package + project manager

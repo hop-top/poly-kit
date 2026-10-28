@@ -109,8 +109,9 @@ updates:
       # Typings track the better-sqlite3 major deferred above.
       - dependency-name: "@types/better-sqlite3"
         update-types: ["version-update:semver-major"]
-      # Typings must not exceed the Node floor (engines >=22.12 in sdk/ts
-      # and ts-kit-engine): a newer major types APIs the floor lacks.
+      # Typings track the Node major in mise.toml, moved by hand with the
+      # pin. They type APIs the engines floor (>=22.12 in sdk/ts and
+      # ts-kit-engine) may lack; the Node-floor CI job guards that.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
     groups:
