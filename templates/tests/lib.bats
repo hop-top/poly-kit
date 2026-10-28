@@ -12,6 +12,28 @@ teardown() {
 }
 
 # ==========================================================
+# detect_tools
+# ==========================================================
+
+@test "detect_tools: succeeds when no optional tool is installed" {
+  # scaffold.sh runs under set -e; a non-zero return here killed it
+  # silently on any host without tlc (CI runners).
+  mkdir -p "$TEST_DIR/bin"
+  ln -s "$(command -v git)" "$TEST_DIR/bin/git"
+  PATH="$TEST_DIR/bin" run detect_tools
+  [ "$status" -eq 0 ]
+}
+
+@test "detect_tools: scaffold-style set -e caller survives missing tlc" {
+  mkdir -p "$TEST_DIR/bin"
+  ln -s "$(command -v dirname)" "$TEST_DIR/bin/dirname"
+  run env PATH="$TEST_DIR/bin" /bin/bash -c \
+    "set -e; source '$TEMPLATES_DIR/lib.sh'; detect_tools; echo reached"
+  [ "$status" -eq 0 ]
+  [ "$output" = "reached" ]
+}
+
+# ==========================================================
 # detect_languages
 # ==========================================================
 

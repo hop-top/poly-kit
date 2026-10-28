@@ -189,12 +189,9 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     --no-tlc)
-      if [ "$HAS_TLC" = true ]; then
-        NO_TLC=true
-      else
-        echo "Error: --no-tlc requires tlc to be installed" >&2
-        exit 1
-      fi
+      # Accepted with or without tlc: opting out of an absent tool
+      # is a no-op, so automation can pass it unconditionally.
+      NO_TLC=true
       shift
       ;;
     --no-push)
