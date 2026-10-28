@@ -449,6 +449,38 @@ jobs:
       - run: scripts/test-affected.sh ts
         if: steps.scope.outputs.run == 'true'
 
+  # The TS SDKs develop on the mise Node pin but ship `engines.node`
+  # >=22.12, and @types/node follows the pin, so a newer-Node API can
+  # typecheck and still break on the floor. Same scope and suites as
+  # ts-test, on the floor itself, plus the sdk/ts build.
+  ts-node-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+      - id: scope
+        run: scripts/test-affected.sh --gate ts
+      - id: pins
+        if: steps.scope.outputs.run == 'true'
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.scope.outputs.run == 'true'
+        with:
+          node-version: '22.12'  # toolchain-parity: allow (engines.node floor of sdk/ts and ts-kit-engine)
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        if: steps.scope.outputs.run == 'true'
+        with:
+          version: ${{ steps.pins.outputs.pnpm }}
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+        if: steps.scope.outputs.run == 'true'
+      - run: scripts/test-affected.sh ts
+        if: steps.scope.outputs.run == 'true'
+      - run: pnpm --dir sdk/ts build
+        if: steps.scope.outputs.run == 'true'
+
   py-test:
     runs-on: ubuntu-latest
     steps:
@@ -915,7 +947,7 @@ jobs:
   # The failed jobs carry the red; this job fails only when it cannot
   # report.
   nightly-report:
-    needs: [go-lint, ts-lint, py-lint, rs-lint, docs-lint, sdk-paths-lint, adr-refs-lint, internal-refs-lint, actions-pinned-lint, toolchain-parity, bats-tests, templates-e2e, proto-check, template-kit-pin, go-test, go-race, ts-test, py-test, rs-test, rs-wasm, rs-mobile, rs-features, php-test, parity, compliance]
+    needs: [go-lint, ts-lint, py-lint, rs-lint, docs-lint, sdk-paths-lint, adr-refs-lint, internal-refs-lint, actions-pinned-lint, toolchain-parity, bats-tests, templates-e2e, proto-check, template-kit-pin, go-test, go-race, ts-test, ts-node-floor, py-test, rs-test, rs-wasm, rs-mobile, rs-features, php-test, parity, compliance]
     if: ${{ github.event_name == 'schedule' && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
