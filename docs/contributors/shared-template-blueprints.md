@@ -38,8 +38,11 @@ TOML, two tables:
 | `[workflow]` | Cross-cutting linters, formatters, release tooling | `golangci-lint`, `ruff`, `lychee`, `hadolint`, `actionlint`, `shellcheck`, `shfmt`, `npm:release-please` |
 
 Keys match mise tool names. `npm:`-prefixed keys reference the
-mise npm backend. Values are mise-resolvable version strings
-(semver-ish, partial accepted).
+mise npm backend. Values are exact releases (`24.22.1`, not `24`):
+a partial pin lets mise take a new release the day it ships, before
+it clears the dependency age gate. `make check-toolchain-parity`
+rejects a partial pin in kit's own `mise.toml`, which carries the
+same values.
 
 ### Update policy
 

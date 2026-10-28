@@ -21,15 +21,15 @@ setup() {
 # >>> kit-managed >>>
 [tools]
 go = "1.26.1"
-node = "22"
-pnpm = "11"
-python = "3.13"
-uv = "0.12"
+node = "22.23.2"
+pnpm = "11.4.0"
+python = "3.13.5"
+uv = "0.12.3"
 rust = "1.98.0"
 golangci-lint = "2.11.4"
 ruff = "0.15.11"
 lychee = "0.24.2"
-"npm:release-please" = "17"
+"npm:release-please" = "17.1.0"
 
 [env]
 _.file = ".env"
@@ -68,7 +68,7 @@ version = "0.15.11"'
           node-version: ${{ steps.pins.outputs.node }}
       - uses: pnpm/action-setup@v4
         with:
-          version: 11
+          version: 11.4.0
       - uses: lycheeverse/lychee-action@v2
         with:
           lycheeVersion: v${{ steps.pins.outputs.lychee }}
@@ -90,13 +90,13 @@ version = "0.15.11"'
     write templates/shared/tool-versions.toml '# manifest
 [runtimes]
 go     = "1.26.1"  # Go toolchain
-node   = "22"      # Node.js
+node   = "22.23.2" # Node.js
 rust   = "1.98.0"
 
 [workflow]
 ruff                 = "0.15.11"  # Python linter
 hadolint             = "2.12"     # only the manifest pins this
-"npm:release-please" = "17"'
+"npm:release-please" = "17.1.0"'
     mkdir -p "$REPO/cmd/kit/init/managed_assets"
     cp "$REPO/templates/shared/tool-versions.toml" "$REPO/cmd/kit/init/managed_assets/"
     git -C "$REPO" add -A
@@ -235,11 +235,11 @@ run_pins() {
     edit .github/workflows/ci.yml 's/node-version: .*/node-version: "20"/'
     run_check
     [ "$status" -eq 1 ]
-    has ".github/workflows/ci.yml:8: node 20 disagrees with mise.toml node 22"
+    has ".github/workflows/ci.yml:8: node 20 disagrees with mise.toml node 22.23.2"
 }
 
 @test "pnpm/action-setup version differing from the pnpm pin fails" {
-    edit .github/workflows/ci.yml 's/          version: 11/          version: 9/'
+    edit .github/workflows/ci.yml 's/          version: 11.4.0/          version: 9/'
     run_check
     [ "$status" -eq 1 ]
     has "ci.yml:11: pnpm 9"
@@ -324,10 +324,10 @@ go 1.30.0'
 }
 
 @test "scaffold manifest: quoted backend key is compared under its tool name" {
-    edit templates/shared/tool-versions.toml 's/"npm:release-please" = "17"/"npm:release-please" = "16"/'
+    edit templates/shared/tool-versions.toml 's/"npm:release-please" = "17.1.0"/"npm:release-please" = "16"/'
     run_check
     [ "$status" -eq 1 ]
-    has "tool-versions.toml:10: release-please 16 disagrees with mise.toml release-please 17"
+    has "tool-versions.toml:10: release-please 16 disagrees with mise.toml release-please 17.1.0"
 }
 
 @test "stale embedded manifest copy for kit init fails" {
@@ -347,13 +347,20 @@ go 1.30.0'
     edit examples/app/ts/.nvmrc 's/22/20/'
     run_check
     [ "$status" -eq 1 ]
-    has "examples/app/ts/.nvmrc:1: node 20 disagrees with mise.toml node (major) 22"
+    has "examples/app/ts/.nvmrc:1: node 20 disagrees with mise.toml node 22.23.2 (or 22)"
 }
 
-@test ".nvmrc with a v-prefixed full version in the pinned major passes" {
+@test ".nvmrc with the v-prefixed exact pin passes" {
     edit examples/app/ts/.nvmrc 's/22/v22.23.2/'
     run_check
     [ "$status" -eq 0 ]
+}
+
+@test ".nvmrc naming another release in the pinned major fails" {
+    edit examples/app/ts/.nvmrc 's/22/22.20.0/'
+    run_check
+    [ "$status" -eq 1 ]
+    has "examples/app/ts/.nvmrc:1: node 22.20.0 disagrees with mise.toml node 22.23.2 (or 22)"
 }
 
 @test ".python-version naming another python minor fails" {
@@ -363,10 +370,39 @@ go 1.30.0'
     has "examples/app/py/.python-version:1: python 3.12.9"
 }
 
-@test ".python-version with a patch release in the pinned minor passes" {
+@test ".python-version with the exact pin passes" {
     edit examples/app/py/.python-version 's/3.13/3.13.5/'
     run_check
     [ "$status" -eq 0 ]
+}
+
+@test ".python-version naming another patch in the pinned minor fails" {
+    edit examples/app/py/.python-version 's/3.13/3.13.2/'
+    run_check
+    [ "$status" -eq 1 ]
+    has "examples/app/py/.python-version:1: python 3.13.2 disagrees with mise.toml python 3.13.5 (or 3.13)"
+}
+
+# --- exact pins -------------------------------------------------------------
+
+@test "a partial pin in mise.toml fails" {
+    edit mise.toml 's/^uv = .*/uv = "0.12"/'
+    run_check
+    [ "$status" -eq 1 ]
+    has "mise config: uv 0.12 is not an exact version"
+}
+
+@test "a partial pin in .config/mise.toml fails" {
+    edit .config/mise.toml 's/^buf = .*/buf = "1"/'
+    run_check
+    [ "$status" -eq 1 ]
+    has "mise config: buf 1 is not an exact version"
+}
+
+@test "a pre-release pin is exact" {
+    edit .config/mise.toml 's/^buf = .*/buf = "1.74.0-rc.1"/'
+    run_check
+    lacks "not an exact version"
 }
 
 # --- repo-only tools in .config/mise.toml ---------------------------------

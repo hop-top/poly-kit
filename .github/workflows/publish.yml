@@ -65,7 +65,7 @@ jobs:
           ecosystem: ts
           package: "@hop-top/kit"
           mirror: hop-top/kit-ts
-          node-version: '24'
+          node-version: '24.22.1'
           # --exclude sqlstore.test.ts: depends on better-sqlite3
           # native bindings; --ignore-scripts blocks them. Mirrors
           # local `make test-ts`.
