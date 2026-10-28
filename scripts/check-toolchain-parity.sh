@@ -29,11 +29,11 @@
 #                          `require.php` in sdk/experimental/php/composer.json
 #                          (PHP is not a mise tool: mise builds it from source)
 #   devcontainer           the nixpkgs attributes in .devcontainer/flake.nix
-#                          (go_1_NN, nodejs_NN, python3NN) and the store
-#                          globs in its Dockerfile name the pinned
-#                          go minor, node major and python minor (nixpkgs
-#                          picks the patch release, so only the line is
-#                          held)
+#                          (go_1_NN, nodejs_NN, python3NN), and any
+#                          -go-/-nodejs-/-python3- store path in its
+#                          Dockerfile, name the pinned go minor, node
+#                          major and python minor (nixpkgs picks the patch
+#                          release, so only the line is held)
 #   .nvmrc, .node-version, name the pinned node major / python minor, or
 #   .python-version        the exact pin; another patch release fails
 #                          (setup-node/setup-python and mise read them)

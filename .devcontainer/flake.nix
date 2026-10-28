@@ -20,38 +20,47 @@
             hash = "sha256-bndJA1zzYPBrJXXRYup535/ajvZxiJ5cN1+OUHd/Jrs=";
           };
         });
+
+        tools = with pkgs; [
+          # Go
+          go_1_27 # the override above, not pkgs.go_1_27
+          golangci-lint
+
+          # Node / TypeScript
+          nodejs_24
+          pnpm_12
+
+          # Python
+          python314
+          python314Packages.pip
+          python314Packages.virtualenv
+          ruff
+
+          # Linting
+          eslint
+
+          # Task runner
+          go-task
+
+          # VCS & GitHub
+          git
+          gh
+
+          # DX utilities
+          jq
+          curl
+        ];
       in
       {
+        # One profile of every tool: the Dockerfile installs it with its
+        # whole closure, so the binaries keep their Nix store interpreter.
+        packages.default = pkgs.buildEnv {
+          name = "kit-dev-tools";
+          paths = tools;
+        };
+
         devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [
-            # Go
-            go_1_27 # the override above, not pkgs.go_1_27
-            golangci-lint
-
-            # Node / TypeScript
-            nodejs_24
-            pnpm_12
-
-            # Python
-            python314
-            python314Packages.pip
-            python314Packages.virtualenv
-            ruff
-
-            # Linting
-            eslint
-
-            # Task runner
-            go-task
-
-            # VCS & GitHub
-            git
-            gh
-
-            # DX utilities
-            jq
-            curl
-          ];
+          buildInputs = tools;
 
           shellHook = ''
             echo "hop.top/kit dev shell active"
