@@ -15,6 +15,7 @@ examples/spaced/bin/
 examples/probe/go/probe
 examples/probe/ts/node_modules/
 examples/probe/ts/dist/
+engine/sdk/ts-kit-engine/dist/
 examples/probe/py/.pytest_cache/
 
 # PHPUnit cache (per-machine test result memoization)
