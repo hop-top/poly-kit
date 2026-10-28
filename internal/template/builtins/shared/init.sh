@@ -300,6 +300,14 @@ fi
 # both paths produce identical output trees.
 rm -f "$PROJECT_DIR/kit-template.yaml" "$PROJECT_DIR/tiers.yaml"
 
+# --- Cleanup -------------------------------------------
+
+# Scaffolding helpers go before the initial commit so it never tracks
+# them and the tree is clean afterwards. bash keeps reading this script
+# from its open descriptor; lib.sh is already sourced.
+echo "Cleaning up..."
+rm -f "$SCRIPT_DIR/lib.sh" "$0"
+
 # --- Git init ------------------------------------------
 
 if [ ! -d "$PROJECT_DIR/.git" ]; then
@@ -315,11 +323,6 @@ echo "Creating initial commit..."
 git -C "$PROJECT_DIR" add -A
 git -C "$PROJECT_DIR" commit -m \
   "feat: initialize ${app_name}"
-
-# --- Cleanup -------------------------------------------
-
-echo "Cleaning up..."
-rm -f "$SCRIPT_DIR/lib.sh" "$0"
 
 echo ""
 echo "Done! ${app_name} is ready."

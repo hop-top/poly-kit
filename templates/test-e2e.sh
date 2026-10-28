@@ -70,6 +70,24 @@ assert_file_contains() {
   fi
 }
 
+# assert_clean_init <dir> <label>: init.sh's first commit holds no
+# scaffolding helper and leaves nothing uncommitted.
+assert_clean_init() {
+  local dir="$1" label="$2" tracked dirty
+  tracked="$(git -C "$dir" ls-tree -r --name-only HEAD 2>&1)"
+  if printf '%s\n' "$tracked" | grep -qxE 'init\.sh|lib\.sh'; then
+    fail "$label: first commit tracks init.sh/lib.sh"
+  else
+    pass "$label: first commit has no init.sh/lib.sh"
+  fi
+  dirty="$(git -C "$dir" status --porcelain 2>&1)"
+  if [ -z "$dirty" ]; then
+    pass "$label: tree clean after init"
+  else
+    fail "$label: tree dirty after init: $dirty"
+  fi
+}
+
 assert_file_not_contains() {
   local file="$1" pattern="$2" label="$3"
   if grep -q "$pattern" "$file" 2>/dev/null; then
@@ -120,6 +138,7 @@ cp -r "$DIST/cli-template-go" "$GO_DIR"
 (cd "$GO_DIR" && bash init.sh)
 
 assert_no_placeholders "$GO_DIR" "go"
+assert_clean_init "$GO_DIR" "go"
 assert_file_exists "$GO_DIR/LICENSE" "go LICENSE"
 assert_file_exists "$GO_DIR/RELEASING.md" "go RELEASING.md"
 assert_file_exists "$GO_DIR/scripts/promote-release.sh" "go promote script"
@@ -173,6 +192,7 @@ cp -r "$DIST/cli-template-ts" "$TS_DIR"
 (cd "$TS_DIR" && bash init.sh)
 
 assert_no_placeholders "$TS_DIR" "ts"
+assert_clean_init "$TS_DIR" "ts"
 assert_file_exists "$TS_DIR/LICENSE" "ts LICENSE"
 assert_file_exists "$TS_DIR/RELEASING.md" "ts RELEASING.md"
 assert_file_exists "$TS_DIR/.git/config" "ts git init"
@@ -191,6 +211,7 @@ cp -r "$DIST/cli-template-py" "$PY_DIR"
 (cd "$PY_DIR" && bash init.sh)
 
 assert_no_placeholders "$PY_DIR" "py"
+assert_clean_init "$PY_DIR" "py"
 assert_file_exists "$PY_DIR/LICENSE" "py LICENSE"
 assert_file_exists "$PY_DIR/RELEASING.md" "py RELEASING.md"
 assert_file_exists "$PY_DIR/.git/config" "py git init"
