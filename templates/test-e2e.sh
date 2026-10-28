@@ -7,7 +7,8 @@ set -euo pipefail
 # Builds all templates via build.sh, then runs init.sh
 # against each with test values (via env var overrides).
 # Verifies: placeholder replacement, structure, module
-# paths, license, git init, and polyglot pruning.
+# paths, license, git init, and polyglot composition
+# (scaffold.sh --lang subsets).
 # -------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -89,7 +90,7 @@ if [ ! -d "$DIST" ]; then
   exit 1
 fi
 
-for tpl in cli-template-go cli-template-ts cli-template-py cli-template-polyglot; do
+for tpl in cli-template-go cli-template-ts cli-template-py cli-template-base; do
   assert_dir_exists "$DIST/$tpl" "dist/$tpl"
 done
 
@@ -187,15 +188,30 @@ assert_dir_exists "$PY_DIR/src/testcli" "py src dir renamed"
 assert_file_exists "$PY_DIR/tests/unit/test_placeholder.py" "py placeholder test"
 
 # ======================================================
-# Test: Polyglot template (all languages)
+# Test: Polyglot scaffold (all languages)
 # ======================================================
+# build.sh ships no polyglot template: scaffold.sh composes one from
+# cli-template-base plus the --lang subset (templates/lib.sh), so the
+# polyglot cases scaffold instead of copying a dist tree.
 
-info "Testing Polyglot template (all languages)..."
+# scaffold_polyglot <dir> <langs>
+scaffold_polyglot() {
+  bash "$SCRIPT_DIR/scaffold.sh" "$INIT_APP_NAME" \
+    --output "$1" \
+    --lang "$2" \
+    --description "$INIT_DESCRIPTION" \
+    --license mit \
+    --author "$INIT_AUTHOR_NAME" \
+    --email "$INIT_AUTHOR_EMAIL" \
+    --module-prefix "$INIT_MODULE_PREFIX" \
+    --forge none \
+    --no-push \
+    --no-tlc >/dev/null
+}
+
+info "Testing polyglot scaffold (go,ts,py)..."
 POLY_ALL_DIR="$TMPDIR_BASE/test-poly-all"
-cp -r "$DIST/cli-template-polyglot" "$POLY_ALL_DIR"
-
-export INIT_LANGUAGES="go,ts,py"
-(cd "$POLY_ALL_DIR" && bash init.sh)
+scaffold_polyglot "$POLY_ALL_DIR" "go,ts,py"
 
 assert_no_placeholders "$POLY_ALL_DIR" "poly-all"
 assert_file_exists "$POLY_ALL_DIR/RELEASING.md" "poly-all RELEASING.md"
@@ -209,65 +225,49 @@ assert_file_contains "$POLY_ALL_DIR/.github/dependabot.yml" '"/ts"' "poly-all de
 assert_file_contains "$POLY_ALL_DIR/.github/dependabot.yml" '"/py"' "poly-all dependabot watches /py"
 
 # ======================================================
-# Test: Polyglot template (prune to Go only)
+# Test: Polyglot scaffold (go,py — ts left out)
 # ======================================================
 
-info "Testing Polyglot template (Go only — prune ts,py)..."
-POLY_GO_DIR="$TMPDIR_BASE/test-poly-go"
-cp -r "$DIST/cli-template-polyglot" "$POLY_GO_DIR"
+info "Testing polyglot scaffold (go,py — no ts)..."
+POLY_GOPY_DIR="$TMPDIR_BASE/test-poly-gopy"
+scaffold_polyglot "$POLY_GOPY_DIR" "go,py"
 
-export INIT_LANGUAGES="go"
-(cd "$POLY_GO_DIR" && bash init.sh)
+assert_dir_exists "$POLY_GOPY_DIR/go" "poly-gopy go/ kept"
+assert_dir_exists "$POLY_GOPY_DIR/py" "poly-gopy py/ kept"
 
-assert_dir_exists "$POLY_GO_DIR/go" "poly-go go/ kept"
-
-if [ ! -d "$POLY_GO_DIR/ts" ]; then
-  pass "poly-go ts/ pruned"
+if [ ! -d "$POLY_GOPY_DIR/ts" ]; then
+  pass "poly-gopy ts/ not composed"
 else
-  fail "poly-go ts/ not pruned"
+  fail "poly-gopy ts/ composed"
 fi
 
-if [ ! -d "$POLY_GO_DIR/py" ]; then
-  pass "poly-go py/ pruned"
+# Verify CI workflows composed for chosen langs only
+if [ ! -f "$POLY_GOPY_DIR/.github/workflows/ci-ts.yml" ]; then
+  pass "poly-gopy ts CI workflow not composed"
 else
-  fail "poly-go py/ not pruned"
+  fail "poly-gopy ts CI workflow composed"
 fi
 
-# Verify CI workflows pruned
-if [ ! -f "$POLY_GO_DIR/.github/workflows/ci-ts.yml" ]; then
-  pass "poly-go ts CI workflow pruned"
-else
-  fail "poly-go ts CI workflow not pruned"
-fi
+assert_file_exists "$POLY_GOPY_DIR/.github/workflows/ci-go.yml" "poly-gopy go CI workflow"
+assert_file_exists "$POLY_GOPY_DIR/.github/workflows/ci-py.yml" "poly-gopy py CI workflow"
 
-if [ ! -f "$POLY_GO_DIR/.github/workflows/ci-py.yml" ]; then
-  pass "poly-go py CI workflow pruned"
-else
-  fail "poly-go py CI workflow not pruned"
-fi
-
-assert_file_exists "$POLY_GO_DIR/.github/workflows/ci-go.yml" "poly-go go CI workflow kept"
-
-# Verify Makefile pruned correctly (no ts or py delegation)
-assert_file_not_contains "$POLY_GO_DIR/Makefile" 'MAKE) -C ts' "poly-go Makefile no ts delegation"
-assert_file_not_contains "$POLY_GO_DIR/Makefile" 'MAKE) -C py' "poly-go Makefile no py delegation"
-assert_file_contains "$POLY_GO_DIR/Makefile" 'MAKE) -C go' "poly-go Makefile has go delegation"
+# Verify Makefile delegates to chosen langs only
+assert_file_not_contains "$POLY_GOPY_DIR/Makefile" 'MAKE) -C ts' "poly-gopy Makefile no ts delegation"
+assert_file_contains "$POLY_GOPY_DIR/Makefile" 'MAKE) -C go' "poly-gopy Makefile has go delegation"
+assert_file_contains "$POLY_GOPY_DIR/Makefile" 'MAKE) -C py' "poly-gopy Makefile has py delegation"
 
 # ======================================================
-# Test: Polyglot template (prune to ts+py)
+# Test: Polyglot scaffold (ts,py — go left out)
 # ======================================================
 
-info "Testing Polyglot template (ts+py — prune go)..."
+info "Testing polyglot scaffold (ts,py — no go)..."
 POLY_TSPY_DIR="$TMPDIR_BASE/test-poly-tspy"
-cp -r "$DIST/cli-template-polyglot" "$POLY_TSPY_DIR"
-
-export INIT_LANGUAGES="ts,py"
-(cd "$POLY_TSPY_DIR" && bash init.sh)
+scaffold_polyglot "$POLY_TSPY_DIR" "ts,py"
 
 if [ ! -d "$POLY_TSPY_DIR/go" ]; then
-  pass "poly-tspy go/ pruned"
+  pass "poly-tspy go/ not composed"
 else
-  fail "poly-tspy go/ not pruned"
+  fail "poly-tspy go/ composed"
 fi
 
 assert_dir_exists "$POLY_TSPY_DIR/ts" "poly-tspy ts/ kept"
@@ -292,7 +292,7 @@ assert_file_contains "$APACHE_DIR/LICENSE" "Apache License" "apache license cont
 # ======================================================
 
 unset INIT_APP_NAME INIT_DESCRIPTION INIT_AUTHOR_NAME INIT_AUTHOR_EMAIL
-unset INIT_LICENSE INIT_MODULE_PREFIX INIT_LANGUAGES
+unset INIT_LICENSE INIT_MODULE_PREFIX
 
 echo ""
 echo "========================================"
