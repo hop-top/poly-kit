@@ -238,7 +238,7 @@ getrandom = { version = "0.4", optional = true }
 # editor behind `set`/`unset`; scalars resolve through this crate's own
 # yaml.v3-compatible rules, not the parser's. Exact pin: 0.x and the
 # editor depends on span semantics.
-saphyr-parser = { version = "=0.1.0", optional = true }
+saphyr-parser = { version = "=0.2.1", optional = true }
 dirs = { version = "7", optional = true }
 # No crate-wide features: each feature that uses tokio names the pieces it
 # needs, so `full` (and its socket, process and multi-thread runtime
@@ -252,7 +252,7 @@ regex = { version = "1", optional = true }
 # (0.8.11, published 2026-06-09).
 regex-syntax = { version = "=0.8.11", optional = true }
 thiserror = { version = "2", optional = true }
-rmcp = { version = "3.1.4", default-features = false, optional = true }
+rmcp = { version = "3.7.0", default-features = false, optional = true }
 clap = { version = "4", features = ["derive", "string"], optional = true }
 comfy-table = { version = "8", default-features = false, optional = true }
 # TypeID codec. Exact pin: the wire form is a cross-language contract
@@ -289,7 +289,7 @@ rustls = { version = "=0.23.46", default-features = false, features = [
     "std",
     "tls12",
 ], optional = true }
-rustls-native-certs = { version = "=0.8.4", optional = true }
+rustls-native-certs = { version = "=0.8.5", optional = true }
 webpki-roots = { version = "=1.0.10", optional = true }
 # bus-network-axum: the router adapter and hyper's upgrade. axum's
 # `tokio` feature supplies `ConnectInfo`, the peer address a link is
@@ -326,8 +326,8 @@ serde_norway = "0.9"
 # under Node by wasm-bindgen-test-runner. Exact pins: each must match the
 # wasm-bindgen in Cargo.lock, and so must the wasm-bindgen-cli CI installs.
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
-wasm-bindgen-test = "=0.3.71"
-wasm-bindgen-futures = "=0.4.71"
+wasm-bindgen-test = "=0.3.79"
+wasm-bindgen-futures = "=0.4.79"
 
 # A real process serving a real listener, driven by the smoke test in
 # tests/serve_command.rs. Cargo sets no CARGO_BIN_EXE_* for examples,

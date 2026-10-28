@@ -53,7 +53,7 @@
 //!   but name Rust types (`int` for `i64`, `[]` for lists).
 //! - **Parser.** YAML is parsed by saphyr-parser (YAML 1.2) with yaml.v3's
 //!   tag resolution on top; syntax error texts differ from libyaml's.
-//!   Inputs libyaml reads but saphyr-parser 0.1.0 rejects or misreads
+//!   Inputs libyaml reads but saphyr-parser 0.2.1 rejects or misreads
 //!   are made readable first, in one linear pass: a leading BOM (saphyr
 //!   does not skip it; edits keep it), a tab after `:`, and quoted-scalar
 //!   continuation lines at or left of the block indent or led by a tab.
