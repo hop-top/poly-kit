@@ -25,10 +25,16 @@ on:
 # and parity targets a change reaches. Each job first asks
 # `scripts/test-affected.sh --gate <suite>` whether anything relevant
 # changed; when nothing did, its remaining steps are skipped and the job
-# still succeeds, with the reason in its summary, so `needs:` and status
-# checks see a green job. A shared config, lockfile, toolchain pin or
-# the scope scripts themselves run that suite in full. Pushes, the
-# nightly schedule and dispatch set TEST_ALL: everything, as before.
+# still succeeds, with the reason in its summary, so status checks and
+# the nightly report see a green job. A shared config, lockfile,
+# toolchain pin or the scope scripts themselves run that suite in full.
+# Pushes, the nightly schedule and dispatch set TEST_ALL: everything, as
+# before.
+#
+# Lint, test, parity and compliance jobs all start at once: none reads
+# another's output, so none waits on another (a red lint fails the run
+# without holding the tests back). Only nightly-report has `needs:`, to
+# collect every verdict.
 env:
   LINT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
   LINT_HEAD: HEAD
@@ -46,7 +52,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # ── Stage 1: Lint ──────────────────────────────────────────────
+  # ── Lint ───────────────────────────────────────────────────────
   go-lint:
     runs-on: ubuntu-latest
     steps:
@@ -312,9 +318,8 @@ jobs:
           go-version-file: go.mod
       - run: make check-template-kit-pin
 
-  # ── Stage 2: Test (after lint) ─────────────────────────────────
+  # ── Test ───────────────────────────────────────────────────────
   go-test:
-    needs: [go-lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -359,7 +364,6 @@ jobs:
   # documented on the `test-go-race` target in the Makefile — CI and a
   # developer's local run share the one command.
   go-race:
-    needs: [go-lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -380,7 +384,6 @@ jobs:
         if: steps.scope.outputs.run == 'true'
 
   ts-test:
-    needs: [ts-lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -412,7 +415,6 @@ jobs:
         if: steps.scope.outputs.run == 'true'
 
   py-test:
-    needs: [py-lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -446,7 +448,6 @@ jobs:
         if: steps.scope.outputs.run == 'true'
 
   rs-test:
-    needs: [rs-lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -488,7 +489,6 @@ jobs:
   # wasm32 itself under Node (tests/bus_wasm.rs and
   # tests/domain_statemachine_wasm.rs, `make test-rs-wasm`).
   rs-wasm:
-    needs: [rs-lint]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -636,7 +636,6 @@ jobs:
   # script compiles C for the target: Xcode's iOS SDK on the macOS
   # runner, the NDK preinstalled on the Ubuntu runner.
   rs-mobile:
-    needs: [rs-lint]
     strategy:
       fail-fast: false
       matrix:
@@ -703,7 +702,6 @@ jobs:
   # bring tokio `full`, and `output` brings serde_json/preserve_order.
   # These steps build features the way such a consumer does.
   rs-features:
-    needs: [rs-lint]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -791,9 +789,8 @@ jobs:
       - run: scripts/test-affected.sh php
         if: steps.scope.outputs.run == 'true'
 
-  # ── Stage 3: Parity (after all tests) ─────────────────────────
+  # ── Parity ────────────────────────────────────────────────────
   parity:
-    needs: [go-race, go-test, php-test, py-test, rs-features, rs-mobile, rs-test, rs-wasm, ts-test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -862,9 +859,8 @@ jobs:
       - run: scripts/test-affected.sh parity
         if: steps.scope.outputs.run == 'true'
 
-  # ── Stage 4: Build + compliance (after parity) ────────────────
+  # ── Build + compliance ────────────────────────────────────────
   compliance:
-    needs: [parity]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
