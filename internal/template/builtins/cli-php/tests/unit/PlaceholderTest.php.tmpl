@@ -5,11 +5,28 @@ declare(strict_types=1);
 namespace {{.VendorNamespace}}\{{.NameNamespace}}\Tests\unit;
 
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Console\Tester\CommandTester;
+use {{.VendorNamespace}}\{{.NameNamespace}}\Application;
 
+/**
+ * Starter tests against the generated Application. Replace or extend them
+ * as you add commands.
+ */
 class PlaceholderTest extends TestCase
 {
-    public function testPlaceholder(): void
+    public function testApplicationIdentity(): void
     {
-        $this->assertTrue(true);
+        $app = new Application();
+
+        $this->assertSame('{{.Name}}', $app->getName());
+        $this->assertSame('0.0.0', $app->getVersion());
+    }
+
+    public function testHelloGreetsByName(): void
+    {
+        $tester = new CommandTester((new Application())->find('hello'));
+
+        $this->assertSame(0, $tester->execute(['name' => 'kit']));
+        $this->assertSame("Hello, kit!\n", $tester->getDisplay());
     }
 }
