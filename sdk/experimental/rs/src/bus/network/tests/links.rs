@@ -35,7 +35,7 @@ fn three_write_failures_evict_and_reconnect_an_outbound_link() {
     *b.0.write_fault
         .lock()
         .unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(move |_: &str| {
-        f.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+        f.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
             .is_ok()
     }));
 
