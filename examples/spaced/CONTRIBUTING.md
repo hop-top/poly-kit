@@ -7,7 +7,7 @@ get started.
 
 ## Prerequisites
 
-- Go 1.26 (toolchain pinned via `go.mod`)
+- Go 1.27 (toolchain pinned via `go.mod`)
 - Node 22.12+
 - Python 3.13
 - Make

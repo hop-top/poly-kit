@@ -49,9 +49,9 @@ RUN mkdir -p ${TOOLS_DIR}/go \
     ${TOOLS_DIR}/bin
 
 # Copy Go toolchain + golangci-lint from nix closure
-COPY --from=builder /nix/store/*-go-1.26*/bin/* \
+COPY --from=builder /nix/store/*-go-1.27*/bin/* \
     ${TOOLS_DIR}/go/bin/
-COPY --from=builder /nix/store/*-go-1.26*/share/go \
+COPY --from=builder /nix/store/*-go-1.27*/share/go \
     ${TOOLS_DIR}/go/share/go/
 COPY --from=builder /nix/store/*-golangci-lint*/bin/* \
     ${TOOLS_DIR}/bin/
