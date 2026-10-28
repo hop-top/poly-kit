@@ -281,11 +281,13 @@ def test_parse_router_config_hermetic_ignores_env(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# stream events: not opted in, nothing new
+# stream events: only what the provider reports
 # ---------------------------------------------------------------------------
 
 
-def test_openai_stream_ignores_stream_events() -> None:
+def test_openai_stream_events_without_calls_or_usage() -> None:
+    """Opted in, a body with no tool calls and no usage chunk yields no
+    event token: none is made up."""
     sse = (
         'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'
     )
@@ -293,4 +295,7 @@ def test_openai_stream_ignores_stream_events() -> None:
         req = _hi()
         req.stream_events = True
         toks = list(_openai(srv.url).stream(req))
+        sent = srv.only().json()
+    assert sent["stream_options"] == {"include_usage": True}
+    assert [(t.content, t.done) for t in toks] == [("ok", False), ("", True)]
     assert all(t.tool_call is None and t.usage is None for t in toks)
