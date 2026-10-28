@@ -23,6 +23,8 @@ detect_tools() {
     git hop --version >/dev/null 2>&1 && HAS_HOP=true
   }
   command -v tlc >/dev/null 2>&1 && HAS_TLC=true
+  # Absent tools are not an error; callers run under set -e.
+  return 0
 }
 
 # ==========================================================

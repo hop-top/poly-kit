@@ -746,6 +746,55 @@ bash "$SCRIPT_DIR/scaffold.sh" test7app \
 assert_exit_code 1 "$EXIT_CODE" "test7 invalid license exits 1"
 
 # ======================================================
+# Test 7b: Host without tlc -> scaffold succeeds
+# ======================================================
+# CI runners carry no tlc. scaffold.sh must still run, and --no-tlc
+# (opting out of an absent tool) must be accepted, not rejected.
+
+info "Test 7b: Host without tlc -> scaffold succeeds"
+
+# path_without <cmd>: $PATH with every dir holding <cmd> swapped for a
+# symlink farm of that dir minus <cmd>.
+path_without() {
+  local cmd="$1" dir out="" shadow n=0
+  local -a dirs
+  IFS=: read -r -a dirs <<<"$PATH"
+  for dir in "${dirs[@]}"; do
+    if [ -n "$dir" ] && [ -x "$dir/$cmd" ]; then
+      n=$((n + 1))
+      shadow="$TMPDIR_BASE/path-without-$cmd/$n"
+      mkdir -p "$shadow"
+      for f in "$dir"/*; do
+        [ "$(basename "$f")" = "$cmd" ] || ln -s "$f" "$shadow/"
+      done
+      dir="$shadow"
+    fi
+    out="${out:+$out:}$dir"
+  done
+  printf '%s' "$out"
+}
+
+NO_TLC_PATH="$(path_without tlc)"
+if PATH="$NO_TLC_PATH" command -v tlc >/dev/null 2>&1; then
+  fail "test7b could not hide tlc from PATH"
+fi
+for flag in "" "--no-tlc"; do
+  EXIT_CODE=0
+  # shellcheck disable=SC2086 # empty $flag must vanish
+  PATH="$NO_TLC_PATH" bash "$SCRIPT_DIR/scaffold.sh" test7bapp \
+    --output "$TMPDIR_BASE/test7b${flag}" \
+    --lang go \
+    --description "No tlc host" \
+    --license mit \
+    --author "Test Author" \
+    --email "test@example.com" \
+    --module-prefix "github.com/testorg" \
+    --forge none \
+    --no-push $flag >/dev/null 2>&1 || EXIT_CODE=$?
+  assert_exit_code 0 "$EXIT_CODE" "test7b no tlc on PATH, flags='${flag}' exits 0"
+done
+
+# ======================================================
 # Test 8: --no-push skips package reservation
 # ======================================================
 

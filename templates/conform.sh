@@ -114,13 +114,8 @@ cd "$PROJECT_PATH" || {
 }
 
 # --- Detection -----------------------------------------
-#
-# `detect_tools` may return non-zero when none of its
-# `command -v` probes succeed (e.g. minimal CI image).
-# That's informational, not fatal — disarm `set -e` for
-# the call.
 
-detect_tools || true
+detect_tools
 detect_languages
 detect_project_meta
 
