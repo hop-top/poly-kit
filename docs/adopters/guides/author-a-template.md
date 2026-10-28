@@ -63,7 +63,7 @@ MD033: false          # allow inline HTML (badges, details)
 MD041: false          # first line heading not required
 ```
 
-Action: `DavidAnson/markdownlint-cli2-action@v19`
+Action: `DavidAnson/markdownlint-cli2-action@v24`
 
 ### Lychee (link checking)
 

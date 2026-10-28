@@ -229,8 +229,8 @@ just the `kit` binary on `$PATH`, no clone required.
 Every workflow uses:
 
 ```yaml
-- uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-- uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
+- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+- uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
   with: { install: true, cache: true }
 - run: mise run install
 ```
