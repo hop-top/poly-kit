@@ -161,6 +161,7 @@ function mergeFile<T extends object>(dst: T, filePath: string): void {
   let parsed: unknown;
   try {
     parsed = yaml.load(raw);
+    checkBounds(parsed);
   } catch (err: unknown) {
     throw new Error(
       `config: failed to parse ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
@@ -169,6 +170,86 @@ function mergeFile<T extends object>(dst: T, filePath: string): void {
 
   if (isPlainObject(parsed)) {
     mergeInto(dst as Record<string, unknown>, parsed);
+  }
+}
+
+/**
+ * Collection nesting limit, counted through aliases. js-yaml already rejects
+ * text nested deeper than its `maxDepth` (default 100, not in its typings),
+ * but an alias chain can nest deeper than the text does, and merge/copy
+ * recurse once per level.
+ */
+const MAX_DEPTH = 100;
+
+/** yaml.v3's alias budget (decode.go): see {@link checkBounds}. */
+const ALIAS_MIN_ALIASES = 100;
+const ALIAS_MIN_DECODED = 1000;
+const ALIAS_RATIO_LOW = 400_000;
+const ALIAS_RATIO_HIGH = 4_000_000;
+
+function allowedAliasRatio(decoded: number): number {
+  if (decoded <= ALIAS_RATIO_LOW) return 0.99;
+  if (decoded >= ALIAS_RATIO_HIGH) return 0.1;
+  return 0.99 - 0.89 * ((decoded - ALIAS_RATIO_LOW) / (ALIAS_RATIO_HIGH - ALIAS_RATIO_LOW));
+}
+
+/**
+ * Walks the parsed document the way merge and copy will, aliases expanded,
+ * and throws before that work can blow up.
+ *
+ * js-yaml returns an alias as a second reference to the anchored object, so
+ * copying it expands every reference: a "billion laughs" file of a few
+ * hundred bytes turns into ~10^9 nodes. js-yaml has no option to cap aliases,
+ * so this applies Go yaml.v3's budget: once more than 100 nodes were decoded
+ * inside alias expansions and more than 1000 in total, the share decoded
+ * inside aliases must stay at or below 0.99 (up to 400k nodes), falling
+ * linearly to 0.10 at 4M; otherwise `document contains excessive aliasing`.
+ * The first reference to an object is its anchor; later ones count as alias
+ * expansions. Scalars are counted but cannot be told apart from aliased
+ * scalars. Unlike Go, which skips keys its target struct ignores, every key
+ * counts. Iterative, so depth never touches the call stack.
+ */
+function checkBounds(root: unknown): void {
+  const seen = new WeakSet<object>();
+  // [node, depth, inside an alias expansion]
+  const stack: [unknown, number, boolean][] = [[root, 1, false]];
+  let decoded = 0;
+  let aliased = 0;
+  while (stack.length > 0) {
+    const [node, depth, inAlias] = stack.pop() as [unknown, number, boolean];
+    let alias = inAlias;
+    const container = Array.isArray(node) || isPlainObject(node);
+    if (container) {
+      if (seen.has(node)) {
+        decoded++; // the alias node itself, as yaml.v3 counts it
+        alias = true;
+      } else {
+        seen.add(node);
+      }
+    }
+    decoded++;
+    if (alias) aliased++;
+    if (
+      aliased > ALIAS_MIN_ALIASES &&
+      decoded > ALIAS_MIN_DECODED &&
+      aliased / decoded > allowedAliasRatio(decoded)
+    ) {
+      throw new Error("document contains excessive aliasing");
+    }
+    if (!container) continue;
+    if (depth > MAX_DEPTH) {
+      throw new Error(`nesting exceeded maxDepth (${MAX_DEPTH})`);
+    }
+    if (Array.isArray(node)) {
+      for (let i = node.length - 1; i >= 0; i--) stack.push([node[i], depth + 1, alias]);
+    } else {
+      const keys = Object.keys(node);
+      for (let i = keys.length - 1; i >= 0; i--) {
+        decoded++; // the key node
+        if (alias) aliased++;
+        stack.push([(node as Record<string, unknown>)[keys[i]], depth + 1, alias]);
+      }
+    }
   }
 }
 
@@ -207,6 +288,8 @@ function setOwn(dst: Record<string, unknown>, key: string, value: unknown): void
 /**
  * Copies plain objects and arrays so YAML aliases do not share one instance
  * in `dst` (a later merge into one key would otherwise leak into another).
+ * Memoizing per source object would bring that sharing back, so each
+ * reference is copied; {@link checkBounds} has already capped the total.
  */
 function copy(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(copy);
