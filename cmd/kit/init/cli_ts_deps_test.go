@@ -168,15 +168,16 @@ func TestCLITSKitPin_BumpedByTheReleasePR(t *testing.T) {
 // The app hands its commander Command to @hop-top/kit (e.g.
 // registerOutputFlags), so both sides share commander 15; commander 15
 // is ESM-only and declares engines.node >=22.12, the floor that also
-// lets the CJS kit SDK require() it. The scaffold's .npmrc sets
-// engine-strict, so the project states the same floor.
+// lets the CJS kit SDK require() it. ESLint 10, a dev dependency of the
+// scaffold, declares ^22.13, and the scaffold's .npmrc sets
+// engine-strict, so the project states the higher of the two floors.
 func TestBootstrap_CLITS_CommanderAndNodeFloor(t *testing.T) {
 	_, pkg, _ := renderCLITSPackageJSON(t)
 
 	assert.Regexp(t, `^\^15\.`, pkg.Dependencies["commander"],
 		"generated project depends on commander 15, the major @hop-top/kit builds on")
-	assert.Equal(t, ">=22.12", pkg.Engines["node"],
-		"generated project declares the Node floor commander 15 requires")
+	assert.Equal(t, ">=22.13", pkg.Engines["node"],
+		"generated project declares the Node floor commander 15 and ESLint 10 require")
 }
 
 // cliTSAllowedBuilds are the dependencies whose install scripts a
