@@ -14,7 +14,7 @@
 go = "1.27.3"
 node = "24"
 pnpm = "12"
-python = "3.13"
+python = "3.14"
 uv = "0.13"
 rust = "1.99.0"
 golangci-lint = "2.14.0"

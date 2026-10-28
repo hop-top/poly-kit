@@ -23,9 +23,9 @@
             pnpm_12
 
             # Python
-            python313
-            python313Packages.pip
-            python313Packages.virtualenv
+            python314
+            python314Packages.pip
+            python314Packages.virtualenv
             ruff
 
             # Linting
