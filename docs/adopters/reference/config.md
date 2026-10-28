@@ -61,6 +61,17 @@ Unlike Go, a value of a different kind replaces the earlier one instead of
 failing, and a nested object is merged where Go would replace a map entry or
 an `any` value.
 
+Both ports bound alias expansion per file. Go fails with `yaml: document
+contains excessive aliasing` once more than 100 nodes were decoded inside
+alias expansions and more than 1000 in total, and the share inside aliases
+exceeds 0.99 (up to 400k nodes, falling linearly to 0.10 at 4M); it counts
+only fields the target reads, so aliases under ignored keys cost nothing.
+TypeScript applies the same budget to every key, since it has no target,
+and throws `config: failed to parse <path>: document contains excessive
+aliasing`. TypeScript also caps nesting at 100 collections, counted through
+aliases (`config: failed to parse <path>: nesting exceeded maxDepth (100)`);
+Go's parser allows 10000 levels of text nesting.
+
 ## Writing values
 
 Use `SetValue` when the value has a Go type; use `Set` only when the value

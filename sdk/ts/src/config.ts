@@ -26,6 +26,19 @@
  * YAML causes {@link load} to throw. A document whose root is not a mapping
  * is ignored.
  *
+ * Each file is checked before it merges, with aliases expanded, and
+ * {@link load} throws `config: failed to parse <path>: <reason>` when:
+ *
+ * - its aliases expand past Go yaml.v3's budget: more than 100 nodes inside
+ *   alias expansions and more than 1000 in total, with the share inside
+ *   aliases above 0.99 (up to 400k nodes), falling linearly to 0.10 at 4M
+ *   (`document contains excessive aliasing`). Go counts only the keys its
+ *   target struct reads; TS has no target, so it counts every key, and a
+ *   file Go accepts because the aliases sit under ignored keys fails here.
+ * - collections nest deeper than 100, counted through aliases
+ *   (`nesting exceeded maxDepth (100)`). Go allows 10000 levels of text
+ *   nesting and caps alias chains only through the budget above.
+ *
  * @example
  * ```ts
  * import { load } from "@hop-top/kit/config";
