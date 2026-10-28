@@ -305,63 +305,165 @@ def parse_completion(v: Any, names: ToolNames | None = None) -> Completion:
 
 @dataclass
 class _PartialCall:
+    wire: int = 0  # the chunk's tool_calls[].index
     id: str = ""
     name: str = ""
     arguments: str = ""
+    # Argument fragments that came before the call started (no id and
+    # name yet).
+    pending: str = ""
+    started: bool = False
 
 
 class ChunkAccumulator:
     """Folds streamed Chat Completions chunks into a turn: content, tool
-    calls (by index, arguments concatenated), finish reason, usage."""
+    calls (in order of first fragment, arguments concatenated), finish
+    reason, usage.
 
-    def __init__(self) -> None:
+    With *events* (:attr:`~hop_top_kit.llm.Request.stream_events`),
+    :meth:`feed` also yields tool-call events and usage snapshots: a call
+    starts on the fragment that completes its id and name (argument
+    fragments before that follow the start as one delta), then a delta
+    per arguments fragment; every open call ends, in index order, when a
+    choice finishes. A finished choice's calls are closed: later
+    fragments are not folded. *names* maps wire names back to the names
+    the caller defined.
+    """
+
+    def __init__(self, *, events: bool = False, names: ToolNames | None = None) -> None:
         self.content = ""
         self.finish_reason = ""
         self.usage: llm.Usage | None = None
-        self._calls: dict[int, _PartialCall] = {}
+        self._events = events
+        self._names = names
+        self._calls: list[_PartialCall] = []
+        self._by_wire: dict[int, int] = {}
 
     def apply(self, chunk: Any) -> str:
         """Apply one chunk; return its content delta."""
+        return "".join(t.content for t in self.feed(chunk))
+
+    def feed(self, chunk: Any) -> list[llm.Token]:
+        """Apply one chunk; return the tokens it yields: text, then
+        tool-call events, then usage (events only when opted in)."""
+        out: list[llm.Token] = []
         if not isinstance(chunk, dict):
-            return ""
+            return out
+        choices = chunk.get("choices") or []
+        if choices and isinstance(choices[0], dict):
+            c = choices[0]
+            delta = c.get("delta") or {}
+            delta = delta if isinstance(delta, dict) else {}
+            text = _s(delta.get("content"))
+            if text:
+                self.content += text
+                out.append(llm.Token(content=text))
+            if not self.finish_reason:
+                for tc in delta.get("tool_calls") or []:
+                    if isinstance(tc, dict):
+                        self._fragment(tc, out)
+            reason = _s(c.get("finish_reason"))
+            if reason and not self.finish_reason:
+                self.finish_reason = reason
+                self._end_calls(out)
         u = usage_of(chunk.get("usage"))
         if u is not None:
             self.usage = u
-        choices = chunk.get("choices") or []
-        if not choices or not isinstance(choices[0], dict):
-            return ""
-        c = choices[0]
-        if c.get("finish_reason"):
-            self.finish_reason = _s(c.get("finish_reason"))
-        delta = c.get("delta") or {}
-        for tc in delta.get("tool_calls") or []:
-            if not isinstance(tc, dict):
-                continue
-            idx = tc.get("index")
-            idx = idx if isinstance(idx, int) else len(self._calls)
-            pc = self._calls.setdefault(idx, _PartialCall())
-            fn = tc.get("function") or {}
-            if tc.get("id") and not pc.id:
-                pc.id = _s(tc.get("id"))
-            if fn.get("name") and not pc.name:
-                pc.name = _s(fn.get("name"))
-            pc.arguments += _arguments_text(fn.get("arguments"))
-        text = _s(delta.get("content"))
-        self.content += text
-        return text
+            if self._events:
+                out.append(llm.Token(usage=llm.Usage(**vars(u))))
+        return out
+
+    def _fragment(self, tc: dict[str, Any], out: list[llm.Token]) -> None:
+        wire = tc.get("index")
+        if not isinstance(wire, int) or isinstance(wire, bool):
+            wire = len(self._calls)
+        i = self._by_wire.get(wire)
+        if i is None:
+            i = len(self._calls)
+            self._by_wire[wire] = i
+            self._calls.append(_PartialCall(wire=wire))
+        pc = self._calls[i]
+        fn = tc.get("function") or {}
+        fn = fn if isinstance(fn, dict) else {}
+        if not pc.id:
+            pc.id = _s(tc.get("id"))
+        if not pc.name:
+            pc.name = _s(fn.get("name"))
+        frag = _arguments_text(fn.get("arguments"))
+        pc.arguments += frag
+        if not self._events:
+            return
+        if not pc.started:
+            pc.pending += frag
+            if pc.id and pc.name:
+                self._start(i, pc, out)
+            return
+        if frag:
+            out.append(
+                llm.Token(
+                    tool_call=llm.ToolCallEvent(
+                        kind=llm.ToolCallEventKind.DELTA, index=i, arguments_delta=frag
+                    )
+                )
+            )
+
+    def _start(self, i: int, pc: _PartialCall, out: list[llm.Token]) -> None:
+        pc.started = True
+        out.append(
+            llm.Token(
+                tool_call=llm.ToolCallEvent(
+                    kind=llm.ToolCallEventKind.START,
+                    index=i,
+                    id=pc.id,
+                    name=self._original(pc.name),
+                )
+            )
+        )
+        if pc.pending:
+            out.append(
+                llm.Token(
+                    tool_call=llm.ToolCallEvent(
+                        kind=llm.ToolCallEventKind.DELTA, index=i, arguments_delta=pc.pending
+                    )
+                )
+            )
+            pc.pending = ""
+
+    def _end_calls(self, out: list[llm.Token]) -> None:
+        """Close every open call, in index order; a call that never got
+        its id or name starts first."""
+        if not self._events:
+            return
+        for i in sorted(range(len(self._calls)), key=lambda j: self._calls[j].wire):
+            pc = self._calls[i]
+            if not pc.started:
+                self._start(i, pc, out)
+            call = self._call(pc)
+            out.append(
+                llm.Token(
+                    tool_call=llm.ToolCallEvent(
+                        kind=llm.ToolCallEventKind.END,
+                        index=i,
+                        id=call.id,
+                        name=call.name,
+                        call=call,
+                    )
+                )
+            )
+
+    def _original(self, name: str, names: ToolNames | None = None) -> str:
+        names = names or self._names
+        return names.original(name) if names else name
+
+    def _call(self, pc: _PartialCall, names: ToolNames | None = None) -> llm.ToolCall:
+        return llm.ToolCall(
+            id=pc.id, name=self._original(pc.name, names), arguments=pc.arguments or "{}"
+        )
 
     def outcome(self, names: ToolNames | None = None) -> llm.StreamOutcome:
-        calls = [
-            llm.ToolCall(
-                id=pc.id,
-                name=names.original(pc.name) if names else pc.name,
-                arguments=pc.arguments or "{}",
-            )
-            for _, pc in sorted(self._calls.items())
-        ]
         return llm.StreamOutcome(
             content=self.content,
-            tool_calls=calls,
+            tool_calls=[self._call(pc, names) for pc in self._calls],
             finish_reason=self.finish_reason,
             usage=self.usage or llm.Usage(),
         )
@@ -456,6 +558,10 @@ class OpenAIAdapter:
             b["tool_choice"] = tool_choice(req.tool_choice, names)
         if stream:
             b["stream"] = True
+            if req.stream_events:
+                # Usage streams only when asked for, in a chunk after the
+                # last choice; a stream without events does not ask.
+                b["stream_options"] = {"include_usage": True}
         return b
 
     def _call(self, req: llm.Request, tools: list[llm.ToolDef] | None) -> Completion:
@@ -475,6 +581,7 @@ class OpenAIAdapter:
             model=model,
             scrub=self._transport.scrub,
             names=names,
+            events=req.stream_events,
         )
 
     def complete(self, req: llm.Request) -> llm.Response:
@@ -500,8 +607,10 @@ class OpenAIAdapter:
 
 
 class OpenAIStream:
-    """A streamed Chat Completions turn: iterate for content tokens, then
-    one ``done`` token; :meth:`outcome` is the folded turn after it.
+    """A streamed Chat Completions turn: iterate for content tokens (and,
+    with *events*, tool-call events and usage snapshots, as
+    :class:`ChunkAccumulator` yields them), then one ``done`` token;
+    :meth:`outcome` is the folded turn after it.
 
     ``data: [DONE]`` ends the stream; a body ending without it raises
     :class:`~hop_top_kit.llm.StreamTruncatedError` unless a chunk already
@@ -517,13 +626,15 @@ class OpenAIStream:
         model: str,
         scrub: Callable[[str], str],
         names: ToolNames,
+        events: bool = False,
     ) -> None:
         self._reader = reader
         self._provider = provider
         self._model = model
         self._scrub = scrub
         self._names = names
-        self._acc = ChunkAccumulator()
+        self._acc = ChunkAccumulator(events=events, names=names)
+        self._queue: list[llm.Token] = []
         self._finished = False
         self._outcome: llm.StreamOutcome | None = None
 
@@ -541,6 +652,7 @@ class OpenAIStream:
 
     def close(self) -> None:
         self._finished = True
+        self._queue.clear()
         self._reader.close()
 
     def _done(self) -> llm.Token:
@@ -554,6 +666,8 @@ class OpenAIStream:
 
     def __next__(self) -> llm.Token:
         while True:
+            if self._queue:
+                return self._queue.pop(0)
             if self._finished:
                 raise StopIteration
             ev = self._reader.next_event()
@@ -577,9 +691,7 @@ class OpenAIStream:
                 status = chunk["error"].get("code")
                 status = status if isinstance(status, int) else 0
                 raise self._fail(classify(self._provider, status, None, etype, msg, self._model))
-            text = self._acc.apply(chunk)
-            if text:
-                return llm.Token(content=text)
+            self._queue.extend(self._acc.feed(chunk))
 
 
 # ---------------------------------------------------------------------------
