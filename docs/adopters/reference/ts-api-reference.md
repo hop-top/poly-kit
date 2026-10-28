@@ -231,7 +231,12 @@ Subpath imports follow the package's `exports` map (see
   `Map` and class instances are replaced, never merged into. Go merges only
   struct fields this way: it replaces map entries and `any` values whole and
   fails on a kind mismatch (see
-  [Layer merge rules](config.md#layer-merge-rules)).
+  [Layer merge rules](config.md#layer-merge-rules)). A file whose aliases
+  expand past Go yaml.v3's budget throws `config: failed to parse <path>:
+  document contains excessive aliasing`; one nesting deeper than 100
+  collections, counted through aliases, throws `... nesting exceeded
+  maxDepth (100)`. Unlike Go, every key counts toward the budget, including
+  keys Go would ignore.
 - `@hop-top/kit/sqlstore` — embedded SQLite key/value store. Its types
   reference `better-sqlite3`: install `@types/better-sqlite3` (an optional
   peer dependency) or type-checking with `skipLibCheck: false` fails with
