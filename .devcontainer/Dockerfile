@@ -65,9 +65,9 @@ COPY --from=builder /nix/store/*-pnpm*/bin/* \
     ${TOOLS_DIR}/bin/
 
 # Copy Python + ruff
-COPY --from=builder /nix/store/*-python3-3.13*/bin/* \
+COPY --from=builder /nix/store/*-python3-3.14*/bin/* \
     ${TOOLS_DIR}/python/bin/
-COPY --from=builder /nix/store/*-python3-3.13*/lib \
+COPY --from=builder /nix/store/*-python3-3.14*/lib \
     ${TOOLS_DIR}/python/lib/
 COPY --from=builder /nix/store/*-ruff*/bin/* \
     ${TOOLS_DIR}/bin/
