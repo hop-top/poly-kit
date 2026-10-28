@@ -514,6 +514,41 @@ jobs:
       - run: scripts/test-affected.sh py
         if: steps.scope.outputs.run == 'true'
 
+  # The Python SDKs develop on the mise Python pin but ship
+  # requires-python floors (sdk/py >=3.11, py-kit-engine >=3.10), so a
+  # newer-stdlib API can pass py-test and still break on the floor. Same
+  # scope and suites as py-test, each package synced on its own floor
+  # (the make targets' `uv sync` keeps that environment).
+  py-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+      - id: scope
+        run: scripts/test-affected.sh --gate py
+      - id: pins
+        if: steps.scope.outputs.run == 'true'
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: steps.scope.outputs.run == 'true'
+        with:
+          python-version: |  # toolchain-parity: allow (requires-python floors of py-kit-engine and sdk/py)
+            3.10
+            3.11
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        if: steps.scope.outputs.run == 'true'
+        with:
+          version: ${{ steps.pins.outputs.uv }}
+      - run: cd sdk/py && uv sync --all-extras --locked --python 3.11
+        if: steps.scope.outputs.run == 'true'
+      - run: cd engine/sdk/py-kit-engine && uv sync --all-extras --locked --python 3.10
+        if: steps.scope.outputs.run == 'true'
+      - run: scripts/test-affected.sh py
+        if: steps.scope.outputs.run == 'true'
+
   rs-test:
     runs-on: ubuntu-latest
     steps:
@@ -947,7 +982,7 @@ jobs:
   # The failed jobs carry the red; this job fails only when it cannot
   # report.
   nightly-report:
-    needs: [go-lint, ts-lint, py-lint, rs-lint, docs-lint, sdk-paths-lint, adr-refs-lint, internal-refs-lint, actions-pinned-lint, toolchain-parity, bats-tests, templates-e2e, proto-check, template-kit-pin, go-test, go-race, ts-test, ts-node-floor, py-test, rs-test, rs-wasm, rs-mobile, rs-features, php-test, parity, compliance]
+    needs: [go-lint, ts-lint, py-lint, rs-lint, docs-lint, sdk-paths-lint, adr-refs-lint, internal-refs-lint, actions-pinned-lint, toolchain-parity, bats-tests, templates-e2e, proto-check, template-kit-pin, go-test, go-race, ts-test, ts-node-floor, py-test, py-floor, rs-test, rs-wasm, rs-mobile, rs-features, php-test, parity, compliance]
     if: ${{ github.event_name == 'schedule' && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
