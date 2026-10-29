@@ -54,26 +54,33 @@ has no Trace of its own.
 `quiet` only raises; never lowers. If the caller requests
 ErrorLevel, `quiet` does not downgrade to WarnLevel.
 
-### TypeScript *(planned: `@hop-top/kit/log`)*
+### TypeScript (`@hop-top/kit/log`)
 
-Will wrap `pino` with kit transport.
+Wraps `pino` with a kit transport. Variadic key-value API, same as Go.
 
 ```ts
-import { createLogger } from "@hop-top/kit/log"
+import { createLogger, withVerbose } from "@hop-top/kit/log"
 
 const log = createLogger({ quiet: false, noColor: false })
-log.info("starting", { port: 8080 })
+log.info("starting", "port", 8080)
+
+const v = withVerbose({ verbose: 1 })   // -V count → level via parity.json
 ```
 
-#### Factory *(planned)*
+#### Options
 
 ```ts
-createLogger(opts?: { quiet?: boolean; noColor?: boolean })
+interface LoggerOptions {
+  quiet?: boolean;            // raise to verbosity.quiet_override (warn)
+  noColor?: boolean;          // strip ANSI from level prefixes
+  output?: { write(chunk: string): unknown }; // default process.stderr
+}
 ```
 
-- `quiet` suppresses info + debug (same as Go).
-- `noColor` strips ANSI from transport output.
-- Extensible via pino transports.
+- `createLogger` defaults to debug; `withVerbose` resolves the
+  `-V` count through the parity contract.
+- `output` redirects rendered lines (e.g. a test sink). Line format is
+  unchanged; mirrors Go's `(*log.Logger).SetOutput`.
 
 ### Python *(planned: `hop_top_kit.log`)*
 
@@ -119,18 +126,20 @@ truth, the hexes track the palette.
 LEVEL msg key=val key=val\n
 ```
 
-All output goes to stderr. Structured key=value pairs follow the
-message on the same line.
+Output goes to stderr unless redirected (Go `SetOutput`, TS
+`output`). Structured key=value pairs follow the message on the
+same line.
 
 ## Cross-language parity
 
 | Feature         | Go     | TS       | Python   |
 |-----------------|--------|----------|----------|
-| Quiet mode      | yes    | planned  | planned  |
-| Verbosity (-V)  | yes    | planned  | planned  |
-| No-color        | yes    | planned  | planned  |
-| Level colors    | yes    | planned  | planned  |
-| Stderr output   | yes    | planned  | planned  |
+| Quiet mode      | yes    | yes      | planned  |
+| Verbosity (-V)  | yes    | yes      | planned  |
+| No-color        | yes    | yes      | planned  |
+| Level colors    | yes    | yes      | planned  |
+| Stderr output   | yes    | yes      | planned  |
+| Custom output   | `SetOutput` | `output` | no  |
 | Transport ext.  | n/a    | pino     | structlog|
 
 ## Related pages

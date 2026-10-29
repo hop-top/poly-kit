@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createLogger } from './log';
+import { createLogger, withVerbose } from './log';
 
 function makeStderr(): { write: ReturnType<typeof vi.fn>; captured: () => string } {
   const chunks: string[] = [];
@@ -141,5 +141,81 @@ describe('log key-value edge cases', () => {
       const out = captured();
       expect(out).toContain('orphan');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Default output regression — no options must stay byte-identical
+// ---------------------------------------------------------------------------
+
+describe('log default output (regression pin)', () => {
+  it('writes exact LEVEL msg k=v lines to process.stderr', () => {
+    withStderr((captured) => {
+      const log = createLogger({ noColor: true });
+      log.info('start', 'port', 8080, 'path', '/my dir');
+      log.warn('w');
+      log.error('e', 'code', 2);
+      log.debug('d');
+      expect(captured()).toBe(
+        'INFO start port=8080 path="/my dir"\n'
+        + 'WARN w\n'
+        + 'ERRO e code=2\n'
+        + 'DEBU d\n',
+      );
+    });
+  });
+
+  it('keeps the themed ANSI prefixes when no option is passed', () => {
+    withStderr((captured) => {
+      const log = createLogger();
+      log.info('i');
+      log.error('e');
+      expect(captured()).toBe(
+        '\x1b[38;2;133;129;131mINFO\x1b[0m i\n'
+        + '\x1b[1m\x1b[38;2;237;74;94mERRO\x1b[0m\x1b[22m e\n',
+      );
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Injectable output stream
+// ---------------------------------------------------------------------------
+
+describe('log output option', () => {
+  function sink(): { output: { write(chunk: string): boolean }; text: () => string } {
+    const chunks: string[] = [];
+    return {
+      output: { write: (chunk: string) => { chunks.push(chunk); return true; } },
+      text: () => chunks.join(''),
+    };
+  }
+
+  it('createLogger writes to the injected output, not stderr', () => {
+    withStderr((captured) => {
+      const s = sink();
+      const log = createLogger({ noColor: true, output: s.output });
+      log.info('hello', 'k', 'v');
+      expect(s.text()).toBe('INFO hello k=v\n');
+      expect(captured()).toBe('');
+    });
+  });
+
+  it('withVerbose writes to the injected output, not stderr', () => {
+    withStderr((captured) => {
+      const s = sink();
+      const log = withVerbose({ noColor: true, verbose: 1, output: s.output });
+      log.debug('dbg');
+      expect(s.text()).toBe('DEBU dbg\n');
+      expect(captured()).toBe('');
+    });
+  });
+
+  it('injected output still honors quiet', () => {
+    const s = sink();
+    const log = createLogger({ quiet: true, noColor: true, output: s.output });
+    log.info('hidden');
+    log.warn('shown');
+    expect(s.text()).toBe('WARN shown\n');
   });
 });
