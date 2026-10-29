@@ -6,7 +6,7 @@ import {
   AliasStore, loadFrom, saveTo, findFirstNonFlag, Expander,
   bridgeAliases, findCommand,
 } from './alias';
-import { Command } from 'commander';
+import { Command, CommanderError } from 'commander';
 
 let tmpDir: string;
 
@@ -419,5 +419,114 @@ describe('bridgeAliases', () => {
 
     const deploy = program.commands.find(c => c.name() === 'deploy');
     expect(deploy?.aliases()).toEqual([]);
+  });
+});
+
+// ── bridgeAliases proxy dispatch ────────────────────────────
+
+describe('bridgeAliases proxy dispatch', () => {
+  type Seen = { pos?: string; size?: string; verbose?: boolean };
+
+  function setup(
+    action: (
+      pos: string | undefined, opts: { size?: string },
+    ) => void | Promise<void>,
+  ): Command {
+    const program = new Command('x')
+      .exitOverride()
+      .option('-v, --verbose')
+      .configureOutput({ writeErr: () => {}, writeOut: () => {} });
+    program
+      .command('react')
+      .command('components')
+      .option('--size <n>')
+      .argument('[pos]')
+      .action(action);
+    const store = new AliasStore('/dev/null');
+    store.set('comp', 'react components');
+    store.set('compsz', 'react components --size 9');
+    bridgeAliases(program, store);
+    return program;
+  }
+
+  const tick = () => new Promise(r => setTimeout(r, 5));
+  let unhandled: unknown[];
+  const onUnhandled = (e: unknown) => { unhandled.push(e); };
+
+  beforeEach(() => {
+    unhandled = [];
+    process.on('unhandledRejection', onUnhandled);
+  });
+  afterEach(() => {
+    process.off('unhandledRejection', onUnhandled);
+  });
+
+  it('parseAsync awaits an async target action', async () => {
+    let done = false;
+    const program = setup(async () => { await tick(); done = true; });
+    await program.parseAsync(['node', 'x', 'comp']);
+    expect(done).toBe(true);
+  });
+
+  it('parseAsync rejects with the async target error', async () => {
+    const program = setup(async () => {
+      await tick();
+      throw new CommanderError(3, 'x.boom', 'boom');
+    });
+    const err = await program
+      .parseAsync(['node', 'x', 'comp'])
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CommanderError);
+    expect((err as CommanderError).exitCode).toBe(3);
+    await tick();
+    expect(unhandled).toEqual([]);
+  });
+
+  it('passes args and options through to the target', async () => {
+    let seen: Seen = {};
+    const program = setup((pos, o) => { seen = { pos, size: o.size }; });
+    await program.parseAsync(['node', 'x', 'comp', '--size', '3', 'p1']);
+    expect(seen).toEqual({ pos: 'p1', size: '3' });
+
+    await program.parseAsync(['node', 'x', 'compsz', 'p2']);
+    expect(seen).toEqual({ pos: 'p2', size: '9' });
+  });
+
+  it('keeps program-level options given around the alias', async () => {
+    let verbose: unknown;
+    const program = setup(() => { verbose = program.opts().verbose; });
+    await program.parseAsync(['node', 'x', '-v', 'comp']);
+    expect(verbose).toBe(true);
+
+    verbose = undefined;
+    await program.parseAsync(['node', 'x', 'comp', 'p1', '-v']);
+    expect(verbose).toBe(true);
+  });
+
+  it('sync parse runs a sync target and rethrows its errors', async () => {
+    let seen: string | undefined;
+    const ok = setup(pos => { seen = pos; });
+    ok.parse(['node', 'x', 'comp', 'p1']);
+    expect(seen).toBe('p1');
+
+    const bad = setup(() => { throw new Error('syncboom'); });
+    expect(() => bad.parse(['node', 'x', 'comp'])).toThrow('syncboom');
+
+    expect(() => ok.parse(['node', 'x', 'comp', '--bogus']))
+      .toThrow(CommanderError);
+    await tick();
+    expect(unhandled).toEqual([]);
+  });
+
+  it('unknown target still reports unknown command', async () => {
+    const program = new Command('x')
+      .exitOverride()
+      .configureOutput({ writeErr: () => {}, writeOut: () => {} });
+    program.command('real').action(() => {});
+    const store = new AliasStore('/dev/null');
+    store.set('nope', 'nonexistent');
+    bridgeAliases(program, store);
+    await expect(program.parseAsync(['node', 'x', 'nope']))
+      .rejects.toMatchObject({ code: 'commander.unknownCommand' });
   });
 });

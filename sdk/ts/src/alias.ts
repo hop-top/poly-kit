@@ -215,12 +215,25 @@ export function findCommand(
   return cmd;
 }
 
+/** Commander internal used for subcommand dispatch (promise-or-value). */
+type Dispatcher = {
+  _parseCommand(operands: string[], unknown: string[]): void | Promise<void>;
+};
+
 /**
  * Register loaded aliases with Commander's native .alias() API.
  *
  * Simple single-command aliases use Commander's built-in .alias(),
  * giving free completion and help display. Multi-word or unresolved
- * targets get a hidden proxy command that re-parses with expanded args.
+ * targets get a hidden proxy command that dispatches the expanded
+ * args from the program, like a native subcommand.
+ *
+ * Dispatch reuses Commander's own subcommand dispatch rather than
+ * calling parse()/parseAsync() again: re-parsing resets program
+ * option values mid-parse and fixes the sync/async mode, whereas
+ * dispatch returns the target's result as-is. parseAsync() callers
+ * thus await async targets (rejections propagate), and parse()
+ * callers keep synchronous throws.
  */
 export function bridgeAliases(
   program: Command,
@@ -245,9 +258,9 @@ export function bridgeAliases(
       .allowExcessArguments(true)
       .action(function (this: Command) {
         const expanded = target.split(/\s+/);
-        program.parse([
-          'node', program.name(), ...expanded, ...this.args,
-        ]);
+        return (program as unknown as Dispatcher)._parseCommand(
+          [], [...expanded, ...this.args],
+        );
       });
     proxy.helpOption(false);
     (proxy as any)._hidden = true;
