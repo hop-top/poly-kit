@@ -55,9 +55,10 @@ describe('exports map contract', () => {
 
 describe('root barrel', () => {
   it('re-exports every public subpath except sqlstore as a namespace', () => {
+    // Kebab-case subpaths become camelCase namespaces (completion-values -> completionValues).
     const expected = Object.keys(pkg.exports)
       .filter((p) => p !== '.' && p !== './sqlstore')
-      .map((p) => p.replace(/^\.\//, ''));
+      .map((p) => p.replace(/^\.\//, '').replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()));
     for (const name of expected) {
       expect(kit, name).toHaveProperty(name);
       expect(typeof (kit as Record<string, unknown>)[name], name).toBe('object');
