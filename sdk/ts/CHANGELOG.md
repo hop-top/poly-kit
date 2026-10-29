@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.7...kit-ts/v0.5.0-alpha.8) (2026-10-29)
 
+The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.8. This release includes new features and bug fixes.
+
 
 ### Features
 
@@ -15,6 +17,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Bug Fixes
 
 * **ts/alias:** skip root-alias completion for real-command proxies ([0dc2251](https://github.com/hop-top/poly-kit/commit/0dc225176ed2a1a94fdb8beb4063b56da23ce05c))
+
+Full diff: [kit-ts/v0.5.0-alpha.7...kit-ts/v0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.7...kit-ts/v0.5.0-alpha.8)
 
 ## [0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.6...kit-ts/v0.5.0-alpha.7) (2026-10-29)
 
