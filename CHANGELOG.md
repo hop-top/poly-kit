@@ -2,6 +2,8 @@
 
 ## [0.5.0-beta.3](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.2...kit/v0.5.0-beta.3) (2026-10-29)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.3. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -23,6 +25,8 @@
 ### Bug Fixes
 
 * **ts/toolspec:** forward spec --version past the program version flag ([afbf3a8](https://github.com/hop-top/poly-kit/commit/afbf3a89001d432dbbbf6a971051a5c6ea625e2f))
+
+Full diff: [kit/v0.5.0-beta.2...kit/v0.5.0-beta.3](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.2...kit/v0.5.0-beta.3)
 
 ## [0.5.0-beta.2](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.1...kit/v0.5.0-beta.2) (2026-10-29)
 
