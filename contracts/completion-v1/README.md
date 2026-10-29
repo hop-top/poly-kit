@@ -32,7 +32,7 @@ Directives are cobra's bit set: 0 default, 1 error, 2 no space, 4 no file comple
 
 Prefix matching in the completers is case-insensitive; command, alias and flag-name matching in `__complete` is case-sensitive, as in cobra. Alias completion order follows Go map iteration, so those cases are `unordered`.
 
-After a cobra bump, `make completion-regen` rewrites the script goldens and the Rust templates; see [`scripts/`](scripts/README.md).
+After a cobra bump, `make completion-regen` rewrites the script goldens and the Rust and TS templates; see [`scripts/`](scripts/README.md).
 
 Runners are strict: unknown fields, a `version` other than `v1`, a corpus file no runner consumes, a tree no case uses and a golden no case claims all fail the run.
 
