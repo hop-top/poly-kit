@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.0-beta.3](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.2...kit/v0.5.0-beta.3) (2026-10-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ts/completion:** generateBashCompletion/Zsh/Fish now return cobra's dynamic scripts, which call `<prog> __complete` (static word lists, `_<prog>_completions` and `-d` descriptions are gone); scripts from the old version must be regenerated. completion leaves take --no-descriptions and include powershell; leaf descriptions follow cobra. The undocumented `(cmd as any).__completionRegistry` hook was never read; use bindFlag/bindArgs (CompletionRegistry stays a plain lookup table, as in Go and Rust).
+
+### Features
+
+* **go/toolspec:** carry exit codes on Command ([7b304a4](https://github.com/hop-top/poly-kit/commit/7b304a4edd0611e21be0a514c4cee404e1b82c99))
+* **ts/completion:** cobra scripts and __complete engine ([be7ca8c](https://github.com/hop-top/poly-kit/commit/be7ca8c4063fe6f21706b4c1cdf8d5a52a793724))
+* **ts/config:** export mergeLayers, merge policies, load parsers ([1db83db](https://github.com/hop-top/poly-kit/commit/1db83dbd7ec6dd3e704728b63b609881e960b469))
+* **ts/config:** wildcard segments in arrayPolicyByPath ([bfa69c3](https://github.com/hop-top/poly-kit/commit/bfa69c37ba3d79fa81bc149137dab96fc5ed4d94))
+* **ts/log:** injectable output sink for logger ([f0bf7b0](https://github.com/hop-top/poly-kit/commit/f0bf7b00550217269c66afbd7c37c953e959fe91))
+* **ts/toolspec:** build ToolSpec from commander tree ([027a37c](https://github.com/hop-top/poly-kit/commit/027a37c12d478061785d7d26a32537f6cebebd9d))
+* **ts/toolspec:** carry exit codes on Command ([27f3213](https://github.com/hop-top/poly-kit/commit/27f321372e38df26114107f7f7823284cb107551))
+* **ts/toolspec:** port Go manifest builder with byte parity ([db30af7](https://github.com/hop-top/poly-kit/commit/db30af72d64addbb934b378bae23271e6b0abdd7))
+* **ts/toolspec:** port spec and spec coverage commands ([979abcd](https://github.com/hop-top/poly-kit/commit/979abcd85c872c9dca15d2c275eee149f2dfdb4e))
+
+
+### Bug Fixes
+
+* **ts/toolspec:** forward spec --version past the program version flag ([afbf3a8](https://github.com/hop-top/poly-kit/commit/afbf3a89001d432dbbbf6a971051a5c6ea625e2f))
+
 ## [0.5.0-beta.2](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.1...kit/v0.5.0-beta.2) (2026-10-29)
 
 The hop-top team is happy to announce Kit 0.5.0-beta.2. This release includes new features and bug fixes.
