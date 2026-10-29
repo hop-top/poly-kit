@@ -70,17 +70,58 @@ const v = withVerbose({ verbose: 1 })   // -V count → level via parity.json
 #### Options
 
 ```ts
+type LogLevelName = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal'
+
 interface LoggerOptions {
   quiet?: boolean;            // raise to verbosity.quiet_override (warn)
   noColor?: boolean;          // strip ANSI from level prefixes
+  level?: LogLevelName | 'silent'; // explicit threshold
   output?: { write(chunk: string): unknown }; // default process.stderr
+  format?: 'text' | 'json';   // default 'text'
+  formatter?: (rec: LogRecord) => string; // custom line renderer
+}
+
+interface LogRecord {
+  level: LogLevelName;
+  msg: string;
+  fields: Record<string, unknown>; // key-values in call order
+  kind?: 'success';                // set on success() lines
 }
 ```
 
 - `createLogger` defaults to debug; `withVerbose` resolves the
   `-V` count through the parity contract.
-- `output` redirects rendered lines (e.g. a test sink). Line format is
-  unchanged; mirrors Go's `(*log.Logger).SetOutput`.
+- `level` wins over both defaults. `'silent'` drops every line.
+  `quiet` only raises the level, never lowers it (same as Go
+  `WithLevel`). `level` and `'silent'` are TS options, not parity
+  verbosity entries.
+- `output` redirects rendered lines (e.g. a test sink). The line
+  format stays the same. Mirrors Go's `(*log.Logger).SetOutput`.
+- `format: 'json'` writes one object per line, in the same shape as Go
+  charm/log's `JSONFormatter` (see [Output format](#output-format)).
+  You can only select it with this option; there is no env var or
+  flag.
+- `formatter` is the TS extension point for house styles. The
+  returned string is written as-is, with `\n` appended if missing.
+  It wins over `format` and `noColor`, and level filtering still
+  applies. Glyph prefixes go here, for example with the parity status
+  symbols:
+
+  ```ts
+  const glyphs = { info: "ℹ", warn: "▲", error: "●" }
+  createLogger({
+    formatter: (r) =>
+      `${r.kind === "success" ? "✓" : glyphs[r.level] ?? "·"} ${r.msg}`,
+  })
+  ```
+
+#### `success`
+
+`log.success("deployed", "env", "prod")` logs at **info**. It is
+filtered exactly like `info`, so it is not a new level. Text output
+uses the `SUCC` label in the theme success colour (Guac `#52CF84`,
+not bold). JSON output adds `"kind":"success"` and keeps
+`"level":"info"`.
 
 ### Python *(planned: `hop_top_kit.log`)*
 
@@ -115,6 +156,7 @@ All runtimes use the hop.top palette:
 | DEBUG | `DEBU` | Smoke (dim)   | `#BFBCC8` |
 | TRACE | `TRAC` | Smoke (dim)   | `#BFBCC8` |
 | FATAL | `FATA` | Cherry (pink) | `#FF388B` |
+| SUCCESS (TS `success()`, info) | `SUCC` | Guac (green) | `#52CF84` |
 
 ERROR, WARN and FATAL prefixes are bold; INFO, DEBUG and TRACE are
 not. Hex values come from `charmtone`; the names are the source of
@@ -130,6 +172,16 @@ Output goes to stderr unless redirected (Go `SetOutput`, TS
 `output`). Structured key=value pairs follow the message on the
 same line.
 
+JSON (TS `format: 'json'`, Go `SetFormatter(log.JSONFormatter)`):
+
+```
+{"level":"info","msg":"start","port":8080}
+{"level":"info","msg":"deployed","kind":"success","env":"prod"}
+```
+
+Level strings are `trace|debug|info|warn|error|fatal`. Lines have no
+time, pid or hostname fields.
+
 ## Cross-language parity
 
 | Feature         | Go     | TS       | Python   |
@@ -140,7 +192,17 @@ same line.
 | Level colors    | yes    | yes      | planned  |
 | Stderr output   | yes    | yes      | planned  |
 | Custom output   | `SetOutput` | `output` | no  |
+| JSON format     | `SetFormatter`¹ | `format` | follow-up |
+| Explicit level  | `WithLevel` | `level` | follow-up |
+| Silent level    | follow-up | `'silent'` | follow-up |
+| `success()`     | follow-up | yes  | follow-up |
+| Custom formatter| n/a    | `formatter` (TS only) | processors |
 | Transport ext.  | n/a    | pino     | structlog|
+
+¹ charm/log's own setter on the returned logger; kit sets no formatter
+and does not expose a kit-level option. Kit's `TraceLevel` has no
+charm level string yet, so Go JSON output for trace lines is a
+follow-up too.
 
 ## Related pages
 
