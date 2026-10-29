@@ -13,5 +13,8 @@ pub mod completion_spec;
 mod enums;
 mod root;
 
-pub use alias::{AliasError, SHIM_ARGS};
+pub use alias::{
+    detect_cycles, validate_alias_name, AliasError, AliasHelp, AliasNameError, AliasNameErrorKind,
+    AliasNameRules, AliasOptions, SHIM_ARGS,
+};
 pub use root::Root;
