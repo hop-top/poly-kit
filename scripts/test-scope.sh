@@ -83,6 +83,7 @@ test-parity-redact go/core/redact $RS
 test-parity-upgrade go/core/upgrade $RS
 test-parity-cli go/console/cli/... $TS,$PY
 test-parity-engine engine/sdk/parity/... engine/sdk/ts-kit-engine,engine/sdk/py-kit-engine
+test-parity-alias go/console/alias,go/console/cli $RS,$TS,$PY
 "
 
 SELF=(scripts/test-scope.sh scripts/path-refs.awk scripts/go-affected.awk

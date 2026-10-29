@@ -297,7 +297,7 @@ test-rs-wasm: ## Rust: bus, domain and breaker wasm32 smoke tests under Node (ne
 # scripts/test-scope.sh maps each prerequisite to its Go packages and
 # SDKs (PARITY_TABLE) so a pull request runs only the targets it
 # reaches; a prerequisite missing from that table always runs.
-test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
 
 test-parity-cli: ## spaced CLI parity: Go, TypeScript and Python builds of the example agree
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
@@ -390,6 +390,18 @@ test-parity-taxonomy: ## exit-code taxonomy across Go + 4 SDKs
 	else \
 		echo "==> exit-taxonomy parity: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
+
+# Alias bridge corpus over contracts/alias-v1: bridge options, standalone
+# name validation and cycle detection, one runner per port.
+test-parity-alias: ## alias-v1 conformance corpus (Go, Rust, TypeScript and Python runners)
+	@echo "==> alias-v1 conformance: Go"
+	go test ./go/console/alias/ ./go/console/cli/ -run '^TestConformanceAlias' -count=1
+	@echo "==> alias-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features cli --test cli_alias_conformance --locked
+	@echo "==> alias-v1 conformance: TypeScript"
+	cd sdk/ts && pnpm vitest run src/alias.conformance.test.ts
+	@echo "==> alias-v1 conformance: Python"
+	cd sdk/py && uv sync --all-extras -q && uv run pytest tests/test_alias_conformance.py
 
 # Shared bus conformance corpus: the Go and Rust runners read the same
 # vectors under contracts/bus-v1.
