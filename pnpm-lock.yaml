@@ -13,7 +13,7 @@ importers:
   .:
     devDependencies:
       commander:
-        specifier: ^15.0.0
+        specifier: 15.0.0
         version: 15.0.0
 
   engine/sdk/ts-kit-engine:
@@ -83,7 +83,7 @@ importers:
         specifier: ^12.11.1
         version: 12.11.1
       commander:
-        specifier: ^15.0.0
+        specifier: 15.0.0
         version: 15.0.0
       csv-stringify:
         specifier: ^6.9.0

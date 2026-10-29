@@ -2,6 +2,6 @@
   "name": "kit-root",
   "private": true,
   "devDependencies": {
-    "commander": "^15.0.0"
+    "commander": "15.0.0"
   }
 }
