@@ -218,8 +218,9 @@ out of muscle memory from other tools — it is *recognized* but
 not *promoted*. Surfacing it under `--help-all` would advertise a
 second, parallel help mechanism alongside `--help-<id>`,
 contradicting the parity contract and inviting parity drift
-(every adopter would expect the same behaviour from TS/Py
-adapters that intentionally do not expose it).
+(every adopter would expect the same behaviour from the Py
+adapter, which intentionally does not expose it; Go and TS share
+the resolution order above).
 
 Adopters who want to discover the per-group help mechanism should
 use `--help-<id>` flags, which *are* listed under FLAGS in
