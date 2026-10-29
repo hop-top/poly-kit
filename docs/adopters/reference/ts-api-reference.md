@@ -222,7 +222,7 @@ Subpath imports follow the package's `exports` map (see
   [TypeID primitive](../../announcements/2026-05-typeid-primitive.md)). Source:
   [`sdk/ts/src/id/`](../../../sdk/ts/src/id/).
 - `@hop-top/kit/xdg` — XDG Base Directory paths.
-- `@hop-top/kit/config` — layered YAML config loading
+- `@hop-top/kit/config` — layered config loading (YAML by default)
   (`load(dst, {systemConfigPath, userConfigPath, projectConfigPath,
   envOverride})`). Each layer merges into `dst`: plain objects merge
   recursively, so `db: {port: 2}` keeps an earlier `db.host`; arrays and
@@ -237,6 +237,16 @@ Subpath imports follow the package's `exports` map (see
   collections, counted through aliases, throws `... nesting exceeded
   maxDepth (100)`. Unlike Go, every key counts toward the budget, including
   keys Go would ignore.
+  `load` also takes `parse` (one parser for every file, or a map from
+  lowercased extension such as `".json"` to parser; YAML otherwise) and
+  `merge` (the options below). `mergeLayers(layers, opts?)` merges
+  already-parsed objects into a new one with the same rules. Options:
+  `nullPolicy` (`"clear"` default, `"keep-lower"` skips nulls),
+  `maxDepth` (`Infinity` default; `1` merges objects one level below the
+  root and replaces deeper ones), `arrayPolicy` (`"replace"` default,
+  `"concat"`, `"union"` with structural equality) and `arrayPolicyByPath`
+  (dotted path to a policy or a `(lower, higher, path)` function). See
+  [Layer merge rules](config.md#layer-merge-rules).
 - `@hop-top/kit/sqlstore` — embedded SQLite key/value store. Its types
   reference `better-sqlite3`: install `@types/better-sqlite3` (an optional
   peer dependency) or type-checking with `skipLibCheck: false` fails with

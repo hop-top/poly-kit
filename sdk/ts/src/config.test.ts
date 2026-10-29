@@ -243,6 +243,47 @@ describe("load merge rules", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Default parsing (pinned: no parse option means YAML for every file)
+// ---------------------------------------------------------------------------
+
+function tmpFile(ext: string, content: string): string {
+  const p = path.join(os.tmpdir(), `config-test-${Math.random().toString(36).slice(2)}${ext}`);
+  fs.writeFileSync(p, content, "utf8");
+  return p;
+}
+
+describe("load default parsing", () => {
+  it("throws on a duplicate key", () => {
+    expect(() => loadLayers({}, "a: 1\na: 2\n")).toThrow(/failed to parse .*duplicated mapping key/);
+  });
+
+  it("accepts a trailing comma in a flow collection", () => {
+    const got = loadLayers<Record<string, unknown>>({}, "{a: 1, tags: [x, y,],}\n");
+    expect(got).toEqual({ a: 1, tags: ["x", "y"] });
+  });
+
+  it("parses a .json file as YAML", () => {
+    const f = tmpFile(".json", '{"a": {"b": 1}, "tags": ["x"]}');
+    try {
+      expect(load({}, { projectConfigPath: f })).toEqual({ a: { b: 1 }, tags: ["x"] });
+    } finally {
+      cleanup(f);
+    }
+  });
+
+  it("reads a .js file as YAML text and never executes it", () => {
+    const scalar = tmpFile(".js", "'use strict'\n");
+    const junk = tmpFile(".js", "module.exports = { a: 1 };\n");
+    try {
+      expect(load({ keep: true }, { projectConfigPath: scalar })).toEqual({ keep: true });
+      expect(load({}, { projectConfigPath: junk })).toEqual({ "module.exports = { a": "1 };" });
+    } finally {
+      cleanup(scalar, junk);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Resource bounds
 // ---------------------------------------------------------------------------
 
