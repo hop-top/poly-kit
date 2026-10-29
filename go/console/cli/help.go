@@ -199,6 +199,13 @@ func collectRootGlobals(root *cobra.Command, hiddenDefault map[string]struct{}) 
 
 func installHelpRecursive(r *Root, c *cobra.Command, hiddenDefault map[string]struct{}) {
 	c.SetHelpFunc(makeLeafHelpFunc(r, hiddenDefault))
+	if target, ok := r.aliasHelpTargets[c]; ok {
+		// An alias proxy whose --help passes through renders its
+		// target's help, resolved at render time.
+		c.SetHelpFunc(func(_ *cobra.Command, args []string) {
+			target.HelpFunc()(target, args)
+		})
+	}
 	for _, sub := range c.Commands() {
 		installHelpRecursive(r, sub, hiddenDefault)
 	}
