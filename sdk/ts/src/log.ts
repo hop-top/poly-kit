@@ -32,9 +32,19 @@ export interface LogOutput {
   write(chunk: string): unknown;
 }
 
+/** Kit level vocabulary (same spellings as Go/py and `parity.json`). */
+export type LogLevelName = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+
 export interface LoggerOptions {
   quiet?: boolean;
   noColor?: boolean;
+  /**
+   * Explicit threshold; wins over the factory default and the `-V` count.
+   * `'silent'` drops everything. `quiet` only raises it (to the contract's
+   * `quiet_override`), never lowers it — same as Go's `WithLevel`.
+   * TS-only option; not a parity verbosity entry.
+   */
+  level?: LogLevelName | 'silent';
   /**
    * Where rendered lines go. Defaults to `process.stderr`, resolved at
    * write time. Mirrors Go's `(*log.Logger).SetOutput`; useful for
@@ -169,17 +179,20 @@ export function quietLevel(d: ParityData): string {
 // Factory
 // ---------------------------------------------------------------------------
 
-export function createLogger(opts?: LoggerOptions): Logger {
-  const quiet = opts?.quiet ?? false;
-  const noColor = opts?.noColor ?? false;
+const LEVEL_RANK: Record<string, number> = {
+  trace: 10, debug: 20, info: 30, warn: 40, error: 50, fatal: 60, silent: Infinity,
+};
 
-  // Note: the non-quiet level here is `debug`, NOT the contract's
-  // zero-verbosity level. createLogger predates the verbosity contract and
-  // is deliberately chattier than `withVerbose({ verbose: 0 })`; only the
-  // quiet override is contract-declared, so only it is wired.
-  const p = pino({
-    level: quiet ? quietLevel(parity) : 'debug',
-  }, kitTransport(noColor, opts?.output));
+/** Apply `quiet` to a threshold: raise to the quiet override, never lower. */
+function applyQuiet(level: string, quiet: boolean): string {
+  if (!quiet) return level;
+  const q = quietLevel(parity);
+  return LEVEL_RANK[level] < LEVEL_RANK[q] ? q : level;
+}
+
+function build(opts: LoggerOptions, defaultLevel: string): Logger {
+  const level = applyQuiet(opts.level ?? defaultLevel, opts.quiet ?? false);
+  const p = pino({ level }, kitTransport(opts.noColor ?? false, opts.output));
 
   return {
     info:  (msg, ...kv) => p.info(kvToObj(kv), msg),
@@ -190,31 +203,25 @@ export function createLogger(opts?: LoggerOptions): Logger {
   };
 }
 
+export function createLogger(opts?: LoggerOptions): Logger {
+  // Note: the default level here is `debug`, NOT the contract's
+  // zero-verbosity level. createLogger predates the verbosity contract and
+  // is deliberately chattier than `withVerbose({ verbose: 0 })`; only the
+  // quiet override is contract-declared, so only it is wired.
+  return build(opts ?? {}, 'debug');
+}
+
 // ---------------------------------------------------------------------------
 // Verbose-aware factory
 // ---------------------------------------------------------------------------
 
 /**
  * Map verbose count to a pino level through the parity contract's
- * `verbosity.levels` table. Quiet overrides to the contract's
- * `quiet_override` level regardless of verbose count.
+ * `verbosity.levels` table. An explicit `level` wins over the count.
+ * Quiet raises to the contract's `quiet_override` level.
  */
 export function withVerbose(
   opts: LoggerOptions & { verbose?: number },
 ): Logger {
-  const quiet = opts.quiet ?? false;
-  const noColor = opts.noColor ?? false;
-  const v = opts.verbose ?? 0;
-
-  const level = quiet ? quietLevel(parity) : verbosityLevel(parity, v);
-
-  const p = pino({ level }, kitTransport(noColor, opts.output));
-
-  return {
-    info:  (msg, ...kv) => p.info(kvToObj(kv), msg),
-    warn:  (msg, ...kv) => p.warn(kvToObj(kv), msg),
-    error: (msg, ...kv) => p.error(kvToObj(kv), msg),
-    debug: (msg, ...kv) => p.debug(kvToObj(kv), msg),
-    trace: (msg, ...kv) => p.trace(kvToObj(kv), msg),
-  };
+  return build(opts, verbosityLevel(parity, opts.verbose ?? 0));
 }

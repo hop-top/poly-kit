@@ -219,3 +219,67 @@ describe('log output option', () => {
     expect(s.text()).toBe('WARN shown\n');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Shared sink helper for option tests
+// ---------------------------------------------------------------------------
+
+function capture(): { output: { write(chunk: string): boolean }; text: () => string } {
+  const chunks: string[] = [];
+  return {
+    output: { write: (chunk: string) => { chunks.push(chunk); return true; } },
+    text: () => chunks.join(''),
+  };
+}
+
+function emitAll(log: ReturnType<typeof createLogger>): void {
+  log.trace('t');
+  log.debug('d');
+  log.info('i');
+  log.warn('w');
+  log.error('e');
+}
+
+// ---------------------------------------------------------------------------
+// level option
+// ---------------------------------------------------------------------------
+
+describe('log level option', () => {
+  it('sets the threshold on createLogger', () => {
+    const s = capture();
+    emitAll(createLogger({ noColor: true, output: s.output, level: 'warn' }));
+    expect(s.text()).toBe('WARN w\nERRO e\n');
+  });
+
+  it('can lower createLogger below its debug default', () => {
+    const s = capture();
+    emitAll(createLogger({ noColor: true, output: s.output, level: 'trace' }));
+    expect(s.text()).toBe('TRAC t\nDEBU d\nINFO i\nWARN w\nERRO e\n');
+  });
+
+  it('wins over the verbose count on withVerbose', () => {
+    const s = capture();
+    emitAll(withVerbose({ noColor: true, output: s.output, verbose: 2, level: 'error' }));
+    expect(s.text()).toBe('ERRO e\n');
+  });
+
+  it("'silent' drops everything", () => {
+    const s = capture();
+    emitAll(createLogger({ output: s.output, level: 'silent' }));
+    emitAll(withVerbose({ output: s.output, verbose: 2, level: 'silent' }));
+    expect(s.text()).toBe('');
+  });
+
+  it('quiet only raises: lower level is lifted to warn', () => {
+    const s = capture();
+    emitAll(createLogger({ noColor: true, output: s.output, level: 'debug', quiet: true }));
+    expect(s.text()).toBe('WARN w\nERRO e\n');
+  });
+
+  it('quiet never lowers: error and silent stay put', () => {
+    const s = capture();
+    emitAll(createLogger({ noColor: true, output: s.output, level: 'error', quiet: true }));
+    emitAll(createLogger({ noColor: true, output: s.output, level: 'silent', quiet: true }));
+    expect(s.text()).toBe('ERRO e\n');
+  });
+});
