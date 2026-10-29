@@ -4,6 +4,42 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.3...kit-ts/v0.5.0-alpha.4) (2026-10-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ts:** TS routellm URI base_url / provider base URL now beats ROUTELLM_BASE_URL and extras routellm.base_url.
+* **llm:** openai stream caps, truncation error, StreamWithTools
+* **ts:** URI api_key outranks LLM_API_KEY; URI base_url/host outrank LLM_BASE_URL; params no longer percent-decoded; empty model parses; parse error texts changed; LLM_API_KEY not lent to routellm, lmstudio or unregistered schemes; llm.yaml now read; an env key no longer reaches a URI-named endpoint trusted only via ANTHROPIC_BASE_URL.
+* **ts:** a 403 is now PermissionDeniedError (still instanceof AuthError, message "permission denied ..."); anthropic sends every system message joined instead of only the last
+* **ts:** RouteLLMAdapter.stream returns a ToolStream (async iterable) instead of an AsyncGenerator; tokens carry text only, one final done token; errors are typed (AuthError, RateLimitError, ModelError, HTTPStatusError, APIError) instead of LLMError text; 429/5xx are retried; a key over plain http to a remote host is refused.
+
+### Features
+
+* **llm:** gemini StreamWithTools with tool-call and usage stream events ([d9dacad](https://github.com/hop-top/poly-kit/commit/d9dacad263b20945a27fedbf66605b6b6d10e319))
+* **llm:** openai stream caps, truncation error, StreamWithTools ([a72eaf2](https://github.com/hop-top/poly-kit/commit/a72eaf2493d4404b45e623401385894d4896f367))
+* **ts/llm:** openai stream events and stream_options ([68266c3](https://github.com/hop-top/poly-kit/commit/68266c3ad01aef1e2c28288f6f4beba2a895613f))
+* **ts:** accept routellm tier names in model field ([aecd6bb](https://github.com/hop-top/poly-kit/commit/aecd6bb5bffbc49566d46b3f4d0ad87b0f518cf6))
+* **ts:** anthropic adapter with tool calling ([ed450ef](https://github.com/hop-top/poly-kit/commit/ed450efef40ec8397090b4dd17587f5e3001c1d4))
+* **ts:** llm core for provider adapters ([17c6b96](https://github.com/hop-top/poly-kit/commit/17c6b96c474dae655cd76f23920bc71c7f6a2e87))
+* **ts:** llm parseURI, llm.yaml and key resolution as in Go ([50d2f39](https://github.com/hop-top/poly-kit/commit/50d2f3934db7ad18086d4bc19dffe688d1e63b53))
+* **ts:** llm stream events, tool_choice, hermetic mode, 403 split, system joining ([41b7051](https://github.com/hop-top/poly-kit/commit/41b705112fe88a0e13b8c0202007563a1716cc2d))
+* **ts:** openai adapter; routellm tool calling through it ([13042f0](https://github.com/hop-top/poly-kit/commit/13042f01debc39393a30dbf5a3b134ac360c01d8))
+* **ts:** tool-name validation and reversible sanitizing ([e484b1c](https://github.com/hop-top/poly-kit/commit/e484b1cd23b80dff7fe9898b59765161995fd16f))
+* **ts:** tool-name validation and reversible sanitizing ([#579](https://github.com/hop-top/poly-kit/issues/579)) ([e484b1c](https://github.com/hop-top/poly-kit/commit/e484b1cd23b80dff7fe9898b59765161995fd16f))
+* **ts:** validate and reversibly sanitize llm tool names ([bc18b50](https://github.com/hop-top/poly-kit/commit/bc18b5057f68b2250e1758951adb83011aae9b2d))
+
+
+### Bug Fixes
+
+* **deps:** npm lockfile advisories ([2950eb5](https://github.com/hop-top/poly-kit/commit/2950eb594c6c0a27846828c82d63b442cad12181))
+* **llm:** send anthropic media urls as url sources; media_fetch vectors ([c1600dd](https://github.com/hop-top/poly-kit/commit/c1600dd6ad41a40e10fac7d08b644abbbc8af727))
+* **ts/config:** bound alias expansion and nesting in load ([f6dd39a](https://github.com/hop-top/poly-kit/commit/f6dd39a168706e9cd7f4f42fb8a5b4a3b08948f1))
+* **ts/config:** merge nested objects across layers ([0e9a7f4](https://github.com/hop-top/poly-kit/commit/0e9a7f41a4304a7507b140e13492e06ee9a0698f))
+* **ts:** guard URL media fetches against SSRF ([dd73a22](https://github.com/hop-top/poly-kit/commit/dd73a2282504b7d04ddc3b5b228196750d88bcc6))
+* **ts:** routellm base URL precedence matches Go ([16e9cb6](https://github.com/hop-top/poly-kit/commit/16e9cb68283d98090722d3c9109d7f43c64fc7c6))
+
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.2...kit-ts/v0.5.0-alpha.3) (2026-09-05)
 
 The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.3. This release includes new features and bug fixes.
