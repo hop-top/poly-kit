@@ -61,6 +61,23 @@ Unlike Go, a value of a different kind replaces the earlier one instead of
 failing, and a nested object is merged where Go would replace a map entry or
 an `any` value.
 
+These are the TypeScript defaults. `mergeLayers(layers, opts)` applies them
+to objects you already parsed, and `load(dst, {merge, parse})` takes the
+same options plus a parser for non-YAML files (one function for every file,
+or a map from lowercased extension, `""` for an extensionless dotfile). The
+options act only where a later layer's key meets an existing one; anything
+else is copied as is:
+
+| Option | Default | Alternatives |
+|--------|---------|--------------|
+| `nullPolicy` | `"clear"`: the rule above | `"keep-lower"`: a null is skipped, so the earlier value stays and an absent key stays absent |
+| `maxDepth` | `Infinity`: merge at every depth | `n`: merge objects up to `n` levels below the root, replace deeper ones (`1` merges `db` but replaces `db.opts`; `0` is `Object.assign`) |
+| `arrayPolicy` | `"replace"` | `"concat"`; `"union"` (first of equal items wins; objects and arrays compare by content) |
+| `arrayPolicyByPath` | none | dotted path (`"scope.hints"`, split on every dot like Go's keys) to a policy or a `(lower, higher, path)` function |
+
+`envOverride` runs after the merge and assigns plainly; no policy applies
+to it. Go, Python and Rust have no equivalent options.
+
 Both ports bound alias expansion per file. Go fails with `yaml: document
 contains excessive aliasing` once more than 100 nodes were decoded inside
 alias expansions and more than 1000 in total, and the share inside aliases

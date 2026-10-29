@@ -1,7 +1,8 @@
 /**
  * @packageDocumentation
  *
- * Layered YAML configuration loader — TypeScript port of hop.top/kit/config.
+ * Layered configuration loader (YAML by default) — TypeScript port of
+ * hop.top/kit/config.
  *
  * Merges configuration from up to three file layers in priority order:
  *   system → user → project → envOverride
@@ -17,7 +18,13 @@
  * - Non-plain objects (`Date`, `Map`, class instances) are never merged
  *   into; a later value replaces them.
  *
- * This matches Go's `kit/core/config` for struct fields. Go differs where its
+ * {@link mergeLayers} applies the same rules to objects you already parsed,
+ * and {@link MergeOptions} (also accepted by {@link load} as `merge`) can
+ * relax them: `null` keeps the lower value, objects merge only to a set depth,
+ * arrays concatenate or union, globally or per dotted key path. A file in
+ * another format goes through {@link Options.parse}.
+ *
+ * The defaults match Go's `kit/core/config` for struct fields. Go differs where its
  * target type differs: a `map[...]` value or an `any` field is replaced
  * whole rather than merged, and a type conflict on a typed field is a decode
  * error rather than a replacement.
@@ -66,6 +73,7 @@
  */
 
 import * as fs from "fs";
+import * as path from "path";
 import * as yaml from "js-yaml";
 
 // ---------------------------------------------------------------------------
@@ -106,6 +114,120 @@ export interface Options<T extends object = object> {
    * @param cfg - The merged config object (same reference as `dst`).
    */
   envOverride?: (cfg: T) => void;
+
+  /**
+   * Parser for file contents; YAML when omitted. A function parses every
+   * file. A record maps a lowercased extension with its dot (`".json"`;
+   * `""` for an extensionless file such as `.toolrc`) to a parser, and files
+   * whose extension has no entry parse as YAML. The parser gets the text and
+   * the path (so a `.js` parser can `require` the path instead); a throw
+   * fails the load like a YAML error, and a result that is not a plain
+   * object is ignored. Without a parser a `.js` file parses as YAML text
+   * and is never executed.
+   */
+  parse?: ConfigParser | Record<string, ConfigParser>;
+
+  /**
+   * Merge policies for the file layers, `dst` being the lowest layer. They
+   * do not touch {@link envOverride}, which assigns whatever it sets.
+   * Defaults are the module merge rules.
+   */
+  merge?: MergeOptions;
+}
+
+/** Parses one config file's text; see {@link Options.parse}. */
+export type ConfigParser = (text: string, filePath: string) => unknown;
+
+/** What a `null` in a higher layer does; see {@link MergeOptions.nullPolicy}. */
+export type NullPolicy = "clear" | "keep-lower";
+
+/** How two arrays at one key combine; see {@link MergeOptions.arrayPolicy}. */
+export type ArrayPolicy = "replace" | "concat" | "union";
+
+/**
+ * Custom array merge for one path: gets the lower array (already in the
+ * result), a copy of the higher array and the dotted path; returns the value
+ * to store.
+ */
+export type ArrayMergeFn = (lower: unknown[], higher: unknown[], path: string) => unknown;
+
+/**
+ * Merge policies for {@link mergeLayers} and {@link Options.merge}. All
+ * policies act only where a higher layer's key meets a key already in the
+ * result; a value with nothing under it (a new key, a type conflict, an
+ * object past `maxDepth`) is copied whole, as is.
+ */
+export interface MergeOptions {
+  /**
+   * `"clear"` (default): `null` clears an object or array, sets a key that
+   * is absent or already `null`, and leaves a scalar untouched.
+   * `"keep-lower"`: `null` is skipped, so the lower value stays and an
+   * absent key stays absent.
+   */
+  nullPolicy?: NullPolicy;
+
+  /**
+   * How many object levels below the root merge key by key; deeper objects
+   * replace whole. `Infinity` (default) merges at every depth, `1` merges the
+   * root and the objects directly under it (`{db: {opts: {...}}}` merges
+   * `db` but replaces `db.opts`), `0` assigns root keys only, like
+   * `Object.assign`. Must be a non-negative integer or `Infinity`.
+   */
+  maxDepth?: number;
+
+  /**
+   * How two arrays at one key combine. `"replace"` (default): the higher
+   * array wins. `"concat"`: lower items, then higher items. `"union"`: lower
+   * then higher items, keeping the first of equal items, where plain objects
+   * and arrays compare structurally (object key order ignored) and other
+   * values by SameValueZero. A policy acts only when both sides are arrays;
+   * otherwise the higher value replaces.
+   */
+  arrayPolicy?: ArrayPolicy;
+
+  /**
+   * Per-path override of {@link arrayPolicy}: dotted key path from the root
+   * (`"scope.hints"`, split on every `.` like the Go SDK's dotted keys, so a
+   * key containing a dot cannot be named) to a policy or an
+   * {@link ArrayMergeFn}. Matches the exact path only.
+   */
+  arrayPolicyByPath?: Record<string, ArrayPolicy | ArrayMergeFn>;
+}
+
+/**
+ * Merges already-parsed layers, lowest priority first, into a new object and
+ * returns it. Layers that are not plain objects (`null`, arrays, scalars)
+ * are skipped; the layers are never mutated or shared with the result.
+ * Defaults follow the module merge rules; {@link MergeOptions} relaxes them.
+ *
+ * @throws {Error} `config: layer <i>: <reason>` when a layer nests deeper
+ *   than 100 levels or contains a cycle, and on an invalid option.
+ *
+ * @example
+ * ```ts
+ * const cfg = mergeLayers([globalRc, projectRc], {
+ *   nullPolicy: "keep-lower",
+ *   maxDepth: 1,
+ *   arrayPolicyByPath: { hints: "union" },
+ * });
+ * ```
+ */
+export function mergeLayers<T extends object = Record<string, unknown>>(
+  layers: readonly unknown[],
+  opts: MergeOptions = {},
+): T {
+  const policy = resolvePolicy(opts);
+  const out: Record<string, unknown> = {};
+  layers.forEach((layer, i) => {
+    if (!isPlainObject(layer)) return;
+    try {
+      checkBounds(layer);
+    } catch (err: unknown) {
+      throw new Error(`config: layer ${i}: ${errMessage(err)}`);
+    }
+    mergeInto(out, layer, policy, 0, "");
+  });
+  return out as T;
 }
 
 /**
@@ -115,7 +237,9 @@ export interface Options<T extends object = object> {
  * `envOverride`.
  *
  * - Objects merge recursively; arrays and scalars replace; `null` clears
- *   objects and arrays but not scalars (see the module docs for details).
+ *   objects and arrays but not scalars (see the module docs for details),
+ *   unless {@link Options.merge} says otherwise.
+ * - Files parse as YAML unless {@link Options.parse} supplies a parser.
  * - Missing files (ENOENT) are silently skipped.
  * - A file that exists but is not valid YAML causes this function to throw
  *   a descriptive error wrapping the parse failure.
@@ -126,7 +250,8 @@ export interface Options<T extends object = object> {
  *               object; mutated in place.
  * @param opts - Config sources. All fields are optional.
  * @returns The mutated `dst` object.
- * @throws {Error} When a file exists but cannot be parsed as YAML.
+ * @throws {Error} When a file exists but cannot be parsed, or on an
+ *   invalid {@link Options.merge}.
  *
  * @example
  * ```ts
@@ -136,6 +261,7 @@ export interface Options<T extends object = object> {
  * ```
  */
 export function load<T extends object>(dst: T, opts: Options<T> = {}): T {
+  const policy = resolvePolicy(opts.merge ?? {});
   const paths = [
     opts.systemConfigPath,
     opts.userConfigPath,
@@ -144,7 +270,7 @@ export function load<T extends object>(dst: T, opts: Options<T> = {}): T {
 
   for (const p of paths) {
     if (!p) continue;
-    mergeFile(dst, p);
+    mergeFile(dst, p, opts.parse, policy);
   }
 
   if (opts.envOverride) {
@@ -159,10 +285,16 @@ export function load<T extends object>(dst: T, opts: Options<T> = {}): T {
 // ---------------------------------------------------------------------------
 
 /**
- * Read `path`, parse as YAML, and merge into `dst` with {@link mergeInto}.
- * ENOENT is silently ignored; other errors propagate.
+ * Read `path`, parse it (YAML unless `parse` picks a parser), and merge into
+ * `dst` with {@link mergeInto}. ENOENT is silently ignored; other errors
+ * propagate.
  */
-function mergeFile<T extends object>(dst: T, filePath: string): void {
+function mergeFile<T extends object>(
+  dst: T,
+  filePath: string,
+  parse: Options["parse"],
+  policy: Policy,
+): void {
   let raw: string;
   try {
     raw = fs.readFileSync(filePath, "utf8");
@@ -173,17 +305,58 @@ function mergeFile<T extends object>(dst: T, filePath: string): void {
 
   let parsed: unknown;
   try {
-    parsed = yaml.load(raw);
+    const parser = parserFor(parse, filePath);
+    parsed = parser ? parser(raw, filePath) : yaml.load(raw);
     checkBounds(parsed);
   } catch (err: unknown) {
-    throw new Error(
-      `config: failed to parse ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw new Error(`config: failed to parse ${filePath}: ${errMessage(err)}`);
   }
 
   if (isPlainObject(parsed)) {
-    mergeInto(dst as Record<string, unknown>, parsed);
+    mergeInto(dst as Record<string, unknown>, parsed, policy, 0, "");
   }
+}
+
+function parserFor(parse: Options["parse"], filePath: string): ConfigParser | undefined {
+  if (parse === undefined) return undefined;
+  if (typeof parse === "function") return parse;
+  const ext = path.extname(filePath).toLowerCase();
+  return Object.prototype.hasOwnProperty.call(parse, ext) ? parse[ext] : undefined;
+}
+
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** {@link MergeOptions} validated, with defaults filled in. */
+interface Policy {
+  keepLower: boolean;
+  maxDepth: number;
+  array: ArrayPolicy;
+  byPath: Map<string, ArrayPolicy | ArrayMergeFn>;
+}
+
+const ARRAY_POLICIES: readonly string[] = ["replace", "concat", "union"];
+
+function resolvePolicy(opts: MergeOptions): Policy {
+  const { nullPolicy = "clear", maxDepth = Infinity, arrayPolicy = "replace", arrayPolicyByPath } = opts;
+  if (nullPolicy !== "clear" && nullPolicy !== "keep-lower") {
+    throw new Error(`config: invalid nullPolicy ${JSON.stringify(nullPolicy)}`);
+  }
+  if (maxDepth !== Infinity && !(Number.isInteger(maxDepth) && maxDepth >= 0)) {
+    throw new Error(`config: invalid maxDepth ${String(maxDepth)}: want a non-negative integer or Infinity`);
+  }
+  if (!ARRAY_POLICIES.includes(arrayPolicy)) {
+    throw new Error(`config: invalid arrayPolicy ${JSON.stringify(arrayPolicy)}`);
+  }
+  const byPath = new Map<string, ArrayPolicy | ArrayMergeFn>();
+  for (const [p, v] of Object.entries(arrayPolicyByPath ?? {})) {
+    if (typeof v !== "function" && !ARRAY_POLICIES.includes(v)) {
+      throw new Error(`config: invalid arrayPolicyByPath[${JSON.stringify(p)}] ${JSON.stringify(v)}`);
+    }
+    byPath.set(p, v);
+  }
+  return { keepLower: nullPolicy === "keep-lower", maxDepth, array: arrayPolicy, byPath };
 }
 
 /**
@@ -267,25 +440,73 @@ function checkBounds(root: unknown): void {
 }
 
 /**
- * Merges `src` into `dst` in place: plain objects recurse, everything else
- * replaces, and `null` clears only objects and arrays.
+ * Merges `src` into `dst` in place. With the default policy: plain objects
+ * recurse, everything else replaces, and `null` clears only objects and
+ * arrays. `depth` counts object levels below the root; `at` is the dotted
+ * path of `dst`.
  */
-function mergeInto(dst: Record<string, unknown>, src: Record<string, unknown>): void {
+function mergeInto(
+  dst: Record<string, unknown>,
+  src: Record<string, unknown>,
+  policy: Policy,
+  depth: number,
+  at: string,
+): void {
   for (const key of Object.keys(src)) {
     const next = src[key];
     const has = Object.prototype.hasOwnProperty.call(dst, key);
     const cur = has ? dst[key] : undefined;
     if (next === null) {
+      if (policy.keepLower) continue; // null never replaces, never adds
       if (has && cur !== null && cur !== undefined && typeof cur !== "object") {
         continue; // null leaves a scalar untouched
       }
       setOwn(dst, key, null);
-    } else if (isPlainObject(next) && isPlainObject(cur)) {
-      mergeInto(cur, next);
+    } else if (isPlainObject(next) && isPlainObject(cur) && depth < policy.maxDepth) {
+      mergeInto(cur, next, policy, depth + 1, at === "" ? key : `${at}.${key}`);
+    } else if (Array.isArray(next) && Array.isArray(cur)) {
+      setOwn(dst, key, mergeArrays(cur, next, policy, at === "" ? key : `${at}.${key}`));
     } else {
       setOwn(dst, key, copy(next));
     }
   }
+}
+
+function mergeArrays(lower: unknown[], higher: unknown[], policy: Policy, at: string): unknown {
+  const rule = policy.byPath.get(at) ?? policy.array;
+  const items = copy(higher) as unknown[];
+  if (typeof rule === "function") return rule(lower, items, at);
+  switch (rule) {
+    case "concat":
+      return [...lower, ...items];
+    case "union": {
+      const out: unknown[] = [];
+      for (const item of [...lower, ...items]) {
+        if (!out.some((o) => deepEqual(o, item))) out.push(item);
+      }
+      return out;
+    }
+    default:
+      return items;
+  }
+}
+
+/**
+ * Structural equality for {@link MergeOptions.arrayPolicy} `"union"`: plain
+ * objects (key order ignored) and arrays compare by content, anything else
+ * by SameValueZero.
+ */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b || (a !== a && b !== b)) return true;
+  if (Array.isArray(a)) {
+    return Array.isArray(b) && a.length === b.length && a.every((v, i) => deepEqual(v, b[i]));
+  }
+  if (isPlainObject(a) && isPlainObject(b)) {
+    const ka = Object.keys(a);
+    if (ka.length !== Object.keys(b).length) return false;
+    return ka.every((k) => Object.prototype.hasOwnProperty.call(b, k) && deepEqual(a[k], b[k]));
+  }
+  return false;
 }
 
 /** Own data property even for keys like `__proto__`, never a setter call. */
