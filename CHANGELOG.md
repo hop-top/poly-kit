@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0-beta.4](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.3...kit/v0.5.0-beta.4) (2026-10-29)
+
+
+### Features
+
+* **go/alias:** bridge options, ValidateName, DetectCycles ([083fef7](https://github.com/hop-top/poly-kit/commit/083fef7a1ee4005c79b1515207ecb8916d503444))
+
+
+### Bug Fixes
+
+* **go/alias:** leave real-command proxies out of alias completion ([d962d32](https://github.com/hop-top/poly-kit/commit/d962d32b4efd5ec6d73e8ecd8f3ec476e836ae6a))
+
 ## [0.5.0-beta.3](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.2...kit/v0.5.0-beta.3) (2026-10-29)
 
 The hop-top team is happy to announce Kit 0.5.0-beta.3. This release includes new features and bug fixes.
