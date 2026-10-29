@@ -1,0 +1,119 @@
+{
+  "tool": "fixture",
+  "version": "1.2.3",
+  "reserved": ["config"],
+  "commands": [
+    {
+      "name": "mission",
+      "short": "Mission catalog",
+      "annotations": { "kit/hierarchical": "true" },
+      "commands": [
+        {
+          "name": "purge",
+          "short": "Purge the catalog",
+          "run": true
+        },
+        {
+          "name": "list",
+          "short": "List missions",
+          "run": true,
+          "annotations": {
+            "kit/side-effect": "read",
+            "kit/idempotent": "yes",
+            "kit/retryable": "true"
+          },
+          "flags": [
+            { "name": "limit", "type": "string", "default": "20", "description": "Max rows" }
+          ]
+        },
+        {
+          "name": "old-list",
+          "short": "Legacy listing",
+          "run": true,
+          "annotations": {
+            "kit/side-effect": "read",
+            "kit/deprecated-since": "1.0",
+            "kit/removal-target": "2.0",
+            "kit/replaced-by": "mission list"
+          }
+        }
+      ]
+    },
+    {
+      "name": "launch",
+      "short": "Launch a mission",
+      "long": "Launch a mission.\n\nUses <orbit> & \"payload\".",
+      "run": true,
+      "annotations": {
+        "kit/side-effect": "write-shared",
+        "kit/idempotent": "no",
+        "kit/args": "mission, vehicle?",
+        "kit/exit-codes": "OK,USAGE, TRANSIENT",
+        "kit/retryable": "false",
+        "kit/destructive-token": "required",
+        "kit/since": "1.0",
+        "kit/flag-since": "orbit=1.1, payload = 1.0",
+        "kit/output-schema": "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\", \"minLength\": 1.0, \"pattern\": \"^<a&b>$\"}, \"2\": {}}, \"required\": [\"id\"], \"items\": []}",
+        "kit/output-schema-version": "1.0",
+        "kit/examples": "[{\"title\": \"Basic\", \"command\": \"fixture launch apollo\"}, {\"title\": \"Report\", \"command\": \"fixture launch x --orbit=leo\", \"output\": \"ok <done>\", \"extra\": 1}]",
+        "kit/next-steps": "[{\"suggest\": \"fixture mission list\", \"when\": \"on success\"}]"
+      },
+      "flags": [
+        { "name": "orbit", "short": "o", "type": "string", "default": "leo", "description": "Target orbit" },
+        { "name": "dry-run", "type": "bool", "description": "Simulate only" },
+        { "name": "payload", "type": "stringSlice", "default": ["a", "b"], "description": "Payload manifest" },
+        { "name": "tag", "type": "stringSlice", "description": "Tags" },
+        { "name": "secret", "type": "string", "hidden": true, "description": "internal" }
+      ]
+    },
+    {
+      "name": "internal",
+      "short": "Internal hook",
+      "hidden": true,
+      "run": true,
+      "annotations": {
+        "kit/side-effect": "destructive-local",
+        "kit/dry-run": "opted-out",
+        "kit/dry-run-rationale": "remote only",
+        "kit/passthrough": "true",
+        "kit/top-level-verb": "true"
+      }
+    },
+    {
+      "name": "config",
+      "short": "Show config",
+      "run": true,
+      "annotations": { "kit/side-effect": "read" },
+      "commands": [
+        {
+          "name": "show",
+          "short": "Show one key",
+          "run": true,
+          "annotations": { "kit/side-effect": "read", "kit/idempotent": "conditional" }
+        }
+      ]
+    },
+    {
+      "name": "admin",
+      "short": "Admin tools",
+      "annotations": { "kit/reserved": "true" },
+      "commands": [
+        {
+          "name": "nuke",
+          "short": "Destroy everything",
+          "run": true,
+          "annotations": {
+            "kit/side-effect": "destructive",
+            "kit/dry-run": "supported",
+            "kit/destructive-token": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "help",
+      "short": "Framework help",
+      "run": true
+    }
+  ]
+}

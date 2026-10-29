@@ -10,7 +10,12 @@ Pure data types + BFS lookup. Sub-packages own I/O and deps.
 > (hidden commands/options omitted, undashed flag names, root options
 > on `flags`) and merges per-command annotations keyed by path
 > (`"mission list"`). `exitCodes` comes from a `kit/exit-codes`
-> entry on the command's `annotations` property. Python loads YAML only.
+> entry on the command's `annotations` property. `buildManifest(program,
+> schemaVersion, { includeDeprecated, reserved })` and
+> `renderManifestJSON` reproduce `BuildManifest` and its JSON bytes from
+> the same kit/* annotations (summary/description map to short/long;
+> runnable = has an action); `negotiateSchemaVersion` mirrors
+> `NegotiateSchemaVersion`. Python loads YAML only.
 
 ## Schema Overview
 

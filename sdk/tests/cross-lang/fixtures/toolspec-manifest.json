@@ -1,0 +1,183 @@
+{
+  "tool": "fixture",
+  "version": "1.2.3",
+  "schema_version": "1.1",
+  "commands": [
+    {
+      "path": [
+        "fixture",
+        "admin",
+        "nuke"
+      ],
+      "short": "Destroy everything",
+      "side_effect": "destructive",
+      "idempotent": "unknown",
+      "retryable": false,
+      "destructive_token_required": true,
+      "dry_run_supported": true,
+      "reserved": true
+    },
+    {
+      "path": [
+        "fixture",
+        "config"
+      ],
+      "short": "Show config",
+      "side_effect": "read",
+      "idempotent": "unknown",
+      "retryable": false,
+      "dry_run_supported": false,
+      "reserved": true
+    },
+    {
+      "path": [
+        "fixture",
+        "config",
+        "show"
+      ],
+      "short": "Show one key",
+      "side_effect": "read",
+      "idempotent": "conditional",
+      "retryable": false,
+      "dry_run_supported": false,
+      "reserved": true
+    },
+    {
+      "path": [
+        "fixture",
+        "internal"
+      ],
+      "short": "Internal hook",
+      "side_effect": "destructive-local",
+      "idempotent": "unknown",
+      "retryable": false,
+      "top_level_verb": true,
+      "passthrough": true,
+      "dry_run_supported": false,
+      "dry_run_rationale": "remote only",
+      "hidden": true
+    },
+    {
+      "path": [
+        "fixture",
+        "launch"
+      ],
+      "short": "Launch a mission",
+      "side_effect": "write-shared",
+      "idempotent": "no",
+      "args": [
+        {
+          "name": "mission",
+          "required": true
+        },
+        {
+          "name": "vehicle"
+        }
+      ],
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "description": "Simulate only",
+          "default": "false"
+        },
+        {
+          "name": "orbit",
+          "short": "o",
+          "type": "string",
+          "description": "Target orbit",
+          "default": "leo",
+          "since_version": "1.1"
+        },
+        {
+          "name": "payload",
+          "type": "stringSlice",
+          "description": "Payload manifest",
+          "default": "[a,b]",
+          "since_version": "1.0"
+        },
+        {
+          "name": "tag",
+          "type": "stringSlice",
+          "description": "Tags",
+          "default": "[]"
+        }
+      ],
+      "exit_codes": [
+        "OK",
+        "USAGE",
+        "TRANSIENT"
+      ],
+      "since_version": "1.0",
+      "long": "Launch a mission.\n\nUses \u003corbit\u003e \u0026 \"payload\".",
+      "retryable": false,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1.0,
+            "pattern": "^\u003ca\u0026b\u003e$"
+          },
+          "2": {}
+        },
+        "required": [
+          "id"
+        ],
+        "items": []
+      },
+      "output_schema_version": "1.0",
+      "examples": [
+        {
+          "title": "Basic",
+          "command": "fixture launch apollo"
+        },
+        {
+          "title": "Report",
+          "command": "fixture launch x --orbit=leo",
+          "output": "ok \u003cdone\u003e"
+        }
+      ],
+      "next_steps": [
+        {
+          "when": "on success",
+          "suggest": "fixture mission list"
+        }
+      ],
+      "destructive_token_required": true,
+      "dry_run_supported": true
+    },
+    {
+      "path": [
+        "fixture",
+        "mission",
+        "list"
+      ],
+      "short": "List missions",
+      "side_effect": "read",
+      "idempotent": "yes",
+      "flags": [
+        {
+          "name": "limit",
+          "type": "string",
+          "description": "Max rows",
+          "default": "20"
+        }
+      ],
+      "retryable": true,
+      "dry_run_supported": false
+    },
+    {
+      "path": [
+        "fixture",
+        "mission",
+        "purge"
+      ],
+      "short": "Purge the catalog",
+      "side_effect": "unknown",
+      "idempotent": "unknown",
+      "retryable": false,
+      "dry_run_supported": false
+    }
+  ]
+}
