@@ -283,3 +283,30 @@ describe('log level option', () => {
     expect(s.text()).toBe('ERRO e\n');
   });
 });
+
+// ---------------------------------------------------------------------------
+// success
+// ---------------------------------------------------------------------------
+
+describe('log success', () => {
+  it('renders SUCC label with key-values', () => {
+    const s = capture();
+    createLogger({ noColor: true, output: s.output }).success('deployed', 'env', 'prod');
+    expect(s.text()).toBe('SUCC deployed env=prod\n');
+  });
+
+  it('uses the theme success colour (Guac #52CF84), not bold', () => {
+    const s = capture();
+    createLogger({ output: s.output }).success('ok');
+    expect(s.text()).toBe('\x1b[38;2;82;207;132mSUCC\x1b[0m ok\n');
+  });
+
+  it('is filtered exactly like info', () => {
+    const s = capture();
+    createLogger({ noColor: true, output: s.output, level: 'info' }).success('a');
+    withVerbose({ noColor: true, output: s.output }).success('b');
+    createLogger({ noColor: true, output: s.output, quiet: true }).success('hidden');
+    createLogger({ noColor: true, output: s.output, level: 'warn' }).success('hidden');
+    expect(s.text()).toBe('SUCC a\nSUCC b\n');
+  });
+});
