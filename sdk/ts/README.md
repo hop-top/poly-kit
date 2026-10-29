@@ -50,14 +50,14 @@ hidden completion command.
 | [`src/router/`](src/router/README.md) | RouteLLM strong/weak model routing and its Hono handler | a prompt must pick a model in-process |
 | [`src/triton/`](src/triton/README.md) | Triton Inference Server client, KServe v2 over HTTP | you call a model hosted on Triton |
 
-Non-directory subpaths: `cli` (CLI factory), `serve` (serve hierarchy
-and service lifecycle), `netpolicy` (`--offline` enforcement, guards
-`globalThis.fetch`), `xdg` (base directory paths), `config`
-(config-file loading), `sqlstore` (embedded SQLite key/value store),
-`upgrade` (semver upgrade detection), `llm`, `anthropic`, `openai`,
-`routellm`, `alias`, `uri` (facade over `@hop-top/cite`), `api`,
-`rpc`, `aim`, `scope`, `safety`, `provenance`, `stream`, `progress`,
-`auth`, `errcorrect`. See `package.json` `exports` for the full list.
+Non-directory subpaths: `cli` (CLI factory), `serve` (serve hierarchy and
+service lifecycle), `netpolicy` (`--offline` enforcement, guards
+`globalThis.fetch`), `xdg` (base directory paths), `config` (config-file
+loading), `sqlstore` (embedded SQLite key/value store), `upgrade` (semver
+upgrade detection), `llm`, `anthropic`, `openai`, `routellm`, `alias`, `uri`
+(facade over `@hop-top/cite`), `api`, `rpc`, `aim`, `scope`, `safety`,
+`provenance`, `stream`, `progress`, `auth`, `errcorrect`, `log`,
+`completion`, `toolspec`. See `package.json` `exports` for the full list.
 
 ## Contract
 
