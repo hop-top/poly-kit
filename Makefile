@@ -475,11 +475,13 @@ test-parity-upgrade: ## upgrade-v1 conformance corpus (Go and Rust runners)
 completion-regen: ## Regenerate completion-v1 script goldens and the Rust and TS completion templates from cobra
 	go test ./go/console/cli/completion/ -run '^(TestConformanceCompletionScripts|TestCompletionTemplatesInSync)$$' -count=1 -update
 
-test-parity-completion: ## completion-v1 conformance corpus (Go and Rust runners)
+test-parity-completion: ## completion-v1 conformance corpus (Go, Rust and TS runners)
 	@echo "==> completion-v1 conformance: Go"
 	go test -race ./go/console/cli/completion/ -run '^TestConformanceCompletion' -count=1
 	@echo "==> completion-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --features cli,config --test cli_completion_conformance --locked
+	@echo "==> completion-v1 conformance: TS"
+	cd sdk/ts && pnpm vitest run src/completion.conformance.test.ts
 
 test-parity-netpolicy: ## netpolicy-v1 conformance corpus (Go and Rust runners)
 	@echo "==> netpolicy-v1 conformance: Go"
