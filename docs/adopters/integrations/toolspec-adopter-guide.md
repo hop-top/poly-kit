@@ -20,6 +20,11 @@ cli.RegisterSpecCommand(root, "1.0")
 Your binary now serves `<your-tool> spec --format kit-manifest`
 and harnesses can consume it. That's the whole adoption.
 
+TypeScript (commander) CLIs call
+`registerSpecCommand(program, "1.0")` from `@hop-top/kit/toolspec`
+and get the same bytes; see the
+[TS API reference](../reference/ts-api-reference.md#capability-manifest-spec).
+
 ## Publishing surfaces
 
 `<tool> spec` is the one you serve; `kit toolspec` ships with kit.

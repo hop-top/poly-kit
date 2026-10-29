@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
-import { Command, Option } from "commander";
+import { Command } from "commander";
+import { FIXTURES, fixtureProgram } from "../test/toolspec/fixture";
 import {
   buildManifest,
   LATEST_SCHEMA_VERSION,
@@ -9,66 +10,6 @@ import {
   renderManifestJSON,
   SCHEMA_VERSION_ENV,
 } from "./toolspec";
-
-const FIXTURES = path.resolve(__dirname, "../../tests/cross-lang/fixtures");
-
-interface TreeFlag {
-  name: string;
-  short?: string;
-  type: "bool" | "string" | "stringSlice";
-  default?: string | string[];
-  description?: string;
-  hidden?: boolean;
-}
-
-interface TreeCommand {
-  name: string;
-  short?: string;
-  long?: string;
-  hidden?: boolean;
-  run?: boolean;
-  annotations?: Record<string, string>;
-  flags?: TreeFlag[];
-  commands?: TreeCommand[];
-}
-
-interface Tree {
-  tool: string;
-  version: string;
-  reserved: string[];
-  commands: TreeCommand[];
-}
-
-function addFixtureCommand(parent: Command, tc: TreeCommand): void {
-  const cmd = parent.command(tc.name, { hidden: tc.hidden ?? false });
-  if (tc.short && tc.long) cmd.summary(tc.short).description(tc.long);
-  else if (tc.short) cmd.description(tc.short);
-  if (tc.run) cmd.action(() => {});
-  if (tc.annotations) {
-    (cmd as Command & { annotations?: Record<string, string> }).annotations = {
-      ...tc.annotations,
-    };
-  }
-  for (const f of tc.flags ?? []) {
-    const short = f.short ? `-${f.short}, ` : "";
-    const arg =
-      f.type === "bool" ? "" : f.type === "string" ? " <value>" : " <values...>";
-    const opt = new Option(`${short}--${f.name}${arg}`, f.description);
-    if (f.default !== undefined) opt.default(f.default);
-    if (f.hidden) opt.hideHelp();
-    cmd.addOption(opt);
-  }
-  for (const child of tc.commands ?? []) addFixtureCommand(cmd, child);
-}
-
-function fixtureProgram(): { program: Command; tree: Tree } {
-  const tree = JSON.parse(
-    fs.readFileSync(path.join(FIXTURES, "toolspec-manifest.tree.json"), "utf-8"),
-  ) as Tree;
-  const program = new Command(tree.tool).version(tree.version);
-  for (const c of tree.commands) addFixtureCommand(program, c);
-  return { program, tree };
-}
 
 describe("buildManifest cross-language fixture", () => {
   for (const [file, includeDeprecated] of [

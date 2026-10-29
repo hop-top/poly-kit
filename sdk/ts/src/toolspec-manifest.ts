@@ -12,6 +12,17 @@ import type {
   Command as CommanderCommand,
   Option as CommanderOption,
 } from "commander";
+import {
+  annotationsOf,
+  encodeGoJSON,
+  isBuiltin,
+  isHidden,
+  isRunnable,
+  pflagTypes,
+  splitCSV,
+  walkCommands,
+  type Annotations,
+} from "./toolspec-internal.js";
 
 /** Env var a harness sets to request a manifest schema version. */
 export const SCHEMA_VERSION_ENV = "KIT_TOOLSPEC_SCHEMA";
@@ -91,6 +102,11 @@ export interface BuildManifestOptions {
   includeDeprecated?: boolean;
   /** Depth-1 verbs the tool reserves (Go Root.IsReserved). */
   reserved?: Iterable<string>;
+  /**
+   * The command being executed, if any. It gets the -h/--help flag
+   * cobra adds to the executing command, as a live Go run lists.
+   */
+  invokedCommand?: CommanderCommand;
 }
 
 // --- Schema negotiation ---
@@ -140,18 +156,6 @@ export function negotiateSchemaVersion(
 }
 
 // --- Annotation reading (Go cmdreflect / cmdmeta) ---
-
-type Annotations = Record<string, string>;
-
-function annotationsOf(cmd: CommanderCommand): Annotations {
-  return (cmd as { annotations?: Annotations }).annotations ?? {};
-}
-
-function splitCSV(s: string | undefined): string[] | undefined {
-  if (!s) return undefined;
-  const out = s.split(",").map((p) => p.trim()).filter((p) => p !== "");
-  return out.length > 0 ? out : undefined;
-}
 
 function flagSince(ann: Annotations): Map<string, string> {
   const out = new Map<string, string>();
@@ -226,45 +230,14 @@ function dryRunSupported(ann: Annotations): boolean {
   return DRY_RUN_SIDE_EFFECTS.has(ann["kit/side-effect"] ?? "");
 }
 
-// --- commander facts ---
-
-/**
- * Whether cmd has an action handler (cobra Runnable). commander 15
- * exposes no public accessor, so this reads the private field.
- */
-function isRunnable(cmd: CommanderCommand): boolean {
-  return (cmd as unknown as { _actionHandler?: unknown })._actionHandler != null;
-}
-
-/** Hidden per the parent's help (public API; no private _hidden read). */
-function isHidden(cmd: CommanderCommand, parent: CommanderCommand): boolean {
-  return !parent.createHelp().visibleCommands(parent).includes(cmd);
-}
-
-const BUILTIN_NAMES = new Set([
-  "help",
-  "completion",
-  "man",
-  "__complete",
-  "__completeNoDesc",
-]);
-
-function isBuiltin(cmd: CommanderCommand, parent: CommanderCommand): boolean {
-  return BUILTIN_NAMES.has(cmd.name()) || parent.name() === "completion";
-}
-
-function byName(a: { name(): string }, b: { name(): string }): number {
-  const x = a.name();
-  const y = b.name();
-  return x < y ? -1 : x > y ? 1 : 0;
-}
-
 /**
  * Map a commander option onto pflag's Type() and DefValue spelling,
  * which is what the Go manifest carries.
  */
 function flagTypeAndDefault(opt: CommanderOption): [string, string] {
   const def = opt.defaultValue;
+  const declared = pflagTypes.get(opt);
+  if (declared) return [declared, def === undefined ? "" : String(def)];
   if (opt.isBoolean()) return ["bool", def === undefined ? "false" : String(def)];
   if (opt.variadic) {
     const items = def === undefined ? [] : Array.isArray(def) ? def : [def];
@@ -273,15 +246,17 @@ function flagTypeAndDefault(opt: CommanderOption): [string, string] {
   return ["string", def === undefined ? "" : String(def)];
 }
 
-function manifestFlags(cmd: CommanderCommand, ann: Annotations): ManifestFlag[] | undefined {
+function manifestFlags(
+  cmd: CommanderCommand,
+  ann: Annotations,
+  withHelp: boolean,
+): ManifestFlag[] | undefined {
   const since = flagSince(ann);
-  const opts = [...(cmd.options as readonly CommanderOption[])]
-    .filter((o) => !o.hidden)
-    .map((o) => ({ o, name: (o.long ?? o.short ?? "").replace(/^-+/, "") }))
-    .filter((x) => x.name !== "")
-    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  const out: ManifestFlag[] = [];
-  for (const { o, name } of opts) {
+  const visible = (cmd.options as readonly CommanderOption[]).filter((o) => !o.hidden);
+  const flags: ManifestFlag[] = [];
+  for (const o of visible) {
+    const name = (o.long ?? o.short ?? "").replace(/^-+/, "");
+    if (name === "") continue;
     const [type, def] = flagTypeAndDefault(o);
     const f: ManifestFlag = { name };
     if (o.long && o.short) f.short = o.short.replace(/^-/, "");
@@ -290,9 +265,20 @@ function manifestFlags(cmd: CommanderCommand, ann: Annotations): ManifestFlag[] 
     if (def !== "") f.default = def;
     const sv = since.get(name);
     if (sv) f.since_version = sv;
-    out.push(f);
+    flags.push(f);
   }
-  return out.length > 0 ? out : undefined;
+  // cobra adds -h/--help to the command it executes (and only that
+  // one) before its RunE runs, so a live Go spec lists it there.
+  if (withHelp && !flags.some((f) => f.name === "help")) {
+    const help: ManifestFlag = { name: "help" };
+    if (!flags.some((f) => f.short === "h")) help.short = "h";
+    help.type = "bool";
+    help.description = `help for ${cmd.name()}`;
+    help.default = "false";
+    flags.push(help);
+  }
+  flags.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return flags.length > 0 ? flags : undefined;
 }
 
 function manifestArgs(cmd: CommanderCommand, ann: Annotations): ManifestArg[] | undefined {
@@ -312,6 +298,7 @@ function manifestCommand(
   path: string[],
   hidden: boolean,
   reserved: boolean,
+  invoked: boolean,
 ): ManifestCommand {
   const ann = annotationsOf(cmd);
   // commander's summary() is the one-liner when set; description()
@@ -330,7 +317,7 @@ function manifestCommand(
 
   const args = manifestArgs(cmd, ann);
   if (args) out.args = args;
-  const flags = manifestFlags(cmd, ann);
+  const flags = manifestFlags(cmd, ann, invoked);
   if (flags) out.flags = flags;
   const exitCodes = splitCSV(ann["kit/exit-codes"]);
   if (exitCodes) out.exit_codes = exitCodes;
@@ -389,138 +376,22 @@ export function buildManifest(
   schemaVersion: string,
   opts: BuildManifestOptions = {},
 ): Manifest {
-  const reservedSet = new Set(opts.reserved ?? []);
   const m: Manifest = {
     tool: program.name(),
     version: program.version() ?? "",
     schema_version: schemaVersion,
     commands: [],
   };
-
-  const walk = (
-    cmd: CommanderCommand,
-    parent: CommanderCommand,
-    path: string[],
-    depthOne: string,
-    reservedTree: boolean,
-  ): void => {
+  walkCommands(program, opts.reserved, (cmd, parent, path, reserved) => {
     const ann = annotationsOf(cmd);
-    const inReserved = reservedTree || ann["kit/reserved"] === "true";
     const deprecated = !!(ann["kit/deprecated-since"] || ann["kit/removal-target"]);
-    if (
-      isRunnable(cmd) &&
-      !isBuiltin(cmd, parent) &&
-      (opts.includeDeprecated || !deprecated)
-    ) {
-      m.commands.push(
-        manifestCommand(
-          cmd,
-          path,
-          isHidden(cmd, parent),
-          inReserved || reservedSet.has(depthOne),
-        ),
-      );
-    }
-    for (const child of [...cmd.commands].sort(byName)) {
-      if (child.name() === "") continue;
-      walk(child, cmd, [...path, child.name()], depthOne, inReserved);
-    }
-  };
-  for (const child of [...program.commands].sort(byName)) {
-    if (child.name() === "") continue;
-    walk(child, program, [program.name(), child.name()], child.name(), false);
-  }
-  return m;
-}
-
-// --- Go encoding/json byte parity ---
-
-/** Go's json string escaping (HTML-safe, U+2028/2029 escaped). */
-function goQuote(s: string): string {
-  return JSON.stringify(s)
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e")
-    .replace(/&/g, "\\u0026")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
-}
-
-/**
- * Re-emit raw JSON text the way Go's Encoder.SetIndent("", "  ")
- * does for an embedded RawJSON: tokens verbatim (numbers keep their
- * spelling), insignificant whitespace dropped, strings HTML-escaped,
- * structure re-indented at the given depth. Throws on invalid JSON,
- * as Go's encoder errors.
- */
-function reindentRaw(raw: string, depth: number): string {
-  JSON.parse(raw); // validity gate
-  let out = "";
-  let level = depth;
-  let needIndent = false;
-  const nl = (lvl: number) => "\n" + "  ".repeat(lvl);
-  for (let i = 0; i < raw.length; i++) {
-    const c = raw[i];
-    if (c === " " || c === "\t" || c === "\n" || c === "\r") continue;
-    if (needIndent && c !== "]" && c !== "}") {
-      out += nl(level);
-      needIndent = false;
-    }
-    if (c === '"') {
-      let j = i + 1;
-      while (raw[j] !== '"') j += raw[j] === "\\" ? 2 : 1;
-      out += goQuote(JSON.parse(raw.slice(i, j + 1)) as string);
-      i = j;
-      continue;
-    }
-    switch (c) {
-      case "{":
-      case "[":
-        out += c;
-        level++;
-        needIndent = true;
-        break;
-      case "}":
-      case "]":
-        level--;
-        if (needIndent) needIndent = false;
-        else out += nl(level);
-        out += c;
-        break;
-      case ",":
-        out += c + nl(level);
-        break;
-      case ":":
-        out += ": ";
-        break;
-      default:
-        out += c;
-    }
-  }
-  return out;
-}
-
-function encode(v: unknown, depth: number, rawKeys: Set<string>, key?: string): string {
-  if (key !== undefined && rawKeys.has(key) && typeof v === "string") {
-    return reindentRaw(v, depth);
-  }
-  if (typeof v === "string") return goQuote(v);
-  if (typeof v === "boolean" || typeof v === "number") return JSON.stringify(v);
-  if (Array.isArray(v)) {
-    if (v.length === 0) return "[]";
-    const pad = "  ".repeat(depth + 1);
-    const items = v.map((x) => pad + encode(x, depth + 1, rawKeys));
-    return "[\n" + items.join(",\n") + "\n" + "  ".repeat(depth) + "]";
-  }
-  if (v && typeof v === "object") {
-    const entries = Object.entries(v).filter(([, x]) => x !== undefined);
-    if (entries.length === 0) return "{}";
-    const pad = "  ".repeat(depth + 1);
-    const items = entries.map(
-      ([k, x]) => pad + goQuote(k) + ": " + encode(x, depth + 1, rawKeys, k),
+    if (!isRunnable(cmd) || isBuiltin(cmd, parent)) return;
+    if (deprecated && !opts.includeDeprecated) return;
+    m.commands.push(
+      manifestCommand(cmd, path, isHidden(cmd, parent), reserved, cmd === opts.invokedCommand),
     );
-    return "{\n" + items.join(",\n") + "\n" + "  ".repeat(depth) + "}";
-  }
-  return "null";
+  });
+  return m;
 }
 
 /**
@@ -529,5 +400,5 @@ function encode(v: unknown, depth: number, rawKeys: Set<string>, key?: string): 
  * in Go struct order with omitempty applied.
  */
 export function renderManifestJSON(m: Manifest): string {
-  return encode(m, 0, new Set(["output_schema"])) + "\n";
+  return encodeGoJSON(m, 0, new Set(["output_schema"])) + "\n";
 }

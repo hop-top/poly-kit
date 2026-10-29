@@ -312,6 +312,7 @@ export function findCommand(
 }
 
 export * from "./toolspec-manifest.js";
+export * from "./toolspec-spec.js";
 
 // --- Build from a commander tree ---
 
@@ -363,6 +364,7 @@ function projectChildren(
   const visible = cmd.createHelp().visibleCommands(cmd);
   return visible
     .filter((c) => cmd.commands.includes(c))
+    .filter((c) => kitAnnotations(c)["kit/spec-command"] !== "true")
     .map((c) => projectCommand(c, [...path, c.name()], annotations));
 }
 
