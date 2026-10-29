@@ -81,7 +81,11 @@ type Command struct {
 	// UndeclaredArgs reports that the command takes positional
 	// arguments it does not declare in kit/args: renderers that
 	// publish an argument schema say so instead of guessing names.
-	UndeclaredArgs  bool          `json:"undeclared_args,omitempty"`
+	UndeclaredArgs bool `json:"undeclared_args,omitempty"`
+	// ExitCodes is the set of exit-code symbols the command may
+	// produce (kit/exit-codes), the same vocabulary as
+	// ManifestCommand.ExitCodes (contracts/exit-taxonomy-v1).
+	ExitCodes       []string      `json:"exit_codes,omitempty"`
 	Children        []Command     `json:"children,omitempty"`
 	Contract        *Contract     `json:"contract,omitempty"`
 	Safety          *Safety       `json:"safety,omitempty"`

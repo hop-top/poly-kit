@@ -298,3 +298,32 @@ func TestWalkCobra_DeclaredReadOutranksUnannotated(t *testing.T) {
 	assert.NotEqual(t, declared.Safety.Level, silent.Safety.Level)
 	assert.NotEqual(t, declared.Safety.Permissions[0], silent.Safety.Permissions[0])
 }
+
+// TestWalkCobra_ExitCodes verifies the kit/exit-codes symbol set
+// lands on the projected Command, in declared order, and serializes
+// as exit_codes; an undeclared set stays omitted.
+func TestWalkCobra_ExitCodes(t *testing.T) {
+	root := rootWith("mytool",
+		addChild("get", withAnnotations(map[string]string{
+			"kit/side-effect": "read",
+			"kit/exit-codes":  "OK, NOT_FOUND,TRANSIENT",
+		})),
+		addChild("plain"),
+	)
+	spec := WalkCobra(root)
+
+	get := findCommand(spec.Commands, "get")
+	require.NotNil(t, get)
+	assert.Equal(t, []string{"OK", "NOT_FOUND", "TRANSIENT"}, get.ExitCodes)
+
+	raw, err := json.Marshal(get)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"exit_codes":["OK","NOT_FOUND","TRANSIENT"]`)
+
+	plain := findCommand(spec.Commands, "plain")
+	require.NotNil(t, plain)
+	assert.Nil(t, plain.ExitCodes)
+	raw, err = json.Marshal(plain)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "exit_codes")
+}

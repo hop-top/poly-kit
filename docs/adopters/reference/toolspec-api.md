@@ -49,6 +49,7 @@ type Command struct {
     Flags           []Flag
     Args            []Arg          // kit/args, in order: {Name, Required}
     UndeclaredArgs  bool           // usage line names operands kit/args does not
+    ExitCodes       []string       // kit/exit-codes symbols (exit-taxonomy-v1)
     Children        []Command
     Contract        *Contract
     Safety          *Safety
