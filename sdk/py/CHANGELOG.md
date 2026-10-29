@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6) (2026-10-29)
 
+The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.6. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -35,6 +37,8 @@
 * **py:** judge NAT64 media hosts by their IPv4 ([c779b83](https://github.com/hop-top/poly-kit/commit/c779b830a35ecca93c38f5fe340f7b62048d455d))
 * **templates:** cli-py declares kit dependency; sdk/py ships py.typed ([4a490f0](https://github.com/hop-top/poly-kit/commit/4a490f0a75df36508393ebe9ca66d8bcd0e6df53))
 * **ts:** routellm base URL precedence matches Go ([16e9cb6](https://github.com/hop-top/poly-kit/commit/16e9cb68283d98090722d3c9109d7f43c64fc7c6))
+
+Full diff: [kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6)
 
 ## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.4...kit-py/v0.5.0-alpha.5) (2026-09-05)
 
