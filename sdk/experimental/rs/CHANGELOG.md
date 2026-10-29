@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.2...kit-rs/v0.5.0-alpha.3) (2026-10-29)
 
+The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.3. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -135,6 +137,8 @@
 * **rs:** usage bin cannot close its tera raw block ([c8ba437](https://github.com/hop-top/poly-kit/commit/c8ba4374993d1d2cabc720997b5979d0ea8fe4d6))
 * **rs:** wake a reconnect loop's backoff wait for user requests ([9fe490a](https://github.com/hop-top/poly-kit/commit/9fe490affd594d928994220a3780c5c478e907e3))
 * **ts:** routellm base URL precedence matches Go ([16e9cb6](https://github.com/hop-top/poly-kit/commit/16e9cb68283d98090722d3c9109d7f43c64fc7c6))
+
+Full diff: [kit-rs/v0.5.0-alpha.2...kit-rs/v0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.2...kit-rs/v0.5.0-alpha.3)
 
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.1...kit-rs/v0.5.0-alpha.2) (2026-09-05)
 
