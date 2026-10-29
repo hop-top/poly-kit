@@ -1,5 +1,9 @@
 import * as fs from "fs";
 import * as yaml from "js-yaml";
+import type {
+  Command as CommanderCommand,
+  Option as CommanderOption,
+} from "commander";
 
 // --- Types ---
 
@@ -47,14 +51,29 @@ export interface Flag {
   short?: string;
   type?: string;
   description?: string;
+  /** Flag must be supplied (commander `makeOptionMandatory`). */
+  required?: boolean;
   deprecated?: boolean;
   replacedBy?: string;
 }
 
+/** A declared positional argument (mirrors Go toolspec.Arg). */
+export interface Arg {
+  name: string;
+  /** False/absent for an optional argument. */
+  required?: boolean;
+}
+
 export interface Command {
   name: string;
+  /** One-line summary of the command. */
+  short?: string;
   aliases?: string[];
   flags?: Flag[];
+  /** Declared positional arguments, in order. */
+  args?: Arg[];
+  /** Command takes positional arguments it does not declare. */
+  undeclaredArgs?: boolean;
   children?: Command[];
   contract?: Contract;
   safety?: Safety;
@@ -103,9 +122,14 @@ function mapFlag(raw: any): Flag {
     short: raw.short,
     type: raw.type,
     description: raw.description,
+    required: raw.required,
     deprecated: raw.deprecated,
     replacedBy: raw.replaced_by,
   };
+}
+
+function mapArg(raw: any): Arg {
+  return { name: raw.name ?? "", required: raw.required };
 }
 
 function mapProvenance(raw: any): Provenance | undefined {
@@ -157,8 +181,11 @@ function mapIntent(raw: any): Intent | undefined {
 function mapCommand(raw: any): Command {
   return {
     name: raw.name ?? "",
+    short: raw.short,
     aliases: raw.aliases,
     flags: raw.flags?.map(mapFlag),
+    args: raw.args?.map(mapArg),
+    undeclaredArgs: raw.undeclared_args,
     children: raw.children?.map(mapCommand),
     contract: mapContract(raw.contract),
     safety: mapSafety(raw.safety),
@@ -276,4 +303,108 @@ export function findCommand(
     if (c.children) queue.push(...c.children);
   }
   return undefined;
+}
+
+// --- Build from a commander tree ---
+
+/**
+ * Per-command fields merged over what the commander tree yields.
+ * Structural fields (name, aliases, flags, args, children) always
+ * come from the tree.
+ */
+export type CommandAnnotation = Omit<
+  Partial<Command>,
+  "name" | "aliases" | "flags" | "args" | "children"
+>;
+
+export interface FromCommandOptions {
+  /** Annotations keyed by space-joined path below the root, e.g. "mission list". */
+  annotations?: Record<string, CommandAnnotation>;
+  /** Defaults to "1", the version the YAML toolspecs declare. */
+  schemaVersion?: string;
+}
+
+/**
+ * Build a ToolSpec from a constructed commander tree, so CLIs with
+ * dynamically registered subcommands need no hand-synced YAML.
+ * Mirrors Go's WalkCobra projection: hidden commands and options are
+ * omitted, flag names are undashed, root options become spec.flags.
+ */
+export function toolSpecFromCommand(
+  program: CommanderCommand,
+  opts: FromCommandOptions = {},
+): ToolSpec {
+  const annotations = opts.annotations ?? {};
+  const spec: ToolSpec = {
+    name: program.name(),
+    schemaVersion: opts.schemaVersion ?? "1",
+    commands: projectChildren(program, [], annotations),
+  };
+  const flags = projectFlags(program);
+  if (flags) spec.flags = flags;
+  return spec;
+}
+
+function projectChildren(
+  cmd: CommanderCommand,
+  path: string[],
+  annotations: Record<string, CommandAnnotation>,
+): Command[] {
+  // visibleCommands drops hidden subcommands but appends commander's
+  // implicit help placeholder, which is not in cmd.commands.
+  const visible = cmd.createHelp().visibleCommands(cmd);
+  return visible
+    .filter((c) => cmd.commands.includes(c))
+    .map((c) => projectCommand(c, [...path, c.name()], annotations));
+}
+
+function projectCommand(
+  cmd: CommanderCommand,
+  path: string[],
+  annotations: Record<string, CommandAnnotation>,
+): Command {
+  const out: Command = { name: cmd.name() };
+  const short = cmd.summary() || cmd.description();
+  if (short) out.short = short;
+  const aliases = cmd.aliases();
+  if (aliases.length > 0) out.aliases = [...aliases];
+  const flags = projectFlags(cmd);
+  if (flags) out.flags = flags;
+  const args = cmd.registeredArguments.map((a): Arg =>
+    a.required ? { name: a.name(), required: true } : { name: a.name() },
+  );
+  if (args.length > 0) out.args = args;
+  const children = projectChildren(cmd, path, annotations);
+  if (children.length > 0) out.children = children;
+
+  const ann = annotations[path.join(" ")];
+  if (ann) {
+    for (const [k, v] of Object.entries(ann)) {
+      if (v !== undefined) (out as any)[k] = v;
+    }
+  }
+  return out;
+}
+
+function projectFlags(cmd: CommanderCommand): Flag[] | undefined {
+  const out: Flag[] = [];
+  for (const opt of cmd.options as readonly CommanderOption[]) {
+    if (opt.hidden) continue;
+    const name = (opt.long ?? opt.short ?? "").replace(/^-+/, "");
+    if (!name) continue;
+    const flag: Flag = { name };
+    if (opt.long && opt.short) flag.short = opt.short.replace(/^-/, "");
+    flag.type = flagType(opt);
+    if (opt.description) flag.description = opt.description;
+    if (opt.mandatory) flag.required = true;
+    out.push(flag);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/** pflag-style type names, matching the Go walker's output. */
+function flagType(opt: CommanderOption): string {
+  if (opt.isBoolean()) return "bool";
+  if (opt.variadic) return "stringSlice";
+  return "string";
 }

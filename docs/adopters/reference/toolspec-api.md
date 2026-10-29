@@ -3,7 +3,13 @@
 `hop.top/kit/go/ai/toolspec` -- structured knowledge about CLI tools.
 Pure data types + BFS lookup. Sub-packages own I/O and deps.
 
-> Go-only. No TS/Python bindings yet.
+> TS: `@hop-top/kit/toolspec` mirrors these types in camelCase
+> (`loadToolSpec`, `validateToolSpec`, `findCommand`) and adds
+> `toolSpecFromCommand(program, { annotations, schemaVersion })`,
+> which projects a commander tree the way `WalkCobra` projects cobra
+> (hidden commands/options omitted, undashed flag names, root options
+> on `flags`) and merges per-command annotations keyed by path
+> (`"mission list"`). Python loads YAML only.
 
 ## Schema Overview
 
@@ -38,6 +44,7 @@ Recursive tree node. Supports nested subcommands via `Children`.
 ```go
 type Command struct {
     Name            string
+    Short           string         // one-line summary
     Aliases         []string
     Flags           []Flag
     Args            []Arg          // kit/args, in order: {Name, Required}
@@ -209,6 +216,7 @@ type Flag struct {
     Short       string  // e.g. "-v"
     Type        string  // e.g. "bool", "string"
     Description string
+    Required    bool    // MarkFlagRequired / makeOptionMandatory
     Deprecated  bool
     ReplacedBy  string
 }
