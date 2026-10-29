@@ -40,6 +40,19 @@ export interface LogOutput {
 /** Kit level vocabulary (same spellings as Go/py and `parity.json`). */
 export type LogLevelName = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
+/** One log line, as handed to a custom `formatter`. */
+export interface LogRecord {
+  level: LogLevelName;
+  msg: string;
+  /** Key-value pairs in call order (after pino serialization). */
+  fields: Record<string, unknown>;
+  /** Set on `success()` lines, whose `level` is `'info'`. */
+  kind?: 'success';
+}
+
+/** Renders a record to one line; a missing trailing newline is appended. */
+export type LogFormatter = (rec: LogRecord) => string;
+
 export interface LoggerOptions {
   quiet?: boolean;
   noColor?: boolean;
@@ -64,6 +77,12 @@ export interface LoggerOptions {
    * this option only — no env var or flag.
    */
   format?: 'text' | 'json';
+  /**
+   * TS extension point: render each line yourself (glyph prefixes, house
+   * styles). The returned string is written as-is, plus `\n` if missing.
+   * Wins over `format` and `noColor`; level filtering still applies.
+   */
+  formatter?: LogFormatter;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,12 +135,8 @@ const LEVEL_NAMES: Record<number, LogLevelName> = {
 const RESERVED_KEYS = new Set(['level', 'time', 'pid', 'hostname', 'msg', 'v']);
 
 /** A parsed log line, before rendering. */
-interface ParsedRecord {
+interface ParsedRecord extends LogRecord {
   levelNum: number;
-  level: LogLevelName;
-  msg: string;
-  fields: Record<string, unknown>;
-  kind?: 'success';
 }
 
 function parseRecord(chunk: string): ParsedRecord {
@@ -162,10 +177,22 @@ function renderJSON(rec: ParsedRecord): string {
   return JSON.stringify(out) + '\n';
 }
 
+function renderCustom(rec: ParsedRecord, formatter: LogFormatter): string {
+  const { levelNum: _levelNum, ...pub } = rec;
+  const line = formatter(pub);
+  return line.endsWith('\n') ? line : line + '\n';
+}
+
 interface TransportOptions {
   noColor: boolean;
   format: 'text' | 'json';
+  formatter?: LogFormatter;
   output?: LogOutput;
+}
+
+function render(rec: ParsedRecord, o: TransportOptions): string {
+  if (o.formatter) return renderCustom(rec, o.formatter);
+  return o.format === 'json' ? renderJSON(rec) : renderText(rec, o.noColor);
 }
 
 function kitTransport(o: TransportOptions): pino.DestinationStream {
@@ -176,7 +203,7 @@ function kitTransport(o: TransportOptions): pino.DestinationStream {
     write(chunk: string): void {
       try {
         const rec = parseRecord(chunk);
-        out().write(o.format === 'json' ? renderJSON(rec) : renderText(rec, o.noColor));
+        out().write(render(rec, o));
       } catch {
         out().write(chunk);
       }
@@ -268,6 +295,7 @@ function build(opts: LoggerOptions, defaultLevel: string): Logger {
     kitTransport({
       noColor: opts.noColor ?? false,
       format: opts.format ?? 'text',
+      formatter: opts.formatter,
       output: opts.output,
     }),
   );

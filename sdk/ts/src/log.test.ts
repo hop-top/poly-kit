@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createLogger, withVerbose } from './log';
+import { createLogger, withVerbose, type LogRecord } from './log';
 
 function makeStderr(): { write: ReturnType<typeof vi.fn>; captured: () => string } {
   const chunks: string[] = [];
@@ -353,5 +353,62 @@ describe("log format: 'json'", () => {
     const s = capture();
     createLogger({ format: 'text', noColor: true, output: s.output }).info('x', 'k', 1);
     expect(s.text()).toBe('INFO x k=1\n');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatter hook
+// ---------------------------------------------------------------------------
+
+describe('log formatter hook', () => {
+  const GLYPHS: Record<string, string> = { info: 'ℹ', warn: '▲', error: '●' };
+  const glyph = (rec: LogRecord): string =>
+    `${rec.kind === 'success' ? '✓' : GLYPHS[rec.level] ?? '·'} ${rec.msg}`;
+
+  it('writes the returned string, appending a missing newline', () => {
+    const s = capture();
+    const log = createLogger({ output: s.output, formatter: glyph });
+    log.info('hi');
+    log.success('done');
+    log.error('boom');
+    expect(s.text()).toBe('ℹ hi\n✓ done\n● boom\n');
+  });
+
+  it('does not double an existing trailing newline', () => {
+    const s = capture();
+    createLogger({ output: s.output, formatter: (r) => `${r.msg}\n` }).info('x');
+    expect(s.text()).toBe('x\n');
+  });
+
+  it('receives level, msg, fields and kind', () => {
+    const recs: LogRecord[] = [];
+    const log = createLogger({
+      output: capture().output,
+      formatter: (r) => { recs.push(r); return ''; },
+    });
+    log.warn('w', 'port', 8080, 'host', 'h');
+    log.success('s');
+    expect(recs).toEqual([
+      { level: 'warn', msg: 'w', fields: { port: 8080, host: 'h' } },
+      { level: 'info', msg: 's', fields: {}, kind: 'success' },
+    ]);
+  });
+
+  it('wins over format and noColor', () => {
+    const s = capture();
+    const log = withVerbose({
+      output: s.output, format: 'json', noColor: false, formatter: (r) => `[${r.level}] ${r.msg}`,
+    });
+    log.info('plain');
+    expect(s.text()).toBe('[info] plain\n');
+  });
+
+  it('is not called for filtered lines', () => {
+    const s = capture();
+    const log = createLogger({ output: s.output, quiet: true, formatter: (r) => r.msg });
+    log.info('hidden');
+    log.success('hidden');
+    log.warn('shown');
+    expect(s.text()).toBe('shown\n');
   });
 });
