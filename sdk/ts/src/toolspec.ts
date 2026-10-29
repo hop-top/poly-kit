@@ -311,6 +311,8 @@ export function findCommand(
   return undefined;
 }
 
+export * from "./toolspec-manifest.js";
+
 // --- Build from a commander tree ---
 
 /**
