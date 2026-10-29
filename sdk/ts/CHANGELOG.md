@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.3...kit-ts/v0.5.0-alpha.4) (2026-10-29)
 
+The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.4. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -39,6 +41,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * **ts/config:** merge nested objects across layers ([0e9a7f4](https://github.com/hop-top/poly-kit/commit/0e9a7f41a4304a7507b140e13492e06ee9a0698f))
 * **ts:** guard URL media fetches against SSRF ([dd73a22](https://github.com/hop-top/poly-kit/commit/dd73a2282504b7d04ddc3b5b228196750d88bcc6))
 * **ts:** routellm base URL precedence matches Go ([16e9cb6](https://github.com/hop-top/poly-kit/commit/16e9cb68283d98090722d3c9109d7f43c64fc7c6))
+
+Full diff: [kit-ts/v0.5.0-alpha.3...kit-ts/v0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.3...kit-ts/v0.5.0-alpha.4)
 
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.2...kit-ts/v0.5.0-alpha.3) (2026-09-05)
 
