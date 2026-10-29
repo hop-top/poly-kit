@@ -35,8 +35,8 @@ program.parse();
 ```
 
 `createCLI` gives the root the hop-top contract: `--format`, `--quiet`,
-`--no-color`, `--no-hints`, `--offline`, themed help, version, and a
-hidden completion command.
+`--no-color`, `--no-hints`, `--offline`, themed help, version, and shell
+completion's hidden `__complete` (scripts: `completionCommand(program)`).
 
 ## Modules
 
