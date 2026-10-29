@@ -189,7 +189,11 @@ export interface MergeOptions {
    * Per-path override of {@link arrayPolicy}: dotted key path from the root
    * (`"scope.hints"`, split on every `.` like the Go SDK's dotted keys, so a
    * key containing a dot cannot be named) to a policy or an
-   * {@link ArrayMergeFn}. Matches the exact path only.
+   * {@link ArrayMergeFn}, which gets the concrete path. A segment that is
+   * exactly `*` matches any one key (`"scopes.*.hints"`, never zero or
+   * several; `a*` is literal, `**` throws). When several entries match, the
+   * exact path wins, then the pattern with the fewest `*`, then the
+   * lexically smallest pattern (UTF-16 order, so `*.b.c` beats `a.*.c`).
    */
   arrayPolicyByPath?: Record<string, ArrayPolicy | ArrayMergeFn>;
 }
@@ -334,6 +338,8 @@ interface Policy {
   maxDepth: number;
   array: ArrayPolicy;
   byPath: Map<string, ArrayPolicy | ArrayMergeFn>;
+  /** Wildcard patterns, best first: fewest `*`, then lexically smallest. */
+  wildcards: { pattern: string; segs: string[]; rule: ArrayPolicy | ArrayMergeFn }[];
 }
 
 const ARRAY_POLICIES: readonly string[] = ["replace", "concat", "union"];
@@ -350,13 +356,23 @@ function resolvePolicy(opts: MergeOptions): Policy {
     throw new Error(`config: invalid arrayPolicy ${JSON.stringify(arrayPolicy)}`);
   }
   const byPath = new Map<string, ArrayPolicy | ArrayMergeFn>();
+  const wildcards: Policy["wildcards"] = [];
   for (const [p, v] of Object.entries(arrayPolicyByPath ?? {})) {
     if (typeof v !== "function" && !ARRAY_POLICIES.includes(v)) {
       throw new Error(`config: invalid arrayPolicyByPath[${JSON.stringify(p)}] ${JSON.stringify(v)}`);
     }
+    const segs = p.split(".");
+    if (segs.includes("**")) {
+      throw new Error(`config: invalid arrayPolicyByPath[${JSON.stringify(p)}]: ** is not supported`);
+    }
     byPath.set(p, v);
+    if (segs.includes("*")) wildcards.push({ pattern: p, segs, rule: v });
   }
-  return { keepLower: nullPolicy === "keep-lower", maxDepth, array: arrayPolicy, byPath };
+  const stars = (segs: string[]): number => segs.filter((x) => x === "*").length;
+  wildcards.sort(
+    (a, b) => stars(a.segs) - stars(b.segs) || (a.pattern < b.pattern ? -1 : a.pattern > b.pattern ? 1 : 0),
+  );
+  return { keepLower: nullPolicy === "keep-lower", maxDepth, array: arrayPolicy, byPath, wildcards };
 }
 
 /**
@@ -473,7 +489,7 @@ function mergeInto(
 }
 
 function mergeArrays(lower: unknown[], higher: unknown[], policy: Policy, at: string): unknown {
-  const rule = policy.byPath.get(at) ?? policy.array;
+  const rule = policy.byPath.get(at) ?? matchWildcard(policy, at) ?? policy.array;
   const items = copy(higher) as unknown[];
   if (typeof rule === "function") return rule(lower, items, at);
   switch (rule) {
@@ -489,6 +505,16 @@ function mergeArrays(lower: unknown[], higher: unknown[], policy: Policy, at: st
     default:
       return items;
   }
+}
+
+/** The best wildcard pattern matching `at`; `*` stands for one whole segment. */
+function matchWildcard(policy: Policy, at: string): ArrayPolicy | ArrayMergeFn | undefined {
+  if (policy.wildcards.length === 0) return undefined;
+  const segs = at.split(".");
+  const hit = policy.wildcards.find(
+    (w) => w.segs.length === segs.length && w.segs.every((x, i) => x === "*" || x === segs[i]),
+  );
+  return hit?.rule;
 }
 
 /**

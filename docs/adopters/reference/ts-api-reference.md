@@ -245,8 +245,9 @@ Subpath imports follow the package's `exports` map (see
   `maxDepth` (`Infinity` default; `1` merges objects one level below the
   root and replaces deeper ones), `arrayPolicy` (`"replace"` default,
   `"concat"`, `"union"` with structural equality) and `arrayPolicyByPath`
-  (dotted path to a policy or a `(lower, higher, path)` function). See
-  [Layer merge rules](config.md#layer-merge-rules).
+  (dotted path to a policy or a `(lower, higher, path)` function; a `*`
+  segment matches any one key, and an exact path beats a wildcard). See
+  [Layer merge rules](config.md#layer-merge-rules) for the full precedence.
 - `@hop-top/kit/sqlstore` — embedded SQLite key/value store. Its types
   reference `better-sqlite3`: install `@types/better-sqlite3` (an optional
   peer dependency) or type-checking with `skipLibCheck: false` fails with

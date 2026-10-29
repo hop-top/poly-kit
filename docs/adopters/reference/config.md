@@ -73,7 +73,15 @@ else is copied as is:
 | `nullPolicy` | `"clear"`: the rule above | `"keep-lower"`: a null is skipped, so the earlier value stays and an absent key stays absent |
 | `maxDepth` | `Infinity`: merge at every depth | `n`: merge objects up to `n` levels below the root, replace deeper ones (`1` merges `db` but replaces `db.opts`; `0` is `Object.assign`) |
 | `arrayPolicy` | `"replace"` | `"concat"`; `"union"` (first of equal items wins; objects and arrays compare by content) |
-| `arrayPolicyByPath` | none | dotted path (`"scope.hints"`, split on every dot like Go's keys) to a policy or a `(lower, higher, path)` function |
+| `arrayPolicyByPath` | none | dotted path (`"scope.hints"`, split on every dot like Go's keys) to a policy or a `(lower, higher, path)` function; a `*` segment matches any one key (`"scopes.*.hints"`) |
+
+In `arrayPolicyByPath`, only a whole `*` segment is a wildcard: it matches
+exactly one key, never zero or several, so a pattern only matches paths
+with the same number of segments. `a*` is a literal key and `**` throws.
+When several entries match a path, the exact path wins, then the pattern
+with the fewest `*`, then the lexically smallest pattern (UTF-16 order, so
+`*.b.c` beats `a.*.c`). A function entry receives the concrete path
+(`scopes.dev.hints`), not the pattern.
 
 `envOverride` runs after the merge and assigns plainly; no policy applies
 to it. Go, Python and Rust have no equivalent options.
