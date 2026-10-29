@@ -120,7 +120,7 @@ serve MCP compile none of it:
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.5.0-alpha.3", features = ["mcp"] } # x-release-please-version
+hop-top-kit = { version = "0.5.0-alpha.4", features = ["mcp"] } # x-release-please-version
 ```
 
 ```rust

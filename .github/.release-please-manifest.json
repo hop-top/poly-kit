@@ -3,7 +3,7 @@
   "extensions/mcp-tasks": "0.1.0-alpha.2",
   "incubator/qmochi": "0.2.0-beta.0",
   "sdk/experimental/php": "0.5.0-alpha.3",
-  "sdk/experimental/rs": "0.5.0-alpha.3",
+  "sdk/experimental/rs": "0.5.0-alpha.4",
   "sdk/py": "0.5.0-alpha.6",
   "sdk/ts": "0.5.0-alpha.7"
 }
