@@ -21,6 +21,16 @@ function collectFlags(cmd: Command): string[] {
   return cmd.options.map(o => o.long).filter(Boolean) as string[];
 }
 
+/** POSIX single-quote body: `'` becomes `'\''` (zsh, bash). */
+function shQuoteBody(s: string): string {
+  return s.replace(/'/g, `'\\''`);
+}
+
+/** fish single-quote body: only `\\` and `'` are special. */
+function fishQuoteBody(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 /** Generate a bash completion script for the given program. */
 export function generateBashCompletion(program: Command): string {
   const name = program.name();
@@ -54,7 +64,9 @@ export function generateZshCompletion(program: Command): string {
         s => s.name() === c || s.aliases().includes(c),
       );
       const desc = sub?.description() ?? '';
-      return `    '${c}:${desc}'`;
+      // _describe splits name:desc on the first unescaped colon.
+      const entry = `${c.replace(/:/g, '\\:')}:${desc}`;
+      return `    '${shQuoteBody(entry)}'`;
     })
     .join('\n');
 
@@ -113,7 +125,7 @@ export function generateFishCompletion(program: Command): string {
     const desc = sub?.description() ?? '';
     lines.push(
       `complete -c ${name} -n '__fish_use_subcommand' ` +
-      `-a '${c}' -d '${desc}'`
+      `-a '${fishQuoteBody(c)}' -d '${fishQuoteBody(desc)}'`
     );
   }
 

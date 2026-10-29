@@ -3,6 +3,10 @@ import { generateBashCompletion, generateZshCompletion,
          generateFishCompletion, completionCommand } from './completion';
 import { createCLI, setCommandGroup } from './cli';
 import { Command } from 'commander';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 /** Strip ANSI SGR sequences. */
 function stripAnsi(s: string): string {
@@ -208,5 +212,76 @@ describe('completionCommand', () => {
     } finally {
       process.argv = origArgv;
     }
+  });
+});
+
+describe('description quoting', () => {
+  const tricky = "Don't deploy: it's \"live\" \\ $HOME `x`";
+
+  function trickyProgram(): Command {
+    const { program } = createCLI({
+      name: 'mytool', version: '1.0.0', description: 'A tool',
+    });
+    const deploy = program.command('deploy').description(tricky);
+    deploy.alias('d');
+    return program;
+  }
+
+  /** Run a shell in a throwaway HOME; null when the shell is absent. */
+  function runShell(shell: string, args: (dir: string) => string[],
+                    script: string): { status: number | null; stdout: string;
+                                       stderr: string } | null {
+    const which = spawnSync('/bin/sh', ['-c', `command -v ${shell}`]);
+    if (which.status !== 0) return null;
+    const home = mkdtempSync(join(tmpdir(), 'kit-compl-'));
+    try {
+      writeFileSync(join(home, 'script'), script);
+      return spawnSync(shell, args(home), {
+        env: { PATH: process.env.PATH ?? '', HOME: home,
+               XDG_CONFIG_HOME: join(home, '.config') },
+        encoding: 'utf8',
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }
+
+  /** `<shell> -n` must accept the script. */
+  function syntaxCheck(shell: string, script: string): void {
+    const res = runShell(shell, d => ['-n', join(d, 'script')], script);
+    if (res) expect(res.status, `${shell} -n: ${res.stderr}`).toBe(0);
+  }
+
+  /** The shell must read the quoted word back as `want`. */
+  function roundTrip(shell: 'zsh' | 'fish', word: string, want: string): void {
+    const res = shell === 'zsh'
+      ? runShell('zsh', d => ['-f', join(d, 'script')],
+                 `print -r -- ${word}\n`)
+      : runShell('fish', d => ['--no-config', join(d, 'script')],
+                 `printf '%s\\n' ${word}\n`);
+    if (res) expect(res.stdout).toBe(`${want}\n`);
+  }
+
+  it('zsh escapes quotes in descriptions and colons in names', () => {
+    const program = trickyProgram();
+    program.command('db:migrate').description('Migrate');
+    const script = generateZshCompletion(program);
+    const word = `'deploy:Don'\\''t deploy: it'\\''s "live" \\ $HOME \`x\`'`;
+    expect(script).toContain(word);
+    expect(script).toContain(`'db\\:migrate:Migrate'`);
+    syntaxCheck('zsh', script);
+    roundTrip('zsh', word, `deploy:${tricky}`);
+  });
+
+  it('fish escapes quotes and backslashes in descriptions', () => {
+    const script = generateFishCompletion(trickyProgram());
+    const word = `'Don\\'t deploy: it\\'s "live" \\\\ $HOME \`x\`'`;
+    expect(script).toContain(`-a 'deploy' -d ${word}`);
+    syntaxCheck('fish', script);
+    roundTrip('fish', word, tricky);
+  });
+
+  it('bash script parses', () => {
+    syntaxCheck('bash', generateBashCompletion(trickyProgram()));
   });
 });
