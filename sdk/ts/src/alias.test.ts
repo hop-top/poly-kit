@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import {
   AliasStore, loadFrom, saveTo, findFirstNonFlag, Expander,
-  bridgeAliases, findCommand,
+  bridgeAliases, findCommand, validateAliasName, AliasNameError,
 } from './alias';
 import { Command, CommanderError } from 'commander';
 
@@ -528,5 +528,60 @@ describe('bridgeAliases proxy dispatch', () => {
     bridgeAliases(program, store);
     await expect(program.parseAsync(['node', 'x', 'nope']))
       .rejects.toMatchObject({ code: 'commander.unknownCommand' });
+  });
+});
+
+// ── validateAliasName / bridge options ─────────────────────
+
+describe('validateAliasName', () => {
+  it('keeps the Expander texts and adds duplicate', () => {
+    const msg = (name: string, rules = {}) => {
+      try { validateAliasName(name, rules); } catch (e) { return (e as Error).message; }
+      return 'ok';
+    };
+    expect(msg('')).toBe('alias name must not be empty');
+    expect(msg('a b')).toBe('alias name must not contain whitespace');
+    expect(msg('task', { builtins: ['task'] }))
+      .toBe('alias "task" conflicts with a built-in command');
+    expect(msg('d', { existing: { d: 'deploy' } }))
+      .toBe('alias "d" is already registered for "deploy"');
+    expect(msg('tl', { builtins: new Set(['task']) })).toBe('ok');
+  });
+
+  it('throws AliasNameError carrying the kind', () => {
+    expect(() => validateAliasName('task', { builtins: ['task'] }))
+      .toThrow(AliasNameError);
+  });
+});
+
+describe('bridgeAliases options', () => {
+  it('accepts a plain map and an empty options object keeps defaults', () => {
+    const program = new Command('test');
+    program.command('deploy').description('Deploy');
+    bridgeAliases(program, { d: 'deploy' }, {});
+    expect(findCommand(program, 'deploy')?.aliases()).toContain('d');
+    expect(program.commands.find(c => c.name() === 'd')).toBeUndefined();
+  });
+
+  it('options make a single-word alias a proxy', () => {
+    const program = new Command('test');
+    program.command('deploy').description('Deploy');
+    bridgeAliases(program, { d: 'deploy' }, {
+      hidden: false, describe: (n, t) => `${n} -> ${t}`,
+    });
+    const proxy = program.commands.find(c => c.name() === 'd');
+    expect(proxy?.description()).toBe('d -> deploy');
+    expect(findCommand(program, 'deploy')?.aliases()).not.toContain('d');
+  });
+
+  it('dispatch handler result is awaited by parseAsync', async () => {
+    const program = new Command('test').exitOverride();
+    program.command('deploy').action(() => {});
+    let done = false;
+    bridgeAliases(program, { d: 'deploy' }, {
+      dispatch: async () => { await new Promise(r => setTimeout(r, 5)); done = true; },
+    });
+    await program.parseAsync(['d'], { from: 'user' });
+    expect(done).toBe(true);
   });
 });
