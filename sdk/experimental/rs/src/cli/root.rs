@@ -145,7 +145,8 @@ impl Root {
 
     /// What completing a positional argument of the command at `path`
     /// returns, `args` being those already given: the bound completer,
-    /// plus alias names at the root. `None` when neither exists.
+    /// plus alias names at the root, but for visible proxies, which
+    /// complete as subcommands. `None` when neither exists.
     pub fn args_completion(
         &self,
         path: &str,
@@ -173,6 +174,10 @@ impl Root {
         if aliases {
             directive = Directive::NO_FILE_COMP | directive;
             for (name, target) in &self.aliases {
+                // A visible proxy completes as a subcommand already.
+                if self.is_visible_proxy(name) {
+                    continue;
+                }
                 if name.starts_with(to_complete) {
                     out.push(format!("{name}\talias for {target}"));
                 }
@@ -256,6 +261,15 @@ impl Root {
                 out.write_all(help.as_bytes())
             }
         })
+    }
+
+    /// Whether alias `name` is a visible proxy: a root subcommand that
+    /// completion offers among the subcommands, so the alias list
+    /// leaves it out rather than offer it twice.
+    fn is_visible_proxy(&self, name: &str) -> bool {
+        self.cmd
+            .get_subcommands()
+            .any(|c| c.get_name() == name && !c.is_hide_set())
     }
 
     // --- crate-internal: binding and lookup ---

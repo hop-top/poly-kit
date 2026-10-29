@@ -162,7 +162,18 @@ struct BridgeCase {
     options: Option<Options>,
     #[serde(default)]
     skip: BTreeMap<String, String>,
+    #[serde(default)]
+    proxy_flags: Vec<ProxyFlag>,
     checks: Vec<Check>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProxyFlag {
+    #[allow(dead_code)]
+    name: String,
+    #[allow(dead_code)]
+    short: String,
 }
 
 #[derive(Clone, Default, Deserialize)]
@@ -173,6 +184,8 @@ struct Check {
     entry: Option<Entry>,
     run: Option<Run>,
     help: Option<String>,
+    complete: Option<Vec<String>>,
+    candidates: Option<Vec<String>>,
     #[serde(default)]
     by_port: BTreeMap<String, Check>,
 }
@@ -244,6 +257,11 @@ fn descriptions(n: &Node, prefix: &str, out: &mut BTreeMap<String, String>) {
 }
 
 fn setup(f: &BridgeFile, c: &BridgeCase) -> Root {
+    assert!(
+        c.proxy_flags.is_empty(),
+        "{}: rust cannot add flags to a proxy",
+        c.name
+    );
     let mut root = Root::new(build(&f.tree));
     let opts = c.options.as_ref().map(|o| {
         assert!(
@@ -380,6 +398,19 @@ fn bridge() {
                     "unknown"
                 };
                 assert_eq!(got, want, "{}: {argv:?}\n{text}", c.name);
+            } else if let Some(words) = &chk.complete {
+                let (mut out, mut err) = (Vec::new(), Vec::new());
+                root.complete(words, true, &mut out, &mut err).unwrap();
+                let mut got: Vec<String> = String::from_utf8(out)
+                    .unwrap()
+                    .lines()
+                    .filter(|l| !l.is_empty() && !l.starts_with(':'))
+                    .map(String::from)
+                    .collect();
+                got.sort();
+                let mut want = chk.candidates.clone().unwrap();
+                want.sort();
+                assert_eq!(got, want, "{}: complete {words:?}", c.name);
             } else {
                 panic!("{}: check has no observable", c.name);
             }

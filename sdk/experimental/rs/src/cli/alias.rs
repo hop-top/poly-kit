@@ -362,6 +362,30 @@ mod tests {
         );
     }
 
+    fn complete(root: &Root, words: &[&str]) -> Vec<String> {
+        let words: Vec<String> = words.iter().map(|w| w.to_string()).collect();
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        root.complete(&words, true, &mut out, &mut err).unwrap();
+        let mut got: Vec<String> = String::from_utf8(out)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.starts_with(':'))
+            .map(String::from)
+            .collect();
+        got.sort();
+        got
+    }
+
+    #[test]
+    fn completion_offers_each_proxy_once() {
+        for hidden in [true, false] {
+            let mut root = Root::new(Command::new("app").subcommand(Command::new("deploy")));
+            root.alias_with("d", "deploy", &AliasOptions::new().hidden(hidden))
+                .unwrap();
+            assert_eq!(complete(&root, &["d"]), ["d", "deploy"], "hidden {hidden}");
+        }
+    }
+
     #[test]
     fn alias_with_proxies_a_direct_child() {
         let mut root = Root::new(Command::new("app").subcommand(Command::new("deploy")));
