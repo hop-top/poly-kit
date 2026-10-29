@@ -286,7 +286,9 @@ bindArgs(cmd, missionCompleter);                      // cmd's positionals
   `createCLI` and `completionCommand` install ahead of commander's
   parse (`installCompletionRequest`), so no hook or action runs on tab.
   It walks the live tree: nested subcommands, aliases (root aliases
-  from `bridgeAliases` are offered as `alias for <target>`), own and
+  from `bridgeAliases` are offered as `alias for <target>`, except
+  visible or custom-dispatch proxies, which complete as ordinary
+  subcommands; see [alias-api](alias-api.md#shell-completion-integration)), own and
   inherited flags, `choices()` as flag enums and positional values.
 - Completers receive `(prefix, { commandPath, args })`; output and
   directives match Go (`resolveCompletions` in `completion-values`).

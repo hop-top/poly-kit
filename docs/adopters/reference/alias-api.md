@@ -302,12 +302,29 @@ collides with an existing command, or is already an alias.
 ## Shell Completion Integration
 
 Aliases registered through any bridge appear in tab completion at
-the root alongside real commands; Go, TS and Rust describe them as
-`alias for <target>`.
+the root alongside real commands, each once; Go, TS and Rust describe
+them as `alias for <target>`.
 
 ```sh
 spaced <TAB>   # shows: deploy, mission, ml, s, serve, ...
 ```
+
+How a proxy completes depends on whether it is a stand-in or a real
+command:
+
+- **Stand-in**: a native alias, a default shim, or a hidden proxy that
+  dispatches to its target or runs nothing (register-only). Go, TS and
+  Rust list it by name as `alias for <target>`. Python lists a native
+  alias, but not a hidden proxy, as Click skips hidden commands.
+- **Real command**: a visible proxy (`hidden: false`) or, in Go, TS
+  and Python, one with a custom dispatch handler. Completion walks it
+  like any subcommand: a visible one is listed once with its own
+  description, and `<alias> -<TAB>` offers the proxy's own flags,
+  including flags you add to it after bridging. A hidden proxy with a
+  handler is not listed, like any hidden command.
+
+A TS stand-in proxy offers only `-h/--help` as flags; add flags to a
+proxy only when it is a real command.
 
 ---
 
