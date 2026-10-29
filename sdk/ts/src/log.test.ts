@@ -310,3 +310,48 @@ describe('log success', () => {
     expect(s.text()).toBe('SUCC a\nSUCC b\n');
   });
 });
+
+// ---------------------------------------------------------------------------
+// format: 'json' (charm JSONFormatter shape)
+// ---------------------------------------------------------------------------
+
+describe("log format: 'json'", () => {
+  it('emits {"level","msg",...kv} with no time/pid/hostname or ANSI', () => {
+    const s = capture();
+    createLogger({ format: 'json', output: s.output })
+      .info('start', 'port', 8080, 'path', '/my dir', 'ok', true);
+    expect(s.text()).toBe('{"level":"info","msg":"start","port":8080,"path":"/my dir","ok":true}\n');
+  });
+
+  it('uses charm level strings', () => {
+    const s = capture();
+    emitAll(createLogger({ format: 'json', output: s.output, level: 'trace' }));
+    expect(s.text()).toBe(
+      '{"level":"trace","msg":"t"}\n'
+      + '{"level":"debug","msg":"d"}\n'
+      + '{"level":"info","msg":"i"}\n'
+      + '{"level":"warn","msg":"w"}\n'
+      + '{"level":"error","msg":"e"}\n',
+    );
+  });
+
+  it('marks success as level info + kind success', () => {
+    const s = capture();
+    createLogger({ format: 'json', output: s.output }).success('deployed', 'env', 'prod');
+    expect(s.text()).toBe('{"level":"info","msg":"deployed","kind":"success","env":"prod"}\n');
+  });
+
+  it('honors level filtering and withVerbose', () => {
+    const s = capture();
+    const log = withVerbose({ format: 'json', output: s.output, quiet: true });
+    log.info('hidden');
+    log.warn('shown');
+    expect(s.text()).toBe('{"level":"warn","msg":"shown"}\n');
+  });
+
+  it("format: 'text' is the default line format", () => {
+    const s = capture();
+    createLogger({ format: 'text', noColor: true, output: s.output }).info('x', 'k', 1);
+    expect(s.text()).toBe('INFO x k=1\n');
+  });
+});

@@ -56,6 +56,14 @@ export interface LoggerOptions {
    * capturing output in tests.
    */
   output?: LogOutput;
+  /**
+   * Line format. `'text'` (default) is `LEVEL msg k=v`; `'json'` is one
+   * object per line shaped like Go charm/log's JSONFormatter:
+   * `{"level":"info","msg":"...",...kv}` (no time/pid/hostname, no ANSI).
+   * `success` lines carry `"level":"info","kind":"success"`. Selected by
+   * this option only — no env var or flag.
+   */
+  format?: 'text' | 'json';
 }
 
 // ---------------------------------------------------------------------------
@@ -98,27 +106,77 @@ const LEVEL_STYLES: Record<number, { label: string; color: RGB; bold: boolean }>
   60: { label: 'ERRO', color: CHERRY, bold: true },
 };
 
-function kitTransport(noColor: boolean, output?: LogOutput): pino.DestinationStream {
+/** pino level number → kit level name (charm/log spellings). */
+const LEVEL_NAMES: Record<number, LogLevelName> = {
+  10: 'trace', 20: 'debug', 30: 'info', [SUCCESS_LEVEL]: 'info',
+  40: 'warn', 50: 'error', 60: 'fatal',
+};
+
+/** pino bookkeeping keys that are never user fields. */
+const RESERVED_KEYS = new Set(['level', 'time', 'pid', 'hostname', 'msg', 'v']);
+
+/** A parsed log line, before rendering. */
+interface ParsedRecord {
+  levelNum: number;
+  level: LogLevelName;
+  msg: string;
+  fields: Record<string, unknown>;
+  kind?: 'success';
+}
+
+function parseRecord(chunk: string): ParsedRecord {
+  const obj = JSON.parse(chunk);
+  const fields: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (!RESERVED_KEYS.has(k)) fields[k] = v;
+  }
+  const levelNum = LEVEL_STYLES[obj.level] ? obj.level : 30;
+  return {
+    levelNum,
+    level: LEVEL_NAMES[levelNum],
+    msg: obj.msg ?? '',
+    fields,
+    ...(levelNum === SUCCESS_LEVEL ? { kind: 'success' as const } : {}),
+  };
+}
+
+function renderText(rec: ParsedRecord, noColor: boolean): string {
+  const style = LEVEL_STYLES[rec.levelNum];
+  let prefix = noColor ? style.label : fg(style.color, style.label);
+  if (style.bold && !noColor) prefix = bold(prefix);
+
+  const kvParts: string[] = [];
+  for (const [k, v] of Object.entries(rec.fields)) {
+    const sv = String(v);
+    kvParts.push(sv.includes(' ') ? `${k}="${sv}"` : `${k}=${sv}`);
+  }
+  const kv = kvParts.length ? ' ' + kvParts.join(' ') : '';
+  return `${prefix} ${rec.msg}${kv}\n`;
+}
+
+function renderJSON(rec: ParsedRecord): string {
+  const out: Record<string, unknown> = { level: rec.level, msg: rec.msg };
+  if (rec.kind) out.kind = rec.kind;
+  Object.assign(out, rec.fields);
+  if (rec.kind) out.kind = rec.kind; // a user `kind` field never masks it
+  return JSON.stringify(out) + '\n';
+}
+
+interface TransportOptions {
+  noColor: boolean;
+  format: 'text' | 'json';
+  output?: LogOutput;
+}
+
+function kitTransport(o: TransportOptions): pino.DestinationStream {
   // Resolve the default lazily so callers that swap process.stderr after
   // construction keep seeing their writes.
-  const out = (): LogOutput => output ?? process.stderr;
+  const out = (): LogOutput => o.output ?? process.stderr;
   return {
     write(chunk: string): void {
       try {
-        const obj = JSON.parse(chunk);
-        const style = LEVEL_STYLES[obj.level] ?? LEVEL_STYLES[30];
-        let prefix = noColor ? style.label : fg(style.color, style.label);
-        if (style.bold && !noColor) prefix = bold(prefix);
-
-        const msg = obj.msg ?? '';
-        const kvParts: string[] = [];
-        for (const [k, v] of Object.entries(obj)) {
-          if (['level', 'time', 'pid', 'hostname', 'msg', 'v'].includes(k)) continue;
-          const sv = String(v);
-          kvParts.push(sv.includes(' ') ? `${k}="${sv}"` : `${k}=${sv}`);
-        }
-        const kv = kvParts.length ? ' ' + kvParts.join(' ') : '';
-        out().write(`${prefix} ${msg}${kv}\n`);
+        const rec = parseRecord(chunk);
+        out().write(o.format === 'json' ? renderJSON(rec) : renderText(rec, o.noColor));
       } catch {
         out().write(chunk);
       }
@@ -207,7 +265,11 @@ function build(opts: LoggerOptions, defaultLevel: string): Logger {
   const level = applyQuiet(opts.level ?? defaultLevel, opts.quiet ?? false);
   const p = pino<'success'>(
     { level, customLevels: { success: SUCCESS_LEVEL } },
-    kitTransport(opts.noColor ?? false, opts.output),
+    kitTransport({
+      noColor: opts.noColor ?? false,
+      format: opts.format ?? 'text',
+      output: opts.output,
+    }),
   );
 
   return {
