@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Alias bridging onto a port's command tree. Each case builds `tree`, registers `aliases` (sorted by name) through the port's bridge with `options`, then runs `checks`. Without `options` a port bridges as it always has: a native alias where its framework has one, otherwise a proxy. With any option set every alias becomes a proxy, a stand-in command named after the alias. See README.md for each observable and for the per-port defaults `by_port` records.",
+  "description": "Alias bridging onto a port's command tree. Each case builds `tree`, registers `aliases` (sorted by name) through the port's bridge with `options`, adds `proxy_flags` to every proxy, then runs `checks`. Without `options` a port bridges as it always has: a native alias where its framework has one, otherwise a proxy. With any option set every alias becomes a proxy, a stand-in command named after the alias. See README.md for each observable and for the per-port defaults `by_port` records.",
   "tree": {
     "name": "app",
     "commands": [
@@ -120,6 +120,47 @@
         { "alias": "d", "entry": { "kind": "proxy", "hidden": false, "description": "Alias for deploy" } },
         { "argv": ["d", "--env", "prod", "p1"], "run": { "ran": "none" } },
         { "argv": ["rs"], "run": { "ran": "none" } }
+      ]
+    },
+    {
+      "name": "completion: a visible proxy is offered once",
+      "aliases": { "d": "deploy", "rs": "router start" },
+      "options": { "hidden": false, "describe": true },
+      "checks": [
+        { "complete": ["d"], "candidates": ["d", "deploy"] },
+        { "complete": ["r"], "candidates": ["router", "rs"] }
+      ]
+    },
+    {
+      "name": "completion: a visible proxy offers the flags it owns",
+      "aliases": { "d": "deploy", "rs": "router start" },
+      "options": { "hidden": false, "describe": true },
+      "proxy_flags": [{ "name": "zone", "short": "z" }],
+      "skip": { "rs": "Rust builds the proxy inside Root::alias_with and exposes no way to add flags to it" },
+      "checks": [
+        { "complete": ["d", "--z"], "candidates": ["--zone"] },
+        { "complete": ["rs", "-z"], "candidates": ["-z"] }
+      ]
+    },
+    {
+      "name": "completion: a visible custom-dispatch proxy is offered once",
+      "aliases": { "d": "deploy", "rs": "router start" },
+      "options": { "hidden": false, "describe": true, "help": "own", "dispatch": "handler" },
+      "skip": { "rs": "Rust has no dispatch hook: the caller dispatches every alias through Root::alias_target" },
+      "checks": [
+        { "complete": ["d"], "candidates": ["d", "deploy"] },
+        { "complete": ["r"], "candidates": ["router", "rs"] }
+      ]
+    },
+    {
+      "name": "completion: a custom-dispatch proxy offers the flags it owns",
+      "aliases": { "d": "deploy", "rs": "router start" },
+      "options": { "hidden": false, "describe": true, "help": "own", "dispatch": "handler" },
+      "proxy_flags": [{ "name": "zone", "short": "z" }],
+      "skip": { "rs": "Rust has no dispatch hook: the caller dispatches every alias through Root::alias_target" },
+      "checks": [
+        { "complete": ["d", "--z"], "candidates": ["--zone"] },
+        { "complete": ["rs", "-z"], "candidates": ["-z"] }
       ]
     }
   ]
