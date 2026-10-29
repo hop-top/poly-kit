@@ -1,0 +1,22 @@
+{
+  "version": "v1",
+  "description": "Cycle detection over an alias map (name -> target). An alias points at another alias when the first word of its target (split on white space, leading white space ignored) is a key of the map. A cycle is a set of aliases that reach each other that way, the self-loop included. Each cycle is reported once as a path: it starts at its lexicographically smallest name (code-point order), follows the edges and ends with that name again. Cycles are sorted by their first name. An alias that only leads into a cycle is not part of it. `cycles` is the exact result.",
+  "cases": [
+    { "name": "empty map", "aliases": {}, "cycles": [] },
+    { "name": "no alias targets an alias", "aliases": { "d": "deploy", "rs": "router start" }, "cycles": [] },
+    { "name": "chain without a cycle", "aliases": { "a": "b --x", "b": "deploy" }, "cycles": [] },
+    { "name": "self loop", "aliases": { "a": "a --verbose" }, "cycles": [["a", "a"]] },
+    { "name": "self loop bare", "aliases": { "a": "a" }, "cycles": [["a", "a"]] },
+    { "name": "two aliases", "aliases": { "a": "b", "b": "a x" }, "cycles": [["a", "b", "a"]] },
+    { "name": "three aliases start at smallest", "aliases": { "c": "a", "a": "b", "b": "c" }, "cycles": [["a", "b", "c", "a"]] },
+    { "name": "smallest name is not first in map", "aliases": { "z": "m", "m": "q", "q": "z" }, "cycles": [["m", "q", "z", "m"]] },
+    { "name": "tail into a cycle", "aliases": { "z": "a", "a": "b", "b": "a" }, "cycles": [["a", "b", "a"]] },
+    { "name": "tail enters a cycle past its smallest name", "aliases": { "a": "c", "c": "b", "b": "c" }, "cycles": [["b", "c", "b"]] },
+    { "name": "two cycles sorted", "aliases": { "x": "y", "y": "x", "c": "b", "b": "c" }, "cycles": [["b", "c", "b"], ["x", "y", "x"]] },
+    { "name": "only the first word counts", "aliases": { "a": "deploy a", "b": "router b" }, "cycles": [] },
+    { "name": "leading white space in target", "aliases": { "a": "  b --x", "b": "a" }, "cycles": [["a", "b", "a"]] },
+    { "name": "empty target", "aliases": { "a": "" }, "cycles": [] },
+    { "name": "blank target", "aliases": { "a": "   " }, "cycles": [] },
+    { "name": "cycle plus unrelated aliases", "aliases": { "d": "deploy", "p": "q", "q": "p --force", "s": "status" }, "cycles": [["p", "q", "p"]] }
+  ]
+}

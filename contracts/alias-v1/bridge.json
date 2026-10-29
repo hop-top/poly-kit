@@ -1,0 +1,126 @@
+{
+  "version": "v1",
+  "description": "Alias bridging onto a port's command tree. Each case builds `tree`, registers `aliases` (sorted by name) through the port's bridge with `options`, then runs `checks`. Without `options` a port bridges as it always has: a native alias where its framework has one, otherwise a proxy. With any option set every alias becomes a proxy, a stand-in command named after the alias. See README.md for each observable and for the per-port defaults `by_port` records.",
+  "tree": {
+    "name": "app",
+    "commands": [
+      {
+        "name": "deploy",
+        "description": "Deploy the app",
+        "flags": [{ "name": "env", "default": "dev" }]
+      },
+      {
+        "name": "router",
+        "description": "Route traffic",
+        "commands": [{ "name": "start", "description": "Start the router" }]
+      }
+    ]
+  },
+  "describe_template": "{name} runs {target}",
+  "cases": [
+    {
+      "name": "defaults: direct child is a native alias",
+      "aliases": { "d": "deploy" },
+      "checks": [
+        { "alias": "d", "entry": { "kind": "native" } },
+        { "argv": ["d", "--env", "prod", "p1"], "run": { "ran": "target", "path": "deploy", "env": "prod", "args": ["p1"] } },
+        { "argv": ["d", "--help"], "help": "target" }
+      ]
+    },
+    {
+      "name": "defaults: nested target",
+      "aliases": { "rs": "router start" },
+      "skip": { "py": "the default Python bridge resolves a multi-word target to its first word only" },
+      "checks": [
+        { "alias": "rs", "entry": { "kind": "proxy", "hidden": true, "description": "Alias for router start" } },
+        { "argv": ["rs", "p1"], "run": { "ran": "target", "path": "router start", "env": null, "args": ["p1"] } },
+        { "argv": ["rs", "--help"], "help": "alias", "by_port": { "ts": { "help": "target" } } }
+      ]
+    },
+    {
+      "name": "options: visible proxies with a custom description",
+      "aliases": { "d": "deploy", "rs": "router start" },
+      "options": { "hidden": false, "describe": true },
+      "checks": [
+        { "alias": "d", "entry": { "kind": "proxy", "hidden": false, "description": "d runs deploy" } },
+        { "alias": "rs", "entry": { "kind": "proxy", "hidden": false, "description": "rs runs router start" } },
+        { "argv": ["d", "--env", "prod", "p1"], "run": { "ran": "target", "path": "deploy", "env": "prod", "args": ["p1"] } },
+        { "argv": ["d"], "run": { "ran": "target", "path": "deploy", "env": "dev", "args": [] } },
+        { "argv": ["rs", "p1"], "run": { "ran": "target", "path": "router start", "env": null, "args": ["p1"] } },
+        { "argv": ["d", "--help"], "help": "alias", "by_port": { "ts": { "help": "target" }, "py": { "help": "target" } } }
+      ]
+    },
+    {
+      "name": "options: hidden proxy keeps the default description",
+      "aliases": { "d": "deploy" },
+      "options": { "hidden": true },
+      "checks": [
+        { "alias": "d", "entry": { "kind": "proxy", "hidden": true, "description": "Alias for deploy" } },
+        { "argv": ["d", "--env", "qa"], "run": { "ran": "target", "path": "deploy", "env": "qa", "args": [] } }
+      ]
+    },
+    {
+      "name": "options: the alias owns --help",
+      "aliases": { "d": "deploy", "rs": "router start" },
+      "options": { "help": "own" },
+      "checks": [
+        { "alias": "d", "entry": { "kind": "proxy", "hidden": true, "description": "Alias for deploy" } },
+        { "argv": ["d", "--help"], "help": "alias" },
+        { "argv": ["rs", "--help"], "help": "alias" },
+        { "argv": ["d", "--env", "prod", "p1"], "run": { "ran": "target", "path": "deploy", "env": "prod", "args": ["p1"] } }
+      ]
+    },
+    {
+      "name": "options: --help passes through to the target",
+      "aliases": { "d": "deploy", "rs": "router start" },
+      "options": { "help": "passthrough" },
+      "checks": [
+        { "argv": ["d", "--help"], "help": "target" },
+        { "argv": ["rs", "--help"], "help": "target" },
+        { "argv": ["rs", "p1"], "run": { "ran": "target", "path": "router start", "env": null, "args": ["p1"] } }
+      ]
+    },
+    {
+      "name": "options: custom dispatch handler gets the raw arguments",
+      "aliases": { "d": "deploy", "rs": "router start" },
+      "options": { "dispatch": "handler" },
+      "skip": { "rs": "Rust has no dispatch hook: the caller dispatches every alias through Root::alias_target" },
+      "checks": [
+        { "alias": "d", "entry": { "kind": "proxy", "hidden": true, "description": "Alias for deploy" } },
+        { "argv": ["d", "--env", "prod", "p1"], "run": { "ran": "handler", "name": "d", "target": "deploy", "args": ["--env", "prod", "p1"] } },
+        { "argv": ["rs", "p1", "--x"], "run": { "ran": "handler", "name": "rs", "target": "router start", "args": ["p1", "--x"] } },
+        { "argv": ["rs"], "run": { "ran": "handler", "name": "rs", "target": "router start", "args": [] } }
+      ]
+    },
+    {
+      "name": "options: custom dispatch with the alias owning --help",
+      "aliases": { "d": "deploy" },
+      "options": { "dispatch": "handler", "help": "own" },
+      "skip": { "rs": "Rust has no dispatch hook: the caller dispatches every alias through Root::alias_target" },
+      "checks": [
+        { "argv": ["d", "--help"], "help": "alias" },
+        { "argv": ["d", "p1"], "run": { "ran": "handler", "name": "d", "target": "deploy", "args": ["p1"] } }
+      ]
+    },
+    {
+      "name": "options: custom dispatch receives --help when it passes through",
+      "aliases": { "d": "deploy" },
+      "options": { "dispatch": "handler", "help": "passthrough" },
+      "skip": { "rs": "Rust has no dispatch hook: the caller dispatches every alias through Root::alias_target" },
+      "checks": [
+        { "argv": ["d", "--help"], "run": { "ran": "handler", "name": "d", "target": "deploy", "args": ["--help"] } }
+      ]
+    },
+    {
+      "name": "options: register-only proxies run nothing",
+      "aliases": { "d": "deploy", "rs": "router start" },
+      "options": { "dispatch": "register-only", "hidden": false },
+      "skip": { "rs": "Rust proxies are always register-only: the caller dispatches through Root::alias_target" },
+      "checks": [
+        { "alias": "d", "entry": { "kind": "proxy", "hidden": false, "description": "Alias for deploy" } },
+        { "argv": ["d", "--env", "prod", "p1"], "run": { "ran": "none" } },
+        { "argv": ["rs"], "run": { "ran": "none" } }
+      ]
+    }
+  ]
+}
