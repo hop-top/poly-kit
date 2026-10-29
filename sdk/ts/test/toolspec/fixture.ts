@@ -61,14 +61,13 @@ function addFixtureCommand(parent: Command, tc: TreeCommand): void {
 }
 
 /**
- * The fixture program. The tool version rides a `--tool-version`
- * option so it does not shadow `spec --version`.
+ * The fixture program, with createCLI's `-v, --version` on the root.
  */
 export function fixtureProgram(): { program: Command; tree: Tree } {
   const tree = JSON.parse(
     fs.readFileSync(path.join(FIXTURES, "toolspec-manifest.tree.json"), "utf-8"),
   ) as Tree;
-  const program = new Command(tree.tool).version(tree.version, "--tool-version");
+  const program = new Command(tree.tool).version(tree.version, "-v, --version");
   for (const c of tree.commands) addFixtureCommand(program, c);
   return { program, tree };
 }

@@ -5,6 +5,7 @@
  * pinned against Go by sdk/tests/cross-lang/fixtures/toolspec-spec*.json.
  */
 
+import type { EventEmitter } from "events";
 import { Command, Option } from "commander";
 import * as yaml from "js-yaml";
 import { EXIT_CONFLICT, EXIT_GENERIC } from "./output/error.js";
@@ -84,8 +85,13 @@ function manifestYAML(m: Manifest): string {
  * schemaVersion is a floor: each run resolves the emitted version
  * against KIT_TOOLSPEC_SCHEMA (negotiateSchemaVersion).
  *
- * A program-level `--version` option (commander `.version()`) is
- * parsed before subcommands and wins over `spec --version`.
+ * commander parses a program's own options anywhere on the line, so
+ * a program-level `--version` (commander `.version()`, which
+ * createCLI sets) would answer `spec --version` with the tool
+ * version. The program's version listener is wrapped so a literal
+ * `--version` is forwarded to spec when spec is the command being
+ * executed; `tool --version`, `-v`, and `--version` on any other
+ * command keep commander's behaviour. See forwardVersionToSpec.
  */
 export function registerSpecCommand(
   program: Command,
@@ -124,6 +130,13 @@ export function registerSpecCommand(
     ]),
   };
 
+  let versionForwarded = false;
+  forwardVersionToSpec(program, spec, () => {
+    versionForwarded = true;
+  }, () => {
+    versionForwarded = false;
+  });
+
   spec.action(function (this: Command) {
     const out = (s: string): void => this.configureOutput().writeOut!(s);
     const resolved = negotiateSchemaVersion(
@@ -134,7 +147,7 @@ export function registerSpecCommand(
     const [given, changed] = formatFlag(this);
     const format = changed ? given : "";
 
-    if (local.version) {
+    if (local.version || versionForwarded) {
       const vf = format === "" ? "json" : format;
       if (vf === "json") {
         out(encodeGoJSON({ schema_version: resolved }, 0, new Set()) + "\n");
@@ -173,6 +186,108 @@ export function registerSpecCommand(
   registerCoverageCommand(spec, program, reserved);
   program.addCommand(spec);
   return spec;
+}
+
+// --- spec --version forwarding ---
+
+const WRAPPED = new WeakSet<(...args: unknown[]) => void>();
+
+/** The subcommand of cmd that args select, skipping known option values. */
+function selectedSubcommand(cmd: Command, args: readonly string[]): [Command, string[]] | undefined {
+  const options = [cmd, ...ancestors(cmd)].flatMap((c) => c.options as readonly Option[]);
+  const find = (flag: string) =>
+    options.find((o) => o.long === flag || o.short === flag);
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--") return undefined;
+    if (a.length > 1 && a.startsWith("-")) {
+      const long = a.startsWith("--");
+      const opt = find(long ? a.split("=")[0] : a.slice(0, 2));
+      const inline = long ? a.includes("=") : a.length > 2;
+      const next = args[i + 1];
+      if (
+        opt &&
+        !inline &&
+        (opt.required || (opt.optional && next !== undefined && !next.startsWith("-")))
+      ) {
+        i++;
+      }
+      continue;
+    }
+    const sub = cmd.commands.find((c) => c.name() === a || c.aliases().includes(a));
+    return sub ? [sub, args.slice(i + 1)] : undefined;
+  }
+  return undefined;
+}
+
+function ancestors(cmd: Command): Command[] {
+  const out: Command[] = [];
+  for (let c = cmd.parent; c; c = c.parent) out.push(c);
+  return out;
+}
+
+/**
+ * Route a literal `--version` to spec when spec is the executing
+ * command. The program's parseOptions (public) is wrapped per
+ * instance to see the user args at each parse; the program's
+ * `option:version` listeners (commander 15 registers one in
+ * `.version()`, emitted from parseOptions) are wrapped lazily there,
+ * so a `.version()` call after registerSpecCommand is covered too.
+ * When forwarding, the wrapped listener records the request instead
+ * of printing and exiting. commander internals relied on (pinned
+ * 15.0.0): the `option:<name>` event convention, that `.version()`
+ * reacts through such a listener, that the program's own
+ * parseOptions is invoked via `this` (so the instance override
+ * applies), and the EventEmitter base typed locally below.
+ */
+function forwardVersionToSpec(
+  program: Command,
+  spec: Command,
+  forward: () => void,
+  reset: () => void,
+): void {
+  let forwarding = false;
+  const original = program.parseOptions.bind(program);
+
+  const wrapListeners = (): void => {
+    const versionOpt = (program.options as readonly Option[]).find(
+      (o) => o.long === "--version",
+    );
+    if (!versionOpt) return;
+    const event = `option:${versionOpt.name()}`;
+    // commander 15's Command extends EventEmitter at runtime; its
+    // typings only declare on(), so the emitter surface is typed here.
+    const emitter = program as unknown as EventEmitter;
+    for (const l of emitter.listeners(event) as ((...a: unknown[]) => void)[]) {
+      if (WRAPPED.has(l)) continue;
+      const wrapped = function (this: unknown, ...a: unknown[]): void {
+        if (forwarding) {
+          forward();
+          return;
+        }
+        l.apply(this, a);
+      };
+      WRAPPED.add(wrapped);
+      emitter.removeListener(event, l);
+      emitter.on(event, wrapped);
+    }
+  };
+
+  program.parseOptions = (args: string[]) => {
+    reset();
+    wrapListeners();
+    let executing: Command = program;
+    let rest: readonly string[] = args;
+    for (let sel = selectedSubcommand(executing, rest); sel; sel = selectedSubcommand(executing, rest)) {
+      [executing, rest] = sel;
+    }
+    forwarding = executing === spec && args.includes("--version");
+    try {
+      return original(args);
+    } finally {
+      forwarding = false;
+    }
+  };
 }
 
 // --- spec coverage ---
