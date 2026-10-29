@@ -2,6 +2,8 @@
 
 ## [0.5.0-beta.4](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.3...kit/v0.5.0-beta.4) (2026-10-29)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.4. This release includes new features and bug fixes.
+
 
 ### Features
 
@@ -11,6 +13,8 @@
 ### Bug Fixes
 
 * **go/alias:** leave real-command proxies out of alias completion ([d962d32](https://github.com/hop-top/poly-kit/commit/d962d32b4efd5ec6d73e8ecd8f3ec476e836ae6a))
+
+Full diff: [kit/v0.5.0-beta.3...kit/v0.5.0-beta.4](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.3...kit/v0.5.0-beta.4)
 
 ## [0.5.0-beta.3](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.2...kit/v0.5.0-beta.3) (2026-10-29)
 
