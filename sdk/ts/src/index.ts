@@ -4,7 +4,9 @@
  *
  * Root barrel: namespace re-exports of every public subpath, so
  * `require('@hop-top/kit')` / `import ... from '@hop-top/kit'` resolve.
- * Namespaces mirror the package exports map one-to-one.
+ * Namespaces mirror the package exports map one-to-one; kebab-case
+ * subpaths become camelCase namespaces (`completion-values` ->
+ * `completionValues`).
  *
  * `sqlstore` is intentionally NOT re-exported here: an eager re-export
  * would load better-sqlite3 native bindings on every bare import of the
@@ -18,6 +20,8 @@ export * as api from './api.js';
 export * as auth from './auth.js';
 export * as cli from './cli.js';
 export * as completion from './completion.js';
+export * as completionValues from './completion-values.js';
+export * as compliance from './compliance.js';
 export * as config from './config.js';
 export * as errcorrect from './errcorrect.js';
 export * as id from './id/index.js';

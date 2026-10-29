@@ -50,10 +50,28 @@ function consumerSource(): string {
   return `${imports}
 import type { CliError } from '${pkg.name}/output';
 import { output } from '${pkg.name}';
+import { createLogger, type Logger } from '${pkg.name}/log';
+import { completionCommand, generateBashCompletion } from '${pkg.name}/completion';
+import { CompletionRegistry, staticValues, type Completer } from '${pkg.name}/completion-values';
+import { loadToolSpec, type ToolSpec } from '${pkg.name}/toolspec';
+import { Factor, formatReport, type Report } from '${pkg.name}/compliance';
+import { compliance, completion, completionValues, log, toolspec } from '${pkg.name}';
 
 // Types re-exported through the root barrel's namespaces must stay types.
 export const viaSubpath: CliError | null = output.wrapError(new Error('x'), output.CODE_GENERIC, output.EXIT_GENERIC);
 export const viaNamespace: output.CliError | null = viaSubpath;
+
+// Named symbols adopters import; pinned so dropping a subpath from the
+// exports map (which also drops it from the loop above) still fails.
+export const logger: Logger = createLogger();
+export const logNs: log.Logger = log.createLogger();
+export const completionFns = [completionCommand, generateBashCompletion, completion.generateZshCompletion];
+export const completer: Completer = staticValues('a');
+export const registry: completionValues.CompletionRegistry = new CompletionRegistry();
+export const loadSpec: (p: string) => ToolSpec = loadToolSpec;
+export const loadSpecNs: (p: string) => toolspec.ToolSpec = toolspec.loadToolSpec;
+export const report = (r: Report): string => formatReport(r, 'json');
+export const factor: compliance.Factor = Factor.SelfDescribing;
 export const all = [${specs.map((_, i) => `m${i}`).join(', ')}];
 `;
 }

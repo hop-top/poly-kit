@@ -57,7 +57,7 @@ loading), `sqlstore` (embedded SQLite key/value store), `upgrade` (semver
 upgrade detection), `llm`, `anthropic`, `openai`, `routellm`, `alias`, `uri`
 (facade over `@hop-top/cite`), `api`, `rpc`, `aim`, `scope`, `safety`,
 `provenance`, `stream`, `progress`, `auth`, `errcorrect`, `log`,
-`completion`, `toolspec`. See `package.json` `exports` for the full list.
+`completion`, `completion-values`, `toolspec`, `compliance`.
 
 ## Contract
 
