@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.3...kit-rs/v0.5.0-alpha.4) (2026-10-29)
+
+
+### Features
+
+* **rs:** alias proxies with options, validate_alias_name, detect_cycles ([94f0271](https://github.com/hop-top/poly-kit/commit/94f02713c5443231fd220204bddbbea9a7475ad7))
+
+
+### Bug Fixes
+
+* **rs:** offer a visible alias proxy once in completion ([085c019](https://github.com/hop-top/poly-kit/commit/085c019ba58779685275ef28f0b5cde529425e87))
+
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.2...kit-rs/v0.5.0-alpha.3) (2026-10-29)
 
 The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.3. This release includes new features and bug fixes.
