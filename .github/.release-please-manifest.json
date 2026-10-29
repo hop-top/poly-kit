@@ -5,5 +5,5 @@
   "sdk/experimental/php": "0.5.0-alpha.3",
   "sdk/experimental/rs": "0.5.0-alpha.3",
   "sdk/py": "0.5.0-alpha.6",
-  "sdk/ts": "0.5.0-alpha.6"
+  "sdk/ts": "0.5.0-alpha.7"
 }

@@ -4,6 +4,38 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.6...kit-ts/v0.5.0-alpha.7) (2026-10-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ts/completion:** generateBashCompletion/Zsh/Fish now return cobra's dynamic scripts, which call `<prog> __complete` (static word lists, `_<prog>_completions` and `-d` descriptions are gone); scripts from the old version must be regenerated. completion leaves take --no-descriptions and include powershell; leaf descriptions follow cobra. The undocumented `(cmd as any).__completionRegistry` hook was never read; use bindFlag/bindArgs (CompletionRegistry stays a plain lookup table, as in Go and Rust).
+* **ts/completion:** @hop-top/kit/completion-values behaviour changes: fileCompleter returns its extensions (was a `__file__` marker item) and dirCompleter returns no items (was `__dir__`); both carry a fileFilter the bridge turns into directives 8/16 (no extensions: 0). prefixedCompleter hint description is `<dim> values` (was `<dim>:...`), dimension matched case-insensitively, non-matching prefix yields []. configKeysCompleter returns lowercased leaf keys only (was every intermediate key, case kept).
+
+### Features
+
+* **ts/completion:** align completers with completion-v1 ([7b1445e](https://github.com/hop-top/poly-kit/commit/7b1445ee356e3980f0ac3c0feca9dc0144e7d85b))
+* **ts/completion:** cobra scripts and __complete engine ([be7ca8c](https://github.com/hop-top/poly-kit/commit/be7ca8c4063fe6f21706b4c1cdf8d5a52a793724))
+* **ts/config:** export mergeLayers, merge policies, load parsers ([1db83db](https://github.com/hop-top/poly-kit/commit/1db83dbd7ec6dd3e704728b63b609881e960b469))
+* **ts/config:** wildcard segments in arrayPolicyByPath ([bfa69c3](https://github.com/hop-top/poly-kit/commit/bfa69c37ba3d79fa81bc149137dab96fc5ed4d94))
+* **ts/log:** custom formatter hook ([72f935e](https://github.com/hop-top/poly-kit/commit/72f935ed5bc3db79445ccf1cbc2b9680de872f6a))
+* **ts/log:** injectable output sink for logger ([f0bf7b0](https://github.com/hop-top/poly-kit/commit/f0bf7b00550217269c66afbd7c37c953e959fe91))
+* **ts/log:** json format option ([80941d8](https://github.com/hop-top/poly-kit/commit/80941d8363ea379e42befdcf1ad5c6cd3cdbf58e))
+* **ts/log:** level option with silent ([82bb97b](https://github.com/hop-top/poly-kit/commit/82bb97b4b3c0769eac678f3c3cdac13b9ed04326))
+* **ts/log:** success method at info level ([f1faa1d](https://github.com/hop-top/poly-kit/commit/f1faa1d7733aba31300106f4c8c29547b526c15c))
+* **ts/toolspec:** build ToolSpec from commander tree ([027a37c](https://github.com/hop-top/poly-kit/commit/027a37c12d478061785d7d26a32537f6cebebd9d))
+* **ts/toolspec:** carry exit codes on Command ([27f3213](https://github.com/hop-top/poly-kit/commit/27f321372e38df26114107f7f7823284cb107551))
+* **ts/toolspec:** port Go manifest builder with byte parity ([db30af7](https://github.com/hop-top/poly-kit/commit/db30af72d64addbb934b378bae23271e6b0abdd7))
+* **ts/toolspec:** port spec and spec coverage commands ([979abcd](https://github.com/hop-top/poly-kit/commit/979abcd85c872c9dca15d2c275eee149f2dfdb4e))
+
+
+### Bug Fixes
+
+* **ts/alias:** dispatch alias proxy instead of re-parsing ([d68b4a2](https://github.com/hop-top/poly-kit/commit/d68b4a2df72d470f3677b5f59321500e9d38e703))
+* **ts/completion:** quote descriptions in zsh and fish scripts ([b03937c](https://github.com/hop-top/poly-kit/commit/b03937c9cd8fc9ed48baa6383d7f77deca89bc1e))
+* **ts/toolspec:** forward spec --version past the program version flag ([afbf3a8](https://github.com/hop-top/poly-kit/commit/afbf3a89001d432dbbbf6a971051a5c6ea625e2f))
+* **ts:** publish completion-values and compliance subpaths ([21d4370](https://github.com/hop-top/poly-kit/commit/21d4370791890f580574d4173923f77ae5ea8403))
+
 ## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.5...kit-ts/v0.5.0-alpha.6) (2026-10-29)
 
 
