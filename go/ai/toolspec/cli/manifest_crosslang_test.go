@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
+	"hop.top/kit/go/ai/toolspec"
 	kitcli "hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/output"
 )
@@ -97,9 +98,9 @@ func buildFixtureCommand(t *testing.T, tc treeCommand) *cobra.Command {
 	return cmd
 }
 
-// TestManifestCrossLangFixture pins BuildManifest's JSON bytes for the
-// shared tree. The TS SDK replays the same tree and must match them.
-func TestManifestCrossLangFixture(t *testing.T) {
+// fixtureRoot builds the shared tree under a bare kit Root.
+func fixtureRoot(t *testing.T) *kitcli.Root {
+	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(crossLangDir, "toolspec-manifest.tree.json"))
 	require.NoError(t, err)
 	var tree treeFixture
@@ -113,6 +114,57 @@ func TestManifestCrossLangFixture(t *testing.T) {
 	for _, name := range tree.Reserved {
 		root.MarkReserved(name)
 	}
+	return root
+}
+
+// checkGolden compares got with a fixture file, or rewrites it under
+// -update-manifest-fixture.
+func checkGolden(t *testing.T, file string, got []byte) {
+	t.Helper()
+	path := filepath.Join(crossLangDir, file)
+	if *updateManifestFixture {
+		require.NoError(t, os.WriteFile(path, got, 0o644))
+		return
+	}
+	want, err := os.ReadFile(path)
+	require.NoError(t, err, "regenerate with -update-manifest-fixture")
+	require.Equal(t, string(want), string(got))
+}
+
+// TestSpecCommandCrossLangFixture executes the real `<tool> spec`
+// over the shared tree (declared 1.0, harness requests 1.1) and
+// pins its stdout. The root carries a persistent --format the way a
+// kit root does. The TS registerSpecCommand replays these bytes.
+func TestSpecCommandCrossLangFixture(t *testing.T) {
+	t.Setenv(toolspec.SchemaVersionEnv, "1.1")
+	for _, tc := range []struct {
+		file string
+		args []string
+	}{
+		{"toolspec-spec.json", []string{"spec", "--format", "json"}},
+		{"toolspec-spec.default.json", []string{"spec"}},
+		{"toolspec-spec.include-deprecated.json", []string{"spec", "--format", "kit-manifest", "--include-deprecated"}},
+		{"toolspec-spec.version.json", []string{"spec", "--version"}},
+		{"toolspec-spec.coverage.json", []string{"spec", "coverage", "--format", "json"}},
+	} {
+		t.Run(tc.file, func(t *testing.T) {
+			root := fixtureRoot(t)
+			root.Cmd.PersistentFlags().String("format", "table", "output format")
+			require.NoError(t, RegisterSpecCommand(root, "1.0"))
+			var out bytes.Buffer
+			root.Cmd.SetOut(&out)
+			root.Cmd.SetErr(&out)
+			root.Cmd.SetArgs(tc.args)
+			require.NoError(t, root.Cmd.Execute())
+			checkGolden(t, tc.file, out.Bytes())
+		})
+	}
+}
+
+// TestManifestCrossLangFixture pins BuildManifest's JSON bytes for the
+// shared tree. The TS SDK replays the same tree and must match them.
+func TestManifestCrossLangFixture(t *testing.T) {
+	root := fixtureRoot(t)
 
 	for _, tc := range []struct {
 		file              string
@@ -126,14 +178,7 @@ func TestManifestCrossLangFixture(t *testing.T) {
 			m := BuildManifest(root, "1.1", tc.includeDeprecated)
 			require.NoError(t, output.Render(&buf, output.JSON, m))
 
-			path := filepath.Join(crossLangDir, tc.file)
-			if *updateManifestFixture {
-				require.NoError(t, os.WriteFile(path, buf.Bytes(), 0o644))
-				return
-			}
-			want, err := os.ReadFile(path)
-			require.NoError(t, err, "regenerate with -update-manifest-fixture")
-			require.Equal(t, string(want), buf.String())
+			checkGolden(t, tc.file, buf.Bytes())
 		})
 	}
 }

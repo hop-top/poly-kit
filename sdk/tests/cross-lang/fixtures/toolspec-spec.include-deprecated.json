@@ -1,0 +1,564 @@
+{
+  "tool": "fixture",
+  "version": "1.2.3",
+  "schema_version": "1.1",
+  "commands": [
+    {
+      "path": [
+        "fixture",
+        "admin",
+        "nuke"
+      ],
+      "short": "Destroy everything",
+      "side_effect": "destructive",
+      "idempotent": "unknown",
+      "retryable": false,
+      "destructive_token_required": true,
+      "dry_run_supported": true,
+      "reserved": true
+    },
+    {
+      "path": [
+        "fixture",
+        "config"
+      ],
+      "short": "Show config",
+      "side_effect": "read",
+      "idempotent": "unknown",
+      "retryable": false,
+      "dry_run_supported": false,
+      "reserved": true
+    },
+    {
+      "path": [
+        "fixture",
+        "config",
+        "show"
+      ],
+      "short": "Show one key",
+      "side_effect": "read",
+      "idempotent": "conditional",
+      "retryable": false,
+      "dry_run_supported": false,
+      "reserved": true
+    },
+    {
+      "path": [
+        "fixture",
+        "internal"
+      ],
+      "short": "Internal hook",
+      "side_effect": "destructive-local",
+      "idempotent": "unknown",
+      "retryable": false,
+      "top_level_verb": true,
+      "passthrough": true,
+      "dry_run_supported": false,
+      "dry_run_rationale": "remote only",
+      "hidden": true
+    },
+    {
+      "path": [
+        "fixture",
+        "launch"
+      ],
+      "short": "Launch a mission",
+      "side_effect": "write-shared",
+      "idempotent": "no",
+      "args": [
+        {
+          "name": "mission",
+          "required": true
+        },
+        {
+          "name": "vehicle"
+        }
+      ],
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "description": "Simulate only",
+          "default": "false"
+        },
+        {
+          "name": "orbit",
+          "short": "o",
+          "type": "string",
+          "description": "Target orbit",
+          "default": "leo",
+          "since_version": "1.1"
+        },
+        {
+          "name": "payload",
+          "type": "stringSlice",
+          "description": "Payload manifest",
+          "default": "[a,b]",
+          "since_version": "1.0"
+        },
+        {
+          "name": "tag",
+          "type": "stringSlice",
+          "description": "Tags",
+          "default": "[]"
+        }
+      ],
+      "exit_codes": [
+        "OK",
+        "USAGE",
+        "TRANSIENT"
+      ],
+      "since_version": "1.0",
+      "long": "Launch a mission.\n\nUses \u003corbit\u003e \u0026 \"payload\".",
+      "retryable": false,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1.0,
+            "pattern": "^\u003ca\u0026b\u003e$"
+          },
+          "2": {}
+        },
+        "required": [
+          "id"
+        ],
+        "items": []
+      },
+      "output_schema_version": "1.0",
+      "examples": [
+        {
+          "title": "Basic",
+          "command": "fixture launch apollo"
+        },
+        {
+          "title": "Report",
+          "command": "fixture launch x --orbit=leo",
+          "output": "ok \u003cdone\u003e"
+        }
+      ],
+      "next_steps": [
+        {
+          "when": "on success",
+          "suggest": "fixture mission list"
+        }
+      ],
+      "destructive_token_required": true,
+      "dry_run_supported": true
+    },
+    {
+      "path": [
+        "fixture",
+        "mission",
+        "list"
+      ],
+      "short": "List missions",
+      "side_effect": "read",
+      "idempotent": "yes",
+      "flags": [
+        {
+          "name": "limit",
+          "type": "string",
+          "description": "Max rows",
+          "default": "20"
+        }
+      ],
+      "retryable": true,
+      "dry_run_supported": false
+    },
+    {
+      "path": [
+        "fixture",
+        "mission",
+        "old-list"
+      ],
+      "short": "Legacy listing",
+      "side_effect": "read",
+      "idempotent": "unknown",
+      "deprecated": true,
+      "deprecated_since": "1.0",
+      "removal_target": "2.0",
+      "retryable": false,
+      "dry_run_supported": false
+    },
+    {
+      "path": [
+        "fixture",
+        "mission",
+        "purge"
+      ],
+      "short": "Purge the catalog",
+      "side_effect": "unknown",
+      "idempotent": "unknown",
+      "retryable": false,
+      "dry_run_supported": false
+    },
+    {
+      "path": [
+        "fixture",
+        "spec"
+      ],
+      "short": "Emit machine-readable capability manifest",
+      "side_effect": "read",
+      "idempotent": "yes",
+      "flags": [
+        {
+          "name": "help",
+          "short": "h",
+          "type": "bool",
+          "description": "help for spec",
+          "default": "false"
+        },
+        {
+          "name": "include-deprecated",
+          "type": "bool",
+          "description": "Include deprecated commands in the manifest (default: hidden)",
+          "default": "false"
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "description": "Print the schema version only (capability negotiation)",
+          "default": "false"
+        }
+      ],
+      "long": "Emit the tool's full capability manifest as JSON/YAML/table. Agents consume this for capability negotiation and dispatch. --version prints only the schema version.",
+      "retryable": false,
+      "output_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://hop.top/kit/go/ai/toolspec/manifest",
+        "$ref": "#/$defs/Manifest",
+        "$defs": {
+          "Manifest": {
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "schema_version": {
+                "type": "string"
+              },
+              "commands": {
+                "items": {
+                  "$ref": "#/$defs/ManifestCommand"
+                },
+                "type": "array"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "tool",
+              "version",
+              "schema_version",
+              "commands"
+            ]
+          },
+          "ManifestArg": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "name"
+            ]
+          },
+          "ManifestCommand": {
+            "properties": {
+              "path": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "short": {
+                "type": "string"
+              },
+              "side_effect": {
+                "type": "string"
+              },
+              "idempotent": {
+                "type": "string"
+              },
+              "args": {
+                "items": {
+                  "$ref": "#/$defs/ManifestArg"
+                },
+                "type": "array"
+              },
+              "flags": {
+                "items": {
+                  "$ref": "#/$defs/ManifestFlag"
+                },
+                "type": "array"
+              },
+              "exit_codes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "deprecated": {
+                "type": "boolean"
+              },
+              "deprecated_since": {
+                "type": "string"
+              },
+              "removal_target": {
+                "type": "string"
+              },
+              "since_version": {
+                "type": "string"
+              },
+              "long": {
+                "type": "string"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "output_schema": {
+                "$ref": "#/$defs/RawJSON"
+              },
+              "output_schema_version": {
+                "type": "string"
+              },
+              "examples": {
+                "items": {
+                  "$ref": "#/$defs/ManifestExample"
+                },
+                "type": "array"
+              },
+              "next_steps": {
+                "items": {
+                  "$ref": "#/$defs/ManifestNextStep"
+                },
+                "type": "array"
+              },
+              "top_level_verb": {
+                "type": "boolean"
+              },
+              "hierarchical": {
+                "type": "boolean"
+              },
+              "passthrough": {
+                "type": "boolean"
+              },
+              "destructive_token_required": {
+                "type": "boolean"
+              },
+              "dry_run_supported": {
+                "type": "boolean"
+              },
+              "dry_run_rationale": {
+                "type": "string"
+              },
+              "reserved": {
+                "type": "boolean"
+              },
+              "hidden": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "path",
+              "short",
+              "side_effect",
+              "idempotent",
+              "retryable",
+              "dry_run_supported"
+            ]
+          },
+          "ManifestExample": {
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              },
+              "output": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "title",
+              "command"
+            ]
+          },
+          "ManifestFlag": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "short": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "default": {
+                "type": "string"
+              },
+              "since_version": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "name"
+            ]
+          },
+          "ManifestNextStep": {
+            "properties": {
+              "when": {
+                "type": "string"
+              },
+              "suggest": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "suggest"
+            ]
+          },
+          "RawJSON": {
+            "type": "string",
+            "contentEncoding": "base64"
+          }
+        }
+      },
+      "output_schema_version": "1.0",
+      "examples": [
+        {
+          "title": "Full capabilities",
+          "command": "fixture spec --format json"
+        },
+        {
+          "title": "Schema probe",
+          "command": "fixture spec --version"
+        },
+        {
+          "title": "Filter to old clients",
+          "command": "fixture spec --api-version=1.0"
+        }
+      ],
+      "top_level_verb": true,
+      "dry_run_supported": false,
+      "reserved": true
+    },
+    {
+      "path": [
+        "fixture",
+        "spec",
+        "coverage"
+      ],
+      "short": "Report kit/side-effect annotation coverage",
+      "side_effect": "read",
+      "idempotent": "yes",
+      "flags": [
+        {
+          "name": "min",
+          "type": "float64",
+          "description": "Minimum coverage percentage; exit CONFLICT (4) below it (0 disables the gate)",
+          "default": "0"
+        }
+      ],
+      "exit_codes": [
+        "OK",
+        "CONFLICT"
+      ],
+      "long": "Report how many of this tool's commands declare a kit/side-effect class, list the ones that do not, and exit non-zero when coverage falls below --min.\n\nAn unannotated command is not a read-only command: it is one kit knows nothing about, and every safety gate that consumes the manifest must fail closed on it. This report is how an adopter finds and closes that gap, and how CI keeps it closed.",
+      "retryable": false,
+      "output_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://hop.top/kit/go/ai/toolspec/cli/coverage-report",
+        "$ref": "#/$defs/CoverageReport",
+        "$defs": {
+          "CoverageReport": {
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "annotated": {
+                "type": "integer"
+              },
+              "unannotated": {
+                "type": "integer"
+              },
+              "inferred": {
+                "type": "integer"
+              },
+              "malformed": {
+                "type": "integer"
+              },
+              "unannotated_paths": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "malformed_paths": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "measurable": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "tool",
+              "total",
+              "annotated",
+              "unannotated",
+              "inferred",
+              "malformed",
+              "measurable"
+            ]
+          }
+        }
+      },
+      "output_schema_version": "1.0",
+      "examples": [
+        {
+          "title": "See the gap",
+          "command": "fixture spec coverage --format json"
+        },
+        {
+          "title": "Gate in CI",
+          "command": "fixture spec coverage --min 80"
+        }
+      ],
+      "dry_run_supported": false,
+      "reserved": true
+    }
+  ]
+}
