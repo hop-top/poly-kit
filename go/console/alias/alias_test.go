@@ -202,3 +202,22 @@ func TestRoundTrip(t *testing.T) {
 	require.NoError(t, s2.Load())
 	assert.Equal(t, s1.All(), s2.All())
 }
+
+func TestValidateName_Texts(t *testing.T) {
+	cases := []struct {
+		name  string
+		rules alias.NameRules
+		want  string
+	}{
+		{"", alias.NameRules{}, `alias name "" must be non-empty without whitespace`},
+		{"a b", alias.NameRules{}, `alias name "a b" must be non-empty without whitespace`},
+		{"task", alias.NameRules{Builtins: []string{"task"}}, `alias "task" collides with command "task"`},
+		{"d", alias.NameRules{Existing: map[string]string{"d": "deploy"}}, `alias "d" already registered for "deploy"`},
+	}
+	for _, c := range cases {
+		err := alias.ValidateName(c.name, c.rules)
+		require.Error(t, err)
+		assert.Equal(t, c.want, err.Error())
+	}
+	require.NoError(t, alias.ValidateName("tl", alias.NameRules{Builtins: []string{"task"}}))
+}

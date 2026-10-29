@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -451,4 +452,53 @@ func TestAliasCmd_List_OutputToFile_JSON(t *testing.T) {
 	assert.Contains(t, s, `"deploy"`)
 	assert.True(t, strings.HasPrefix(strings.TrimSpace(s), "["),
 		"json output should be a top-level array, got: %q", s)
+}
+
+func TestAlias_OptionsDispatchErrorPropagates(t *testing.T) {
+	r := root()
+	cmd := &cobra.Command{Use: "deploy", Run: func(*cobra.Command, []string) {}}
+	r.Cmd.AddCommand(cmd)
+	boom := errors.New("boom")
+	require.NoError(t, r.Alias("d", cmd, cli.WithAliasDispatch(
+		func(*cobra.Command, string, string, []string) error { return boom },
+	)))
+
+	r.Cmd.SetArgs([]string{"d"})
+	require.ErrorIs(t, r.Execute(t.Context()), boom)
+}
+
+func TestAlias_OptionsHelpStopsAtDoubleDash(t *testing.T) {
+	r := root()
+	cmd := &cobra.Command{Use: "deploy", Run: func(*cobra.Command, []string) {}}
+	r.Cmd.AddCommand(cmd)
+	var got []string
+	require.NoError(t, r.Alias("d", cmd,
+		cli.WithAliasHelp(cli.AliasHelpOwn),
+		cli.WithAliasDispatch(func(_ *cobra.Command, _, _ string, args []string) error {
+			got = args
+			return nil
+		}),
+	))
+
+	r.Cmd.SetArgs([]string{"d", "--", "--help"})
+	require.NoError(t, r.Execute(t.Context()))
+	assert.Equal(t, []string{"--", "--help"}, got, "--help after -- is an argument")
+}
+
+func TestAlias_OptionsProxyCarriesAnnotations(t *testing.T) {
+	r := root()
+	cmd := &cobra.Command{
+		Use:         "purge",
+		Run:         func(*cobra.Command, []string) {},
+		Annotations: map[string]string{"k": "v"},
+	}
+	r.Cmd.AddCommand(cmd)
+	require.NoError(t, r.Alias("p", cmd, cli.WithAliasHidden(false)))
+
+	proxy, _, err := r.Cmd.Find([]string{"p"})
+	require.NoError(t, err)
+	assert.Equal(t, "p", proxy.Name())
+	assert.Equal(t, "v", proxy.Annotations["k"])
+	assert.False(t, proxy.Hidden)
+	assert.NotContains(t, cmd.Aliases, "p", "an options alias is a proxy, not a cobra alias")
 }

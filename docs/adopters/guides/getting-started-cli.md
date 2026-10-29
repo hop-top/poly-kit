@@ -583,6 +583,12 @@ if err := root.LoadAliasStore(store); err != nil {
 `LoadAliases()` does the equivalent from a Viper `aliases:`
 map if you prefer config-driven aliases.
 
+All three take options that register each alias as a visible or
+hidden proxy with its own description, help and dispatch
+(`cli.WithAliasHidden`, `cli.WithAliasDescribe`, `cli.WithAliasHelp`,
+`cli.WithAliasDispatch`, `cli.WithAliasRegisterOnly`); see
+[Alias API](../reference/alias-api.md#options).
+
 ### Hidden `aliases` listing
 
 `root.AliasesCmd()` exposes a hidden `aliases` subcommand
