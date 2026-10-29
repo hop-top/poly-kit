@@ -1,0 +1,12 @@
+{
+  "tool": "fixture",
+  "total": 5,
+  "annotated": 4,
+  "unannotated": 1,
+  "inferred": 1,
+  "malformed": 0,
+  "unannotated_paths": [
+    "fixture mission purge"
+  ],
+  "measurable": true
+}
