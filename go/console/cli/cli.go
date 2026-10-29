@@ -320,6 +320,10 @@ type Root struct {
 	// aliasHelpTargets maps an alias proxy whose --help passes through
 	// to the target it shows help for; installHelpRecursive reads it.
 	aliasHelpTargets map[*cobra.Command]*cobra.Command
+	// aliasCommands holds the aliases whose proxy is a real command
+	// (visible, or with a custom dispatch); cobra completes those as
+	// subcommands, so the root's alias completion leaves them out.
+	aliasCommands map[string]bool
 	// hiddenDefaultFlags lists root persistent flags that are kit-owned
 	// global plumbing (--config, --chdir, --dry-run, etc.). They are
 	// marked Hidden=true at registration to keep --help focused on the

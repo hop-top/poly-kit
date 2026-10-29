@@ -105,6 +105,12 @@ func (r *Root) Alias(name string, target *cobra.Command, opts ...AliasOption) er
 			o(&cfg)
 		}
 		r.Cmd.AddCommand(r.aliasProxy(name, path, target, cfg))
+		if !cfg.hidden || cfg.dispatch != nil {
+			if r.aliasCommands == nil {
+				r.aliasCommands = map[string]bool{}
+			}
+			r.aliasCommands[name] = true
+		}
 	case target.Parent() == r.Cmd:
 		target.Aliases = append(target.Aliases, name)
 	default:
@@ -291,7 +297,10 @@ func (r *Root) resolveCommand(path string) (*cobra.Command, error) {
 }
 
 // registerAliasCompletions sets ValidArgsFunction on Root.Cmd to include
-// alias names alongside any previously registered completions.
+// alias names alongside any previously registered completions. An alias
+// whose proxy is a real command (visible, or with a custom dispatch) is
+// left out: cobra completes it as a subcommand, with its own flags, and
+// listing it here too would offer it twice.
 func (r *Root) registerAliasCompletions() {
 	aliases := r.aliases // capture current map ref
 	original := r.Cmd.ValidArgsFunction
@@ -314,6 +323,9 @@ func (r *Root) registerAliasCompletions() {
 			directive |= origDir
 		}
 		for name, target := range aliases {
+			if r.aliasCommands[name] {
+				continue
+			}
 			if strings.HasPrefix(name, toComplete) {
 				results = append(results, name+"\t"+"alias for "+target)
 			}

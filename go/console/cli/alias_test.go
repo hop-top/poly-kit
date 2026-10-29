@@ -502,3 +502,34 @@ func TestAlias_OptionsProxyCarriesAnnotations(t *testing.T) {
 	assert.False(t, proxy.Hidden)
 	assert.NotContains(t, cmd.Aliases, "p", "an options alias is a proxy, not a cobra alias")
 }
+
+// A visible or custom-dispatch proxy is a real command: cobra completes
+// it as a subcommand, so the root's alias completion leaves it out. A
+// hidden proxy that dispatches the target or runs nothing stays listed.
+func TestAlias_CompletionSkipsRealCommandProxies(t *testing.T) {
+	noop := func(*cobra.Command, string, string, []string) error { return nil }
+	cases := []struct {
+		name   string
+		opts   []cli.AliasOption
+		listed bool
+	}{
+		{"hidden proxy", []cli.AliasOption{cli.WithAliasHidden(true)}, true},
+		{"hidden register-only", []cli.AliasOption{cli.WithAliasRegisterOnly()}, true},
+		{"visible proxy", []cli.AliasOption{cli.WithAliasHidden(false)}, false},
+		{"hidden dispatch", []cli.AliasOption{cli.WithAliasDispatch(noop)}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := root()
+			deploy := &cobra.Command{Use: "deploy", Run: func(*cobra.Command, []string) {}}
+			r.Cmd.AddCommand(deploy)
+			require.NoError(t, r.Alias("d", deploy, tc.opts...))
+			results, _ := r.Cmd.ValidArgsFunction(r.Cmd, nil, "d")
+			listed := false
+			for _, s := range results {
+				listed = listed || strings.HasPrefix(s, "d\t")
+			}
+			assert.Equal(t, tc.listed, listed, "results %v", results)
+		})
+	}
+}
