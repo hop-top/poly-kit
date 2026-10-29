@@ -362,6 +362,13 @@ function hasBridgeOptions(opts?: BridgeOptions): opts is BridgeOptions {
  * args from the program, like a native subcommand. With any
  * {@link BridgeOptions} set, every alias gets a proxy shaped by them.
  *
+ * Completion offers each alias at most once. A native alias, or a hidden
+ * proxy that dispatches its target or runs nothing, is a stand-in:
+ * completion lists it as `alias for <target>` and offers a proxy only
+ * its help flag. A visible proxy, or one with a dispatch handler, is a
+ * real command and completes like any subcommand, with its own flags,
+ * including any added after bridging; a hidden one is not listed.
+ *
  * `source` is an {@link AliasStore} or a plain alias map, so aliases
  * can come from any storage.
  *
@@ -381,8 +388,14 @@ export function bridgeAliases(
     ? (source as AliasStore).all()
     : { ...(source as AliasMap) };
   const proxyAll = hasBridgeOptions(opts);
+  // A visible or custom-dispatch proxy is a real command: completion
+  // offers it among the subcommands and walks it for its own flags. A
+  // root-alias entry would list it twice and complete it as a flagless
+  // stand-in.
+  const realProxy = proxyAll &&
+    (opts.hidden === false || typeof opts.dispatch === 'function');
   for (const [name, target] of Object.entries(all)) {
-    registerRootAlias(program, name, target);
+    if (!realProxy) registerRootAlias(program, name, target);
     const parts = target.split(/\s+/);
     // simple alias: single word target that exists as a direct subcommand
     if (!proxyAll && parts.length === 1) {

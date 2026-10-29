@@ -14,6 +14,7 @@ import {
   AliasNameError, type AliasMap, type BridgeOptions,
   bridgeAliases, detectCycles, findCommand, validateAliasName,
 } from './alias';
+import { completeRequest } from './completion';
 
 const PORT = 'ts';
 const CORPUS = join(__dirname, '..', '..', '..', 'contracts', 'alias-v1');
@@ -92,12 +93,14 @@ interface Run {
 }
 interface Check {
   alias?: string; argv?: string[]; entry?: Entry; run?: Run; help?: string;
+  complete?: string[]; candidates?: string[];
   by_port?: Record<string, Partial<Check>>;
 }
 interface BridgeCase {
   name: string; aliases: AliasMap;
   options?: { hidden?: boolean; describe?: boolean; help?: string; dispatch?: string };
   skip?: Record<string, string>;
+  proxy_flags?: { name: string; short: string }[];
   checks: Check[];
 }
 interface BridgeFile {
@@ -168,15 +171,25 @@ describe('alias-v1 bridge', () => {
     build(program, f.tree.commands ?? [], '', rec, descs);
     const sorted = Object.fromEntries(Object.entries(c.aliases).sort(([a], [b]) => (a < b ? -1 : 1)));
     bridgeAliases(program, sorted, bridgeOptions(f, c, rec));
+    for (const fl of c.proxy_flags ?? []) {
+      strictKeys(fl, ['name', 'short'], c.name);
+      for (const alias of Object.keys(c.aliases)) {
+        const proxy = program.commands.find(x => x.name() === alias);
+        if (!proxy) throw new Error(`${c.name}: ${alias} has no proxy`);
+        proxy.option(`-${fl.short}, --${fl.name} <v>`, fl.name);
+      }
+    }
     return { program, rec, descs, output: () => out };
   }
 
   for (const c of f.cases) {
     const skip = c.skip?.[PORT];
     (skip ? it.skip : it)(skip ? `${c.name} (${skip})` : c.name, async () => {
-      strictKeys(c, ['name', 'aliases', 'options', 'skip', 'checks'], c.name);
+      strictKeys(c, ['name', 'aliases', 'options', 'skip', 'proxy_flags', 'checks'], c.name);
       for (const raw of c.checks) {
-        strictKeys(raw, ['alias', 'argv', 'entry', 'run', 'help', 'by_port'], c.name);
+        strictKeys(
+          raw, ['alias', 'argv', 'entry', 'run', 'help', 'complete', 'candidates', 'by_port'], c.name,
+        );
         const chk: Check = { ...raw, ...(raw.by_port?.[PORT] ?? {}) };
         const { program, rec, descs, output } = setup(c);
 
@@ -221,6 +234,13 @@ describe('alias-v1 bridge', () => {
           else if (proxy && text.includes(proxy.description())) got = 'alias';
           expect(got, text).toBe(chk.help);
           expect(rec.r.ran).toBe('none');
+        } else if (chk.complete) {
+          let out = '';
+          await completeRequest(program, chk.complete, true, {
+            out: s => { out += s; }, err: () => {},
+          });
+          const got = out.split('\n').filter(l => l !== '' && !l.startsWith(':')).sort();
+          expect(got, chk.complete.join(' ')).toEqual([...chk.candidates!].sort());
         } else {
           throw new Error(`${c.name}: check has no observable`);
         }
