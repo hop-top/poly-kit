@@ -227,6 +227,7 @@ func projectCommand(tree *cmdreflect.Tree, d *cmdreflect.Descriptor, cfg *walkCo
 		Safety:   projectSafety(d, cfg),
 
 		UndeclaredArgs: d.UndeclaredArgs,
+		ExitCodes:      append([]string(nil), d.Safety.ExitCodes...),
 	}
 	for _, a := range d.Args {
 		cmd.Args = append(cmd.Args, toolspec.Arg{Name: a.Name, Required: a.Required})
