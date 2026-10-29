@@ -15,7 +15,10 @@ Pure data types + BFS lookup. Sub-packages own I/O and deps.
 > `renderManifestJSON` reproduce `BuildManifest` and its JSON bytes from
 > the same kit/* annotations (summary/description map to short/long;
 > runnable = has an action); `negotiateSchemaVersion` mirrors
-> `NegotiateSchemaVersion`. Python loads YAML only.
+> `NegotiateSchemaVersion`. `registerSpecCommand(program, schemaVersion,
+> { reserved })` mounts `spec` and `spec coverage` with Go's flags and
+> bytes; their output schemas come from `contracts/toolspec-spec-v1/`.
+> Python loads YAML only.
 
 ## Schema Overview
 

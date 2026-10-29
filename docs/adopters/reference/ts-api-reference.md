@@ -718,6 +718,42 @@ conformant way to not support it.
 - [Expose your CLI over MCP](../guides/expose-cli-over-mcp.md)
   — the Go reference surface, in depth
 
+## Capability manifest (`spec`)
+
+`@hop-top/kit/toolspec` ports Go's `<tool> spec`. Call it once, after
+every command is registered:
+
+```ts
+import { registerSpecCommand } from '@hop-top/kit/toolspec';
+
+registerSpecCommand(program, '1.0', { reserved: ['config'] });
+```
+
+Commands describe themselves through kit/* annotations on an
+`annotations` property (`kit/side-effect`, `kit/idempotent`,
+`kit/args`, `kit/exit-codes`, `kit/output-schema`, …), the same keys
+Go reads. `summary()` is the manifest's `short` and `description()` its
+`long`.
+
+- `--format kit-manifest|manifest|json` emits the Go manifest
+  byte-for-byte (pinned by
+  `sdk/tests/cross-lang/fixtures/toolspec-spec*.json`); `yaml` emits
+  the same document; `table|csv|text` emit nothing, as Go does.
+- `--version` prints the schema version, negotiated against
+  `KIT_TOOLSPEC_SCHEMA`; `--include-deprecated` lists deprecated
+  commands.
+- `spec coverage [--min N]` reports annotation coverage and exits 4
+  below `N`.
+- The `mcp` format and Go's curation options (`WithErrorPatterns`,
+  `WithWorkflows`, `WithStateIntrospection`, extra adapters) are not
+  ported.
+- A program-level `--version` (commander `.version()`, which
+  `createCLI` sets) is parsed before subcommands, so it answers
+  `spec --version` with the tool version.
+
+`buildManifest`, `renderManifestJSON`, `coverageOf` and
+`toolSpecFromCommand` expose the same projections in-process.
+
 ## URI facade
 
 The URI module delegates to `@hop-top/cite` (`^0.1.2`); it does not

@@ -37,7 +37,8 @@ in the fixture must be explainable as an intended Go-side change.
 | `parity.json` | blocks `status`, `spinner`, `anim`, `help`, `verbosity`, `streams` | `TestParityNoUnloadedBlocks`, `TestParityLoadedBlocksNonZero`, `sdk/ts/src/tui/parity.test.ts`, `sdk/py/tests/test_parity.py` |
 | `scope-defaults.json` | default deny patterns for the scope packages | `TestScopeDefaultsContractSync`, `TestScopeDefaultsRegistered` |
 | `sdk/tests/cross-lang/fixtures/mcp-wire.json` | MCP wire bytes: 23 `cases`, 1 `sequences` entry with 5 steps | `make test-parity-mcp` (five runners) |
-| `sdk/tests/cross-lang/fixtures/toolspec-manifest*.json` | manifest bytes Go's `BuildManifest` emits for `toolspec-manifest.tree.json` | `TestManifestCrossLangFixture`, `sdk/ts/src/toolspec-manifest.test.ts` |
+| `sdk/tests/cross-lang/fixtures/toolspec-manifest*.json`, `toolspec-spec*.json` | manifest bytes and live `spec` / `spec coverage` stdout Go emits for `toolspec-manifest.tree.json` | `TestManifestCrossLangFixture`, `TestSpecCommandCrossLangFixture`, `sdk/ts/src/toolspec-manifest.test.ts`, `sdk/ts/src/toolspec-spec.test.ts` |
+| `contracts/toolspec-spec-v1/*.schema.json` | output schemas of `spec` and `spec coverage` | `TestSpecOutputSchemaContract`, `sdk/ts/src/toolspec-spec.test.ts` |
 | `serve.json` | serve lifecycle `constants`, `behaviors`, per-port `ports` status | `TestServeContractMatchesGo` (pinned against `go/console/serve`) |
 
 - All three ports read `parity.json` from this directory (Go `//go:embed`,
