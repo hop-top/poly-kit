@@ -14,6 +14,7 @@ from typing import Any
 
 import click
 import pytest
+from click.shell_completion import ShellComplete
 from click.testing import CliRunner
 
 from hop_top_kit.alias import (
@@ -162,6 +163,14 @@ def _setup(case: dict[str, Any]) -> tuple[click.Group, dict[str, Any], dict[str,
     _build(root, _BRIDGE["tree"]["commands"], "", seen, descs)
     aliases = dict(sorted(case["aliases"].items()))
     bridge_to_click(root, aliases, **_options(case, seen))
+    for flag in case.get("proxy_flags", []):
+        _strict(flag, {"name", "short"}, case["name"])
+        for alias in aliases:
+            proxy = root.get_command(click.Context(root), alias)
+            assert proxy is not None and proxy.name == alias, f"{alias} has no proxy"
+            proxy.params.append(
+                click.Option([f"-{flag['short']}", f"--{flag['name']}"], help=flag["name"])
+            )
     return root, seen, descs
 
 
@@ -177,10 +186,14 @@ def _params() -> list[Any]:
 
 @pytest.mark.parametrize("case", _params())
 def test_bridge(case: dict[str, Any]) -> None:
-    _strict(case, {"name", "aliases", "options", "skip", "checks"}, case["name"])
+    _strict(case, {"name", "aliases", "options", "skip", "proxy_flags", "checks"}, case["name"])
     runner = CliRunner()
     for raw in case["checks"]:
-        _strict(raw, {"alias", "argv", "entry", "run", "help", "by_port"}, case["name"])
+        _strict(
+            raw,
+            {"alias", "argv", "entry", "run", "help", "complete", "candidates", "by_port"},
+            case["name"],
+        )
         chk = {**raw, **raw.get("by_port", {}).get(PORT, {})}
         root, seen, descs = _setup(case)
 
@@ -220,5 +233,10 @@ def test_bridge(case: dict[str, Any]) -> None:
                 got = "alias"
             assert got == chk["help"], res.output
             assert "ran" not in seen, argv
+        elif "complete" in chk:
+            *args, incomplete = chk["complete"]
+            comp = ShellComplete(root, {}, root.name, "_APP_COMPLETE")
+            got = sorted(i.value for i in comp.get_completions(args, incomplete))
+            assert got == sorted(chk["candidates"]), chk["complete"]
         else:
             raise AssertionError(f"{case['name']}: check has no observable")
