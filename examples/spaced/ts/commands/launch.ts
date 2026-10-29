@@ -13,10 +13,10 @@ import {
   type Option,
 } from '../../../../sdk/ts/src/wizard';
 import {
-  CompletionRegistry,
   staticValues,
   funcCompleter,
 } from '../../../../sdk/ts/src/completion-values';
+import { bindArgs, bindFlag } from '../../../../sdk/ts/src/completion';
 import { findMission, pick, MISSIONS } from '../data';
 
 export function launchCommand(bus?: Bus): Command {
@@ -125,16 +125,14 @@ export function launchCommand(bus?: Bus): Command {
       bus?.publish(createEvent('kit.spaced.launch.completed', 'spaced', report));
     });
 
-  // Register value completers
-  const reg = new CompletionRegistry();
-  reg.register('--orbit', staticValues('leo', 'geo', 'lunar', 'helio', 'tbd'));
-  reg.registerArg('launch', 0, funcCompleter((prefix) => {
+  // Value completers, answered by `spaced __complete` on tab.
+  bindFlag(cmd, 'orbit', staticValues('leo', 'geo', 'lunar', 'helio', 'tbd'));
+  bindArgs(cmd, funcCompleter((prefix) => {
     const lp = prefix.toLowerCase();
     return MISSIONS
       .filter(m => m.name.toLowerCase().startsWith(lp))
       .map(m => ({ value: m.name, description: m.vehicle }));
   }));
-  (cmd as any).__completionRegistry = reg;
 
   return cmd;
 }

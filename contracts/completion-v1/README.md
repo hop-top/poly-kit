@@ -6,7 +6,7 @@ What shell completion in a kit CLI must produce, independent of language: what e
 
 ## Use it when
 
-- you port or change a completer (`Static`, `StaticValues`, `Func`, `Prefixed`, `ConfigKeys`, `File`, `Dir`) or the shell bridge in any SDK: run both runners
+- you port or change a completer (`Static`, `StaticValues`, `Func`, `Prefixed`, `ConfigKeys`, `File`, `Dir`) or the shell bridge in any SDK: run every runner
 - you change alias completion, enum-flag completion or the `completion` command in Go: add a vector first, then make every port pass it
 
 ## Quick start
@@ -16,6 +16,7 @@ make test-parity-completion
 # or separately:
 go test ./go/console/cli/completion/ -run '^TestConformanceCompletion'
 cargo test --features cli,config --test cli_completion_conformance   # from sdk/experimental/rs
+pnpm vitest run src/completion.conformance.test.ts                  # from sdk/ts
 ```
 
 ## Contract
@@ -42,6 +43,7 @@ Runners are strict: unknown fields, a `version` other than `v1`, a corpus file n
 |------|--------|
 | Go | `go/console/cli/completion/completion_conformance_test.go` (`TestConformanceCompletion*`); template derivation in `completion_templates_test.go` |
 | Rust | `sdk/experimental/rs/tests/cli_completion_conformance.rs` |
+| TS | `sdk/ts/src/completion.conformance.test.ts`; known gap, skipped with its reason: `completion fig\|usage` (no TS completion-spec exporter yet) |
 
 ## See also
 

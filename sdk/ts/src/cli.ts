@@ -30,6 +30,7 @@ import { parity, type ParityData } from './tui/parity.js';
 import { registerOutputFlags } from './output/flags.js';
 import { EXIT_USAGE } from './output/error.js';
 import { install as installNetPolicy, setProcessOffline } from './netpolicy.js';
+import { installCompletionRequest } from './completion.js';
 import './output/builtins.js';
 export { ErrOffline, OfflineError, guardFetch, isOffline, isOfflineError,
          withOffline } from './netpolicy.js';
@@ -880,6 +881,10 @@ export function createCLI(cfg: CLIConfig): CLIResult {
     const flag = g.short ? `-${g.short}, --${g.name} <value>` : `--${g.name} <value>`;
     program.option(flag, g.usage, g.default ?? '');
   }
+
+  // Shell completion scripts call back into `<name> __complete`; answer
+  // it ahead of commander's parse so no hook or action runs on tab.
+  installCompletionRequest(program);
 
   // Apply brand color scheme + section order to --help output.
   // noColor is read lazily at render time inside applyHelpTheme.

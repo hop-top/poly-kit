@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { Command } from 'commander';
+import { registerRootAlias } from './completion';
 
 export type AliasMap = Record<string, string>;
 
@@ -241,6 +242,7 @@ export function bridgeAliases(
 ): void {
   const all = store.all();
   for (const [name, target] of Object.entries(all)) {
+    registerRootAlias(program, name, target);
     const parts = target.split(/\s+/);
     // simple alias: single word target that exists as a direct subcommand
     if (parts.length === 1) {
