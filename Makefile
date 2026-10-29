@@ -470,9 +470,9 @@ test-parity-upgrade: ## upgrade-v1 conformance corpus (Go and Rust runners)
 	cd sdk/experimental/rs && cargo test --features upgrade --test upgrade_conformance --locked
 
 # After a cobra bump: rewrite the completion-v1 script goldens and the
-# Rust script templates from the cobra version in go.mod, then run
-# test-parity-completion. Review the diff; both runners pin the result.
-completion-regen: ## Regenerate completion-v1 script goldens and the Rust completion templates from cobra
+# Rust and TS script templates from the cobra version in go.mod, then run
+# test-parity-completion. Review the diff; the runners pin the result.
+completion-regen: ## Regenerate completion-v1 script goldens and the Rust and TS completion templates from cobra
 	go test ./go/console/cli/completion/ -run '^(TestConformanceCompletionScripts|TestCompletionTemplatesInSync)$$' -count=1 -update
 
 test-parity-completion: ## completion-v1 conformance corpus (Go and Rust runners)

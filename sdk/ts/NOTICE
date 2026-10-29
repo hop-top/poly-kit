@@ -1,0 +1,15 @@
+@hop-top/kit (TypeScript SDK)
+Copyright (c) 2026 Idea Crafters LLC
+
+This package is licensed under the MIT License, except for the file
+listed below.
+
+Shell completion script templates
+  src/completion-scripts.ts
+
+These templates are derived from the bash (V2), zsh, fish and powershell
+completion scripts of Cobra (https://github.com/spf13/cobra), Copyright
+2013-2023 The Cobra Authors, licensed under the Apache License, Version 2.0.
+The program-dependent parts of the scripts are replaced by `@@...@@`
+tokens; the scripts are otherwise unchanged. The full licence text is in
+LICENSE-cobra.txt.
