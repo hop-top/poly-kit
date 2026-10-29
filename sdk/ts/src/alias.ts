@@ -186,18 +186,117 @@ export class Expander {
     return [result, true];
   }
 
-  /** Reject names that shadow builtins or contain whitespace. */
+  /**
+   * Reject names that shadow builtins or contain whitespace; see
+   * {@link validateAliasName}, which needs no config files.
+   */
   validateName(name: string): void {
-    if (name === '') {
-      throw new Error('alias name must not be empty');
-    }
-    if (/\s/.test(name)) {
-      throw new Error('alias name must not contain whitespace');
-    }
-    if (this.cfg.builtins?.has(name)) {
-      throw new Error(`alias "${name}" conflicts with a built-in command`);
+    validateAliasName(name, { builtins: this.cfg.builtins });
+  }
+}
+
+// ── Standalone validation and cycle detection ───────────────
+
+/** The rule an alias name failed; see {@link validateAliasName}. */
+export type AliasNameErrorKind = 'empty' | 'whitespace' | 'builtin' | 'duplicate';
+
+/** An alias name {@link validateAliasName} refused. */
+export class AliasNameError extends Error {
+  readonly kind: AliasNameErrorKind;
+  readonly alias: string;
+  /** The existing alias's target, for `duplicate`. */
+  readonly target?: string;
+
+  constructor(kind: AliasNameErrorKind, alias: string, target?: string) {
+    super(aliasNameMessage(kind, alias, target));
+    this.name = 'AliasNameError';
+    this.kind = kind;
+    this.alias = alias;
+    this.target = target;
+  }
+}
+
+function aliasNameMessage(
+  kind: AliasNameErrorKind, alias: string, target?: string,
+): string {
+  switch (kind) {
+    case 'empty': return 'alias name must not be empty';
+    case 'whitespace': return 'alias name must not contain whitespace';
+    case 'builtin': return `alias "${alias}" conflicts with a built-in command`;
+    case 'duplicate':
+      return `alias "${alias}" is already registered for "${target ?? ''}"`;
+  }
+}
+
+/** What {@link validateAliasName} checks a name against. */
+export interface AliasNameRules {
+  /** Names an alias must not take: the tool's commands and reserved words. */
+  builtins?: Iterable<string>;
+  /** The alias map the name would join. */
+  existing?: AliasMap;
+}
+
+const WHITE_SPACE = /\p{White_Space}/u;
+
+/**
+ * Check an alias name without a store, config file or command tree.
+ * Rules run in order and the first failure throws an
+ * {@link AliasNameError}: empty, whitespace (any Unicode White_Space
+ * character), builtin, duplicate.
+ */
+export function validateAliasName(name: string, rules: AliasNameRules = {}): void {
+  if (name === '') throw new AliasNameError('empty', name);
+  if (WHITE_SPACE.test(name)) throw new AliasNameError('whitespace', name);
+  if (rules.builtins) {
+    for (const b of rules.builtins) {
+      if (b === name) throw new AliasNameError('builtin', name);
     }
   }
+  const existing = rules.existing;
+  if (existing && Object.prototype.hasOwnProperty.call(existing, name)) {
+    throw new AliasNameError('duplicate', name, existing[name]);
+  }
+}
+
+/**
+ * Report alias cycles in `aliases` (name -> target). An alias points at
+ * another when the first word of its target is a key of the map. Each
+ * cycle is a path starting at its smallest name and ending with it
+ * again (`['a', 'b', 'a']`); cycles are sorted by first name. An alias
+ * that only leads into a cycle is not part of one.
+ */
+export function detectCycles(aliases: AliasMap): string[][] {
+  const has = (n: string) => Object.prototype.hasOwnProperty.call(aliases, n);
+  const next = (n: string): string | undefined => {
+    const first = aliases[n].trim().split(/\s+/)[0];
+    return first !== '' && has(first) ? first : undefined;
+  };
+  const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+  const done = new Set<string>();
+  const cycles: string[][] = [];
+  for (const start of Object.keys(aliases).sort(cmp)) {
+    if (done.has(start)) continue;
+    const pos = new Map<string, number>();
+    const walk: string[] = [];
+    let cur: string | undefined = start;
+    while (cur !== undefined && !done.has(cur)) {
+      const at = pos.get(cur);
+      if (at !== undefined) {
+        const members = walk.slice(at);
+        let min = 0;
+        members.forEach((m, i) => { if (m < members[min]) min = i; });
+        const path = [...members.slice(min), ...members.slice(0, min)];
+        cycles.push([...path, path[0]]);
+        break;
+      }
+      pos.set(cur, walk.length);
+      walk.push(cur);
+      cur = next(cur);
+    }
+    for (const n of walk) done.add(n);
+  }
+  return cycles.sort((a, b) => cmp(a[0], b[0]));
 }
 
 // ── Commander bridge ────────────────────────────────────────
@@ -221,13 +320,50 @@ type Dispatcher = {
   _parseCommand(operands: string[], unknown: string[]): void | Promise<void>;
 };
 
+/** Runs an alias proxy in place of its target; `cmd.args` holds every argument after the alias, unparsed. */
+export type AliasDispatch = (
+  name: string, target: string, cmd: Command,
+) => void | Promise<void>;
+
+/**
+ * Options for {@link bridgeAliases}. Setting any of them registers every
+ * alias as a proxy, a root command named after the alias, even for a
+ * single-word target that would otherwise take a Commander alias.
+ */
+export interface BridgeOptions {
+  /** Hide proxies from help. Default true. */
+  hidden?: boolean;
+  /** A proxy's description, in place of `Alias for <target>`. */
+  describe?: (name: string, target: string) => string;
+  /**
+   * true: the proxy owns -h/--help and shows its own help. false (the
+   * default): --help reaches the target, or the dispatch handler.
+   */
+  helpOption?: boolean;
+  /**
+   * A handler run instead of the target, or false to register proxies
+   * that run nothing (register-only). Default: dispatch the target
+   * through the program, like a native subcommand.
+   */
+  dispatch?: AliasDispatch | false;
+}
+
+function hasBridgeOptions(opts?: BridgeOptions): opts is BridgeOptions {
+  return opts !== undefined &&
+    Object.values(opts).some(v => v !== undefined);
+}
+
 /**
  * Register loaded aliases with Commander's native .alias() API.
  *
  * Simple single-command aliases use Commander's built-in .alias(),
  * giving free completion and help display. Multi-word or unresolved
  * targets get a hidden proxy command that dispatches the expanded
- * args from the program, like a native subcommand.
+ * args from the program, like a native subcommand. With any
+ * {@link BridgeOptions} set, every alias gets a proxy shaped by them.
+ *
+ * `source` is an {@link AliasStore} or a plain alias map, so aliases
+ * can come from any storage.
  *
  * Dispatch reuses Commander's own subcommand dispatch rather than
  * calling parse()/parseAsync() again: re-parsing resets program
@@ -238,14 +374,18 @@ type Dispatcher = {
  */
 export function bridgeAliases(
   program: Command,
-  store: AliasStore,
+  source: AliasStore | AliasMap,
+  opts?: BridgeOptions,
 ): void {
-  const all = store.all();
+  const all = typeof (source as AliasStore).all === 'function'
+    ? (source as AliasStore).all()
+    : { ...(source as AliasMap) };
+  const proxyAll = hasBridgeOptions(opts);
   for (const [name, target] of Object.entries(all)) {
     registerRootAlias(program, name, target);
     const parts = target.split(/\s+/);
     // simple alias: single word target that exists as a direct subcommand
-    if (parts.length === 1) {
+    if (!proxyAll && parts.length === 1) {
       const targetCmd = findCommand(program, target);
       if (targetCmd) {
         targetCmd.alias(name);
@@ -253,19 +393,26 @@ export function bridgeAliases(
       }
     }
 
-    // multi-word target or unknown command: hidden proxy
-    const proxy = new Command(name)
-      .description(`Alias for ${target}`)
+    // multi-word target, unknown command or options: proxy
+    const dispatch = opts?.dispatch;
+    const proxy = new Command(name);
+    // An options proxy behaves like a subcommand made with
+    // program.command(): it inherits exitOverride, output and help
+    // settings, which matter once it renders its own help.
+    if (proxyAll) proxy.copyInheritedSettings(program);
+    proxy
+      .description(opts?.describe?.(name, target) ?? `Alias for ${target}`)
       .allowUnknownOption(true)
       .allowExcessArguments(true)
       .action(function (this: Command) {
+        if (dispatch === false) return undefined;
+        if (dispatch) return dispatch(name, target, this);
         const expanded = target.split(/\s+/);
         return (program as unknown as Dispatcher)._parseCommand(
           [], [...expanded, ...this.args],
         );
       });
-    proxy.helpOption(false);
-    (proxy as any)._hidden = true;
-    program.addCommand(proxy);
+    if (opts?.helpOption !== true) proxy.helpOption(false);
+    program.addCommand(proxy, { hidden: opts?.hidden ?? true });
   }
 }
