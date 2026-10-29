@@ -7,7 +7,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { describe, it, expect } from "vitest";
-import { load, mergeLayers, type MergeOptions } from "./config";
+import { load, mergeLayers, type ArrayMergeFn, type MergeOptions } from "./config";
 
 function tmpFile(ext: string, content: string): string {
   const p = path.join(os.tmpdir(), `config-merge-${Math.random().toString(36).slice(2)}${ext}`);
@@ -230,6 +230,65 @@ describe("mergeLayers arrayPolicy", () => {
       arrayPolicyByPath: { t: "concat" },
     });
     expect(got).toEqual({ a: { t: [2] }, t: [1, 2] });
+  });
+
+  it("a * segment matches exactly one key at that position", () => {
+    const got = mergeLayers(
+      [
+        { scopes: { a: { hints: ["x"] }, b: { hints: ["x"], deep: { hints: ["x"] } } }, hints: ["x"] },
+        { scopes: { a: { hints: ["y"] }, b: { hints: ["y"], deep: { hints: ["y"] } } }, hints: ["y"] },
+      ],
+      { arrayPolicyByPath: { "scopes.*.hints": "concat" } },
+    );
+    expect(got).toEqual({
+      scopes: { a: { hints: ["x", "y"] }, b: { hints: ["x", "y"], deep: { hints: ["y"] } } },
+      hints: ["y"],
+    });
+  });
+
+  it("a * segment also matches a literal * key; a partial * is literal", () => {
+    const got = mergeLayers(
+      [{ m: { "*": [1], ab: [1] }, n: { "a*": [1], ab: [1] } }, { m: { "*": [2], ab: [2] }, n: { "a*": [2], ab: [2] } }],
+      { arrayPolicyByPath: { "m.*": "concat", "n.a*": "concat" } },
+    );
+    expect(got).toEqual({ m: { "*": [1, 2], ab: [1, 2] }, n: { "a*": [1, 2], ab: [2] } });
+  });
+
+  it("the function form gets the concrete path, not the pattern", () => {
+    const paths: string[] = [];
+    mergeLayers([{ s: { a: { t: [1] } } }, { s: { a: { t: [2] } } }], {
+      arrayPolicyByPath: { "s.*.t": (l, h, p) => (paths.push(p), [...l, ...h]) },
+    });
+    expect(paths).toEqual(["s.a.t"]);
+  });
+
+  it("precedence: exact path, then fewest *, then lexically smallest pattern", () => {
+    const layers = [{ a: { b: { c: [1, 1] } } }, { a: { b: { c: [2, 1] } } }];
+    const tag = (name: string) => (): unknown => name;
+    const pick = (byPath: Record<string, ArrayMergeFn>): unknown =>
+      mergeLayers(layers, { arrayPolicyByPath: byPath }).a;
+    // exact beats any wildcard, whatever the definition order
+    expect(pick({ "*.*.*": tag("3"), "a.*.c": tag("1"), "a.b.c": tag("exact") })).toEqual({ b: { c: "exact" } });
+    // fewer * beats more *, whatever the definition order
+    expect(pick({ "*.*.*": tag("3"), "*.b.*": tag("2"), "a.*.c": tag("1") })).toEqual({ b: { c: "1" } });
+    expect(pick({ "a.*.c": tag("1"), "*.*.*": tag("3") })).toEqual({ b: { c: "1" } });
+    // same number of *: lexically smallest pattern ("*" sorts before letters)
+    expect(pick({ "a.*.c": tag("a.*.c"), "*.b.c": tag("*.b.c") })).toEqual({ b: { c: "*.b.c" } });
+    expect(pick({ "*.b.c": tag("*.b.c"), "a.*.c": tag("a.*.c") })).toEqual({ b: { c: "*.b.c" } });
+    expect(pick({ "a.b.*": tag("a.b.*"), "a.*.c": tag("a.*.c") })).toEqual({ b: { c: "a.*.c" } });
+  });
+
+  it("a pattern never matches a path with a different number of segments", () => {
+    const got = mergeLayers([{ a: { t: [1] }, t: [1] }, { a: { t: [2] }, t: [2] }], {
+      arrayPolicyByPath: { "*": "concat", "*.*.*": "concat" },
+    });
+    expect(got).toEqual({ a: { t: [2] }, t: [1, 2] });
+  });
+
+  it("rejects a ** segment", () => {
+    expect(() => mergeLayers([], { arrayPolicyByPath: { "a.**.t": "concat" } })).toThrow(
+      /arrayPolicyByPath\["a\.\*\*\.t"\]: \*\* is not supported/,
+    );
   });
 
   it("rejects an unknown policy", () => {
