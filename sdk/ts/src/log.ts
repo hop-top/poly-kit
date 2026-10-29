@@ -1,6 +1,6 @@
 /**
  * Structured logger wrapping pino — applies kit's charmtone theme
- * colors to stderr output.
+ * colors to stderr output (or an injected `output` sink).
  *
  * API: `logger.info('msg', 'key', val, 'key2', val2)` (variadic key-value)
  * This matches Go's charm/log API, not pino's native object API.
@@ -27,9 +27,20 @@ export interface Logger {
   trace(msg: string, ...keyvals: any[]): void;
 }
 
+/** Minimal sink the logger writes rendered lines to. */
+export interface LogOutput {
+  write(chunk: string): unknown;
+}
+
 export interface LoggerOptions {
   quiet?: boolean;
   noColor?: boolean;
+  /**
+   * Where rendered lines go. Defaults to `process.stderr`, resolved at
+   * write time. Mirrors Go's `(*log.Logger).SetOutput`; useful for
+   * capturing output in tests.
+   */
+  output?: LogOutput;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +75,10 @@ const LEVEL_STYLES: Record<number, { label: string; color: RGB; bold: boolean }>
   60: { label: 'ERRO', color: CHERRY, bold: true },
 };
 
-function kitTransport(noColor: boolean): pino.DestinationStream {
+function kitTransport(noColor: boolean, output?: LogOutput): pino.DestinationStream {
+  // Resolve the default lazily so callers that swap process.stderr after
+  // construction keep seeing their writes.
+  const out = (): LogOutput => output ?? process.stderr;
   return {
     write(chunk: string): void {
       try {
@@ -81,9 +95,9 @@ function kitTransport(noColor: boolean): pino.DestinationStream {
           kvParts.push(sv.includes(' ') ? `${k}="${sv}"` : `${k}=${sv}`);
         }
         const kv = kvParts.length ? ' ' + kvParts.join(' ') : '';
-        process.stderr.write(`${prefix} ${msg}${kv}\n`);
+        out().write(`${prefix} ${msg}${kv}\n`);
       } catch {
-        process.stderr.write(chunk);
+        out().write(chunk);
       }
     },
   };
@@ -165,7 +179,7 @@ export function createLogger(opts?: LoggerOptions): Logger {
   // quiet override is contract-declared, so only it is wired.
   const p = pino({
     level: quiet ? quietLevel(parity) : 'debug',
-  }, kitTransport(noColor));
+  }, kitTransport(noColor, opts?.output));
 
   return {
     info:  (msg, ...kv) => p.info(kvToObj(kv), msg),
@@ -194,7 +208,7 @@ export function withVerbose(
 
   const level = quiet ? quietLevel(parity) : verbosityLevel(parity, v);
 
-  const p = pino({ level }, kitTransport(noColor));
+  const p = pino({ level }, kitTransport(noColor, opts.output));
 
   return {
     info:  (msg, ...kv) => p.info(kvToObj(kv), msg),
