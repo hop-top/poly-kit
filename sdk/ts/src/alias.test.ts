@@ -6,6 +6,7 @@ import {
   AliasStore, loadFrom, saveTo, findFirstNonFlag, Expander,
   bridgeAliases, findCommand, validateAliasName, AliasNameError,
 } from './alias';
+import { completeRequest } from './completion';
 import { Command, CommanderError } from 'commander';
 
 let tmpDir: string;
@@ -583,5 +584,44 @@ describe('bridgeAliases options', () => {
     });
     await program.parseAsync(['d'], { from: 'user' });
     expect(done).toBe(true);
+  });
+});
+
+describe('bridgeAliases completion', () => {
+  async function complete(program: Command, words: string[]): Promise<string[]> {
+    let out = '';
+    await completeRequest(program, words, true, { out: s => { out += s; }, err: () => {} });
+    return out.split('\n').filter(l => l !== '' && !l.startsWith(':')).sort();
+  }
+
+  function tree(): Command {
+    const program = new Command('test');
+    program.command('deploy').description('Deploy').option('--env <e>');
+    return program;
+  }
+
+  it('a hidden proxy is a stand-in, offered once by name', async () => {
+    for (const dispatch of [undefined, false] as const) {
+      const program = tree();
+      bridgeAliases(program, { d: 'deploy' }, { describe: () => 'x', dispatch });
+      expect(await complete(program, ['d'])).toEqual(['d', 'deploy']);
+      expect(await complete(program, ['d', '--'])).toEqual(['--help']);
+    }
+  });
+
+  it('a hidden proxy with a dispatch handler completes its own flags', async () => {
+    const program = tree();
+    bridgeAliases(program, { d: 'deploy' }, { dispatch: () => {} });
+    program.commands.find(c => c.name() === 'd')!.option('-p, --path <p>');
+    expect(await complete(program, ['d'])).toEqual(['deploy']);
+    expect(await complete(program, ['d', '--'])).toEqual(['--path']);
+  });
+
+  it('a visible proxy is offered once, with its own flags', async () => {
+    const program = tree();
+    bridgeAliases(program, { d: 'deploy' }, { hidden: false, helpOption: true });
+    program.commands.find(c => c.name() === 'd')!.option('-p, --path <p>');
+    expect(await complete(program, ['d'])).toEqual(['d', 'deploy']);
+    expect(await complete(program, ['d', '--'])).toEqual(['--help', '--path']);
   });
 });

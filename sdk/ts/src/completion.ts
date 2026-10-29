@@ -254,7 +254,10 @@ export function bindArgs(cmd: Command, completer: Completer): void {
 /**
  * Records `name` as a root-level alias of the command at `target` (a
  * space-separated path), so root argument completion offers it as
- * `name<TAB>alias for <target>`. `bridgeAliases` calls this.
+ * `name<TAB>alias for <target>`, and a root subcommand named `name`
+ * completes as a flagless stand-in. `bridgeAliases` calls this for
+ * every alias but a visible or custom-dispatch proxy, which completes
+ * as an ordinary subcommand.
  */
 export function registerRootAlias(root: Command, name: string, target: string): void {
   const t = root as Tagged;
