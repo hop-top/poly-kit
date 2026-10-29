@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -48,12 +49,16 @@ type aliasConfRun struct {
 }
 
 type aliasConfCheck struct {
-	Alias  string                    `json:"alias"`
-	Argv   []string                  `json:"argv"`
-	Entry  *aliasConfEntry           `json:"entry"`
-	Run    *aliasConfRun             `json:"run"`
-	Help   string                    `json:"help"`
-	ByPort map[string]aliasConfCheck `json:"by_port"`
+	Alias string          `json:"alias"`
+	Argv  []string        `json:"argv"`
+	Entry *aliasConfEntry `json:"entry"`
+	Run   *aliasConfRun   `json:"run"`
+	Help  string          `json:"help"`
+	// Complete holds the words after __complete; Candidates the
+	// completion values, descriptions dropped, in any order.
+	Complete   []string                  `json:"complete"`
+	Candidates []string                  `json:"candidates"`
+	ByPort     map[string]aliasConfCheck `json:"by_port"`
 }
 
 // forPort applies the check's by_port override for port.
@@ -91,7 +96,12 @@ type aliasConfBridge struct {
 		Aliases map[string]string `json:"aliases"`
 		Options *aliasConfOptions `json:"options"`
 		Skip    map[string]string `json:"skip"`
-		Checks  []aliasConfCheck  `json:"checks"`
+		// ProxyFlags are added to every proxy after bridging.
+		ProxyFlags []struct {
+			Name  string `json:"name"`
+			Short string `json:"short"`
+		} `json:"proxy_flags"`
+		Checks []aliasConfCheck `json:"checks"`
 	} `json:"cases"`
 }
 
@@ -203,6 +213,15 @@ func TestConformanceAliasBridge(t *testing.T) {
 				if err := r.LoadAliases(opts...); err != nil {
 					t.Fatal(err)
 				}
+				for _, fl := range tc.ProxyFlags {
+					for alias := range tc.Aliases {
+						proxy := aliasConfProxy(r, alias)
+						if proxy == nil {
+							t.Fatalf("%s has no proxy", alias)
+						}
+						proxy.Flags().StringP(fl.Name, fl.Short, "", fl.Name)
+					}
+				}
 				return r, rec, descs, out
 			}
 
@@ -240,6 +259,24 @@ func TestConformanceAliasBridge(t *testing.T) {
 					if rec.ran != "" {
 						t.Errorf("%v: help ran %s", c.Argv, rec.ran)
 					}
+				case c.Complete != nil:
+					r.Cmd.SetArgs(append([]string{cobra.ShellCompNoDescRequestCmd}, c.Complete...))
+					if err := r.Execute(t.Context()); err != nil {
+						t.Errorf("complete %v: %v", c.Complete, err)
+						continue
+					}
+					got := []string{}
+					for _, l := range strings.Split(out.String(), "\n") {
+						if l != "" && !strings.HasPrefix(l, ":") && !strings.HasPrefix(l, "Completion ended") {
+							got = append(got, l)
+						}
+					}
+					want := append([]string{}, c.Candidates...)
+					sort.Strings(got)
+					sort.Strings(want)
+					if !reflect.DeepEqual(got, want) {
+						t.Errorf("complete %v: %q, want %q", c.Complete, got, want)
+					}
 				default:
 					t.Fatalf("check has no observable: %+v", c)
 				}
@@ -248,12 +285,20 @@ func TestConformanceAliasBridge(t *testing.T) {
 	}
 }
 
-// aliasConfOwnHelp reports whether out is the alias proxy's own help.
-func aliasConfOwnHelp(r *cli.Root, alias, out string) bool {
+// aliasConfProxy is the root command named alias, or nil.
+func aliasConfProxy(r *cli.Root, alias string) *cobra.Command {
 	for _, c := range r.Cmd.Commands() {
 		if c.Name() == alias {
-			return strings.Contains(out, c.Short)
+			return c
 		}
+	}
+	return nil
+}
+
+// aliasConfOwnHelp reports whether out is the alias proxy's own help.
+func aliasConfOwnHelp(r *cli.Root, alias, out string) bool {
+	if c := aliasConfProxy(r, alias); c != nil {
+		return strings.Contains(out, c.Short)
 	}
 	return false
 }
