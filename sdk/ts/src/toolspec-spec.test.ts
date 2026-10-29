@@ -14,6 +14,7 @@ import {
   MANIFEST_OUTPUT_SCHEMA,
 } from "./toolspec-spec-schemas";
 import { goFormat0 } from "./toolspec-internal";
+import { createCLI } from "./cli";
 import { CONTRACTS, FIXTURES, fixtureProgram } from "../test/toolspec/fixture";
 
 interface Run {
@@ -138,6 +139,61 @@ describe("registerSpecCommand formats", () => {
     const doc = JSON.parse(r.out) as { commands: { path: string[]; flags?: { name: string }[] }[] };
     const spec = doc.commands.find((c) => c.path.join(" ") === "fixture spec")!;
     expect(spec.flags!.map((f) => f.name)).toContain("format");
+  });
+});
+
+describe("spec --version vs the program's --version", () => {
+  it("answers spec --version under createCLI's -v, --version", async () => {
+    delete process.env.KIT_TOOLSPEC_SCHEMA;
+    const { program } = createCLI({ name: "mytool", version: "1.2.3", description: "d" });
+    registerSpecCommand(program, "1.0");
+    const r = await run(program, ["spec", "--version"]);
+    expect(r.code).toBeUndefined();
+    expect(r.out).toBe('{\n  "schema_version": "1.0"\n}\n');
+  });
+
+  it("forwards wherever the flag sits and with program options before spec", async () => {
+    process.env.KIT_TOOLSPEC_SCHEMA = "1.1";
+    for (const args of [
+      ["--version", "spec"],
+      ["--format", "json", "spec", "--version"],
+      ["spec", "--format", "yaml", "--version"],
+    ]) {
+      const r = await run(specProgram(), args);
+      expect(r.code, args.join(" ")).toBeUndefined();
+      expect(r.out, args.join(" ")).toMatch(/schema_version/);
+    }
+  });
+
+  it("forwards on each parse of the same program", async () => {
+    const program = specProgram();
+    expect((await run(program, ["spec", "--version"])).out).toMatch(/schema_version/);
+    expect((await run(program, ["spec", "--format", "json"])).out).toMatch(/"commands"/);
+  });
+
+  it("keeps the tool version everywhere else", async () => {
+    for (const args of [
+      ["--version"],
+      ["-v"],
+      ["launch", "--version"],
+      ["spec", "-v"],
+      ["spec", "coverage", "--version"],
+    ]) {
+      const r = await run(specProgram(), args);
+      expect(r.code, args.join(" ")).toBe("commander.version");
+      expect(r.out, args.join(" ")).toBe("1.2.3\n");
+    }
+  });
+
+  it("forwards when .version() is called after registerSpecCommand", async () => {
+    const { program, tree } = fixtureProgram();
+    const late = new Command(tree.tool);
+    for (const c of [...program.commands]) late.addCommand(c);
+    registerSpecCommand(late, "1.0");
+    late.version("9.9.9", "-v, --version");
+    const r = await run(late, ["spec", "--version"]);
+    expect(r.out).toMatch(/schema_version/);
+    expect((await run(late, ["--version"])).out).toBe("9.9.9\n");
   });
 });
 

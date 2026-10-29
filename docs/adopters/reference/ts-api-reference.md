@@ -732,9 +732,10 @@ Go reads. `summary()` is the manifest's `short` and `description()` its
 - The `mcp` format and Go's curation options (`WithErrorPatterns`,
   `WithWorkflows`, `WithStateIntrospection`, extra adapters) are not
   ported.
-- A program-level `--version` (commander `.version()`, which
-  `createCLI` sets) is parsed before subcommands, so it answers
-  `spec --version` with the tool version.
+- The program's `-v, --version` (commander `.version()`, which
+  `createCLI` sets) still answers `tool --version`; a literal
+  `--version` whose executing command is `spec` is forwarded to spec
+  and prints the schema version.
 
 `buildManifest`, `renderManifestJSON`, `coverageOf` and
 `toolSpecFromCommand` expose the same projections in-process.
