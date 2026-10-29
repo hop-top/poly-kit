@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import click
 import pytest
+from click.testing import CliRunner
 
 from hop_top_kit.alias import (
+    AliasNameError,
     Config,
     Expander,
     bridge_to_click,
     load_from,
     save_to,
+    validate_alias_name,
 )
 
 
@@ -448,3 +451,61 @@ class TestBridgeEmptyAliases:
         ctx = click.Context(cli)
         cmds = cli.list_commands(ctx)
         assert cmds == ["deploy"]
+
+
+# -- validate_alias_name / bridge options ------------------------------------
+
+
+class TestValidateAliasName:
+    @pytest.mark.parametrize(
+        ("name", "kw", "text"),
+        [
+            ("", {}, "alias name must not be empty"),
+            ("a b", {}, "alias name must not contain whitespace"),
+            ("task", {"builtins": {"task"}}, "alias 'task' conflicts with a built-in command"),
+            ("d", {"existing": {"d": "deploy"}}, "alias 'd' is already registered for 'deploy'"),
+        ],
+    )
+    def test_texts(self, name, kw, text):
+        with pytest.raises(AliasNameError, match=text) as exc:
+            validate_alias_name(name, **kw)
+        assert isinstance(exc.value, ValueError)
+
+    def test_ok(self):
+        validate_alias_name("tl", builtins=["task"], existing={"d": "deploy"})
+
+
+class TestBridgeOptions:
+    def _cli(self):
+        @click.group()
+        def cli():
+            pass
+
+        @cli.command(help="Deploy the app")
+        def deploy():
+            click.echo("ran deploy")
+
+        return cli
+
+    def test_mapping_source_keeps_native_default(self):
+        cli = self._cli()
+        bridge_to_click(cli, {"d": "deploy"})
+        assert cli.get_command(click.Context(cli), "d").name == "deploy"
+
+    def test_options_resolve_to_a_proxy(self):
+        cli = self._cli()
+        bridge_to_click(cli, {"d": "deploy"}, hidden=False, describe=lambda n, t: f"{n} -> {t}")
+        cmd = cli.get_command(click.Context(cli), "d")
+        assert cmd.name == "d"
+        assert cmd.hidden is False
+        assert cmd.help == "d -> deploy"
+        res = CliRunner().invoke(cli, ["d"])
+        assert res.exit_code == 0, res.output
+        assert "ran deploy" in res.output
+
+    def test_register_only_runs_nothing(self):
+        cli = self._cli()
+        bridge_to_click(cli, {"d": "deploy"}, dispatch=False)
+        res = CliRunner().invoke(cli, ["d", "--anything"])
+        assert res.exit_code == 0, res.output
+        assert res.output == ""

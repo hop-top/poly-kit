@@ -207,6 +207,37 @@ def test_alias_bridge_resolves_on_kit_app(tmp_path, capsys, monkeypatch):
     assert '"d"' in out and '"deploy"' in out, out
 
 
+def test_alias_bridge_options_proxy_on_kit_app(capsys):
+    """An options proxy joins a typer tree on typer's own Click layer:
+    it dispatches, takes the target's flags and shows in rich help."""
+    cmd = typer.main.get_command(_kit_app())
+    handled: list[tuple[str, str, list[str]]] = []
+    bridge_to_click(
+        cmd,
+        {"d": "deploy", "g": "go"},
+        hidden=False,
+        describe=lambda name, target: f"{name} runs {target}",
+    )
+
+    code, out = _main(cmd, ["d"], capsys)
+    assert code == 0, out
+    assert "ran deploy" in out
+
+    code, out = _main(cmd, ["g", "--x", "1"], capsys)
+    assert code == 0, out
+    assert "ran go" in out
+
+    code, out = _main(cmd, ["--help"], capsys)
+    assert code == 0, out
+    assert "d runs deploy" in _ANSI.sub("", out), out
+
+    cmd = typer.main.get_command(_kit_app())
+    bridge_to_click(cmd, {"d": "deploy"}, dispatch=lambda *a: handled.append(a))
+    code, out = _main(cmd, ["d", "--force", "p1"], capsys)
+    assert code == 0, out
+    assert handled == [("d", "deploy", ["--force", "p1"])]
+
+
 # -- guard ------------------------------------------------------------------
 
 _CLICK_IMPORT = re.compile(r"^\s*(import click\b|from click\b)", re.MULTILINE)

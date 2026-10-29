@@ -45,3 +45,41 @@ def completion_item(ctx: Any, value: str, help: str | None = None) -> Any:
     if isinstance(ctx, click.Context):
         return click.shell_completion.CompletionItem(value, help=help)
     return _TyperCompletionItem(value, help=help)
+
+
+try:  # typer>=0.26: the vendored layer keeps its own context stack
+    from typer._click.globals import get_current_context as _typer_current_context
+except ImportError:  # typer<0.26 runs on the click package
+    _typer_current_context = click.get_current_context
+
+
+def make_passthrough_command(
+    group: Any,
+    name: str,
+    run: Any,
+    *,
+    help: str,
+    hidden: bool,
+    add_help_option: bool,
+) -> Any:
+    """Build a command for ``group``'s Click layer that parses nothing.
+
+    Every argument lands unparsed in ``ctx.args``, unknown options
+    included; ``run(ctx)`` is called with the command's context.
+    """
+    typer_tree = isinstance(group, (typer.core.TyperCommand, typer.core.TyperGroup))
+    if isinstance(group, click.Command) and not typer_tree:
+        cls: Any = click.Command
+        current: Any = click.get_current_context
+    else:
+        cls = typer.core.TyperCommand
+        current = _typer_current_context
+    return cls(
+        name,
+        callback=lambda: run(current()),
+        help=help,
+        short_help=help,
+        hidden=hidden,
+        add_help_option=add_help_option,
+        context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+    )
