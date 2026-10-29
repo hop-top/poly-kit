@@ -8,6 +8,9 @@ import {
   configKeysCompleter,
   fileCompleter,
   dirCompleter,
+  resolveCompletions,
+  directiveName,
+  ShellCompDirective,
   type CompletionItem,
 } from './completion-values';
 
@@ -84,7 +87,7 @@ describe('prefixedCompleter', () => {
     const inner = staticValues('a', 'b');
     const c = prefixedCompleter('env', inner);
     const result = c.complete('');
-    expect(result).toEqual([{ value: 'env:', description: 'env:...' }]);
+    expect(result).toEqual([{ value: 'env:', description: 'env values' }]);
   });
 
   it('completes values after colon', () => {
@@ -129,6 +132,14 @@ describe('configKeysCompleter', () => {
     expect(values).toContain('db.port');
   });
 
+  it('returns leaf keys only, lowercased', async () => {
+    const c = configKeysCompleter({ Server: { Port: 1 }, tags: ['a'] });
+    const values = (await c.complete('')).map((i: CompletionItem) => i.value);
+    expect(values).toEqual(['server.port', 'tags']);
+    expect((await c.complete('SER')).map((i: CompletionItem) => i.value))
+      .toEqual(['server.port']);
+  });
+
   it('filters by prefix', async () => {
     const c = configKeysCompleter({ name: 'x', namespace: 'y', version: '1' });
     const items = await c.complete('na');
@@ -138,21 +149,70 @@ describe('configKeysCompleter', () => {
 });
 
 describe('fileCompleter', () => {
-  it('returns items with value field', async () => {
+  it('returns its extensions and filters by extension', async () => {
     const c = fileCompleter('.ts', '.js');
-    const items = await c.complete('');
-    // file completer returns a marker item for shell-level file completion
-    expect(items.length).toBeGreaterThanOrEqual(1);
-    expect(items[0]).toHaveProperty('value');
+    expect(await c.complete('')).toEqual([{ value: '.ts' }, { value: '.js' }]);
+    expect(await resolveCompletions(c, 'x')).toEqual({
+      completions: ['.ts', '.js'], directive: ShellCompDirective.FilterFileExt,
+    });
+  });
+
+  it('without extensions falls back to default completion', async () => {
+    expect(await resolveCompletions(fileCompleter(), '')).toEqual({
+      completions: [], directive: ShellCompDirective.Default,
+    });
   });
 });
 
 describe('dirCompleter', () => {
-  it('returns items with value field', async () => {
+  it('completes directories only', async () => {
     const c = dirCompleter();
-    const items = await c.complete('');
-    expect(items.length).toBeGreaterThanOrEqual(1);
-    expect(items[0]).toHaveProperty('value');
+    expect(await c.complete('')).toEqual([]);
+    expect(await resolveCompletions(c, 'src')).toEqual({
+      completions: [], directive: ShellCompDirective.FilterDirs,
+    });
+  });
+});
+
+describe('resolveCompletions', () => {
+  it('joins descriptions with a tab and completes no files', async () => {
+    const c = staticCompleter({ value: 'a', description: 'A' }, { value: 'b' });
+    expect(await resolveCompletions(c, '')).toEqual({
+      completions: ['a\tA', 'b'], directive: ShellCompDirective.NoFileComp,
+    });
+  });
+
+  it('turns a thrown or rejected completer into the error directive', async () => {
+    const sync = funcCompleter(() => { throw new Error('down'); });
+    const rejected = funcCompleter(async () => { throw new Error('down'); });
+    for (const c of [sync, rejected, prefixedCompleter('env', rejected)]) {
+      expect(await resolveCompletions(c, 'env:')).toEqual({
+        completions: [], directive: ShellCompDirective.Error,
+      });
+    }
+  });
+
+  it('passes the context through to the completer', async () => {
+    let seen;
+    const c = funcCompleter((_p, ctx) => { seen = ctx; return []; });
+    await resolveCompletions(c, '', { commandPath: 'deploy', args: ['x'] });
+    expect(seen).toEqual({ commandPath: 'deploy', args: ['x'] });
+  });
+
+  it('awaits async inner completers of prefixed', async () => {
+    const c = prefixedCompleter('env', funcCompleter(async () => [{ value: 'prod' }]));
+    expect(await resolveCompletions(c, 'env:')).toEqual({
+      completions: ['env:prod'], directive: ShellCompDirective.NoFileComp,
+    });
+  });
+});
+
+describe('directiveName', () => {
+  it('names cobra directives', () => {
+    expect(directiveName(0)).toBe('ShellCompDirectiveDefault');
+    expect(directiveName(4)).toBe('ShellCompDirectiveNoFileComp');
+    expect(directiveName(6)).toBe('ShellCompDirectiveNoSpace, ShellCompDirectiveNoFileComp');
+    expect(directiveName(64)).toBe('ERROR: unexpected ShellCompDirective value: 64');
   });
 });
 
