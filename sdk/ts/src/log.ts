@@ -25,6 +25,11 @@ export interface Logger {
   error(msg: string, ...keyvals: any[]): void;
   debug(msg: string, ...keyvals: any[]): void;
   trace(msg: string, ...keyvals: any[]): void;
+  /**
+   * Info-level line marked as a success: label `SUCC` in the theme's
+   * success colour. Filtered exactly like `info` (not a new level).
+   */
+  success(msg: string, ...keyvals: any[]): void;
 }
 
 /** Minimal sink the logger writes rendered lines to. */
@@ -61,6 +66,7 @@ const CHERRY = [0xed, 0x4a, 0x5e] as const;
 const YAM    = [0xe5, 0xa1, 0x4e] as const;
 const SQUID  = [0x85, 0x81, 0x83] as const;
 const SMOKE  = [0xbf, 0xbc, 0xc8] as const;
+const GUAC   = [0x52, 0xcf, 0x84] as const; // theme.success
 
 type RGB = readonly [number, number, number];
 
@@ -76,10 +82,17 @@ function bold(text: string): string {
 // Kit-themed pino transport
 // ---------------------------------------------------------------------------
 
+/**
+ * pino level number for `success`. One above info so it passes and drops
+ * at exactly the same thresholds as info (no kit level sits at 31).
+ */
+const SUCCESS_LEVEL = 31;
+
 const LEVEL_STYLES: Record<number, { label: string; color: RGB; bold: boolean }> = {
   10: { label: 'TRAC', color: SMOKE,  bold: false },
   20: { label: 'DEBU', color: SMOKE,  bold: false },
   30: { label: 'INFO', color: SQUID,  bold: false },
+  [SUCCESS_LEVEL]: { label: 'SUCC', color: GUAC, bold: false },
   40: { label: 'WARN', color: YAM,    bold: true },
   50: { label: 'ERRO', color: CHERRY, bold: true },
   60: { label: 'ERRO', color: CHERRY, bold: true },
@@ -192,7 +205,10 @@ function applyQuiet(level: string, quiet: boolean): string {
 
 function build(opts: LoggerOptions, defaultLevel: string): Logger {
   const level = applyQuiet(opts.level ?? defaultLevel, opts.quiet ?? false);
-  const p = pino({ level }, kitTransport(opts.noColor ?? false, opts.output));
+  const p = pino<'success'>(
+    { level, customLevels: { success: SUCCESS_LEVEL } },
+    kitTransport(opts.noColor ?? false, opts.output),
+  );
 
   return {
     info:  (msg, ...kv) => p.info(kvToObj(kv), msg),
@@ -200,6 +216,7 @@ function build(opts: LoggerOptions, defaultLevel: string): Logger {
     error: (msg, ...kv) => p.error(kvToObj(kv), msg),
     debug: (msg, ...kv) => p.debug(kvToObj(kv), msg),
     trace: (msg, ...kv) => p.trace(kvToObj(kv), msg),
+    success: (msg, ...kv) => p.success(kvToObj(kv), msg),
   };
 }
 
