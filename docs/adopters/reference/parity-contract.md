@@ -17,6 +17,7 @@ the short entry point; this page carries the full record.
 | `serve.json` | serve lifecycle conformance record | Go reference; others `SHIPPED`/`PENDING`/`N/A` | `TestServeContractMatchesGo` |
 | `contracts/exit-taxonomy-v1/taxonomy.json` | the exit-code taxonomy: class, exit number, default transience | Go, TypeScript, Python, Rust, PHP | `make test-parity-taxonomy` |
 | `contracts/config-v1/*.json` | config conformance: scalar typing, overrides, precedence, load merge, edits | Go, Rust | `make test-parity-config` ([README](../../../contracts/config-v1/README.md)) |
+| `contracts/alias-v1/*.json` | alias bridge: native vs proxy, proxy options, name validation, cycle detection | Go, TypeScript, Python, Rust | `make test-parity-alias` ([README](../../../contracts/alias-v1/README.md)) |
 
 ## What belongs in `parity.json`
 
