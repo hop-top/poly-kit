@@ -141,6 +141,41 @@ describe("toolSpecFromCommand", () => {
   });
 });
 
+describe("toolSpecFromCommand exit codes", () => {
+  it("reads kit/exit-codes off the command, annotation map wins", () => {
+    const program = new Command("t");
+    const get = program.command("get").action(() => {});
+    (get as Command & { annotations?: Record<string, string> }).annotations = {
+      "kit/exit-codes": "OK, NOT_FOUND,TRANSIENT",
+    };
+    const put = program.command("put").action(() => {});
+    (put as Command & { annotations?: Record<string, string> }).annotations = {
+      "kit/exit-codes": "OK",
+    };
+    program.command("plain").action(() => {});
+
+    const spec = toolSpecFromCommand(program, {
+      annotations: { put: { exitCodes: ["OK", "CONFLICT"] } },
+    });
+    expect(findCommand(spec, "get")!.exitCodes).toEqual([
+      "OK",
+      "NOT_FOUND",
+      "TRANSIENT",
+    ]);
+    expect(findCommand(spec, "put")!.exitCodes).toEqual(["OK", "CONFLICT"]);
+    expect(findCommand(spec, "plain")!.exitCodes).toBeUndefined();
+  });
+
+  it("validateToolSpec rejects an empty exit-code symbol", () => {
+    const errors = validateToolSpec({
+      name: "t",
+      schemaVersion: "1",
+      commands: [{ name: "get", exitCodes: ["OK", ""] }],
+    });
+    expect(errors.some((e) => e.includes("exit code"))).toBe(true);
+  });
+});
+
 describe("loadToolSpec args/short/required", () => {
   it("maps args, undeclared_args, short and flag required from YAML", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "toolspec-"));
@@ -154,6 +189,7 @@ describe("loadToolSpec args/short/required", () => {
         "  - name: get",
         "    short: Get a thing",
         "    undeclared_args: true",
+        "    exit_codes: [OK, NOT_FOUND]",
         "    args:",
         "      - name: id",
         "        required: true",
@@ -167,6 +203,7 @@ describe("loadToolSpec args/short/required", () => {
       const get = loadToolSpec(file).commands[0];
       expect(get.short).toBe("Get a thing");
       expect(get.undeclaredArgs).toBe(true);
+      expect(get.exitCodes).toEqual(["OK", "NOT_FOUND"]);
       expect(get.args).toEqual([
         { name: "id", required: true },
         { name: "field", required: undefined },

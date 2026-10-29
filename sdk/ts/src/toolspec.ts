@@ -74,6 +74,8 @@ export interface Command {
   args?: Arg[];
   /** Command takes positional arguments it does not declare. */
   undeclaredArgs?: boolean;
+  /** Exit-code symbols the command may produce (kit/exit-codes). */
+  exitCodes?: string[];
   children?: Command[];
   contract?: Contract;
   safety?: Safety;
@@ -186,6 +188,7 @@ function mapCommand(raw: any): Command {
     flags: raw.flags?.map(mapFlag),
     args: raw.args?.map(mapArg),
     undeclaredArgs: raw.undeclared_args,
+    exitCodes: raw.exit_codes,
     children: raw.children?.map(mapCommand),
     contract: mapContract(raw.contract),
     safety: mapSafety(raw.safety),
@@ -276,6 +279,9 @@ export function validateToolSpec(spec: ToolSpec): string[] {
         `${path}: invalid safety level "${cmd.safety.level}"` +
           ` (must be safe|caution|dangerous)`,
       );
+    }
+    if (cmd.exitCodes?.some((c) => typeof c !== "string" || c.trim() === "")) {
+      errors.push(`${path}: exit code symbols must be non-empty strings`);
     }
     if (cmd.children) {
       for (const child of cmd.children) {
@@ -374,6 +380,8 @@ function projectCommand(
     a.required ? { name: a.name(), required: true } : { name: a.name() },
   );
   if (args.length > 0) out.args = args;
+  const exitCodes = splitCSV(kitAnnotations(cmd)["kit/exit-codes"]);
+  if (exitCodes) out.exitCodes = exitCodes;
   const children = projectChildren(cmd, path, annotations);
   if (children.length > 0) out.children = children;
 
@@ -384,6 +392,22 @@ function projectCommand(
     }
   }
   return out;
+}
+
+/**
+ * kit/* annotations on a commander command. commander has no
+ * annotations concept; they ride an optional `annotations` property,
+ * the same convention the MCP bridge reads.
+ */
+function kitAnnotations(cmd: CommanderCommand): Record<string, string> {
+  return (cmd as { annotations?: Record<string, string> }).annotations ?? {};
+}
+
+/** Comma-separated annotation value, trimmed, empties dropped. */
+function splitCSV(s: string | undefined): string[] | undefined {
+  if (!s) return undefined;
+  const out = s.split(",").map((p) => p.trim()).filter((p) => p !== "");
+  return out.length > 0 ? out : undefined;
 }
 
 function projectFlags(cmd: CommanderCommand): Flag[] | undefined {

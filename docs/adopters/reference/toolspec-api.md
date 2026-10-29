@@ -9,7 +9,8 @@ Pure data types + BFS lookup. Sub-packages own I/O and deps.
 > which projects a commander tree the way `WalkCobra` projects cobra
 > (hidden commands/options omitted, undashed flag names, root options
 > on `flags`) and merges per-command annotations keyed by path
-> (`"mission list"`). Python loads YAML only.
+> (`"mission list"`). `exitCodes` comes from a `kit/exit-codes`
+> entry on the command's `annotations` property. Python loads YAML only.
 
 ## Schema Overview
 
