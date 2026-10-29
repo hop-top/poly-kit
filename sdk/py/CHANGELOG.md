@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.6...kit-py/v0.5.0-alpha.7) (2026-10-29)
+
+
+### Features
+
+* **py/alias:** bridge_to_click options, validate_alias_name, detect_cycles ([086f154](https://github.com/hop-top/poly-kit/commit/086f1545c3e76b17687a94e59c516d31617aaca9))
+
 ## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6) (2026-10-29)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.6. This release includes new features and bug fixes.
