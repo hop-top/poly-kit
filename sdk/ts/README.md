@@ -57,7 +57,9 @@ and service lifecycle), `netpolicy` (`--offline` enforcement, guards
 `upgrade` (semver upgrade detection), `llm`, `anthropic`, `openai`,
 `routellm`, `alias`, `uri` (facade over `@hop-top/cite`), `api`,
 `rpc`, `aim`, `scope`, `safety`, `provenance`, `stream`, `progress`,
-`auth`, `errcorrect`. See `package.json` `exports` for the full list.
+`auth`, `errcorrect`, `log` (pino-backed structured logger),
+`completion` (bash/zsh/fish completion scripts), `toolspec` (tool
+spec model, loader and merge). See `package.json` `exports` for the full list.
 
 ## Contract
 
