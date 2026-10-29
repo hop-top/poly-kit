@@ -2,7 +2,7 @@
 
 ## What it answers
 
-How kit's alias bridge behaves in every port: when an alias is a native framework alias or a proxy command, what a proxy looks like (visibility, description), what `<alias> --help` shows, how the alias dispatches (to its target, to a custom handler, or not at all), which names a standalone validator refuses, and which cycles an alias map holds. Wrong place for alias storage and file formats (stores, config merging); those stay per port.
+How kit's alias bridge behaves in every port: when an alias is a native framework alias or a proxy command, what a proxy looks like (visibility, description), what `<alias> --help` shows, how the alias dispatches (to its target, to a custom handler, or not at all), what shell completion offers for it, which names a standalone validator refuses, and which cycles an alias map holds. Wrong place for alias storage and file formats (stores, config merging); those stay per port.
 
 ## Use it when
 
@@ -24,11 +24,11 @@ The vectors are the source of truth: a runner failure means the implementation d
 |------|------|
 | `validate.json` `cases[] {alias, builtins?, existing?, expect}` | standalone name validation; `expect` is `ok` or the first failing rule: `empty`, `whitespace` (Unicode White_Space), `builtin`, `duplicate` |
 | `cycles.json` `cases[] {aliases, cycles}` | cycle detection: an alias points at another when its target's first word is an alias; each cycle is a path from its smallest name back to it, cycles sorted by first name |
-| `bridge.json` `tree`, `describe_template`, `cases[] {aliases, options?, skip?, checks}` | bridging onto the fixture `tree`; see below |
+| `bridge.json` `tree`, `describe_template`, `cases[] {aliases, options?, proxy_flags?, skip?, checks}` | bridging onto the fixture `tree`; see below |
 
 ### bridge.json
 
-Each case builds `tree` (`app` with `deploy --env` and `router start`), registers `aliases` sorted by name, then runs each check on a fresh tree. Leaf commands record the path that ran, `--env` (`null` where the leaf has none) and their positional arguments.
+Each case builds `tree` (`app` with `deploy --env` and `router start`), registers `aliases` sorted by name, adds `proxy_flags` (`{name, short}`, each taking a value) to every proxy as an adopter would after bridging, then runs each check on a fresh tree. Leaf commands record the path that ran, `--env` (`null` where the leaf has none) and their positional arguments.
 
 | Check | Observable |
 |-------|------------|
@@ -37,8 +37,11 @@ Each case builds `tree` (`app` with `deploy --env` and `router start`), register
 | `run` `{ran: "handler", name, target, args}` | the custom dispatch handler ran with the alias, its target path and every argument after the alias, unparsed |
 | `run` `{ran: "none"}` | nothing ran (register-only) |
 | `help` `"alias" \| "target"` | `<alias> --help` printed the proxy's own help, or the target's |
+| `complete` `[words]`, `candidates` `[values]` | the shell completion request `__complete <words...>` (the last word is the one being completed) offers exactly `candidates`, descriptions dropped, in any order; an alias listed twice fails |
 
 `options` maps onto each port's options: `hidden`, `describe: true` (a describe function rendering `describe_template`), `help: "own" | "passthrough"`, `dispatch: "handler" | "register-only"`. Without `options` a port bridges as it always has. With any option set, every alias becomes a proxy.
+
+A visible proxy, or one with a custom dispatch handler, is a real command: completion lists a visible one once among the subcommands and offers its own flags. A hidden proxy that dispatches its target or runs nothing is a stand-in, listed by name as `alias for <target>` where the port lists hidden aliases.
 
 ### Per-port defaults
 
@@ -57,6 +60,7 @@ A case's `skip` maps a port to the reason it does not run the case:
 
 - Python skips `defaults: nested target`: its default bridge resolves a multi-word target to its first word only.
 - Rust skips the custom-dispatch and register-only cases: it has no dispatch hook, every proxy is register-only and the caller dispatches. The Rust runner plays that caller, re-parsing the target path with the proxy's arguments.
+- Rust skips the `proxy_flags` cases: `Root::alias_with` builds the proxy inside the root's tree and exposes no way to add flags to it.
 
 ## Runners
 
