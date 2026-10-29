@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.6...kit-ts/v0.5.0-alpha.7) (2026-10-29)
 
+The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.7. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -35,6 +37,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * **ts/completion:** quote descriptions in zsh and fish scripts ([b03937c](https://github.com/hop-top/poly-kit/commit/b03937c9cd8fc9ed48baa6383d7f77deca89bc1e))
 * **ts/toolspec:** forward spec --version past the program version flag ([afbf3a8](https://github.com/hop-top/poly-kit/commit/afbf3a89001d432dbbbf6a971051a5c6ea625e2f))
 * **ts:** publish completion-values and compliance subpaths ([21d4370](https://github.com/hop-top/poly-kit/commit/21d4370791890f580574d4173923f77ae5ea8403))
+
+Full diff: [kit-ts/v0.5.0-alpha.6...kit-ts/v0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.6...kit-ts/v0.5.0-alpha.7)
 
 ## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.5...kit-ts/v0.5.0-alpha.6) (2026-10-29)
 
