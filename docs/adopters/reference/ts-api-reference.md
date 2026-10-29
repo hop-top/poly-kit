@@ -208,8 +208,12 @@ Subpath imports follow the package's `exports` map (see
 
 - `@hop-top/kit/cli` — `createCLI(cfg)` builds a Commander root program
   with the hop-top contract: `--format`, `--quiet`, `--no-color`,
-  `--no-hints`, `--offline`, themed help, version, hidden completion
-  command.
+  `--no-hints`, `--offline`, themed help, version, and shell
+  completion's hidden `__complete` entry point.
+- `@hop-top/kit/completion` — `completionCommand(program)` adds
+  `completion bash|zsh|fish|powershell` (cobra's scripts, byte for
+  byte); `bindFlag` / `bindArgs` attach completers from
+  `completion-values`. See [Completion API](completion-api.md).
 - `@hop-top/kit/netpolicy` — enforcement behind the `--offline` global.
   `createCLI` guards `globalThis.fetch`, so a leaf that never consults
   the marker is still refused; loopback stays reachable. Callers that

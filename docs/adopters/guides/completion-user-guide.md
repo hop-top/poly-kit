@@ -140,8 +140,9 @@ If no suggestions appear:
    script (bash/zsh/fish/powershell)
 2. The script registers a callback that runs
    `spaced __complete <args...>` each time you press TAB
-3. The CLI resolves the appropriate `Completer` from its
-   registry (flag completers, positional arg completers)
+3. The CLI resolves the `Completer` bound to the flag or
+   positional being completed (Go `BindFlag`/`BindArgs`, TS
+   `bindFlag`/`bindArgs`)
 4. Dynamic completers (mission names, config keys) execute
    at tab-press time -- results always reflect current state
 5. The shell renders suggestions with optional descriptions

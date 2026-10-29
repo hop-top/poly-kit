@@ -13,7 +13,7 @@ for a given prefix string.
 | Language | Interface |
 |----------|-----------|
 | Go | `completion.Completer { Complete(ctx, prefix) ([]Item, error) }` |
-| TS | `Completer { complete(prefix): CompletionItem[] \| Promise<...> }` |
+| TS | `Completer { complete(prefix, ctx?): CompletionItem[] \| Promise<...> }` (throw or reject to fail) |
 | Python | `Completer (Protocol) { complete(prefix) -> list[CompletionItem] }` |
 
 ### Item / CompletionItem
@@ -159,10 +159,11 @@ Completes from config map keys.
 completion.ConfigKeys(v) // v is *viper.Viper
 ```
 
-**TS** -- flattens nested object keys into dot-notation paths:
+**TS** -- the dotted leaf keys of a nested object, lowercased like
+viper's `AllKeys`:
 ```ts
-configKeysCompleter({ server: { host: "...", port: 8080 } })
-// Suggests: server, server.host, server.port
+configKeysCompleter({ Server: { host: "...", port: 8080 } })
+// Suggests: server.host, server.port
 ```
 
 **Python** -- completes top-level dict keys:
@@ -174,23 +175,16 @@ config_keys_completer({"server.host": "...", "server.port": 8080})
 
 File glob with optional extension filter.
 
-**Go** -- signals a cobra directive (the shell performs the glob):
+**Go** -- signals a cobra directive (the shell performs the glob).
+The extensions travel as the completions of
+`ShellCompDirectiveFilterFileExt`; with none, plain file completion:
 ```go
-completion.File(".json", ".yaml") // see the note below
+completion.File(".json", ".yaml")
 completion.File()                 // all files
 ```
 
-> **Known gap.** The Go `File` completer stores its extensions but
-> never emits them. It returns `ShellCompDirectiveFilterFileExt` with
-> an empty completion list, and cobra takes the extensions to filter
-> on *from that list* — so today `File(".json")` behaves exactly like
-> `File()` and no extension filtering happens. `Dir()` is unaffected:
-> `ShellCompDirectiveFilterDirs` needs no candidate list. Pass the
-> extensions explicitly through a `Func` completer if you need the
-> filter before this is fixed.
-
-**TS** -- returns `__file__` marker; `__complete` handler
-translates to shell-native directive:
+**TS** -- same contract: `complete` returns the extensions, and the
+bridge emits the filter-by-extension directive (none: default):
 ```ts
 fileCompleter(".json", ".yaml")
 fileCompleter() // all files
@@ -226,7 +220,9 @@ dir_completer()
 ## Registry
 
 Maps flag names and positional arg positions to completers.
-Available in all three languages with identical semantics.
+Available in all three languages with identical semantics. It is a
+lookup table for sharing completers; wiring one into completion is
+the framework bridge's job (below).
 
 | Method | Go | TS | Python |
 |--------|----|----|--------|
@@ -263,9 +259,9 @@ completion.BindArgs(cmd, completion.Func(
 Internally:
 - `BindFlag` calls `cmd.RegisterFlagCompletionFunc`
 - `BindArgs` sets `cmd.ValidArgsFunction`
-- `File`/`Dir` completers emit shell directives
-  (`ShellCompDirectiveFilterFileExt`, `ShellCompDirectiveFilterDirs`)
-  and no items — see the `File` gap noted above
+- `File` emits `ShellCompDirectiveFilterFileExt` with its extensions
+  as the completions (no extensions: `ShellCompDirectiveDefault`);
+  `Dir` emits `ShellCompDirectiveFilterDirs` and no items
 - All others emit `ShellCompDirectiveNoFileComp`, with each item
   rendered as `value\tdescription` (the description omitted when
   empty)
@@ -273,17 +269,30 @@ Internally:
 
 ### TS -- Commander
 
-Attach a `CompletionRegistry` to the command object:
+`bindFlag` and `bindArgs` (from `@hop-top/kit/completion`) mirror Go:
 
 ```ts
-const reg = new CompletionRegistry();
-reg.register("--orbit", staticValues("leo", "geo"));
-reg.registerArg("launch", 0, missionCompleter);
-(cmd as any).__completionRegistry = reg;
+import { bindArgs, bindFlag } from "@hop-top/kit/completion";
+
+bindFlag(cmd, "orbit", staticValues("leo", "geo"));  // cmd's own --orbit
+bindArgs(cmd, missionCompleter);                      // cmd's positionals
 ```
 
-The `__complete` handler (from `completion.ts`) reads
-`__completionRegistry` at tab-press time.
+- The first `bindFlag` of a flag wins; an unknown flag is silent. Bind
+  a flag subcommands inherit (e.g. the root's `--format`) on the
+  command declaring it. `bindArgs` replaces an earlier binding.
+- `completion <shell>` writes cobra's scripts byte for byte; they call
+  the hidden `__complete` / `__completeNoDesc` entry point, which
+  `createCLI` and `completionCommand` install ahead of commander's
+  parse (`installCompletionRequest`), so no hook or action runs on tab.
+  It walks the live tree: nested subcommands, aliases (root aliases
+  from `bridgeAliases` are offered as `alias for <target>`), own and
+  inherited flags, `choices()` as flag enums and positional values.
+- Completers receive `(prefix, { commandPath, args })`; output and
+  directives match Go (`resolveCompletions` in `completion-values`).
+- Parity: `contracts/completion-v1`, run by
+  `sdk/ts/src/completion.conformance.test.ts`. Known gap: no
+  `completion fig|usage` (no TS completion-spec exporter yet).
 
 ### Python -- typer
 
@@ -381,20 +390,20 @@ completion.BindArgs(cmd, completion.Func(
 ### TS
 
 ```ts
-import {
-  CompletionRegistry, staticValues, funcCompleter,
-} from '@hop-top/kit/completion-values';
+import { staticValues, funcCompleter } from '@hop-top/kit/completion-values';
+import { bindArgs, bindFlag } from '@hop-top/kit/completion';
 
-const reg = new CompletionRegistry();
-reg.register('--orbit',
+// Flag: --orbit
+bindFlag(cmd, 'orbit',
   staticValues('leo', 'geo', 'lunar', 'helio', 'tbd'));
-reg.registerArg('launch', 0, funcCompleter((prefix) => {
+
+// Positional arg: mission name (dynamic lookup)
+bindArgs(cmd, funcCompleter((prefix) => {
   const lp = prefix.toLowerCase();
   return MISSIONS
     .filter(m => m.name.toLowerCase().startsWith(lp))
     .map(m => ({ value: m.name, description: m.vehicle }));
 }));
-(cmd as any).__completionRegistry = reg;
 ```
 
 ### Python
@@ -442,5 +451,5 @@ def launch(
 | Language | Path |
 |----------|------|
 | Go | `go/console/cli/completion/completion.go` |
-| TS | `sdk/ts/src/completion-values.ts` |
+| TS | `sdk/ts/src/completion-values.ts`, `sdk/ts/src/completion.ts` |
 | Python | `sdk/py/hop_top_kit/completion.py` |

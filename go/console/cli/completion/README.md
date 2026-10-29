@@ -44,9 +44,10 @@ Prints `env:prod`, `env:preview`, then cobra's directive line `:4`.
 - Bridge output: `Item.Description` is joined to `Value` with a tab, cobra's
   wire format. Directive is `ShellCompDirectiveNoFileComp` on success,
   `ShellCompDirectiveError` when the completer returns an error.
-- `File` and `Dir` return no items; they only emit
-  `ShellCompDirectiveFilterFileExt` / `ShellCompDirectiveFilterDirs`. Use them
-  through `BindFlag`/`BindArgs`, not via `Complete` directly.
+- `File` returns its extensions as items and the bridge emits
+  `ShellCompDirectiveFilterFileExt` with them (no extensions:
+  `ShellCompDirectiveDefault`); `Dir` returns no items and emits
+  `ShellCompDirectiveFilterDirs`. Use them through `BindFlag`/`BindArgs`.
 - `BindFlag` ignores the error from `RegisterFlagCompletionFunc`; binding an
   unknown flag name is silent.
 - Completers receive `cmd.Context()`, which is nil unless the host set one.
