@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6) (2026-10-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ts:** TS routellm URI base_url / provider base URL now beats ROUTELLM_BASE_URL and extras routellm.base_url.
+* **llm:** openai stream caps, truncation error, StreamWithTools
+* **py:** provider base_url on routellm now names a RouteLLM server (http mode) instead of the in-process Controller api_base; set extras api_base for the Controller upstream. parse_router_threshold classifies via parse_model_field: non-numeric suffix -> tier error.
+* **py:** Anthropic and OpenAI llm adapters with tool calling
+* **py:** Anthropic and OpenAI llm adapters with tool calling ([#583](https://github.com/hop-top/poly-kit/issues/583))
+
+### Features
+
+* **llm:** gemini StreamWithTools with tool-call and usage stream events ([d9dacad](https://github.com/hop-top/poly-kit/commit/d9dacad263b20945a27fedbf66605b6b6d10e319))
+* **llm:** openai stream caps, truncation error, StreamWithTools ([a72eaf2](https://github.com/hop-top/poly-kit/commit/a72eaf2493d4404b45e623401385894d4896f367))
+* **py/llm:** openai stream events and stream_options ([51ca78c](https://github.com/hop-top/poly-kit/commit/51ca78c4414337dc2cb9ce4102862a0816be8027))
+* **py:** Anthropic and OpenAI llm adapters with tool calling ([0c81c43](https://github.com/hop-top/poly-kit/commit/0c81c431208b51160880302481cf269f6d10cd50))
+* **py:** Anthropic and OpenAI llm adapters with tool calling ([#583](https://github.com/hop-top/poly-kit/issues/583)) ([0c81c43](https://github.com/hop-top/poly-kit/commit/0c81c431208b51160880302481cf269f6d10cd50))
+* **py:** llm anthropic and openai adapters with tool calling ([ddc3ee3](https://github.com/hop-top/poly-kit/commit/ddc3ee342a1b6313b2f2cf01129cd680263a5d03))
+* **py:** llm permission-denied error and anthropic system joining ([2781ea0](https://github.com/hop-top/poly-kit/commit/2781ea0037f633f65dcf84633c776f7790a4d2ae))
+* **py:** llm tool_choice, hermetic resolve, stream events, metadata-only event payloads ([adae270](https://github.com/hop-top/poly-kit/commit/adae27033e5be229c8547545358ae1367369697f))
+* **py:** routellm http mode with tier names ([dc32422](https://github.com/hop-top/poly-kit/commit/dc32422869cf0c55407a449820c270baed316a2d))
+* **py:** tool-name validation and reversible sanitizing ([d7563b0](https://github.com/hop-top/poly-kit/commit/d7563b0ac3d6189e8c755c959c47071a1483fdf9))
+* **py:** tool-name validation and reversible sanitizing ([#580](https://github.com/hop-top/poly-kit/issues/580)) ([d7563b0](https://github.com/hop-top/poly-kit/commit/d7563b0ac3d6189e8c755c959c47071a1483fdf9))
+* **py:** validate and reversibly sanitize llm tool names ([31c4eef](https://github.com/hop-top/poly-kit/commit/31c4eef0e01c502e47b3fe89d14fafcf1a5abe30))
+
+
+### Bug Fixes
+
+* **deps:** py lockfile advisories ([fec8ef8](https://github.com/hop-top/poly-kit/commit/fec8ef848c691937574bbaed730fc3fa7a9d952c))
+* **llm:** send anthropic media urls as url sources; media_fetch vectors ([c1600dd](https://github.com/hop-top/poly-kit/commit/c1600dd6ad41a40e10fac7d08b644abbbc8af727))
+* **py:** guard llm URLSource media fetch against SSRF ([ffef3a4](https://github.com/hop-top/poly-kit/commit/ffef3a4309634e8a40d47569ee4d89364aef7e25))
+* **py:** judge NAT64 media hosts by their IPv4 ([c779b83](https://github.com/hop-top/poly-kit/commit/c779b830a35ecca93c38f5fe340f7b62048d455d))
+* **templates:** cli-py declares kit dependency; sdk/py ships py.typed ([4a490f0](https://github.com/hop-top/poly-kit/commit/4a490f0a75df36508393ebe9ca66d8bcd0e6df53))
+* **ts:** routellm base URL precedence matches Go ([16e9cb6](https://github.com/hop-top/poly-kit/commit/16e9cb68283d98090722d3c9109d7f43c64fc7c6))
+
 ## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.4...kit-py/v0.5.0-alpha.5) (2026-09-05)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.5. This release includes new features and bug fixes.
