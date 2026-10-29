@@ -2,6 +2,8 @@
 
 ## [0.5.0-beta.2](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.1...kit/v0.5.0-beta.2) (2026-10-29)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.2. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -195,6 +197,8 @@
 * **templates:** strip template comments in shell scaffold ([acc1a79](https://github.com/hop-top/poly-kit/commit/acc1a798fd54c856286a30fb9fabc2b34d6507c8))
 * **ts/config:** merge nested objects across layers ([0e9a7f4](https://github.com/hop-top/poly-kit/commit/0e9a7f41a4304a7507b140e13492e06ee9a0698f))
 * **ts:** routellm base URL precedence matches Go ([16e9cb6](https://github.com/hop-top/poly-kit/commit/16e9cb68283d98090722d3c9109d7f43c64fc7c6))
+
+Full diff: [kit/v0.5.0-beta.1...kit/v0.5.0-beta.2](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.1...kit/v0.5.0-beta.2)
 
 ## [0.5.0-beta.1](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.0...kit/v0.5.0-beta.1) (2026-10-20)
 
