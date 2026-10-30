@@ -120,7 +120,9 @@ The seam is `McpSurface.dispatch(request, rpc, transport="stdio")`, the
 same routing `handle` uses after parsing. Gates that read headers see
 none: the mount's `verifier` is called with a header-less request, so a
 `kit/auth-required` leaf is refused unless your verifier admits it, and
-the `X-Confirm-Token` header gate cannot be satisfied.
+the `X-Confirm-Token` header gate cannot be satisfied. A mount with a
+`confirmation_key` can still confirm over stdio through the MRTR
+round-trip, for a `2026-07-28` client that declares form elicitation.
 
 Any other callable is treated as a foreign handler and called with an
 HTTP-shaped POST `Request` per message: that serves `2024-11-05`, but
