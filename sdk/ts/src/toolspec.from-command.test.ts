@@ -3,7 +3,9 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { Command, Option } from "commander";
+import { completionCommand } from "./completion";
 import {
+  buildManifest,
   findCommand,
   loadToolSpec,
   toolSpecFromCommand,
@@ -231,5 +233,35 @@ describe("toolSpecFromCommand negatable flags", () => {
       { name: "hints", type: "bool", description: "on" },
       { name: "no-hints", type: "bool", description: "off" },
     ]);
+  });
+});
+
+describe("toolSpecFromCommand builtins and hidden (Go WalkCobra)", () => {
+  function tree(): Command {
+    const program = new Command("t");
+    program.command("real").action(() => {});
+    program.command("man").action(() => {});
+    program.command("__complete").action(() => {});
+    program.addCommand(completionCommand(program));
+    const grp = program.command("grp", { hidden: true });
+    grp.command("leaf").action(() => {});
+    return program;
+  }
+
+  it("skips framework builtins: help, completion and its shells, man, __complete", () => {
+    const spec = toolSpecFromCommand(tree());
+    expect(spec.commands.map((c) => c.name)).toEqual(["real"]);
+    expect(findCommand(spec, "bash")).toBeUndefined();
+  });
+
+  it("includeHidden keeps hidden commands, never builtins", () => {
+    const spec = toolSpecFromCommand(tree(), { includeHidden: true });
+    expect(spec.commands.map((c) => c.name)).toEqual(["real", "grp"]);
+    expect(findCommand(spec, "grp")!.children!.map((c) => c.name)).toEqual(["leaf"]);
+  });
+
+  it("buildManifest skips the same builtins", () => {
+    const paths = buildManifest(tree(), "1.1").commands.map((c) => c.path.join(" "));
+    expect(paths).toEqual(["t grp leaf", "t real"]);
   });
 });

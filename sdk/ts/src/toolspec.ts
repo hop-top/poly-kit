@@ -4,7 +4,7 @@ import type {
   Command as CommanderCommand,
   Option as CommanderOption,
 } from "commander";
-import { declaredArgs, takesNoValue } from "./toolspec-internal.js";
+import { declaredArgs, isBuiltin, takesNoValue } from "./toolspec-internal.js";
 
 // --- Types ---
 
@@ -332,47 +332,62 @@ export interface FromCommandOptions {
   annotations?: Record<string, CommandAnnotation>;
   /** Defaults to "1", the version the YAML toolspecs declare. */
   schemaVersion?: string;
+  /** Keep hidden commands (Go WithIncludeHidden). Hidden options stay omitted. */
+  includeHidden?: boolean;
 }
 
 /**
  * Build a ToolSpec from a constructed commander tree, so CLIs with
  * dynamically registered subcommands need no hand-synced YAML.
- * Mirrors Go's WalkCobra projection: hidden commands and options are
- * omitted, flag names are undashed, root options become spec.flags.
+ * Mirrors Go's WalkCobra projection: hidden commands (unless
+ * includeHidden) and hidden options are omitted, framework builtins
+ * (help, completion and its shells, man, __complete,
+ * __completeNoDesc) and kit/spec-command commands are skipped, flag
+ * names are undashed, root options become spec.flags.
  */
 export function toolSpecFromCommand(
   program: CommanderCommand,
   opts: FromCommandOptions = {},
 ): ToolSpec {
-  const annotations = opts.annotations ?? {};
+  const ctx: WalkContext = {
+    annotations: opts.annotations ?? {},
+    includeHidden: opts.includeHidden ?? false,
+  };
   const spec: ToolSpec = {
     name: program.name(),
     schemaVersion: opts.schemaVersion ?? "1",
-    commands: projectChildren(program, [], annotations),
+    commands: projectChildren(program, [], ctx),
   };
   const flags = projectFlags(program);
   if (flags) spec.flags = flags;
   return spec;
 }
 
+interface WalkContext {
+  annotations: Record<string, CommandAnnotation>;
+  includeHidden: boolean;
+}
+
 function projectChildren(
   cmd: CommanderCommand,
   path: string[],
-  annotations: Record<string, CommandAnnotation>,
+  ctx: WalkContext,
 ): Command[] {
   // visibleCommands drops hidden subcommands but appends commander's
   // implicit help placeholder, which is not in cmd.commands.
   const visible = cmd.createHelp().visibleCommands(cmd);
-  return visible
-    .filter((c) => cmd.commands.includes(c))
+  return cmd.commands
+    .filter((c) => c.name() !== "")
+    .filter((c) => ctx.includeHidden || visible.includes(c))
+    .filter((c) => !isBuiltin(c, cmd))
     .filter((c) => kitAnnotations(c)["kit/spec-command"] !== "true")
-    .map((c) => projectCommand(c, [...path, c.name()], annotations));
+    .map((c) => projectCommand(c, [...path, c.name()], ctx));
 }
 
 function projectCommand(
   cmd: CommanderCommand,
   path: string[],
-  annotations: Record<string, CommandAnnotation>,
+  ctx: WalkContext,
 ): Command {
   const out: Command = { name: cmd.name() };
   const short = cmd.summary() || cmd.description();
@@ -385,10 +400,10 @@ function projectCommand(
   if (args.length > 0) out.args = args;
   const exitCodes = splitCSV(kitAnnotations(cmd)["kit/exit-codes"]);
   if (exitCodes) out.exitCodes = exitCodes;
-  const children = projectChildren(cmd, path, annotations);
+  const children = projectChildren(cmd, path, ctx);
   if (children.length > 0) out.children = children;
 
-  const ann = annotations[path.join(" ")];
+  const ann = ctx.annotations[path.join(" ")];
   if (ann) {
     for (const [k, v] of Object.entries(ann)) {
       if (v !== undefined) (out as any)[k] = v;
