@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.3...kit-php/v0.5.0-alpha.4) (2026-10-30)
 
+The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.4. This release includes new features and bug fixes.
+
 
 ### Features
 
@@ -13,6 +15,8 @@
 ### Bug Fixes
 
 * **mcp:** no reply to notifications; ping returns {} ([f24c097](https://github.com/hop-top/poly-kit/commit/f24c09796642894a2329a6170a160283a15c38af))
+
+Full diff: [kit-php/v0.5.0-alpha.3...kit-php/v0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.3...kit-php/v0.5.0-alpha.4)
 
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.2...kit-php/v0.5.0-alpha.3) (2026-10-27)
 
