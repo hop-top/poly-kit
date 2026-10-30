@@ -192,6 +192,18 @@ None of this is reachable by a remote client on its own, it takes
 adopter code registering it, but the boundary is real and worth
 naming: kit gates what kit binds; what you register is yours.
 
+## Audit
+
+The gates in this package audit their refusals on the bridge's sinks
+(`cmdsurface.Bridge.Audit`) with an empty `Result` and the verdict in
+`err`: `cmdsurface.ErrAuthRefused` (wrapped), `ErrConfirmationRequired`,
+`ErrConfirmationDeclined` and `ErrConfirmationStateRejected`. Match them
+with `errors.Is`. The bridge's own gates audit theirs as on every
+surface, and a call that ran is audited with its exit code. The
+package stamps no `mcp_*` key in `Meta.Extra`. The confirmation
+exchange on the tasks path is not audited. Per-surface detail is in
+[Confirmation verdicts](cmdsurface.md#confirmation-verdicts).
+
 ## End of input over stdio
 
 A host ends a stdio session by closing the server's standard input.
@@ -294,13 +306,12 @@ How it behaves:
   negotiate pre-2026 protocol versions, where the extension is not
   defined, so every call stays inline.
 
-The `tasks/get|update|cancel` methods are served by a thin
-HTTP-level handler in front of the SDK handler (wrapped inside
-`Handler`/`Mount` automatically), scoped strictly to the reserved
-`tasks/` method prefix: go-sdk v1.8.0 rejects unknown methods at the
-transport layer before middleware runs, so no in-SDK seam exists.
-Task *creation* rides entirely inside the SDK via receiving
-middleware. Optional push (`notifications/tasks` over
+The `tasks/get|update|cancel` methods are registered on the SDK
+server itself (`mcp.AddReceivingCustomMethod`), so the SDK's handlers
+dispatch them like any standard method, behind the same transport
+checks; the extension adds no HTTP handler of its own. Task
+*creation* rides entirely inside the SDK via receiving middleware.
+Optional push (`notifications/tasks` over
 `subscriptions/listen`) is not implemented: the SDK routes only its
 own notification types onto listen streams, and shipping push would
 mean hand-rolling transport machinery this surface exists to avoid.

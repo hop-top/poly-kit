@@ -1169,15 +1169,18 @@ Two paths reach a sink:
   (every surface but `cli` and `lib`). A transport reports its own
   pre-bridge refusals through `Bridge.Audit`, with
   `ErrAuthRefused` for a failed authentication, so one stream carries
-  every verdict with the same `Meta`. The modern MCP
-  confirmation-state rejection is emitted here too.
+  every verdict with the same `Meta` (`MountMCP` does not report its
+  auth refusal). The MCP confirmation gates emit here too; see
+  [Confirmation verdicts](#confirmation-verdicts).
 - **Runner-wrapping sinks** (the `sinkRunner` pattern below) observe
   only invocations that reach the `Runner`, on every surface including
   the local ones. They are the adopter's own path and are unaffected.
 
 An audit record's verdict is `err` when the call was refused before
-running and `res.ExitCode` when it ran; a confirmation refusal is the
-latter, because confirmation is the command's own gate.
+running and `res.ExitCode` when it ran. `SinkSpec.OnError` matches
+either (`err != nil || res.ExitCode != 0`); `OnOK` matches neither.
+Where a confirmation refusal lands depends on which gate refused; see
+[Confirmation verdicts](#confirmation-verdicts).
 
 Built-in implementations:
 
@@ -1196,6 +1199,37 @@ Built-in implementations:
   [the secure serving guide](../guides/secure-remote-serving.md#keep-a-tamper-evident-trail).
 - `TelemetrySink` — fan-out into the kit-telemetry pipeline. See the
   "Telemetry sink" section below.
+
+### Confirmation verdicts
+
+The bridge has no confirmation gate: confirmation is the command's own
+flag, so a command that refuses for want of it has run, and its record
+carries `err == nil` and a non-zero `res.ExitCode`. A surface that
+gates confirmation itself refuses before the bridge. Of those, only
+the MCP surfaces emit a record, with the verdict in `err` and an empty
+`Result`:
+
+| Surface | Event | `err` | `Extra` |
+|---|---|---|---|
+| `mcpsdk` | no `X-Confirm-Token`, and no elicitation the client can answer | `mcpsdk.ErrConfirmationRequired` | no `mcp_*` key |
+| `mcpsdk` | the user declined or dismissed the elicitation | `mcpsdk.ErrConfirmationDeclined` | no `mcp_*` key |
+| `mcpsdk` | a presented `requestState` failed verification | `mcpsdk.ErrConfirmationStateRejected` | no `mcp_*` key |
+| `MountMCP`, `2026-07-28` | a presented `requestState` failed verification | unexported; message `cmdsurface: mcp confirmation requestState failed verification` | `mcp_spec_version`, `mcp_confirm_rejection: request_state_verification_failed` |
+
+Match the `mcpsdk` records with `errors.Is` against its sentinels;
+redaction keeps their identity. `MountMCP`'s sentinel is not exported,
+so match its record on `Extra["mcp_confirm_rejection"]`. On the calls
+it hands the bridge, `MountMCP`'s `2026-07-28` era also stamps
+`mcp_spec_version`, plus `mcp_client_name` and `mcp_client_version`
+when the request carried client info; its legacy era and `mcpsdk`
+stamp no `mcp_*` key.
+
+Nothing is recorded when a header gate refuses a call without
+`X-Confirm-Token` (`MountMCP` on either era, `MountREST`, `MountSSE`,
+`MountWS`, `MountRPC`, `MountBus`), when `MountMCP`'s elicitation is
+declined, when the `mcpsdk` tasks path asks or is declined, or when an
+authentic `requestState` has expired, which re-asks the question on
+both MCP surfaces.
 
 ### Redaction
 

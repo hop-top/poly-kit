@@ -400,10 +400,11 @@ the wire fixtures, which pins it.
 ### Scope
 
 Deprecated upstream features (Roots, Sampling, Logging, HTTP+SSE) are
-unimplemented, matching the Go reference. The `tasks/*` extension is
-opt-in via `tasks_enabled`; left off it answers `-32601` with no
-`extensions` map advertised in `server/discover`, which is the
-conformant way to not support it.
+unimplemented, matching the Go reference. No `tasks/*` method is
+served: each answers `-32601`. `tasks_enabled` only declares the
+extension in `server/discover`; left off (the default), no
+`extensions` map is advertised, which is the conformant way to not
+support it.
 
 ### Cross-references
 

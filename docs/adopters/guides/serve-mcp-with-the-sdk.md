@@ -298,6 +298,16 @@ None of this is reachable by a remote client on its own — it takes
 your code to register it — but the line is real: **kit gates what kit
 binds; what you register is yours.**
 
+### Audit
+
+Register sinks on the bridge (`cmdsurface.WithSinks`) and the gates'
+refusals on a synchronous call reach them with the verdict in `err`.
+A confirmation refusal arrives as `mcpsdk.ErrConfirmationRequired`,
+`ErrConfirmationDeclined` or `ErrConfirmationStateRejected`, an
+authentication refusal as
+`cmdsurface.ErrAuthRefused`; match them with `errors.Is`. See
+[Audit](../reference/mcpsdk.md#audit).
+
 ### Browsers: Host and Origin
 
 The MCP transport requires a server to validate `Origin`, because a
