@@ -87,10 +87,15 @@ func TestToolSpec_JSONRoundTrip_NewFields(t *testing.T) {
 		},
 		Commands: []toolspec.Command{{
 			Name: "deploy",
+			Args: []toolspec.Arg{
+				{Name: "release", Required: true},
+				{Name: "targets", Variadic: true},
+			},
 			Contract: &toolspec.Contract{
-				Idempotent:  false,
-				SideEffects: []string{"deploys to production"},
-				Retryable:   true,
+				Idempotent:      false,
+				IdempotentClass: "conditional",
+				SideEffects:     []string{"deploys to production"},
+				Retryable:       true,
 			},
 			Safety: &toolspec.Safety{
 				Level:                toolspec.SafetyLevelDangerous,
@@ -115,6 +120,10 @@ func TestToolSpec_JSONRoundTrip_NewFields(t *testing.T) {
 				Name:       "--legacy",
 				Deprecated: true,
 				ReplacedBy: "--modern",
+			}, {
+				Name:    "--env",
+				Default: "staging",
+				Choices: []string{"staging", "prod"},
 			}},
 		}},
 		ErrorPatterns: []toolspec.ErrorPattern{{
@@ -166,6 +175,16 @@ func TestToolSpec_JSONRoundTrip_NewFields(t *testing.T) {
 	// Flag deprecation fields
 	assert.True(t, decoded.Commands[0].Flags[0].Deprecated)
 	assert.Equal(t, "--modern", decoded.Commands[0].Flags[0].ReplacedBy)
+
+	// Flag default and choices, arg variadic, idempotent class, under
+	// their wire names.
+	assert.Equal(t, "staging", decoded.Commands[0].Flags[1].Default)
+	assert.Equal(t, []string{"staging", "prod"}, decoded.Commands[0].Flags[1].Choices)
+	assert.True(t, decoded.Commands[0].Args[1].Variadic)
+	assert.Equal(t, "conditional", decoded.Commands[0].Contract.IdempotentClass)
+	for _, key := range []string{`"default":"staging"`, `"choices":["staging","prod"]`, `"variadic":true`, `"idempotent_class":"conditional"`} {
+		assert.Contains(t, string(data), key)
+	}
 }
 
 func TestToolSpec_FindCommand_PrefersShallow(t *testing.T) {

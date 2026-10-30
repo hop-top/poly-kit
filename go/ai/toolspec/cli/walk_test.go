@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/ai/toolspec"
+	kitcli "hop.top/kit/go/console/cli"
 )
 
 // rootWith is a tiny test fixture builder so each test case can read
@@ -511,5 +512,114 @@ func TestWalkCobra_PositionalArgs(t *testing.T) {
 	}
 	if byName["list"].UndeclaredArgs || byName["list"].Args != nil {
 		t.Errorf("list = %+v, want no arguments", byName["list"])
+	}
+}
+
+// --- Flag default and choices ------------------------------------
+
+// TestWalkCobra_FlagDefaultAndChoices pins that the ToolSpec flag
+// carries the pflag default spelled exactly as the Manifest's
+// `default` (DefValue, omitted when empty) and the closed value set
+// cli.WithFlagEnum stamps onto the flag.
+func TestWalkCobra_FlagDefaultAndChoices(t *testing.T) {
+	root := rootWith("mytool",
+		addChild("list", func(c *cobra.Command) {
+			c.Flags().String("status", "TODO", "filter")
+			c.Flags().Lookup("status").Annotations = map[string][]string{
+				"kit.cli.flag.enum": {"TODO", "DONE"},
+			}
+			c.Flags().StringSlice("tag", []string{"a", "b"}, "tags")
+			c.Flags().String("plain", "", "no default")
+			c.Flags().Bool("all", false, "every row")
+		}),
+	)
+	root.PersistentFlags().String("format", "table", "output format")
+
+	spec := WalkCobra(root)
+	list := findCommand(spec.Commands, "list")
+	require.NotNil(t, list)
+	byName := map[string]toolspec.Flag{}
+	for _, f := range list.Flags {
+		byName[f.Name] = f
+	}
+	assert.Equal(t, "TODO", byName["status"].Default)
+	assert.Equal(t, []string{"TODO", "DONE"}, byName["status"].Choices)
+	assert.Equal(t, "[a,b]", byName["tag"].Default, "pflag DefValue spelling, as the Manifest carries")
+	assert.Nil(t, byName["tag"].Choices)
+	assert.Empty(t, byName["plain"].Default, "empty default is omitted, as the Manifest does")
+	assert.Equal(t, "false", byName["all"].Default)
+
+	require.Len(t, spec.Flags, 1)
+	assert.Equal(t, "table", spec.Flags[0].Default, "root persistent flags carry their default too")
+
+	// The ToolSpec and the Manifest agree byte-for-byte on default.
+	m := BuildManifest(&kitcli.Root{Cmd: root, Config: kitcli.Config{Name: "mytool"}}, "1.1", false)
+	require.Len(t, m.Commands, 1)
+	mf := map[string]toolspec.ManifestFlag{}
+	for _, f := range m.Commands[0].Flags {
+		mf[f.Name] = f
+	}
+	for name, f := range byName {
+		assert.Equal(t, mf[name].Default, f.Default, "flag %s default", name)
+	}
+}
+
+// --- Variadic args -------------------------------------------------
+
+func TestWalkCobra_VariadicArgs(t *testing.T) {
+	root := rootWith("mytool",
+		addChild("attach", func(c *cobra.Command) {
+			c.Annotations = map[string]string{"kit/args": "name, note?, files...?"}
+		}),
+		addChild("cat", func(c *cobra.Command) {
+			c.Annotations = map[string]string{"kit/args": "files..."}
+		}),
+	)
+	spec := WalkCobra(root)
+	assert.Equal(t, []toolspec.Arg{
+		{Name: "name", Required: true},
+		{Name: "note"},
+		{Name: "files", Variadic: true},
+	}, findCommand(spec.Commands, "attach").Args)
+	assert.Equal(t, []toolspec.Arg{{Name: "files", Required: true, Variadic: true}},
+		findCommand(spec.Commands, "cat").Args)
+}
+
+// --- Contract: idempotent class and retryable ----------------------
+
+// TestWalkCobra_ContractIdempotentClass pins that every declared
+// kit/idempotent value reaches the ToolSpec: the bool stays true iff
+// "yes", and IdempotentClass carries the raw closed-set value, so
+// "no" and "conditional" are no longer lost.
+func TestWalkCobra_ContractIdempotentClass(t *testing.T) {
+	cases := []struct {
+		raw       string
+		wantBool  bool
+		wantClass string
+		wantNil   bool
+	}{
+		{"yes", true, "yes", false},
+		{"no", false, "no", false},
+		{"conditional", false, "conditional", false},
+		{"", false, "", true},
+		{"maybe", false, "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.raw, func(t *testing.T) {
+			root := rootWith("mytool", addChild("run", func(c *cobra.Command) {
+				if tc.raw != "" {
+					c.Annotations = map[string]string{"kit/idempotent": tc.raw}
+				}
+			}))
+			cmd := findCommand(WalkCobra(root).Commands, "run")
+			require.NotNil(t, cmd)
+			if tc.wantNil {
+				assert.Nil(t, cmd.Contract)
+				return
+			}
+			require.NotNil(t, cmd.Contract)
+			assert.Equal(t, tc.wantBool, cmd.Contract.Idempotent)
+			assert.Equal(t, tc.wantClass, cmd.Contract.IdempotentClass)
+		})
 	}
 }

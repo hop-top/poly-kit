@@ -236,7 +236,7 @@ func projectCommand(tree *cmdreflect.Tree, d *cmdreflect.Descriptor, cfg *walkCo
 		ExitCodes:      append([]string(nil), d.Safety.ExitCodes...),
 	}
 	for _, a := range d.Args {
-		cmd.Args = append(cmd.Args, toolspec.Arg{Name: a.Name, Required: a.Required})
+		cmd.Args = append(cmd.Args, toolspec.Arg{Name: a.Name, Required: a.Required, Variadic: a.Variadic})
 	}
 
 	if cfg.includeDeprecated && d.Surface.Deprecated {
@@ -275,19 +275,32 @@ func projectSafety(d *cmdreflect.Descriptor, cfg *walkConfig) *toolspec.Safety {
 // normalization of it: the canonical resolved tier surfaces via
 // Safety.Permissions instead. A tool that declared the legacy
 // "write" should read "write" back out of its own spec.
+//
+// Idempotency reaches the contract twice: the bool is true iff the
+// adopter declared "yes", and IdempotentClass carries the declared
+// value whenever it is in the closed set, so "no" and "conditional"
+// are not collapsed into the bool's false. A value outside the set
+// is a declaration defect Root.Validate reports; it is not carried.
 func projectContract(d *cmdreflect.Descriptor) *toolspec.Contract {
 	var contract *toolspec.Contract
 	if se := d.Safety.DeclaredSideEffect; se != "" {
 		contract = &toolspec.Contract{SideEffects: []string{se}}
 	}
-	if d.Safety.Idempotent == "yes" {
+	if class := d.Safety.Idempotent; idempotentClasses[class] {
 		if contract == nil {
 			contract = &toolspec.Contract{}
 		}
-		contract.Idempotent = true
+		contract.IdempotentClass = class
+		contract.Idempotent = class == "yes"
 	}
 	return contract
 }
+
+// idempotentClasses is the closed set of kit/idempotent values the
+// ToolSpec carries as Contract.IdempotentClass — the Manifest's
+// vocabulary minus its explicit "unknown", which the ToolSpec spells
+// as an absent field.
+var idempotentClasses = map[string]bool{"yes": true, "no": true, "conditional": true}
 
 // projectLocalFlags projects the descriptor's own flags. Hidden
 // flags are omitted EXCEPT deprecated ones: pflag.MarkDeprecated
@@ -299,6 +312,9 @@ func projectLocalFlags(d *cmdreflect.Descriptor) []toolspec.Flag {
 }
 
 // projectFlags applies the hidden/deprecated rule to a flag slice.
+// Default is the reflected pflag DefValue verbatim, the same value
+// manifestFlags writes into ManifestFlag.Default, so the ToolSpec
+// and the Manifest never disagree on a flag's default.
 func projectFlags(flags []cmdreflect.Flag) []toolspec.Flag {
 	var out []toolspec.Flag
 	for _, f := range flags {
@@ -312,6 +328,8 @@ func projectFlags(flags []cmdreflect.Flag) []toolspec.Flag {
 			Description: f.Description,
 			Required:    f.Required,
 			Deprecated:  f.Deprecated,
+			Default:     f.Default,
+			Choices:     append([]string(nil), f.Choices...),
 		})
 	}
 	return out

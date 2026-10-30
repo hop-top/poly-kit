@@ -11,10 +11,20 @@ const (
 
 // Contract describes behavioral guarantees of a command.
 type Contract struct {
+	// Idempotent is true iff the command declared kit/idempotent=yes
+	// (or a curated source said so). It cannot tell "no" from
+	// "conditional" from "not declared"; IdempotentClass can.
 	Idempotent    bool     `json:"idempotent,omitempty"`
 	SideEffects   []string `json:"side_effects,omitempty"`
 	Retryable     bool     `json:"retryable,omitempty"`
 	PreConditions []string `json:"pre_conditions,omitempty"`
+	// IdempotentClass is the raw kit/idempotent value when it is one
+	// of the closed set yes|no|conditional (the Manifest's
+	// vocabulary), empty otherwise. Carried next to the bool so a
+	// consumer can tell "no" and "conditional" apart: "conditional"
+	// means kit registers --idempotency-key on the command, and an
+	// agent that retries must supply one.
+	IdempotentClass string `json:"idempotent_class,omitempty"`
 }
 
 // Safety captures risk metadata for a command.
@@ -105,6 +115,10 @@ type Arg struct {
 	// Required is false for an argument declared optional (a
 	// trailing "?" in kit/args).
 	Required bool `json:"required,omitempty"`
+	// Variadic is true for an argument declared with "..." in
+	// kit/args: it takes every remaining operand, one or more when
+	// Required, zero or more otherwise. Always the last argument.
+	Variadic bool `json:"variadic,omitempty"`
 }
 
 // Flag describes a single CLI flag.
@@ -120,6 +134,17 @@ type Flag struct {
 	Required   bool   `json:"required,omitempty"`
 	Deprecated bool   `json:"deprecated,omitempty"`
 	ReplacedBy string `json:"replaced_by,omitempty"`
+	// Default is the default value rendered as pflag prints it
+	// (DefValue): "false" for a bool, "[a,b]" for a slice, "" when
+	// none. The same value, under the same rule, as
+	// ManifestFlag.Default, so the two shapes agree byte-for-byte.
+	Default string `json:"default,omitempty"`
+	// Choices is the closed set of legal values declared with
+	// cli.WithFlagEnum, in declaration order. The same set also
+	// reaches Description as a "(one of: …)" suffix once the tree
+	// has run; the duplication is accepted so help text stays
+	// byte-stable.
+	Choices []string `json:"choices,omitempty"`
 }
 
 // ErrorPattern maps a known error output to a fix.
