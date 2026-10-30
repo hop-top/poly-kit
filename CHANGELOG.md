@@ -2,6 +2,8 @@
 
 ## [0.5.0-beta.5](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.4...kit/v0.5.0-beta.5) (2026-10-30)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.5. This release includes new features and bug fixes.
+
 
 ### Features
 
@@ -33,6 +35,8 @@
 * **ts/mcp:** negated, repeatable option types and default/enum in bridge schema ([863a448](https://github.com/hop-top/poly-kit/commit/863a448e899fc8e6d66f675604fc9427ce6d9b80))
 * **ts/mcp:** publish positional args as the Go "args" array ([c47db88](https://github.com/hop-top/poly-kit/commit/c47db88b6f3e7e2594ee103cd87375d19f518e13))
 * **ts/toolspec:** negatable flags typed bool ([79cfeb4](https://github.com/hop-top/poly-kit/commit/79cfeb4cc0b31d449b2b23487949dffce518f63d))
+
+Full diff: [kit/v0.5.0-beta.4...kit/v0.5.0-beta.5](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.4...kit/v0.5.0-beta.5)
 
 ## [0.5.0-beta.4](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.3...kit/v0.5.0-beta.4) (2026-10-29)
 
