@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .bridge import Bridge, Invocation, Leaf, Result, tool_path
+from .bridge import DEFAULT_TOOL_NAME_SEPARATOR, Bridge, Invocation, Leaf, Result, tool_path
 from .identity import Identity, Verifier, establish_caller, invocation_meta, unauthenticated
 from .protocol import (
     ERR_INVALID_PARAMS,
@@ -63,11 +63,13 @@ class LegacyHandler:
         server_name: str,
         server_version: str,
         verifier: Verifier | None = None,
+        tool_name_separator: str = DEFAULT_TOOL_NAME_SEPARATOR,
     ) -> None:
         self._bridge = bridge
         self._server_name = server_name
         self._server_version = server_version
         self._verifier = verifier
+        self._tool_name_separator = tool_name_separator
 
     def serve(self, request: Request, rpc: RPCRequest) -> Response:
         """Route one already-parsed request by method."""
@@ -113,7 +115,9 @@ class LegacyHandler:
 
     def _tools_list(self, rpc: RPCRequest) -> Response:
         """Enumerate every leaf exposed on the MCP surface."""
-        return write_result(rpc.id_raw, {"tools": exposed_tools(self._bridge)}, STATUS_OK)
+        return write_result(
+            rpc.id_raw, {"tools": exposed_tools(self._bridge, self._tool_name_separator)}, STATUS_OK
+        )
 
     def _tools_call(self, request: Request, rpc: RPCRequest) -> Response:
         """Resolve, gate, invoke, and render one tool call.
@@ -129,7 +133,7 @@ class LegacyHandler:
         if not isinstance(name, str) or not name:
             return write_error(rpc.id_raw, ERR_INVALID_PARAMS, "missing tool name", STATUS_OK)
 
-        leaf = resolve_exposed_leaf(self._bridge, name)
+        leaf = resolve_exposed_leaf(self._bridge, name, self._tool_name_separator)
         if leaf is None:
             return write_error(rpc.id_raw, ERR_INVALID_PARAMS, f"unknown tool: {name}", STATUS_OK)
 
@@ -173,17 +177,23 @@ class LegacyHandler:
 # drift between the two impossible rather than merely unlikely.
 
 
-def exposed_tools(bridge: Bridge) -> list[dict[str, Any]]:
+def exposed_tools(
+    bridge: Bridge, separator: str = DEFAULT_TOOL_NAME_SEPARATOR
+) -> list[dict[str, Any]]:
     """Tool descriptors for every leaf exposed on the MCP surface."""
     return [
-        leaf.tool_envelope() for leaf in bridge.leaves() if leaf.enabled.get(Surface.MCP, False)
+        leaf.tool_envelope(separator)
+        for leaf in bridge.leaves()
+        if leaf.enabled.get(Surface.MCP, False)
     ]
 
 
-def resolve_exposed_leaf(bridge: Bridge, name: str) -> Leaf | None:
-    """Resolve a dotted tool name to an MCP-exposed leaf, or ``None``."""
+def resolve_exposed_leaf(
+    bridge: Bridge, name: str, separator: str = DEFAULT_TOOL_NAME_SEPARATOR
+) -> Leaf | None:
+    """Resolve a tool name, split on ``separator``, to an MCP-exposed leaf, or ``None``."""
     try:
-        leaf = bridge.resolve_leaf(tool_path(name))
+        leaf = bridge.resolve_leaf(tool_path(name, separator))
     except UnknownCommandError:
         return None
     if not leaf.enabled.get(Surface.MCP, False):

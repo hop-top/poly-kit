@@ -51,7 +51,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .bridge import Bridge
+from .bridge import DEFAULT_TOOL_NAME_SEPARATOR, Bridge
 from .identity import Verifier
 from .legacy import LegacyHandler
 from .modern import ModernHandler, header_confirmation_gate
@@ -160,9 +160,11 @@ class McpSurface:
         confirmation_key: bytes | None = None,
         extensions: tuple[Any, ...] = (),
         verifier: Verifier | None = None,
+        tool_name_separator: str = DEFAULT_TOOL_NAME_SEPARATOR,
     ) -> None:
         self.path = path
         self._legacy_enabled, self._modern_enabled = _resolve_spec_versions(spec_versions)
+        _check_tool_name_separator(bridge, tool_name_separator)
 
         ttl_ms, scope = _resolve_cache_hints(cache_ttl_ms, cache_scope)
         if confirmation_key is not None and not confirmation_key:
@@ -173,13 +175,16 @@ class McpSurface:
             server_name=server_name,
             server_version=server_version,
             verifier=verifier,
+            tool_name_separator=tool_name_separator,
         )
 
         gate = header_confirmation_gate
         if confirmation_key:
             from .modern_confirm import ElicitationConfirmationGate
 
-            gate = ElicitationConfirmationGate(confirmation_key, bridge)
+            gate = ElicitationConfirmationGate(
+                confirmation_key, bridge, tool_name_separator=tool_name_separator
+            )
 
         advertised: dict[str, Any] = {}
         method_handlers: dict[str, Any] = {}
@@ -198,6 +203,7 @@ class McpSurface:
             extensions=advertised,
             method_handlers=method_handlers,
             verifier=verifier,
+            tool_name_separator=tool_name_separator,
         )
         for extension in extensions:
             extension.bind(self.modern)
@@ -296,6 +302,13 @@ def mount_mcp(bridge: Bridge, **options: Any) -> McpSurface:
     :data:`~hop_top_kit.mcp.identity.Verifier`). Without one no call is
     established, so every ``kit/auth-required`` leaf is refused with 401:
     an ``Authorization`` header alone never admits one.
+
+    ``tool_name_separator`` (default ``"."``) joins a leaf path into its
+    tool name and splits a called name back: ``"_"`` names the leaf
+    ``widget add`` ``widget_add``, for hosts that admit only
+    ``^[A-Za-z0-9_-]{1,64}$``. An empty separator is a :class:`MountError`,
+    and so is any separator but the default that a command name contains,
+    since the name would not map back to one leaf.
     """
     return McpSurface(bridge, **options)
 
@@ -324,6 +337,26 @@ def _resolve_spec_versions(versions: tuple[str, ...] | None) -> tuple[bool, bool
         else:
             raise MountError(f"mcp: spec_versions: unrecognized version {version!r}")
     return legacy, modern
+
+
+def _check_tool_name_separator(bridge: Bridge, separator: str) -> None:
+    """Refuse an empty separator, or a non-default one a command name contains.
+
+    A command name containing the separator would make its tool name
+    split into a different path (``data_sync`` against ``data sync``
+    under ``_``), so the mount refuses rather than guessing.
+    """
+    if not separator:
+        raise MountError("mcp: tool_name_separator: empty separator")
+    if separator == DEFAULT_TOOL_NAME_SEPARATOR:
+        return
+    for leaf in bridge.leaves():
+        for segment in leaf.path:
+            if separator in segment:
+                raise MountError(
+                    f"mcp: tool_name_separator: command {segment!r} in "
+                    f"{leaf.path_key!r} contains separator {separator!r}"
+                )
 
 
 def _resolve_cache_hints(ttl_ms: int | None, scope: str | None) -> tuple[int, str]:

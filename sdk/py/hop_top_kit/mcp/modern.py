@@ -38,7 +38,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ._json import Raw
-from .bridge import Bridge, Invocation, Leaf
+from .bridge import DEFAULT_TOOL_NAME_SEPARATOR, Bridge, Invocation, Leaf
 from .identity import Verifier, establish_caller, invocation_meta, unauthenticated
 from .legacy import (
     STATUS_OK,
@@ -155,9 +155,11 @@ class ModernHandler:
         extensions: dict[str, Any] | None = None,
         method_handlers: dict[str, Callable[..., Response]] | None = None,
         verifier: Verifier | None = None,
+        tool_name_separator: str = DEFAULT_TOOL_NAME_SEPARATOR,
     ) -> None:
         self._bridge = bridge
         self._verifier = verifier
+        self._tool_name_separator = tool_name_separator
         self._server_name = server_name
         self._server_version = server_version
         self._cache_ttl_ms = cache_ttl_ms
@@ -394,7 +396,7 @@ class ModernHandler:
         emitted. Pagination is not implemented: a ``cursor`` param is
         ignored and no ``nextCursor`` comes back.
         """
-        result: dict[str, Any] = {"tools": exposed_tools(self._bridge)}
+        result: dict[str, Any] = {"tools": exposed_tools(self._bridge, self._tool_name_separator)}
         self.apply_cache_hints(result)
         self.stamp_envelope(result)
         return write_result(rpc.id_raw, result, STATUS_OK)
@@ -416,7 +418,7 @@ class ModernHandler:
             # method without passing the V7 gate above.
             return write_error(rpc.id_raw, ERR_INVALID_PARAMS, "missing tool name", STATUS_OK)
 
-        leaf = resolve_exposed_leaf(self._bridge, name)
+        leaf = resolve_exposed_leaf(self._bridge, name, self._tool_name_separator)
         if leaf is None:
             return write_error(rpc.id_raw, ERR_INVALID_PARAMS, f"unknown tool: {name}", STATUS_OK)
 

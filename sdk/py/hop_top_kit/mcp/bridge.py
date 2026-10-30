@@ -198,6 +198,10 @@ class Invocation:
     meta: Meta = field(default_factory=Meta)
 
 
+#: The default string joining a leaf path into its MCP tool name.
+DEFAULT_TOOL_NAME_SEPARATOR = "."
+
+
 @dataclass
 class Leaf:
     """The per-command view a surface needs.
@@ -220,7 +224,7 @@ class Leaf:
     @property
     def tool_name(self) -> str:
         """The leaf path as a dotted MCP tool name (``widget.add``)."""
-        return ".".join(self.path)
+        return tool_name(self.path)
 
     def collect_flags(self) -> tuple[dict[str, Any], list[str]]:
         """Return the schema properties and the required-name list.
@@ -242,30 +246,36 @@ class Leaf:
                 required.append(flag.name)
         return props, required
 
-    def tool_envelope(self) -> dict[str, Any]:
+    def tool_envelope(self, separator: str = DEFAULT_TOOL_NAME_SEPARATOR) -> dict[str, Any]:
         """Render this leaf as an MCP tool descriptor.
 
         Shared verbatim by both eras — ``name``, ``description``,
         ``inputSchema`` — so schema drift between 2024-11-05 and
         2026-07-28 cannot happen, exactly as in Go where one
-        ``buildToolEnvelope`` serves both handlers.
+        ``buildToolEnvelope`` serves both handlers. ``separator`` joins
+        the path into ``name``.
         """
         props, required = self.collect_flags()
         schema: dict[str, Any] = {"type": "object", "properties": props}
         if required:
             schema["required"] = required
         return {
-            "name": self.tool_name,
+            "name": tool_name(self.path, separator),
             "description": self.cmd.short,
             "inputSchema": schema,
         }
 
 
-def tool_path(name: str) -> tuple[str, ...]:
-    """Split a dotted MCP tool name back into a leaf path."""
+def tool_name(path: Sequence[str], separator: str = DEFAULT_TOOL_NAME_SEPARATOR) -> str:
+    """Join a leaf path into an MCP tool name with ``separator``."""
+    return separator.join(path)
+
+
+def tool_path(name: str, separator: str = DEFAULT_TOOL_NAME_SEPARATOR) -> tuple[str, ...]:
+    """Split an MCP tool name back into a leaf path on ``separator``."""
     if not name:
         return ()
-    return tuple(name.split("."))
+    return tuple(name.split(separator))
 
 
 class Bridge:
