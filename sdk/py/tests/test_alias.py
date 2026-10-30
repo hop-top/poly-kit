@@ -458,6 +458,25 @@ class TestBridgeMultiWordAlias:
         assert "Alias for task list" in res.output
         assert "List tasks" not in res.output
 
+    def test_offered_once_in_completion_not_in_help(self):
+        from click.shell_completion import ShellComplete
+
+        cli = self._cli([])
+        bridge_to_click(cli, {"tl": "task list"})
+        comp = ShellComplete(cli, {}, "cli", "_CLI_COMPLETE")
+        got = [i.value for i in comp.get_completions([], "t")]
+        assert sorted(got) == ["task", "tl"]
+        res = CliRunner().invoke(cli, ["--help"])
+        assert "tl" not in res.output.split()
+
+    def test_options_hidden_proxy_completion_unchanged(self):
+        from click.shell_completion import ShellComplete
+
+        cli = self._cli([])
+        bridge_to_click(cli, {"tl": "task list"}, hidden=True)
+        comp = ShellComplete(cli, {}, "cli", "_CLI_COMPLETE")
+        assert [i.value for i in comp.get_completions([], "t")] == ["task"]
+
     def test_single_word_stays_native(self):
         cli = self._cli([])
         bridge_to_click(cli, {"t": "task", "tl": "task list"})

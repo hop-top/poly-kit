@@ -315,9 +315,10 @@ command:
 
 - **Stand-in**: a native alias, a default shim, or a hidden proxy that
   dispatches to its target or runs nothing (register-only). Go, TS and
-  Rust list it by name as `alias for <target>`. Python lists a native
-  alias, but not a hidden proxy (a default multi-word alias included),
-  as Click skips hidden commands.
+  Rust list it by name as `alias for <target>`; Python lists a native
+  alias and a default multi-word proxy by name too. A hidden proxy
+  built with options is not listed in Python, as Click skips hidden
+  commands.
 - **Real command**: a visible proxy (`hidden: false`) or, in Go, TS
   and Python, one with a custom dispatch handler. Completion walks it
   like any subcommand: a visible one is listed once with its own

@@ -238,8 +238,8 @@ def bridge_to_click(
     in shell completions for free. Without options a single-word
     target resolves to the real command; a multi-word target resolves
     to a hidden proxy named after the alias, ``Alias for <target>``,
-    that owns its ``--help`` and runs the full target path; Click
-    leaves it out of completion, as it does any hidden command.
+    that owns its ``--help`` and runs the full target path. Shell
+    completion offers that proxy by name although help hides it.
 
     ``store`` is a config file path (aliases under its ``aliases`` key)
     or an alias map, so aliases can come from any storage.
@@ -309,6 +309,27 @@ def bridge_to_click(
 
     group.get_command = get_command_with_aliases  # type: ignore[assignment]
     group.list_commands = list_commands_with_aliases  # type: ignore[assignment]
+
+    original_shell_complete = getattr(group, "shell_complete", None)
+    if use_proxies or original_shell_complete is None:
+        return
+
+    def shell_complete_with_aliases(ctx: Any, incomplete: str) -> list[Any]:
+        # Click skips hidden commands; offer the default path's hidden
+        # stand-ins by name, as Go, TS and Rust do.
+        from hop_top_kit._click_compat import completion_item
+
+        results = list(original_shell_complete(ctx, incomplete))
+        offered = {getattr(r, "value", None) for r in results}
+        for name in sorted(aliases):
+            if not name.startswith(incomplete) or name in offered:
+                continue
+            cmd = get_command_with_aliases(ctx, name)
+            if cmd is not None and cmd is proxies.get(name) and cmd.hidden:
+                results.append(completion_item(ctx, name, help=cmd.short_help))
+        return results
+
+    group.shell_complete = shell_complete_with_aliases  # type: ignore[attr-defined]
 
 
 def _alias_proxy(
