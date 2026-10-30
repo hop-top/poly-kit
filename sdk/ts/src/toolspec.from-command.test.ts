@@ -214,3 +214,22 @@ describe("loadToolSpec args/short/required", () => {
     }
   });
 });
+
+describe("toolSpecFromCommand negatable flags", () => {
+  it("types --no-x as a bool flag named no-x, as pflag does", () => {
+    const program = new Command("t");
+    program.command("run").option("--no-color", "c").action(() => {});
+    expect(findCommand(toolSpecFromCommand(program), "run")!.flags).toEqual([
+      { name: "no-color", type: "bool", description: "c" },
+    ]);
+  });
+
+  it("types both halves of a --x/--no-x pair bool", () => {
+    const program = new Command("t");
+    program.option("--hints", "on").option("--no-hints", "off");
+    expect(toolSpecFromCommand(program).flags).toEqual([
+      { name: "hints", type: "bool", description: "on" },
+      { name: "no-hints", type: "bool", description: "off" },
+    ]);
+  });
+});

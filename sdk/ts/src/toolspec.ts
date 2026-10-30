@@ -4,7 +4,7 @@ import type {
   Command as CommanderCommand,
   Option as CommanderOption,
 } from "commander";
-import { declaredArgs } from "./toolspec-internal.js";
+import { declaredArgs, takesNoValue } from "./toolspec-internal.js";
 
 // --- Types ---
 
@@ -431,7 +431,7 @@ function projectFlags(cmd: CommanderCommand): Flag[] | undefined {
 
 /** pflag-style type names, matching the Go walker's output. */
 function flagType(opt: CommanderOption): string {
-  if (opt.isBoolean()) return "bool";
   if (opt.variadic) return "stringSlice";
+  if (takesNoValue(opt)) return "bool";
   return "string";
 }

@@ -17,7 +17,7 @@
  */
 
 import type { Command, Option } from 'commander';
-import { declaredArgs } from '../toolspec-internal.js';
+import { declaredArgs, takesNoValue } from '../toolspec-internal.js';
 import {
   DestructiveBlockedError,
   policyAllowed,
@@ -267,7 +267,7 @@ function optionJSONType(opt: Option): string {
   if (opt.parseArg !== undefined && Array.isArray(opt.defaultValue)) {
     return 'array';
   }
-  if (!opt.required && !opt.optional) return 'boolean';
+  if (takesNoValue(opt)) return 'boolean';
   return 'string';
 }
 
