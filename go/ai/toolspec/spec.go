@@ -210,8 +210,10 @@ const IdempotentUnknown = "unknown"
 // Schema 1.0 covers the first 11 fields below. Schema 1.1 adds the
 // 13 trailing fields; all additions are
 // `omitempty` unless the explicit false carries information
-// (Retryable, DryRunSupported). Renames or removals require a major
-// bump per factor 12.
+// (Retryable, DryRunSupported). Schema 1.2 adds no command field: it
+// adds ManifestFlag.Required and ManifestFlag.Choices and
+// ManifestArg.Variadic, all `omitempty`. Renames or removals require
+// a major bump per factor 12.
 type ManifestCommand struct {
 	// Path is the cobra command path split into segments
 	// (e.g. ["mytool", "alias", "add"]).
@@ -351,6 +353,13 @@ type ManifestNextStep struct {
 type ManifestArg struct {
 	Name     string `json:"name"`
 	Required bool   `json:"required,omitempty"`
+
+	// === Schema 1.2 additions ===
+
+	// Variadic reports a kit/args entry ending in "..." (before any
+	// "?"): the argument takes every remaining operand, one or more
+	// when Required, zero or more otherwise. Always the last one.
+	Variadic bool `json:"variadic,omitempty"`
 }
 
 // ManifestFlag is a flag declaration in the manifest.
@@ -361,6 +370,17 @@ type ManifestFlag struct {
 	Description  string `json:"description,omitempty"`
 	Default      string `json:"default,omitempty"`
 	SinceVersion string `json:"since_version,omitempty"`
+
+	// === Schema 1.2 additions ===
+
+	// Required reports whether cobra marks the flag required
+	// (MarkFlagRequired).
+	Required bool `json:"required,omitempty"`
+	// Choices is the closed set of legal values declared with
+	// cli.WithFlagEnum / WithCommandFlagEnum, in declaration order.
+	// Description still ends in the "(one of: …)" suffix help
+	// renders from the same set.
+	Choices []string `json:"choices,omitempty"`
 }
 
 // FindCommand walks the command tree breadth-first and returns the

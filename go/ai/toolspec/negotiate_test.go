@@ -23,8 +23,9 @@ func TestNegotiateSchemaVersion(t *testing.T) {
 		{"1.0/unset", "1.0", "", "1.0"},
 		{"1.0/request-1.0", "1.0", "1.0", "1.0"},
 		{"1.0/request-1.1", "1.0", "1.1", "1.1"},
-		{"1.0/request-above-latest", "1.0", "2.0", "1.1"},
-		{"1.0/request-minor-above-latest", "1.0", "1.9", "1.1"},
+		{"1.0/request-1.2", "1.0", "1.2", "1.2"},
+		{"1.0/request-above-latest", "1.0", "2.0", "1.2"},
+		{"1.0/request-minor-above-latest", "1.0", "1.9", "1.2"},
 		{"1.0/request-below", "1.0", "0.9", "1.0"},
 		{"1.0/malformed", "1.0", "garbage", "1.0"},
 		{"1.0/partial", "1.0", "1", "1.0"},
@@ -34,13 +35,23 @@ func TestNegotiateSchemaVersion(t *testing.T) {
 		{"1.0/three-part", "1.0", "1.1.0", "1.0"},
 		{"1.0/whitespace-trimmed", "1.0", " 1.1 ", "1.1"},
 
-		// Author declared 1.1 (what `kit toolspec` claims): never
-		// downgrades, whatever the request.
+		// Author declared 1.1: a request above it still raises to the
+		// newest layout, a request at or below it never lowers.
 		{"1.1/unset", "1.1", "", "1.1"},
 		{"1.1/request-1.0", "1.1", "1.0", "1.1"},
 		{"1.1/request-1.1", "1.1", "1.1", "1.1"},
-		{"1.1/request-2.0", "1.1", "2.0", "1.1"},
+		{"1.1/request-1.2", "1.1", "1.2", "1.2"},
+		{"1.1/request-2.0", "1.1", "2.0", "1.2"},
 		{"1.1/malformed", "1.1", "junk", "1.1"},
+
+		// Author declared 1.2 (what `kit toolspec` claims): never
+		// downgrades, whatever the request.
+		{"1.2/unset", "1.2", "", "1.2"},
+		{"1.2/request-1.0", "1.2", "1.0", "1.2"},
+		{"1.2/request-1.1", "1.2", "1.1", "1.2"},
+		{"1.2/request-1.2", "1.2", "1.2", "1.2"},
+		{"1.2/request-2.0", "1.2", "2.0", "1.2"},
+		{"1.2/malformed", "1.2", "junk", "1.2"},
 
 		// A declared version kit does not know is the author's call:
 		// emitted as declared, never lowered to a known one.
@@ -64,7 +75,7 @@ func TestNegotiateSchemaVersion(t *testing.T) {
 // newest layout: every request, well-formed or not, at, above or
 // below it, resolves to the declared version.
 func TestNegotiateSchemaVersion_NeverDowngrades(t *testing.T) {
-	for _, requested := range []string{"", "1.0", "1.1", "0.9", "2.0", "junk"} {
+	for _, requested := range []string{"", "1.0", "1.1", "1.2", "0.9", "2.0", "junk"} {
 		t.Run(requested, func(t *testing.T) {
 			got := toolspec.NegotiateSchemaVersion(toolspec.LatestSchemaVersion, requested)
 			assert.Equal(t, toolspec.LatestSchemaVersion, got)
@@ -73,6 +84,6 @@ func TestNegotiateSchemaVersion_NeverDowngrades(t *testing.T) {
 }
 
 func TestLatestSchemaVersion(t *testing.T) {
-	assert.Equal(t, "1.1", toolspec.LatestSchemaVersion)
+	assert.Equal(t, "1.2", toolspec.LatestSchemaVersion)
 	assert.Equal(t, "KIT_TOOLSPEC_SCHEMA", toolspec.SchemaVersionEnv)
 }

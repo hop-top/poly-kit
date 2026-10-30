@@ -15,8 +15,9 @@ import (
 
 // kitToolspecSchemaVersion is the schema version kit's own manifest
 // declares: the newest one. 1.1 adds per-command fields on
-// ManifestCommand that surface kit's command annotations; it is
-// additive, so 1.0 clients that ignore unknown fields read it
+// ManifestCommand that surface kit's command annotations; 1.2 adds
+// per-flag required/choices and per-argument variadic. Each is
+// additive, so older clients that ignore unknown fields read it
 // unchanged. Declaring the newest version means negotiation never
 // moves it: kit never downgrades.
 const kitToolspecSchemaVersion = toolspec.LatestSchemaVersion

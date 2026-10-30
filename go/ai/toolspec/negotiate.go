@@ -13,14 +13,15 @@ const SchemaVersionEnv = "KIT_TOOLSPEC_SCHEMA"
 
 // LatestSchemaVersion is the newest manifest schema version kit
 // emits. 1.1 adds per-command fields that surface kit's command
-// annotations; it is additive over 1.0, so a reader that ignores
-// unknown fields reads either.
-const LatestSchemaVersion = "1.1"
+// annotations; 1.2 adds per-flag `required` and `choices` and
+// per-argument `variadic`. Each is additive over the one before, so
+// a reader that ignores unknown fields reads any of them.
+const LatestSchemaVersion = "1.2"
 
 // knownSchemaVersions lists every manifest schema version kit can
 // label a manifest with, oldest first. The manifest builder emits one
 // layout (LatestSchemaVersion's); every older entry is a subset of it.
-var knownSchemaVersions = []string{"1.0", LatestSchemaVersion}
+var knownSchemaVersions = []string{"1.0", "1.1", LatestSchemaVersion}
 
 // NegotiateSchemaVersion resolves the schema_version a manifest
 // carries from the version its producer declares and the version a
