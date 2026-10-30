@@ -30,7 +30,6 @@
     {
       "name": "defaults: nested target",
       "aliases": { "rs": "router start" },
-      "skip": { "py": "the default Python bridge resolves a multi-word target to its first word only" },
       "checks": [
         { "alias": "rs", "entry": { "kind": "proxy", "hidden": true, "description": "Alias for router start" } },
         { "argv": ["rs", "p1"], "run": { "ran": "target", "path": "router start", "env": null, "args": ["p1"] } },

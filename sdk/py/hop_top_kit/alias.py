@@ -235,7 +235,11 @@ def bridge_to_click(
 
     Uses Click's AliasedGroup pattern: overrides get_command() so
     aliases resolve natively, and list_commands() so aliases appear
-    in shell completions for free.
+    in shell completions for free. Without options a single-word
+    target resolves to the real command; a multi-word target resolves
+    to a hidden proxy named after the alias, ``Alias for <target>``,
+    that owns its ``--help`` and runs the full target path; Click
+    leaves it out of completion, as it does any hidden command.
 
     ``store`` is a config file path (aliases under its ``aliases`` key)
     or an alias map, so aliases can come from any storage.
@@ -277,7 +281,8 @@ def bridge_to_click(
                 target,
                 hidden=True if hidden is None else hidden,
                 description=describe(name, target) if describe else f"Alias for {target}",
-                own_help=help_mode == "own",
+                # The default path's proxies own --help, as in Go.
+                own_help=help_mode == "own" or not use_proxies,
                 dispatch=dispatch,
             )
         return proxies[name]
@@ -293,9 +298,9 @@ def bridge_to_click(
         target = aliases.get(cmd_name)
         if not target:
             return None
-        if use_proxies:
-            return proxy_for(cmd_name, target)
         parts = target.split()
+        if use_proxies or len(parts) > 1:
+            return proxy_for(cmd_name, target)
         return original_get_command(ctx, parts[0])
 
     def list_commands_with_aliases(ctx: Any) -> list[str]:

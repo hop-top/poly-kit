@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Annotated
 
 import click
 import pytest
@@ -205,6 +206,29 @@ def test_alias_bridge_resolves_on_kit_app(tmp_path, capsys, monkeypatch):
 
     out = _complete(cmd, "t ", capsys, monkeypatch)
     assert '"d"' in out and '"deploy"' in out, out
+
+
+def test_alias_bridge_multi_word_target_on_kit_app(capsys):
+    """A default multi-word alias proxies on typer's Click layer and runs
+    the full target path."""
+    app = _kit_app()
+    sub = typer.Typer(help="router")
+
+    @sub.command("start", help="Start the router")
+    def start(args: Annotated[list[str] | None, typer.Argument()] = None) -> None:
+        typer.echo(f"ran start {args}")
+
+    app.add_typer(sub, name="router")
+    cmd = typer.main.get_command(app)
+    bridge_to_click(cmd, {"rs": "router start"})
+
+    code, out = _main(cmd, ["rs", "p1"], capsys)
+    assert code == 0, out
+    assert "ran start ['p1']" in out
+
+    code, out = _main(cmd, ["rs", "--help"], capsys)
+    assert code == 0, out
+    assert "Alias for router start" in out, out
 
 
 def test_alias_bridge_options_proxy_on_kit_app(capsys):

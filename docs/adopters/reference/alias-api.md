@@ -210,15 +210,16 @@ bridges as it always has; the defaults differ:
 | | Go | TS | Python | Rust |
 |---|---|---|---|---|
 | Direct child / single-word target | cobra alias | Commander alias | `get_command` returns the target | clap alias |
-| Deeper / multi-word target | hidden shim, flagless | hidden proxy | `get_command` returns the first word's command | hidden shim, flagless |
-| `<alias> --help` on a proxy | the proxy's own help | the target's help | (no proxy) | the proxy's own help |
-| Dispatch | shim runs the target's `RunE` | proxy re-enters the program with the target path | Click runs the returned command | caller, through `Root::alias_target` |
+| Deeper / multi-word target | hidden shim, flagless | hidden proxy | hidden proxy | hidden shim, flagless |
+| `<alias> --help` on a proxy | the proxy's own help | the target's help | the proxy's own help | the proxy's own help |
+| Dispatch | shim runs the target's `RunE` | proxy re-enters the program with the target path | Click runs the returned command; a proxy invokes the full target path | caller, through `Root::alias_target` |
 
 ### Options
 
 Setting any option registers **every** alias as a proxy: a root
 command named after the alias, even where the framework has a native
-alias. Unset options keep the proxy defaults above.
+alias. Unset options keep the proxy defaults above, except that a
+Python proxy built under options passes `--help` to its target.
 
 | Option | Go | TS | Python | Rust |
 |--------|----|----|--------|------|
@@ -315,7 +316,8 @@ command:
 - **Stand-in**: a native alias, a default shim, or a hidden proxy that
   dispatches to its target or runs nothing (register-only). Go, TS and
   Rust list it by name as `alias for <target>`. Python lists a native
-  alias, but not a hidden proxy, as Click skips hidden commands.
+  alias, but not a hidden proxy (a default multi-word alias included),
+  as Click skips hidden commands.
 - **Real command**: a visible proxy (`hidden: false`) or, in Go, TS
   and Python, one with a custom dispatch handler. Completion walks it
   like any subcommand: a visible one is listed once with its own

@@ -50,15 +50,14 @@ Defaults are each port's existing behaviour and are not unified; `by_port` on a 
 | | Go | TS | Python | Rust |
 |---|---|---|---|---|
 | direct child / single-word target | native | native | native | native |
-| deeper / multi-word target | hidden proxy | hidden proxy | native to the first word | hidden proxy |
-| proxy `--help` | own | passthrough | passthrough | own |
+| deeper / multi-word target | hidden proxy | hidden proxy | hidden proxy | hidden proxy |
+| proxy `--help` | own | passthrough | own; passthrough with options | own |
 | proxy dispatch | target's `RunE` on the proxy | re-enters the program | invokes the target path | caller, via `Root::alias_target` |
 
 ### Skips
 
 A case's `skip` maps a port to the reason it does not run the case:
 
-- Python skips `defaults: nested target`: its default bridge resolves a multi-word target to its first word only.
 - Rust skips the custom-dispatch and register-only cases: it has no dispatch hook, every proxy is register-only and the caller dispatches. The Rust runner plays that caller, re-parsing the target path with the proxy's arguments.
 - Rust skips the `proxy_flags` cases: `Root::alias_with` builds the proxy inside the root's tree and exposes no way to add flags to it.
 

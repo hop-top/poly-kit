@@ -411,27 +411,57 @@ class TestBridgeListsAliases:
 
 
 class TestBridgeMultiWordAlias:
-    def test_resolves_first_word(self, tmp_path):
-        """Multi-word alias resolves to the first word's command."""
-
+    def _cli(self, ran: list[str]):
         @click.group()
         def cli():
             pass
 
-        @cli.command()
+        @cli.group(help="Manage tasks")
         def task():
-            pass
+            ran.append("task")
 
-        save_to(
-            str(tmp_path / "aliases.yaml"),
-            {"tl": "task list"},
-        )
+        @task.command("list", help="List tasks")
+        @click.option("--status", default="any")
+        @click.argument("args", nargs=-1)
+        def task_list(status, args):
+            ran.append(f"list {status} {list(args)}")
+
+        return cli
+
+    def test_resolves_to_hidden_proxy(self, tmp_path):
+        """Multi-word alias resolves to a hidden proxy named after it."""
+        cli = self._cli([])
+        save_to(str(tmp_path / "aliases.yaml"), {"tl": "task list"})
         bridge_to_click(cli, str(tmp_path / "aliases.yaml"))
 
-        ctx = click.Context(cli)
-        cmd = cli.get_command(ctx, "tl")
+        cmd = cli.get_command(click.Context(cli), "tl")
         assert cmd is not None
-        assert cmd.name == "task"
+        assert cmd.name == "tl"
+        assert cmd.hidden is True
+        assert cmd.help == "Alias for task list"
+        assert "tl" in cli.list_commands(click.Context(cli))
+
+    def test_runs_full_target_path(self):
+        """The whole path runs, group callback included, with the args."""
+        ran: list[str] = []
+        cli = self._cli(ran)
+        bridge_to_click(cli, {"tl": "task list"})
+        res = CliRunner().invoke(cli, ["tl", "--status", "open", "p1"])
+        assert res.exit_code == 0, res.output
+        assert ran == ["task", "list open ['p1']"]
+
+    def test_owns_help(self):
+        cli = self._cli([])
+        bridge_to_click(cli, {"tl": "task list"})
+        res = CliRunner().invoke(cli, ["tl", "--help"])
+        assert res.exit_code == 0, res.output
+        assert "Alias for task list" in res.output
+        assert "List tasks" not in res.output
+
+    def test_single_word_stays_native(self):
+        cli = self._cli([])
+        bridge_to_click(cli, {"t": "task", "tl": "task list"})
+        assert cli.get_command(click.Context(cli), "t").name == "task"
 
 
 class TestBridgeEmptyAliases:
