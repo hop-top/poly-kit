@@ -79,7 +79,7 @@ describe("registerSpecCommand cross-language fixture", () => {
     ["toolspec-spec.coverage.json", ["spec", "coverage", "--format", "json"]],
   ] as const) {
     it(`matches Go stdout for \`fixture ${args.join(" ")}\``, async () => {
-      process.env.KIT_TOOLSPEC_SCHEMA = "1.1";
+      process.env.KIT_TOOLSPEC_SCHEMA = "1.2";
       const r = await run(specProgram(), [...args]);
       expect(r.exitCode).toBeUndefined();
       expect(r.out).toBe(golden(file));
@@ -89,7 +89,7 @@ describe("registerSpecCommand cross-language fixture", () => {
 
 describe("registerSpecCommand formats", () => {
   it("accepts the manifest and kit aliases with the same bytes", async () => {
-    process.env.KIT_TOOLSPEC_SCHEMA = "1.1";
+    process.env.KIT_TOOLSPEC_SCHEMA = "1.2";
     for (const f of ["manifest", "kit"]) {
       const r = await run(specProgram(), ["spec", "--format", f]);
       expect(r.out).toBe(golden("toolspec-spec.json"));
@@ -153,7 +153,7 @@ describe("spec --version vs the program's --version", () => {
   });
 
   it("forwards wherever the flag sits and with program options before spec", async () => {
-    process.env.KIT_TOOLSPEC_SCHEMA = "1.1";
+    process.env.KIT_TOOLSPEC_SCHEMA = "1.2";
     for (const args of [
       ["--version", "spec"],
       ["--format", "json", "spec", "--version"],

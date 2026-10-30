@@ -60,8 +60,10 @@ describe("toolSpecFromCommand", () => {
   it("projects flags with Go walker naming", () => {
     const spec = toolSpecFromCommand(buildProgram());
     const flags = findCommand(spec, "launch")!.flags!;
+    // default is pflag's DefValue spelling, the manifest's rule: a
+    // bool is "false", a list "[]", a value flag with none is omitted.
     expect(flags).toEqual([
-      { name: "payload", type: "stringSlice", description: "Payload manifest" },
+      { name: "payload", type: "stringSlice", description: "Payload manifest", default: "[]" },
       {
         name: "output",
         short: "o",
@@ -72,6 +74,7 @@ describe("toolSpecFromCommand", () => {
         name: "dry-run",
         type: "bool",
         description: "Simulate launch without executing",
+        default: "false",
       },
       {
         name: "orbit",
@@ -80,6 +83,70 @@ describe("toolSpecFromCommand", () => {
         required: true,
       },
     ]);
+  });
+
+  it("projects flag default and choices, and arg variadic, as Go does", () => {
+    const program = new Command("t");
+    const attach = program.command("attach <name> [files...]").action(() => {});
+    attach.addOption(
+      new Option("--mode <mode>", "Attach mode").choices(["fast", "safe"]).default("fast"),
+    );
+    attach.option("--label <text>", "Free-form label");
+    const spec = toolSpecFromCommand(program);
+    const cmd = findCommand(spec, "attach")!;
+    expect(cmd.flags).toEqual([
+      {
+        name: "mode",
+        type: "string",
+        description: "Attach mode",
+        default: "fast",
+        choices: ["fast", "safe"],
+      },
+      { name: "label", type: "string", description: "Free-form label" },
+    ]);
+    expect(cmd.args).toEqual([
+      { name: "name", required: true },
+      { name: "files", variadic: true },
+    ]);
+    // The ToolSpec default and the manifest default are the same bytes.
+    const m = buildManifest(program, "1.2").commands[0];
+    expect(m.flags!.map((f) => [f.name, f.default])).toEqual(
+      cmd.flags!.map((f) => [f.name, f.default]).sort(),
+    );
+  });
+
+  it("reads the contract off the command's own kit/* annotations, as WalkCobra does", () => {
+    const program = new Command("t");
+    for (const [name, ann] of [
+      ["cond", { "kit/side-effect": "write-local", "kit/idempotent": "conditional" }],
+      ["yes", { "kit/idempotent": "yes", "kit/retryable": "true" }],
+      ["no", { "kit/idempotent": "no" }],
+      ["odd", { "kit/idempotent": "maybe" }],
+      ["retry", { "kit/retryable": "true" }],
+      ["plain", {}],
+    ] as const) {
+      const c = program.command(name).action(() => {});
+      (c as Command & { annotations?: Record<string, string> }).annotations = { ...ann };
+    }
+    const spec = toolSpecFromCommand(program, {
+      annotations: { no: { contract: { idempotent: false, retryable: true } } },
+    });
+    expect(findCommand(spec, "cond")!.contract).toEqual({
+      idempotent: false,
+      retryable: false,
+      sideEffects: ["write-local"],
+      idempotentClass: "conditional",
+    });
+    expect(findCommand(spec, "yes")!.contract).toEqual({
+      idempotent: true,
+      retryable: true,
+      idempotentClass: "yes",
+    });
+    expect(findCommand(spec, "odd")!.contract).toBeUndefined();
+    expect(findCommand(spec, "retry")!.contract).toEqual({ idempotent: false, retryable: true });
+    expect(findCommand(spec, "plain")!.contract).toBeUndefined();
+    // The per-path annotation map still wins over the command's own.
+    expect(findCommand(spec, "no")!.contract).toEqual({ idempotent: false, retryable: true });
   });
 
   it("puts root options on spec.flags", () => {
@@ -179,7 +246,7 @@ describe("toolSpecFromCommand exit codes", () => {
 });
 
 describe("loadToolSpec args/short/required", () => {
-  it("maps args, undeclared_args, short and flag required from YAML", () => {
+  it("maps args, undeclared_args, short, flag required/default/choices, arg variadic and idempotent_class from YAML", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "toolspec-"));
     const file = path.join(dir, "t.toolspec.yaml");
     fs.writeFileSync(
@@ -196,9 +263,15 @@ describe("loadToolSpec args/short/required", () => {
         "      - name: id",
         "        required: true",
         "      - name: field",
+        "      - name: files",
+        "        variadic: true",
         "    flags:",
         "      - name: out",
         "        required: true",
+        "        default: report.json",
+        "        choices: [report.json, out.json]",
+        "    contract:",
+        "      idempotent_class: conditional",
       ].join("\n"),
     );
     try {
@@ -207,10 +280,20 @@ describe("loadToolSpec args/short/required", () => {
       expect(get.undeclaredArgs).toBe(true);
       expect(get.exitCodes).toEqual(["OK", "NOT_FOUND"]);
       expect(get.args).toEqual([
-        { name: "id", required: true },
-        { name: "field", required: undefined },
+        { name: "id", required: true, variadic: undefined },
+        { name: "field", required: undefined, variadic: undefined },
+        { name: "files", required: undefined, variadic: true },
       ]);
       expect(get.flags![0].required).toBe(true);
+      expect(get.flags![0].default).toBe("report.json");
+      expect(get.flags![0].choices).toEqual(["report.json", "out.json"]);
+      expect(get.contract).toEqual({
+        idempotent: false,
+        retryable: false,
+        sideEffects: undefined,
+        preConditions: undefined,
+        idempotentClass: "conditional",
+      });
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -222,7 +305,7 @@ describe("toolSpecFromCommand negatable flags", () => {
     const program = new Command("t");
     program.command("run").option("--no-color", "c").action(() => {});
     expect(findCommand(toolSpecFromCommand(program), "run")!.flags).toEqual([
-      { name: "no-color", type: "bool", description: "c" },
+      { name: "no-color", type: "bool", description: "c", default: "false" },
     ]);
   });
 
@@ -230,8 +313,8 @@ describe("toolSpecFromCommand negatable flags", () => {
     const program = new Command("t");
     program.option("--hints", "on").option("--no-hints", "off");
     expect(toolSpecFromCommand(program).flags).toEqual([
-      { name: "hints", type: "bool", description: "on" },
-      { name: "no-hints", type: "bool", description: "off" },
+      { name: "hints", type: "bool", description: "on", default: "false" },
+      { name: "no-hints", type: "bool", description: "off", default: "false" },
     ]);
   });
 });

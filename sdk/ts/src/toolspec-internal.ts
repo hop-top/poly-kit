@@ -24,16 +24,74 @@ export function splitCSV(s: string | undefined): string[] | undefined {
 
 /**
  * cmd's declared positional arguments (commander registeredArguments),
- * in order, `required` set only on required ones. Shared by the
- * toolspec projection and the MCP bridge so both read positionals
- * the same way.
+ * in order, `required` set only on required ones and `variadic` only
+ * on a `<name...>` / `[name...]` one. Shared by the toolspec
+ * projection and the MCP bridge so both read positionals the same
+ * way.
  */
 export function declaredArgs(
   cmd: CommanderCommand,
-): Array<{ name: string; required?: boolean }> {
-  return cmd.registeredArguments.map((a) =>
-    a.required ? { name: a.name(), required: true } : { name: a.name() },
-  );
+): Array<{ name: string; required?: boolean; variadic?: boolean }> {
+  return cmd.registeredArguments.map((a) => {
+    const out: { name: string; required?: boolean; variadic?: boolean } = { name: a.name() };
+    if (a.required) out.required = true;
+    if (a.variadic) out.variadic = true;
+    return out;
+  });
+}
+
+/**
+ * Parse a kit/args annotation the way Go's cmdmeta.ParseArgs does: a
+ * comma list, whitespace trimmed, empties dropped; `name?` optional,
+ * `name...` variadic (one or more), `name...?` optional variadic
+ * (zero or more); the dots come before the `?`, any other suffix is
+ * part of the name. Undefined when the annotation is absent or blank.
+ */
+export function parseKitArgs(
+  raw: string | undefined,
+): Array<{ name: string; optional: boolean; variadic: boolean }> | undefined {
+  const entries = splitCSV(raw);
+  if (!entries) return undefined;
+  return entries.map((entry) => {
+    let name = entry;
+    let optional = false;
+    let variadic = false;
+    if (name.endsWith("?")) {
+      optional = true;
+      name = name.slice(0, -1);
+    }
+    if (name.endsWith("...")) {
+      variadic = true;
+      name = name.slice(0, -3);
+    }
+    return { name, optional, variadic };
+  });
+}
+
+/**
+ * Map a commander option onto pflag's Type() and DefValue spelling,
+ * which is what the Go manifest and ToolSpec carry: a bool is
+ * "false", a slice "[a,b]", a value flag its default or "".
+ */
+export function flagTypeAndDefault(opt: CommanderOption): [string, string] {
+  const def = opt.defaultValue;
+  const declared = pflagTypes.get(opt);
+  if (declared) return [declared, def === undefined ? "" : String(def)];
+  if (opt.variadic) {
+    const items = def === undefined ? [] : Array.isArray(def) ? def : [def];
+    return ["stringSlice", `[${items.map(String).join(",")}]`];
+  }
+  // A negated --no-x is its own pflag bool, unset (false) by default;
+  // commander's default for it belongs to the x attribute, not the flag.
+  if (opt.negate) return ["bool", "false"];
+  if (takesNoValue(opt)) return ["bool", def === undefined ? "false" : String(def)];
+  return ["string", def === undefined ? "" : String(def)];
+}
+
+/** The closed value set a commander option declares (`.choices()`), or undefined. */
+export function flagChoices(opt: CommanderOption): string[] | undefined {
+  const choices = (opt as { argChoices?: string[] }).argChoices;
+  return choices && choices.length > 0 ? [...choices] : undefined;
 }
 
 /**

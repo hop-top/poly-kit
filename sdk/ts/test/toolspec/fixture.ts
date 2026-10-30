@@ -18,6 +18,10 @@ interface TreeFlag {
   default?: string | string[];
   description?: string;
   hidden?: boolean;
+  /** cobra MarkFlagRequired / commander makeOptionMandatory. */
+  required?: boolean;
+  /** kit flag enum (cli.FlagEnumAnnotation) / commander .choices(). */
+  enum?: string[];
 }
 
 interface TreeCommand {
@@ -55,6 +59,8 @@ function addFixtureCommand(parent: Command, tc: TreeCommand): void {
     const opt = new Option(`${short}--${f.name}${arg}`, f.description);
     if (f.default !== undefined) opt.default(f.default);
     if (f.hidden) opt.hideHelp();
+    if (f.required) opt.makeOptionMandatory();
+    if (f.enum) opt.choices(f.enum);
     cmd.addOption(opt);
   }
   for (const child of tc.commands ?? []) addFixtureCommand(cmd, child);

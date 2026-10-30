@@ -14,22 +14,28 @@ import type {
 } from "commander";
 import {
   annotationsOf,
+  declaredArgs,
   encodeGoJSON,
+  flagChoices,
+  flagTypeAndDefault,
   isBuiltin,
   isHidden,
   isRunnable,
-  pflagTypes,
+  parseKitArgs,
   splitCSV,
-  takesNoValue,
   walkCommands,
   type Annotations,
 } from "./toolspec-internal.js";
 
 /** Env var a harness sets to request a manifest schema version. */
 export const SCHEMA_VERSION_ENV = "KIT_TOOLSPEC_SCHEMA";
-/** Newest manifest schema version kit emits. */
-export const LATEST_SCHEMA_VERSION = "1.1";
-const KNOWN_SCHEMA_VERSIONS = ["1.0", LATEST_SCHEMA_VERSION];
+/**
+ * Newest manifest schema version kit emits. 1.1 added per-command
+ * fields; 1.2 adds per-flag `required` and `choices` and per-argument
+ * `variadic`. Each is additive over the one before.
+ */
+export const LATEST_SCHEMA_VERSION = "1.2";
+const KNOWN_SCHEMA_VERSIONS = ["1.0", "1.1", LATEST_SCHEMA_VERSION];
 
 /** Value side_effect / idempotent carry when nothing was declared. */
 export const SIDE_EFFECT_UNKNOWN = "unknown";
@@ -38,6 +44,8 @@ export const IDEMPOTENT_UNKNOWN = "unknown";
 export interface ManifestArg {
   name: string;
   required?: boolean;
+  /** Schema 1.2: a kit/args `name...` entry, always the last argument. */
+  variadic?: boolean;
 }
 
 export interface ManifestFlag {
@@ -47,6 +55,10 @@ export interface ManifestFlag {
   description?: string;
   default?: string;
   since_version?: string;
+  /** Schema 1.2: commander makeOptionMandatory (cobra MarkFlagRequired). */
+  required?: boolean;
+  /** Schema 1.2: commander `.choices()` (kit WithFlagEnum), in order. */
+  choices?: string[];
 }
 
 export interface ManifestExample {
@@ -231,25 +243,6 @@ function dryRunSupported(ann: Annotations): boolean {
   return DRY_RUN_SIDE_EFFECTS.has(ann["kit/side-effect"] ?? "");
 }
 
-/**
- * Map a commander option onto pflag's Type() and DefValue spelling,
- * which is what the Go manifest carries.
- */
-function flagTypeAndDefault(opt: CommanderOption): [string, string] {
-  const def = opt.defaultValue;
-  const declared = pflagTypes.get(opt);
-  if (declared) return [declared, def === undefined ? "" : String(def)];
-  if (opt.variadic) {
-    const items = def === undefined ? [] : Array.isArray(def) ? def : [def];
-    return ["stringSlice", `[${items.map(String).join(",")}]`];
-  }
-  // A negated --no-x is its own pflag bool, unset (false) by default;
-  // commander's default for it belongs to the x attribute, not the flag.
-  if (opt.negate) return ["bool", "false"];
-  if (takesNoValue(opt)) return ["bool", def === undefined ? "false" : String(def)];
-  return ["string", def === undefined ? "" : String(def)];
-}
-
 function manifestFlags(
   cmd: CommanderCommand,
   ann: Annotations,
@@ -269,6 +262,9 @@ function manifestFlags(
     if (def !== "") f.default = def;
     const sv = since.get(name);
     if (sv) f.since_version = sv;
+    if (o.mandatory) f.required = true;
+    const choices = flagChoices(o);
+    if (choices) f.choices = choices;
     flags.push(f);
   }
   // cobra adds -h/--help to the command it executes (and only that
@@ -285,15 +281,21 @@ function manifestFlags(
   return flags.length > 0 ? flags : undefined;
 }
 
+/**
+ * Declared positionals: kit/args when set (Go cmdmeta.ParseArgs:
+ * `name?` optional, `name...` variadic, `name...?` both), else
+ * commander's registered arguments. Keys in Go struct order.
+ */
 function manifestArgs(cmd: CommanderCommand, ann: Annotations): ManifestArg[] | undefined {
-  const declared = splitCSV(ann["kit/args"]);
+  const declared = parseKitArgs(ann["kit/args"]);
   const args: ManifestArg[] = declared
-    ? declared.map((n) =>
-        n.endsWith("?") ? { name: n.slice(0, -1) } : { name: n, required: true },
-      )
-    : cmd.registeredArguments.map((a) =>
-        a.required ? { name: a.name(), required: true } : { name: a.name() },
-      );
+    ? declared.map((a) => {
+        const out: ManifestArg = { name: a.name };
+        if (!a.optional) out.required = true;
+        if (a.variadic) out.variadic = true;
+        return out;
+      })
+    : declaredArgs(cmd);
   return args.length > 0 ? args : undefined;
 }
 

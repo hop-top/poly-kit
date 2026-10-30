@@ -4,17 +4,29 @@ import type {
   Command as CommanderCommand,
   Option as CommanderOption,
 } from "commander";
-import { declaredArgs, isBuiltin, takesNoValue } from "./toolspec-internal.js";
+import {
+  declaredArgs,
+  flagChoices,
+  flagTypeAndDefault,
+  isBuiltin,
+} from "./toolspec-internal.js";
 
 // --- Types ---
 
 export type SafetyLevel = "safe" | "caution" | "dangerous";
 
 export interface Contract {
+  /** True iff kit/idempotent is "yes"; see idempotentClass for "no" / "conditional". */
   idempotent: boolean;
   sideEffects?: string[];
   retryable: boolean;
   preConditions?: string[];
+  /**
+   * The raw kit/idempotent class when it is one of yes|no|conditional
+   * (YAML key `idempotent_class`). "conditional" means the command
+   * takes --idempotency-key and a retry must supply one.
+   */
+  idempotentClass?: string;
 }
 
 export interface Safety {
@@ -56,6 +68,14 @@ export interface Flag {
   required?: boolean;
   deprecated?: boolean;
   replacedBy?: string;
+  /**
+   * Default value spelled as pflag prints it ("false" for a bool,
+   * "[a,b]" for a list), the same string the manifest's `default`
+   * carries; absent when empty.
+   */
+  default?: string;
+  /** Closed set of legal values (commander `.choices()`, kit WithFlagEnum), in order. */
+  choices?: string[];
 }
 
 /** A declared positional argument (mirrors Go toolspec.Arg). */
@@ -63,6 +83,8 @@ export interface Arg {
   name: string;
   /** False/absent for an optional argument. */
   required?: boolean;
+  /** True for a `<name...>` argument: takes every remaining operand; always last. */
+  variadic?: boolean;
 }
 
 export interface Command {
@@ -128,11 +150,13 @@ function mapFlag(raw: any): Flag {
     required: raw.required,
     deprecated: raw.deprecated,
     replacedBy: raw.replaced_by,
+    default: raw.default,
+    choices: raw.choices,
   };
 }
 
 function mapArg(raw: any): Arg {
-  return { name: raw.name ?? "", required: raw.required };
+  return { name: raw.name ?? "", required: raw.required, variadic: raw.variadic };
 }
 
 function mapProvenance(raw: any): Provenance | undefined {
@@ -151,6 +175,7 @@ function mapContract(raw: any): Contract | undefined {
     sideEffects: raw.side_effects,
     retryable: raw.retryable ?? false,
     preConditions: raw.pre_conditions,
+    idempotentClass: raw.idempotent_class,
   };
 }
 
@@ -402,6 +427,8 @@ function projectCommand(
   if (exitCodes) out.exitCodes = exitCodes;
   const children = projectChildren(cmd, path, ctx);
   if (children.length > 0) out.children = children;
+  const contract = projectContract(kitAnnotations(cmd));
+  if (contract) out.contract = contract;
 
   const ann = ctx.annotations[path.join(" ")];
   if (ann) {
@@ -428,6 +455,31 @@ function splitCSV(s: string | undefined): string[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+const IDEMPOTENT_CLASSES = new Set(["yes", "no", "conditional"]);
+
+/**
+ * The contract Go's projectContract reads off the command's own kit/*
+ * annotations: side effect as written, idempotent class (bool true iff
+ * "yes"), retryable. Undefined when none is declared, so the key is
+ * omitted; the per-path annotation map still overrides it.
+ */
+function projectContract(ann: Record<string, string>): Contract | undefined {
+  const sideEffect = ann["kit/side-effect"];
+  const cls = ann["kit/idempotent"];
+  const retryable = ann["kit/retryable"] === "true";
+  const hasClass = cls !== undefined && IDEMPOTENT_CLASSES.has(cls);
+  if (!sideEffect && !hasClass && !retryable) return undefined;
+  const out: Contract = { idempotent: hasClass && cls === "yes", retryable };
+  if (sideEffect) out.sideEffects = [sideEffect];
+  if (hasClass) out.idempotentClass = cls;
+  return out;
+}
+
+/**
+ * Visible options as Go projects flags: pflag type name and default
+ * spelling (the manifest's rule, so a ToolSpec and a manifest built
+ * from one tree agree byte-for-byte), required, choices.
+ */
 function projectFlags(cmd: CommanderCommand): Flag[] | undefined {
   const out: Flag[] = [];
   for (const opt of cmd.options as readonly CommanderOption[]) {
@@ -436,17 +488,14 @@ function projectFlags(cmd: CommanderCommand): Flag[] | undefined {
     if (!name) continue;
     const flag: Flag = { name };
     if (opt.long && opt.short) flag.short = opt.short.replace(/^-/, "");
-    flag.type = flagType(opt);
+    const [type, def] = flagTypeAndDefault(opt);
+    flag.type = type;
     if (opt.description) flag.description = opt.description;
     if (opt.mandatory) flag.required = true;
+    if (def !== "") flag.default = def;
+    const choices = flagChoices(opt);
+    if (choices) flag.choices = choices;
     out.push(flag);
   }
   return out.length > 0 ? out : undefined;
-}
-
-/** pflag-style type names, matching the Go walker's output. */
-function flagType(opt: CommanderOption): string {
-  if (opt.variadic) return "stringSlice";
-  if (takesNoValue(opt)) return "bool";
-  return "string";
 }
