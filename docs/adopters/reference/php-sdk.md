@@ -2,7 +2,7 @@
 
 > Every long-form surface of the experimental `hop-top/kit` package
 > (`sdk/experimental/php`): the URI facade, output formatting rules, the
-> MCP mount over PSR-15, offline enforcement and telemetry. The package
+> MCP mount over PSR-15 and stdio, offline enforcement and telemetry. The package
 > front page is
 > [`sdk/experimental/php/README.md`](../../../sdk/experimental/php/README.md),
 > which carries install, the namespace table and the contract.
@@ -268,6 +268,55 @@ Two details matter when choosing a PSR-7 bridge:
   comma-joined `$_SERVER['HTTP_*']` value cannot express.
 - **Do not re-encode the body.** Responses are already serialized; passing
   them through a JSON layer will reorder keys and break parity.
+
+### Hosting: stdio
+
+For a host that spawns the tool (a desktop client, an editor), serve the
+same surface over standard input and output:
+
+```php
+use HopTop\Kit\Mcp\StdioServer;
+
+StdioServer::serve(
+    new Bridge($root, Policy::default()),
+    new Mount(serverInfo: new ServerInfo('app', '1.0.0')),
+);
+// returns once the host closes stdin
+```
+
+`StdioServer::serve($target, $mount, $input, $output, $log)` takes a
+`Bridge`, served with `$mount` (default `new Mount()`), or a
+`RequestHandler`, whose own bridge and mount are reused; passing `$mount`
+with a handler throws `InvalidArgumentException`. `$input` / `$output` /
+`$log` are stream resources defaulting to `STDIN` / `STDOUT` / `STDERR`.
+It blocks until `$input` reaches end of file, then returns.
+
+| Input line | Output |
+|---|---|
+| a request | one reply line carrying its `id` |
+| a notification (no `id`) | nothing, ever |
+| `ping` (2024-11-05) | `{"jsonrpc":"2.0","id":…,"result":{}}` |
+| not JSON | `-32700`, `"id": null` |
+| a JSON array (batch) | `-32600`, `"id": null`: neither revision allows batches over stdio |
+| a non-object | `-32600`, `"id": null` |
+| an object with an `id` but no `method` | `-32600` with that `id` |
+| a response (`result` / `error`, no `method`) | nothing; noted on `$log` |
+| a blank line | skipped |
+| a request whose handler throws | `-32603` `internal error`; the cause goes to `$log` |
+
+PHP is single-threaded, so requests are served one at a time and replies
+come in request order. Output carries protocol messages only;
+diagnostics go to `$log`.
+
+stdio has no header layer. Era detection uses the body markers alone (the
+reserved `_meta` protocolVersion key, `server/discover`), and the
+`2026-07-28` header checks (`MCP-Protocol-Version`, `Mcp-Method`,
+`Mcp-Name`: V4, V6, V7) do not apply; every other check runs unchanged.
+Gates that read headers see none: the mount's `verifier` is called with a
+header-less `Request`, so a `kit/auth-required` leaf is refused unless
+your verifier admits it, and the `X-Confirm-Token` header gate cannot be
+satisfied. `Mount::dispatcher($bridge, Transport::Stdio)` is the same
+dispatch for a custom loop.
 
 ### Safety
 

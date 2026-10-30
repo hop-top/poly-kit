@@ -53,7 +53,7 @@ Every path is relative to `src/`; namespaces sit under `HopTop\Kit`.
 | [`Output/`](src/Output/README.md) | `--format` flag family, dispatcher, registry, `CliError` | a command renders one payload as table, json or yaml |
 | [`Output/Formatter/`](src/Output/Formatter/README.md) | `Formatter` interface, `ColumnSpec`, options, projection | you implement or configure a formatter |
 | [`Output/Formatter/Builtin/`](src/Output/Formatter/Builtin/README.md) | the shipped formatters and their `--format-opt` keys | you need a formatter option or a custom formatter |
-| [`Mcp/`](src/Mcp/README.md) | dual-spec MCP surface over PSR-15 | MCP clients must call your commands as tools |
+| [`Mcp/`](src/Mcp/README.md) | dual-spec MCP surface over PSR-15 or stdio | MCP clients must call your commands as tools |
 | [`Net/`](src/Net/README.md) | `--offline` marker and Guzzle enforcement | a request must honour `--offline` |
 | [`Api/`](src/Api/README.md) | JSON API client with the offline guard pre-installed | you call an HTTP API from a kit CLI |
 | [`Id/`](src/Id/README.md) | TypeID primitive | you mint or parse prefixed identifiers |

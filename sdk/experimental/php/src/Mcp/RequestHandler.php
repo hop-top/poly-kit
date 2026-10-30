@@ -38,7 +38,7 @@ final readonly class RequestHandler implements RequestHandlerInterface
     private Dispatcher $dispatcher;
 
     public function __construct(
-        Bridge $bridge,
+        private Bridge $bridge,
         private Mount $mount,
         private ResponseFactoryInterface $responseFactory,
         private StreamFactoryInterface $streamFactory,
@@ -65,6 +65,17 @@ final readonly class RequestHandler implements RequestHandlerInterface
             (string) $request->getBody(),
             $request->getHeaders(),
         ));
+    }
+
+    /**
+     * This handler's bridge and mount, dispatched over $transport — how
+     * {@see StdioServer} serves a handler without fabricating headers.
+     */
+    public function dispatcher(Transport $transport): Dispatcher
+    {
+        return Transport::Http === $transport
+            ? $this->dispatcher
+            : $this->mount->dispatcher($this->bridge, $transport);
     }
 
     /** The mount path an adopter should route to this handler. */

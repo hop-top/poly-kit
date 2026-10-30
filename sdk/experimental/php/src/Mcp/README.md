@@ -4,8 +4,8 @@
 
 How does an existing command tree get exposed to MCP clients as tools across both spec eras, with
 destructive calls gated behind confirmation? `Bridge` walks a `Command` tree into leaves, `Mount`
-configures the surface, `RequestHandler` serves it as PSR-15. HTTP client policy is `HopTop\Kit\Net`;
-this namespace is the server side only.
+configures the surface, `RequestHandler` serves it as PSR-15, `StdioServer` over stdin/stdout.
+HTTP client policy is `HopTop\Kit\Net`; this namespace is the server side only.
 
 ## Use it when
 
@@ -16,6 +16,8 @@ this namespace is the server side only.
 - a leaf must be confirmed by a human: annotate `kit/requires-confirmation`; pass
   `confirmationKey` to `Mount` for the elicitation flow, or keep the `X-Confirm-Token` header gate
 - a host refuses dotted tool names: `new Mount(toolNameSeparator: '_')` serves `widget_add`
+- a host spawns the tool: `StdioServer::serve($bridge)` speaks newline-delimited JSON-RPC on
+  stdin/stdout, replying in request order and returning when stdin closes
 
 ## Quick start
 
@@ -59,19 +61,17 @@ echo (string) $handler->handle($request)->getBody();
 
 - One mount answers `2024-11-05` (handshake) and `2026-07-28` (stateless envelope), chosen per
   request; a mount with no spec versions throws at construction
-- Responses are bytes: sorted keys, trailing newline; a PSR-7 bridge must not re-encode the body
-  and must preserve repeated headers
+- Responses are bytes (sorted keys, trailing newline); PSR-7 must not re-encode them or merge headers
 - Blocked destructive calls return an `isError` result at HTTP 200; `GET` and `DELETE` are 405;
   a disallowed `Origin` is 403 when `originAllowlist` is set
 - `Bridge::leaves()` re-reads flags on every call, so `tools/list` on a long-lived mount stays live
-- Parity: [`sdk/tests/cross-lang/fixtures/mcp-wire.json`](../../../../tests/cross-lang/fixtures/mcp-wire.json),
-  replayed byte for byte by `tests/Mcp/WireConformanceTest.php`
+- stdio has no headers: V4/V6/V7 are skipped, the verifier sees none, `X-Confirm-Token` never passes
+- Parity: [`mcp-wire.json`](../../../../tests/cross-lang/fixtures/mcp-wire.json), replayed byte for byte by `tests/Mcp/WireConformanceTest.php`
 
 ## Neighbours
 
 - `HopTop\Kit\Cli`: the Symfony commands whose leaves a `Command` tree mirrors
 - `HopTop\Kit\Serve`: the long-running process that hosts this handler
-- `HopTop\Kit\Net`: outbound policy for the runners the leaves call
 
 ## See also
 

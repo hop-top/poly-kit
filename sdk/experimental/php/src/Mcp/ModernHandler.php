@@ -21,6 +21,7 @@ final readonly class ModernHandler
      * @param list<string>                        $originAllowlist
      * @param (\Closure(Request): ?Identity)|null $verifier          establishes the caller of each `tools/call`
      * @param string                              $toolNameSeparator joins a leaf path into its tool name
+     * @param Transport                           $transport         stdio skips the header checks V4, V6, V7
      */
     public function __construct(
         private Bridge $bridge,
@@ -30,6 +31,7 @@ final readonly class ModernHandler
         private ConfirmationGate $confirmationGate = new HeaderConfirmationGate(),
         private ?\Closure $verifier = null,
         private string $toolNameSeparator = Leaf::DEFAULT_TOOL_NAME_SEPARATOR,
+        private Transport $transport = Transport::Http,
     ) {
     }
 
@@ -66,38 +68,12 @@ final readonly class ModernHandler
         }
 
         // V4 — MCP-Protocol-Version header present and equal to _meta.
-        [$header, $ok] = $request->singleHeaderValue(Protocol::HEADER_PROTOCOL_VERSION);
-        if (!$ok) {
-            return $this->fail(
-                $request,
-                ErrorCodes::HEADER_MISMATCH,
-                Protocol::HEADER_PROTOCOL_VERSION.' header sent with conflicting duplicate values',
-                400,
-            );
-        }
-
-        if ('' === $header) {
-            return $this->fail(
-                $request,
-                ErrorCodes::HEADER_MISMATCH,
-                'missing '.Protocol::HEADER_PROTOCOL_VERSION.' header',
-                400,
-            );
-        }
-
-        // A non-string _meta value can never equal the header string.
-        if (!$meta->versionIsText || $header !== $meta->version) {
-            return $this->fail(
-                $request,
-                ErrorCodes::HEADER_MISMATCH,
-                \sprintf(
-                    '%s header %s does not match _meta protocolVersion %s',
-                    Protocol::HEADER_PROTOCOL_VERSION,
-                    GoFormat::quote($header),
-                    GoFormat::value($meta->versionRaw),
-                ),
-                400,
-            );
+        // HTTP only: stdio carries no headers.
+        if (Transport::Http === $this->transport) {
+            $versionError = $this->validateVersionHeader($request, $meta);
+            if (null !== $versionError) {
+                return $this->fail($request, $versionError->code, $versionError->message, $versionError->status);
+            }
         }
 
         // V5 — the requested version must be the one this handler speaks.
@@ -113,10 +89,12 @@ final readonly class ModernHandler
             );
         }
 
-        // V6 — Mcp-Method header agreement.
-        $methodError = $this->validateMethodHeader($request);
-        if (null !== $methodError) {
-            return $this->fail($request, $methodError->code, $methodError->message, $methodError->status);
+        // V6 — Mcp-Method header agreement. HTTP only.
+        if (Transport::Http === $this->transport) {
+            $methodError = $this->validateMethodHeader($request);
+            if (null !== $methodError) {
+                return $this->fail($request, $methodError->code, $methodError->message, $methodError->status);
+            }
         }
 
         // V8 — routing. V7 and V9 run inside tools/call.
@@ -172,6 +150,44 @@ final readonly class ModernHandler
         }
 
         return \is_float($decoded) && $decoded === floor($decoded) && is_finite($decoded);
+    }
+
+    /** V4: MCP-Protocol-Version header present and equal to _meta's. */
+    private function validateVersionHeader(Request $request, RequestMeta $meta): ?CheckError
+    {
+        [$header, $ok] = $request->singleHeaderValue(Protocol::HEADER_PROTOCOL_VERSION);
+
+        if (!$ok) {
+            return new CheckError(
+                ErrorCodes::HEADER_MISMATCH,
+                Protocol::HEADER_PROTOCOL_VERSION.' header sent with conflicting duplicate values',
+                400,
+            );
+        }
+
+        if ('' === $header) {
+            return new CheckError(
+                ErrorCodes::HEADER_MISMATCH,
+                'missing '.Protocol::HEADER_PROTOCOL_VERSION.' header',
+                400,
+            );
+        }
+
+        // A non-string _meta value can never equal the header string.
+        if (!$meta->versionIsText || $header !== $meta->version) {
+            return new CheckError(
+                ErrorCodes::HEADER_MISMATCH,
+                \sprintf(
+                    '%s header %s does not match _meta protocolVersion %s',
+                    Protocol::HEADER_PROTOCOL_VERSION,
+                    GoFormat::quote($header),
+                    GoFormat::value($meta->versionRaw),
+                ),
+                400,
+            );
+        }
+
+        return null;
     }
 
     private function validateMethodHeader(Request $request): ?CheckError
@@ -244,10 +260,12 @@ final readonly class ModernHandler
     {
         // V7 — the Mcp-Name header is the routing signal a gateway trusts
         // without parsing the body, so it is validated before any
-        // body-shape check.
-        $nameError = $this->validateNameHeader($request);
-        if (null !== $nameError) {
-            return $this->fail($request, $nameError->code, $nameError->message, $nameError->status);
+        // body-shape check. HTTP only: stdio has no header layer.
+        if (Transport::Http === $this->transport) {
+            $nameError = $this->validateNameHeader($request);
+            if (null !== $nameError) {
+                return $this->fail($request, $nameError->code, $nameError->message, $nameError->status);
+            }
         }
 
         $params = $request->params ?? [];
