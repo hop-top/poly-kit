@@ -10,6 +10,7 @@ How a command tree is served over the Model Context Protocol from one mount that
 - take positional arguments: declare `args=[Arg("name"), Arg("note", required=False)]` on the leaf; it is called as `run(flags, args)` and publishes one `args` array property, as in Go
 - host it: `McpSurface` is an ASGI callable; mount it under uvicorn, hypercorn or a Starlette route
 - bind to something else: `McpSurface.handle(Request) -> Response` is a pure function, no socket
+- serve a host that spawns the tool: `serve_stdio(bridge)` (or `serve_stdio(surface)`), newline-delimited JSON-RPC on stdin/stdout, `wait()` returns when stdin ends
 - require confirmation on the modern era: `header_confirmation_gate` or `ElicitationConfirmationGate`
 - name tools for a host that refuses dots (`widget_add`, not `widget.add`): `mount_mcp(bridge, tool_name_separator="_")`
 
@@ -43,6 +44,7 @@ print(res.status, res.body)
 - Positionals follow Go's `MCPInputSchema` / `MCPSplitArguments` contract (schema shape, description, error wording, split before the confirmation gate); `tests/test_mcp_args.py` pins it. The wire fixture carries no positional case yet.
 - `tools/list` re-reads the bridge's leaves per request; caching the leaf set fails the sequence fixture.
 - ASGI, not WSGI: the modern era's streaming is not expressible in WSGI.
+- stdio (`stdio.py`) drives the same era dispatch via `McpSurface.dispatch(..., transport="stdio")` with no header layer: the `2026-07-28` header checks are skipped, notifications are never answered, batches are refused; requests run on a thread pool.
 - Tool names join the leaf path with `tool_name_separator` (default `.`) and split back on it (`tool_name` / `tool_path`). `MountError` on an empty separator and, for any other than `.`, on a command name containing it (`data_sync` under `_`). Names are not otherwise rewritten or length-checked.
 - Parity: [`contracts/parity/README.md`](../../../../contracts/parity/README.md), section "MCP wire contract".
 

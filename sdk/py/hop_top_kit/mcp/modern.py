@@ -29,6 +29,11 @@ V7      ``tools/call``: ``Mcp-Name`` present, non-empty after   -32020 @ 400
 V8      method is discover / list / call                        -32601 @ 404
 V9      per-method params                                       -32602 @ 200
 ======  =====================================================  ==============
+
+V4, V6 and V7 compare the Streamable HTTP routing headers with the body.
+stdio has no header layer — the body is the only source of truth — so
+:meth:`ModernHandler.serve` skips exactly those three when called with
+``transport=TRANSPORT_STDIO``; every other check runs unchanged.
 """
 
 from __future__ import annotations
@@ -91,6 +96,13 @@ STATUS_ACCEPTED = 202
 #: and must appear exactly as spelled (spec: Value Encoding).
 SENTINEL_PREFIX = "=?base64?"
 SENTINEL_SUFFIX = "?="
+
+#: The bindings a request can arrive on. Streamable HTTP mirrors the
+#: method, tool name and protocol version into headers and requires them
+#: to agree with the body (V4, V6, V7); stdio carries no headers.
+TRANSPORT_HTTP = "http"
+TRANSPORT_STDIO = "stdio"
+TRANSPORTS = frozenset({TRANSPORT_HTTP, TRANSPORT_STDIO})
 
 
 class CheckError(Exception):
@@ -180,8 +192,19 @@ class ModernHandler:
 
     # --- entry point ----------------------------------------------------
 
-    def serve(self, request: Request, rpc: RPCRequest) -> Response:
-        """Run the validation chain, then dispatch to the method handler."""
+    def serve(
+        self, request: Request, rpc: RPCRequest, *, transport: str = TRANSPORT_HTTP
+    ) -> Response:
+        """Run the validation chain, then dispatch to the method handler.
+
+        ``transport`` names the binding the request arrived on. Over
+        :data:`TRANSPORT_STDIO` the header checks V4, V6 and V7 do not
+        apply; nothing else changes, and gates that read headers (the
+        verifier, the ``X-Confirm-Token`` gate) simply see none.
+        """
+        if transport not in TRANSPORTS:
+            raise ValueError(f"mcp: unknown transport {transport!r}")
+        headers = transport == TRANSPORT_HTTP
         if not self._origin_allowed(request):
             return self._error(
                 rpc, CheckError(ERR_INVALID_REQUEST, "origin not allowed", STATUS_FORBIDDEN)
@@ -214,13 +237,15 @@ class ModernHandler:
         except CheckError as exc:
             return self._error(rpc, exc)
 
-        # V4 — MCP-Protocol-Version header agreement.
+        # V4 — MCP-Protocol-Version header agreement. HTTP only.
         try:
-            self._validate_version_header(request, meta)
+            if headers:
+                self._validate_version_header(request, meta)
             # V5 — requested version supported.
             self._validate_version_supported(meta)
-            # V6 — Mcp-Method header agreement.
-            self._validate_method_header(request, rpc)
+            # V6 — Mcp-Method header agreement. HTTP only.
+            if headers:
+                self._validate_method_header(request, rpc)
         except CheckError as exc:
             return self._error(rpc, exc)
 
@@ -230,7 +255,7 @@ class ModernHandler:
         if rpc.method == "tools/list":
             return self._tools_list(rpc)
         if rpc.method == "tools/call":
-            return self._tools_call(request, rpc, meta)
+            return self._tools_call(request, rpc, meta, headers=headers)
         extension = self._method_handlers.get(rpc.method)
         if extension is not None:
             return extension(request, rpc, meta)
@@ -401,13 +426,19 @@ class ModernHandler:
         self.stamp_envelope(result)
         return write_result(rpc.id_raw, result, STATUS_OK)
 
-    def _tools_call(self, request: Request, rpc: RPCRequest, meta: RequestMeta) -> Response:
-        """``tools/call`` — V7, V9, the pre-flight gates, invoke, render."""
-        raw_name, present, is_string = raw_tool_name(rpc.params)
-        try:
-            self._validate_name_header(request, raw_name, present, is_string)
-        except CheckError as exc:
-            return self._error(rpc, exc)
+    def _tools_call(
+        self, request: Request, rpc: RPCRequest, meta: RequestMeta, *, headers: bool = True
+    ) -> Response:
+        """``tools/call`` — V7, V9, the pre-flight gates, invoke, render.
+
+        ``headers`` is false over stdio, which has no ``Mcp-Name`` to check.
+        """
+        if headers:
+            raw_name, present, is_string = raw_tool_name(rpc.params)
+            try:
+                self._validate_name_header(request, raw_name, present, is_string)
+            except CheckError as exc:
+                return self._error(rpc, exc)
 
         params = rpc.params if isinstance(rpc.params, dict) else {}
         name = params.get("name")

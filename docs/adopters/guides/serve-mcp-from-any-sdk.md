@@ -118,6 +118,11 @@ expressible in WSGI.
 For a framework-free binding, `McpSurface.handle(request) -> Response`
 is the whole contract — a pure function, no socket.
 
+For a host that spawns the tool, `serve_stdio(bridge)` serves the same
+surface over newline-delimited stdin/stdout; `wait()` returns when the
+host closes stdin. See the
+[Python reference](../reference/py-sdk.md#hosting-over-stdio).
+
 ### Rust
 
 The surface is behind the `mcp` cargo feature, so consumers who do not
@@ -308,7 +313,7 @@ differences, and they are real:
 |---|---|---|---|---|---|
 | MRTR confirmation flow | yes | **no** | yes | yes | yes |
 | `tasks/*` extension | no | no | **opt-in** | opt-in | no |
-| stdio transport | `mcpsdk.ServeStdio` | `serveStdio` | no | no | no |
+| stdio transport | `mcpsdk.ServeStdio` | `serveStdio` | `serve_stdio` | no | no |
 | tool-name separator | `mcpsdk` only | yes | yes | yes | yes |
 
 **TypeScript accepts `confirmationKey` but does not act on it.** Its

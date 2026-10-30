@@ -54,7 +54,7 @@ from typing import Any
 from .bridge import DEFAULT_TOOL_NAME_SEPARATOR, Bridge
 from .identity import Verifier
 from .legacy import LegacyHandler
-from .modern import ModernHandler, header_confirmation_gate
+from .modern import TRANSPORT_HTTP, TRANSPORTS, ModernHandler, header_confirmation_gate
 from .protocol import (
     CACHE_SCOPE_PRIVATE,
     CACHE_SCOPES,
@@ -229,18 +229,33 @@ class McpSurface:
                 None, ERR_PARSE, f"parse error: {_go_json_error(request.body, exc)}", 400
             )
 
+        return self.dispatch(request, rpc)
+
+    def dispatch(
+        self, request: Request, rpc: RPCRequest, *, transport: str = TRANSPORT_HTTP
+    ) -> Response:
+        """Route one already-parsed request to its era's handler (D2-D4).
+
+        The transport-neutral core behind :meth:`handle`; the stdio
+        binding calls it directly after its own framing and parsing.
+        ``transport`` is ``"http"`` or ``"stdio"``; over stdio the
+        modern header checks (V4, V6, V7) do not apply and era detection
+        sees only the body markers, since the request carries no headers.
+        """
+        if transport not in TRANSPORTS:
+            raise ValueError(f"mcp: unknown transport {transport!r}")
         if self._modern_enabled and not self._legacy_enabled:
             # Modern only: every request runs the normal V1-V9 order with
             # no special-casing of initialize, so a bare legacy handshake
             # fails modern validation rather than being demoted.
-            return self.modern.serve(request, rpc)
+            return self.modern.serve(request, rpc, transport=transport)
         if self._legacy_enabled and not self._modern_enabled:
             # Legacy only: markers are ignored exactly as they were
             # before the modern era existed.
             return self.legacy.serve(request, rpc)
 
         if detect_era(request, rpc) == ERA_MODERN:
-            return self.modern.serve(request, rpc)
+            return self.modern.serve(request, rpc, transport=transport)
         return self.legacy.serve(request, rpc)
 
     # --- ASGI binding ------------------------------------------------------
