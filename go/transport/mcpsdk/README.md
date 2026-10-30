@@ -22,6 +22,7 @@ is unacceptable or an HTTP-only probe must see 401/428 statuses.
 - add prompts, resources, subscriptions, completions → `WithServerOptions`, `WithServerConfigurator`
 - change the live tool list at runtime → `Surface.Hide` / `Expose` / `Sync`
 - enrich a tool descriptor, notably `OutputSchema` → `WithToolDecorator`
+- name tools for a host that refuses dots (`widget_add`, not `widget.add`) → `WithToolNameSeparator("_")`
 - run long tool calls as pollable tasks → `WithTasks` (experimental)
 - attribute calls to a verified caller, and establish them for `kit/auth-required` → `WithCallMeta` (set `Meta.Established`)
 - answer the auth gate from your own authentication (a verified request, a spawned stdio peer) → `WithAuthenticated`
@@ -51,11 +52,12 @@ if err := mcpsdk.Mount(b, r,
 - Every call is admitted by `Bridge.Admit` and then run by the admission; a call carrying a progress token streams through `Admission.Stream`, with the same gates and audit as a synchronous call.
 - Order on a confirmation-required call: auth gate, then every bridge gate (`Bridge.Admit`: resolution, enablement, invocability, destructive ceiling, permission), then the confirmation question, then the admission runs (`Admission.Run`, or `Admission.Stream` for a progress token). A call a machine gate refuses never prompts a person.
 - Elicited confirmation: one question per call, answered by the elicitation action; `requestState` is HMAC-bound to tool, argument digest and caller for five minutes. An HTTP session (revisions up to 2025-11-25) is asked with a server-initiated `elicitation/create`; 2026-07-28 (HTTP or stdio) receives `input_required`.
-- Anything registered through `WithServerConfigurator` or `Server()` runs **outside** kit's gates. The SDK's `AddTool` silently replaces a same-name tool, so kit's dotted leaf names are reserved. `Bridge.Runner().Run` bypasses the policy gate; dispatch through `Bridge.Invoke`.
+- Anything registered through `WithServerConfigurator` or `Server()` runs **outside** kit's gates. The SDK's `AddTool` silently replaces a same-name tool, so kit's leaf tool names are reserved. `Bridge.Runner().Run` bypasses the policy gate; dispatch through `Bridge.Invoke`.
 - Both checks re-run on every call: the tool listing is advisory, the gate is authoritative.
 - `tools/list` answers per caller: when `WithCallMeta` (and `WithAuthenticated`), asked with the list request's session and HTTP extras, establish the caller, every tool `Bridge.Verdict` refuses that caller is left off. An unestablished caller gets the full list.
 - Legacy `initialize` echoes 2024-11-05, 2025-03-26, 2025-06-18 and 2025-11-25 verbatim; anything else falls back to 2025-11-25. The 2026-07-28 protocol negotiates per request, handled entirely by the SDK. `Handler`/`Mount` serve both on one endpoint: `initialize` and unmarked requests reach a stateful SDK handler, requests carrying a 2026-07-28 marker a stateless one (the routing precedence of `cmdsurface.MountMCP`); `WithStateless` serves everything statelessly.
 - Gate refusals surface as `isError` tool results only; there is no HTTP status mirroring.
+- Tool names join the leaf path with `.` (`WithToolNameSeparator` changes it). `New` refuses an empty separator and, for any other than `.`, a leaf whose command name contains the separator (`data_sync` under `_`): that name would not map back to one leaf. Names are never otherwise rewritten or length-checked.
 - `WithTasks` and the extension it binds are experimental and pinned to a draft spec.
 - stdio end of input: `ServeStdio` and `StdioTransport` answer every request read before it, then end the session with nil. The SDK's own stdio transports abandon those requests; `TestSDKIOTransportAbandonsCallsAtEndOfInput` turns red when a future SDK stops doing so.
 

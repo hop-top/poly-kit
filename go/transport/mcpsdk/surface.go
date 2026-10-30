@@ -22,6 +22,8 @@ const (
 	defaultServerName    = "mcpsdk"
 	defaultServerVersion = "0.0.0"
 	defaultPath          = "/mcp"
+	// defaultToolNameSeparator joins a leaf path into its tool name.
+	defaultToolNameSeparator = "."
 )
 
 // config is the internal options bag set by Option funcs.
@@ -52,6 +54,8 @@ type config struct {
 	protected   *api.ProtectedResource
 	protectAuth api.AuthFunc
 	protectSet  bool
+	// toolSep backs WithToolNameSeparator.
+	toolSep string
 }
 
 // Option configures the surface built by NewServer / Handler / Mount.
@@ -184,11 +188,27 @@ func WithOriginAllowlist(origins ...string) Option {
 	}
 }
 
+// WithToolNameSeparator sets the string joining a leaf's path into
+// its MCP tool name: with "_" the leaf "widget add" is the tool
+// widget_add instead of widget.add, for hosts that admit only
+// ^[A-Za-z0-9_-]{1,64}$ tool names. Default ".". WithTasks names
+// task-eligible tools under the same separator.
+//
+// New refuses an empty separator and, for any separator but the
+// default, a bridge leaf with a command name containing it: the tool
+// name would then not map back to one leaf (data_sync against
+// data sync under "_"). Names are not otherwise rewritten or
+// length-checked.
+func WithToolNameSeparator(sep string) Option {
+	return func(c *config) { c.toolSep = sep }
+}
+
 func newConfig(opts ...Option) config {
 	cfg := config{
 		path:          defaultPath,
 		serverName:    defaultServerName,
 		serverVersion: defaultServerVersion,
+		toolSep:       defaultToolNameSeparator,
 	}
 	for _, o := range opts {
 		o(&cfg)
@@ -212,7 +232,7 @@ type Surface struct {
 	originGuard api.Middleware
 
 	mu         sync.Mutex
-	registered map[string]bool // dotted tool name -> currently added
+	registered map[string]bool // tool name -> currently added
 }
 
 // New builds a Surface: one MCP tool per leaf where SurfaceMCP is
@@ -228,6 +248,9 @@ func New(b *cmdsurface.Bridge, opts ...Option) (*Surface, error) {
 	if err := checkProtected(cfg); err != nil {
 		return nil, err
 	}
+	if err := checkToolNameSeparator(b, cfg.toolSep); err != nil {
+		return nil, err
+	}
 
 	so := &mcp.ServerOptions{}
 	if cfg.serverOptions != nil {
@@ -238,7 +261,7 @@ func New(b *cmdsurface.Bridge, opts ...Option) (*Surface, error) {
 		so.Instructions = cfg.instructions
 	}
 
-	tb, err := newTaskBinding(b, cfg.tasks, so)
+	tb, err := newTaskBinding(b, cfg.tasks, so, cfg.toolSep)
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +317,7 @@ func (s *Surface) Sync() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, leaf := range s.b.Leaves() {
-		name := toolName(leaf.Path)
+		name := s.toolName(leaf.Path)
 		enabled := leaf.Enabled[cmdsurface.SurfaceMCP]
 		switch {
 		case enabled && !s.registered[name]:
@@ -310,7 +333,7 @@ func (s *Surface) Sync() {
 // toolFor builds the leaf's descriptor and applies the configured
 // decorator, if any.
 func (s *Surface) toolFor(leaf *cmdsurface.Leaf) *mcp.Tool {
-	t := toolFor(leaf)
+	t := toolFor(leaf, s.toolName(leaf.Path))
 	if s.cfg.toolDecorator != nil {
 		s.cfg.toolDecorator(leaf, t)
 	}

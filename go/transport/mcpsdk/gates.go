@@ -189,14 +189,14 @@ func (s *Surface) confirmGate(ctx context.Context, req *mcp.CallToolRequest, lea
 		s.b.Audit(ctx, inv, cmdsurface.Result{}, ErrConfirmationRequired)
 		return errorResult(fmt.Sprintf(
 			"confirmation required: %s requires confirmation; approve it from a client that supports elicitation, or send the %s header over HTTP",
-			toolName(leaf.Path), confirmHeader))
+			s.toolName(leaf.Path), confirmHeader))
 	}
 	key, state := s.confirm.mint(binding)
 	return &mcp.CallToolResult{
 		InputRequests: mcp.InputRequestMap{
 			key: &mcp.ElicitParams{
 				Mode:    "form",
-				Message: fmt.Sprintf("Approve execution of %q?", toolName(leaf.Path)),
+				Message: fmt.Sprintf("Approve execution of %q?", s.toolName(leaf.Path)),
 				// No form fields: the approval is the elicitation's
 				// action, so the requested schema is the empty object.
 				RequestedSchema: map[string]any{

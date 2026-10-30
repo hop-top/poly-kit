@@ -30,8 +30,8 @@ const confirmStateTTL = 10 * time.Minute
 
 // TasksConfig configures SEP-2663 task support for the surface.
 type TasksConfig struct {
-	// Tools names the task-eligible leaves by their dotted MCP tool
-	// name (e.g. "widget.add"). Validated at mount: every name must
+	// Tools names the task-eligible leaves by their MCP tool name
+	// (e.g. "widget.add"; see WithToolNameSeparator). Validated at mount: every name must
 	// resolve to a bridge leaf. Task creation stays server-directed —
 	// an eligible leaf called by a declaring client becomes a task;
 	// every other call returns its result inline as before.
@@ -69,7 +69,7 @@ type taskBinding struct {
 // newTaskBinding validates cfg against the bridge, declares the
 // server capability on so (never mutating adopter-owned capability
 // structs), and builds the extension with kit's principal derivation.
-func newTaskBinding(b *cmdsurface.Bridge, cfg *TasksConfig, so *mcp.ServerOptions) (*taskBinding, error) {
+func newTaskBinding(b *cmdsurface.Bridge, cfg *TasksConfig, so *mcp.ServerOptions, sep string) (*taskBinding, error) {
 	if cfg == nil {
 		return nil, nil
 	}
@@ -78,7 +78,7 @@ func newTaskBinding(b *cmdsurface.Bridge, cfg *TasksConfig, so *mcp.ServerOption
 	}
 	known := make(map[string]bool)
 	for _, leaf := range b.Leaves() {
-		known[toolName(leaf.Path)] = true
+		known[joinToolName(leaf.Path, sep)] = true
 	}
 	eligible := make(map[string]bool, len(cfg.Tools))
 	for _, name := range cfg.Tools {

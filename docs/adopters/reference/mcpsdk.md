@@ -40,7 +40,32 @@ if err := mcpsdk.Mount(b, r,
 Options: `WithPath`, `WithServerInfo`, `WithInstructions`,
 `WithStateless` (SEP-2567 sessionless mode; GET/DELETE become 405),
 `WithJSONResponse`, `WithServerOptions`, `WithServerConfigurator`,
-`WithToolDecorator`, `WithTasks` (SEP-2663 tasks extension, below).
+`WithToolDecorator`, `WithToolNameSeparator` (below), `WithTasks`
+(SEP-2663 tasks extension, below).
+
+### Tool names
+
+A tool is named by its leaf path joined with `.`: the leaf
+`widget add` is the tool `widget.add`. Some MCP hosts and model tool
+APIs admit only `^[A-Za-z0-9_-]{1,64}$`, and refuse or rewrite a
+dotted name. `WithToolNameSeparator(sep)` joins with `sep` instead:
+
+```go
+mcpsdk.Mount(b, r, mcpsdk.WithToolNameSeparator("_")) // widget_add
+```
+
+The separator applies everywhere a tool name appears: `tools/list`,
+`tools/call`, the confirmation prompt, and the names `WithTasks`
+takes. `New` refuses:
+
+- an empty separator;
+- for any separator other than `.`, a leaf with a command name that
+  contains it. Under `_`, a leaf `data_sync` and a leaf `data sync`
+  would share the name `data_sync`, so neither is guessed: rename the
+  command or pick another separator. `-` is refused the same way for
+  a tree with hyphenated command names.
+
+kit does not otherwise rewrite names or check their length.
 
 ## Beyond tools: the full SDK surface
 
@@ -115,7 +140,7 @@ enablement), pinned by tests.
 | Transport | single-POST JSON-RPC | streamable HTTP: sessions, SSE streams, stateless mode; stdio; any SDK transport |
 | Sessions / resumption / keep-alive | none | SDK-managed |
 | Auth/confirm block response | JSON-RPC result **and** mirrored HTTP status (401 / 428) | `isError` result only (HTTP status belongs to the SDK) |
-| Tool identity | dotted leaf path (`widget.add`) | identical |
+| Tool identity | dotted leaf path (`widget.add`) | identical by default; `WithToolNameSeparator` picks another separator |
 | Input schema | cobra flags + `kit/args` positionals as `args` | identical (one shared derivation) |
 | Structured output | extra text block | native `structuredContent` |
 | Prompts / resources / templates | none | full, via SDK pass-through (`WithServerConfigurator`) |
@@ -156,7 +181,7 @@ under **your** responsibility, outside kit's gates:
   silently replaces an existing tool of the same name, with no error.
   An adopter call like `m.AddTool(&mcp.Tool{Name: "widget.delete"},
   myHandler)` swaps out kit's policy-gated binding for `myHandler`,
-  which then executes ungated. Treat kit's dotted leaf names as
+  which then executes ungated. Treat kit's leaf tool names as
   reserved; never reuse them for adopter tools.
 - **Direct Runner access bypasses the policy gate.** An adopter
   handler that calls `Bridge.Runner().Run` reaches leaves without

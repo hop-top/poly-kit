@@ -102,7 +102,7 @@ func (s *Surface) servedLeaf(name string) *cmdsurface.Leaf {
 		return nil
 	}
 	for _, leaf := range s.b.Leaves() {
-		if toolName(leaf.Path) == name {
+		if s.toolName(leaf.Path) == name {
 			return leaf
 		}
 	}
