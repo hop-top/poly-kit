@@ -46,17 +46,28 @@ $ tlc spec --format kit-manifest | jq '.commands[0]'
 }
 ```
 
-Two schema versions exist: `"1.0"` and `"1.1"`, which only adds
-per-command fields. `kit toolspec` emits `"1.1"`; a kit-powered
-CLI's `<tool> spec` emits at least the version its author declared.
-Ignore fields you do not know and either version reads the same.
+Three schema versions exist: `"1.0"`; `"1.1"`, which adds
+per-command fields; and `"1.2"`, which adds per-flag `required` and
+`choices` and per-argument `variadic`. Each is additive over the one
+before: ignore fields you do not know and any version reads the same.
+`kit toolspec` emits `"1.2"`; a kit-powered CLI's `<tool> spec` emits
+at least the version its author declared.
+
+What 1.2 adds, per entry of `flags` and `args`:
+
+| Field | Where | Meaning |
+|-------|-------|---------|
+| `required` | flag | the command refuses to run without it (cobra `MarkFlagRequired`); absent means optional |
+| `choices` | flag | the closed set of legal values, in order; absent means free-form. The flag's `description` may also end in `(one of: …)`, the help rendering of the same set: read `choices` |
+| `variadic` | arg | the argument takes every remaining operand, one or more when `required`, zero or more otherwise; always the last argument |
 
 `KIT_TOOLSPEC_SCHEMA` states the highest version your harness
 supports. `kit toolspec` and `<tool> spec` both read it and neither
 downgrades: the answer is the highest version the binary emits that
 your request allows, and never below what the author declared. So
-`kit toolspec` always answers `"1.1"`, and a tool declaring `"1.0"`
-answers `"1.1"` when you set `1.1` or higher. The full rule set is in
+`kit toolspec` always answers `"1.2"`, and a tool declaring `"1.0"`
+answers `"1.2"` when you set `1.2` or higher and `"1.1"` when you set
+`1.1`. The full rule set is in
 [capability negotiation](claude-code-permissions.md#capability-negotiation-for-harness-implementers).
 
 ## Step 2 — Cache by binary fingerprint

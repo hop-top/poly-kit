@@ -131,10 +131,13 @@ with the kit `toolspec.Manifest` schema, NOT with your binary's
 semver. Semver describes the binary's behaviour; `schema_version`
 describes the manifest layout.
 
-Two versions exist: `"1.0"`, the original layout, and `"1.1"`,
-which adds per-command fields surfacing kit's command annotations.
-1.1 is additive, so harnesses that ignore unknown fields read either.
-`kit toolspec` itself emits `"1.1"`.
+Three versions exist: `"1.0"`, the original layout; `"1.1"`, which
+adds per-command fields surfacing kit's command annotations; and
+`"1.2"`, which adds per-flag `required` (`MarkFlagRequired`) and
+`choices` (`Root.WithFlagEnum`) and per-argument `variadic` (a
+`kit/args` entry ending in `...`). Each is additive, so harnesses that
+ignore unknown fields read any of them. `kit toolspec` itself emits
+`"1.2"`.
 
 The string you pass to `cli.RegisterSpecCommand` is the version you
 declare: the lowest `schema_version` your `<tool> spec` ever answers.
@@ -146,13 +149,16 @@ and `kit toolspec` resolve the request with the same rule
 | You declare | `KIT_TOOLSPEC_SCHEMA` | `<tool> spec` answers |
 |-------------|-----------------------|-----------------------|
 | `"1.0"` | unset, `1.0`, `0.9`, or malformed | `"1.0"` |
-| `"1.0"` | `1.1`, or anything above it (`2.0`) | `"1.1"` |
-| `"1.1"` | anything | `"1.1"` |
+| `"1.0"` | `1.1` | `"1.1"` |
+| `"1.0"` | `1.2`, or anything above it (`2.0`) | `"1.2"` |
+| `"1.1"` | unset, `1.1` or below, or malformed | `"1.1"` |
+| `"1.1"` | `1.2` or above | `"1.2"` |
+| `"1.2"` | anything | `"1.2"` |
 
 A request is never refused; a malformed one is ignored. The manifest
-kit builds has the same fields whatever it resolves to, because 1.0
-is a subset of 1.1. Declare `"1.0"` (the scaffold's choice) unless
-you want every caller to see `"1.1"`. The full rule set is in
+kit builds has the same fields whatever it resolves to, because each
+version is a subset of the next. Declare `"1.0"` (the scaffold's
+choice) unless you want every caller to see `"1.2"`. The full rule set is in
 [capability negotiation](claude-code-permissions.md#capability-negotiation-for-harness-implementers).
 
 ## Optional: curate

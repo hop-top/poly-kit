@@ -118,11 +118,15 @@ so each consumer reflects for its own surface.
 Three groups of facts:
 
 - **Identity** — `Path`, `Use`, `Short`, `Long`, `Aliases`.
-- **Interface** — `Flags` (type, default, required, hidden,
-  deprecated, since-version), `Args` (from `kit/args`),
-  `UndeclaredArgs` (the usage line names operands `kit/args` does
-  not declare; the `Args` validator is never run to find out),
-  `Output` (schema, version, examples, next steps).
+- **Interface** — `Flags` (type, default, required, choices from
+  `WithFlagEnum`, hidden, deprecated, since-version), `Args` (from
+  `kit/args`: `name` required, `name?` optional, `name...` variadic,
+  `name...?` optional variadic — the
+  [one grammar](toolspec-api.md#positional-arguments-kitargs) every
+  reader shares through `cmdmeta.ParseArgs`), `UndeclaredArgs` (the
+  usage line names operands `kit/args` does not declare; the `Args`
+  validator is never run to find out), `Output` (schema, version,
+  examples, next steps).
 - **Governance** — `Safety` (tier, permission tokens, confirmation,
   auth, idempotency, exit codes), `Surface` (hidden, deprecated,
   reserved, transport annotations), and `Invocable` / `Reason`.

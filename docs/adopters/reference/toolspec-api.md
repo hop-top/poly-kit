@@ -13,7 +13,10 @@ Pure data types + BFS lookup. Sub-packages own I/O and deps.
 > `man`, `__complete*` skipped, as `buildManifest` skips them;
 > undashed flag names; root options on `flags`; a negated `--no-x` is
 > a `no-x` flag of type `bool`, and `buildManifest` gives it default
-> `false`, as pflag does) and merges per-command annotations keyed by
+> `false`, as pflag does; `default` and `choices` follow the manifest's
+> rules, `variadic` is commander's, and `contract` is read off the
+> command's own `kit/side-effect`, `kit/idempotent` and
+> `kit/retryable`) and merges per-command annotations keyed by
 > path (`"mission list"`). `exitCodes` comes from a `kit/exit-codes`
 > entry on the command's `annotations` property. `buildManifest(program,
 > schemaVersion, { includeDeprecated, reserved })` and
@@ -64,7 +67,7 @@ type Command struct {
     Short           string         // one-line summary
     Aliases         []string
     Flags           []Flag
-    Args            []Arg          // kit/args, in order: {Name, Required}
+    Args            []Arg          // kit/args, in order: {Name, Required, Variadic}
     UndeclaredArgs  bool           // usage line names operands kit/args does not
     ExitCodes       []string       // kit/exit-codes symbols (exit-taxonomy-v1)
     Children        []Command
@@ -80,16 +83,45 @@ type Command struct {
 }
 ```
 
+### Positional arguments (`kit/args`)
+
+Cobra does not introspect argument names, so a command names its
+operands, in order, in the `kit/args` annotation. One grammar serves
+every reader (`cmdmeta.ParseArgs`: the ToolSpec, the manifest, MCP,
+REST and shell completion):
+
+| Entry      | `Required` | `Variadic` | Meaning                          |
+|------------|------------|------------|----------------------------------|
+| `name`     | true       | false      | exactly one operand              |
+| `name?`    | false      | false      | zero or one                      |
+| `name...`  | true       | true       | one or more, every remaining one |
+| `name...?` | false      | true       | zero or more, every remaining one|
+
+Entries are comma-separated, whitespace trimmed. The dots come before
+the `?`; any other suffix is part of the name. A variadic argument
+must be declared last; kit does not check that, the command's own
+`Args` validator still decides what it accepts.
+
+```go
+Annotations: map[string]string{"kit/args": "name, note?, files...?"},
+```
+
 ## Contract
 
 Behavioural guarantees of a command.
 
-| Field          | Type       | Description                     |
-|----------------|------------|---------------------------------|
-| `Idempotent`   | `bool`     | Safe to re-run                  |
-| `SideEffects`  | `[]string` | e.g. `["destructive"]`          |
-| `Retryable`    | `bool`     | Has `--force` or `--dry-run`    |
-| `PreConditions`| `[]string` | Must hold before execution      |
+| Field             | Type       | Description                                           |
+|-------------------|------------|-------------------------------------------------------|
+| `Idempotent`      | `bool`     | True iff `kit/idempotent` is `yes`                    |
+| `IdempotentClass` | `string`   | The raw `kit/idempotent` class: `yes`, `no`, `conditional`; empty when undeclared (json `idempotent_class`) |
+| `SideEffects`     | `[]string` | e.g. `["destructive"]`                                |
+| `Retryable`       | `bool`     | `kit/retryable`                                       |
+| `PreConditions`   | `[]string` | Must hold before execution                            |
+
+`IdempotentClass` exists because the bool cannot tell `no` from
+`conditional` from "nothing declared". `conditional` matters to an
+agent: kit registers `--idempotency-key` on such a command, and a
+retry must supply one.
 
 ## Safety
 
@@ -230,15 +262,46 @@ type StateIntrospection struct {
 
 ```go
 type Flag struct {
-    Name        string  // e.g. "--verbose"
-    Short       string  // e.g. "-v"
-    Type        string  // e.g. "bool", "string"
+    Name        string   // e.g. "--verbose"
+    Short       string   // e.g. "-v"
+    Type        string   // e.g. "bool", "string"
     Description string
-    Required    bool    // MarkFlagRequired / makeOptionMandatory
+    Required    bool     // MarkFlagRequired / makeOptionMandatory
     Deprecated  bool
     ReplacedBy  string
+    Default     string   // pflag DefValue: "false", "[a,b]", ""; same bytes as the manifest's default
+    Choices     []string // WithFlagEnum / .choices(), in order
 }
 ```
+
+`Default` follows exactly the manifest's rule (pflag's `DefValue`,
+omitted when empty), so a ToolSpec and a manifest built from the same
+tree never disagree on a default: a bool is `"false"`, a list `"[a,b]"`
+or `"[]"`.
+
+`Choices` is the set declared once with
+[`Root.WithFlagEnum`](flag-enums.md#flag-value-enums). The same set
+also reaches `Description` as the `(one of: …)` suffix help renders,
+because the suffix is stamped onto the flag's usage string at
+`Execute`; the duplication is accepted so help output and existing
+descriptions stay byte-stable. Read `Choices`, not the suffix.
+
+## Manifest schema versions
+
+The `<tool> spec` manifest (`toolspec.Manifest`) is versioned
+separately from this ToolSpec shape; see
+[the harness guide](../integrations/toolspec-harness-guide.md#step-1--discover-the-manifest)
+for negotiation. Every version is additive over the one before:
+
+| `schema_version` | Adds |
+|------------------|------|
+| `1.0` | the original leaf layout |
+| `1.1` | per-command fields surfacing kit's command annotations (`long`, `retryable`, `output_schema`, `examples`, `next_steps`, …) |
+| `1.2` | per-flag `required` and `choices`, per-argument `variadic` |
+
+The ToolSpec fields above (`Default`, `Choices`, `Variadic`,
+`IdempotentClass`) carry no version: `schema_version` on a ToolSpec is
+a free-form label, and every addition is `omitempty`.
 
 ## ErrorPattern
 
