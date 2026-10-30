@@ -12,6 +12,7 @@ How a command tree is served over the Model Context Protocol from one mount that
 - bind to something else: `McpSurface.handle(Request) -> Response` is a pure function, no socket
 - serve a host that spawns the tool: `serve_stdio(bridge)` (or `serve_stdio(surface)`), newline-delimited JSON-RPC on stdin/stdout, `wait()` returns when stdin ends
 - require confirmation on the modern era: `header_confirmation_gate` or `ElicitationConfirmationGate`
+- see every refusal the surface makes, as Go's bridge sinks do: `mount_mcp(bridge, audit=fn)`, one `AuditRecord` per refusal
 - name tools for a host that refuses dots (`widget_add`, not `widget.add`): `mount_mcp(bridge, tool_name_separator="_")`
 
 ## Quick start
@@ -46,6 +47,7 @@ print(res.status, res.body)
 - ASGI, not WSGI: the modern era's streaming is not expressible in WSGI.
 - stdio (`stdio.py`) drives the same era dispatch via `McpSurface.dispatch(..., transport="stdio")` with no header layer: the `2026-07-28` header checks are skipped, notifications are never answered, batches are refused; requests run on a thread pool.
 - Tool names join the leaf path with `tool_name_separator` (default `.`) and split back on it (`tool_name` / `tool_path`). `MountError` on an empty separator and, for any other than `.`, on a command name containing it (`data_sync` under `_`). Names are not otherwise rewritten or length-checked.
+- `audit` (`audit.py`) is called once per pre-flight refusal, both eras and stdio: auth refused, confirmation required / declined / state rejected, the destructive ceiling. `error` is the Go sentinel's message verbatim; `extra` always has `mcp_spec_version`. Best-effort: called before the response is returned, never changes it, exceptions swallowed. An expired `requestState`, unknown tools, bad arguments and run outcomes are not audited.
 - Parity: [`contracts/parity/README.md`](../../../../contracts/parity/README.md), section "MCP wire contract".
 
 ## Neighbours

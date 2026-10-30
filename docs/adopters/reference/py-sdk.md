@@ -172,8 +172,9 @@ Keyword-only on `mount_mcp`: `path` (`/mcp`), `server_name`
 (`cmdsurface`), `server_version` (`0.0.0`), `spec_versions` (`None` =
 both eras), `cache_ttl_ms` (`0`), `cache_scope` (`private`),
 `origin_allowlist` (empty, no check), `confirmation_key`,
-`extensions`, and `tool_name_separator` (`.`). The option *set* is
-normative across every kit SDK; only the spelling is idiomatic.
+`extensions`, `tool_name_separator` (`.`), and `audit` (`None`; see
+[Audit](#audit)). The option *set* is normative across every kit SDK;
+only the spelling is idiomatic.
 
 An explicitly empty `spec_versions`, a negative ttl, an unrecognized
 cache scope, or an empty confirmation key raise `MountError` rather than
@@ -230,6 +231,49 @@ sending input requests to a client that cannot answer them.
 
 Multi-instance deployments must share one key, so a retry landing on any
 instance can verify state minted by another.
+
+### Audit
+
+Go audits every refusal its MCP surface decides before a call runs
+through the bridge's sinks. This port has no sink fan-out; the mount
+takes one callable instead and calls it with an `AuditRecord` per
+refusal, on both eras and over stdio:
+
+```python
+import logging
+
+from hop_top_kit.mcp import AuditRecord, mount_mcp
+
+def audit(record: AuditRecord) -> None:
+    logging.warning("%s refused: %s %s", record.path, record.error, record.extra)
+
+app = mount_mcp(Bridge(root), audit=audit)
+```
+
+`AuditRecord` is a frozen dataclass: `path` (the resolved leaf's path
+segments), `surface` (`"mcp"`), `requested_at` (timezone-aware UTC, when
+the refusal was decided), `spec_version` (`2024-11-05` or
+`2026-07-28`), `error` and `extra`. No caller, arguments or flags, so
+there is nothing to redact. `error` is the message of the Go sentinel
+the same event is audited with, verbatim, so one sink can match records
+from every port; `extra` always carries `mcp_spec_version`.
+
+| Event | `error` | Era |
+|---|---|---|
+| `kit/auth-required` leaf, caller not established | `cmdsurface: authentication refused` | both |
+| confirmation gate unsatisfied: no `X-Confirm-Token`, and no elicitation the client can answer | `mcpsdk: confirmation required` | both |
+| the user declined or dismissed the elicitation | `mcpsdk: confirmation declined` | `2026-07-28` |
+| a `requestState` failed verification (`extra["mcp_confirm_rejection"]` = `request_state_verification_failed`) | `mcpsdk: confirmation requestState failed verification` | `2026-07-28` |
+| the destructive ceiling refused the leaf | `cmdsurface: destructive command blocked on this surface` | both |
+
+An expired but authentic `requestState` is a routine re-prompt and is
+not audited, as in Go. Unknown tools, invalid arguments, the origin
+allowlist and run outcomes are not audited.
+
+The hook is best-effort: it runs synchronously after the refusal is
+decided and before the response is returned, and it can never change
+the response. An exception it raises is swallowed. The elicitation
+gate's in-memory `rejections` list stays as it was; the hook is additive.
 
 ### Lazy help flags change `tools/list` bytes
 

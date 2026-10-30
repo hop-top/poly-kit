@@ -43,6 +43,13 @@ from collections.abc import Callable
 from typing import Any
 
 from ._json import Raw
+from .audit import (
+    ERR_AUTH_REFUSED,
+    ERR_CONFIRMATION_REQUIRED,
+    ERR_DESTRUCTIVE_BLOCKED,
+    AuditHook,
+    emit_audit,
+)
 from .bridge import DEFAULT_TOOL_NAME_SEPARATOR, Bridge, InvalidArgumentsError, Invocation, Leaf
 from .identity import Verifier, establish_caller, invocation_meta, unauthenticated
 from .legacy import (
@@ -168,10 +175,15 @@ class ModernHandler:
         method_handlers: dict[str, Callable[..., Response]] | None = None,
         verifier: Verifier | None = None,
         tool_name_separator: str = DEFAULT_TOOL_NAME_SEPARATOR,
+        audit: AuditHook | None = None,
     ) -> None:
         self._bridge = bridge
         self._verifier = verifier
         self._tool_name_separator = tool_name_separator
+        #: The mount's audit hook: one record per refusal, best-effort.
+        #: A gate that decides its own refusals (the elicitation gate)
+        #: holds the same hook and audits them itself.
+        self._audit = audit
         self._server_name = server_name
         self._server_version = server_version
         self._cache_ttl_ms = cache_ttl_ms
@@ -457,6 +469,7 @@ class ModernHandler:
         # header does not.
         ident = establish_caller(self._verifier, request)
         if auth_refused(leaf, ident):
+            self._refused(leaf, ERR_AUTH_REFUSED)
             return unauthenticated(
                 self._call_error(rpc, "authentication required", STATUS_UNAUTHORIZED)
             )
@@ -472,6 +485,10 @@ class ModernHandler:
         refusal = self._confirm(request, leaf, rpc)
         if refusal is not None:
             body, status = refusal
+            if self._confirm is header_confirmation_gate:
+                # The default gate has one refusal and knows no hook;
+                # any other gate audits its own.
+                self._refused(leaf, ERR_CONFIRMATION_REQUIRED)
             return write_result(rpc.id_raw, self.stamp_envelope(body), status)
 
         inv = Invocation(
@@ -487,6 +504,7 @@ class ModernHandler:
         except DestructiveBlockedError as exc:
             # The destructive ceiling renders as a tool error at HTTP 200,
             # never as a transport error — the same rendering as legacy.
+            self._refused(leaf, ERR_DESTRUCTIVE_BLOCKED)
             return self._call_error(rpc, str(exc), STATUS_OK)
         except Exception as exc:
             return self._call_error(rpc, str(exc), STATUS_OK)
@@ -495,6 +513,10 @@ class ModernHandler:
         if result.data is not None:
             out["structuredContent"] = result.data
         return write_result(rpc.id_raw, self.stamp_envelope(out), STATUS_OK)
+
+    def _refused(self, leaf: Leaf, error: str) -> None:
+        """Audit one pre-flight refusal of ``leaf``; the response is untouched."""
+        emit_audit(self._audit, path=leaf.path, spec_version=MODERN_PROTOCOL_VERSION, error=error)
 
     # --- envelope helpers -------------------------------------------------
 
