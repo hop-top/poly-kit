@@ -7,10 +7,12 @@ than a branch inside a combined handler precisely so that invariant stays
 structurally checkable — a reviewer can confirm a modern-era change did
 not touch this file.
 
-Serves three methods: ``initialize`` (server identity and capabilities),
-``tools/list`` (one tool per exposed leaf), and ``tools/call`` (invoke via
-the bridge and render the result as content blocks). Everything else is
-``-32601`` at HTTP **200** — a status the modern handler deliberately does
+Serves ``initialize`` (server identity and capabilities), ``ping`` (an
+empty result), ``tools/list`` (one tool per exposed leaf), and
+``tools/call`` (invoke via the bridge and render the result as content
+blocks). A notification (no ``id`` member) is never answered: HTTP 202,
+empty body, not processed. Every other method is ``-32601`` at HTTP
+**200** — a status the modern handler deliberately does
 not share, because changing it here would break the preservation rule.
 """
 
@@ -42,6 +44,7 @@ from .safety import (
 #: MCP-aware clients see ``isError`` while HTTP-only clients see a status
 #: they can act on.
 STATUS_OK = 200
+STATUS_ACCEPTED = 202
 STATUS_UNAUTHORIZED = 401
 STATUS_PRECONDITION_REQUIRED = 428
 
@@ -70,8 +73,18 @@ class LegacyHandler:
         """Route one already-parsed request by method."""
         if rpc.jsonrpc not in ("", "2.0"):
             return write_error(rpc.id_raw, ERR_INVALID_REQUEST, "invalid jsonrpc version", 400)
+        # No id member: a notification. JSON-RPC 2.0 forbids any reply,
+        # so it is acknowledged with HTTP 202 and an empty body and is not
+        # processed (the modern handler's V2 answer). An explicit
+        # ``"id": null`` is a request and is answered.
+        if not rpc.has_id:
+            return Response(status=STATUS_ACCEPTED, headers={}, body=b"")
         if rpc.method == "initialize":
             return self._initialize(rpc)
+        if rpc.method == "ping":
+            # 2024-11-05 utility: the receiver MUST answer with an empty
+            # result. Legacy era only; 2026-07-28 removed ping.
+            return write_result(rpc.id_raw, {}, STATUS_OK)
         if rpc.method == "tools/list":
             return self._tools_list(rpc)
         if rpc.method == "tools/call":

@@ -138,6 +138,30 @@
       "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"parse error: invalid character 'n' looking for beginning of object key string\"}}\n"
     },
     {
+      "name": "legacy/notification/initialized",
+      "era": "legacy",
+      "why": "no id member is a notification: never answered (HTTP 202, empty body)",
+      "request": "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}",
+      "status": 202,
+      "response": ""
+    },
+    {
+      "name": "legacy/notification/tools-call-not-processed",
+      "era": "legacy",
+      "why": "a tools/call without an id is a notification: acknowledged, not executed",
+      "request": "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"ping\"}}",
+      "status": 202,
+      "response": ""
+    },
+    {
+      "name": "legacy/ping",
+      "era": "legacy",
+      "why": "ping MUST be answered with an empty result",
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"ping\"}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":12,\"result\":{}}\n"
+    },
+    {
       "name": "legacy/meta-progress-token-is-not-modern",
       "era": "legacy",
       "why": "bare params._meta is NOT a modern marker: progressToken stays legacy",

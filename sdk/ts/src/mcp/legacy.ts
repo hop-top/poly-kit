@@ -2,7 +2,7 @@
  * @module mcp/legacy
  * @package @hop-top/kit
  *
- * The 2024-11-05 MCP handler: `initialize`, `tools/list`,
+ * The 2024-11-05 MCP handler: `initialize`, `ping`, `tools/list`,
  * `tools/call`, plain JSON-RPC over one POST path, no sessions, no
  * SSE.
  *
@@ -40,7 +40,7 @@ import {
   UnknownCommandError,
 } from './types.js';
 import type { JsonRpcRequest, McpHttpRequest, McpHttpResponse } from './dispatch.js';
-import { jsonResponse } from './dispatch.js';
+import { acceptedResponse, jsonResponse } from './dispatch.js';
 import { establishCaller, invocationMeta } from './identity.js';
 
 /** Writes a successful JSON-RPC envelope. */
@@ -130,9 +130,21 @@ export class LegacyMcpHandler {
       );
     }
 
+    // No id member: a notification. JSON-RPC 2.0 forbids any reply, so
+    // it is acknowledged with HTTP 202 and an empty body and is not
+    // processed — the modern handler's V2 answer. An explicit
+    // `"id": null` is a request and is answered.
+    if (rpc.id === undefined) {
+      return acceptedResponse();
+    }
+
     switch (rpc.method) {
       case 'initialize':
         return this.handleInitialize(rpc);
+      case 'ping':
+        // 2024-11-05 utility: the receiver MUST answer with an empty
+        // result. Legacy era only; 2026-07-28 removed ping.
+        return writeResult(rpc.id, {}, 200);
       case 'tools/list':
         return this.handleToolsList(rpc);
       case 'tools/call':

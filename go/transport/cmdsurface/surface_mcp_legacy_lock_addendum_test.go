@@ -165,11 +165,16 @@ func TestLegacyLock_NonMarker_InitializeFullLegacyParams(t *testing.T) {
 // switch" change might introduce without era-gating it. If legacy-
 // path handling appears for any of these, wire behavior changes for
 // every real 2024-11-05 client and this test catches it.
+//
+// "ping" left this list deliberately: 2024-11-05 requires the receiver
+// to answer it with an empty result, so the legacy path now does
+// (pinned by TestLegacy_Ping_EmptyResult). A notifications/* method
+// sent WITH an id is a malformed request, not a notification, and
+// still gets -32601.
 func TestLegacyLock_MethodNotFound_RealMCPMethodNames(t *testing.T) {
 	srv := legacyLockServer(t, nil)
 	methods := []string{
 		"notifications/initialized",
-		"ping",
 		"resources/list",
 		"prompts/list",
 	}

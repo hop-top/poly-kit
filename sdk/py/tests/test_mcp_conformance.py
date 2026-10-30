@@ -325,7 +325,7 @@ def test_fixture_covers_both_eras() -> None:
     """Guard against a fixture edit that silently drops one era's coverage."""
     eras = {case["era"] for case in CASES}
     assert eras == {"legacy", "modern"}
-    assert len(CASES) >= 23
+    assert len(CASES) >= 26
 
 
 def test_identical_requests_expect_identical_responses() -> None:

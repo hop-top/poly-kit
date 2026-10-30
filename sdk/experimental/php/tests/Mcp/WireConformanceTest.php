@@ -46,7 +46,7 @@ final class WireConformanceTest extends TestCase
     {
         $cases = self::section('cases');
 
-        self::assertCount(23, $cases, 'fixture count changed — the parity contract moved');
+        self::assertCount(26, $cases, 'fixture count changed — the parity contract moved');
 
         foreach ($cases as $case) {
             $tree = str_starts_with($case['name'], 'legacy/')

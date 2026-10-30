@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace HopTop\Kit\Mcp;
 
 /**
- * The 2024-11-05 handler: `initialize`, `tools/list`, `tools/call`.
+ * The 2024-11-05 handler: `initialize`, `ping`, `tools/list`, `tools/call`.
+ * A notification (no `id` member) is never answered: 202, empty body.
  *
  * Ports Go's `mcpHandler`. This module is deliberately additive-only —
  * the dual-spec design preserves the legacy era byte-for-byte, and
@@ -34,8 +35,19 @@ final readonly class LegacyHandler
             return Response::error($request, ErrorCodes::INVALID_REQUEST, 'invalid jsonrpc version', 400);
         }
 
+        // No id member: a notification. JSON-RPC 2.0 forbids any reply, so
+        // it is acknowledged with HTTP 202 and an empty body and is not
+        // processed (the modern handler's V2 answer). An explicit
+        // `"id": null` is a request and is answered.
+        if (!$request->hasId()) {
+            return Response::accepted();
+        }
+
         return match ($request->method) {
             'initialize' => $this->initialize($request),
+            // 2024-11-05 utility: the receiver MUST answer with an empty
+            // result. Legacy era only; 2026-07-28 removed ping.
+            'ping' => Response::result($request, new \stdClass()),
             'tools/list' => $this->toolsList($request),
             'tools/call' => $this->toolsCall($request),
             default => Response::error(
