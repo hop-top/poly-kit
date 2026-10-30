@@ -657,6 +657,22 @@ const res = await handler({ method: 'POST', headers, body });
 command's output is captured. Bind the handler to node:http, hono,
 express, fastify, or a Worker.
 
+Each leaf's `inputSchema` has one property per visible option, keyed by
+its long flag undashed (`--dry-run` → `dry-run`, `--no-color` →
+`no-color`); mandatory options are `required`. Types:
+
+| Option | Property |
+|---|---|
+| value-less flag, negated (`--no-x`) included | `boolean` |
+| variadic `<v...>` | `array` of `string` |
+| repeatable: custom parser + array default | `array` of `string` |
+| anything else | `string` |
+
+`.choices()` becomes `enum` (on `items` for arrays); a default becomes
+`default` when its value fits the property type (a parsed number on a
+string property is left out). A `--x`/`--no-x` pair publishes two
+booleans, so `run` maps `{ "no-x": true }` back to `--no-x` verbatim.
+
 ### Options
 
 `path` (`/mcp`), `serverInfo` (`cmdsurface` / `0.0.0`), `specVersions`

@@ -73,6 +73,78 @@ describe('commanderBridge', () => {
     expect(add?.properties).not.toHaveProperty('hidden-flag');
   });
 
+  it('types a negated flag as a boolean under its own long name', () => {
+    const root = new Command('root');
+    root.command('find').option('--no-color', 'plain output');
+    const bridge = commanderBridge(root, { run });
+    expect(bridge.leaves()[0]?.properties).toEqual({
+      'no-color': { type: 'boolean', description: 'plain output' },
+    });
+  });
+
+  it('keeps a flag and its negation as two booleans', () => {
+    const root = new Command('root');
+    root.command('find').option('--cache', 'use cache').option('--no-cache', 'skip cache');
+    const bridge = commanderBridge(root, { run });
+    expect(bridge.leaves()[0]?.properties).toEqual({
+      cache: { type: 'boolean', description: 'use cache' },
+      'no-cache': { type: 'boolean', description: 'skip cache' },
+    });
+  });
+
+  it('types a repeatable accumulator option as an array of strings', () => {
+    const root = new Command('root');
+    root
+      .command('find')
+      .option('-m, --match <p>', 'match pattern', (v: string, p: string[]) => p.concat([v]), []);
+    const bridge = commanderBridge(root, { run });
+    expect(bridge.leaves()[0]?.properties).toEqual({
+      match: {
+        type: 'array',
+        description: 'match pattern',
+        items: { type: 'string' },
+        default: [],
+      },
+    });
+  });
+
+  it('keeps a custom-parsed scalar option a string', () => {
+    const root = new Command('root');
+    root.command('find').option('--limit <n>', 'max rows', (v: string) => Number(v));
+    const bridge = commanderBridge(root, { run });
+    expect(bridge.leaves()[0]?.properties).toEqual({
+      limit: { type: 'string', description: 'max rows' },
+    });
+  });
+
+  it('publishes choices as enum and string defaults as default', () => {
+    const root = new Command('root');
+    root
+      .command('find')
+      .addOption(new Option('--color <c>', 'tint').choices(['red', 'blue']).default('red'))
+      .addOption(new Option('--tag <t...>', 'tags').choices(['a', 'b']))
+      .option('--sort <k>', 'sort key', 'name');
+    const bridge = commanderBridge(root, { run });
+    expect(bridge.leaves()[0]?.properties).toEqual({
+      color: { type: 'string', description: 'tint', enum: ['red', 'blue'], default: 'red' },
+      tag: { type: 'array', description: 'tags', items: { type: 'string', enum: ['a', 'b'] } },
+      sort: { type: 'string', description: 'sort key', default: 'name' },
+    });
+  });
+
+  it('omits a default whose type does not match the schema type', () => {
+    const root = new Command('root');
+    root
+      .command('find')
+      .option('--limit <n>', 'max rows', (v: string) => Number(v), 10)
+      .option('--fast', 'go fast', false);
+    const bridge = commanderBridge(root, { run });
+    expect(bridge.leaves()[0]?.properties).toEqual({
+      limit: { type: 'string', description: 'max rows' },
+      fast: { type: 'boolean', description: 'go fast', default: false },
+    });
+  });
+
   it('classifies kit annotations into the SafetyClass', () => {
     const bridge = commanderBridge(buildTree(), { run });
     const byName = (n: string) =>
