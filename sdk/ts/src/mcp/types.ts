@@ -190,7 +190,11 @@ export class SurfaceNotEnabledError extends Error {
 export interface FlagSchema {
   type: string;
   description: string;
-  items?: { type: string };
+  items?: { type: string; enum?: string[] };
+  /** Allowed values, when the flag declares choices. */
+  enum?: string[];
+  /** The flag's default, when it is a value of `type`. */
+  default?: unknown;
 }
 
 /**

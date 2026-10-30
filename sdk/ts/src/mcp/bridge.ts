@@ -230,17 +230,59 @@ function flagProperty(opt: Option): FlagSchema {
     type,
     description: opt.description ?? '',
   };
-  if (type === 'array') prop.items = { type: 'string' };
+  const choices = opt.argChoices;
+  if (type === 'array') {
+    prop.items = { type: 'string' };
+    if (choices && choices.length > 0) prop.items.enum = [...choices];
+  } else if (type === 'string' && choices && choices.length > 0) {
+    prop.enum = [...choices];
+  }
+  if (defaultMatches(type, opt.defaultValue)) {
+    prop.default = Array.isArray(opt.defaultValue)
+      ? [...(opt.defaultValue as string[])]
+      : opt.defaultValue;
+  }
   return prop;
 }
 
 /**
- * Maps a commander option to a JSON Schema primitive. Variadic
- * options are arrays; boolean flags are booleans; everything else is
- * a string unless the adopter declared a numeric parser.
+ * Maps a commander option to a JSON Schema primitive.
+ *
+ *  - variadic (`<v...>`) and accumulator options (a custom parser
+ *    with an array default, commander's repeatable idiom) are arrays
+ *    of strings;
+ *  - value-less flags are booleans, negated ones (`--no-x`) included:
+ *    commander's isBoolean() is false for those, but they take no
+ *    value all the same;
+ *  - everything else is a string.
+ *
+ * A negated flag keeps its long name (`no-x`), like every other
+ * property, so `{"no-x": true}` maps back to `--no-x` verbatim.
  */
 function optionJSONType(opt: Option): string {
   if (opt.variadic) return 'array';
-  if (typeof opt.isBoolean === 'function' && opt.isBoolean()) return 'boolean';
+  if (opt.parseArg !== undefined && Array.isArray(opt.defaultValue)) {
+    return 'array';
+  }
+  if (!opt.required && !opt.optional) return 'boolean';
   return 'string';
+}
+
+/**
+ * Reports whether a commander default is publishable as the JSON
+ * Schema `default` of a property typed `type`. A default the schema
+ * type cannot hold (a parsed number on a string-typed option) is left
+ * out rather than published as a value the property would reject.
+ */
+function defaultMatches(type: string, value: unknown): boolean {
+  switch (type) {
+    case 'string':
+      return typeof value === 'string';
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'array':
+      return Array.isArray(value) && value.every((v) => typeof v === 'string');
+    default:
+      return false;
+  }
 }
