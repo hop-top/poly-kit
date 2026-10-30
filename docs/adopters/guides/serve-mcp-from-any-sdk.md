@@ -301,8 +301,12 @@ call and nothing more.
 
 ### Audit
 
-Go audits every refusal the MCP surface makes, before adopter code
-runs, on the bridge's sinks. The ports have no sink registry, so each
+Go's `mcpsdk` audits every refusal its MCP surface makes, before
+adopter code runs, on the bridge's sinks. `cmdsurface.MountMCP` does
+not audit its auth refusal, its `X-Confirm-Token` refusal or a
+declined elicitation (see
+[Confirmation verdicts](../reference/cmdsurface.md#confirmation-verdicts)).
+The ports have no sink registry, so each
 takes one mount-level hook instead: `audit` in TypeScript, `audit=` in
 Python, `MountOptions.audit` in Rust, `Mount(audit:)` in PHP. It is
 called once per refusal with a record carrying the leaf path, the
@@ -343,15 +347,29 @@ differences, and they are real:
 
 | | Go | TS | Python | Rust | PHP |
 |---|---|---|---|---|---|
-| `tasks/*` extension | no | no | **opt-in** | opt-in | no |
+| `tasks/*` extension | `mcpsdk` only, opt-in | no | **opt-in** | declared, not served | no |
 | stdio transport | `mcpsdk.ServeStdio` | `serveStdio` | `serve_stdio` | `Surface::serve_stdio` | `StdioServer::serve` |
 | tool-name separator | `mcpsdk` only | yes | yes | yes | yes |
 | refusal audit hook | bridge sinks | yes | yes | yes | yes |
 
-Python and Rust can serve the `tasks/*` extension when mounted
-explicitly — `mount_mcp(bridge, extensions=(TasksExtension(),))` in
-Python, `tasks_enabled` in Rust. Left unmounted, and in every other
-port, `tasks/*` answers `-32601` and no `extensions` map is advertised.
+Two mounts serve `tasks/*` methods, on the `2026-07-28` era and only
+when asked to, and advertise the extension under
+`capabilities.extensions`:
+
+- **Go's `mcpsdk`**, with `WithTasks`: `tasks/get`, `tasks/update` and
+  `tasks/cancel`; see the
+  [mcpsdk reference](../reference/mcpsdk.md#tasks-extension-sep-2663-experimental).
+- **Python**, with `mount_mcp(bridge, extensions=(TasksExtension(),))`:
+  `tasks/get`, plus `tasks/list` and `tasks/cancel` unless turned off.
+
+Rust's `tasks_enabled` adds the extension to `server/discover` and
+nothing else: no `tasks/*` method is served either way. Everywhere
+else (`cmdsurface.MountMCP`, TypeScript, PHP, and Python or `mcpsdk`
+without the opt-in), and for the methods an opted-in mount does not
+serve, `tasks/*` answers `-32601` and, with the extension off, no
+`extensions` map is advertised. Below `2026-07-28`, `mcpsdk` answers a
+method it does not serve the way the SDK does: HTTP 400, not
+`-32601`.
 
 One Rust naming trap: `mcp::Surface` is the **mounted handler**, while
 the safety enum is re-exported as `mcp::SurfaceKind`. Every other port
@@ -467,9 +485,11 @@ contract.
 
 Deprecated upstream features — Roots, Sampling, Logging, HTTP+SSE —
 are unimplemented in every port, matching Go. The `tasks/*` extension
-methods answer `-32601`, and per spec the surface advertises no
-`extensions` map in `server/discover`, which *is* the conformant way to
-not support it.
+is opt-in where a port has it at all (see
+[Where the ports genuinely differ](#where-the-ports-genuinely-differ));
+without it the extension methods answer `-32601`, and per spec the
+surface advertises no `extensions` map in `server/discover`, which *is*
+the conformant way to not support it.
 
 Ports do not implement the `2026-07-28` auth hardening stack (RFC 9207
 issuer validation, CIMD, `application_type` registration). No SDK-side
