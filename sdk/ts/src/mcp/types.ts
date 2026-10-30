@@ -207,6 +207,12 @@ export interface LeafArg {
   name: string;
   /** False/absent for an optional argument. */
   required?: boolean;
+  /**
+   * True for a `<name...>` / `[name...]` argument: it takes every
+   * remaining operand. Informational; the published "args" array
+   * carries no maxItems either way.
+   */
+  variadic?: boolean;
 }
 
 /**
