@@ -194,6 +194,34 @@ idiomatic. Defaults match Go exactly.
 | `WithMCPOriginAllowlist` | `originAllowlist` | `origin_allowlist` | `origin_allowlist` | `originAllowlist` | no check |
 | `WithMCPConfirmationKey` | `confirmationKey` | `confirmation_key` | `confirmation_key` | `confirmationKey` | header gate |
 | `api.Auth` on the router | `verifier` | `verifier` | `verifier` | `verifier` | none: every `kit/auth-required` leaf refused |
+| none (`mcpsdk.WithToolNameSeparator`) | `toolNameSeparator` | `tool_name_separator` | `tool_name_separator` | none | `.` |
+
+### Name tools for hosts that refuse dots
+
+A tool is named by its leaf path joined with `.` (`widget.add`). Some
+MCP hosts and model tool APIs admit only `^[A-Za-z0-9_-]{1,64}$` and
+refuse or rewrite that name. The tool-name separator joins with another
+string, and the mount resolves calls through the same one:
+
+```ts
+createMcpHandler(bridge, { toolNameSeparator: '_' }); // widget_add
+```
+
+```python
+mount_mcp(bridge, tool_name_separator="_")
+```
+
+Rust sets `MountOptions { tool_name_separator: "_".into(), ..MountOptions::default() }`;
+Go sets it on the SDK-backed mount, `mcpsdk.Mount(b, r, mcpsdk.WithToolNameSeparator("_"))`.
+`cmdsurface.MountMCP` is frozen and PHP has no such option: both always
+join with `.`.
+
+The mount refuses a separator any command name contains (other than the
+default `.`): under `_`, the leaves `data_sync` and `data sync` would
+share a name, so neither is guessed. Rename the command or choose
+another separator. `-` is refused the same way for a tree with
+hyphenated commands. Names are not otherwise rewritten or
+length-checked.
 
 ### Admit authenticated callers
 
@@ -258,7 +286,9 @@ a server that quietly serves nothing:
 - **A negative cache ttl, or an unrecognized cache scope.**
 
 Go, TypeScript, Python, and Rust also reject an empty confirmation key.
-PHP does not carry that check.
+PHP does not carry that check. The ports with a tool-name separator
+(TypeScript, Python, Rust, Go's `mcpsdk`) reject an empty one, and one
+a command name contains.
 
 Error spelling differs by port and is not part of the contract: Go, TS,
 and PHP prefix messages `cmdsurface:` and keep Go's `WithMCP*` option
@@ -275,6 +305,7 @@ differences, and they are real:
 | MRTR confirmation flow | yes | **no** | yes | yes | yes |
 | `tasks/*` extension | no | no | **opt-in** | opt-in | no |
 | stdio transport | `mcpsdk.ServeStdio` | `serveStdio` | no | no | no |
+| tool-name separator | `mcpsdk` only | yes | yes | yes | **no** |
 
 **TypeScript accepts `confirmationKey` but does not act on it.** Its
 modern handler checks the `X-Confirm-Token` header and nothing else, so
