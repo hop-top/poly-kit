@@ -13,9 +13,11 @@ namespace HopTop\Kit\Mcp;
 final class ToolEnvelope
 {
     /**
+     * $separator joins the leaf path into the tool `name`.
+     *
      * @return array{name: string, description: string, inputSchema: array<string, mixed>}
      */
-    public static function build(Leaf $leaf): array
+    public static function build(Leaf $leaf, string $separator = Leaf::DEFAULT_TOOL_NAME_SEPARATOR): array
     {
         [$properties, $required] = self::collectFlags($leaf);
 
@@ -31,7 +33,7 @@ final class ToolEnvelope
         }
 
         return [
-            'name' => $leaf->toolName(),
+            'name' => $leaf->toolName($separator),
             'description' => $leaf->description,
             'inputSchema' => $schema,
         ];

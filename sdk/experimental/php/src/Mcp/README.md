@@ -15,6 +15,7 @@ this namespace is the server side only.
   `new Policy(allowDestructiveOn: [Surface::Mcp])`
 - a leaf must be confirmed by a human: annotate `kit/requires-confirmation`; pass
   `confirmationKey` to `Mount` for the elicitation flow, or keep the `X-Confirm-Token` header gate
+- a host refuses dotted tool names: `new Mount(toolNameSeparator: '_')` serves `widget_add`
 
 ## Quick start
 

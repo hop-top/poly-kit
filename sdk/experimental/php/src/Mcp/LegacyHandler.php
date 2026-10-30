@@ -20,12 +20,14 @@ namespace HopTop\Kit\Mcp;
 final readonly class LegacyHandler
 {
     /**
-     * @param (\Closure(Request): ?Identity)|null $verifier establishes the caller of each `tools/call`
+     * @param (\Closure(Request): ?Identity)|null $verifier          establishes the caller of each `tools/call`
+     * @param string                              $toolNameSeparator joins a leaf path into its tool name
      */
     public function __construct(
         private Bridge $bridge,
         private ServerInfo $serverInfo = new ServerInfo(),
         private ?\Closure $verifier = null,
+        private string $toolNameSeparator = Leaf::DEFAULT_TOOL_NAME_SEPARATOR,
     ) {
     }
 
@@ -87,7 +89,7 @@ final readonly class LegacyHandler
                 continue;
             }
 
-            $tools[] = ToolEnvelope::build($leaf);
+            $tools[] = ToolEnvelope::build($leaf, $this->toolNameSeparator);
         }
 
         return $tools;
@@ -102,7 +104,7 @@ final readonly class LegacyHandler
             return Response::error($request, ErrorCodes::INVALID_PARAMS, 'missing tool name', 200);
         }
 
-        $leaf = $this->bridge->resolveLeaf($name);
+        $leaf = $this->bridge->resolveLeaf($name, $this->toolNameSeparator);
         if (null === $leaf || !$leaf->enabledOn(Surface::Mcp)) {
             return Response::error($request, ErrorCodes::INVALID_PARAMS, 'unknown tool: '.$name, 200);
         }
@@ -124,7 +126,7 @@ final readonly class LegacyHandler
         $arguments = \is_array($params['arguments'] ?? null) ? $params['arguments'] : [];
 
         try {
-            $result = $this->bridge->invoke($name, $arguments, Surface::Mcp);
+            $result = $this->bridge->invoke($name, $arguments, Surface::Mcp, $this->toolNameSeparator);
         } catch (UnknownCommandException|SurfaceNotEnabledException) {
             return Response::error($request, ErrorCodes::INVALID_PARAMS, 'unknown tool: '.$name, 200);
         } catch (BridgeException $e) {

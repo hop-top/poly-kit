@@ -22,10 +22,15 @@ final readonly class ElicitationConfirmationGate implements ConfirmationGate
     /** The single reserved key under `inputRequests`. */
     public const INPUT_REQUEST_KEY = 'confirm';
 
+    /**
+     * $toolNameSeparator names the tool in the prompt as the mount names
+     * it in `tools/list`.
+     */
     public function __construct(
         private ConfirmationState $state,
         private HeaderConfirmationGate $fallback = new HeaderConfirmationGate(),
         private ?\Closure $clock = null,
+        private string $toolNameSeparator = Leaf::DEFAULT_TOOL_NAME_SEPARATOR,
     ) {
     }
 
@@ -78,7 +83,7 @@ final readonly class ElicitationConfirmationGate implements ConfirmationGate
                     'method' => 'elicitation/create',
                     'params' => [
                         'mode' => 'form',
-                        'message' => \sprintf('Approve execution of %s?', GoFormat::quote($leaf->toolName())),
+                        'message' => \sprintf('Approve execution of %s?', GoFormat::quote($leaf->toolName($this->toolNameSeparator))),
                         'requestedSchema' => ['type' => 'object', 'properties' => new \stdClass()],
                     ],
                 ],

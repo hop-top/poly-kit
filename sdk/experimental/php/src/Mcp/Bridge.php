@@ -99,11 +99,15 @@ final class Bridge
     }
 
     /**
-     * Resolves a dotted tool name to its leaf, or null when unknown.
+     * Resolves a tool name, split on $separator, to its leaf, or null when
+     * unknown.
      */
-    public function resolveLeaf(string $toolName): ?Leaf
-    {
-        $leaf = $this->leaves[$toolName] ?? null;
+    public function resolveLeaf(
+        string $toolName,
+        string $separator = Leaf::DEFAULT_TOOL_NAME_SEPARATOR,
+    ): ?Leaf {
+        $key = $this->keyFor($toolName, $separator);
+        $leaf = null === $key ? null : ($this->leaves[$key] ?? null);
         if (null === $leaf) {
             return null;
         }
@@ -111,11 +115,35 @@ final class Bridge
         return new Leaf(
             path: $leaf->path,
             description: $leaf->description,
-            flags: $this->commands[$toolName]->visibleFlags(),
+            flags: $this->commands[$key]->visibleFlags(),
             class: $leaf->class,
             enabled: $leaf->enabled,
             runner: $leaf->runner,
         );
+    }
+
+    /**
+     * The dotted registry key of the leaf $toolName names under
+     * $separator, or null when none does.
+     *
+     * The default separator is the key itself; any other is matched on
+     * the split path, so a name never resolves to a leaf whose path it
+     * does not spell.
+     */
+    private function keyFor(string $toolName, string $separator): ?string
+    {
+        if (Leaf::DEFAULT_TOOL_NAME_SEPARATOR === $separator) {
+            return $toolName;
+        }
+
+        $path = Leaf::pathFromToolName($toolName, $separator);
+        foreach ($this->leaves as $key => $leaf) {
+            if ($leaf->path === $path) {
+                return $key;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -125,14 +153,19 @@ final class Bridge
      * on a remote surface never executes.
      *
      * @param array<string, mixed> $arguments
+     * @param string               $separator splits $toolName into the leaf path
      *
      * @throws UnknownCommandException  when the tool name resolves to nothing
      * @throws SurfaceNotEnabledException when the leaf is not exposed on $surface
      * @throws DestructiveBlockedException when the policy gate refuses the call
      */
-    public function invoke(string $toolName, array $arguments, Surface $surface): Result
-    {
-        $leaf = $this->resolveLeaf($toolName);
+    public function invoke(
+        string $toolName,
+        array $arguments,
+        Surface $surface,
+        string $separator = Leaf::DEFAULT_TOOL_NAME_SEPARATOR,
+    ): Result {
+        $leaf = $this->resolveLeaf($toolName, $separator);
         if (null === $leaf) {
             throw new UnknownCommandException('cmdsurface: unknown command: '.$toolName);
         }
@@ -150,7 +183,7 @@ final class Bridge
             );
         }
 
-        $command = $this->commands[$toolName];
+        $command = $this->commands[$leaf->toolName()];
         $command->markExecuted();
 
         $runner = $leaf->runner;
