@@ -80,3 +80,28 @@ describe("negotiateSchemaVersion", () => {
     expect(SCHEMA_VERSION_ENV).toBe("KIT_TOOLSPEC_SCHEMA");
   });
 });
+
+describe("buildManifest negatable flags", () => {
+  it("types --no-x bool with default false, as pflag does", () => {
+    const program = new Command("t");
+    program
+      .command("run")
+      .option("--no-color", "c")
+      .option("--hints", "on")
+      .option("--no-hints", "off")
+      .action(() => {});
+    expect(buildManifest(program, "1.1").commands[0].flags).toEqual([
+      { name: "hints", type: "bool", description: "on", default: "false" },
+      { name: "no-color", type: "bool", description: "c", default: "false" },
+      { name: "no-hints", type: "bool", description: "off", default: "false" },
+    ]);
+  });
+
+  it("keeps a negated flag's default false whatever commander's default", () => {
+    const program = new Command("t");
+    program.command("run").option("--no-cache", "nc", true).action(() => {});
+    expect(buildManifest(program, "1.1").commands[0].flags).toEqual([
+      { name: "no-cache", type: "bool", description: "nc", default: "false" },
+    ]);
+  });
+});

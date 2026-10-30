@@ -20,6 +20,7 @@ import {
   isRunnable,
   pflagTypes,
   splitCSV,
+  takesNoValue,
   walkCommands,
   type Annotations,
 } from "./toolspec-internal.js";
@@ -238,11 +239,14 @@ function flagTypeAndDefault(opt: CommanderOption): [string, string] {
   const def = opt.defaultValue;
   const declared = pflagTypes.get(opt);
   if (declared) return [declared, def === undefined ? "" : String(def)];
-  if (opt.isBoolean()) return ["bool", def === undefined ? "false" : String(def)];
   if (opt.variadic) {
     const items = def === undefined ? [] : Array.isArray(def) ? def : [def];
     return ["stringSlice", `[${items.map(String).join(",")}]`];
   }
+  // A negated --no-x is its own pflag bool, unset (false) by default;
+  // commander's default for it belongs to the x attribute, not the flag.
+  if (opt.negate) return ["bool", "false"];
+  if (takesNoValue(opt)) return ["bool", def === undefined ? "false" : String(def)];
   return ["string", def === undefined ? "" : String(def)];
 }
 

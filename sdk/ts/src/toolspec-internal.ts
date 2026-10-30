@@ -37,6 +37,16 @@ export function declaredArgs(
 }
 
 /**
+ * Whether opt takes no value: a plain boolean flag or a negated one
+ * (`--no-x`). commander's isBoolean() is false for negated options,
+ * yet they are value-less all the same, so pflag-shaped projections
+ * (a `no-x` bool) must not rely on isBoolean() alone.
+ */
+export function takesNoValue(opt: CommanderOption): boolean {
+  return !opt.required && !opt.optional;
+}
+
+/**
  * Whether cmd has an action handler (cobra Runnable). commander 15
  * exposes no public accessor, so this reads the private field.
  */
