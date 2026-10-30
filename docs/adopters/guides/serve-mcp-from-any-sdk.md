@@ -25,9 +25,11 @@ Three steps in every language:
 3. Bind the handler to your HTTP stack.
 
 Step 3 is yours. Every port exports a transport-agnostic request
-handler, never a server — kit does not own your HTTP stack, and a pure
-function from request to response is testable against the fixtures with
-no socket open.
+handler, never an HTTP server — kit does not own your HTTP stack, and a
+pure function from request to response is testable against the fixtures
+with no socket open. For hosts that spawn the tool, every port also
+ships a stdio server over the same dispatch (see "stdio transport" under
+the port differences).
 
 ## Pick your language
 
