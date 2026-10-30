@@ -42,11 +42,21 @@ from enum import Enum
 from typing import Any
 
 from ._json import dumps
+from .audit import (
+    CONFIRM_REJECTION_STATE_VERIFICATION_FAILED,
+    ERR_CONFIRMATION_DECLINED,
+    ERR_CONFIRMATION_REQUIRED,
+    ERR_CONFIRMATION_STATE_REJECTED,
+    EXTRA_CONFIRM_REJECTION,
+    AuditHook,
+    emit_audit,
+)
 from .bridge import DEFAULT_TOOL_NAME_SEPARATOR, Bridge, Leaf, tool_name
 from .legacy import error_result_block
 from .modern import header_confirmation_gate
 from .protocol import (
     META_CLIENT_CAPABILITIES,
+    MODERN_PROTOCOL_VERSION,
     RESULT_TYPE_INPUT_REQUIRED,
     Request,
     RPCRequest,
@@ -113,6 +123,7 @@ class ElicitationConfirmationGate:
         bridge: Bridge | None = None,
         *,
         tool_name_separator: str = DEFAULT_TOOL_NAME_SEPARATOR,
+        audit: AuditHook | None = None,
     ) -> None:
         if not key:
             raise ValueError("mcp: confirmation key must be non-empty")
@@ -120,8 +131,9 @@ class ElicitationConfirmationGate:
         self._bridge = bridge
         #: Names the tool in the prompt, as the mount names it in tools/list.
         self._tool_name_separator = tool_name_separator
-        #: Audit records of rejected states, in lieu of the Go bridge's
-        #: sink fan-out, which this port does not carry.
+        #: The mount's audit hook; this gate audits the refusals it decides.
+        self._audit = audit
+        #: Audit records of rejected states, kept in memory beside the hook.
         self.rejections: list[dict[str, str]] = []
 
     def __call__(
@@ -130,7 +142,10 @@ class ElicitationConfirmationGate:
         if not leaf.cls.requires_confirmation:
             return None
         if not client_supports_form_elicitation(rpc.params):
-            return header_confirmation_gate(request, leaf, rpc)
+            refusal = header_confirmation_gate(request, leaf, rpc)
+            if refusal is not None:
+                self._refused(leaf, ERR_CONFIRMATION_REQUIRED)
+            return refusal
 
         binding = Binding(
             tool=leaf.path_key,
@@ -158,6 +173,7 @@ class ElicitationConfirmationGate:
         if action == "accept":
             return None
         if action in ("decline", "cancel"):
+            self._refused(leaf, ERR_CONFIRMATION_DECLINED)
             return error_result_block("confirmation declined"), 200
         # The answer is missing or unusable: re-request the information
         # rather than erroring.
@@ -190,11 +206,21 @@ class ElicitationConfirmationGate:
         }
 
     def _audit_rejection(self, leaf: Leaf) -> None:
-        self.rejections.append(
-            {
-                "path": leaf.path_key,
-                "mcp_confirm_rejection": "request_state_verification_failed",
-            }
+        """Record a failed ``requestState`` verification: list, then hook."""
+        rejection = {
+            EXTRA_CONFIRM_REJECTION: CONFIRM_REJECTION_STATE_VERIFICATION_FAILED,
+        }
+        self.rejections.append({"path": leaf.path_key, **rejection})
+        self._refused(leaf, ERR_CONFIRMATION_STATE_REJECTED, extra=rejection)
+
+    def _refused(self, leaf: Leaf, error: str, *, extra: dict[str, str] | None = None) -> None:
+        """Audit one refusal this gate decided; the response is untouched."""
+        emit_audit(
+            self._audit,
+            path=leaf.path,
+            spec_version=MODERN_PROTOCOL_VERSION,
+            error=error,
+            extra=extra,
         )
 
 

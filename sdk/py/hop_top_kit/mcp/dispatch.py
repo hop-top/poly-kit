@@ -51,6 +51,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from .audit import AuditHook
 from .bridge import DEFAULT_TOOL_NAME_SEPARATOR, Bridge
 from .identity import Verifier
 from .legacy import LegacyHandler
@@ -161,6 +162,7 @@ class McpSurface:
         extensions: tuple[Any, ...] = (),
         verifier: Verifier | None = None,
         tool_name_separator: str = DEFAULT_TOOL_NAME_SEPARATOR,
+        audit: AuditHook | None = None,
     ) -> None:
         self.path = path
         self._legacy_enabled, self._modern_enabled = _resolve_spec_versions(spec_versions)
@@ -176,6 +178,7 @@ class McpSurface:
             server_version=server_version,
             verifier=verifier,
             tool_name_separator=tool_name_separator,
+            audit=audit,
         )
 
         gate = header_confirmation_gate
@@ -183,7 +186,10 @@ class McpSurface:
             from .modern_confirm import ElicitationConfirmationGate
 
             gate = ElicitationConfirmationGate(
-                confirmation_key, bridge, tool_name_separator=tool_name_separator
+                confirmation_key,
+                bridge,
+                tool_name_separator=tool_name_separator,
+                audit=audit,
             )
 
         advertised: dict[str, Any] = {}
@@ -204,6 +210,7 @@ class McpSurface:
             method_handlers=method_handlers,
             verifier=verifier,
             tool_name_separator=tool_name_separator,
+            audit=audit,
         )
         for extension in extensions:
             extension.bind(self.modern)
@@ -324,6 +331,13 @@ def mount_mcp(bridge: Bridge, **options: Any) -> McpSurface:
     ``^[A-Za-z0-9_-]{1,64}$``. An empty separator is a :class:`MountError`,
     and so is any separator but the default that a command name contains,
     since the name would not map back to one leaf.
+
+    ``audit`` receives one :class:`~hop_top_kit.mcp.audit.AuditRecord`
+    per refusal the surface decides before a call runs (auth refused,
+    confirmation required, declined or its state rejected, the
+    destructive ceiling), on both eras and over stdio: what Go's bridge
+    sinks see. Best-effort: it is called before the response is
+    returned and can never change it; an exception it raises is swallowed.
     """
     return McpSurface(bridge, **options)
 

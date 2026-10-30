@@ -20,6 +20,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from .audit import (
+    ERR_AUTH_REFUSED,
+    ERR_CONFIRMATION_REQUIRED,
+    ERR_DESTRUCTIVE_BLOCKED,
+    AuditHook,
+    emit_audit,
+)
 from .bridge import (
     DEFAULT_TOOL_NAME_SEPARATOR,
     Bridge,
@@ -72,12 +79,15 @@ class LegacyHandler:
         server_version: str,
         verifier: Verifier | None = None,
         tool_name_separator: str = DEFAULT_TOOL_NAME_SEPARATOR,
+        audit: AuditHook | None = None,
     ) -> None:
         self._bridge = bridge
         self._server_name = server_name
         self._server_version = server_version
         self._verifier = verifier
         self._tool_name_separator = tool_name_separator
+        #: The mount's audit hook: one record per refusal, best-effort.
+        self._audit = audit
 
     def serve(self, request: Request, rpc: RPCRequest) -> Response:
         """Route one already-parsed request by method."""
@@ -147,6 +157,7 @@ class LegacyHandler:
 
         ident = establish_caller(self._verifier, request)
         if auth_refused(leaf, ident):
+            self._refused(leaf, ERR_AUTH_REFUSED)
             return unauthenticated(
                 write_result(
                     rpc.id_raw,
@@ -164,6 +175,7 @@ class LegacyHandler:
         gate = preflight_refusal(request, leaf)
         if gate is not None:
             message, status = gate
+            self._refused(leaf, ERR_CONFIRMATION_REQUIRED)
             return write_result(rpc.id_raw, error_result_block(message), status)
 
         inv = Invocation(
@@ -177,11 +189,16 @@ class LegacyHandler:
         except (UnknownCommandError, SurfaceNotEnabledError):
             return write_error(rpc.id_raw, ERR_INVALID_PARAMS, f"unknown tool: {name}", STATUS_OK)
         except DestructiveBlockedError as exc:
+            self._refused(leaf, ERR_DESTRUCTIVE_BLOCKED)
             return write_result(rpc.id_raw, error_result_block(str(exc)), STATUS_OK)
         except Exception as exc:
             return write_result(rpc.id_raw, error_result_block(str(exc)), STATUS_OK)
 
         return write_result(rpc.id_raw, render_call_result(result), STATUS_OK)
+
+    def _refused(self, leaf: Leaf, error: str) -> None:
+        """Audit one pre-flight refusal of ``leaf``; the response is untouched."""
+        emit_audit(self._audit, path=leaf.path, spec_version=LEGACY_PROTOCOL_VERSION, error=error)
 
 
 # --- shared renderers ---------------------------------------------------

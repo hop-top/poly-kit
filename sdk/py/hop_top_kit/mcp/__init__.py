@@ -29,6 +29,7 @@ invariant structurally checkable rather than merely asserted.
 
 from __future__ import annotations
 
+from .audit import AuditHook, AuditRecord
 from .bridge import (
     Arg,
     Bridge,
@@ -97,6 +98,8 @@ __all__ = [
     "MODERN_PROTOCOL_VERSION",
     "SPEC_VERSIONS",
     "Arg",
+    "AuditHook",
+    "AuditRecord",
     "Bridge",
     "Command",
     "DestructiveBlockedError",
