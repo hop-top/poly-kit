@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.8...kit-py/v0.5.0-alpha.9) (2026-10-30)
+
+
+### Bug Fixes
+
+* **py/toolspec:** load flag default/choices, arg variadic, idempotent class ([1bf5661](https://github.com/hop-top/poly-kit/commit/1bf5661125db55af3354a43c7d316ef773bc56bc))
+
 ## [0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.7...kit-py/v0.5.0-alpha.8) (2026-10-30)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.8. This release includes new features and bug fixes.
