@@ -105,9 +105,9 @@ MODERN_META = {
 
 
 class Era:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, **mount: Any) -> None:
         self.name = name
-        self.surface = mount_mcp(Bridge(tree()))
+        self.surface = mount_mcp(Bridge(tree()), **mount)
 
     def _post(self, method: str, params: dict[str, Any], tool: str = "") -> tuple[int, Any]:
         headers: dict[str, str] = {}
@@ -288,3 +288,18 @@ def test_custom_runner_receives_args_on_the_invocation() -> None:
     (inv,) = seen
     assert inv.args == ["bolt"]
     assert inv.flags == {"count": 3}
+
+
+def test_positionals_under_a_non_default_separator(era: Era) -> None:
+    """The separator renames the tool; the args split is unchanged."""
+    sep = Era(era.name, tool_name_separator="_")
+    tools = sep.tools()
+    assert "item.add" not in tools
+    assert tools["item_add"]["inputSchema"]["properties"]["args"]["minItems"] == 1
+
+    status, text, is_error = sep.call("item_add", {"args": ["bolt", "-x"], "count": 2})
+    assert (status, text, is_error) == (200, "added ['bolt', '-x'] x2\n", False)
+
+    status, text, is_error = sep.call("item_add", {})
+    assert (status, is_error) == (200, True)
+    assert "missing required argument: name" in text
