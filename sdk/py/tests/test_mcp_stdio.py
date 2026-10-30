@@ -351,6 +351,65 @@ def test_confirmation_header_gate_cannot_be_satisfied() -> None:
     assert calls == []
 
 
+def test_confirms_in_band_over_mrtr_and_refuses_without_elicitation() -> None:
+    calls: list[int] = []
+    bridge = Bridge(
+        Command(
+            name="root",
+            children=[
+                Command(
+                    name="purge",
+                    short="Purge",
+                    run=lambda flags: calls.append(1) or Result(stdout="purged\n"),
+                    annotations={"kit/side-effect": "read", "kit/requires-confirmation": "true"},
+                )
+            ],
+        )
+    )
+    s = Session(bridge, mount={"confirmation_key": b"stdio-mrtr-suite-shared-secret-32"})
+
+    def call(id_: int, caps: dict, **extra) -> str:
+        meta = {
+            "io.modelcontextprotocol/clientCapabilities": caps,
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        }
+        params = {"name": "purge", "_meta": meta, **extra}
+        return json.dumps({"jsonrpc": "2.0", "id": id_, "method": "tools/call", "params": params})
+
+    def reply(n: int) -> dict:
+        deadline = time.monotonic() + 5
+        while len(s.lines()) < n and time.monotonic() < deadline:
+            time.sleep(0.005)
+        return json.loads(s.lines()[n - 1])
+
+    s.send(call(1, {"elicitation": {"form": {}}}))
+    r1 = reply(1)["result"]
+    assert r1["resultType"] == "input_required"
+    assert list(r1["inputRequests"]) == ["confirm"]
+    assert calls == []
+
+    s.send(
+        call(
+            2,
+            {"elicitation": {"form": {}}},
+            requestState=r1["requestState"],
+            inputResponses={"confirm": {"action": "accept"}},
+        )
+    )
+    r2 = reply(2)["result"]
+    assert r2["resultType"] == "complete"
+    assert r2["isError"] is False
+    assert calls == [1]
+
+    # No elicitation declared: the header gate applies, and stdio has no headers.
+    lines = run(s, call(3, {}))
+    r3 = json.loads(lines[2])["result"]
+    assert r3["resultType"] == "complete"
+    assert r3["isError"] is True
+    assert "confirmation required" in json.dumps(r3)
+    assert calls == [1]
+
+
 def test_waits_for_in_flight_before_done() -> None:
     gate = threading.Event()
 
