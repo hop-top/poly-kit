@@ -108,9 +108,13 @@ final readonly class Mount
     /**
      * Builds the dispatcher for this mount over $bridge.
      *
+     * $transport selects the binding: {@see Transport::Stdio} has no
+     * header layer, so the 2026-07-28 header checks (V4, V6, V7) do not
+     * apply there; every other check runs unchanged.
+     *
      * @throws \InvalidArgumentException when a command name contains a non-default tool-name separator
      */
-    public function dispatcher(Bridge $bridge): Dispatcher
+    public function dispatcher(Bridge $bridge, Transport $transport = Transport::Http): Dispatcher
     {
         $this->checkToolNameSeparator($bridge);
 
@@ -124,6 +128,7 @@ final readonly class Mount
                 $this->confirmationGate(),
                 $this->verifier,
                 $this->toolNameSeparator,
+                $transport,
             ),
             legacyEnabled: $this->serves(SpecVersion::Legacy),
             modernEnabled: $this->serves(SpecVersion::Modern),

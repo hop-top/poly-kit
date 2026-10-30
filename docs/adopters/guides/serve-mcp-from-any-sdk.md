@@ -191,6 +191,11 @@ The full PHP walkthrough — including the php-fpm superglobal bridge and
 the two PSR-7 pitfalls that break parity — is in the
 [PHP SDK README](../../../sdk/experimental/php/README.md).
 
+For a host that spawns the tool, `StdioServer::serve($bridge)` serves the
+same surface over newline-delimited stdin/stdout, answering requests one
+at a time, and returns when the host closes stdin; see the
+[PHP reference](../reference/php-sdk.md#hosting-stdio).
+
 ## Option reference
 
 The option **set** is normative across every port; only the spelling is
@@ -319,7 +324,7 @@ differences, and they are real:
 |---|---|---|---|---|---|
 | MRTR confirmation flow | yes | **no** | yes | yes | yes |
 | `tasks/*` extension | no | no | **opt-in** | opt-in | no |
-| stdio transport | `mcpsdk.ServeStdio` | `serveStdio` | `serve_stdio` | `Surface::serve_stdio` | no |
+| stdio transport | `mcpsdk.ServeStdio` | `serveStdio` | `serve_stdio` | `Surface::serve_stdio` | `StdioServer::serve` |
 | tool-name separator | `mcpsdk` only | yes | yes | yes | yes |
 
 **TypeScript accepts `confirmationKey` but does not act on it.** Its
