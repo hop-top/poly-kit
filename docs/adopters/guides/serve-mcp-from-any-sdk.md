@@ -213,6 +213,7 @@ idiomatic. Defaults match Go exactly.
 | `WithMCPConfirmationKey` | `confirmationKey` | `confirmation_key` | `confirmation_key` | `confirmationKey` | header gate |
 | `api.Auth` on the router | `verifier` | `verifier` | `verifier` | `verifier` | none: every `kit/auth-required` leaf refused |
 | none (`mcpsdk.WithToolNameSeparator`) | `toolNameSeparator` | `tool_name_separator` | `tool_name_separator` | `toolNameSeparator` | `.` |
+| `WithSinks` on the bridge | `audit` | `audit=` | `MountOptions.audit` | `Mount(audit:)` | none: refusals are not recorded |
 
 ### Name tools for hosts that refuse dots
 
@@ -298,6 +299,24 @@ tenant, and scopes to the bridge on the invocation's meta; the Rust and
 PHP bridges carry no invocation meta, so there the verifier gates the
 call and nothing more.
 
+### Audit
+
+Go audits every refusal the MCP surface makes, before adopter code
+runs, on the bridge's sinks. The ports have no sink registry, so each
+takes one mount-level hook instead: `audit` in TypeScript, `audit=` in
+Python, `MountOptions.audit` in Rust, `Mount(audit:)` in PHP. It is
+called once per refusal with a record carrying the leaf path, the
+surface `mcp`, when the refusal was decided, the spec version serving
+the request, Go's sentinel error message verbatim, and an extra bag
+with `mcp_spec_version` always. Five events are recorded: auth refused,
+confirmation required, confirmation declined, confirmation state
+rejected (which adds `mcp_confirm_rejection:
+request_state_verification_failed`), and the destructive ceiling. The
+hook runs after the refusal is decided and before the response is
+returned, and it is best-effort: a throwing hook never changes the wire
+response. A call that ran, an unknown tool, malformed arguments, and an
+authentic but expired `requestState` record nothing.
+
 ### Mount-time errors are refused, not absorbed
 
 Two misconfigurations fail the mount in every port rather than starting
@@ -327,6 +346,7 @@ differences, and they are real:
 | `tasks/*` extension | no | no | **opt-in** | opt-in | no |
 | stdio transport | `mcpsdk.ServeStdio` | `serveStdio` | `serve_stdio` | `Surface::serve_stdio` | `StdioServer::serve` |
 | tool-name separator | `mcpsdk` only | yes | yes | yes | yes |
+| refusal audit hook | bridge sinks | yes | yes | yes | yes |
 
 Python and Rust can serve the `tasks/*` extension when mounted
 explicitly — `mount_mcp(bridge, extensions=(TasksExtension(),))` in
