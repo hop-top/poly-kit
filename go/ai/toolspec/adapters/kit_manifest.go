@@ -212,7 +212,7 @@ func projectManifestArgs(args []toolspec.Arg) []toolspec.ManifestArg {
 	}
 	out := make([]toolspec.ManifestArg, len(args))
 	for i, a := range args {
-		out[i] = toolspec.ManifestArg{Name: a.Name, Required: a.Required, Variadic: a.Variadic}
+		out[i] = toolspec.ManifestArg(a)
 	}
 	return out
 }
