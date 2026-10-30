@@ -31,10 +31,17 @@ final readonly class Mount
      * a command name contains is refused by {@see self::dispatcher()},
      * since the name would not map back to one leaf.
      *
+     * `$audit` receives one {@see AuditRecord} per refusal the surface
+     * makes before adopter code runs — the parity hook for Go's bridge
+     * sinks. It is called after the refusal is decided and before the
+     * response is returned, and it is best-effort: a hook that throws
+     * changes nothing on the wire.
+     *
      * @param list<SpecVersion>                   $specVersions      revisions this mount serves
      * @param list<string>                        $originAllowlist   allowed `Origin` values; empty disables the check
      * @param (\Closure(Request): ?Identity)|null $verifier          establishes the caller of each `tools/call`
      * @param string                              $toolNameSeparator joins a leaf path into its tool name
+     * @param (\Closure(AuditRecord): void)|null  $audit             observes each pre-flight refusal
      */
     public function __construct(
         public string $path = '/mcp',
@@ -45,6 +52,7 @@ final readonly class Mount
         public ?string $confirmationKey = null,
         public ?\Closure $verifier = null,
         public string $toolNameSeparator = Leaf::DEFAULT_TOOL_NAME_SEPARATOR,
+        public ?\Closure $audit = null,
     ) {
         if ([] === $specVersions) {
             throw new \InvalidArgumentException(
@@ -88,15 +96,19 @@ final readonly class Mount
      * A configured key opts into the MRTR elicitation flow; without one
      * the surface keeps the `X-Confirm-Token` header check.
      */
-    private function confirmationGate(): ConfirmationGate
+    private function confirmationGate(Auditor $auditor): ConfirmationGate
     {
+        $header = new HeaderConfirmationGate($auditor);
+
         if (null === $this->confirmationKey) {
-            return new HeaderConfirmationGate();
+            return $header;
         }
 
         return new ElicitationConfirmationGate(
             new ConfirmationState($this->confirmationKey),
+            fallback: $header,
             toolNameSeparator: $this->toolNameSeparator,
+            auditor: $auditor,
         );
     }
 
@@ -118,17 +130,26 @@ final readonly class Mount
     {
         $this->checkToolNameSeparator($bridge);
 
+        $auditor = new Auditor($this->audit);
+
         return new Dispatcher(
-            legacy: new LegacyHandler($bridge, $this->serverInfo, $this->verifier, $this->toolNameSeparator),
+            legacy: new LegacyHandler(
+                $bridge,
+                $this->serverInfo,
+                $this->verifier,
+                $this->toolNameSeparator,
+                $auditor,
+            ),
             modern: new ModernHandler(
                 $bridge,
                 $this->serverInfo,
                 $this->cacheHints,
                 $this->originAllowlist,
-                $this->confirmationGate(),
+                $this->confirmationGate($auditor),
                 $this->verifier,
                 $this->toolNameSeparator,
                 $transport,
+                $auditor,
             ),
             legacyEnabled: $this->serves(SpecVersion::Legacy),
             modernEnabled: $this->serves(SpecVersion::Modern),

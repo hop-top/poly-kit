@@ -22,6 +22,7 @@ final readonly class ModernHandler
      * @param (\Closure(Request): ?Identity)|null $verifier          establishes the caller of each `tools/call`
      * @param string                              $toolNameSeparator joins a leaf path into its tool name
      * @param Transport                           $transport         stdio skips the header checks V4, V6, V7
+     * @param Auditor                             $auditor           observes each refusal before it is answered
      */
     public function __construct(
         private Bridge $bridge,
@@ -32,6 +33,7 @@ final readonly class ModernHandler
         private ?\Closure $verifier = null,
         private string $toolNameSeparator = Leaf::DEFAULT_TOOL_NAME_SEPARATOR,
         private Transport $transport = Transport::Http,
+        private Auditor $auditor = new Auditor(),
     ) {
     }
 
@@ -286,6 +288,8 @@ final readonly class ModernHandler
         // header does not.
         $identity = Identity::establish($this->verifier, $request);
         if ($leaf->class->authRequired && null === $identity) {
+            $this->auditor->refused($leaf, SpecVersion::Modern, AuditRecord::ERR_AUTH_REFUSED);
+
             return Response::result($request, $this->stamp(CallResult::errorBlock('authentication required')), 401)
                 ->unauthenticated();
         }
@@ -303,7 +307,11 @@ final readonly class ModernHandler
             $result = $this->bridge->invoke($name, $arguments, Surface::Mcp, $this->toolNameSeparator);
         } catch (UnknownCommandException|SurfaceNotEnabledException) {
             return Response::error($request, ErrorCodes::INVALID_PARAMS, 'unknown tool: '.$name, 200);
-        } catch (BridgeException $e) {
+        } catch (DestructiveBlockedException $e) {
+            // Audited before it is answered, as the Go bridge audits every
+            // refusal; the isError result at 200 is unchanged.
+            $this->auditor->refused($leaf, SpecVersion::Modern, AuditRecord::ERR_DESTRUCTIVE_BLOCKED);
+
             return Response::result($request, $this->stamp(CallResult::errorBlock($e->getMessage())), 200);
         }
 

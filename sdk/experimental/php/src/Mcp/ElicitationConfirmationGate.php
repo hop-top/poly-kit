@@ -24,13 +24,15 @@ final readonly class ElicitationConfirmationGate implements ConfirmationGate
 
     /**
      * $toolNameSeparator names the tool in the prompt as the mount names
-     * it in `tools/list`.
+     * it in `tools/list`. $auditor observes a declined answer and a
+     * rejected state; the fallback gate audits its own refusal.
      */
     public function __construct(
         private ConfirmationState $state,
         private HeaderConfirmationGate $fallback = new HeaderConfirmationGate(),
         private ?\Closure $clock = null,
         private string $toolNameSeparator = Leaf::DEFAULT_TOOL_NAME_SEPARATOR,
+        private Auditor $auditor = new Auditor(),
     ) {
     }
 
@@ -55,16 +57,32 @@ final readonly class ElicitationConfirmationGate implements ConfirmationGate
 
         // An unverifiable or stale token re-prompts rather than failing
         // the call: the user can still approve, and a silent retry loop is
-        // preferable to surfacing a token error they cannot act on.
-        if (ConfirmationStatus::Valid !== $this->state->verify($presented, $binding, $now)) {
+        // preferable to surfacing a token error they cannot act on. Only
+        // a token that fails verification is audited — tampered, forged
+        // or bound to another call — while an authentic one that merely
+        // expired is re-asked silently, as Go does.
+        $status = $this->state->verify($presented, $binding, $now);
+
+        if (ConfirmationStatus::Invalid === $status) {
+            $this->auditor->refused(
+                $leaf,
+                SpecVersion::Modern,
+                AuditRecord::ERR_CONFIRMATION_STATE_REJECTED,
+                ['mcp_confirm_rejection' => AuditRecord::CONFIRM_REJECTION_STATE],
+            );
+        }
+
+        if (ConfirmationStatus::Valid !== $status) {
             return [$this->prompt($leaf, $binding), 200];
         }
 
-        return match ($action) {
-            'accept' => null,
-            'decline', 'cancel' => [CallResult::errorBlock('confirmation declined'), 200],
-            default => [$this->prompt($leaf, $binding), 200],
-        };
+        if ('decline' === $action || 'cancel' === $action) {
+            $this->auditor->refused($leaf, SpecVersion::Modern, AuditRecord::ERR_CONFIRMATION_DECLINED);
+
+            return [CallResult::errorBlock('confirmation declined'), 200];
+        }
+
+        return 'accept' === $action ? null : [$this->prompt($leaf, $binding), 200];
     }
 
     /**

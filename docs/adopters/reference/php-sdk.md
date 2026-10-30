@@ -377,6 +377,38 @@ new Mount(confirmationKey: $key);   // HMAC key, never a user-supplied value
 Clients that do not advertise form elicitation keep the header gate — the
 spec forbids sending input requests to a client that cannot answer them.
 
+### Audit
+
+The Go surface audits every refusal it makes before adopter code runs
+through the bridge's sinks; here the same stream is one mount option.
+`audit` receives an `AuditRecord` per pre-flight refusal, in both eras and
+over stdio alike:
+
+```php
+new Mount(audit: function (AuditRecord $record): void {
+    $logger->warning($record->error, [
+        'tool' => implode(' ', $record->path),   // ["widget", "delete"]
+        'at' => $record->requestedAt,            // UTC
+        ...$record->extra,                       // mcp_spec_version, ...
+    ]);
+});
+```
+
+| Refusal | `error` (the Go sentinel, verbatim) | `extra` beyond `mcp_spec_version` |
+|---|---|---|
+| `kit/auth-required` leaf, no established caller | `cmdsurface: authentication refused` | |
+| confirmation gate unsatisfied (no `X-Confirm-Token`; no form elicitation) | `mcpsdk: confirmation required` | |
+| confirmation declined or cancelled (MRTR) | `mcpsdk: confirmation declined` | |
+| `requestState` failed verification (MRTR) | `mcpsdk: confirmation requestState failed verification` | `mcp_confirm_rejection: request_state_verification_failed` |
+| destructive leaf above the policy ceiling | `cmdsurface: destructive command blocked on this surface` | |
+
+`surface` is always `mcp`; `specVersion` is the era that answered. An
+authentic `requestState` that merely expired is re-asked without a record,
+and nothing is recorded for an unknown tool, malformed arguments, a
+refused `Origin`, or a call that ran. The hook is called synchronously
+after the refusal is decided and before the response is written, and it is
+best-effort: a hook that throws changes nothing on the wire.
+
 ### Protocol layer
 
 The surface implements the JSON-RPC framing and era detection directly

@@ -22,12 +22,14 @@ final readonly class LegacyHandler
     /**
      * @param (\Closure(Request): ?Identity)|null $verifier          establishes the caller of each `tools/call`
      * @param string                              $toolNameSeparator joins a leaf path into its tool name
+     * @param Auditor                             $auditor           observes each refusal before it is answered
      */
     public function __construct(
         private Bridge $bridge,
         private ServerInfo $serverInfo = new ServerInfo(),
         private ?\Closure $verifier = null,
         private string $toolNameSeparator = Leaf::DEFAULT_TOOL_NAME_SEPARATOR,
+        private Auditor $auditor = new Auditor(),
     ) {
     }
 
@@ -115,11 +117,15 @@ final readonly class LegacyHandler
         // header does not.
         $identity = Identity::establish($this->verifier, $request);
         if ($leaf->class->authRequired && null === $identity) {
+            $this->auditor->refused($leaf, SpecVersion::Legacy, AuditRecord::ERR_AUTH_REFUSED);
+
             return Response::result($request, CallResult::errorBlock('authentication required'), 401)
                 ->unauthenticated();
         }
 
         if ($leaf->class->requiresConfirmation && '' === $request->header('X-Confirm-Token')) {
+            $this->auditor->refused($leaf, SpecVersion::Legacy, AuditRecord::ERR_CONFIRMATION_REQUIRED);
+
             return Response::result($request, CallResult::errorBlock('confirmation required'), 428);
         }
 
@@ -129,9 +135,12 @@ final readonly class LegacyHandler
             $result = $this->bridge->invoke($name, $arguments, Surface::Mcp, $this->toolNameSeparator);
         } catch (UnknownCommandException|SurfaceNotEnabledException) {
             return Response::error($request, ErrorCodes::INVALID_PARAMS, 'unknown tool: '.$name, 200);
-        } catch (BridgeException $e) {
-            // Destructive blocks and runner failures alike surface as an
-            // isError result at 200, never as a transport error.
+        } catch (DestructiveBlockedException $e) {
+            // A destructive block surfaces as an isError result at 200,
+            // never as a transport error; it is audited first, as the Go
+            // bridge audits every refusal before answering.
+            $this->auditor->refused($leaf, SpecVersion::Legacy, AuditRecord::ERR_DESTRUCTIVE_BLOCKED);
+
             return Response::result($request, CallResult::errorBlock($e->getMessage()), 200);
         }
 
