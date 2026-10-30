@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.7...kit-py/v0.5.0-alpha.8) (2026-10-30)
+
+
+### Features
+
+* **mcp:** tool_name_separator mount option in py sdk ([fd51fda](https://github.com/hop-top/poly-kit/commit/fd51fdacd1c150d95752d310f61a92d50fb6bed7))
+* **py/mcp:** audit mount hook for refusals ([d778df5](https://github.com/hop-top/poly-kit/commit/d778df54950e5653c8de27cde6348e3122a6248c))
+* **py/mcp:** positional args via args array ([1137e3a](https://github.com/hop-top/poly-kit/commit/1137e3a5119978f43822dd5d4f5de8d32f041d58))
+* **py/mcp:** serve_stdio transport ([dcb8aaa](https://github.com/hop-top/poly-kit/commit/dcb8aaa389bb1027d87acdf41db1ec1c13155f0a))
+
+
+### Bug Fixes
+
+* **mcp:** no reply to notifications; ping returns {} ([f24c097](https://github.com/hop-top/poly-kit/commit/f24c09796642894a2329a6170a160283a15c38af))
+* **py/alias:** default bridge proxies multi-word targets ([886d71a](https://github.com/hop-top/poly-kit/commit/886d71a35e43cbf925894f34b5720277b2016efb))
+* **py/alias:** offer default alias proxies in completion ([4ee0678](https://github.com/hop-top/poly-kit/commit/4ee06783f44502753aaab95d7aa5498d520502ff))
+* **py/config:** deep-merge layers like other ports ([a7d1700](https://github.com/hop-top/poly-kit/commit/a7d1700d0c430dea01521850db6b970ecc8cab03))
+* **py/toolspec:** loader types match go/ts spec ([2af0824](https://github.com/hop-top/poly-kit/commit/2af082460f116b14ab58f5fa3ab3dec67e3133ea))
+
 ## [0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.6...kit-py/v0.5.0-alpha.7) (2026-10-29)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.7. This release includes new features.
