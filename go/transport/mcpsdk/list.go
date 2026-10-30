@@ -40,7 +40,7 @@ func (s *Surface) callerToolList(next mcp.MethodHandler) mcp.MethodHandler {
 		}
 		leaves := make(map[string]*cmdsurface.Leaf)
 		for _, leaf := range s.b.Leaves() {
-			leaves[toolName(leaf.Path)] = leaf
+			leaves[s.toolName(leaf.Path)] = leaf
 		}
 		kept := make([]*mcp.Tool, 0, len(list.Tools))
 		for _, t := range list.Tools {

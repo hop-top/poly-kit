@@ -158,6 +158,17 @@ Expect one entry per enabled leaf, with `name` as the dotted path and
 `inputSchema` built from that command's flags and declared
 positional arguments (an `args` array; see
 [positional arguments](expose-cli-over-mcp.md#positional-arguments)).
+
+A host that admits only `^[A-Za-z0-9_-]{1,64}$` tool names refuses or
+rewrites `widget.add`. Join with another separator at mount:
+
+```go
+mcpsdk.Mount(b, r, mcpsdk.WithToolNameSeparator("_")) // widget_add
+```
+
+The mount fails if a command name contains the separator (`data_sync`
+under `_`), since that name would not map back to one leaf. See
+[Tool names](../reference/mcpsdk.md#tool-names).
 If a command is
 missing, it is either hidden/deprecated in cobra, not runnable, or
 disabled for `SurfaceMCP`.
@@ -276,7 +287,7 @@ nothing you do with it:
   `AddTool` overwrites an existing tool of the same name without
   error. `m.AddTool(&mcp.Tool{Name: "widget.delete"}, myHandler)`
   swaps kit's policy-gated binding for `myHandler`, which then runs
-  ungated. **Treat kit's dotted leaf names as reserved** and never
+  ungated. **Treat kit's leaf tool names as reserved** and never
   reuse them.
 - **Calling the Runner directly bypasses the policy gate.** A handler
   that reaches for `Bridge.Runner().Run` skips the enablement and
@@ -409,7 +420,7 @@ with no session affinity. `WithJSONResponse()` additionally returns
 
 ```go
 s, err := mcpsdk.New(b, mcpsdk.WithTasks(mcpsdk.TasksConfig{
-    Tools: []string{"report.generate"}, // task-eligible, by dotted tool name
+    Tools: []string{"report.generate"}, // task-eligible, by tool name
     TTL:   30 * time.Minute,            // zero applies the 15m default
 }))
 ```

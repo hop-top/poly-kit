@@ -21,15 +21,15 @@ import (
 	"hop.top/kit/go/transport/cmdsurface"
 )
 
-// toolFor renders one bridge leaf as an SDK tool descriptor. Tool
-// name is the dotted leaf path (e.g. "widget.add"), identical to the
-// hand-rolled surface so clients can switch implementations without
-// re-learning tool names. The destructive hint mirrors the bridge's
-// safety classification.
-func toolFor(leaf *cmdsurface.Leaf) *mcp.Tool {
+// toolFor renders one bridge leaf as an SDK tool descriptor named
+// name: by default the dotted leaf path (e.g. "widget.add"),
+// identical to the hand-rolled surface so clients can switch
+// implementations without re-learning tool names. The destructive
+// hint mirrors the bridge's safety classification.
+func toolFor(leaf *cmdsurface.Leaf, name string) *mcp.Tool {
 	destructive := leaf.Class.Destructive
 	return &mcp.Tool{
-		Name:        toolName(leaf.Path),
+		Name:        name,
 		Description: cmdsurface.MCPToolDescription(leaf),
 		InputSchema: cmdsurface.MCPInputSchema(leaf),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive},
@@ -71,7 +71,7 @@ func (s *Surface) toolHandler(leaf *cmdsurface.Leaf) mcp.ToolHandler {
 	b, tb := s.b, s.tasks
 	path := append([]string(nil), leaf.Path...)
 	cls := leaf.Class
-	name := toolName(leaf.Path)
+	name := s.toolName(leaf.Path)
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		inv := cmdsurface.Invocation{Path: path, Meta: s.callMeta(ctx, req)}
 		inv.Meta.IdempotencyKey = callIdempotencyKey(req, inv.Meta.IdempotencyKey)
@@ -220,8 +220,33 @@ func errorResult(msg string) *mcp.CallToolResult {
 	}
 }
 
-// toolName renders a leaf path as a dotted MCP tool name.
-func toolName(path []string) string { return strings.Join(path, ".") }
+// toolName renders a leaf path as its MCP tool name, joined with the
+// configured separator (see [WithToolNameSeparator]).
+func (s *Surface) toolName(path []string) string { return joinToolName(path, s.cfg.toolSep) }
+
+// joinToolName joins a leaf path into a tool name with sep.
+func joinToolName(path []string, sep string) string { return strings.Join(path, sep) }
+
+// checkToolNameSeparator refuses an empty separator and, for any but
+// the default, a leaf path segment containing it: such a tool name
+// would not map back to one leaf.
+func checkToolNameSeparator(b *cmdsurface.Bridge, sep string) error {
+	if sep == "" {
+		return errors.New("mcpsdk: WithToolNameSeparator: empty separator")
+	}
+	if sep == defaultToolNameSeparator {
+		return nil
+	}
+	for _, leaf := range b.Leaves() {
+		for _, seg := range leaf.Path {
+			if strings.Contains(seg, sep) {
+				return fmt.Errorf("mcpsdk: WithToolNameSeparator: command %q in %q contains separator %q",
+					seg, leaf.PathKey(), sep)
+			}
+		}
+	}
+	return nil
+}
 
 // errMalformedArguments marks arguments that are not a JSON object:
 // a protocol error rather than a tool result.
