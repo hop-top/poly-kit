@@ -295,8 +295,8 @@ declares form elicitation.
 `spec_versions` (`None` = both eras), `cache_ttl_ms` (`0`),
 `cache_scope` (`Private`), `origin_allowlist` (empty, no check),
 `confirmation_key` (`None`), `tasks_enabled` (`false`),
-`tool_name_separator` (`.`). The option *set* is normative across every
-kit SDK; only the spelling is idiomatic.
+`tool_name_separator` (`.`), `audit` (`None`). The option *set* is
+normative across every kit SDK; only the spelling is idiomatic.
 
 `tool_name_separator` joins a leaf path into its tool name: `"_"` names
 the leaf `widget add` `widget_add`, for hosts that admit only
@@ -340,6 +340,50 @@ established: `MountOptions::verifier`, a `Verifier::new(|req| ...)`
 returning `Option<Identity>`. An `Authorization` header alone is refused
 with 401, and the refusal's `Response::www_authenticate` carries the
 `Bearer` challenge for your binding to write. See [Admit authenticated callers](../guides/serve-mcp-from-any-sdk.md#admit-authenticated-callers).
+
+### Audit
+
+Go's bridge audits every refusal the MCP surface decides before adopter
+code runs (`cmdsurface.Bridge.Audit`). This port has no sink
+abstraction; `MountOptions::audit` is the one hook, an
+`Arc<dyn Fn(&AuditRecord) + Send + Sync>`, called with one record per
+refusal on both eras and over stdio:
+
+```rust
+use std::sync::Arc;
+use hop_top_kit::mcp::{AuditRecord, MountOptions};
+
+let options = MountOptions {
+    audit: Some(Arc::new(|record: &AuditRecord| {
+        eprintln!("{} refused: {} {:?}", record.surface, record.error, record.path);
+    })),
+    ..MountOptions::default()
+};
+```
+
+`AuditRecord` is the pre-flight subset of Go's `cmdsurface.Invocation`:
+`path` (the resolved leaf's segments), `surface` (`"mcp"`),
+`requested_at` (when the refusal was decided), `spec_version`
+(`2024-11-05` or `2026-07-28`), `error` (Go's sentinel message,
+verbatim) and `extra` (`mcp_spec_version` always; the keys below). No
+caller, arguments or flags: none is established or decoded when these
+gates answer.
+
+| Event | `error` | `extra` beyond `mcp_spec_version` |
+|-------|---------|-----------------------------------|
+| auth-required leaf, no caller established (both eras) | `cmdsurface: authentication refused` | — |
+| confirmation gate unsatisfied: no `X-Confirm-Token`, or the keyed mount's no-elicitation fallback (both eras) | `mcpsdk: confirmation required` | — |
+| confirmation answered decline or cancel (2026-07-28) | `mcpsdk: confirmation declined` | — |
+| `requestState` failed verification: tampered, malformed, another key, binding or principal (2026-07-28) | `mcpsdk: confirmation requestState failed verification` | `mcp_confirm_rejection: request_state_verification_failed` |
+| destructive leaf above the policy ceiling (both eras) | `cmdsurface: destructive command blocked on this surface` | — |
+
+The sentinels are the `mcp::audit::ERR_*` constants. The hook is
+best-effort: it runs synchronously after the refusal is decided and
+before the response is returned, and a panic inside it is caught and
+dropped, so it can never change the wire response. Not audited: an
+unknown tool, malformed arguments, the origin allowlist, a run's own
+outcome, and an expired-but-authentic `requestState` (a silent
+re-prompt, as in Go).
 
 ### Long-lived mounts
 

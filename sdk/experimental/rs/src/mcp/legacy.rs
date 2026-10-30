@@ -12,6 +12,7 @@
 
 use serde_json::{Map, Value};
 
+use super::audit::{self, Refusal};
 use super::bridge::{Bridge, CallResult, InvokeError};
 use super::identity::Identity;
 use super::safety::Surface;
@@ -172,9 +173,11 @@ fn handle_tools_call(
 
     // Pre-flight gates: mirrored on the result envelope so MCP-aware
     // clients see isError while HTTP-only clients see the status code.
-    // Only the mount's verifier authenticates: a bare Authorization
-    // header does not.
+    // Each refusal is audited before it is answered, as Go's bridge
+    // audits. Only the mount's verifier authenticates: a bare
+    // Authorization header does not.
     if leaf.class.auth_required && caller.is_none() {
+        audit::emit(cfg, leaf, PROTOCOL_VERSION, Refusal::AuthRefused);
         return result_response(
             401,
             req.id.as_ref(),
@@ -183,6 +186,7 @@ fn handle_tools_call(
         .unauthenticated();
     }
     if leaf.class.requires_confirmation && headers.get("X-Confirm-Token").is_none() {
+        audit::emit(cfg, leaf, PROTOCOL_VERSION, Refusal::ConfirmationRequired);
         return result_response(
             428,
             req.id.as_ref(),
@@ -202,8 +206,15 @@ fn handle_tools_call(
             unknown_tool(req, name)
         }
         // DestructiveBlocked and every other failure alike: an isError
-        // result at HTTP 200, never a transport error.
-        Err(err) => result_response(200, req.id.as_ref(), &error_result_block(&err.to_string())),
+        // result at HTTP 200, never a transport error. Only the ceiling
+        // is a refusal Go's bridge audits; a handler failure is a run's
+        // own outcome.
+        Err(err) => {
+            if matches!(err, InvokeError::DestructiveBlocked { .. }) {
+                audit::emit(cfg, leaf, PROTOCOL_VERSION, Refusal::DestructiveBlocked);
+            }
+            result_response(200, req.id.as_ref(), &error_result_block(&err.to_string()))
+        }
     }
 }
 
