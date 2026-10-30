@@ -115,7 +115,10 @@ export class ModernMcpHandler {
     private readonly transport: McpTransport = 'http',
   ) {
     if (cfg.confirmationKey !== undefined) {
-      this.confirmGate = new ElicitationConfirmGate(cfg.confirmationKey);
+      this.confirmGate = new ElicitationConfirmGate(
+        cfg.confirmationKey,
+        cfg.toolNameSeparator,
+      );
     }
   }
 
@@ -283,7 +286,7 @@ export class ModernMcpHandler {
     const tools: Array<Record<string, unknown>> = [];
     for (const leaf of this.bridge.leaves()) {
       if (!isExposed(leaf)) continue;
-      tools.push(buildToolEnvelope(leaf));
+      tools.push(buildToolEnvelope(leaf, this.cfg.toolNameSeparator));
     }
     const res: Record<string, unknown> = { tools };
     this.applyCacheHints(res);
@@ -330,7 +333,7 @@ export class ModernMcpHandler {
       );
     }
 
-    const leaf = resolveLeaf(this.bridge, name);
+    const leaf = resolveLeaf(this.bridge, name, this.cfg.toolNameSeparator);
     if (leaf === undefined || !isExposed(leaf)) {
       return writeError(
         rpc.id,

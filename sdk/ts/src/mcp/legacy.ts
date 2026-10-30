@@ -186,7 +186,7 @@ export class LegacyMcpHandler {
     const tools: Array<Record<string, unknown>> = [];
     for (const leaf of this.bridge.leaves()) {
       if (!isExposed(leaf)) continue;
-      tools.push(buildToolEnvelope(leaf));
+      tools.push(buildToolEnvelope(leaf, this.cfg.toolNameSeparator));
     }
     return tools;
   }
@@ -214,7 +214,7 @@ export class LegacyMcpHandler {
       );
     }
 
-    const leaf = resolveLeaf(this.bridge, name);
+    const leaf = resolveLeaf(this.bridge, name, this.cfg.toolNameSeparator);
     if (leaf === undefined || !isExposed(leaf)) {
       return writeError(
         rpc.id,
@@ -298,12 +298,13 @@ export function isExposed(leaf: Leaf): boolean {
   return leaf.enabled?.[SURFACE_MCP] !== false;
 }
 
-/** Resolves a dotted tool name to a leaf, or undefined. */
+/** Resolves a tool name, split on `separator`, to a leaf, or undefined. */
 export function resolveLeaf(
   bridge: McpBridge,
   name: string,
+  separator?: string,
 ): Leaf | undefined {
-  const path = pathFromToolName(name);
+  const path = pathFromToolName(name, separator);
   if (path.length === 0) return undefined;
   return bridge
     .leaves()

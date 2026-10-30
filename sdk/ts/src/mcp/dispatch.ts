@@ -28,6 +28,7 @@ import {
   META_KEY_PROTOCOL_VERSION,
   HEADER_MCP_METHOD,
   HEADER_MCP_NAME,
+  checkToolNameSeparator,
   RawJSON,
   resolveMcpConfig,
   type McpBridge,
@@ -244,6 +245,7 @@ export class McpDispatcher {
     private readonly cfg: ResolvedMcpConfig,
     transport: McpTransport = 'http',
   ) {
+    checkToolNameSeparator(bridge.leaves(), cfg.toolNameSeparator);
     this.legacy = new LegacyMcpHandler(bridge, cfg);
     this.modern = new ModernMcpHandler(bridge, cfg, transport);
   }

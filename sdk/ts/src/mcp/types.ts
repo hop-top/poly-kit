@@ -79,6 +79,8 @@ export type McpCacheScope = 'public' | 'private';
 export const DEFAULT_MCP_SERVER_NAME = 'cmdsurface';
 export const DEFAULT_MCP_SERVER_VERSION = '0.0.0';
 export const DEFAULT_MCP_PATH = '/mcp';
+/** Default string joining a leaf path into its MCP tool name. */
+export const DEFAULT_TOOL_NAME_SEPARATOR = '.';
 
 // --- safety gate --------------------------------------------------------
 
@@ -363,6 +365,14 @@ export interface McpMountOptions {
    * is established, so every `kit/auth-required` leaf is refused.
    */
   verifier?: McpVerifier;
+  /**
+   * Joins a leaf path into its tool name, and splits a called name
+   * back. Default ".". `"_"` names the leaf `widget add` `widget_add`,
+   * for hosts that admit only `^[A-Za-z0-9_-]{1,64}$`. Empty is a
+   * mount-time error, and so is any separator but the default that a
+   * command name contains: the name would not map back to one leaf.
+   */
+  toolNameSeparator?: string;
 }
 
 /** Resolved, validated mount configuration. */
@@ -378,6 +388,7 @@ export interface ResolvedMcpConfig {
   confirmationKey?: Uint8Array;
   policy: Policy;
   verifier?: McpVerifier;
+  toolNameSeparator: string;
 }
 
 /**
@@ -441,6 +452,11 @@ export function resolveMcpConfig(
     confirmationKey = key;
   }
 
+  const toolNameSeparator = opts.toolNameSeparator ?? DEFAULT_TOOL_NAME_SEPARATOR;
+  if (toolNameSeparator === '') {
+    throw new Error('cmdsurface: toolNameSeparator: empty separator');
+  }
+
   return {
     path: opts.path ?? DEFAULT_MCP_PATH,
     serverName: opts.serverInfo?.name ?? DEFAULT_MCP_SERVER_NAME,
@@ -453,26 +469,54 @@ export function resolveMcpConfig(
     confirmationKey,
     policy: opts.policy ?? defaultPolicy(),
     verifier: opts.verifier,
+    toolNameSeparator,
   };
 }
 
 // --- tool naming --------------------------------------------------------
 
-/** Renders a leaf path as a dotted MCP tool name. */
-export function toolName(path: string[]): string {
-  return path.join('.');
+/** Renders a leaf path as an MCP tool name, joined with `separator`. */
+export function toolName(
+  path: string[],
+  separator: string = DEFAULT_TOOL_NAME_SEPARATOR,
+): string {
+  return path.join(separator);
 }
 
-/** Splits a dotted MCP tool name back into a leaf path. */
-export function pathFromToolName(name: string): string[] {
+/** Splits an MCP tool name back into a leaf path on `separator`. */
+export function pathFromToolName(
+  name: string,
+  separator: string = DEFAULT_TOOL_NAME_SEPARATOR,
+): string[] {
   if (name === '') return [];
-  return name.split('.');
+  return name.split(separator);
+}
+
+/**
+ * Refuses, for any separator but the default, a leaf whose command
+ * name contains it: its tool name would not split back to one leaf.
+ */
+export function checkToolNameSeparator(leaves: Leaf[], separator: string): void {
+  if (separator === DEFAULT_TOOL_NAME_SEPARATOR) return;
+  for (const leaf of leaves) {
+    for (const seg of leaf.path) {
+      if (seg.includes(separator)) {
+        throw new Error(
+          `cmdsurface: toolNameSeparator: command ${JSON.stringify(seg)} in ` +
+            `${JSON.stringify(leaf.path.join(' '))} contains separator ${JSON.stringify(separator)}`,
+        );
+      }
+    }
+  }
 }
 
 /** Renders one leaf as an MCP tool descriptor (shared by both eras). */
-export function buildToolEnvelope(leaf: Leaf): Record<string, unknown> {
+export function buildToolEnvelope(
+  leaf: Leaf,
+  separator: string = DEFAULT_TOOL_NAME_SEPARATOR,
+): Record<string, unknown> {
   return {
-    name: toolName(leaf.path),
+    name: toolName(leaf.path, separator),
     description: mcpToolDescription(leaf),
     inputSchema: mcpInputSchema(leaf),
   };

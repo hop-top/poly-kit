@@ -745,13 +745,21 @@ requests fail its header checks.
 
 `path` (`/mcp`), `serverInfo` (`cmdsurface` / `0.0.0`), `specVersions`
 (both eras), `cacheHints` (`ttlMs` 0, `cacheScope` `private`),
-`originAllowlist` (empty, no check), `confirmationKey`, and `policy`
-(`defaultPolicy()`). The option *set* is normative across every kit SDK;
-only the spelling is idiomatic.
+`originAllowlist` (empty, no check), `confirmationKey`, `policy`
+(`defaultPolicy()`), and `toolNameSeparator` (`.`). The option *set* is
+normative across every kit SDK; only the spelling is idiomatic.
 
 An explicitly empty `specVersions`, a negative ttl, an unrecognized
 cache scope, or an empty confirmation key all throw at mount time rather
 than starting a server that quietly serves nothing.
+
+`toolNameSeparator` joins a leaf path into its tool name and splits a
+called name back: `'_'` names the leaf `widget add` `widget_add`, for
+hosts that admit only `^[A-Za-z0-9_-]{1,64}$`. The mount throws on an
+empty separator and, for any separator other than `.`, on a command
+name that contains it (`data_sync` under `_` would not map back to one
+leaf). `toolName(path, sep)` and `pathFromToolName(name, sep)` are the
+same functions, exported.
 
 ### Safety
 

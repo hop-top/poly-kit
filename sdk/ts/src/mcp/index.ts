@@ -94,6 +94,7 @@ export {
   DEFAULT_MCP_PATH,
   DEFAULT_MCP_SERVER_NAME,
   DEFAULT_MCP_SERVER_VERSION,
+  DEFAULT_TOOL_NAME_SEPARATOR,
   defaultPolicy,
   DestructiveBlockedError,
   encodeEnvelope,
