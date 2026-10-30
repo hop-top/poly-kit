@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createMcpHandler, type McpHandler } from './dispatch.js';
 import { serveStdio, type McpStdioServer } from './stdio.js';
-import { legacyLockBridge } from './testtree.js';
+import { legacyLockBridge, mrtrLockBridge } from './testtree.js';
 import type { McpBridge, McpMountOptions } from './types.js';
 
 const MODERN_META =
@@ -261,6 +261,44 @@ describe('serveStdio', () => {
     release();
     await s.server.done;
     expect(s.lines()).toHaveLength(1);
+  });
+
+  it('confirms in-band over MRTR; a client without elicitation is refused', async () => {
+    const { bridge, executions } = mrtrLockBridge();
+    const s = session(bridge, { confirmationKey: 'stdio-mrtr-suite-shared-secret-32' });
+    const meta = (caps: Record<string, unknown>) => ({
+      'io.modelcontextprotocol/clientCapabilities': caps,
+      'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+    });
+    const call = (id: number, extra: Record<string, unknown>) =>
+      JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'purge', ...extra } });
+    const reply = async (n: number) => {
+      while (s.lines().length < n) await new Promise((r) => setTimeout(r, 1));
+      return JSON.parse(s.lines()[n - 1] ?? '{}') as { id: number; result: Record<string, unknown> };
+    };
+
+    s.input.write(`${call(1, { _meta: meta({ elicitation: { form: {} } }) })}\n`);
+    const r1 = await reply(1);
+    expect(r1.result.resultType).toBe('input_required');
+    expect(Object.keys(r1.result.inputRequests as object)).toEqual(['confirm']);
+    expect(executions()).toBe(0);
+
+    s.input.write(
+      `${call(2, {
+        _meta: meta({ elicitation: { form: {} } }),
+        requestState: r1.result.requestState,
+        inputResponses: { confirm: { action: 'accept' } },
+      })}\n`,
+    );
+    const r2 = await reply(2);
+    expect(r2.result).toMatchObject({ resultType: 'complete', isError: false });
+    expect(executions()).toBe(1);
+
+    // No elicitation declared: the header gate applies, and stdio has no headers.
+    const lines = await run(s, call(3, { _meta: meta({}) }));
+    const r3 = JSON.parse(lines[2] ?? '{}') as { result: Record<string, unknown> };
+    expect(r3.result).toMatchObject({ resultType: 'complete', isError: true });
+    expect(executions()).toBe(1);
   });
 
   it('close() stops reading and resolves once idle', async () => {
