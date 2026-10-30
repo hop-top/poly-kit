@@ -23,7 +23,10 @@ Pure data types + BFS lookup. Sub-packages own I/O and deps.
 > `NegotiateSchemaVersion`. `registerSpecCommand(program, schemaVersion,
 > { reserved })` mounts `spec` and `spec coverage` with Go's flags and
 > bytes; their output schemas come from `contracts/toolspec-spec-v1/`.
-> Python loads YAML only.
+> Python loads YAML only: `hop_top_kit.toolspec.load_toolspec` maps
+> every field below (YAML keys are the snake_case json tags, e.g.
+> `undeclared_args`, `exit_codes`) into dataclasses of the same
+> names, ignores unknown keys, and has no command-tree projection.
 
 ## Schema Overview
 
