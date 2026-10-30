@@ -10,6 +10,7 @@ policy is `hop_top_kit::netpolicy`.
 
 - a tool's leaves should be callable by an MCP client → build a `Bridge` of `Leaf`s, `Surface::mount`, route
   `POST /mcp` to `Surface::call`
+- a host spawns the tool → `surface.serve_stdio(stdin().lock(), stdout(), stderr())`; returns at EOF
 - a leaf is destructive or needs confirmation → `Leaf::with_class(SafetyClass { .. })`; the default
   `Policy` blocks every remote destructive invocation
 - retries may land on any instance → set `MountOptions::confirmation_key`, shared across instances
@@ -41,6 +42,9 @@ assert!(response.body_str().contains("pong"));
 - Feature `mcp` pulls in `rmcp` (default features off, vocabulary only), `serde`, `serde_json`; no server,
   no tokio. Authority: the crate [feature table](../../README.md#features).
 - `Surface::call` is a synchronous request to response function; the crate binds no HTTP server.
+- `Surface::serve_stdio`: newline-delimited JSON-RPC, concurrent on scoped threads; notifications never
+  answered; batches and non-objects `-32600`, non-JSON `-32700`, both `id: null`. No header layer: V4/V6/V7
+  skipped, the verifier sees no headers, the `X-Confirm-Token` gate cannot pass.
 - Both eras on one mount: `2024-11-05` (handshake) and `2026-07-28` (stateless `_meta` envelope), detected
   per request. `spec_versions: Some(vec![])`, a negative `cache_ttl_ms` or an empty `confirmation_key` is a
   `MountError`, not a mount that serves nothing.
