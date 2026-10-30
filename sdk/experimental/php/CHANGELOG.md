@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.3...kit-php/v0.5.0-alpha.4) (2026-10-30)
+
+
+### Features
+
+* **mcp:** toolNameSeparator mount option in php sdk ([04b9577](https://github.com/hop-top/poly-kit/commit/04b957797a953e2c8a4242e1701adf9f99ba61cd))
+* **php/mcp:** audit mount hook for refusals ([220df04](https://github.com/hop-top/poly-kit/commit/220df04bf79a18da6292cedd8df939ab1fdaab3b))
+* **php/mcp:** stdio transport ([97852f1](https://github.com/hop-top/poly-kit/commit/97852f1e14ceb442cc46bc7863769717b95f8854))
+
+
+### Bug Fixes
+
+* **mcp:** no reply to notifications; ping returns {} ([f24c097](https://github.com/hop-top/poly-kit/commit/f24c09796642894a2329a6170a160283a15c38af))
+
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.2...kit-php/v0.5.0-alpha.3) (2026-10-27)
 
 The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.3. This release includes maintenance release with bug fixes.
