@@ -10,6 +10,7 @@ How a command tree is served over the Model Context Protocol from one mount that
 - host it: `McpSurface` is an ASGI callable; mount it under uvicorn, hypercorn or a Starlette route
 - bind to something else: `McpSurface.handle(Request) -> Response` is a pure function, no socket
 - require confirmation on the modern era: `header_confirmation_gate` or `ElicitationConfirmationGate`
+- name tools for a host that refuses dots (`widget_add`, not `widget.add`): `mount_mcp(bridge, tool_name_separator="_")`
 
 ## Quick start
 
@@ -40,6 +41,7 @@ print(res.status, res.body)
 - `legacy` and `modern` are separate modules with `dispatch` choosing between them; the legacy path is preserved byte for byte, additive only.
 - `tools/list` re-reads the bridge's leaves per request; caching the leaf set fails the sequence fixture.
 - ASGI, not WSGI: the modern era's streaming is not expressible in WSGI.
+- Tool names join the leaf path with `tool_name_separator` (default `.`) and split back on it (`tool_name` / `tool_path`). `MountError` on an empty separator and, for any other than `.`, on a command name containing it (`data_sync` under `_`). Names are not otherwise rewritten or length-checked.
 - Parity: [`contracts/parity/README.md`](../../../../contracts/parity/README.md), section "MCP wire contract".
 
 ## Neighbours

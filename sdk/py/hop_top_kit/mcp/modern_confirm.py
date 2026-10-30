@@ -42,7 +42,7 @@ from enum import Enum
 from typing import Any
 
 from ._json import dumps
-from .bridge import Bridge, Leaf
+from .bridge import DEFAULT_TOOL_NAME_SEPARATOR, Bridge, Leaf, tool_name
 from .legacy import error_result_block
 from .modern import header_confirmation_gate
 from .protocol import (
@@ -107,11 +107,19 @@ class ElicitationConfirmationGate:
     a missing elicitation capability is never ``-32021`` here.
     """
 
-    def __init__(self, key: bytes, bridge: Bridge | None = None) -> None:
+    def __init__(
+        self,
+        key: bytes,
+        bridge: Bridge | None = None,
+        *,
+        tool_name_separator: str = DEFAULT_TOOL_NAME_SEPARATOR,
+    ) -> None:
         if not key:
             raise ValueError("mcp: confirmation key must be non-empty")
         self._key = bytes(key)
         self._bridge = bridge
+        #: Names the tool in the prompt, as the mount names it in tools/list.
+        self._tool_name_separator = tool_name_separator
         #: Audit records of rejected states, in lieu of the Go bridge's
         #: sink fan-out, which this port does not carry.
         self.rejections: list[dict[str, str]] = []
@@ -171,7 +179,7 @@ class ElicitationConfirmationGate:
                     "method": "elicitation/create",
                     "params": {
                         "mode": "form",
-                        "message": f"Approve execution of {dumps(leaf.tool_name)}?",
+                        "message": f"Approve execution of {dumps(tool_name(leaf.path, self._tool_name_separator))}?",
                         # No form fields: the approval rides the elicit
                         # action, so the requested schema is empty.
                         "requestedSchema": {"type": "object", "properties": {}},

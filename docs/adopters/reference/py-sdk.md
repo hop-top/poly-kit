@@ -73,13 +73,21 @@ fixture case.
 Keyword-only on `mount_mcp`: `path` (`/mcp`), `server_name`
 (`cmdsurface`), `server_version` (`0.0.0`), `spec_versions` (`None` =
 both eras), `cache_ttl_ms` (`0`), `cache_scope` (`private`),
-`origin_allowlist` (empty, no check), `confirmation_key`, and
-`extensions`. The option *set* is normative across every kit SDK; only
-the spelling is idiomatic.
+`origin_allowlist` (empty, no check), `confirmation_key`,
+`extensions`, and `tool_name_separator` (`.`). The option *set* is
+normative across every kit SDK; only the spelling is idiomatic.
 
 An explicitly empty `spec_versions`, a negative ttl, an unrecognized
 cache scope, or an empty confirmation key raise `MountError` rather than
 starting a server that quietly serves nothing.
+
+`tool_name_separator` joins a leaf path into its tool name and splits a
+called name back: `"_"` names the leaf `widget add` `widget_add`, for
+hosts that admit only `^[A-Za-z0-9_-]{1,64}$`. An empty separator
+raises `MountError`, and so does any separator other than `.` that a
+command name contains (`data_sync` under `_` would not map back to one
+leaf). `tool_name(path, sep)` and `tool_path(name, sep)` are the same
+functions, exported.
 
 Policy is passed to the `Bridge`, not to `mount_mcp`:
 `Bridge(root, policy=...)`.

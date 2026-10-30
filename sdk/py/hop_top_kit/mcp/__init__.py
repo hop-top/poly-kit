@@ -37,6 +37,7 @@ from .bridge import (
     Result,
     json_type,
     match_pattern,
+    tool_name,
     tool_path,
 )
 from .dispatch import (
@@ -123,5 +124,6 @@ __all__ = [
     "json_type",
     "match_pattern",
     "mount_mcp",
+    "tool_name",
     "tool_path",
 ]
