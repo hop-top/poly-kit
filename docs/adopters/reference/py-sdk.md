@@ -68,6 +68,65 @@ is the whole contract — a pure function from a normalised request, no
 socket involved, which is what lets the conformance suite drive every
 fixture case.
 
+### Hosting over stdio
+
+For a host that spawns the tool (a desktop client, an editor), serve the
+same surface over standard input and output:
+
+```python
+from hop_top_kit.mcp import Bridge, serve_stdio
+
+server = serve_stdio(
+    Bridge(root),
+    mount={"server_name": "my-cli", "server_version": "1.4.0"},
+)
+server.wait()  # the host closed stdin
+```
+
+`serve_stdio(target, *, input, output, log, mount)` takes a `Bridge`
+(mounted with `mount`, the `mount_mcp` keyword options as a dict) or an
+`McpSurface` from `mount_mcp`, which keeps its own options; passing
+`mount` with a surface raises `TypeError`. `input` / `output` / `log`
+default to `sys.stdin` / `sys.stdout` (their byte buffers, so the wire
+is UTF-8 whatever the locale) / `sys.stderr`; text and binary streams
+both work. It returns at once with a `StdioServer`: `wait(timeout=None)`
+returns `True` once input ends and every in-flight request is answered,
+`done` reports the same without blocking, and `close(timeout=None)`
+stops reading and then waits the same way.
+
+The surface is synchronous, so requests run on a thread pool
+(`concurrent.futures.ThreadPoolExecutor`, default size) while one reader
+thread frames input; output lines are written whole, one at a time.
+
+| Input line | Output |
+|---|---|
+| a request | one reply line carrying its `id`; requests run concurrently, so replies may arrive out of order |
+| a notification (no `id`) | nothing, ever |
+| `ping` (2024-11-05) | `{"jsonrpc":"2.0","id":…,"result":{}}` |
+| not JSON | `-32700`, `"id": null` |
+| a JSON array (batch) | `-32600`, `"id": null`: neither revision allows batches over stdio |
+| a non-object, or an object with an `id` but no `method` | `-32600` |
+| a response (`result` / `error`, no `method`) | nothing; noted on `log` |
+| a blank line | skipped |
+
+Output carries protocol messages only; diagnostics go to `log`. A
+handler that raises answers `-32603` and logs the cause.
+
+stdio has no header layer. Era detection uses the body markers alone (the
+reserved `_meta` protocolVersion key, `server/discover`), and the
+`2026-07-28` header checks (`MCP-Protocol-Version`, `Mcp-Method`,
+`Mcp-Name`: V4, V6, V7) do not apply; every other check runs unchanged.
+The seam is `McpSurface.dispatch(request, rpc, transport="stdio")`, the
+same routing `handle` uses after parsing. Gates that read headers see
+none: the mount's `verifier` is called with a header-less request, so a
+`kit/auth-required` leaf is refused unless your verifier admits it, and
+the `X-Confirm-Token` header gate cannot be satisfied.
+
+Any other callable is treated as a foreign handler and called with an
+HTTP-shaped POST `Request` per message: that serves `2024-11-05`, but
+such a handler cannot know the message came over stdio, so `2026-07-28`
+requests fail its header checks.
+
 ### Positional arguments
 
 A leaf declares its positionals, in order, as `args=[Arg(...)]`;

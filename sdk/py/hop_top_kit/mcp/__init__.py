@@ -17,7 +17,9 @@ revision defines.
 The surface is a pure function from request to response
 (:meth:`McpSurface.handle`); the ASGI binding is a thin wrapper over it,
 so adopters keep control of their own HTTP stack and the conformance
-suite can drive every case without a socket.
+suite can drive every case without a socket. For a host that spawns the
+tool, :func:`serve_stdio` drives the same dispatch over newline-delimited
+stdin/stdout.
 
 Module layout mirrors the protocol split — ``legacy`` and ``modern`` are
 separate modules with a ``dispatch`` module choosing between them — which
@@ -80,6 +82,7 @@ from .safety import (
     classify,
     default_policy,
 )
+from .stdio import StdioServer, serve_stdio
 from .tasks import InMemoryTaskStore, TasksExtension, TaskStore
 
 __all__ = [
@@ -115,6 +118,7 @@ __all__ = [
     "Response",
     "Result",
     "SafetyClass",
+    "StdioServer",
     "Surface",
     "SurfaceNotEnabledError",
     "TaskStore",
@@ -128,6 +132,7 @@ __all__ = [
     "json_type",
     "match_pattern",
     "mount_mcp",
+    "serve_stdio",
     "tool_name",
     "tool_path",
 ]
