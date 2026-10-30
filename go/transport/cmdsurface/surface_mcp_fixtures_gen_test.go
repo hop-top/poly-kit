@@ -320,6 +320,21 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 		nil, nil,
 		`{not json`, legacy)
 
+	capture("legacy/notification/initialized", "legacy",
+		"no id member is a notification: never answered (HTTP 202, empty body)",
+		nil, nil,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`, legacy)
+
+	capture("legacy/notification/tools-call-not-processed", "legacy",
+		"a tools/call without an id is a notification: acknowledged, not executed",
+		nil, nil,
+		`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"ping"}}`, legacy)
+
+	capture("legacy/ping", "legacy",
+		"ping MUST be answered with an empty result",
+		nil, nil,
+		`{"jsonrpc":"2.0","id":12,"method":"ping"}`, legacy)
+
 	capture("legacy/meta-progress-token-is-not-modern", "legacy",
 		"bare params._meta is NOT a modern marker: progressToken stays legacy",
 		nil, nil,

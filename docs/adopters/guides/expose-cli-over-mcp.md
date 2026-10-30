@@ -441,7 +441,10 @@ Reference for existing callers until removal.
 `MountMCP` serves **two MCP protocol revisions from one mount**:
 
 - **2024-11-05** — the `initialize` handshake era. Plain JSON-RPC
-  over POST; `initialize`, `tools/list`, `tools/call`.
+  over POST; `initialize`, `ping` (an empty result), `tools/list`,
+  `tools/call`. A notification (no `id` member, e.g.
+  `notifications/initialized`) is never answered: HTTP 202, empty
+  body, not processed.
 - **2026-07-28** — the stateless era. No handshake, no sessions;
   every request carries its protocol version and client capabilities
   in `params._meta`; adds `server/discover`, cacheable list results,
@@ -732,6 +735,8 @@ Edge cases, both revisions enabled:
 | `initialize`, with or without markers | legacy | 2024-11-05 initialize result |
 | `tools/list` / `tools/call` with only an `MCP-Protocol-Version: 2024-11-05` header | legacy | legacy response; header ignored |
 | unknown method, no markers | legacy | `-32601` at HTTP 200 |
+| `ping`, no markers | legacy | `{"result":{}}` at HTTP 200 |
+| notification (no `id`), no markers | legacy | HTTP 202, empty body, not processed |
 | `tools/call` with the `_meta` protocolVersion key only | modern | `-32602` at 400 (`clientCapabilities` missing) |
 | `tools/call` with complete `_meta`, no headers | modern | `-32020` at 400 (`MCP-Protocol-Version` header missing) |
 | `tools/call` with `Mcp-Method` header only | modern | `-32602` at 400 (required `_meta` missing) |

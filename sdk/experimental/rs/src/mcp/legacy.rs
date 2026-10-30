@@ -5,8 +5,9 @@
 //! the three-way split load-bearing precisely so a reviewer can confirm
 //! a modern-era change did not reach in here.
 //!
-//! Methods served: `initialize`, `tools/list`, `tools/call`. Anything
-//! else is `-32601` at HTTP **200** — note the status: the legacy era
+//! Methods served: `initialize`, `ping`, `tools/list`, `tools/call`. A
+//! notification (no `id` member) is never answered: HTTP 202, empty
+//! body, not processed. Any other method is `-32601` at HTTP **200** — note the status: the legacy era
 //! rides application errors on 200, and the fixtures pin that.
 
 use serde_json::{Map, Value};
@@ -53,8 +54,19 @@ pub(super) fn serve_as(
         );
     }
 
+    // No id member: a notification. JSON-RPC 2.0 forbids any reply, so
+    // it is acknowledged with HTTP 202 and an empty body and is not
+    // processed — the modern handler's V2 answer. An explicit
+    // `"id": null` is a request and is answered.
+    if req.id.is_none() {
+        return Response::empty(202);
+    }
+
     match req.method.as_str() {
         "initialize" => handle_initialize(cfg, req),
+        // 2024-11-05 utility: the receiver MUST answer with an empty
+        // result. Legacy era only; 2026-07-28 removed ping.
+        "ping" => result_response(200, req.id.as_ref(), &Value::Object(Map::new())),
         "tools/list" => handle_tools_list(bridge, req),
         "tools/call" => handle_tools_call(bridge, req, headers, caller),
         other => error_response(
@@ -256,6 +268,45 @@ mod tests {
 
     fn parse(body: &str) -> Request {
         Request::from_slice(body.as_bytes()).unwrap()
+    }
+
+    #[test]
+    fn notification_is_never_answered_nor_processed() {
+        let ran = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = ran.clone();
+        let bridge = Bridge::new().leaf(Leaf::new(&["ping"], "Ping", move |_| {
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(CallResult::default())
+        }));
+        for body in [
+            r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+            r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}"#,
+            r#"{"jsonrpc":"2.0","method":"tools/call","params":{"name":"ping"}}"#,
+        ] {
+            let resp = serve(&cfg(), &bridge, &parse(body), &Headers(&[]));
+            assert_eq!(resp.status, 202, "{body}");
+            assert!(resp.body.is_empty(), "{body}: {}", resp.body_str());
+        }
+        assert_eq!(ran.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn ping_answers_an_empty_result() {
+        let bridge = Bridge::new();
+        for (body, want) in [
+            (
+                r#"{"jsonrpc":"2.0","id":7,"method":"ping"}"#,
+                "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{}}\n",
+            ),
+            (
+                r#"{"jsonrpc":"2.0","id":null,"method":"ping"}"#,
+                "{\"jsonrpc\":\"2.0\",\"id\":null,\"result\":{}}\n",
+            ),
+        ] {
+            let resp = serve(&cfg(), &bridge, &parse(body), &Headers(&[]));
+            assert_eq!(resp.status, 200, "{body}");
+            assert_eq!(resp.body_str(), want);
+        }
     }
 
     #[test]

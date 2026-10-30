@@ -135,7 +135,7 @@ describe('MCP wire conformance (cross-language fixtures)', () => {
   const doc = loadFixtures();
 
   it('loads the full fixture set', () => {
-    expect(doc.cases.length).toBe(23);
+    expect(doc.cases.length).toBe(26);
   });
 
   for (const c of doc.cases) {

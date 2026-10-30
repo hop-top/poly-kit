@@ -701,8 +701,9 @@ mount [`mcpsdk`](mcpsdk.md) on a bridge. Frozen until removal; see
 Wire shape: MCP JSON-RPC 2.0 at the configured path (default `/mcp`),
 serving **both protocol revisions from the one mount**:
 
-- **2024-11-05** — `initialize`, `tools/list`, `tools/call`; plain
-  JSON-RPC bodies, no required headers.
+- **2024-11-05** — `initialize`, `ping`, `tools/list`, `tools/call`;
+  plain JSON-RPC bodies, no required headers. A notification (no `id`
+  member) is never answered: HTTP 202, empty body, not processed.
 - **2026-07-28** — stateless per-request `_meta` (reserved
   `io.modelcontextprotocol/*` keys), `server/discover`, header
   routing with `MCP-Protocol-Version` / `Mcp-Method` / `Mcp-Name`

@@ -150,6 +150,7 @@ func WithMCPConfirmationKey(key []byte) MCPOption {
 // Supported MCP methods (2024-11-05):
 //
 //	initialize  → server info + capabilities
+//	ping        → empty result
 //	tools/list  → enumerates tools with inputSchema derived from flags
 //	              and declared positional arguments (kit/args)
 //	tools/call  → invokes the leaf via bridge.Invoke; result rendered
@@ -321,9 +322,22 @@ func (h *mcpHandler) serveHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// No id member: a notification. JSON-RPC 2.0 forbids any reply,
+	// so it is acknowledged with HTTP 202 and an empty body and is not
+	// processed — the modern handler's V2 answer. An explicit "id":
+	// null is a request and is answered (the id round-trips).
+	if len(rpc.ID) == 0 {
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+
 	switch rpc.Method {
 	case "initialize":
 		h.handleInitialize(w, rpc)
+	case "ping":
+		// 2024-11-05 utility: the receiver MUST answer with an empty
+		// result. Legacy era only; 2026-07-28 removed ping.
+		writeJSONRPCResult(w, rpc.ID, map[string]any{}, http.StatusOK)
 	case "tools/list":
 		h.handleToolsList(w, rpc)
 	case "tools/call":
