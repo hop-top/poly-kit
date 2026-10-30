@@ -5,7 +5,6 @@
 How does an existing command tree get exposed to MCP clients as tools across both spec eras, with
 destructive calls gated behind confirmation? `Bridge` walks a `Command` tree into leaves, `Mount`
 configures the surface, `RequestHandler` serves it as PSR-15, `StdioServer` over stdin/stdout.
-HTTP client policy is `HopTop\Kit\Net`; this namespace is the server side only.
 
 ## Use it when
 
@@ -18,6 +17,7 @@ HTTP client policy is `HopTop\Kit\Net`; this namespace is the server side only.
 - a host refuses dotted tool names: `new Mount(toolNameSeparator: '_')` serves `widget_add`
 - a host spawns the tool: `StdioServer::serve($bridge)` speaks newline-delimited JSON-RPC on
   stdin/stdout, replying in request order and returning when stdin closes
+- you log refusals: `new Mount(audit: fn (AuditRecord $r) => ...)` sees each pre-flight refusal
 
 ## Quick start
 
@@ -71,7 +71,7 @@ echo (string) $handler->handle($request)->getBody();
 ## Neighbours
 
 - `HopTop\Kit\Cli`: the Symfony commands whose leaves a `Command` tree mirrors
-- `HopTop\Kit\Serve`: the long-running process that hosts this handler
+- `HopTop\Kit\Serve`: the process that hosts this handler; `HopTop\Kit\Net`: the HTTP client side
 
 ## See also
 
