@@ -284,7 +284,9 @@ reserved `_meta` protocolVersion key, `server/discover`), and the
 Gates that read headers see none: the mount's `verifier` is called with a
 header-less request, so a `kit/auth-required` leaf is refused unless your
 verifier admits it, and the `X-Confirm-Token` header gate cannot be
-satisfied.
+satisfied. A mount with a `confirmation_key` can still confirm over
+stdio through the MRTR round-trip, for a `2026-07-28` client that
+declares form elicitation.
 
 ### Options
 
