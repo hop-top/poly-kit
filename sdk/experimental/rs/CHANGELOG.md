@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.5...kit-rs/v0.5.0-alpha.6) (2026-10-30)
+
+
+### Features
+
+* **cmdreflect:** flag choices, variadic args ([464b8cc](https://github.com/hop-top/poly-kit/commit/464b8ccd8c98ad083134b5537a2ae48f34881ef9))
+
 ## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.4...kit-rs/v0.5.0-alpha.5) (2026-10-30)
 
 The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.5. This release includes new features and bug fixes.
