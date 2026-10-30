@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.5.0-beta.5](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.4...kit/v0.5.0-beta.5) (2026-10-30)
+
+
+### Features
+
+* **mcpsdk:** WithToolNameSeparator mount option ([26b75ea](https://github.com/hop-top/poly-kit/commit/26b75eacc6247786775a3468afd4b98def39216c))
+* **mcp:** tool_name_separator mount option in py sdk ([fd51fda](https://github.com/hop-top/poly-kit/commit/fd51fdacd1c150d95752d310f61a92d50fb6bed7))
+* **mcp:** tool_name_separator mount option in rs sdk ([8da95a4](https://github.com/hop-top/poly-kit/commit/8da95a4af8650bac80b0d949d47122b3e658bc1f))
+* **mcp:** toolNameSeparator mount option in php sdk ([04b9577](https://github.com/hop-top/poly-kit/commit/04b957797a953e2c8a4242e1701adf9f99ba61cd))
+* **mcp:** toolNameSeparator mount option in ts sdk ([0d0111c](https://github.com/hop-top/poly-kit/commit/0d0111c4600f7ac6be7fe013f96f757230f90467))
+* **php/mcp:** audit mount hook for refusals ([220df04](https://github.com/hop-top/poly-kit/commit/220df04bf79a18da6292cedd8df939ab1fdaab3b))
+* **php/mcp:** stdio transport ([97852f1](https://github.com/hop-top/poly-kit/commit/97852f1e14ceb442cc46bc7863769717b95f8854))
+* **py/mcp:** audit mount hook for refusals ([d778df5](https://github.com/hop-top/poly-kit/commit/d778df54950e5653c8de27cde6348e3122a6248c))
+* **py/mcp:** positional args via args array ([1137e3a](https://github.com/hop-top/poly-kit/commit/1137e3a5119978f43822dd5d4f5de8d32f041d58))
+* **py/mcp:** serve_stdio transport ([dcb8aaa](https://github.com/hop-top/poly-kit/commit/dcb8aaa389bb1027d87acdf41db1ec1c13155f0a))
+* **rs/mcp:** audit mount hook for refusals ([90218f0](https://github.com/hop-top/poly-kit/commit/90218f0d60853539858b9280e3834d50cc273ce1))
+* **rs/mcp:** stdio transport ([461aded](https://github.com/hop-top/poly-kit/commit/461aded88e3bfbdfeba574e8420b5171a361714c))
+* **ts/mcp:** audit mount hook for refusals ([1f63a5f](https://github.com/hop-top/poly-kit/commit/1f63a5f89cd7ba8c25345ed9478a4a753f5bef28))
+* **ts/mcp:** serveStdio transport ([7ab69a6](https://github.com/hop-top/poly-kit/commit/7ab69a622cc1f3c07b7fb6e51234235a5a992b2f))
+* **ts/toolspec:** skip builtins, includeHidden in toolSpecFromCommand ([2962a7c](https://github.com/hop-top/poly-kit/commit/2962a7cfac4244d5c3bcdc40bceba24dac92f694))
+
+
+### Bug Fixes
+
+* **mcp:** no reply to notifications; ping returns {} ([f24c097](https://github.com/hop-top/poly-kit/commit/f24c09796642894a2329a6170a160283a15c38af))
+* **py/alias:** default bridge proxies multi-word targets ([886d71a](https://github.com/hop-top/poly-kit/commit/886d71a35e43cbf925894f34b5720277b2016efb))
+* **py/alias:** offer default alias proxies in completion ([4ee0678](https://github.com/hop-top/poly-kit/commit/4ee06783f44502753aaab95d7aa5498d520502ff))
+* **py/config:** deep-merge layers like other ports ([a7d1700](https://github.com/hop-top/poly-kit/commit/a7d1700d0c430dea01521850db6b970ecc8cab03))
+* **py/toolspec:** loader types match go/ts spec ([2af0824](https://github.com/hop-top/poly-kit/commit/2af082460f116b14ab58f5fa3ab3dec67e3133ea))
+* **toolspec:** skip non-runnable builtins and hidden groups ([68e95f7](https://github.com/hop-top/poly-kit/commit/68e95f7b71bc1f5cb211bf35cc766cd874d25f65))
+* **ts/mcp:** negated, repeatable option types and default/enum in bridge schema ([863a448](https://github.com/hop-top/poly-kit/commit/863a448e899fc8e6d66f675604fc9427ce6d9b80))
+* **ts/mcp:** publish positional args as the Go "args" array ([c47db88](https://github.com/hop-top/poly-kit/commit/c47db88b6f3e7e2594ee103cd87375d19f518e13))
+* **ts/toolspec:** negatable flags typed bool ([79cfeb4](https://github.com/hop-top/poly-kit/commit/79cfeb4cc0b31d449b2b23487949dffce518f63d))
+
 ## [0.5.0-beta.4](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.3...kit/v0.5.0-beta.4) (2026-10-29)
 
 The hop-top team is happy to announce Kit 0.5.0-beta.4. This release includes new features and bug fixes.
