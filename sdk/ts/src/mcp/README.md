@@ -12,6 +12,7 @@ How a Commander command tree is served over the Model Context Protocol from one 
 - gate destructive tools: `policy` option, `defaultPolicy()` blocks remote destructive calls
 - require confirmation on the modern era: `headerConfirmationGate` or `ElicitationConfirmGate`
 - name tools for a host that refuses dots (`widget_add`, not `widget.add`): `toolNameSeparator: '_'`
+- record every refusal the mount makes (auth, confirmation, destructive ceiling): `audit: (record: McpAuditRecord) => void`
 
 ## Quick start
 
@@ -45,6 +46,7 @@ console.log(res.status, res.body);
 - `commanderBridge` requires `run`: kit does not capture a command's output for you.
 - Tool names join the leaf path with `toolNameSeparator` (default `.`) and split back on it. The mount throws on an empty separator and, for any other than `.`, on a command name containing it (`data_sync` under `_`). Names are not otherwise rewritten or length-checked.
 - Tasks extension: `TASKS_SUPPORTED` is `false`; `discoverCapabilities` reports it.
+- `audit` ([`audit.ts`](audit.ts)) is the port of Go's bridge sinks for this surface: called after a refusal is decided and before the response is written, never changing the wire bytes; a throw is swallowed. `error` is Go's sentinel string (`MCP_AUDIT_*`).
 - Parity: [`contracts/parity/README.md`](../../../../contracts/parity/README.md), section "MCP wire contract".
 
 ## Neighbours

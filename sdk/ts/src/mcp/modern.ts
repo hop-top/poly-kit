@@ -69,6 +69,12 @@ import type {
   McpTransport,
 } from './dispatch.js';
 import { acceptedResponse } from './dispatch.js';
+import {
+  auditRefusal,
+  MCP_AUDIT_AUTH_REFUSED,
+  MCP_AUDIT_CONFIRMATION_REQUIRED,
+  MCP_AUDIT_DESTRUCTIVE_BLOCKED,
+} from './audit.js';
 
 /** One validation-chain failure: code, message, status, optional data. */
 interface CheckError {
@@ -118,6 +124,7 @@ export class ModernMcpHandler {
       this.confirmGate = new ElicitationConfirmGate(
         cfg.confirmationKey,
         cfg.toolNameSeparator,
+        cfg.audit,
       );
     }
   }
@@ -346,6 +353,7 @@ export class ModernMcpHandler {
     // verifier authenticates, never a bare Authorization header.
     const ident = await establishCaller(this.cfg.verifier, req);
     if (leaf.class?.authRequired && ident === undefined) {
+      this.audit(leaf, MCP_AUDIT_AUTH_REFUSED);
       return unauthenticated(
         this.writeCallError(rpc, 'authentication required', 401),
       );
@@ -396,9 +404,19 @@ export class ModernMcpHandler {
         );
       }
       // DestructiveBlockedError and every other invoke failure are
-      // complete isError results at HTTP 200, as on legacy.
+      // complete isError results at HTTP 200, as on legacy. Only the
+      // ceiling is a refusal the surface audits; a run that failed is
+      // the bridge's.
+      if (err instanceof DestructiveBlockedError) {
+        this.audit(leaf, MCP_AUDIT_DESTRUCTIVE_BLOCKED);
+      }
       return this.writeCallError(rpc, errorMessage(err), 200);
     }
+  }
+
+  /** Emits one 2026-07-28 refusal record to the mount's audit hook. */
+  private audit(leaf: Leaf, error: string): void {
+    auditRefusal(this.cfg.audit, leaf.path, MCP_SPEC_2026_07_28, error);
   }
 
   /**
@@ -416,7 +434,13 @@ export class ModernMcpHandler {
     params: unknown,
   ): McpConfirmDecision | undefined {
     if (!leaf.class?.requiresConfirmation) return undefined;
-    if (this.confirmGate === undefined) return headerConfirmationGate(req);
+    if (this.confirmGate === undefined) {
+      const refused = headerConfirmationGate(req);
+      if (refused !== undefined) {
+        this.audit(leaf, MCP_AUDIT_CONFIRMATION_REQUIRED);
+      }
+      return refused;
+    }
     return this.confirmGate.evaluate(req, leaf, params);
   }
 

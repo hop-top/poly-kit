@@ -335,6 +335,43 @@ export type McpVerifier = (
 /** The challenge a 401 carries in WWW-Authenticate, as Go's api.DefaultAuthChallenge. */
 export const MCP_AUTH_CHALLENGE = 'Bearer';
 
+// --- refusal audit ------------------------------------------------------
+
+/**
+ * One refusal the surface decided before adopter code ran: the record
+ * Go's bridge sinks receive from the MCP surface, reduced to the
+ * fields the surface has (a `cmdsurface.Invocation` subset plus the
+ * error). No caller, arguments or flags travel on it, so there is
+ * nothing to redact.
+ */
+export interface McpAuditRecord {
+  /** The resolved leaf path, e.g. `["widget","delete"]`. */
+  path: string[];
+  surface: 'mcp';
+  /** When the refusal was decided. */
+  requestedAt: Date;
+  /** The protocol revision serving the request. */
+  specVersion: string;
+  /**
+   * Go's sentinel error message for the event, verbatim (see the
+   * `MCP_AUDIT_*` constants in `mcp/audit`).
+   */
+  error: string;
+  /**
+   * Always `mcp_spec_version`; `mcp_confirm_rejection` on a rejected
+   * `requestState`. Keys are the Go snake_case strings so the records
+   * forward to the same audit backends.
+   */
+  extra: Record<string, string>;
+}
+
+/**
+ * The mount-level audit hook. Called synchronously once per refusal,
+ * after the refusal is decided and before the response is returned.
+ * Best-effort: a throwing hook never changes the wire response.
+ */
+export type McpAuditHook = (record: McpAuditRecord) => void;
+
 // --- mount options ------------------------------------------------------
 
 /**
@@ -373,6 +410,15 @@ export interface McpMountOptions {
    * command name contains: the name would not map back to one leaf.
    */
   toolNameSeparator?: string;
+  /**
+   * Receives one {@link McpAuditRecord} per refusal the surface
+   * decides: auth refused, confirmation required / declined / state
+   * rejected, destructive ceiling. The counterpart of Go's bridge
+   * sinks for the MCP surface. Best-effort: it runs after the refusal
+   * is decided, before the response is returned, and a throw is
+   * swallowed.
+   */
+  audit?: McpAuditHook;
 }
 
 /** Resolved, validated mount configuration. */
@@ -389,6 +435,7 @@ export interface ResolvedMcpConfig {
   policy: Policy;
   verifier?: McpVerifier;
   toolNameSeparator: string;
+  audit?: McpAuditHook;
 }
 
 /**
@@ -470,6 +517,7 @@ export function resolveMcpConfig(
     policy: opts.policy ?? defaultPolicy(),
     verifier: opts.verifier,
     toolNameSeparator,
+    audit: opts.audit,
   };
 }
 

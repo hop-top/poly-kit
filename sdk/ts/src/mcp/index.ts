@@ -45,6 +45,16 @@ export {
 export { LegacyMcpHandler } from './legacy.js';
 
 export {
+  auditRefusal,
+  MCP_AUDIT_AUTH_REFUSED,
+  MCP_AUDIT_CONFIRMATION_DECLINED,
+  MCP_AUDIT_CONFIRMATION_REQUIRED,
+  MCP_AUDIT_CONFIRMATION_STATE_REJECTED,
+  MCP_AUDIT_DESTRUCTIVE_BLOCKED,
+  MCP_CONFIRM_REJECTION_STATE,
+} from './audit.js';
+
+export {
   serveStdio,
   type McpStdioOptions,
   type McpStdioServer,
@@ -137,6 +147,8 @@ export {
   type JsonRpcErrorObject,
   type Leaf,
   type LeafArg,
+  type McpAuditHook,
+  type McpAuditRecord,
   type McpBridge,
   type McpCacheScope,
   type McpEstablishment,

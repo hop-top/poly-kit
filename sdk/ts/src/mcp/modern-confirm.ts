@@ -47,13 +47,22 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import {
   canonicalJSONStringify,
   errorResultBlock,
+  MCP_SPEC_2026_07_28,
   META_KEY_CLIENT_CAPABILITIES,
   RESULT_TYPE_INPUT_REQUIRED,
   toolName,
   type Leaf,
+  type McpAuditHook,
 } from './types.js';
 import { headerValue } from './legacy.js';
 import type { McpHttpRequest } from './dispatch.js';
+import {
+  auditRefusal,
+  MCP_AUDIT_CONFIRMATION_DECLINED,
+  MCP_AUDIT_CONFIRMATION_REQUIRED,
+  MCP_AUDIT_CONFIRMATION_STATE_REJECTED,
+  MCP_CONFIRM_REJECTION_STATE,
+} from './audit.js';
 
 /**
  * The single reserved `inputRequests` key the confirmation flow uses;
@@ -128,18 +137,21 @@ export class ElicitationConfirmGate {
   private readonly key: Buffer;
 
   /**
-   * Audit records of rejected states, standing in for Go's bridge sink
-   * fan-out, which this port does not carry.
+   * In-memory records of rejected states, kept beside the mount's
+   * `audit` hook for callers holding the gate directly.
    */
   readonly rejections: McpConfirmRejection[] = [];
 
   /**
    * `toolNameSeparator` names the tool in the confirmation prompt, as
-   * the mount's `toolNameSeparator` option does in tools/list.
+   * the mount's `toolNameSeparator` option does in tools/list. `audit`
+   * is the mount's refusal hook: it receives the gate's three refusals
+   * (confirmation required, declined, state rejected).
    */
   constructor(
     key: Uint8Array,
     private readonly toolNameSeparator?: string,
+    private readonly audit?: McpAuditHook,
   ) {
     if (key.length === 0) {
       throw new Error('cmdsurface: confirmationKey: empty key');
@@ -160,7 +172,11 @@ export class ElicitationConfirmGate {
   ): McpConfirmDecision | undefined {
     if (!leaf.class?.requiresConfirmation) return undefined;
     if (!clientSupportsFormElicitation(params)) {
-      return headerConfirmationGate(req);
+      const refused = headerConfirmationGate(req);
+      if (refused !== undefined) {
+        this.emit(leaf, MCP_AUDIT_CONFIRMATION_REQUIRED);
+      }
+      return refused;
     }
 
     const binding: McpConfirmBinding = {
@@ -198,6 +214,7 @@ export class ElicitationConfirmGate {
 
     if (retry.action === 'accept') return undefined;
     if (retry.action === 'decline' || retry.action === 'cancel') {
+      this.emit(leaf, MCP_AUDIT_CONFIRMATION_DECLINED);
       return { result: errorResultBlock('confirmation declined'), status: 200 };
     }
     // The confirm answer is missing or unusable (absent inputResponses,
@@ -242,16 +259,24 @@ export class ElicitationConfirmGate {
 
   /**
    * Records a failed `requestState` verification as a
-   * security-relevant audit event. Go emits this on the bridge's
-   * registered sinks; this port has no sink fan-out, so the records
-   * accumulate here for adopters and tests to read. Best-effort by the
-   * same contract: recording never affects the response.
+   * security-relevant audit event: in memory on `rejections`, and on
+   * the mount's audit hook with the `mcp_confirm_rejection` extra Go's
+   * surfaces attach. Best-effort by the same contract: recording never
+   * affects the response.
    */
   private auditRejection(leaf: Leaf): void {
     this.rejections.push({
       path: leaf.path.join(' '),
-      mcpConfirmRejection: 'request_state_verification_failed',
+      mcpConfirmRejection: MCP_CONFIRM_REJECTION_STATE,
     });
+    this.emit(leaf, MCP_AUDIT_CONFIRMATION_STATE_REJECTED, {
+      mcp_confirm_rejection: MCP_CONFIRM_REJECTION_STATE,
+    });
+  }
+
+  /** Emits one 2026-07-28 refusal record to the mount's audit hook. */
+  private emit(leaf: Leaf, error: string, extra?: Record<string, string>): void {
+    auditRefusal(this.audit, leaf.path, MCP_SPEC_2026_07_28, error, extra);
   }
 }
 
