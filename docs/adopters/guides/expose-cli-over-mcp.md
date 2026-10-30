@@ -348,7 +348,9 @@ identity. The deprecated `MountMCP` takes
 
 A tool can only carry the positional arguments its command declares.
 Name them, in order, in the `kit/args` annotation; a trailing `?`
-marks one optional:
+marks one optional, a trailing `...` one variadic (`files...?` for
+zero or more; the
+[full grammar](../reference/toolspec-api.md#positional-arguments-kitargs)):
 
 ```go
 cmd := &cobra.Command{

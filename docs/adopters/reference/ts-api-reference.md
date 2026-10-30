@@ -901,7 +901,11 @@ Commands describe themselves through kit/* annotations on an
 `annotations` property (`kit/side-effect`, `kit/idempotent`,
 `kit/args`, `kit/exit-codes`, `kit/output-schema`, …), the same keys
 Go reads. `summary()` is the manifest's `short` and `description()` its
-`long`.
+`long`. `kit/args` follows Go's grammar (`name`, `name?`, `name...`,
+`name...?`); without it, commander's own `<name>` / `[name...]`
+arguments are read. Schema 1.2's `required` and `choices` come from
+`makeOptionMandatory()` and `.choices()`, `variadic` from either
+source.
 
 - `--format kit-manifest|manifest|json` emits the Go manifest
   byte-for-byte (pinned by

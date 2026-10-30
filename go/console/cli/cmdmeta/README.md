@@ -54,12 +54,10 @@ fmt.Println(ok, steps[0].Suggest, "/", steps[0].Reason)
   false; `kit/dry-run: supported` is true; side-effect `write*` or
   `destructive*` is true; `read`, `interactive`, unknown or missing tag
   is false.
-- `ParseArgs` is the one `kit/args` grammar: a comma list, `name`
-  required, `name?` optional, `name...` variadic (one or more),
-  `name...?` optional variadic (zero or more); the dots come before the
-  `?`, any other suffix is part of the name, a variadic is declared
-  last. `cmdreflect`, the manifest, the MCP and REST projections and
-  shell completion all read it here.
+- `ParseArgs` is the one `kit/args` grammar every reader shares: a comma
+  list; `name` required, `name?` optional, `name...` variadic (one or
+  more), `name...?` optional variadic (zero or more); dots before the
+  `?`, any other suffix part of the name; a variadic is declared last.
 - `GetExamples` and `GetNextSteps` return `(nil, false)` on absent or
   malformed JSON; decode errors are swallowed.
 - `GetOutputSchemaJSON` returns the raw bytes unvalidated, with the

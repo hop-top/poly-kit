@@ -6,7 +6,7 @@ under-specified flag is turned into a correction the caller can act on.
 ## Flag value enums
 
 `Root.WithFlagEnum(name, values...)` declares the closed set of legal values for
-a flag once. Three consumers read that single declaration:
+a flag once. Four consumers read that single declaration:
 
 ```go
 root.WithFlagEnum("status", "TODO", "IN_PROGRESS", "DONE", "SKIPPED")
@@ -17,6 +17,7 @@ root.WithFlagEnum("status", "TODO", "IN_PROGRESS", "DONE", "SKIPPED")
 | parse-time errors | `--status` with no value renders the whole set as `alternatives` |
 | `--help` | the usage line gains `(one of: TODO, IN_PROGRESS, DONE, SKIPPED)` |
 | shell completion | the shell offers exactly those values |
+| `<tool> spec` | the flag's `choices` lists the set, in the manifest (schema 1.2) and the ToolSpec; its `description` keeps the `(one of: …)` suffix, so agents read `choices` |
 
 `WithFlagEnum` is **tree-wide**: every flag of that name anywhere in the tree
 gets the set. That is right for a flag whose meaning is global — a root
