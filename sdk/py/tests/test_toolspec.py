@@ -210,10 +210,14 @@ commands:
         required: true
         deprecated: false
         replaced_by: ""
+        default: staging
+        choices: [staging, prod]
     args:
       - name: release
         required: true
       - name: region
+      - name: targets
+        variadic: true
     undeclared_args: true
     exit_codes: [OK, USAGE, CONFLICT]
     contract:
@@ -221,6 +225,7 @@ commands:
       side_effects: [writes remote state]
       retryable: true
       pre_conditions: [authenticated]
+      idempotent_class: "yes"
     safety:
       level: dangerous
       requires_confirmation: true
@@ -301,11 +306,14 @@ class TestLoadToolspecAllFields:
                             type="string",
                             description="Target environment",
                             required=True,
+                            default="staging",
+                            choices=["staging", "prod"],
                         )
                     ],
                     args=[
                         Arg(name="release", required=True),
                         Arg(name="region", required=False),
+                        Arg(name="targets", variadic=True),
                     ],
                     undeclared_args=True,
                     exit_codes=["OK", "USAGE", "CONFLICT"],
@@ -314,6 +322,7 @@ class TestLoadToolspecAllFields:
                         side_effects=["writes remote state"],
                         retryable=True,
                         pre_conditions=["authenticated"],
+                        idempotent_class="yes",
                     ),
                     safety=Safety(
                         level="dangerous",
@@ -373,16 +382,35 @@ class TestLoadToolspecAllFields:
             _write(
                 tmp_path,
                 "name: t\nschema_version: '1'\ncommands:\n"
-                "  - name: c\n    flags: [{name: f}]\n    args: [{name: a}]\n",
+                "  - name: c\n    flags: [{name: f}]\n    args: [{name: a}]\n"
+                "    contract: {retryable: true}\n",
             )
         )
         cmd = spec.commands[0]
         assert cmd.short == ""
         assert cmd.undeclared_args is False
         assert cmd.exit_codes is None
-        assert cmd.args == [Arg(name="a", required=False)]
-        assert cmd.flags == [Flag(name="f", required=False)]
+        assert cmd.args == [Arg(name="a", required=False, variadic=False)]
+        assert cmd.flags == [Flag(name="f", required=False, default="", choices=None)]
+        assert cmd.contract == Contract(retryable=True, idempotent_class="")
         assert Command(name="c").args is None
+
+    def test_positional_construction_still_works(self):
+        # New fields sit last so the positional order the earlier
+        # fields established is unchanged.
+        assert Flag("v", "v", "bool", "Verbose", True, "x", True) == Flag(
+            name="v",
+            short="v",
+            type="bool",
+            description="Verbose",
+            deprecated=True,
+            replaced_by="x",
+            required=True,
+        )
+        assert Arg("a", True) == Arg(name="a", required=True)
+        assert Contract(True, ["w"], True, ["p"]) == Contract(
+            idempotent=True, side_effects=["w"], retryable=True, pre_conditions=["p"]
+        )
 
     def test_unknown_keys_ignored(self, tmp_path):
         spec = load_toolspec(
