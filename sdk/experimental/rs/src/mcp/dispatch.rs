@@ -131,6 +131,7 @@ impl Surface {
                 return Err(MountError::EmptyConfirmationKey);
             }
         }
+        check_tool_name_separator(&bridge, &options.tool_name_separator)?;
 
         Ok(Self {
             bridge,
@@ -311,8 +312,30 @@ fn method_not_allowed() -> Response {
     )
 }
 
+/// Refuses an empty separator and, for any but the default, a command
+/// name containing it: that leaf's tool name would not map back to one
+/// leaf (`data_sync` against `data sync` under `_`).
+fn check_tool_name_separator(bridge: &Bridge, separator: &str) -> Result<(), MountError> {
+    if separator.is_empty() {
+        return Err(MountError::EmptyToolNameSeparator);
+    }
+    if separator == super::DEFAULT_TOOL_NAME_SEPARATOR {
+        return Ok(());
+    }
+    for leaf in bridge.leaves() {
+        if let Some(command) = leaf.path.iter().find(|seg| seg.contains(separator)) {
+            return Err(MountError::ToolNameSeparatorInCommand {
+                command: command.clone(),
+                path: leaf.path.join(" "),
+                separator: separator.to_owned(),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Why a mount was refused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum MountError {
     /// `spec_versions` was set to an explicitly empty list.
@@ -321,6 +344,17 @@ pub enum MountError {
     NegativeCacheTtl,
     /// An empty confirmation key was supplied.
     EmptyConfirmationKey,
+    /// `tool_name_separator` was empty.
+    EmptyToolNameSeparator,
+    /// A command name contains the non-default `tool_name_separator`.
+    ToolNameSeparatorInCommand {
+        /// The command name containing the separator.
+        command: String,
+        /// The leaf's space-joined path.
+        path: String,
+        /// The configured separator.
+        separator: String,
+    },
 }
 
 impl std::fmt::Display for MountError {
@@ -331,6 +365,17 @@ impl std::fmt::Display for MountError {
             }
             Self::NegativeCacheTtl => f.write_str("mcp: cache_hints: negative ttl"),
             Self::EmptyConfirmationKey => f.write_str("mcp: confirmation_key: empty key"),
+            Self::EmptyToolNameSeparator => {
+                f.write_str("mcp: tool_name_separator: empty separator")
+            }
+            Self::ToolNameSeparatorInCommand {
+                command,
+                path,
+                separator,
+            } => write!(
+                f,
+                "mcp: tool_name_separator: command {command:?} in {path:?} contains separator {separator:?}"
+            ),
         }
     }
 }

@@ -113,7 +113,7 @@ pub(super) fn confirmation_gate(
     let Some(state) = retry.state.filter(|s| !s.is_empty()) else {
         // First call — or a retry without the state it was required to
         // echo, which is indistinguishable and equally unverifiable.
-        return Some((input_required(key, leaf, &binding), 200));
+        return Some((input_required(cfg, key, leaf, &binding), 200));
     };
 
     match verify_state(key, &state, &binding, now_secs()) {
@@ -123,7 +123,7 @@ pub(super) fn confirmation_gate(
         // Authentic but past its TTL: a routine re-prompt, per spec
         // (re-request missing information rather than error).
         StateStatus::Expired => {
-            return Some((input_required(key, leaf, &binding), 200));
+            return Some((input_required(cfg, key, leaf, &binding), 200));
         }
         StateStatus::Valid => {}
     }
@@ -138,7 +138,7 @@ pub(super) fn confirmation_gate(
             200,
         )),
         // Missing or unusable answer: re-request rather than error.
-        _ => Some((input_required(key, leaf, &binding), 200)),
+        _ => Some((input_required(cfg, key, leaf, &binding), 200)),
     }
 }
 
@@ -221,7 +221,12 @@ fn supports_form_elicitation(meta: &RequestMeta) -> bool {
 /// Carries both `inputRequests` and `requestState` (the spec requires at
 /// least one). Interim results are never cacheable: no `ttlMs` or
 /// `cacheScope`, ever.
-fn input_required(key: &[u8], leaf: &Leaf, binding: &Binding) -> Map<String, Value> {
+fn input_required(
+    cfg: &HandlerConfig,
+    key: &[u8],
+    leaf: &Leaf,
+    binding: &Binding,
+) -> Map<String, Value> {
     // No form fields: approval rides the elicit action itself, so the
     // requested schema is the empty object.
     let mut schema = Map::new();
@@ -232,7 +237,10 @@ fn input_required(key: &[u8], leaf: &Leaf, binding: &Binding) -> Map<String, Val
     params.insert("mode".into(), Value::String("form".into()));
     params.insert(
         "message".into(),
-        Value::String(format!("Approve execution of {:?}?", leaf.tool_name())),
+        Value::String(format!(
+            "Approve execution of {:?}?",
+            leaf.tool_name_with(&cfg.tool_name_separator)
+        )),
     );
     params.insert("requestedSchema".into(), Value::Object(schema));
 

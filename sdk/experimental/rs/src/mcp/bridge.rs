@@ -13,6 +13,7 @@ use std::sync::RwLock;
 use serde_json::{Map, Value};
 
 use super::safety::{Policy, SafetyClass, Surface};
+use super::DEFAULT_TOOL_NAME_SEPARATOR;
 
 /// One JSON Schema property on a leaf's `inputSchema`.
 #[derive(Debug, Clone)]
@@ -141,7 +142,7 @@ pub type Handler = Box<dyn Fn(&Map<String, Value>) -> Result<CallResult, String>
 /// One invocable command.
 pub struct Leaf {
     /// Path segments, e.g. `["widget", "add"]`. The MCP tool name is
-    /// these joined with `.`.
+    /// these joined with `.`, or the mount's `tool_name_separator`.
     pub path: Vec<String>,
     /// One-line description, emitted as the tool `description`.
     pub short: String,
@@ -261,7 +262,13 @@ impl Leaf {
     /// The dotted MCP tool name, e.g. `widget.add`.
     #[must_use]
     pub fn tool_name(&self) -> String {
-        self.path.join(".")
+        self.tool_name_with(DEFAULT_TOOL_NAME_SEPARATOR)
+    }
+
+    /// The MCP tool name joined with `separator`, e.g. `widget_add`.
+    #[must_use]
+    pub fn tool_name_with(&self, separator: &str) -> String {
+        self.path.join(separator)
     }
 
     /// Renders the MCP tool descriptor: `name`, `description`,
@@ -269,6 +276,12 @@ impl Leaf {
     /// both eras so schema drift between them is impossible.
     #[must_use]
     pub fn tool_envelope(&self) -> Value {
+        self.tool_envelope_with(DEFAULT_TOOL_NAME_SEPARATOR)
+    }
+
+    /// [`Leaf::tool_envelope`] with the name joined by `separator`.
+    #[must_use]
+    pub fn tool_envelope_with(&self, separator: &str) -> Value {
         let mut properties = Map::new();
         let mut required: Vec<Value> = Vec::new();
         for flag in &self.flags() {
@@ -288,7 +301,7 @@ impl Leaf {
         }
 
         let mut tool = Map::new();
-        tool.insert("name".into(), Value::String(self.tool_name()));
+        tool.insert("name".into(), Value::String(self.tool_name_with(separator)));
         tool.insert("description".into(), Value::String(self.short.clone()));
         tool.insert("inputSchema".into(), Value::Object(schema));
         Value::Object(tool)
@@ -365,13 +378,33 @@ impl Bridge {
     /// Finds a leaf by dotted tool name, regardless of enablement.
     #[must_use]
     pub fn resolve(&self, tool_name: &str) -> Option<&Leaf> {
-        self.leaves.iter().find(|l| l.tool_name() == tool_name)
+        self.resolve_with(tool_name, DEFAULT_TOOL_NAME_SEPARATOR)
+    }
+
+    /// Finds a leaf by tool name joined with `separator`, regardless of
+    /// enablement.
+    #[must_use]
+    pub fn resolve_with(&self, tool_name: &str, separator: &str) -> Option<&Leaf> {
+        self.leaves
+            .iter()
+            .find(|l| l.tool_name_with(separator) == tool_name)
     }
 
     /// Finds a leaf that is exposed on `surface`.
     #[must_use]
     pub fn resolve_enabled(&self, tool_name: &str, surface: Surface) -> Option<&Leaf> {
-        self.resolve(tool_name)
+        self.resolve_enabled_with(tool_name, DEFAULT_TOOL_NAME_SEPARATOR, surface)
+    }
+
+    /// [`Bridge::resolve_enabled`] for a tool name joined with `separator`.
+    #[must_use]
+    pub fn resolve_enabled_with(
+        &self,
+        tool_name: &str,
+        separator: &str,
+        surface: Surface,
+    ) -> Option<&Leaf> {
+        self.resolve_with(tool_name, separator)
             .filter(|l| l.enabled.contains(&surface))
     }
 
@@ -386,7 +419,20 @@ impl Bridge {
         surface: Surface,
         arguments: &Map<String, Value>,
     ) -> Result<CallResult, InvokeError> {
-        let leaf = self.resolve(tool_name).ok_or(InvokeError::UnknownCommand)?;
+        self.invoke_with(tool_name, DEFAULT_TOOL_NAME_SEPARATOR, surface, arguments)
+    }
+
+    /// [`Bridge::invoke`] for a tool name joined with `separator`.
+    pub fn invoke_with(
+        &self,
+        tool_name: &str,
+        separator: &str,
+        surface: Surface,
+        arguments: &Map<String, Value>,
+    ) -> Result<CallResult, InvokeError> {
+        let leaf = self
+            .resolve_with(tool_name, separator)
+            .ok_or(InvokeError::UnknownCommand)?;
         if !leaf.enabled.contains(&surface) {
             return Err(InvokeError::SurfaceNotEnabled);
         }

@@ -14,6 +14,7 @@ policy is `hop_top_kit::netpolicy`.
   `Policy` blocks every remote destructive invocation
 - retries may land on any instance → set `MountOptions::confirmation_key`, shared across instances
 - an adopter wants the `tasks/*` extension → `tasks_enabled: true`; off, it answers `-32601`
+- a host refuses dotted tool names (`widget_add`, not `widget.add`) → `tool_name_separator: "_".into()`
 
 ## Quick start
 
@@ -45,6 +46,9 @@ assert!(response.body_str().contains("pong"));
   `MountError`, not a mount that serves nothing.
 - A blocked destructive call renders as an `isError` result at HTTP 200; a missing confirmation on the
   header gate is HTTP 428.
+- Tool names join the leaf path with `tool_name_separator` (default `.`). An empty separator, or any other
+  than `.` inside a command name (`data_sync` under `_`), is a `MountError`. Names are not otherwise
+  rewritten or length-checked.
 - `tools/list` re-reads the bridge per request: no caching, and `Leaf::with_flags_on_first_execution`
   reproduces cobra's lazy `--help`.
 - Naming trap: `mcp::Surface` is the mounted handler; the safety enum is `mcp::SurfaceKind`.

@@ -67,8 +67,8 @@ pub(super) fn serve_as(
         // 2024-11-05 utility: the receiver MUST answer with an empty
         // result. Legacy era only; 2026-07-28 removed ping.
         "ping" => result_response(200, req.id.as_ref(), &Value::Object(Map::new())),
-        "tools/list" => handle_tools_list(bridge, req),
-        "tools/call" => handle_tools_call(bridge, req, headers, caller),
+        "tools/list" => handle_tools_list(cfg, bridge, req),
+        "tools/call" => handle_tools_call(cfg, bridge, req, headers, caller),
         other => error_response(
             // HTTP 200, not 404: the legacy era's convention, preserved.
             200,
@@ -126,12 +126,12 @@ fn handle_initialize(cfg: &HandlerConfig, req: &Request) -> Response {
 }
 
 /// `tools/list`: one envelope per MCP-enabled leaf.
-fn handle_tools_list(bridge: &Bridge, req: &Request) -> Response {
+fn handle_tools_list(cfg: &HandlerConfig, bridge: &Bridge, req: &Request) -> Response {
     let tools: Vec<Value> = bridge
         .leaves()
         .iter()
         .filter(|leaf| leaf.enabled.contains(&Surface::Mcp))
-        .map(super::bridge::Leaf::tool_envelope)
+        .map(|leaf| leaf.tool_envelope_with(&cfg.tool_name_separator))
         .collect();
 
     let mut result = Map::new();
@@ -141,6 +141,7 @@ fn handle_tools_list(bridge: &Bridge, req: &Request) -> Response {
 
 /// `tools/call`: resolve, gate, invoke, render.
 fn handle_tools_call(
+    cfg: &HandlerConfig,
     bridge: &Bridge,
     req: &Request,
     headers: &Headers,
@@ -164,7 +165,8 @@ fn handle_tools_call(
         );
     }
 
-    let Some(leaf) = bridge.resolve_enabled(name, Surface::Mcp) else {
+    let Some(leaf) = bridge.resolve_enabled_with(name, &cfg.tool_name_separator, Surface::Mcp)
+    else {
         return unknown_tool(req, name);
     };
 
@@ -194,7 +196,7 @@ fn handle_tools_call(
         .cloned()
         .unwrap_or_default();
 
-    match bridge.invoke(name, Surface::Mcp, &arguments) {
+    match bridge.invoke_with(name, &cfg.tool_name_separator, Surface::Mcp, &arguments) {
         Ok(res) => result_response(200, req.id.as_ref(), &render_call_result(&res)),
         Err(InvokeError::UnknownCommand | InvokeError::SurfaceNotEnabled) => {
             unknown_tool(req, name)
