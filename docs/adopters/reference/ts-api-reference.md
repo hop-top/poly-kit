@@ -734,7 +734,10 @@ reserved `_meta` protocolVersion key, `server/discover`), and the
 Gates that read headers see none: the mount's `verifier` is called with a
 header-less request, so a `kit/auth-required` leaf is refused unless your
 verifier admits it, and the `X-Confirm-Token` header gate cannot be
-satisfied.
+satisfied. A mount with a `confirmationKey` can still confirm over stdio
+through the [MRTR round-trip](#confirmation), for a `2026-07-28` client
+that declares form elicitation; its `requestState` binds an empty
+principal, since there is no `Authorization` header.
 
 A handler built some other way (not by `createMcpHandler`) is called with
 an HTTP-shaped POST per message: that serves `2024-11-05`, but such a
@@ -788,13 +791,37 @@ verified `caller`, `tenant` and `scopes` reach the bridge on
 This gate is unrelated to the Factor 10 `safetyGuard` `--force` helper,
 which is a CLI-time TTY check for delegation safety.
 
-### Confirmation is header-only in this port
+### Confirmation
 
-A `kit/requires-confirmation` leaf requires an `X-Confirm-Token` header.
-`confirmationKey` is accepted and validated at mount time but **the
-modern handler does not read it** — the MRTR elicitation round-trip that
-Go, Python, Rust and PHP offer is not implemented here yet. Do not plan
-an elicitation flow against this port today.
+A `kit/requires-confirmation` leaf requires an `X-Confirm-Token` header
+by default; without it the call is refused with an `isError` result at
+HTTP 428. Supplying a `confirmationKey` (a string or `Uint8Array`) opts
+the `2026-07-28` era into the MRTR flow, as in Go, Python, Rust and PHP:
+the first call answers `resultType: "input_required"` with an
+`elicitation/create` form under the `confirm` key and a signed
+`requestState`, and the client retries with that state and
+`inputResponses.confirm.action`. `accept` runs the leaf; `decline` or
+`cancel` refuses it.
+
+```ts
+createMcpHandler(bridge, { confirmationKey: key }); // same non-empty key on every instance
+```
+
+The state is HMAC-SHA-256 over the tool, its arguments and the caller's
+`Authorization` value, with a five-minute expiry, so the surface stays
+stateless and any instance holding the key verifies it. An expired state
+re-prompts; a state that fails verification is never honored, and is
+re-prompted with fresh state.
+
+The key changes nothing for clients that do not declare form
+elicitation (the spec forbids sending them input requests) or for
+`2024-11-05` sessions: both keep the header gate. MRTR satisfies
+confirmation only; the destructive `policy` ceiling still applies.
+
+One difference from Go: a failed verification is recorded in memory on
+`ElicitationConfirmGate.rejections` rather than emitted to bridge sinks,
+which this port does not have. A handler built by `createMcpHandler`
+does not expose its gate, so those records are not reachable from it.
 
 ### Scope
 

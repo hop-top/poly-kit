@@ -322,15 +322,9 @@ differences, and they are real:
 
 | | Go | TS | Python | Rust | PHP |
 |---|---|---|---|---|---|
-| MRTR confirmation flow | yes | **no** | yes | yes | yes |
 | `tasks/*` extension | no | no | **opt-in** | opt-in | no |
 | stdio transport | `mcpsdk.ServeStdio` | `serveStdio` | `serve_stdio` | `Surface::serve_stdio` | `StdioServer::serve` |
 | tool-name separator | `mcpsdk` only | yes | yes | yes | yes |
-
-**TypeScript accepts `confirmationKey` but does not act on it.** Its
-modern handler checks the `X-Confirm-Token` header and nothing else, so
-a confirmation-gated leaf served from TS always uses the header gate.
-Do not plan an elicitation round-trip against the TS port today.
 
 Python and Rust can serve the `tasks/*` extension when mounted
 explicitly — `mount_mcp(bridge, extensions=(TasksExtension(),))` in
@@ -467,8 +461,9 @@ verifier did not establish (see
 [Admit authenticated callers](#admit-authenticated-callers)), exactly
 as Go refuses any request an `api.Auth` did not verify, and the
 `X-Confirm-Token` gate on `kit/requires-confirmation` leaves. The MRTR
-confirmation HMAC rides along in every port except TypeScript (see
-[Where the ports genuinely differ](#where-the-ports-genuinely-differ)).
+confirmation round-trip and its `requestState` HMAC ride along in every
+port: a mount given a confirmation key prompts `2026-07-28` clients that
+declare form elicitation, and every other client keeps the header gate.
 
 ## Related pages
 
