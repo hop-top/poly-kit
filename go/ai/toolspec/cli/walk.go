@@ -190,18 +190,24 @@ func childrenOf(tree *cmdreflect.Tree, d *cmdreflect.Descriptor) []*cmdreflect.D
 
 // specSkip decides whether the ToolSpec projection omits d.
 //
-// The reflector already recorded WHY each command is non-invocable;
-// this maps those reasons onto the spec's own policy. Deprecated
-// commands are kept by default (the spec is the place a migrating
-// agent learns a command is going away), and interactive commands
-// are kept because a spec describes a surface rather than gating
-// invocation on it.
+// The decision reads the reflected Surface facts, not d.Reason:
+// Reason records only the highest-precedence rule, so a builtin or
+// hidden command that is also a non-runnable group reports
+// not-runnable and would slip through a reason switch (cobra's own
+// completion command is exactly that). Skipping a hidden group drops
+// its whole subtree, since children are only reached by recursion.
+// Deprecated commands are kept by default (the spec is the place a
+// migrating agent learns a command is going away), and interactive
+// commands are kept because a spec describes a surface rather than
+// gating invocation on it.
 func specSkip(d *cmdreflect.Descriptor, cfg *walkConfig) bool {
 	if d == nil || d.Cmd == nil {
 		return true
 	}
-	switch d.Reason {
-	case cmdreflect.ReasonHiddenInternal, cmdreflect.ReasonBuiltin:
+	if d.Surface.Builtin {
+		return true
+	}
+	if d.Surface.Hidden && !cfg.includeHidden {
 		return true
 	}
 	// The spec subcommand annotation excludes a command even when
