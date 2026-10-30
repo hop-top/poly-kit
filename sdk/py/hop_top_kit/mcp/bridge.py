@@ -93,17 +93,36 @@ class Flag:
 
 
 @dataclass
+class Arg:
+    """One declared positional argument, in the Go ``kit/args`` vocabulary.
+
+    ``required=False`` is the ``name?`` form: an optional argument only
+    lengthens what the MCP ``args`` array may hold. There is no variadic
+    marker, matching Go: no ``maxItems`` is published, so a trailing
+    argument may repeat and the leaf decides what count it accepts.
+    """
+
+    name: str
+    required: bool = True
+
+
+@dataclass
 class Command:
     """A node in the command tree.
 
     A node with no children and a ``run`` callable is a leaf and becomes
     one MCP tool. ``annotations`` carries the ``kit/*`` safety vocabulary
     :func:`~hop_top_kit.mcp.safety.classify` reads.
+
+    ``run`` receives the flags mapping. A leaf that declares ``args``
+    receives its positional arguments too, as a second argument —
+    ``run(flags, args)``, a list of strings in the order the caller
+    sent them — so a leaf declaring none keeps the one-argument form.
     """
 
     name: str
     short: str = ""
-    run: Callable[[Mapping[str, Any]], Result] | None = None
+    run: Callable[..., Result] | None = None
     flags: list[Flag] = field(default_factory=list)
     children: list[Command] = field(default_factory=list)
     annotations: dict[str, str] = field(default_factory=dict)
@@ -115,6 +134,9 @@ class Command:
     #: Whether this command gains a ``--help`` flag on first execution,
     #: mirroring cobra's lazy registration. See :meth:`attach_help_flag`.
     lazy_help_flag: bool = True
+    #: Declared positional arguments, in order. Published over MCP as one
+    #: ``args`` array property; see :meth:`Leaf.tool_envelope`.
+    args: list[Arg] = field(default_factory=list)
 
     @property
     def has_subcommands(self) -> bool:
@@ -196,6 +218,9 @@ class Invocation:
     path: tuple[str, ...] = ()
     flags: dict[str, Any] = field(default_factory=dict)
     meta: Meta = field(default_factory=Meta)
+    #: Positional arguments, in order. A value starting with ``-`` is
+    #: still an argument, never a flag.
+    args: list[str] = field(default_factory=list)
 
 
 #: The default string joining a leaf path into its MCP tool name.
@@ -246,6 +271,32 @@ class Leaf:
                 required.append(flag.name)
         return props, required
 
+    def args_published(self) -> bool:
+        """Whether the ``inputSchema`` carries the ``args`` property.
+
+        True when the leaf declares positional arguments and no visible
+        flag already holds the name. The flag keeps it: it was part of
+        the tool's schema first, and taking it would change what an
+        existing caller's ``args`` means. Mirrors Go's
+        ``mcpArgsPublished``.
+        """
+        if not self.cmd.args:
+            return False
+        props, _ = self.collect_flags()
+        return ARGS_PROPERTY not in props
+
+    def description(self) -> str:
+        """The tool description: the summary, plus a note when the leaf
+        declares positionals that MCP cannot pass. Mirrors Go's
+        ``MCPToolDescription``.
+        """
+        desc = self.cmd.short
+        if not self.cmd.args or self.args_published():
+            return desc
+        if not desc:
+            return NOTE_ARGS_FLAG_TAKEN
+        return f"{desc} {NOTE_ARGS_FLAG_TAKEN}"
+
     def tool_envelope(self, separator: str = DEFAULT_TOOL_NAME_SEPARATOR) -> dict[str, Any]:
         """Render this leaf as an MCP tool descriptor.
 
@@ -254,16 +305,87 @@ class Leaf:
         2026-07-28 cannot happen, exactly as in Go where one
         ``buildToolEnvelope`` serves both handlers. ``separator`` joins
         the path into ``name``.
+
+        A leaf declaring positional arguments gains one ``args``
+        property: an array of strings in declared order, with
+        ``minItems`` and a ``required`` entry when any argument is
+        required — Go's ``MCPInputSchema`` shape.
         """
         props, required = self.collect_flags()
+        if self.args_published():
+            declared = self.cmd.args
+            prop: dict[str, Any] = {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": _args_description(declared),
+            }
+            count = sum(1 for a in declared if a.required)
+            if count:
+                prop["minItems"] = count
+                required.append(ARGS_PROPERTY)
+            props[ARGS_PROPERTY] = prop
         schema: dict[str, Any] = {"type": "object", "properties": props}
         if required:
             schema["required"] = required
         return {
             "name": tool_name(self.path, separator),
-            "description": self.cmd.short,
+            "description": self.description(),
             "inputSchema": schema,
         }
+
+    def split_arguments(self, arguments: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
+        """Split a ``tools/call`` arguments object into flags and positionals.
+
+        When the leaf publishes an ``args`` property that key is taken
+        out of the flags: it must hold an array of strings, at least as
+        many as the leaf declares required, and becomes the positional
+        argv in order. Every other key is a flag, forwarded as-is. A leaf
+        that publishes no ``args`` property gets every key as a flag.
+
+        Raises :class:`InvalidArgumentsError` naming the problem, with
+        Go's ``MCPSplitArguments`` wording; surfaces return it as an
+        ``isError`` tool result.
+        """
+        if not self.args_published():
+            return dict(arguments), []
+        if ARGS_PROPERTY not in arguments:
+            self._require_args([])
+            return dict(arguments), []
+        flags = {k: v for k, v in arguments.items() if k != ARGS_PROPERTY}
+        raw = arguments[ARGS_PROPERTY]
+        if raw is None:
+            raw = []
+        if not isinstance(raw, list) or not all(isinstance(v, str) for v in raw):
+            raise InvalidArgumentsError('"args" must be an array of strings')
+        args = list(raw)
+        self._require_args(args)
+        return flags, args
+
+    def _require_args(self, args: Sequence[str]) -> None:
+        declared = self.cmd.args
+        if len(args) < sum(1 for a in declared if a.required):
+            raise InvalidArgumentsError(f"missing required argument: {declared[len(args)].name}")
+
+
+#: The ``inputSchema`` property carrying a leaf's declared positionals.
+ARGS_PROPERTY = "args"
+
+#: Tool-description note for a leaf whose ``args`` name a flag holds.
+#: Verbatim Go text (``mcpNoteArgsFlagTaken``).
+NOTE_ARGS_FLAG_TAKEN = (
+    "Takes positional arguments that cannot be passed over MCP: "
+    'its --args flag holds the "args" property.'
+)
+
+
+class InvalidArgumentsError(ValueError):
+    """A ``tools/call`` ``args`` value the leaf cannot run with."""
+
+
+def _args_description(declared: Sequence[Arg]) -> str:
+    """Declared names in order, optional ones marked ``?``."""
+    names = [a.name if a.required else f"{a.name}?" for a in declared]
+    return "Positional arguments in order: " + ", ".join(names)
 
 
 def tool_name(path: Sequence[str], separator: str = DEFAULT_TOOL_NAME_SEPARATOR) -> str:
@@ -418,6 +540,9 @@ def _in_process_runner(root: Command) -> Callable[[Invocation], Result]:
     flag is attached *before* ``run`` is called, so it exists even when
     the command raises — cobra registers on the execution path, not on
     success.
+
+    A command declaring ``args`` is called as ``run(flags, args)``; one
+    declaring none as ``run(flags)``.
     """
 
     def run(inv: Invocation) -> Result:
@@ -430,6 +555,8 @@ def _in_process_runner(root: Command) -> Callable[[Invocation], Result]:
         if cmd.run is None:
             raise UnknownCommandError(f"cmdsurface: unknown command: {' '.join(inv.path)}")
         cmd.attach_help_flag()
+        if cmd.args:
+            return cmd.run(inv.flags, list(inv.args))
         return cmd.run(inv.flags)
 
     return run

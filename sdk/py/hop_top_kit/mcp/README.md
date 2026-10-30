@@ -7,6 +7,7 @@ How a command tree is served over the Model Context Protocol from one mount that
 ## Use it when
 
 - expose leaves as MCP tools: build `Command` / `Bridge`, then `mount_mcp(bridge, **options)`
+- take positional arguments: declare `args=[Arg("name"), Arg("note", required=False)]` on the leaf; it is called as `run(flags, args)` and publishes one `args` array property, as in Go
 - host it: `McpSurface` is an ASGI callable; mount it under uvicorn, hypercorn or a Starlette route
 - bind to something else: `McpSurface.handle(Request) -> Response` is a pure function, no socket
 - require confirmation on the modern era: `header_confirmation_gate` or `ElicitationConfirmationGate`
@@ -39,6 +40,7 @@ print(res.status, res.body)
 - Protocol layer is `mcp>=2.0,<3` plus `mcp-types>=2.0,<3`; the 1.x line tops out at `2025-11-25` and cannot serve the modern era.
 - Wire bytes are pinned by [`sdk/tests/cross-lang/fixtures/mcp-wire.json`](../../../tests/cross-lang/fixtures/mcp-wire.json), compared as raw bytes; `tests/test_mcp_conformance.py` replays both `cases` and `sequences`.
 - `legacy` and `modern` are separate modules with `dispatch` choosing between them; the legacy path is preserved byte for byte, additive only.
+- Positionals follow Go's `MCPInputSchema` / `MCPSplitArguments` contract (schema shape, description, error wording, split before the confirmation gate); `tests/test_mcp_args.py` pins it. The wire fixture carries no positional case yet.
 - `tools/list` re-reads the bridge's leaves per request; caching the leaf set fails the sequence fixture.
 - ASGI, not WSGI: the modern era's streaming is not expressible in WSGI.
 - Tool names join the leaf path with `tool_name_separator` (default `.`) and split back on it (`tool_name` / `tool_path`). `MountError` on an empty separator and, for any other than `.`, on a command name containing it (`data_sync` under `_`). Names are not otherwise rewritten or length-checked.

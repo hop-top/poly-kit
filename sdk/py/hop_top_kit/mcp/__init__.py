@@ -28,9 +28,11 @@ invariant structurally checkable rather than merely asserted.
 from __future__ import annotations
 
 from .bridge import (
+    Arg,
     Bridge,
     Command,
     Flag,
+    InvalidArgumentsError,
     Invocation,
     Leaf,
     Meta,
@@ -91,6 +93,7 @@ __all__ = [
     "LEGACY_PROTOCOL_VERSION",
     "MODERN_PROTOCOL_VERSION",
     "SPEC_VERSIONS",
+    "Arg",
     "Bridge",
     "Command",
     "DestructiveBlockedError",
@@ -99,6 +102,7 @@ __all__ = [
     "Headers",
     "Identity",
     "InMemoryTaskStore",
+    "InvalidArgumentsError",
     "Invocation",
     "Leaf",
     "LegacyHandler",

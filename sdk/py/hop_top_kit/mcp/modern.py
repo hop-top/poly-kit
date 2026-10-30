@@ -38,7 +38,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ._json import Raw
-from .bridge import DEFAULT_TOOL_NAME_SEPARATOR, Bridge, Invocation, Leaf
+from .bridge import DEFAULT_TOOL_NAME_SEPARATOR, Bridge, InvalidArgumentsError, Invocation, Leaf
 from .identity import Verifier, establish_caller, invocation_meta, unauthenticated
 from .legacy import (
     STATUS_OK,
@@ -430,16 +430,24 @@ class ModernHandler:
                 self._call_error(rpc, "authentication required", STATUS_UNAUTHORIZED)
             )
 
+        # Arguments are checked before the confirmation gate: a person
+        # is never asked to approve a call that cannot run as sent.
+        arguments = params.get("arguments")
+        try:
+            flags, args = leaf.split_arguments(arguments if isinstance(arguments, dict) else {})
+        except InvalidArgumentsError as exc:
+            return self._call_error(rpc, str(exc), STATUS_OK)
+
         refusal = self._confirm(request, leaf, rpc)
         if refusal is not None:
             body, status = refusal
             return write_result(rpc.id_raw, self.stamp_envelope(body), status)
 
-        arguments = params.get("arguments")
         inv = Invocation(
             path=leaf.path,
-            flags=arguments if isinstance(arguments, dict) else {},
+            flags=flags,
             meta=invocation_meta(ident, invocation_extra(meta)),
+            args=args,
         )
         try:
             result = self._bridge.invoke(inv)
