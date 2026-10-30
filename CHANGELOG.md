@@ -2,6 +2,8 @@
 
 ## [0.5.0-beta.6](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.5...kit/v0.5.0-beta.6) (2026-10-30)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.6. This release includes new features and bug fixes.
+
 
 ### Features
 
@@ -13,6 +15,8 @@
 ### Bug Fixes
 
 * **toolspec:** project retryable; lossless manifest adapter ([d418400](https://github.com/hop-top/poly-kit/commit/d4184006ef23f15670504f9e3d2183e9bb520af3))
+
+Full diff: [kit/v0.5.0-beta.5...kit/v0.5.0-beta.6](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.5...kit/v0.5.0-beta.6)
 
 ## [0.5.0-beta.5](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.4...kit/v0.5.0-beta.5) (2026-10-30)
 
