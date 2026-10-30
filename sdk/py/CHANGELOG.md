@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.7...kit-py/v0.5.0-alpha.8) (2026-10-30)
 
+The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.8. This release includes new features and bug fixes.
+
 
 ### Features
 
@@ -18,6 +20,8 @@
 * **py/alias:** offer default alias proxies in completion ([4ee0678](https://github.com/hop-top/poly-kit/commit/4ee06783f44502753aaab95d7aa5498d520502ff))
 * **py/config:** deep-merge layers like other ports ([a7d1700](https://github.com/hop-top/poly-kit/commit/a7d1700d0c430dea01521850db6b970ecc8cab03))
 * **py/toolspec:** loader types match go/ts spec ([2af0824](https://github.com/hop-top/poly-kit/commit/2af082460f116b14ab58f5fa3ab3dec67e3133ea))
+
+Full diff: [kit-py/v0.5.0-alpha.7...kit-py/v0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.7...kit-py/v0.5.0-alpha.8)
 
 ## [0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.6...kit-py/v0.5.0-alpha.7) (2026-10-29)
 
