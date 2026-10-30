@@ -693,6 +693,54 @@ A hand-written `McpBridge` opts in by setting `Leaf.args`
 `mcpSplitArguments` are exported for bridges that render or split
 themselves.
 
+### Hosting over stdio
+
+For a host that spawns the tool (a desktop client, an editor), serve the
+same surface over standard input and output:
+
+```ts
+import { serveStdio } from '@hop-top/kit/mcp';
+
+const server = serveStdio(bridge, {
+  mount: { serverInfo: { name: 'my-cli', version: '1.4.0' } },
+});
+await server.done; // the host closed stdin
+```
+
+`serveStdio(target, { input, output, log, mount })` takes a bridge or a
+handler from `createMcpHandler` (which keeps its own options; passing
+`mount` with a handler throws). `input` / `output` / `log` default to
+`process.stdin` / `process.stdout` / `process.stderr`. It returns
+`{ done, close() }`: `done` resolves once input ends and every in-flight
+request is answered; `close()` stops reading and resolves the same way.
+
+| Input line | Output |
+|---|---|
+| a request | one reply line carrying its `id`; requests run concurrently, so replies may arrive out of order |
+| a notification (no `id`) | nothing, ever |
+| `ping` (2024-11-05) | `{"jsonrpc":"2.0","id":…,"result":{}}` |
+| not JSON | `-32700`, `"id": null` |
+| a JSON array (batch) | `-32600`, `"id": null`: neither revision allows batches over stdio |
+| a non-object, or an object with an `id` but no `method` | `-32600` |
+| a response (`result` / `error`, no `method`) | nothing; noted on `log` |
+| a blank line | skipped |
+
+Output carries protocol messages only; diagnostics go to `log`.
+
+stdio has no header layer. Era detection uses the body markers alone (the
+reserved `_meta` protocolVersion key, `server/discover`), and the
+`2026-07-28` header checks (`MCP-Protocol-Version`, `Mcp-Method`,
+`Mcp-Name`: V4, V6, V7) do not apply; every other check runs unchanged.
+Gates that read headers see none: the mount's `verifier` is called with a
+header-less request, so a `kit/auth-required` leaf is refused unless your
+verifier admits it, and the `X-Confirm-Token` header gate cannot be
+satisfied.
+
+A handler built some other way (not by `createMcpHandler`) is called with
+an HTTP-shaped POST per message: that serves `2024-11-05`, but such a
+handler cannot know the message came over stdio, so `2026-07-28`
+requests fail its header checks.
+
 ### Options
 
 `path` (`/mcp`), `serverInfo` (`cmdsurface` / `0.0.0`), `specVersions`

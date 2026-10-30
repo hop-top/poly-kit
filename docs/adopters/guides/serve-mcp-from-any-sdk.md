@@ -81,6 +81,11 @@ app.post('/mcp', async (c) => {
 });
 ```
 
+For a host that spawns the tool, `serveStdio(bridge)` serves the same
+surface over newline-delimited stdin/stdout and resolves `done` when the
+host closes stdin; see the
+[TypeScript reference](../reference/ts-api-reference.md#hosting-over-stdio).
+
 ### Python
 
 Install the extra — the MCP dependencies are optional so adopters who do
@@ -269,6 +274,7 @@ differences, and they are real:
 |---|---|---|---|---|---|
 | MRTR confirmation flow | yes | **no** | yes | yes | yes |
 | `tasks/*` extension | no | no | **opt-in** | opt-in | no |
+| stdio transport | `mcpsdk.ServeStdio` | `serveStdio` | no | no | no |
 
 **TypeScript accepts `confirmationKey` but does not act on it.** Its
 modern handler checks the `X-Confirm-Token` header and nothing else, so
