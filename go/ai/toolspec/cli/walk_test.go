@@ -123,6 +123,49 @@ func TestWalkCobra_SkipsBuiltins(t *testing.T) {
 	assert.Nil(t, findCommand(spec.Commands, "__complete"))
 }
 
+// TestWalkCobra_SkipsRealCompletionCommand registers cobra's own
+// completion command: a non-runnable group whose shell children are
+// runnable. The group is a builtin even though it has no action, so
+// neither it nor its children reach the spec.
+func TestWalkCobra_SkipsRealCompletionCommand(t *testing.T) {
+	root := rootWith("mytool", addChild("real"))
+	root.InitDefaultCompletionCmd()
+	completion, _, err := root.Find([]string{"completion"})
+	require.NoError(t, err)
+	require.Equal(t, "completion", completion.Name(), "cobra did not register completion")
+	require.False(t, completion.Runnable(), "fixture assumes a non-runnable group")
+
+	spec := WalkCobra(root)
+	assert.NotNil(t, findCommand(spec.Commands, "real"))
+	assert.Nil(t, findCommand(spec.Commands, "completion"))
+	assert.Nil(t, findCommand(spec.Commands, "bash"))
+}
+
+// hiddenGroupRoot builds a root with a hidden, non-runnable group
+// holding one visible-by-itself child.
+func hiddenGroupRoot() *cobra.Command {
+	root := rootWith("mytool", addChild("public"))
+	group := &cobra.Command{Use: "internal", Hidden: true}
+	group.AddCommand(&cobra.Command{Use: "probe", Run: func(*cobra.Command, []string) {}})
+	root.AddCommand(group)
+	return root
+}
+
+func TestWalkCobra_SkipsHiddenGroupAndChildren(t *testing.T) {
+	spec := WalkCobra(hiddenGroupRoot())
+	assert.NotNil(t, findCommand(spec.Commands, "public"))
+	assert.Nil(t, findCommand(spec.Commands, "internal"))
+	assert.Nil(t, findCommand(spec.Commands, "probe"))
+}
+
+func TestWalkCobra_IncludeHiddenGroup(t *testing.T) {
+	spec := WalkCobra(hiddenGroupRoot(), WithIncludeHidden())
+	group := findCommand(spec.Commands, "internal")
+	require.NotNil(t, group)
+	require.Len(t, group.Children, 1)
+	assert.Equal(t, "probe", group.Children[0].Name)
+}
+
 func TestWalkCobra_SkipsSpecCommandAnnotation(t *testing.T) {
 	root := rootWith("mytool",
 		addChild("real"),
