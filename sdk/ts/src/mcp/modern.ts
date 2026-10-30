@@ -16,6 +16,7 @@
  * instance can serve any request.
  */
 
+import { mcpSplitArguments } from './args.js';
 import {
   buildToolEnvelope,
   errorResultBlock,
@@ -324,6 +325,13 @@ export class ModernMcpHandler {
     // IS the header gate, for everyone. Either way the decision is a
     // pre-flight refusal or an interim prompt, stamped with the modern
     // envelope like every other result on this path.
+    //
+    // Arguments are checked first: a person is never asked to
+    // approve a call that cannot run as sent.
+    const split = mcpSplitArguments(leaf, params.arguments);
+    if (split.error !== undefined) {
+      return this.writeCallError(rpc, split.error, 200);
+    }
     const gated = this.confirmationGate(req, leaf, rpc.params);
     if (gated !== undefined) {
       return writeResult(
@@ -336,7 +344,8 @@ export class ModernMcpHandler {
     try {
       const res = await this.bridge.invoke({
         path: [...leaf.path],
-        flags: params.arguments,
+        ...(split.args !== undefined ? { args: split.args } : {}),
+        flags: split.flags,
         meta: invocationMeta(ident, modernInvocationExtra(meta)),
       });
       const out = renderCallResult(res);

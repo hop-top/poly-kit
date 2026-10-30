@@ -22,6 +22,7 @@ import {
   SERVER_INFO_META_KEY,
 } from '@modelcontextprotocol/server';
 
+import { mcpInputSchema, mcpToolDescription } from './args.js';
 import type { McpHttpRequest } from './dispatch.js';
 
 // --- protocol constants -------------------------------------------------
@@ -195,6 +196,15 @@ export interface FlagSchema {
   enum?: string[];
   /** The flag's default, when it is a value of `type`. */
   default?: unknown;
+  /** Least array length; set on the positional "args" property. */
+  minItems?: number;
+}
+
+/** One declared positional argument of a leaf, in declared order. */
+export interface LeafArg {
+  name: string;
+  /** False/absent for an optional argument. */
+  required?: boolean;
 }
 
 /**
@@ -210,6 +220,12 @@ export interface Leaf {
   properties: Record<string, FlagSchema>;
   /** Names of required flags, in declaration order. */
   required?: string[];
+  /**
+   * Declared positional arguments, in order. Published as one "args"
+   * string-array property and split back out of tools/call arguments
+   * into `Invocation.args` (see mcp/args).
+   */
+  args?: LeafArg[];
   /** Safety annotations consulted by the policy gate. */
   class?: SafetyClass;
   /** Surfaces this leaf is exposed on. */
@@ -248,6 +264,8 @@ export interface InvocationMeta {
 /** One leaf invocation. */
 export interface Invocation {
   path: string[];
+  /** Positional arguments in declared order, from the "args" property. */
+  args?: string[];
   flags?: Record<string, unknown>;
   meta: InvocationMeta;
 }
@@ -453,17 +471,10 @@ export function pathFromToolName(name: string): string[] {
 
 /** Renders one leaf as an MCP tool descriptor (shared by both eras). */
 export function buildToolEnvelope(leaf: Leaf): Record<string, unknown> {
-  const schema: Record<string, unknown> = {
-    type: 'object',
-    properties: leaf.properties ?? {},
-  };
-  if (leaf.required && leaf.required.length > 0) {
-    schema.required = leaf.required;
-  }
   return {
     name: toolName(leaf.path),
-    description: leaf.description,
-    inputSchema: schema,
+    description: mcpToolDescription(leaf),
+    inputSchema: mcpInputSchema(leaf),
   };
 }
 

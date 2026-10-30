@@ -17,6 +17,7 @@
  */
 
 import type { Command, Option } from 'commander';
+import { declaredArgs } from '../toolspec-internal.js';
 import {
   DestructiveBlockedError,
   policyAllowed,
@@ -82,6 +83,8 @@ export function commanderBridge(
         ...collectFlags(cmd),
         class: classify(cmd as AnnotatedCommand),
       };
+      const args = declaredArgs(cmd);
+      if (args.length > 0) leaf.args = args;
       const en = opts.enabled?.(leaf);
       if (en) leaf.enabled = en;
       out.push(leaf);

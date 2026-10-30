@@ -4,6 +4,7 @@ import type {
   Command as CommanderCommand,
   Option as CommanderOption,
 } from "commander";
+import { declaredArgs } from "./toolspec-internal.js";
 
 // --- Types ---
 
@@ -380,9 +381,7 @@ function projectCommand(
   if (aliases.length > 0) out.aliases = [...aliases];
   const flags = projectFlags(cmd);
   if (flags) out.flags = flags;
-  const args = cmd.registeredArguments.map((a): Arg =>
-    a.required ? { name: a.name(), required: true } : { name: a.name() },
-  );
+  const args: Arg[] = declaredArgs(cmd);
   if (args.length > 0) out.args = args;
   const exitCodes = splitCSV(kitAnnotations(cmd)["kit/exit-codes"]);
   if (exitCodes) out.exitCodes = exitCodes;

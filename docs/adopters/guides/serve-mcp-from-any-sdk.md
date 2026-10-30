@@ -56,7 +56,7 @@ it will pass the legacy fixtures and fail every modern one.
 import { createMcpHandler, commanderBridge } from '@hop-top/kit/mcp';
 
 const bridge = commanderBridge(rootCommand, {
-  run: async (inv, cmd) => ({ stdout: await execute(cmd, inv.flags), exitCode: 0 }),
+  run: async (inv, cmd) => ({ stdout: await execute(cmd, inv.args ?? [], inv.flags), exitCode: 0 }),
 });
 
 const handler = createMcpHandler(bridge, {

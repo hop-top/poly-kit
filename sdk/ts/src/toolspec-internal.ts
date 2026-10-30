@@ -23,6 +23,20 @@ export function splitCSV(s: string | undefined): string[] | undefined {
 // --- commander facts ---
 
 /**
+ * cmd's declared positional arguments (commander registeredArguments),
+ * in order, `required` set only on required ones. Shared by the
+ * toolspec projection and the MCP bridge so both read positionals
+ * the same way.
+ */
+export function declaredArgs(
+  cmd: CommanderCommand,
+): Array<{ name: string; required?: boolean }> {
+  return cmd.registeredArguments.map((a) =>
+    a.required ? { name: a.name(), required: true } : { name: a.name() },
+  );
+}
+
+/**
  * Whether cmd has an action handler (cobra Runnable). commander 15
  * exposes no public accessor, so this reads the private field.
  */
