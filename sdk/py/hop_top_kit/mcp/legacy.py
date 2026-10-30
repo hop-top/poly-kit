@@ -20,7 +20,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from .bridge import DEFAULT_TOOL_NAME_SEPARATOR, Bridge, Invocation, Leaf, Result, tool_path
+from .bridge import (
+    DEFAULT_TOOL_NAME_SEPARATOR,
+    Bridge,
+    InvalidArgumentsError,
+    Invocation,
+    Leaf,
+    Result,
+    tool_path,
+)
 from .identity import Identity, Verifier, establish_caller, invocation_meta, unauthenticated
 from .protocol import (
     ERR_INVALID_PARAMS,
@@ -146,16 +154,23 @@ class LegacyHandler:
                     STATUS_UNAUTHORIZED,
                 )
             )
+        # Arguments are checked before the confirmation gate: a person
+        # is never asked to approve a call that cannot run as sent.
+        arguments = params.get("arguments")
+        try:
+            flags, args = leaf.split_arguments(arguments if isinstance(arguments, dict) else {})
+        except InvalidArgumentsError as exc:
+            return write_result(rpc.id_raw, error_result_block(str(exc)), STATUS_OK)
         gate = preflight_refusal(request, leaf)
         if gate is not None:
             message, status = gate
             return write_result(rpc.id_raw, error_result_block(message), status)
 
-        arguments = params.get("arguments")
         inv = Invocation(
             path=leaf.path,
-            flags=arguments if isinstance(arguments, dict) else {},
+            flags=flags,
             meta=invocation_meta(ident),
+            args=args,
         )
         try:
             result = self._bridge.invoke(inv)

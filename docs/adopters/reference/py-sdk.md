@@ -68,6 +68,43 @@ is the whole contract — a pure function from a normalised request, no
 socket involved, which is what lets the conformance suite drive every
 fixture case.
 
+### Positional arguments
+
+A leaf declares its positionals, in order, as `args=[Arg(...)]`;
+`Arg(name, required=False)` is Go's `name?`. There is no variadic
+marker, as in Go: no `maxItems` is published, so a trailing argument may
+repeat and the leaf decides what count it accepts.
+
+```python
+from hop_top_kit.mcp import Arg, Command, Flag, Result
+
+Command(
+    name="tag",
+    short="Tag an item",
+    args=[Arg("name"), Arg("note", required=False)],
+    flags=[Flag("force", "skip checks", "bool")],
+    run=lambda flags, args: Result(stdout=f"tagged {args[0]}\n"),
+)
+```
+
+The tool's `inputSchema` gains one `args` property beside the flags, the
+contract the Go surface publishes (see
+[Positional arguments](../guides/expose-cli-over-mcp.md#positional-arguments)):
+an array of strings in declared order, described as
+`Positional arguments in order: name, note?`, with `minItems` the number
+of required arguments and `args` listed in `required` when any is. On
+`tools/call` the surface takes `args` out of the arguments, checks it
+after the auth gate and before the confirmation gate
+(`missing required argument: name`, `"args" must be an array of strings`,
+both `isError` at HTTP 200), and calls `run(flags, args)`; every other
+key stays in `flags`. A custom `Bridge(runner=...)` reads them from
+`Invocation.args`.
+
+A leaf with a flag named `args` keeps that flag, publishes no `args`
+array, and its tool description says its positionals cannot be passed.
+A leaf that declares no `args` is unchanged: `run(flags)`, the same
+schema bytes, and an `args` key is just another flag.
+
 ### Options
 
 Keyword-only on `mount_mcp`: `path` (`/mcp`), `server_name`
