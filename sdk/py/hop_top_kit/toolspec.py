@@ -15,6 +15,10 @@ class Contract:
     side_effects: list[str] = field(default_factory=list)
     retryable: bool = False
     pre_conditions: list[str] = field(default_factory=list)
+    # Raw kit/idempotent class (yes|no|conditional) when declared;
+    # ``idempotent`` is true iff "yes". Last so positional
+    # construction keeps working.
+    idempotent_class: str = ""
 
 
 @dataclass
@@ -61,6 +65,10 @@ class Flag:
     deprecated: bool = False
     replaced_by: str = ""
     required: bool = False
+    # Default as pflag prints it ("false", "[a,b]"); "" when none.
+    default: str = ""
+    # Closed set of legal values (kit WithFlagEnum); None when none.
+    choices: list[str] | None = None
 
 
 @dataclass
@@ -69,6 +77,8 @@ class Arg:
 
     name: str = ""
     required: bool = False
+    # kit/args "name...": takes every remaining operand; always last.
+    variadic: bool = False
 
 
 @dataclass
@@ -134,6 +144,8 @@ def _map_flag(raw: dict) -> Flag:
         deprecated=raw.get("deprecated", False),
         replaced_by=raw.get("replaced_by", ""),
         required=raw.get("required", False),
+        default=str(raw.get("default", "")),
+        choices=raw.get("choices"),
     )
 
 
@@ -141,6 +153,7 @@ def _map_arg(raw: dict) -> Arg:
     return Arg(
         name=raw.get("name", ""),
         required=raw.get("required", False),
+        variadic=raw.get("variadic", False),
     )
 
 
@@ -162,6 +175,7 @@ def _map_contract(raw: dict | None) -> Contract | None:
         side_effects=raw.get("side_effects", []),
         retryable=raw.get("retryable", False),
         pre_conditions=raw.get("pre_conditions", []),
+        idempotent_class=raw.get("idempotent_class", ""),
     )
 
 
