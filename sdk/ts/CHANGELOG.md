@@ -4,6 +4,24 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.8...kit-ts/v0.5.0-alpha.9) (2026-10-30)
+
+
+### Features
+
+* **mcp:** toolNameSeparator mount option in ts sdk ([0d0111c](https://github.com/hop-top/poly-kit/commit/0d0111c4600f7ac6be7fe013f96f757230f90467))
+* **ts/mcp:** audit mount hook for refusals ([1f63a5f](https://github.com/hop-top/poly-kit/commit/1f63a5f89cd7ba8c25345ed9478a4a753f5bef28))
+* **ts/mcp:** serveStdio transport ([7ab69a6](https://github.com/hop-top/poly-kit/commit/7ab69a622cc1f3c07b7fb6e51234235a5a992b2f))
+* **ts/toolspec:** skip builtins, includeHidden in toolSpecFromCommand ([2962a7c](https://github.com/hop-top/poly-kit/commit/2962a7cfac4244d5c3bcdc40bceba24dac92f694))
+
+
+### Bug Fixes
+
+* **mcp:** no reply to notifications; ping returns {} ([f24c097](https://github.com/hop-top/poly-kit/commit/f24c09796642894a2329a6170a160283a15c38af))
+* **ts/mcp:** negated, repeatable option types and default/enum in bridge schema ([863a448](https://github.com/hop-top/poly-kit/commit/863a448e899fc8e6d66f675604fc9427ce6d9b80))
+* **ts/mcp:** publish positional args as the Go "args" array ([c47db88](https://github.com/hop-top/poly-kit/commit/c47db88b6f3e7e2594ee103cd87375d19f518e13))
+* **ts/toolspec:** negatable flags typed bool ([79cfeb4](https://github.com/hop-top/poly-kit/commit/79cfeb4cc0b31d449b2b23487949dffce518f63d))
+
 ## [0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.7...kit-ts/v0.5.0-alpha.8) (2026-10-29)
 
 The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.8. This release includes new features and bug fixes.
