@@ -6,12 +6,14 @@
  * `tools/call`, plain JSON-RPC over one POST path, no sessions, no
  * SSE.
  *
- * This module is byte-for-byte frozen. The dual-spec hard invariant is
- * "2024-11-05 behavior is preserved byte-for-byte; additive only; no
- * deprecation", and the three-way module split (legacy / modern /
- * dispatch) exists precisely so a reviewer can confirm a modern-era
- * change did not touch this file. Modern-era behavior belongs in
- * modern.ts — never here.
+ * This module's wire output is byte-for-byte frozen. The dual-spec hard
+ * invariant is "2024-11-05 behavior is preserved byte-for-byte;
+ * additive only; no deprecation", and the three-way module split
+ * (legacy / modern / dispatch) exists precisely so a reviewer can
+ * confirm a modern-era change did not touch this file. Modern-era
+ * behavior belongs in modern.ts — never here. The refusal audit hook
+ * (mcp/audit) is the one deliberate addition: it observes the
+ * refusals this handler already makes and changes no byte of them.
  */
 
 import { mcpSplitArguments } from './args.js';
@@ -42,6 +44,12 @@ import {
 import type { JsonRpcRequest, McpHttpRequest, McpHttpResponse } from './dispatch.js';
 import { acceptedResponse, jsonResponse } from './dispatch.js';
 import { establishCaller, invocationMeta } from './identity.js';
+import {
+  auditRefusal,
+  MCP_AUDIT_AUTH_REFUSED,
+  MCP_AUDIT_CONFIRMATION_REQUIRED,
+  MCP_AUDIT_DESTRUCTIVE_BLOCKED,
+} from './audit.js';
 
 /** Writes a successful JSON-RPC envelope. */
 export function writeResult(
@@ -229,6 +237,7 @@ export class LegacyMcpHandler {
     // a bare Authorization header does not.
     const ident = await establishCaller(this.cfg.verifier, req);
     if (leaf.class?.authRequired && ident === undefined) {
+      this.audit(leaf, MCP_AUDIT_AUTH_REFUSED);
       return unauthenticated(
         writeResult(rpc.id, errorResultBlock('authentication required'), 401),
       );
@@ -243,6 +252,7 @@ export class LegacyMcpHandler {
       leaf.class?.requiresConfirmation &&
       !headerValue(req, 'x-confirm-token')
     ) {
+      this.audit(leaf, MCP_AUDIT_CONFIRMATION_REQUIRED);
       return writeResult(
         rpc.id,
         errorResultBlock('confirmation required'),
@@ -270,13 +280,22 @@ export class LegacyMcpHandler {
         );
       }
       // DestructiveBlockedError and every other invoke failure render
-      // as an isError result at HTTP 200.
+      // as an isError result at HTTP 200. Only the ceiling is a
+      // refusal the surface audits; a run that failed is the bridge's.
+      if (err instanceof DestructiveBlockedError) {
+        this.audit(leaf, MCP_AUDIT_DESTRUCTIVE_BLOCKED);
+      }
       return writeResult(
         rpc.id,
         errorResultBlock(errorMessage(err)),
         200,
       );
     }
+  }
+
+  /** Emits one 2024-11-05 refusal record to the mount's audit hook. */
+  private audit(leaf: Leaf, error: string): void {
+    auditRefusal(this.cfg.audit, leaf.path, MCP_SPEC_2024_11_05, error);
   }
 }
 

@@ -604,9 +604,11 @@ forced to re-bind when a tool gains a service.
 
 The contract rules these out as Go-only; they are absent here by design,
 not unimplemented: the REST/OpenAPI projection of the command tree, the
-Unix socket service, `cmdreflect`-driven discovery, and the permission,
-provenance, and audit surface. This SDK ships no HTTP or socket server,
-so a service that listens is the adopter's to write.
+Unix socket service, `cmdreflect`-driven discovery, and the permission
+gate and provenance (`Meta`) of the transport services. The one audit
+slice the MCP surface has, a hook per refusal, is ported; see
+[Audit](#audit). This SDK ships no HTTP or socket server, so a service
+that listens is the adopter's to write.
 
 ## MCP surface
 
@@ -749,8 +751,9 @@ requests fail its header checks.
 `path` (`/mcp`), `serverInfo` (`cmdsurface` / `0.0.0`), `specVersions`
 (both eras), `cacheHints` (`ttlMs` 0, `cacheScope` `private`),
 `originAllowlist` (empty, no check), `confirmationKey`, `policy`
-(`defaultPolicy()`), and `toolNameSeparator` (`.`). The option *set* is
-normative across every kit SDK; only the spelling is idiomatic.
+(`defaultPolicy()`), `verifier`, `toolNameSeparator` (`.`), and `audit`
+(see [Audit](#audit)). The option *set* is normative across every kit
+SDK; only the spelling is idiomatic.
 
 An explicitly empty `specVersions`, a negative ttl, an unrecognized
 cache scope, or an empty confirmation key all throw at mount time rather
@@ -818,10 +821,56 @@ elicitation (the spec forbids sending them input requests) or for
 `2024-11-05` sessions: both keep the header gate. MRTR satisfies
 confirmation only; the destructive `policy` ceiling still applies.
 
-One difference from Go: a failed verification is recorded in memory on
-`ElicitationConfirmGate.rejections` rather than emitted to bridge sinks,
-which this port does not have. A handler built by `createMcpHandler`
-does not expose its gate, so those records are not reachable from it.
+A failed verification reaches the mount's `audit` hook as a
+`confirmation state rejected` record (see [Audit](#audit)), and, for
+code holding an `ElicitationConfirmGate` directly, is also kept in
+memory on its `rejections`.
+
+### Audit
+
+Go fans every refusal the MCP surface makes out to the bridge's sinks
+(`WithSinks`). This port has no sink registry; the `audit` mount option
+is its counterpart: one callback, one `McpAuditRecord` per refusal the
+surface decides before your bridge runs.
+
+```ts
+import { createMcpHandler, type McpAuditRecord } from '@hop-top/kit/mcp';
+
+createMcpHandler(bridge, {
+  audit: (r: McpAuditRecord) => {
+    // r.path          ['widget', 'delete']
+    // r.surface       'mcp'
+    // r.requestedAt   when the refusal was decided
+    // r.specVersion   '2024-11-05' | '2026-07-28'
+    // r.error         Go's sentinel, verbatim (MCP_AUDIT_* constants)
+    // r.extra         { mcp_spec_version, mcp_confirm_rejection? }
+    log.warn({ event: 'mcp.refused', ...r });
+  },
+});
+```
+
+Five events, on both eras where the gate exists:
+
+| Event | `error` |
+|---|---|
+| auth refused (`kit/auth-required`, no established caller) | `cmdsurface: authentication refused` |
+| confirmation required (no `X-Confirm-Token`, or no elicitation to fall back on) | `mcpsdk: confirmation required` |
+| confirmation declined (`2026-07-28`, `decline` / `cancel`) | `mcpsdk: confirmation declined` |
+| confirmation state rejected (`2026-07-28`, `requestState` failed verification) | `mcpsdk: confirmation requestState failed verification` |
+| destructive ceiling (`policy` refused the leaf) | `cmdsurface: destructive command blocked on this surface` |
+
+`extra.mcp_spec_version` always names the era; a rejected state adds
+`extra.mcp_confirm_rejection: "request_state_verification_failed"`. The
+keys are Go's, so the records forward to the same backends. No caller,
+arguments or flags travel on the record.
+
+The hook runs synchronously after the refusal is decided and before the
+response is returned, and it is best-effort: a throw is swallowed and
+the wire bytes never change. Nothing is recorded for a call that ran,
+for an unknown tool or malformed arguments, or for an authentic but
+expired `requestState`, which is a routine re-prompt. `serveStdio` and a
+handler built by `createMcpHandler` carry the hook with the rest of
+the mount options.
 
 ### Scope
 
