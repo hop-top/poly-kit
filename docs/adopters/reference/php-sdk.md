@@ -290,6 +290,25 @@ established: `new Mount(verifier: fn (Request $r): ?Identity => ...)`.
 An `Authorization` header alone is refused with 401 and
 `WWW-Authenticate: Bearer`. See [Admit authenticated callers](../guides/serve-mcp-from-any-sdk.md#admit-authenticated-callers).
 
+### Tool names
+
+A tool is named by its leaf path joined with `.` (`widget.add`).
+`toolNameSeparator` joins with another string and splits a called name
+back on it, in both eras and in the confirmation prompt: `'_'` names the
+leaf `widget add` `widget_add`, for hosts that admit only
+`^[A-Za-z0-9_-]{1,64}$`.
+
+```php
+new Mount(toolNameSeparator: '_');   // widget_add
+```
+
+An empty separator throws `InvalidArgumentException` from the `Mount`
+constructor. Any separator other than `.` that a command name contains
+throws the same when the mount is bound to a bridge (`RequestHandler`,
+`Mount::dispatcher()`): `data_sync` under `_` would not map back to one
+leaf. `Leaf::toolName($sep)` and `Leaf::pathFromToolName($name, $sep)`
+are the join and split.
+
 ### Confirmation
 
 A `kit/requires-confirmation` leaf requires an `X-Confirm-Token` header by

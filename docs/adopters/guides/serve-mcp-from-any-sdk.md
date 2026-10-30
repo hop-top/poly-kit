@@ -194,7 +194,7 @@ idiomatic. Defaults match Go exactly.
 | `WithMCPOriginAllowlist` | `originAllowlist` | `origin_allowlist` | `origin_allowlist` | `originAllowlist` | no check |
 | `WithMCPConfirmationKey` | `confirmationKey` | `confirmation_key` | `confirmation_key` | `confirmationKey` | header gate |
 | `api.Auth` on the router | `verifier` | `verifier` | `verifier` | `verifier` | none: every `kit/auth-required` leaf refused |
-| none (`mcpsdk.WithToolNameSeparator`) | `toolNameSeparator` | `tool_name_separator` | `tool_name_separator` | none | `.` |
+| none (`mcpsdk.WithToolNameSeparator`) | `toolNameSeparator` | `tool_name_separator` | `tool_name_separator` | `toolNameSeparator` | `.` |
 
 ### Name tools for hosts that refuse dots
 
@@ -211,10 +211,14 @@ createMcpHandler(bridge, { toolNameSeparator: '_' }); // widget_add
 mount_mcp(bridge, tool_name_separator="_")
 ```
 
+```php
+new Mount(toolNameSeparator: '_'); // widget_add
+```
+
 Rust sets `MountOptions { tool_name_separator: "_".into(), ..MountOptions::default() }`;
 Go sets it on the SDK-backed mount, `mcpsdk.Mount(b, r, mcpsdk.WithToolNameSeparator("_"))`.
-`cmdsurface.MountMCP` is frozen and PHP has no such option: both always
-join with `.`.
+`cmdsurface.MountMCP` is frozen and has no such option: it always joins
+with `.`.
 
 The mount refuses a separator any command name contains (other than the
 default `.`): under `_`, the leaves `data_sync` and `data sync` would
@@ -287,8 +291,8 @@ a server that quietly serves nothing:
 
 Go, TypeScript, Python, and Rust also reject an empty confirmation key.
 PHP does not carry that check. The ports with a tool-name separator
-(TypeScript, Python, Rust, Go's `mcpsdk`) reject an empty one, and one
-a command name contains.
+(TypeScript, Python, Rust, PHP, Go's `mcpsdk`) reject an empty one, and
+one a command name contains.
 
 Error spelling differs by port and is not part of the contract: Go, TS,
 and PHP prefix messages `cmdsurface:` and keep Go's `WithMCP*` option
@@ -305,7 +309,7 @@ differences, and they are real:
 | MRTR confirmation flow | yes | **no** | yes | yes | yes |
 | `tasks/*` extension | no | no | **opt-in** | opt-in | no |
 | stdio transport | `mcpsdk.ServeStdio` | `serveStdio` | no | no | no |
-| tool-name separator | `mcpsdk` only | yes | yes | yes | **no** |
+| tool-name separator | `mcpsdk` only | yes | yes | yes | yes |
 
 **TypeScript accepts `confirmationKey` but does not act on it.** Its
 modern handler checks the `X-Confirm-Token` header and nothing else, so
