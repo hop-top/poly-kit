@@ -84,7 +84,7 @@ export function parseErrorResponse(body: string): McpHttpResponse {
  * whose first key is unquoted (the fixture case `{not json`) that is
  * "invalid character 'n' looking for beginning of object key string".
  */
-function goJSONParseMessage(body: string): string {
+export function goJSONParseMessage(body: string): string {
   const trimmed = body.replace(/^[\s]*/, '');
   if (trimmed.startsWith('{')) {
     // Scan past the opening brace and any whitespace to the first

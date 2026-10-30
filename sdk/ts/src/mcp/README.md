@@ -8,6 +8,7 @@ How a Commander command tree is served over the Model Context Protocol from one 
 
 - expose leaves as MCP tools: `commanderBridge(root, { run })` then `createMcpHandler(bridge, opts)`
 - bind to your own HTTP stack: the handler is `(McpHttpRequest) => Promise<McpHttpResponse>`; node:http, hono, express, fastify or a Worker is your call
+- serve a host that spawns the tool: `serveStdio(bridge)` (or `serveStdio(handler)`), newline-delimited JSON-RPC on stdin/stdout, `done` resolves when stdin ends
 - gate destructive tools: `policy` option, `defaultPolicy()` blocks remote destructive calls
 - require confirmation on the modern era: `headerConfirmationGate` or `ElicitationConfirmGate`
 
@@ -38,6 +39,7 @@ console.log(res.status, res.body);
 - Wire bytes are pinned by [`sdk/tests/cross-lang/fixtures/mcp-wire.json`](../../../tests/cross-lang/fixtures/mcp-wire.json), compared as raw bytes; [`conformance.test.ts`](conformance.test.ts) replays both `cases` and `sequences`.
 - Protocol layer is `@modelcontextprotocol/core` + `@modelcontextprotocol/server` (v2). The v1 `@modelcontextprotocol/sdk` cannot serve `2026-07-28` and is not a dependency.
 - Era detection follows the marker set and precedence chain in [`dispatch.ts`](dispatch.ts), not the SDK's own classifier.
+- stdio ([`stdio.ts`](stdio.ts)) drives the same era dispatch with no header layer: the `2026-07-28` header checks are skipped, notifications are never answered, batches are refused.
 - `tools/list` re-reads the bridge's leaves per request; caching the leaf set fails the sequence fixture.
 - `commanderBridge` requires `run`: kit does not capture a command's output for you.
 - Tasks extension: `TASKS_SUPPORTED` is `false`; `discoverCapabilities` reports it.

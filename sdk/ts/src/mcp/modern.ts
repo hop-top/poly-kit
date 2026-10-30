@@ -66,6 +66,7 @@ import type {
   JsonRpcRequest,
   McpHttpRequest,
   McpHttpResponse,
+  McpTransport,
 } from './dispatch.js';
 import { acceptedResponse } from './dispatch.js';
 
@@ -101,9 +102,17 @@ export class ModernMcpHandler {
    */
   readonly confirmGate?: ElicitationConfirmGate;
 
+  /**
+   * `transport` selects the binding. Streamable HTTP mirrors the method,
+   * tool name and protocol version into headers and requires them to
+   * agree with the body (V4, V6, V7). stdio has no header layer — the
+   * body is the only source of truth — so those three checks do not
+   * apply there; every other check runs unchanged.
+   */
   constructor(
     private readonly bridge: McpBridge,
     private readonly cfg: ResolvedMcpConfig,
+    private readonly transport: McpTransport = 'http',
   ) {
     if (cfg.confirmationKey !== undefined) {
       this.confirmGate = new ElicitationConfirmGate(cfg.confirmationKey);
@@ -163,30 +172,10 @@ export class ModernMcpHandler {
     // V4 — MCP-Protocol-Version header present and equal to the _meta
     // protocolVersion value. Conflicting duplicates are themselves a
     // mismatch, decided without comparing either value to the body.
-    const proto = singleHeaderValue(req, HEADER_MCP_PROTOCOL_VERSION);
-    if (!proto.ok) {
-      return this.writeModernError(rpc, {
-        code: MCP_ERR_HEADER_MISMATCH,
-        msg: `${HEADER_MCP_PROTOCOL_VERSION} header sent with conflicting duplicate values`,
-        status: 400,
-      });
-    }
-    if (proto.value === '') {
-      return this.writeModernError(rpc, {
-        code: MCP_ERR_HEADER_MISMATCH,
-        msg: `missing ${HEADER_MCP_PROTOCOL_VERSION} header`,
-        status: 400,
-      });
-    }
-    // A non-string _meta value can never equal the header string.
-    if (!meta.versionIsText || proto.value !== meta.version) {
-      return this.writeModernError(rpc, {
-        code: MCP_ERR_HEADER_MISMATCH,
-        msg:
-          `${HEADER_MCP_PROTOCOL_VERSION} header ${JSON.stringify(proto.value)} ` +
-          `does not match _meta protocolVersion ${goFormatValue(meta.versionRaw)}`,
-        status: 400,
-      });
+    // HTTP only: stdio carries no headers.
+    if (this.transport === 'http') {
+      const versionErr = this.validateVersionHeader(req, meta);
+      if (versionErr) return this.writeModernError(rpc, versionErr);
     }
 
     // V5 — requested version supported. This handler supports exactly
@@ -205,8 +194,11 @@ export class ModernMcpHandler {
     }
 
     // V6 — Mcp-Method header presence and header/body agreement.
-    const methodErr = this.validateMethodHeader(req, rpc);
-    if (methodErr) return this.writeModernError(rpc, methodErr);
+    // HTTP only.
+    if (this.transport === 'http') {
+      const methodErr = this.validateMethodHeader(req, rpc);
+      if (methodErr) return this.writeModernError(rpc, methodErr);
+    }
 
     // V8 — method routing. V7 (Mcp-Name) and V9 (per-method params)
     // run inside the method handlers.
@@ -230,6 +222,39 @@ export class ModernMcpHandler {
           status: 404,
         });
     }
+  }
+
+  /** V4: MCP-Protocol-Version header present and equal to _meta's. */
+  private validateVersionHeader(
+    req: McpHttpRequest,
+    meta: ModernRequestMeta,
+  ): CheckError | undefined {
+    const proto = singleHeaderValue(req, HEADER_MCP_PROTOCOL_VERSION);
+    if (!proto.ok) {
+      return {
+        code: MCP_ERR_HEADER_MISMATCH,
+        msg: `${HEADER_MCP_PROTOCOL_VERSION} header sent with conflicting duplicate values`,
+        status: 400,
+      };
+    }
+    if (proto.value === '') {
+      return {
+        code: MCP_ERR_HEADER_MISMATCH,
+        msg: `missing ${HEADER_MCP_PROTOCOL_VERSION} header`,
+        status: 400,
+      };
+    }
+    // A non-string _meta value can never equal the header string.
+    if (!meta.versionIsText || proto.value !== meta.version) {
+      return {
+        code: MCP_ERR_HEADER_MISMATCH,
+        msg:
+          `${HEADER_MCP_PROTOCOL_VERSION} header ${JSON.stringify(proto.value)} ` +
+          `does not match _meta protocolVersion ${goFormatValue(meta.versionRaw)}`,
+        status: 400,
+      };
+    }
+    return undefined;
   }
 
   /**
@@ -280,9 +305,12 @@ export class ModernMcpHandler {
     // V7 — Mcp-Name agreement, run against a pre-decode peek of
     // params.name so a header failure is reported even when the rest
     // of params is unparseable.
-    const peek = rawToolCallName(rpc.params);
-    const nameErr = this.validateNameHeader(req, peek);
-    if (nameErr) return this.writeModernError(rpc, nameErr);
+    // HTTP only: stdio has no header layer.
+    if (this.transport === 'http') {
+      const peek = rawToolCallName(rpc.params);
+      const nameErr = this.validateNameHeader(req, peek);
+      if (nameErr) return this.writeModernError(rpc, nameErr);
+    }
 
     const params = (rpc.params ?? {}) as {
       name?: unknown;

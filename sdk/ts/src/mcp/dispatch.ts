@@ -98,6 +98,13 @@ export interface JsonRpcRequest {
 export type McpEra = 'legacy' | 'modern';
 
 /**
+ * The binding a dispatcher serves. `http` (Streamable HTTP) validates
+ * the 2026-07-28 routing headers against the body; `stdio` has no
+ * header layer, so the body is the only source of truth.
+ */
+export type McpTransport = 'http' | 'stdio';
+
+/**
  * Implements per-request era detection, precedence D1-D4.
  * Never fails — it only classifies an already-parsed request; D1
  * (parse) is the caller's responsibility.
@@ -171,6 +178,30 @@ export type McpHandler = (
 ) => Promise<McpHttpResponse>;
 
 /**
+ * Where createMcpHandler records how to rebuild its dispatcher for
+ * another transport, so serveStdio can drive a handler's own bridge and
+ * mount options without fabricating HTTP headers.
+ */
+export const MCP_DISPATCHER_FACTORY: unique symbol = Symbol.for(
+  'hop-top/kit/mcp/dispatcher-factory',
+);
+
+/** A handler built by createMcpHandler. */
+interface FactoryHandler extends McpHandler {
+  [MCP_DISPATCHER_FACTORY]?: (transport: McpTransport) => McpDispatcher;
+}
+
+/**
+ * The dispatcher factory createMcpHandler attached to `handler`, or
+ * undefined for a handler built some other way.
+ */
+export function dispatcherFactoryOf(
+  handler: McpHandler,
+): ((transport: McpTransport) => McpDispatcher) | undefined {
+  return (handler as FactoryHandler)[MCP_DISPATCHER_FACTORY];
+}
+
+/**
  * Builds the MCP handler for a bridge. Mirrors Go's
  * `MountMCP(bridge, router, opts...)`, minus the router: the caller
  * binds the returned function to whatever HTTP stack it uses.
@@ -187,7 +218,10 @@ export function createMcpHandler(
 ): McpHandler {
   const cfg = resolveMcpConfig(opts);
   const dispatcher = new McpDispatcher(bridge, cfg);
-  return (req) => dispatcher.handle(req);
+  const handler: FactoryHandler = (req) => dispatcher.handle(req);
+  handler[MCP_DISPATCHER_FACTORY] = (transport) =>
+    new McpDispatcher(bridge, cfg, transport);
+  return handler;
 }
 
 /** The resolved mount config for a handler, for adopters that need it. */
@@ -208,9 +242,10 @@ export class McpDispatcher {
   constructor(
     bridge: McpBridge,
     private readonly cfg: ResolvedMcpConfig,
+    transport: McpTransport = 'http',
   ) {
     this.legacy = new LegacyMcpHandler(bridge, cfg);
-    this.modern = new ModernMcpHandler(bridge, cfg);
+    this.modern = new ModernMcpHandler(bridge, cfg, transport);
   }
 
   async handle(req: McpHttpRequest): Promise<McpHttpResponse> {
@@ -249,6 +284,15 @@ export class McpDispatcher {
       return parseErrorResponse(body);
     }
 
+    return this.dispatch(req, rpc);
+  }
+
+  /**
+   * Routes one already-parsed request to its era's handler (D2-D4).
+   * The transport-neutral core behind `handle`; stdio calls it directly
+   * after doing its own framing and parsing.
+   */
+  dispatch(req: McpHttpRequest, rpc: JsonRpcRequest): Promise<McpHttpResponse> {
     // Modern-only mounts route everything to the modern handler and
     // handle it per the normal V1-V9 order — no special-casing of
     // initialize anywhere, since D2 exists to hand a confused client

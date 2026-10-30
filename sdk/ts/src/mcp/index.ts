@@ -21,7 +21,9 @@
  * ```
  *
  * The handler is framework-free: binding it to node:http, hono,
- * express, fastify, or a Worker is the adopter's job.
+ * express, fastify, or a Worker is the adopter's job. For a host that
+ * spawns the tool, `serveStdio(bridge)` (or `serveStdio(handler)`)
+ * serves the same surface over newline-delimited stdin/stdout.
  */
 
 export {
@@ -37,9 +39,16 @@ export {
   type McpHandler,
   type McpHttpRequest,
   type McpHttpResponse,
+  type McpTransport,
 } from './dispatch.js';
 
 export { LegacyMcpHandler } from './legacy.js';
+
+export {
+  serveStdio,
+  type McpStdioOptions,
+  type McpStdioServer,
+} from './stdio.js';
 
 export {
   decodeMcpSentinel,
