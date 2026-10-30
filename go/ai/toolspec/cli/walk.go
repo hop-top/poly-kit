@@ -267,9 +267,9 @@ func projectSafety(d *cmdreflect.Descriptor, cfg *walkConfig) *toolspec.Safety {
 	}
 }
 
-// projectContract reads the resolved side-effect and idempotency
-// into a toolspec.Contract. Returns nil when neither is declared so
-// the emitted JSON omits the field.
+// projectContract reads the resolved side-effect, idempotency and
+// retryability into a toolspec.Contract. Returns nil when none is
+// declared so the emitted JSON omits the field.
 //
 // SideEffects carries what the ADOPTER wrote, not kit's
 // normalization of it: the canonical resolved tier surfaces via
@@ -292,6 +292,16 @@ func projectContract(d *cmdreflect.Descriptor) *toolspec.Contract {
 		}
 		contract.IdempotentClass = class
 		contract.Idempotent = class == "yes"
+	}
+	// kit/retryable is the third contract fact the reflector resolves
+	// (cmdmeta.IsRetryable); the Manifest has always carried it, and
+	// the ToolSpec must too, or an MCP or OpenAPI consumer reads every
+	// command as non-retryable.
+	if d.Safety.Retryable {
+		if contract == nil {
+			contract = &toolspec.Contract{}
+		}
+		contract.Retryable = true
 	}
 	return contract
 }
