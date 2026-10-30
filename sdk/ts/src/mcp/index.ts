@@ -126,6 +126,7 @@ export {
   type InvokeResult,
   type JsonRpcErrorObject,
   type Leaf,
+  type LeafArg,
   type McpBridge,
   type McpCacheScope,
   type McpEstablishment,
@@ -142,3 +143,12 @@ export {
 export { establishCaller, invocationMeta, SCOPES_EXTRA_KEY } from './identity.js';
 
 export { commanderBridge, type CommanderBridgeOptions } from './bridge.js';
+
+export {
+  MCP_ARGS_PROPERTY,
+  mcpArgsPublished,
+  mcpInputSchema,
+  mcpSplitArguments,
+  mcpToolDescription,
+  type McpSplitResult,
+} from './args.js';

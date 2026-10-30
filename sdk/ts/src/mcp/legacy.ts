@@ -14,6 +14,7 @@
  * modern.ts — never here.
  */
 
+import { mcpSplitArguments } from './args.js';
 import {
   errorResultBlock,
   encodeEnvelope,
@@ -220,6 +221,12 @@ export class LegacyMcpHandler {
         writeResult(rpc.id, errorResultBlock('authentication required'), 401),
       );
     }
+    // Arguments are checked before the confirmation gate: a person
+    // is never asked to approve a call that cannot run as sent.
+    const split = mcpSplitArguments(leaf, params.arguments);
+    if (split.error !== undefined) {
+      return writeResult(rpc.id, errorResultBlock(split.error), 200);
+    }
     if (
       leaf.class?.requiresConfirmation &&
       !headerValue(req, 'x-confirm-token')
@@ -234,7 +241,8 @@ export class LegacyMcpHandler {
     try {
       const res = await this.bridge.invoke({
         path: [...leaf.path],
-        flags: params.arguments,
+        ...(split.args !== undefined ? { args: split.args } : {}),
+        flags: split.flags,
         meta: invocationMeta(ident),
       });
       return writeResult(rpc.id, renderCallResult(res), 200);

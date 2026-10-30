@@ -642,7 +642,7 @@ testable against the fixtures with no socket open.
 import { createMcpHandler, commanderBridge } from '@hop-top/kit/mcp';
 
 const bridge = commanderBridge(rootCommand, {
-  run: async (inv, cmd) => ({ stdout: await execute(cmd, inv.flags), exitCode: 0 }),
+  run: async (inv, cmd) => ({ stdout: await execute(cmd, inv.args ?? [], inv.flags), exitCode: 0 }),
 });
 
 const handler = createMcpHandler(bridge, {
@@ -672,6 +672,26 @@ its long flag undashed (`--dry-run` → `dry-run`, `--no-color` →
 `default` when its value fits the property type (a parsed number on a
 string property is left out). A `--x`/`--no-x` pair publishes two
 booleans, so `run` maps `{ "no-x": true }` back to `--no-x` verbatim.
+
+Declared arguments (`.argument('<name>')`, `[note]`, `<files...>`)
+ride in one `args` property, the contract the Go surface publishes
+(see [Positional arguments](../guides/expose-cli-over-mcp.md#positional-arguments)):
+an array of strings in declared order, described as
+`Positional arguments in order: name, note?`, with `minItems` the
+number of required arguments and `args` listed in `required` when any
+is. A variadic argument just lengthens the array. On `tools/call` the
+handler takes `args` out of the arguments, checks it before the
+confirmation gate (`missing required argument: name`,
+`"args" must be an array of strings`, both `isError` at 200), and
+passes it to `run` as `inv.args`; every other key stays in
+`inv.flags`. A command with an `--args` option keeps that flag, gets
+no `args` array, and its tool description says its positionals cannot
+be passed. Commands without arguments are unchanged.
+
+A hand-written `McpBridge` opts in by setting `Leaf.args`
+(`[{ name, required }]`); `mcpInputSchema`, `mcpToolDescription` and
+`mcpSplitArguments` are exported for bridges that render or split
+themselves.
 
 ### Options
 
