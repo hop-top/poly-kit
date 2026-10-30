@@ -4,6 +4,13 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.9...kit-ts/v0.5.0-alpha.10) (2026-10-30)
+
+
+### Features
+
+* **ts/toolspec:** flag default/choices, arg variadic, idempotent class; manifest 1.2 ([80dad00](https://github.com/hop-top/poly-kit/commit/80dad008ac50636cef453ccc3f33457d988b3fcb))
+
 ## [0.5.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.8...kit-ts/v0.5.0-alpha.9) (2026-10-30)
 
 The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.9. This release includes new features and bug fixes.
