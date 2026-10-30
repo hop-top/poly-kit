@@ -53,6 +53,13 @@
 //! destructive invocation, and a blocked call renders as an `isError`
 //! result at HTTP 200 — not a transport error.
 //!
+//! # Audit
+//!
+//! Go audits every refusal the surface decides before adopter code runs
+//! (`cmdsurface.Bridge.Audit`); here [`MountOptions::audit`] receives an
+//! [`AuditRecord`] per such refusal, on both eras and over stdio, and can
+//! never change the response. See [`audit`].
+//!
 //! # Example
 //!
 //! ```
@@ -73,6 +80,7 @@
 //! assert!(response.body_str().contains("pong"));
 //! ```
 
+pub mod audit;
 pub mod bridge;
 pub mod dispatch;
 pub mod identity;
@@ -83,6 +91,7 @@ mod stdio;
 pub mod tasks;
 pub mod wire;
 
+pub use audit::{AuditHook, AuditRecord};
 pub use bridge::{Bridge, CallResult, FlagSchema, InvokeError, Leaf};
 pub use dispatch::{detect_era, Era, HttpRequest, MountError, Surface};
 pub use identity::{Identity, Verifier};
@@ -140,7 +149,7 @@ impl CacheScope {
 /// the spelling is idiomatic per language. Defaults match Go exactly:
 /// both eras enabled, path `/mcp`, empty origin allowlist, and cache
 /// hints `ttl_ms = 0` / `cache_scope = private`.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MountOptions {
     /// Mount path. Defaults to `/mcp`.
     pub path: String,
@@ -179,6 +188,32 @@ pub struct MountOptions {
     /// separator but the default that a command name contains: the name
     /// would not map back to one leaf.
     pub tool_name_separator: String,
+    /// Receives an [`AuditRecord`] for each refusal the surface decides
+    /// before adopter code runs, on both eras and over stdio: Go's
+    /// bridge sinks for the MCP surface. Called synchronously once the
+    /// refusal is decided and before the response is returned; best
+    /// effort, so a panic inside it is caught and the response is
+    /// unchanged. `None` audits nothing.
+    pub audit: Option<AuditHook>,
+}
+
+impl std::fmt::Debug for MountOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MountOptions")
+            .field("path", &self.path)
+            .field("server_name", &self.server_name)
+            .field("server_version", &self.server_version)
+            .field("spec_versions", &self.spec_versions)
+            .field("cache_ttl_ms", &self.cache_ttl_ms)
+            .field("cache_scope", &self.cache_scope)
+            .field("origin_allowlist", &self.origin_allowlist)
+            .field("confirmation_key", &self.confirmation_key)
+            .field("tasks_enabled", &self.tasks_enabled)
+            .field("verifier", &self.verifier)
+            .field("tool_name_separator", &self.tool_name_separator)
+            .field("audit", &audit::HookDebug(&self.audit))
+            .finish()
+    }
 }
 
 /// The default string joining a leaf path into its MCP tool name.
@@ -198,12 +233,13 @@ impl Default for MountOptions {
             tasks_enabled: false,
             verifier: None,
             tool_name_separator: DEFAULT_TOOL_NAME_SEPARATOR.into(),
+            audit: None,
         }
     }
 }
 
 /// The immutable per-mount configuration the handlers read.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct HandlerConfig {
     pub(crate) server_name: String,
     pub(crate) server_version: String,
@@ -214,6 +250,24 @@ pub(crate) struct HandlerConfig {
     pub(crate) tasks_enabled: bool,
     pub(crate) verifier: Option<Verifier>,
     pub(crate) tool_name_separator: String,
+    pub(crate) audit: Option<AuditHook>,
+}
+
+impl std::fmt::Debug for HandlerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HandlerConfig")
+            .field("server_name", &self.server_name)
+            .field("server_version", &self.server_version)
+            .field("cache_ttl_ms", &self.cache_ttl_ms)
+            .field("cache_scope", &self.cache_scope)
+            .field("origin_allowlist", &self.origin_allowlist)
+            .field("confirmation_key", &self.confirmation_key)
+            .field("tasks_enabled", &self.tasks_enabled)
+            .field("verifier", &self.verifier)
+            .field("tool_name_separator", &self.tool_name_separator)
+            .field("audit", &audit::HookDebug(&self.audit))
+            .finish()
+    }
 }
 
 impl Default for HandlerConfig {
@@ -234,6 +288,7 @@ impl From<MountOptions> for HandlerConfig {
             tasks_enabled: options.tasks_enabled,
             verifier: options.verifier,
             tool_name_separator: options.tool_name_separator,
+            audit: options.audit,
         }
     }
 }
@@ -256,6 +311,25 @@ mod tests {
             "absent means both eras enabled"
         );
         assert!(options.confirmation_key.is_none());
+        assert!(options.audit.is_none(), "nothing is audited by default");
+    }
+
+    #[test]
+    fn debug_names_the_hook_without_printing_it() {
+        let options = MountOptions {
+            audit: Some(std::sync::Arc::new(|_| {})),
+            ..MountOptions::default()
+        };
+        let rendered = format!("{options:?}");
+        assert!(rendered.contains("audit: Some(<fn>)"), "{rendered}");
+        assert!(
+            format!("{:?}", MountOptions::default()).contains("audit: None"),
+            "{rendered}"
+        );
+        assert!(
+            format!("{:?}", HandlerConfig::from(options)).contains("audit: Some(<fn>)"),
+            "{rendered}"
+        );
     }
 
     #[test]

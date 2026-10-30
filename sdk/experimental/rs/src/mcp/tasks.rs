@@ -23,8 +23,9 @@
 //! Two verification failures are deliberately distinct: an
 //! **expired but authentic** state is a routine re-prompt, while a state
 //! that **fails HMAC verification** is never honored — it is rejected,
-//! then a fresh prompt is issued with newly minted state. Tampering thus
-//! causes nothing worse than request failure.
+//! audited ([`crate::mcp::MountOptions::audit`]), then a fresh prompt is
+//! issued with newly minted state. Tampering thus causes nothing worse
+//! than request failure, but is never silently treated as a re-prompt.
 //!
 //! MRTR never relaxes the destructive ceiling: the policy gate runs
 //! inside `Bridge::invoke`, after this gate, on every path.
@@ -33,9 +34,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value};
 
+use super::audit::{self, Refusal};
 use super::bridge::Leaf;
 use super::legacy::{error_result_block, Headers};
-use super::modern::{RequestMeta, RESULT_TYPE_INPUT_REQUIRED};
+use super::modern::{RequestMeta, PROTOCOL_VERSION, RESULT_TYPE_INPUT_REQUIRED};
 use super::wire::Request;
 use super::HandlerConfig;
 
@@ -81,7 +83,9 @@ pub(super) fn declare_extension(cfg: &HandlerConfig, result: &mut Map<String, Va
 ///
 /// Returns `None` to proceed, or the refusal/interim result plus its
 /// HTTP status. The caller stamps the modern envelope onto whatever is
-/// returned.
+/// returned. A refusal (the header gate unsatisfied, a decline, a
+/// rejected state) is audited before it is returned; a prompt is not a
+/// refusal.
 pub(super) fn confirmation_gate(
     cfg: &HandlerConfig,
     leaf: &Leaf,
@@ -94,13 +98,13 @@ pub(super) fn confirmation_gate(
     }
 
     let Some(key) = cfg.confirmation_key.as_deref().filter(|k| !k.is_empty()) else {
-        return header_gate(headers);
+        return header_gate(cfg, leaf, headers);
     };
     // The spec forbids sending inputRequests for capabilities the client
     // has not declared; the capability stays optional precisely because
     // this fallback exists (never -32021 for confirmation).
     if !supports_form_elicitation(meta) {
-        return header_gate(headers);
+        return header_gate(cfg, leaf, headers);
     }
 
     let binding = Binding {
@@ -118,10 +122,20 @@ pub(super) fn confirmation_gate(
 
     match verify_state(key, &state, &binding, now_secs()) {
         // Tampered, malformed, or minted for a different request: never
-        // honored. Re-prompt with fresh state.
-        StateStatus::Invalid |
+        // honored. Audited as a security-relevant event, then re-prompt
+        // with fresh state.
+        StateStatus::Invalid => {
+            audit::emit(
+                cfg,
+                leaf,
+                PROTOCOL_VERSION,
+                Refusal::ConfirmationStateRejected,
+            );
+            return Some((input_required(cfg, key, leaf, &binding), 200));
+        }
         // Authentic but past its TTL: a routine re-prompt, per spec
-        // (re-request missing information rather than error).
+        // (re-request missing information rather than error). Not a
+        // refusal, so not audited.
         StateStatus::Expired => {
             return Some((input_required(cfg, key, leaf, &binding), 200));
         }
@@ -130,13 +144,16 @@ pub(super) fn confirmation_gate(
 
     match retry.action.as_deref() {
         Some("accept") => None,
-        Some("decline" | "cancel") => Some((
-            error_result_block("confirmation declined")
-                .as_object()
-                .cloned()
-                .unwrap_or_default(),
-            200,
-        )),
+        Some("decline" | "cancel") => {
+            audit::emit(cfg, leaf, PROTOCOL_VERSION, Refusal::ConfirmationDeclined);
+            Some((
+                error_result_block("confirmation declined")
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default(),
+                200,
+            ))
+        }
         // Missing or unusable answer: re-request rather than error.
         _ => Some((input_required(cfg, key, leaf, &binding), 200)),
     }
@@ -144,10 +161,15 @@ pub(super) fn confirmation_gate(
 
 /// The default gate: a `RequiresConfirmation` leaf needs the
 /// `X-Confirm-Token` header, exactly as on the legacy path.
-fn header_gate(headers: &Headers) -> Option<(Map<String, Value>, u16)> {
+fn header_gate(
+    cfg: &HandlerConfig,
+    leaf: &Leaf,
+    headers: &Headers,
+) -> Option<(Map<String, Value>, u16)> {
     if headers.get("X-Confirm-Token").is_some() {
         return None;
     }
+    audit::emit(cfg, leaf, PROTOCOL_VERSION, Refusal::ConfirmationRequired);
     Some((
         error_result_block("confirmation required")
             .as_object()
@@ -738,5 +760,87 @@ mod tests {
         assert!(constant_time_eq(b"abc", b"abc"));
         assert!(!constant_time_eq(b"abc", b"abd"));
         assert!(!constant_time_eq(b"abc", b"ab"));
+    }
+
+    /// A keyed config whose hook collects into `seen`.
+    fn auditing_cfg(
+        seen: &std::sync::Arc<std::sync::Mutex<Vec<crate::mcp::AuditRecord>>>,
+    ) -> HandlerConfig {
+        let sink = std::sync::Arc::clone(seen);
+        HandlerConfig {
+            confirmation_key: Some(b"secret".to_vec()),
+            audit: Some(std::sync::Arc::new(move |r: &crate::mcp::AuditRecord| {
+                sink.lock().unwrap().push(r.clone());
+            })),
+            ..HandlerConfig::default()
+        }
+    }
+
+    /// A `deploy` retry carrying `state` and an accept, from a client
+    /// declaring form elicitation.
+    fn accept_retry(state: &str) -> Request {
+        Request::from_slice(
+            format!(
+                r#"{{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{{"name":"deploy","requestState":"{state}","inputResponses":{{"confirm":{{"action":"accept"}}}},"_meta":{{"io.modelcontextprotocol/clientCapabilities":{{"elicitation":{{"form":{{}}}}}},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}}}}"#
+            )
+            .as_bytes(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn expired_state_reprompts_without_an_audit_record() {
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let cfg = auditing_cfg(&seen);
+        let leaf = Leaf::new(&["deploy"], "Deploy", |_| {
+            Ok(crate::mcp::CallResult::default())
+        })
+        .with_class(crate::mcp::SafetyClass {
+            requires_confirmation: true,
+            ..crate::mcp::SafetyClass::default()
+        });
+        let headers = Headers(&[]);
+        let binding = Binding {
+            tool: "deploy".into(),
+            args_digest: args_digest(&accept_retry("")),
+            principal: principal(&headers),
+        };
+
+        // Authentic, minted under this key for this binding, long past
+        // its TTL: a routine re-prompt, nothing to audit.
+        let expired = mint_state(b"secret", &binding, 1_000);
+        let req = accept_retry(&expired);
+        let meta = crate::mcp::request_meta(&req).unwrap();
+        let (result, status) =
+            confirmation_gate(&cfg, &leaf, &req, &headers, &meta).expect("re-prompt");
+        assert_eq!(status, 200);
+        assert_eq!(result["resultType"], RESULT_TYPE_INPUT_REQUIRED);
+        assert!(
+            seen.lock().unwrap().is_empty(),
+            "{:?}",
+            seen.lock().unwrap()
+        );
+
+        // The same state with its expiry pushed forward fails the MAC:
+        // rejected, audited, then re-prompted.
+        let parts: Vec<&str> = expired.split('.').collect();
+        let tampered = format!("{}.{}.{}", parts[0], 9_999_999_999_u64, parts[2]);
+        let req = accept_retry(&tampered);
+        let (result, status) =
+            confirmation_gate(&cfg, &leaf, &req, &headers, &meta).expect("re-prompt");
+        assert_eq!(status, 200);
+        assert_eq!(result["resultType"], RESULT_TYPE_INPUT_REQUIRED);
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 1, "{seen:?}");
+        assert_eq!(seen[0].error, audit::ERR_CONFIRMATION_STATE_REJECTED);
+        assert_eq!(seen[0].path, ["deploy"]);
+        assert_eq!(seen[0].spec_version, PROTOCOL_VERSION);
+        assert_eq!(
+            seen[0]
+                .extra
+                .get(audit::EXTRA_CONFIRM_REJECTION)
+                .map(String::as_str),
+            Some(audit::CONFIRM_REJECTION_STATE_VERIFICATION_FAILED)
+        );
     }
 }

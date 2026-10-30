@@ -29,6 +29,7 @@
 
 use serde_json::{Map, Value};
 
+use super::audit::{self, Refusal};
 use super::bridge::{Bridge, InvokeError};
 use super::dispatch::Transport;
 use super::identity::Identity;
@@ -527,14 +528,16 @@ fn handle_tools_call(
     };
 
     // Only the mount's verifier authenticates: a bare Authorization
-    // header does not.
+    // header does not. Each pre-flight refusal is audited before it is
+    // answered, as Go's bridge audits.
     if leaf.class.auth_required && caller.is_none() {
+        audit::emit(cfg, leaf, PROTOCOL_VERSION, Refusal::AuthRefused);
         return write_call_error(cfg, req, "authentication required", 401).unauthenticated();
     }
 
     // Confirmation gate: the MRTR elicitation flow when the mount holds
     // key material and the client declares the capability, else the
-    // X-Confirm-Token header gate.
+    // X-Confirm-Token header gate. The gate audits its own refusals.
     if let Some((refusal, status)) = tasks::confirmation_gate(cfg, leaf, req, headers, meta) {
         let mut result = refusal;
         stamp_envelope(cfg, &mut result);
@@ -564,8 +567,15 @@ fn handle_tools_call(
         Err(InvokeError::UnknownCommand | InvokeError::SurfaceNotEnabled) => {
             unknown_tool(cfg, req, name)
         }
-        // DestructiveBlocked and every other failure: isError @ 200.
-        Err(err) => write_call_error(cfg, req, &err.to_string(), 200),
+        // DestructiveBlocked and every other failure: isError @ 200. Only
+        // the ceiling is a refusal Go's bridge audits; a handler failure
+        // is a run's own outcome.
+        Err(err) => {
+            if matches!(err, InvokeError::DestructiveBlocked { .. }) {
+                audit::emit(cfg, leaf, PROTOCOL_VERSION, Refusal::DestructiveBlocked);
+            }
+            write_call_error(cfg, req, &err.to_string(), 200)
+        }
     }
 }
 

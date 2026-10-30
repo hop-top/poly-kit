@@ -16,6 +16,9 @@ policy is `hop_top_kit::netpolicy`.
 - retries may land on any instance → set `MountOptions::confirmation_key`, shared across instances
 - an adopter wants the `tasks/*` extension → `tasks_enabled: true`; off, it answers `-32601`
 - a host refuses dotted tool names (`widget_add`, not `widget.add`) → `tool_name_separator: "_".into()`
+- refusals should reach an audit sink, as Go's bridge sinks do → `MountOptions::audit`, one `AuditRecord`
+  per refusal (auth, confirmation required / declined / state rejected, destructive ceiling), both eras,
+  stdio too; best-effort, never alters the response
 
 ## Quick start
 
