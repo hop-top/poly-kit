@@ -178,13 +178,11 @@ fn skips_blank_lines_accepts_crlf_and_a_missing_final_newline() {
         &surface,
         "\n   \n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\r\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}",
     );
-    assert_eq!(
-        lines,
-        [
-            r#"{"jsonrpc":"2.0","id":1,"result":{}}"#,
-            r#"{"jsonrpc":"2.0","id":2,"result":{}}"#,
-        ]
-    );
+    // Both requests are dispatched concurrently, so the replies may land
+    // in either order; look each one up by id.
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(reply(&lines, 1.into())["result"], serde_json::json!({}));
+    assert_eq!(reply(&lines, 2.into())["result"], serde_json::json!({}));
     assert!(log.is_empty(), "{log}");
 }
 
