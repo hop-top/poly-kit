@@ -133,7 +133,14 @@ export class ElicitationConfirmGate {
    */
   readonly rejections: McpConfirmRejection[] = [];
 
-  constructor(key: Uint8Array) {
+  /**
+   * `toolNameSeparator` names the tool in the confirmation prompt, as
+   * the mount's `toolNameSeparator` option does in tools/list.
+   */
+  constructor(
+    key: Uint8Array,
+    private readonly toolNameSeparator?: string,
+  ) {
     if (key.length === 0) {
       throw new Error('cmdsurface: confirmationKey: empty key');
     }
@@ -221,7 +228,7 @@ export class ElicitationConfirmGate {
           method: 'elicitation/create',
           params: {
             mode: 'form',
-            message: `Approve execution of ${JSON.stringify(toolName(leaf.path))}?`,
+            message: `Approve execution of ${JSON.stringify(toolName(leaf.path, this.toolNameSeparator))}?`,
             // No form fields: the approval rides the elicit action
             // (accept / decline / cancel), so the requested schema is
             // the empty object.

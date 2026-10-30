@@ -11,6 +11,7 @@ How a Commander command tree is served over the Model Context Protocol from one 
 - serve a host that spawns the tool: `serveStdio(bridge)` (or `serveStdio(handler)`), newline-delimited JSON-RPC on stdin/stdout, `done` resolves when stdin ends
 - gate destructive tools: `policy` option, `defaultPolicy()` blocks remote destructive calls
 - require confirmation on the modern era: `headerConfirmationGate` or `ElicitationConfirmGate`
+- name tools for a host that refuses dots (`widget_add`, not `widget.add`): `toolNameSeparator: '_'`
 
 ## Quick start
 
@@ -42,6 +43,7 @@ console.log(res.status, res.body);
 - stdio ([`stdio.ts`](stdio.ts)) drives the same era dispatch with no header layer: the `2026-07-28` header checks are skipped, notifications are never answered, batches are refused.
 - `tools/list` re-reads the bridge's leaves per request; caching the leaf set fails the sequence fixture.
 - `commanderBridge` requires `run`: kit does not capture a command's output for you.
+- Tool names join the leaf path with `toolNameSeparator` (default `.`) and split back on it. The mount throws on an empty separator and, for any other than `.`, on a command name containing it (`data_sync` under `_`). Names are not otherwise rewritten or length-checked.
 - Tasks extension: `TASKS_SUPPORTED` is `false`; `discoverCapabilities` reports it.
 - Parity: [`contracts/parity/README.md`](../../../../contracts/parity/README.md), section "MCP wire contract".
 
