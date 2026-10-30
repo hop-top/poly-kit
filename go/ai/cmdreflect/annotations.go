@@ -5,24 +5,27 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"hop.top/kit/go/console/cli/cmdmeta"
 )
 
-// reflectArgs parses the kit/args annotation. A trailing "?" marks
-// an optional argument.
+// reflectArgs parses the kit/args annotation through the one grammar
+// every reader shares, [cmdmeta.ParseArgs]: a trailing "?" marks an
+// optional argument, a trailing "..." a variadic one.
 func reflectArgs(cmd *cobra.Command) []Arg {
 	if cmd.Annotations == nil {
 		return nil
 	}
-	raw := cmd.Annotations[annArgs]
-	if raw == "" {
+	specs := cmdmeta.ParseArgs(cmd.Annotations[annArgs])
+	if len(specs) == 0 {
 		return nil
 	}
-	names := splitCSV(raw)
-	out := make([]Arg, 0, len(names))
-	for _, n := range names {
+	out := make([]Arg, 0, len(specs))
+	for _, s := range specs {
 		out = append(out, Arg{
-			Name:     strings.TrimSuffix(n, "?"),
-			Required: !strings.HasSuffix(n, "?"),
+			Name:     s.Name,
+			Required: !s.Optional,
+			Variadic: s.Variadic,
 		})
 	}
 	return out
@@ -75,6 +78,9 @@ func reflectFlags(set *pflag.FlagSet, since map[string]string) []Flag {
 		if f.Annotations != nil {
 			if v := f.Annotations[requiredFlagAnnotation]; len(v) > 0 && v[0] == "true" {
 				fl.Required = true
+			}
+			if v := f.Annotations[flagEnumAnnotation]; len(v) > 0 {
+				fl.Choices = append([]string(nil), v...)
 			}
 		}
 		if v, ok := since[f.Name]; ok {

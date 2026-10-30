@@ -13,6 +13,7 @@ SetOutputSchema, SetExamples, ...) use `hop.top/kit/go/console/cli`.
 - decide whether `--dry-run` is honored for a leaf → `cmdmeta.IsDryRunSupported(cmd)`
 - render examples or follow-up suggestions for agents → `cmdmeta.GetExamples`, `cmdmeta.GetNextSteps`
 - pull the declared output schema and its version → `cmdmeta.GetOutputSchemaJSON(cmd)`
+- read a `kit/args` declaration the way every kit reader does → `cmdmeta.ParseArgs(raw)`
 - check a boolean marker by key → `cmdmeta.ReadBool(cmd, cmdmeta.KeyPassthrough)`
 - write your own reader for a `kit/*` key → the `Key*` constants
 
@@ -53,6 +54,12 @@ fmt.Println(ok, steps[0].Suggest, "/", steps[0].Reason)
   false; `kit/dry-run: supported` is true; side-effect `write*` or
   `destructive*` is true; `read`, `interactive`, unknown or missing tag
   is false.
+- `ParseArgs` is the one `kit/args` grammar: a comma list, `name`
+  required, `name?` optional, `name...` variadic (one or more),
+  `name...?` optional variadic (zero or more); the dots come before the
+  `?`, any other suffix is part of the name, a variadic is declared
+  last. `cmdreflect`, the manifest, the MCP and REST projections and
+  shell completion all read it here.
 - `GetExamples` and `GetNextSteps` return `(nil, false)` on absent or
   malformed JSON; decode errors are swallowed.
 - `GetOutputSchemaJSON` returns the raw bytes unvalidated, with the

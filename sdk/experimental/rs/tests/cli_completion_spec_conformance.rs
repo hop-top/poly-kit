@@ -310,15 +310,27 @@ struct Operand {
     variadic: bool,
 }
 
-/// kit/args: a comma list, `?` marking an optional name.
+/// kit/args: a comma list, `?` marking an optional name, `...` a
+/// variadic one (`...?` optional variadic); the dots come before the
+/// question mark, any other suffix is part of the name.
 fn kit_args(raw: &str) -> Vec<Operand> {
     raw.split(',')
         .map(str::trim)
         .filter(|n| !n.is_empty())
-        .map(|n| Operand {
-            name: n.strip_suffix('?').unwrap_or(n).to_string(),
-            optional: n.ends_with('?'),
-            variadic: false,
+        .map(|n| {
+            let (n, optional) = match n.strip_suffix('?') {
+                Some(s) => (s, true),
+                None => (n, false),
+            };
+            let (n, variadic) = match n.strip_suffix("...") {
+                Some(s) => (s, true),
+                None => (n, false),
+            };
+            Operand {
+                name: n.to_string(),
+                optional,
+                variadic,
+            }
         })
         .collect()
 }

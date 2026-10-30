@@ -52,10 +52,10 @@ func TestFromCobraNil(t *testing.T) {
 }
 
 // TestKitArgsGrammarMatchesCmdreflect: kit/args has one grammar, the
-// one cmdreflect reads (comma list, "?" optional). Any other suffix is
-// part of the name.
+// one cmdreflect reads (comma list, "?" optional, "..." variadic,
+// "...?" optional variadic). Any other suffix is part of the name.
 func TestKitArgsGrammarMatchesCmdreflect(t *testing.T) {
-	for _, raw := range []string{"id", "id, name?", "files...", " a ,, b? ", "rest...?"} {
+	for _, raw := range []string{"id", "id, name?", "files...", " a ,, b? ", "rest...?", "id?...", "name, files...?"} {
 		t.Run(raw, func(t *testing.T) {
 			root := &cobra.Command{Use: "tool"}
 			leaf := &cobra.Command{
@@ -71,8 +71,34 @@ func TestKitArgsGrammarMatchesCmdreflect(t *testing.T) {
 			for i := range want {
 				assert.Equal(t, want[i].Name, got[i].Name)
 				assert.Equal(t, !want[i].Required, got[i].Optional)
-				assert.False(t, got[i].Variadic, "kit/args declares no variadics")
+				assert.Equal(t, want[i].Variadic, got[i].Variadic)
 			}
 		})
 	}
+}
+
+// TestKitArgsVariadic pins the four kit/args forms on the completion
+// spec's own shape.
+func TestKitArgsVariadic(t *testing.T) {
+	root := &cobra.Command{Use: "tool"}
+	leaf := &cobra.Command{
+		Use:         "run",
+		Annotations: map[string]string{"kit/args": "name, note?, files...?"},
+		Run:         func(*cobra.Command, []string) {},
+	}
+	root.AddCommand(leaf)
+	more := &cobra.Command{
+		Use:         "cat",
+		Annotations: map[string]string{"kit/args": "files..."},
+		Run:         func(*cobra.Command, []string) {},
+	}
+	root.AddCommand(more)
+
+	spec := completionspec.FromCobra(root)
+	assert.Equal(t, []completionspec.Arg{{Name: "files", Variadic: true}}, spec.Root.Commands[0].Args)
+	assert.Equal(t, []completionspec.Arg{
+		{Name: "name"},
+		{Name: "note", Optional: true},
+		{Name: "files", Optional: true, Variadic: true},
+	}, spec.Root.Commands[1].Args)
 }
