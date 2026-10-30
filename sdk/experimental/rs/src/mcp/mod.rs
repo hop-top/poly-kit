@@ -21,6 +21,11 @@
 //! server: adopters wire it to axum, hyper, warp, or anything else, and
 //! the conformance suite drives it with no socket at all.
 //!
+//! For a host that spawns the tool, [`Surface::serve_stdio`] serves the
+//! same mount over newline-delimited stdin/stdout on scoped threads, with
+//! no runtime: era detection reads the body alone and the 2026-07-28
+//! header checks (V4, V6, V7) are skipped.
+//!
 //! # Module split
 //!
 //! [`legacy`] and [`modern`] are separate modules on purpose, with
@@ -74,6 +79,7 @@ pub mod identity;
 pub mod legacy;
 pub mod modern;
 pub mod safety;
+mod stdio;
 pub mod tasks;
 pub mod wire;
 

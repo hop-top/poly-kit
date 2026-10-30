@@ -242,6 +242,50 @@ rejects conflicting duplicates, which a flattened map cannot express.
 is re-exported as `mcp::SurfaceKind` to avoid the collision; every other
 kit SDK calls that type `Surface`.
 
+### Hosting over stdio
+
+For a host that spawns the tool (a desktop client, an editor), serve the
+same mount over standard input and output:
+
+```rust
+use std::io::{stderr, stdin, stdout};
+
+let surface = Surface::mount(bridge, MountOptions::default())?;
+surface.serve_stdio(stdin().lock(), stdout(), stderr())?; // the host closed stdin
+```
+
+`Surface::serve_stdio(input, output, log) -> io::Result<()>` takes any
+`BufRead` input and two `Write + Send` streams. It reads one message per
+line and returns once `input` ends and every in-flight reply is written.
+Mount options apply as for `Surface::call`. Requests run concurrently,
+one scoped thread each (`std::thread::scope`, no async runtime), and
+each reply is flushed as it completes. The first read error on `input`
+or write error on `output` stops reading, is noted on `log`, and is
+returned once in-flight requests finish.
+
+| Input line | Output |
+|---|---|
+| a request | one reply line carrying its `id`; requests run concurrently, so replies may arrive out of order |
+| a notification (no `id`) | nothing, ever |
+| `ping` (2024-11-05) | `{"jsonrpc":"2.0","id":…,"result":{}}` |
+| not JSON | `-32700`, `"id": null` |
+| a JSON array (batch) | `-32600`, `"id": null`: neither revision allows batches over stdio |
+| a non-object, or an object with an `id` but no `method` | `-32600` |
+| a response (`result` / `error`, no `method`) | nothing; noted on `log` |
+| a blank line | skipped |
+| a request whose leaf panics | `-32603` `internal error`; the panic message goes to `log` |
+
+Output carries protocol messages only; diagnostics go to `log`.
+
+stdio has no header layer. Era detection uses the body markers alone (the
+reserved `_meta` protocolVersion key, `server/discover`), and the
+`2026-07-28` header checks (`MCP-Protocol-Version`, `Mcp-Method`,
+`Mcp-Name`: V4, V6, V7) do not apply; every other check runs unchanged.
+Gates that read headers see none: the mount's `verifier` is called with a
+header-less request, so a `kit/auth-required` leaf is refused unless your
+verifier admits it, and the `X-Confirm-Token` header gate cannot be
+satisfied.
+
 ### Options
 
 `MountOptions` is a plain struct with `Default`, not a builder: `path`

@@ -58,6 +58,18 @@ pub enum Era {
     Modern,
 }
 
+/// The binding a request arrived on. `Http` (Streamable HTTP) validates
+/// the 2026-07-28 routing headers against the body; `Stdio` has no
+/// header layer, so the body is the only source of truth and V4, V6
+/// and V7 are skipped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Transport {
+    /// Streamable HTTP, through [`Surface::call`].
+    Http,
+    /// Newline-delimited stdio, through [`Surface::serve_stdio`].
+    Stdio,
+}
+
 /// A mounted MCP surface: the transport-agnostic request handler.
 ///
 /// Binding this to an HTTP server is the adopter's job — see
@@ -171,8 +183,6 @@ impl Surface {
             return method_not_allowed();
         }
 
-        let headers = Headers(&req.headers);
-
         // D1 — parse the body once. An unparseable body is -32700 at
         // 400, byte-identical to the legacy response, whatever headers
         // are present.
@@ -191,6 +201,22 @@ impl Surface {
             }
         };
 
+        self.dispatch(req, &parsed, Transport::Http)
+    }
+
+    /// Routes one already-parsed request to its era's handler (D2–D4).
+    ///
+    /// The transport-neutral core behind [`Surface::call`]; the stdio
+    /// binding calls it directly after its own framing and parsing,
+    /// with a header-less `req`.
+    pub(crate) fn dispatch(
+        &self,
+        req: &HttpRequest,
+        parsed: &Request,
+        transport: Transport,
+    ) -> Response {
+        let headers = Headers(&req.headers);
+
         // Only the mount's verifier establishes a caller, and only for
         // the one method that invokes a leaf.
         let caller = if parsed.method == "tools/call" {
@@ -200,12 +226,17 @@ impl Surface {
         };
         let caller = caller.as_ref();
 
-        match self.route(&req.headers, &parsed) {
-            Era::Modern => {
-                super::modern::serve_as(&self.cfg, &self.bridge, &parsed, &headers, caller)
-            }
+        match self.route(&req.headers, parsed) {
+            Era::Modern => super::modern::serve_as(
+                &self.cfg,
+                &self.bridge,
+                parsed,
+                &headers,
+                caller,
+                transport,
+            ),
             Era::Legacy => {
-                super::legacy::serve_as(&self.cfg, &self.bridge, &parsed, &headers, caller)
+                super::legacy::serve_as(&self.cfg, &self.bridge, parsed, &headers, caller)
             }
         }
     }
@@ -272,7 +303,7 @@ pub fn detect_era(headers: &[(String, String)], req: &Request) -> Era {
 /// Go reports `invalid character '<c>' looking for beginning of <what>`;
 /// serde's wording differs entirely, so the message is rebuilt from the
 /// body rather than forwarded.
-fn go_parse_message(body: &[u8], err: &serde_json::Error) -> String {
+pub(super) fn go_parse_message(body: &[u8], err: &serde_json::Error) -> String {
     // Locate the first byte Go would have rejected. Go scans for a
     // value and reports the first character that cannot begin one.
     let text = String::from_utf8_lossy(body);

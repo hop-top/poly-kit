@@ -147,6 +147,12 @@ let response = surface.call(&HttpRequest::post("/mcp", body));
 `Surface::call(&self, req: &HttpRequest) -> Response` is the
 `tower::Service`-shaped function. Wire it to axum, hyper, or warp.
 
+For a host that spawns the tool,
+`surface.serve_stdio(stdin().lock(), stdout(), stderr())` serves the same
+mount over newline-delimited stdin/stdout and returns when the host
+closes stdin; see the
+[Rust reference](../reference/rs-sdk.md#hosting-over-stdio).
+
 ### PHP
 
 **PHP implements the protocol layer directly** — it does not depend on
@@ -313,7 +319,7 @@ differences, and they are real:
 |---|---|---|---|---|---|
 | MRTR confirmation flow | yes | **no** | yes | yes | yes |
 | `tasks/*` extension | no | no | **opt-in** | opt-in | no |
-| stdio transport | `mcpsdk.ServeStdio` | `serveStdio` | `serve_stdio` | no | no |
+| stdio transport | `mcpsdk.ServeStdio` | `serveStdio` | `serve_stdio` | `Surface::serve_stdio` | no |
 | tool-name separator | `mcpsdk` only | yes | yes | yes | yes |
 
 **TypeScript accepts `confirmationKey` but does not act on it.** Its

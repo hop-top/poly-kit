@@ -18,6 +18,10 @@
 //! | V8 | method is one of the three served | `-32601` @ 404 |
 //! | V9 | per-method params | `-32602` @ 200 |
 //!
+//! V4, V6 and V7 compare HTTP headers against the body. stdio has no
+//! header layer, so a request arriving over stdio skips exactly those
+//! three; every other check runs unchanged.
+//!
 //! Statelessness is the revision's core contract: every request carries
 //! its protocol version, client identity, and capabilities in
 //! `params._meta`, so any instance can serve any request. The handler
@@ -26,6 +30,7 @@
 use serde_json::{Map, Value};
 
 use super::bridge::{Bridge, InvokeError};
+use super::dispatch::Transport;
 use super::identity::Identity;
 use super::legacy::{error_result_block, render_call_result, Headers};
 use super::safety::Surface;
@@ -132,19 +137,23 @@ pub(super) fn serve(
     req: &Request,
     headers: &Headers,
 ) -> Response {
-    serve_as(cfg, bridge, req, headers, None)
+    serve_as(cfg, bridge, req, headers, None, Transport::Http)
 }
 
 /// Serves one already-parsed request on the modern era. `caller` is
 /// the identity the mount's verifier established, `None` when it
-/// established none.
+/// established none. `transport` decides whether the header checks
+/// (V4, V6, V7) apply.
 pub(super) fn serve_as(
     cfg: &HandlerConfig,
     bridge: &Bridge,
     req: &Request,
     headers: &Headers,
     caller: Option<&Identity>,
+    transport: Transport,
 ) -> Response {
+    let check_headers = transport == Transport::Http;
+
     // Origin allowlist (opt-in) runs before any protocol validation.
     if !origin_allowed(cfg, headers) {
         return write_error(
@@ -196,8 +205,10 @@ pub(super) fn serve_as(
     };
 
     // V4 — MCP-Protocol-Version header agreement.
-    if let Err(err) = validate_version_header(headers, &meta) {
-        return write_error(req, &err);
+    if check_headers {
+        if let Err(err) = validate_version_header(headers, &meta) {
+            return write_error(req, &err);
+        }
     }
 
     // V5 — requested version served.
@@ -224,15 +235,17 @@ pub(super) fn serve_as(
     }
 
     // V6 — Mcp-Method header agreement.
-    if let Err(err) = validate_method_header(headers, req) {
-        return write_error(req, &err);
+    if check_headers {
+        if let Err(err) = validate_method_header(headers, req) {
+            return write_error(req, &err);
+        }
     }
 
     // V8 — method routing. V7 and V9 run inside the method handlers.
     match req.method.as_str() {
         "server/discover" => handle_discover(cfg, req),
         "tools/list" => handle_tools_list(cfg, bridge, req),
-        "tools/call" => handle_tools_call(cfg, bridge, req, headers, &meta, caller),
+        "tools/call" => handle_tools_call(cfg, bridge, req, headers, &meta, caller, check_headers),
         other => write_error(
             req,
             &CheckError {
@@ -479,6 +492,7 @@ fn handle_tools_call(
     headers: &Headers,
     meta: &RequestMeta,
     caller: Option<&Identity>,
+    check_headers: bool,
 ) -> Response {
     // V7 — Mcp-Name agreement, run against a pre-decode peek of
     // params.name so a header failure is reported even when the rest of
@@ -486,13 +500,15 @@ fn handle_tools_call(
     let name_value = req.params.as_ref().and_then(|p| p.get("name"));
     let name_present = name_value.is_some();
     let name_str = name_value.and_then(Value::as_str);
-    if let Err(err) = validate_name_header(headers, name_str, name_present) {
-        return write_error(req, &err);
+    if check_headers {
+        if let Err(err) = validate_name_header(headers, name_str, name_present) {
+            return write_error(req, &err);
+        }
     }
 
-    // V9 — per-method params. Unreachable through a conforming request
-    // (V7 already requires a present, non-empty, matching name), but
-    // kept as the correct response if a future caller bypasses V7.
+    // V9 — per-method params. Over HTTP unreachable through a conforming
+    // request (V7 already requires a present, non-empty, matching name);
+    // over stdio, which has no V7, this is the check that answers.
     let Some(name) = name_str.filter(|n| !n.is_empty()) else {
         return error_response(
             200,
