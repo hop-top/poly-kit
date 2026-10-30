@@ -230,6 +230,27 @@ def test_alias_bridge_multi_word_target_on_kit_app(capsys):
     assert code == 0, out
     assert "Alias for router start" in out, out
 
+    code, out = _main(cmd, ["--help"], capsys)
+    assert code == 0, out
+    assert "rs" not in out.split(), out
+
+
+def test_alias_bridge_multi_word_target_completes_on_kit_app(capsys, monkeypatch):
+    """A default multi-word alias is offered once by name in completion."""
+    app = _kit_app()
+    sub = typer.Typer(help="router")
+
+    @sub.command("start", help="Start the router")
+    def start() -> None:
+        pass
+
+    app.add_typer(sub, name="router")
+    cmd = typer.main.get_command(app)
+    bridge_to_click(cmd, {"rs": "router start"})
+
+    out = _complete(cmd, "t r", capsys, monkeypatch)
+    assert out.count('"rs"') == 1 and '"router"' in out, out
+
 
 def test_alias_bridge_options_proxy_on_kit_app(capsys):
     """An options proxy joins a typer tree on typer's own Click layer:

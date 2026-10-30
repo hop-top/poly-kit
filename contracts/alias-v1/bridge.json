@@ -37,6 +37,13 @@
       ]
     },
     {
+      "name": "defaults: nested target offered once in completion",
+      "aliases": { "rs": "router start" },
+      "checks": [
+        { "complete": ["r"], "candidates": ["router", "rs"] }
+      ]
+    },
+    {
       "name": "options: visible proxies with a custom description",
       "aliases": { "d": "deploy", "rs": "router start" },
       "options": { "hidden": false, "describe": true },
