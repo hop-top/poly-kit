@@ -70,11 +70,15 @@
     "exit_taxonomy": "serve outcomes route onto the shared exit-code taxonomy, including a signal stop exiting 0 and TRANSIENT propagating exit 6.",
     "config_keys": "the services.* key names above are read, with the defaults above. How a port resolves them is not contract.",
     "enable_disable_flags": "--enable <name> / --disable <name> are repeatable flags on serve that override services.<name>.enabled for one run, under the supervisor form only. --enable on an unconfigured service makes it configured and enabled; --disable on an enabled service skips it silently without affecting the exit code; --enable wins over --disable for the same name. Either flag combined with the selector form is refused as USAGE/2.",
-    "timeout_flags": "--ready-timeout, --stop-timeout and --shutdown-timeout are accepted under both forms, by exactly those names, and override services.<name>.ready_timeout and services.<name>.stop_timeout for every resolved service and services.shutdown_timeout for the run. The duration spelling a port accepts is not contract."
+    "timeout_flags": "--ready-timeout, --stop-timeout and --shutdown-timeout are accepted under both forms, by exactly those names, and override services.<name>.ready_timeout and services.<name>.stop_timeout for every resolved service and services.shutdown_timeout for the run. The duration spelling a port accepts is not contract.",
+    "mcp_refusal_audit": "the MCP mount takes one audit hook (TS `audit`, Python `audit=`, Rust `MountOptions.audit`, PHP `Mount(audit:)`) that receives a record per refusal the surface decides before adopter code runs: auth refused, confirmation required, confirmation declined, confirmation state rejected, destructive ceiling. The record carries the resolved leaf path, surface `mcp`, the time the refusal was decided, the spec version serving the request, Go's sentinel error message verbatim, and an extra bag with `mcp_spec_version` always and `mcp_confirm_rejection: request_state_verification_failed` on a rejected requestState. Called synchronously after the refusal is decided and before the response is returned; best-effort, so a throwing hook never changes the wire response. Go equivalent: the bridge sinks (`WithSinks`) fed by the mcpsdk gate audits and `Bridge.Audit`."
   },
 
   "not_required": {
     "description": "Go-only affordances. A port is not non-conformant for lacking these; see the contract section 'Explicitly not required' for the reasoning on each.",
+    "notes": {
+      "permission_gate_provenance_audit": "the PermissionFunc gate, Meta provenance and the sink registry of the transport services. The MCP surface's refusal audit is not among them: every port ships it as the mcp_refusal_audit behavior above."
+    },
     "items": [
       "api_health_routes",
       "cmdreflect_discovery",
@@ -104,7 +108,8 @@
       "exit_taxonomy": "SHIPPED",
       "config_keys": "SHIPPED",
       "enable_disable_flags": "SHIPPED",
-      "timeout_flags": "SHIPPED"
+      "timeout_flags": "SHIPPED",
+      "mcp_refusal_audit": "SHIPPED"
     },
     "ts": {
       "implementation": "sdk/ts/src/serve.ts, mounted by registerServe on a commander root",
@@ -119,7 +124,8 @@
       "exit_taxonomy": "SHIPPED",
       "config_keys": "SHIPPED",
       "enable_disable_flags": "SHIPPED",
-      "timeout_flags": "SHIPPED"
+      "timeout_flags": "SHIPPED",
+      "mcp_refusal_audit": "SHIPPED"
     },
     "py": {
       "implementation": "sdk/py/hop_top_kit/serve.py, mounted by register_serve on a Typer root",
@@ -134,7 +140,8 @@
       "exit_taxonomy": "SHIPPED",
       "config_keys": "SHIPPED",
       "enable_disable_flags": "SHIPPED",
-      "timeout_flags": "SHIPPED"
+      "timeout_flags": "SHIPPED",
+      "mcp_refusal_audit": "SHIPPED"
     },
     "rs": {
       "implementation": "sdk/experimental/rs/src/serve (feature `serve`), command mounted by serve::command (feature `serve-cli`)",
@@ -150,7 +157,8 @@
       "exit_taxonomy": "SHIPPED",
       "config_keys": "SHIPPED",
       "enable_disable_flags": "SHIPPED",
-      "timeout_flags": "SHIPPED"
+      "timeout_flags": "SHIPPED",
+      "mcp_refusal_audit": "SHIPPED"
     },
     "php": {
       "implementation": "sdk/experimental/php/src/Serve, mounted as ServeCommand on a Symfony Console application",
@@ -166,7 +174,8 @@
       "exit_taxonomy": "SHIPPED",
       "config_keys": "SHIPPED",
       "enable_disable_flags": "SHIPPED",
-      "timeout_flags": "SHIPPED"
+      "timeout_flags": "SHIPPED",
+      "mcp_refusal_audit": "SHIPPED"
     }
   }
 }
