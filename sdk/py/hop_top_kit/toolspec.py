@@ -60,6 +60,15 @@ class Flag:
     description: str = ""
     deprecated: bool = False
     replaced_by: str = ""
+    required: bool = False
+
+
+@dataclass
+class Arg:
+    """A declared positional argument (kit/args)."""
+
+    name: str = ""
+    required: bool = False
 
 
 @dataclass
@@ -77,6 +86,10 @@ class Command:
     replaced_by: str = ""
     intent: Intent | None = None
     suggested_next: list[str] | None = None
+    short: str = ""
+    args: list[Arg] | None = None
+    undeclared_args: bool = False
+    exit_codes: list[str] | None = None
 
 
 @dataclass
@@ -120,6 +133,14 @@ def _map_flag(raw: dict) -> Flag:
         description=raw.get("description", ""),
         deprecated=raw.get("deprecated", False),
         replaced_by=raw.get("replaced_by", ""),
+        required=raw.get("required", False),
+    )
+
+
+def _map_arg(raw: dict) -> Arg:
+    return Arg(
+        name=raw.get("name", ""),
+        required=raw.get("required", False),
     )
 
 
@@ -177,6 +198,7 @@ def _map_intent(raw: dict | None) -> Intent | None:
 def _map_command(raw: dict) -> Command:
     flags_raw = raw.get("flags")
     children_raw = raw.get("children")
+    args_raw = raw.get("args")
     return Command(
         name=raw.get("name", ""),
         aliases=raw.get("aliases", []),
@@ -191,6 +213,10 @@ def _map_command(raw: dict) -> Command:
         replaced_by=raw.get("replaced_by", ""),
         intent=_map_intent(raw.get("intent")),
         suggested_next=raw.get("suggested_next"),
+        short=raw.get("short", ""),
+        args=([_map_arg(a) for a in args_raw] if args_raw else None),
+        undeclared_args=raw.get("undeclared_args", False),
+        exit_codes=raw.get("exit_codes"),
     )
 
 

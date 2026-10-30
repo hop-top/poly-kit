@@ -5,9 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 
 from hop_top_kit.toolspec import (
+    Arg,
     Command,
+    Contract,
+    ErrorPattern,
+    Flag,
+    Intent,
+    OutputSchema,
+    Provenance,
     Safety,
+    StateIntrospection,
     ToolSpec,
+    Workflow,
     find_command,
     load_toolspec,
     validate_toolspec,
@@ -174,3 +183,213 @@ class TestFindCommand:
 
 def _find(commands: list[Command], name: str) -> Command | None:
     return next((c for c in commands if c.name == name), None)
+
+
+# A spec setting every field Go's toolspec.ToolSpec carries
+# (go/ai/toolspec/spec.go), keyed by its json tags.
+FULL_SPEC_YAML = """\
+name: full
+schema_version: "1.1"
+flags:
+  - name: verbose
+    short: v
+    type: bool
+    description: Verbose output
+    required: false
+    deprecated: true
+    replaced_by: log-level
+commands:
+  - name: deploy
+    short: Deploy a release
+    aliases: [ship]
+    flags:
+      - name: env
+        short: e
+        type: string
+        description: Target environment
+        required: true
+        deprecated: false
+        replaced_by: ""
+    args:
+      - name: release
+        required: true
+      - name: region
+    undeclared_args: true
+    exit_codes: [OK, USAGE, CONFLICT]
+    contract:
+      idempotent: true
+      side_effects: [writes remote state]
+      retryable: true
+      pre_conditions: [authenticated]
+    safety:
+      level: dangerous
+      requires_confirmation: true
+      permissions: [deploy:write]
+    preview_modes: [dryrun, plan]
+    output_schema:
+      format: json
+      fields: [id, status]
+      example: '{"id":"r1","status":"ok"}'
+    deprecated: true
+    deprecated_since: "2.0"
+    replaced_by: release
+    intent:
+      domain: delivery
+      category: operations
+      tags: [prod]
+    suggested_next: [status]
+    children:
+      - name: status
+        short: Show deploy status
+error_patterns:
+  - pattern: "deploy failed"
+    fix: check logs
+    source: manual
+    cause: bad_state
+    fixes: [check logs, rollback]
+    confidence: 0.75
+    provenance:
+      source: docs
+      retrieved_at: "2026-01-02"
+      confidence: 0.5
+workflows:
+  - name: release
+    steps: [deploy, status]
+    after:
+      deploy: [status]
+    provenance:
+      source: llm
+state_introspection:
+  config_commands: [config show]
+  env_vars: [FULL_TOKEN]
+  auth_commands: [auth login]
+"""
+
+
+def _write(tmp_path: Path, body: str) -> str:
+    p = tmp_path / "spec.yaml"
+    p.write_text(body)
+    return str(p)
+
+
+class TestLoadToolspecAllFields:
+    def test_every_go_field_loads(self, tmp_path):
+        spec = load_toolspec(_write(tmp_path, FULL_SPEC_YAML))
+        assert spec == ToolSpec(
+            name="full",
+            schema_version="1.1",
+            flags=[
+                Flag(
+                    name="verbose",
+                    short="v",
+                    type="bool",
+                    description="Verbose output",
+                    required=False,
+                    deprecated=True,
+                    replaced_by="log-level",
+                )
+            ],
+            commands=[
+                Command(
+                    name="deploy",
+                    short="Deploy a release",
+                    aliases=["ship"],
+                    flags=[
+                        Flag(
+                            name="env",
+                            short="e",
+                            type="string",
+                            description="Target environment",
+                            required=True,
+                        )
+                    ],
+                    args=[
+                        Arg(name="release", required=True),
+                        Arg(name="region", required=False),
+                    ],
+                    undeclared_args=True,
+                    exit_codes=["OK", "USAGE", "CONFLICT"],
+                    contract=Contract(
+                        idempotent=True,
+                        side_effects=["writes remote state"],
+                        retryable=True,
+                        pre_conditions=["authenticated"],
+                    ),
+                    safety=Safety(
+                        level="dangerous",
+                        requires_confirmation=True,
+                        permissions=["deploy:write"],
+                    ),
+                    preview_modes=["dryrun", "plan"],
+                    output_schema=OutputSchema(
+                        format="json",
+                        fields=["id", "status"],
+                        example='{"id":"r1","status":"ok"}',
+                    ),
+                    deprecated=True,
+                    deprecated_since="2.0",
+                    replaced_by="release",
+                    intent=Intent(
+                        domain="delivery",
+                        category="operations",
+                        tags=["prod"],
+                    ),
+                    suggested_next=["status"],
+                    children=[Command(name="status", short="Show deploy status")],
+                )
+            ],
+            error_patterns=[
+                ErrorPattern(
+                    pattern="deploy failed",
+                    fix="check logs",
+                    source="manual",
+                    cause="bad_state",
+                    fixes=["check logs", "rollback"],
+                    confidence=0.75,
+                    provenance=Provenance(
+                        source="docs",
+                        retrieved_at="2026-01-02",
+                        confidence=0.5,
+                    ),
+                )
+            ],
+            workflows=[
+                Workflow(
+                    name="release",
+                    steps=["deploy", "status"],
+                    after={"deploy": ["status"]},
+                    provenance=Provenance(source="llm"),
+                )
+            ],
+            state_introspection=StateIntrospection(
+                config_commands=["config show"],
+                env_vars=["FULL_TOKEN"],
+                auth_commands=["auth login"],
+            ),
+        )
+
+    def test_new_fields_default_when_absent(self, tmp_path):
+        spec = load_toolspec(
+            _write(
+                tmp_path,
+                "name: t\nschema_version: '1'\ncommands:\n"
+                "  - name: c\n    flags: [{name: f}]\n    args: [{name: a}]\n",
+            )
+        )
+        cmd = spec.commands[0]
+        assert cmd.short == ""
+        assert cmd.undeclared_args is False
+        assert cmd.exit_codes is None
+        assert cmd.args == [Arg(name="a", required=False)]
+        assert cmd.flags == [Flag(name="f", required=False)]
+        assert Command(name="c").args is None
+
+    def test_unknown_keys_ignored(self, tmp_path):
+        spec = load_toolspec(
+            _write(
+                tmp_path,
+                "name: t\nschema_version: '1'\ntelemetry: {enabled: true}\n"
+                "commands:\n  - name: c\n    bogus: 1\n",
+            )
+        )
+        assert spec.commands == [Command(name="c")]
