@@ -813,7 +813,7 @@ dependencies = [
 
 [[package]]
 name = "hop-top-kit"
-version = "0.5.0-alpha.5"
+version = "0.5.0-alpha.6"
 dependencies = [
  "axum",
  "base64",
