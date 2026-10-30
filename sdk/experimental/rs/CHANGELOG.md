@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.4...kit-rs/v0.5.0-alpha.5) (2026-10-30)
+
+
+### Features
+
+* **mcp:** tool_name_separator mount option in rs sdk ([8da95a4](https://github.com/hop-top/poly-kit/commit/8da95a4af8650bac80b0d949d47122b3e658bc1f))
+* **rs/mcp:** audit mount hook for refusals ([90218f0](https://github.com/hop-top/poly-kit/commit/90218f0d60853539858b9280e3834d50cc273ce1))
+* **rs/mcp:** stdio transport ([461aded](https://github.com/hop-top/poly-kit/commit/461aded88e3bfbdfeba574e8420b5171a361714c))
+
+
+### Bug Fixes
+
+* **mcp:** no reply to notifications; ping returns {} ([f24c097](https://github.com/hop-top/poly-kit/commit/f24c09796642894a2329a6170a160283a15c38af))
+
 ## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.3...kit-rs/v0.5.0-alpha.4) (2026-10-29)
 
 The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.4. This release includes new features and bug fixes.
