@@ -4,6 +4,20 @@ hop_top_kit.config — layered YAML configuration loader.
 Merge order (low → high priority):
     system → user → project → env_override
 
+Each file layer merges into the result with these rules:
+
+- Dicts merge recursively, key by key, so a later layer only overrides the
+  keys it sets (``db: {port: 2}`` keeps an earlier ``db.host``).
+- Lists and scalars are replaced whole.
+- A null (``~``) clears a dict or list, sets a key that is absent or already
+  null, and leaves a scalar untouched.
+- On a kind conflict (dict vs non-dict) the later value replaces the earlier.
+
+These match Go's ``kit/core/config`` for struct fields and the TypeScript
+``load`` defaults. Go differs where its target type differs: a ``map[...]``
+entry or an ``any`` field is replaced whole rather than merged, and a value
+of the wrong kind for a typed field is a decode error.
+
 Missing files are silently skipped; malformed YAML raises ``yaml.YAMLError``.
 
 Usage::
@@ -57,8 +71,10 @@ def load(dst: dict, opts: Options = _DEFAULT_OPTIONS) -> dict:
 
     Merges configuration from up to three YAML files in order of increasing
     priority (system → user → project), then calls ``opts.env_override`` if
-    provided.  Each layer's keys overwrite any previously set values for the
-    same key (shallow merge).
+    provided.  Nested dicts merge key by key at every depth; lists and
+    scalars are replaced; a null clears a dict or list but leaves a scalar
+    (see the module docs).  *dst* is updated in place, but nested dicts
+    already in it are copied before a layer merges into them, never mutated.
 
     Args:
         dst:  Target dictionary.  Modified in place *and* returned.
@@ -98,7 +114,7 @@ def load(dst: dict, opts: Options = _DEFAULT_OPTIONS) -> dict:
 
 
 def _merge_file(dst: dict, path: str) -> None:
-    """Parse *path* and shallow-merge its top-level keys into *dst*.
+    """Parse *path* and deep-merge its mapping into *dst*.
 
     Skips silently if *path* is empty or the file does not exist.
     Raises ``yaml.YAMLError`` for malformed YAML.
@@ -114,4 +130,25 @@ def _merge_file(dst: dict, path: str) -> None:
         data = yaml.safe_load(fh)
 
     if isinstance(data, dict):
-        dst.update(data)
+        _merge_into(dst, data)
+
+
+def _merge_into(dst: dict, src: dict) -> None:
+    """Merge *src* into *dst* in place with the module merge rules.
+
+    A nested dict in *dst* is replaced by a merged copy rather than mutated,
+    so dicts shared through YAML aliases (or by the caller) never see a
+    merge meant for one key.
+    """
+    for key, value in src.items():
+        cur = dst.get(key)
+        if value is None:
+            if cur is not None and not isinstance(cur, (dict, list)):
+                continue  # a null leaves a scalar untouched
+            dst[key] = None
+        elif isinstance(value, dict) and isinstance(cur, dict):
+            merged = dict(cur)
+            _merge_into(merged, value)
+            dst[key] = merged
+        else:
+            dst[key] = value
