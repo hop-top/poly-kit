@@ -36,13 +36,16 @@ const (
 	// kit's spec subcommand uses to thread a pre-built
 	// toolspec.Manifest into the adapter. The adapter uses the
 	// pre-built manifest verbatim instead of projecting from
-	// ToolSpec — this preserves all the cobra-annotation-derived
-	// fields (kit/exit-codes, kit/since, kit/args, kit/flag-since)
-	// that aren't part of toolspec.Command's tree shape.
+	// ToolSpec — this preserves the cobra-annotation-derived fields
+	// that aren't part of toolspec.Command's tree shape (kit/since,
+	// kit/flag-since, long, output schema, examples, next steps,
+	// dry-run, hidden, reserved).
 	//
 	// The value must be a toolspec.Manifest (not a pointer). When
 	// absent, the adapter falls back to projecting from the spec
-	// passed to Render, which loses some annotation-derived fields.
+	// passed to Render, which carries everything ToolSpec holds
+	// (args, flags with default and choices, exit codes, contract)
+	// and leaves the fields above at their zero value.
 	CustomKeyKitManifestPrebuilt = "kit-manifest:prebuilt"
 )
 
@@ -84,14 +87,16 @@ func (kitManifestAdapter) ContentType() string { return "application/json" }
 //
 //   - If the caller threaded a pre-built toolspec.Manifest via
 //     CustomKeyKitManifestPrebuilt (kit's own spec subcommand does
-//     this), use it verbatim. This preserves all the
+//     this), use it verbatim. This preserves the
 //     cobra-annotation-derived fields that don't survive the
-//     ToolSpec projection (kit/exit-codes, kit/since, kit/args,
-//     kit/flag-since).
+//     ToolSpec projection (kit/since, kit/flag-since, long, output
+//     schema, examples, next steps, dry-run, hidden, reserved).
 //
-//   - Otherwise, project the supplied ToolSpec into a Manifest
-//     (lossy for the cobra-annotation fields, but works for
-//     external callers who don't have the live cobra tree).
+//   - Otherwise, project the supplied ToolSpec into a Manifest:
+//     lossless for everything ToolSpec carries (args, flags, exit
+//     codes, contract, deprecation), zero for the fields above. This
+//     is the path for external callers who don't have the live
+//     cobra tree.
 //
 // Either way, output is dispatched via go/console/output in the
 // format selected by CustomKeyOutputFormat (default: json).
@@ -153,10 +158,10 @@ func appendManifestLeaves(out *[]toolspec.ManifestCommand, parentPath []string, 
 }
 
 // projectManifestCommand builds one ManifestCommand from a leaf
-// toolspec.Command + its full path. Pulls side-effect / idempotency
-// from the contract (they were stuffed into Contract during the
-// walk), and surfaces the curated fields the wider Manifest doesn't
-// have at the per-command level.
+// toolspec.Command + its full path. Pulls side-effect, idempotency
+// and retryability from the contract (they were stuffed into
+// Contract during the walk) and carries args, flags, exit codes and
+// deprecation through as they are.
 func projectManifestCommand(path []string, c toolspec.Command) toolspec.ManifestCommand {
 	// Both classes start at the explicit unknown marker and are
 	// overwritten only by a real declaration, so a leaf the walk
@@ -172,19 +177,51 @@ func projectManifestCommand(path []string, c toolspec.Command) toolspec.Manifest
 		if len(c.Contract.SideEffects) > 0 {
 			mc.SideEffect = c.Contract.SideEffects[0]
 		}
-		if c.Contract.Idempotent {
-			mc.Idempotent = "yes"
-		}
+		mc.Idempotent = manifestIdempotent(c.Contract)
+		mc.Retryable = c.Contract.Retryable
 	}
+	mc.Args = projectManifestArgs(c.Args)
+	mc.Flags = projectManifestFlags(c.Flags)
+	mc.ExitCodes = append([]string(nil), c.ExitCodes...)
 	mc.Deprecated = c.Deprecated
 	mc.DeprecatedSince = c.DeprecatedSince
-	mc.Flags = projectManifestFlags(c.Flags)
 	return mc
 }
 
+// manifestIdempotent maps a ToolSpec contract onto the Manifest's
+// idempotent vocabulary faithfully: the class when the spec carries
+// one (so "no" and "conditional" survive), else the bool (true →
+// "yes"), else the explicit unknown marker. A bool false with no
+// class is not "no": the walk never set it, and a curated spec that
+// means "no" says so through IdempotentClass.
+func manifestIdempotent(c *toolspec.Contract) string {
+	switch {
+	case c.IdempotentClass != "":
+		return c.IdempotentClass
+	case c.Idempotent:
+		return "yes"
+	}
+	return toolspec.IdempotentUnknown
+}
+
+// projectManifestArgs converts toolspec.Arg → ManifestArg. Lossless:
+// the two shapes carry the same three facts.
+func projectManifestArgs(args []toolspec.Arg) []toolspec.ManifestArg {
+	if len(args) == 0 {
+		return nil
+	}
+	out := make([]toolspec.ManifestArg, len(args))
+	for i, a := range args {
+		out[i] = toolspec.ManifestArg{Name: a.Name, Required: a.Required, Variadic: a.Variadic}
+	}
+	return out
+}
+
 // projectManifestFlags converts toolspec.Flag → ManifestFlag.
-// Lossless: every field the Manifest carries about a flag is
-// already on toolspec.Flag.
+// Lossless for every field the two shapes share (name, short, type,
+// description, default, required, choices); SinceVersion is the one
+// Manifest field ToolSpec does not carry, and ToolSpec's
+// Deprecated/ReplacedBy the ones the Manifest does not.
 func projectManifestFlags(flags []toolspec.Flag) []toolspec.ManifestFlag {
 	if len(flags) == 0 {
 		return nil
@@ -196,6 +233,9 @@ func projectManifestFlags(flags []toolspec.Flag) []toolspec.ManifestFlag {
 			Short:       f.Short,
 			Type:        f.Type,
 			Description: f.Description,
+			Default:     f.Default,
+			Required:    f.Required,
+			Choices:     append([]string(nil), f.Choices...),
 		}
 	}
 	return out
