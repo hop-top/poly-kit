@@ -852,3 +852,65 @@ func TestUndeclaredArgs(t *testing.T) {
 		})
 	}
 }
+
+// TestArgReflectionVariadic pins the kit/args variadic forms on the
+// descriptor: "..." marks a required variadic (one or more), "...?"
+// an optional one (zero or more), both read through cmdmeta.ParseArgs.
+func TestArgReflectionVariadic(t *testing.T) {
+	root := &cobra.Command{Use: "tool"}
+	for use, raw := range map[string]string{
+		"cat":    "files...",
+		"attach": "name, note?, files...?",
+	} {
+		root.AddCommand(&cobra.Command{
+			Use:         use,
+			Run:         func(*cobra.Command, []string) {},
+			Annotations: map[string]string{annArgs: raw},
+		})
+	}
+	tree := Reflect(root)
+
+	if got := tree.Lookup("cat").Args; len(got) != 1 || got[0] != (Arg{Name: "files", Required: true, Variadic: true}) {
+		t.Errorf("cat Args = %+v, want one required variadic files", got)
+	}
+	want := []Arg{
+		{Name: "name", Required: true},
+		{Name: "note"},
+		{Name: "files", Variadic: true},
+	}
+	got := tree.Lookup("attach").Args
+	if len(got) != len(want) {
+		t.Fatalf("attach Args = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("attach Args[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// TestFlagChoices pins that the closed value set cli.WithFlagEnum
+// stamps onto a flag (the kit.cli.flag.enum annotation) is reflected
+// as Flag.Choices, in declaration order, and that a flag without it
+// carries none.
+func TestFlagChoices(t *testing.T) {
+	root := &cobra.Command{Use: "tool"}
+	leaf := &cobra.Command{Use: "list", Run: func(*cobra.Command, []string) {}}
+	leaf.Flags().String("status", "TODO", "filter by status")
+	leaf.Flags().String("plain", "", "no enum")
+	leaf.Flags().Lookup("status").Annotations = map[string][]string{
+		flagEnumAnnotation: {"TODO", "DONE"},
+	}
+	root.AddCommand(leaf)
+
+	flags := map[string]Flag{}
+	for _, f := range Reflect(root).Lookup("list").Flags {
+		flags[f.Name] = f
+	}
+	if got := flags["status"].Choices; len(got) != 2 || got[0] != "TODO" || got[1] != "DONE" {
+		t.Errorf("status Choices = %v, want [TODO DONE]", got)
+	}
+	if got := flags["plain"].Choices; got != nil {
+		t.Errorf("plain Choices = %v, want nil", got)
+	}
+}

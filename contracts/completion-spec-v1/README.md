@@ -39,7 +39,8 @@ Cobra-side facts, which a runner in another framework builds into its
 tree rather than reimplementing in its walker: `use` operands (`<x>`,
 `[x]`, bare, `...` variadic, a multi-word bracket joined without spaces;
 `[flags]`, `[command]` and flag syntax skipped), `kit/args` (comma list,
-`?` optional, nothing else), pflag `UnquoteUsage` (the first backquoted
+`?` optional, `...` variadic, `...?` optional variadic, nothing else),
+pflag `UnquoteUsage` (the first backquoted
 word names the value; else the type, `stringSlice` as `strings`), and
 `deprecated` meaning hidden.
 

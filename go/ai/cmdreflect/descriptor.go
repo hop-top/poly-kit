@@ -101,6 +101,13 @@ type Flag struct {
 	// Required reports whether cobra marks the flag required
 	// (MarkFlagRequired sets the BannerRequired annotation).
 	Required bool
+	// Choices is the closed set of legal values the adopter declared
+	// with cli.WithFlagEnum / WithCommandFlagEnum (the
+	// cli.FlagEnumAnnotation pflag annotation), in declaration
+	// order; nil when the flag has none. The set is stamped onto the
+	// flag at Execute, so a tree reflected before it runs carries no
+	// choices unless the adopter set the annotation directly.
+	Choices []string
 	// Hidden reports whether the flag is hidden from help.
 	Hidden bool
 	// Deprecated reports whether the flag carries a deprecation
@@ -114,11 +121,16 @@ type Flag struct {
 
 // Arg describes one declared positional argument.
 type Arg struct {
-	// Name is the argument name as written in kit/args, with any
-	// optional marker stripped.
+	// Name is the argument name as written in kit/args, with the
+	// optional and variadic markers stripped.
 	Name string
 	// Required is false when the kit/args entry ended in "?".
 	Required bool
+	// Variadic is true when the kit/args entry carried "..." before
+	// any "?": the argument takes every remaining operand, one or
+	// more when Required, zero or more otherwise. A variadic
+	// argument is declared last.
+	Variadic bool
 }
 
 // Safety is the resolved risk profile of a command, expressed in

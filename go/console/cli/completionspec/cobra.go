@@ -7,6 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"hop.top/kit/go/console/cli/cmdmeta"
 )
 
 // FlagEnumAnnotation is the pflag annotation carrying a flag's legal
@@ -15,9 +17,10 @@ import (
 const FlagEnumAnnotation = "kit.cli.flag.enum"
 
 // argsAnnotation is kit's declared-positionals annotation: a comma
-// separated name list, "?" marking an optional one. The grammar is
-// cmdreflect's; a test holds the two readers together.
-const argsAnnotation = "kit/args"
+// separated name list, "?" marking an optional one, "..." a variadic
+// one. The grammar is cmdmeta.ParseArgs, the reader cmdreflect uses
+// too; a test holds the two together.
+const argsAnnotation = cmdmeta.KeyArgs
 
 // FromCobra builds the spec model from a cobra command tree.
 //
@@ -34,8 +37,8 @@ const argsAnnotation = "kit/args"
 //     the root itself.
 //   - Descriptions and value names: pflag.UnquoteUsage, as help prints
 //     them.
-//   - Positionals: none under cobra.NoArgs; else kit/args when set,
-//     else the operands in Use.
+//   - Positionals: none under cobra.NoArgs; else kit/args when set
+//     ("?" optional, "..." variadic), else the operands in Use.
 //   - Candidates, first match wins: the flag-enum annotation, cobra
 //     ValidArgs, MarkFlagFilename, MarkFlagDirname, then any completion
 //     function but cobra.NoFileCompletions as a dynamic callback.
@@ -227,19 +230,13 @@ func sameFunc(a, b any) bool {
 }
 
 func declaredArgs(c *cobra.Command) []Arg {
-	raw := strings.TrimSpace(c.Annotations[argsAnnotation])
-	if raw == "" {
+	specs := cmdmeta.ParseArgs(c.Annotations[argsAnnotation])
+	if len(specs) == 0 {
 		return nil
 	}
-	var out []Arg
-	for _, n := range strings.Split(raw, ",") {
-		n = strings.TrimSpace(n)
-		if n == "" {
-			continue
-		}
-		a := Arg{}
-		a.Name, a.Optional = strings.CutSuffix(n, "?")
-		out = append(out, a)
+	out := make([]Arg, 0, len(specs))
+	for _, s := range specs {
+		out = append(out, Arg{Name: s.Name, Optional: s.Optional, Variadic: s.Variadic})
 	}
 	return out
 }

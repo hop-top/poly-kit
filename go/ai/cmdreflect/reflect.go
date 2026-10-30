@@ -18,7 +18,7 @@ const (
 	annSideEffect       = "kit/side-effect"
 	annNetwork          = "kit/network"
 	annIdempotent       = "kit/idempotent"
-	annArgs             = "kit/args"
+	annArgs             = cmdmeta.KeyArgs
 	annExitCodes        = "kit/exit-codes"
 	annAuthRequired     = "kit/auth-required"
 	annRequiresConfirm  = "kit/requires-confirmation"
@@ -39,6 +39,13 @@ const (
 // pflag exposes required-ness only through this annotation, so
 // reading it is the only way to reflect the fact.
 const requiredFlagAnnotation = cobra.BashCompOneRequiredFlag
+
+// flagEnumAnnotation is the pflag annotation cli.WithFlagEnum stamps
+// a flag's closed value set onto (cli.FlagEnumAnnotation). It is
+// repeated here rather than imported because cli depends on this
+// package's consumers; the string is the contract, and
+// go/console/cli/completionspec repeats it for the same reason.
+const flagEnumAnnotation = "kit.cli.flag.enum"
 
 // serveVerb is the word the serve-lifecycle contract gives to the
 // supervisor and selector over the tool's services at depth 1, and
