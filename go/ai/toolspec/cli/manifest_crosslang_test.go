@@ -55,6 +55,13 @@ type treeFlag struct {
 	Default     json.RawMessage `json:"default"`
 	Description string          `json:"description"`
 	Hidden      bool            `json:"hidden"`
+	// Required is cobra MarkFlagRequired (commander makeOptionMandatory).
+	Required bool `json:"required"`
+	// Enum is the closed value set, written straight onto the flag as
+	// cli.FlagEnumAnnotation the way an adopter outside kit's builders
+	// does (commander .choices). The tree is bare cobra, so the help
+	// suffix WithFlagEnum adds at Execute is not part of the fixture.
+	Enum []string `json:"enum"`
 }
 
 func buildFixtureCommand(t *testing.T, tc treeCommand) *cobra.Command {
@@ -90,6 +97,16 @@ func buildFixtureCommand(t *testing.T, tc treeCommand) *cobra.Command {
 		}
 		if f.Hidden {
 			require.NoError(t, cmd.Flags().MarkHidden(f.Name))
+		}
+		if f.Required {
+			require.NoError(t, cmd.MarkFlagRequired(f.Name))
+		}
+		if len(f.Enum) > 0 {
+			fl := cmd.Flags().Lookup(f.Name)
+			if fl.Annotations == nil {
+				fl.Annotations = map[string][]string{}
+			}
+			fl.Annotations[kitcli.FlagEnumAnnotation] = append([]string(nil), f.Enum...)
 		}
 	}
 	for _, child := range tc.Commands {
@@ -132,11 +149,11 @@ func checkGolden(t *testing.T, file string, got []byte) {
 }
 
 // TestSpecCommandCrossLangFixture executes the real `<tool> spec`
-// over the shared tree (declared 1.0, harness requests 1.1) and
+// over the shared tree (declared 1.0, harness requests 1.2) and
 // pins its stdout. The root carries a persistent --format the way a
 // kit root does. The TS registerSpecCommand replays these bytes.
 func TestSpecCommandCrossLangFixture(t *testing.T) {
-	t.Setenv(toolspec.SchemaVersionEnv, "1.1")
+	t.Setenv(toolspec.SchemaVersionEnv, "1.2")
 	for _, tc := range []struct {
 		file string
 		args []string
@@ -175,7 +192,7 @@ func TestManifestCrossLangFixture(t *testing.T) {
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			var buf bytes.Buffer
-			m := BuildManifest(root, "1.1", tc.includeDeprecated)
+			m := BuildManifest(root, "1.2", tc.includeDeprecated)
 			require.NoError(t, output.Render(&buf, output.JSON, m))
 
 			checkGolden(t, tc.file, buf.Bytes())

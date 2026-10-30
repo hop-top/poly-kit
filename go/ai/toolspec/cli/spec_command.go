@@ -368,6 +368,7 @@ func manifestCommand(d *cmdreflect.Descriptor) toolspec.ManifestCommand {
 		mc.Args = append(mc.Args, toolspec.ManifestArg{
 			Name:     a.Name,
 			Required: a.Required,
+			Variadic: a.Variadic,
 		})
 	}
 	mc.Flags = manifestFlags(d.Flags)
@@ -426,6 +427,8 @@ func manifestFlags(flags []cmdreflect.Flag) []toolspec.ManifestFlag {
 			Description:  f.Description,
 			Default:      f.Default,
 			SinceVersion: f.SinceVersion,
+			Required:     f.Required,
+			Choices:      append([]string(nil), f.Choices...),
 		})
 	}
 	return out

@@ -11,7 +11,8 @@
         {
           "name": "purge",
           "short": "Purge the catalog",
-          "run": true
+          "run": true,
+          "annotations": { "kit/args": "ids..." }
         },
         {
           "name": "list",
@@ -47,7 +48,7 @@
       "annotations": {
         "kit/side-effect": "write-shared",
         "kit/idempotent": "no",
-        "kit/args": "mission, vehicle?",
+        "kit/args": "mission, vehicle?, passengers...?",
         "kit/exit-codes": "OK,USAGE, TRANSIENT",
         "kit/retryable": "false",
         "kit/destructive-token": "required",
@@ -59,7 +60,7 @@
         "kit/next-steps": "[{\"suggest\": \"fixture mission list\", \"when\": \"on success\"}]"
       },
       "flags": [
-        { "name": "orbit", "short": "o", "type": "string", "default": "leo", "description": "Target orbit" },
+        { "name": "orbit", "short": "o", "type": "string", "default": "leo", "description": "Target orbit", "required": true, "enum": ["leo", "geo"] },
         { "name": "dry-run", "type": "bool", "description": "Simulate only" },
         { "name": "payload", "type": "stringSlice", "default": ["a", "b"], "description": "Payload manifest" },
         { "name": "tag", "type": "stringSlice", "description": "Tags" },
@@ -89,7 +90,7 @@
           "name": "show",
           "short": "Show one key",
           "run": true,
-          "annotations": { "kit/side-effect": "read", "kit/idempotent": "conditional" }
+          "annotations": { "kit/side-effect": "read", "kit/idempotent": "conditional", "kit/args": "key, fallback?" }
         }
       ]
     },

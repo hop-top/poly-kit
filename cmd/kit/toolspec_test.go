@@ -64,8 +64,8 @@ func TestToolspecCmd_FullManifest(t *testing.T) {
 	var m toolspec.Manifest
 	require.NoError(t, json.Unmarshal([]byte(out), &m))
 	assert.Equal(t, "kit", m.Tool)
-	assert.Equal(t, "1.1", m.SchemaVersion,
-		"kit toolspec emits schema 1.1")
+	assert.Equal(t, "1.2", m.SchemaVersion,
+		"kit toolspec emits schema 1.2")
 	require.NotEmpty(t, m.Commands, "fixture leaf surfaces in manifest")
 	assert.Equal(t, []string{"kit", "ping"}, m.Commands[0].Path)
 }
@@ -109,8 +109,8 @@ func TestToolspecCmd_VersionOnly(t *testing.T) {
 		SchemaVersion string `json:"schema_version"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(out), &payload))
-	assert.Equal(t, "1.1", payload.SchemaVersion,
-		"kit toolspec emits schema 1.1")
+	assert.Equal(t, "1.2", payload.SchemaVersion,
+		"kit toolspec emits schema 1.2")
 }
 
 // TestToolspecCmd_NeverDowngrades pins the documented rule on the
@@ -120,7 +120,7 @@ func TestToolspecCmd_VersionOnly(t *testing.T) {
 // The rule lives in toolspec.NegotiateSchemaVersion, which
 // `<tool> spec` shares.
 func TestToolspecCmd_NeverDowngrades(t *testing.T) {
-	for _, requested := range []string{"", "1.0", "1.1", "0.9", "2.0", "garbage", "1"} {
+	for _, requested := range []string{"", "1.0", "1.1", "1.2", "0.9", "2.0", "garbage", "1"} {
 		t.Run("request="+requested, func(t *testing.T) {
 			t.Setenv(toolspec.SchemaVersionEnv, requested)
 
@@ -128,7 +128,7 @@ func TestToolspecCmd_NeverDowngrades(t *testing.T) {
 			require.NoError(t, err)
 			var m toolspec.Manifest
 			require.NoError(t, json.Unmarshal([]byte(out), &m))
-			assert.Equal(t, "1.1", m.SchemaVersion)
+			assert.Equal(t, "1.2", m.SchemaVersion)
 
 			out, err = runToolspec(t, "--version")
 			require.NoError(t, err)
@@ -136,7 +136,7 @@ func TestToolspecCmd_NeverDowngrades(t *testing.T) {
 				SchemaVersion string `json:"schema_version"`
 			}
 			require.NoError(t, json.Unmarshal([]byte(out), &payload))
-			assert.Equal(t, "1.1", payload.SchemaVersion)
+			assert.Equal(t, "1.2", payload.SchemaVersion)
 		})
 	}
 }

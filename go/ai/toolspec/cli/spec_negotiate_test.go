@@ -61,14 +61,18 @@ func TestSpecCommand_NegotiatesSchemaVersion(t *testing.T) {
 		{"1.0/empty", "1.0", "", true, "1.0"},
 		{"1.0/request-1.0", "1.0", "1.0", true, "1.0"},
 		{"1.0/request-1.1", "1.0", "1.1", true, "1.1"},
-		{"1.0/request-2.0", "1.0", "2.0", true, "1.1"},
+		{"1.0/request-1.2", "1.0", "1.2", true, "1.2"},
+		{"1.0/request-2.0", "1.0", "2.0", true, "1.2"},
 		{"1.0/request-0.9", "1.0", "0.9", true, "1.0"},
 		{"1.0/malformed", "1.0", "latest", true, "1.0"},
 		{"1.1/unset", "1.1", "", false, "1.1"},
 		{"1.1/request-1.0", "1.1", "1.0", true, "1.1"},
 		{"1.1/request-1.1", "1.1", "1.1", true, "1.1"},
-		{"1.1/request-2.0", "1.1", "2.0", true, "1.1"},
+		{"1.1/request-2.0", "1.1", "2.0", true, "1.2"},
 		{"1.1/malformed", "1.1", "x.y", true, "1.1"},
+		{"1.2/unset", "1.2", "", false, "1.2"},
+		{"1.2/request-1.1", "1.2", "1.1", true, "1.2"},
+		{"1.2/request-2.0", "1.2", "2.0", true, "1.2"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
