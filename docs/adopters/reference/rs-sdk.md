@@ -248,8 +248,15 @@ kit SDK calls that type `Surface`.
 (`/mcp`), `server_name` (`cmdsurface`), `server_version` (`0.0.0`),
 `spec_versions` (`None` = both eras), `cache_ttl_ms` (`0`),
 `cache_scope` (`Private`), `origin_allowlist` (empty, no check),
-`confirmation_key` (`None`), `tasks_enabled` (`false`). The option *set*
-is normative across every kit SDK; only the spelling is idiomatic.
+`confirmation_key` (`None`), `tasks_enabled` (`false`),
+`tool_name_separator` (`.`). The option *set* is normative across every
+kit SDK; only the spelling is idiomatic.
+
+`tool_name_separator` joins a leaf path into its tool name: `"_"` names
+the leaf `widget add` `widget_add`, for hosts that admit only
+`^[A-Za-z0-9_-]{1,64}$`. Calls resolve under the same separator
+(`Bridge::resolve_with`, `Bridge::invoke_with`; `Leaf::tool_name_with`
+renders one name).
 
 `Surface::mount` returns `Result<Surface, MountError>` rather than
 starting a mount that quietly serves nothing:
@@ -259,6 +266,11 @@ starting a mount that quietly serves nothing:
 | `NoSpecVersions` | `spec_versions: Some(vec![])` |
 | `NegativeCacheTtl` | `cache_ttl_ms < 0` |
 | `EmptyConfirmationKey` | `confirmation_key: Some(vec![])` |
+| `EmptyToolNameSeparator` | `tool_name_separator: String::new()` |
+| `ToolNameSeparatorInCommand { command, path, separator }` | a separator other than `.` inside a command name: `data_sync` under `_` would not map back to one leaf |
+
+`MountError` is `Clone` but not `Copy`: the separator variant carries
+the offending command.
 
 ### Safety
 

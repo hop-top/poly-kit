@@ -166,7 +166,17 @@ pub struct MountOptions {
     /// no call, so every `kit/auth-required` leaf is refused with 401:
     /// an `Authorization` header alone never admits one.
     pub verifier: Option<Verifier>,
+    /// Joins a leaf path into its tool name, and names a called tool.
+    /// Defaults to [`DEFAULT_TOOL_NAME_SEPARATOR`] (`.`); `_` names the
+    /// leaf `widget add` `widget_add`, for hosts that admit only
+    /// `^[A-Za-z0-9_-]{1,64}$`. Empty is a mount error, and so is any
+    /// separator but the default that a command name contains: the name
+    /// would not map back to one leaf.
+    pub tool_name_separator: String,
 }
+
+/// The default string joining a leaf path into its MCP tool name.
+pub const DEFAULT_TOOL_NAME_SEPARATOR: &str = ".";
 
 impl Default for MountOptions {
     fn default() -> Self {
@@ -181,6 +191,7 @@ impl Default for MountOptions {
             confirmation_key: None,
             tasks_enabled: false,
             verifier: None,
+            tool_name_separator: DEFAULT_TOOL_NAME_SEPARATOR.into(),
         }
     }
 }
@@ -196,6 +207,7 @@ pub(crate) struct HandlerConfig {
     pub(crate) confirmation_key: Option<Vec<u8>>,
     pub(crate) tasks_enabled: bool,
     pub(crate) verifier: Option<Verifier>,
+    pub(crate) tool_name_separator: String,
 }
 
 impl Default for HandlerConfig {
@@ -215,6 +227,7 @@ impl From<MountOptions> for HandlerConfig {
             confirmation_key: options.confirmation_key,
             tasks_enabled: options.tasks_enabled,
             verifier: options.verifier,
+            tool_name_separator: options.tool_name_separator,
         }
     }
 }

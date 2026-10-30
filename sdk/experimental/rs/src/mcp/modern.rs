@@ -456,7 +456,7 @@ fn handle_tools_list(cfg: &HandlerConfig, bridge: &Bridge, req: &Request) -> Res
         .leaves()
         .iter()
         .filter(|leaf| leaf.enabled.contains(&Surface::Mcp))
-        .map(super::bridge::Leaf::tool_envelope)
+        .map(|leaf| leaf.tool_envelope_with(&cfg.tool_name_separator))
         .collect();
 
     let mut result = Map::new();
@@ -505,7 +505,8 @@ fn handle_tools_call(
         );
     };
 
-    let Some(leaf) = bridge.resolve_enabled(name, Surface::Mcp) else {
+    let Some(leaf) = bridge.resolve_enabled_with(name, &cfg.tool_name_separator, Surface::Mcp)
+    else {
         return unknown_tool(cfg, req, name);
     };
 
@@ -532,7 +533,7 @@ fn handle_tools_call(
         .cloned()
         .unwrap_or_default();
 
-    match bridge.invoke(name, Surface::Mcp, &arguments) {
+    match bridge.invoke_with(name, &cfg.tool_name_separator, Surface::Mcp, &arguments) {
         Ok(res) => {
             let mut result = render_call_result(&res)
                 .as_object()
