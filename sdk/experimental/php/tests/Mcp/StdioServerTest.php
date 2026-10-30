@@ -253,6 +253,47 @@ final class StdioServerTest extends TestCase
     }
 
     #[Test]
+    public function itConfirmsInBandOverMrtrAndRefusesAClientWithoutElicitation(): void
+    {
+        [$root, $runs] = LockTrees::mrtr();
+        $bridge = new Bridge($root, Policy::default());
+        $mount = new Mount(confirmationKey: 'stdio-mrtr-suite-shared-secret-32');
+        $call = static fn (int $id, array|\stdClass $caps, array $extra = []): string => json_encode([
+            'jsonrpc' => '2.0',
+            'id' => $id,
+            'method' => 'tools/call',
+            'params' => ['name' => 'purge', '_meta' => [
+                'io.modelcontextprotocol/clientCapabilities' => $caps,
+                'io.modelcontextprotocol/protocolVersion' => '2026-07-28',
+            ]] + $extra,
+        ], \JSON_THROW_ON_ERROR);
+        $form = ['elicitation' => ['form' => new \stdClass()]];
+
+        // The state is self-contained, so each round trip may run in its
+        // own session: serve() reads to end of input.
+        [$first] = self::decodeAll($this->serveLines($bridge, $mount, $call(1, $form)));
+        self::assertSame('input_required', $first['result']['resultType'] ?? null);
+        self::assertSame(['confirm'], array_keys($first['result']['inputRequests'] ?? []));
+        self::assertSame(0, $runs->n);
+
+        [$second] = self::decodeAll($this->serveLines($bridge, $mount, $call(2, $form, [
+            'requestState' => $first['result']['requestState'] ?? null,
+            'inputResponses' => ['confirm' => ['action' => 'accept']],
+        ])));
+        self::assertSame('complete', $second['result']['resultType'] ?? null);
+        self::assertFalse($second['result']['isError'] ?? null);
+        self::assertSame(1, $runs->n);
+
+        // No elicitation declared: the header gate applies, and stdio has no headers.
+        $lines = $this->serveLines($bridge, $mount, $call(3, new \stdClass()));
+        [$third] = self::decodeAll($lines);
+        self::assertSame('complete', $third['result']['resultType'] ?? null);
+        self::assertTrue($third['result']['isError'] ?? null);
+        self::assertStringContainsString('confirmation required', $lines[0]);
+        self::assertSame(1, $runs->n);
+    }
+
+    #[Test]
     public function itReusesARequestHandlersBridgeAndMount(): void
     {
         $factory = new Psr17Factory();

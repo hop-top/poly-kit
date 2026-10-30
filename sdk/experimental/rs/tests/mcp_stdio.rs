@@ -410,6 +410,70 @@ fn the_confirmation_header_gate_cannot_be_satisfied() {
     assert_eq!(runs.load(Ordering::SeqCst), 0);
 }
 
+/// A modern `tools/call` on `drop` declaring `caps` as client capabilities.
+fn drop_call(id: u64, caps: Value, extra: Value) -> String {
+    let mut params = serde_json::json!({
+        "name": "drop",
+        "_meta": {
+            "io.modelcontextprotocol/clientCapabilities": caps,
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        },
+    });
+    if let (Some(p), Some(e)) = (params.as_object_mut(), extra.as_object()) {
+        p.extend(e.clone());
+    }
+    let msg =
+        serde_json::json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": params});
+    format!("{msg}\n")
+}
+
+#[test]
+fn confirms_in_band_over_mrtr_and_refuses_a_client_without_elicitation() {
+    let runs = Arc::new(AtomicUsize::new(0));
+    let surface = mount(
+        gated_bridge(&runs),
+        MountOptions {
+            confirmation_key: Some(b"stdio-mrtr-suite-shared-secret-32".to_vec()),
+            ..MountOptions::default()
+        },
+    );
+    let form = serde_json::json!({"elicitation": {"form": {}}});
+
+    // The state is stateless and self-contained, so each round trip may
+    // run in its own session.
+    let (lines, _) = run(&surface, &drop_call(1, form.clone(), Value::Null));
+    let first = reply(&lines, 1.into());
+    assert_eq!(first["result"]["resultType"], "input_required", "{first}");
+    let keys: Vec<&String> = first["result"]["inputRequests"]
+        .as_object()
+        .expect("inputRequests object")
+        .keys()
+        .collect();
+    assert_eq!(keys, ["confirm"]);
+    assert_eq!(runs.load(Ordering::SeqCst), 0);
+
+    let retry = serde_json::json!({
+        "requestState": first["result"]["requestState"],
+        "inputResponses": {"confirm": {"action": "accept"}},
+    });
+    let (lines, _) = run(&surface, &drop_call(2, form, retry));
+    let second = reply(&lines, 2.into());
+    assert_eq!(second["result"]["resultType"], "complete", "{second}");
+    assert_eq!(second["result"]["isError"], false, "{second}");
+    assert_eq!(runs.load(Ordering::SeqCst), 1);
+
+    // No elicitation declared: the header gate applies, and stdio has no headers.
+    let (lines, _) = run(&surface, &drop_call(3, serde_json::json!({}), Value::Null));
+    let third = reply(&lines, 3.into());
+    assert_eq!(third["result"]["resultType"], "complete", "{third}");
+    assert_eq!(third["result"]["isError"], true, "{third}");
+    assert!(
+        third.to_string().contains("confirmation required"),
+        "{third}"
+    );
+    assert_eq!(runs.load(Ordering::SeqCst), 1);
+}
+
 /// Output that reports each completed line to `lines_tx`.
 struct Signalling {
     buf: Arc<Mutex<Vec<u8>>>,
