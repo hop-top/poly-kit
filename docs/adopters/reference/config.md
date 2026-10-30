@@ -61,6 +61,12 @@ Unlike Go, a value of a different kind replaces the earlier one instead of
 failing, and a nested object is merged where Go would replace a map entry or
 an `any` value.
 
+The Python `load` from `hop_top_kit.config` merges a plain `dict` the same
+way as the TypeScript defaults: nested dicts merge key by key at every
+depth, lists and scalars are replaced, and a null clears a dict or list but
+leaves a scalar. It runs the struct-field vectors of
+`contracts/config-v1/load.json` in `sdk/py/tests/test_config.py`.
+
 These are the TypeScript defaults. `mergeLayers(layers, opts)` applies them
 to objects you already parsed, and `load(dst, {merge, parse})` takes the
 same options plus a parser for non-YAML files (one function for every file,
