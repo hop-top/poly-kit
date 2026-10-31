@@ -45,7 +45,7 @@ pick_fs(&ctx).write_file("/tmp/x".as_ref(), b"hi", 0o644).unwrap(); // prints, w
   real bus publishes on a kit bus `Adapter`.
 - Reads (`std::fs::read`, metadata, GET, HEAD) pass through to std unchanged; dry-run does not pretend reads are unsafe.
 - `dryrun::Http` forwards GET, HEAD and the empty method to the client it wraps; every other verb prints
-  `[dry-run] would <VERB> <url> (<n>-byte body)` and answers a synthetic 201 with a `{}` body. The URL is printed as given.
+  `[dry-run] would <VERB> <url> (<n>-byte body)` and answers a synthetic 201 with a `{}` body. The printed URL drops userinfo and fragment and replaces every query value with `REDACTED` (keys, host, port and path kept); Go prints it as given.
 - The dry-run `Bus` tags `mechanism=dry_run` only on payloads that carry qualifiers: qualifier keys at the top level
   (a `#[serde(flatten)]` `Qualifiers`) or a nested `qualifiers` object. An all-empty flattened `Qualifiers` serialises
   to nothing and is not detected; use the nested form or set another qualifier. An existing non-empty `mechanism`
