@@ -196,6 +196,17 @@ final class RootTest extends TestCase
     }
 
     #[Test]
+    public function kitDefaultNeedsNoLoader(): void
+    {
+        $c = [$this->leaf('add', ['kit/side-effect' => 'write']), $this->leaf('ls', ['kit/side-effect' => 'read'])];
+        [$code, , $err] = $this->exec($c, ['--policy', 'kit-default', 'add']);
+        self::assertSame(5, $code);
+        self::assertStringContainsString('policy kit-default:', $err);
+        [$code] = $this->exec($c, ['--policy', 'kit-default', 'ls']);
+        self::assertSame(0, $code);
+    }
+
+    #[Test]
     public function promptSourceReadsScriptedAnswersAndDefaultsByTerminal(): void
     {
         $c = [$this->leaf('rm', ['kit/side-effect' => 'destructive'])];
