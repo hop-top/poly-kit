@@ -54,6 +54,7 @@ assert_eq!(serde_json::from_slice::<serde_json::Value>(&buf).unwrap(), json!([{"
 
 - `hop_top_kit::output::builtins`: the five shipped formatters and their `--format-opt` keys
 - `hop_top_kit::cli` (src/cli.rs): the clap root the flag suite is registered on
+- `hop_top_kit::tui`: status symbols and spinner, no payload rendering
 - `hop_top_kit::serve`: maps `LifecycleOutcome` onto the `CliError` codes defined here
 
 ## See also
