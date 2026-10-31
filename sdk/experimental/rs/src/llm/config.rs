@@ -172,7 +172,7 @@ impl Sources<'_> {
     }
 }
 
-/// The process environment, for [`Sources::env`].
+/// The process environment, for `Sources::env`.
 pub fn process_env(name: &str) -> Option<String> {
     std::env::var(name).ok()
 }

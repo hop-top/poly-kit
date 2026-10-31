@@ -23,7 +23,7 @@ use tower::ServiceExt;
 
 use super::error::{ApiError, ApiServerError, CODE_METHOD_NOT_ALLOWED};
 
-/// Where the endpoint answers when [`MetricsConfig::path`] is empty:
+/// Where the endpoint answers when `MetricsConfig::path` is empty:
 /// the path Prometheus scrapes by default.
 pub const DEFAULT_METRICS_PATH: &str = "/metrics";
 

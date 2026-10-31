@@ -15,7 +15,7 @@
 //! adopter's revocation check when [`Options::check`] is set.
 //!
 //! The [`Claims`] an `AuthFunc` returns: the principal from `sub`, the
-//! tenant from [`Options::tenant_claim`] (`tenant` by default), and the
+//! tenant from `Options::tenant_claim` (`tenant` by default), and the
 //! scopes as [`scopes_of`] reads them: `scopes` (a list), else `scope`
 //! (space-delimited, RFC 8693 and RFC 9068), else `scp`.
 //!
