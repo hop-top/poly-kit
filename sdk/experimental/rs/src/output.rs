@@ -5,6 +5,7 @@
 //! - [`Formatter`] trait + [`OptionSpec`]/[`OptionType`]/[`Options`]/[`ColumnSpec`]
 //! - [`Registry`] with a `default_registry()` process-wide singleton
 //! - JSON + YAML built-in formatters (gated on the `output` feature)
+//! - [`hint`]: next-step hints and their rendering rules
 //! - [`parse_options`] for `--format-opt key=value` validation
 //! - [`CliError`] structured-error envelope + [`render_error`] with the
 //!   transience class (transient|permanent|unknown) and the cross-tool
@@ -21,6 +22,7 @@ pub mod builtins;
 mod column;
 mod error;
 mod formatter;
+pub mod hint;
 mod option;
 mod registry;
 
