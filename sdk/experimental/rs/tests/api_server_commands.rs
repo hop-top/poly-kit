@@ -12,11 +12,10 @@ use std::sync::{Arc, Mutex};
 
 use axum::body::Body;
 use axum::http::Request;
-use clap::{Arg, ArgAction, Command};
 use hop_top_kit::api_server::commands::{
     exit_status_table, status_for_exit_code, CommandProjection,
 };
-use hop_top_kit::cli::{Config, Root};
+use hop_top_kit::cli::{ArgSpec, CommandSpec, Config, FlagSpec, Root};
 use hop_top_kit::output::CliError;
 use serde_json::Value;
 use tower::ServiceExt;
@@ -31,7 +30,9 @@ fn corpus() -> Value {
 
 /// The corpus tree as a kit root; `seen` records what a command saw.
 fn build(c: &Value, seen: &Seen) -> Root {
-    let mut root = Root::with_config(Config::new("fix", "1.0.0", "Fixture"));
+    let mut cfg = Config::new("fix", "1.0.0", "Fixture");
+    cfg.disable_validate = true;
+    let mut root = Root::with_config(cfg);
     let mut top: Vec<(String, Vec<&Value>)> = Vec::new();
     for n in c["tree"].as_array().unwrap() {
         let first = n["path"][0].as_str().unwrap().to_string();
@@ -47,14 +48,14 @@ fn build(c: &Value, seen: &Seen) -> Root {
     root
 }
 
-fn group(root: &mut Root, name: &str, nodes: &[&Value], depth: usize, seen: &Seen) -> Command {
+fn group(root: &mut Root, name: &str, nodes: &[&Value], depth: usize, seen: &Seen) -> CommandSpec {
     let leaf = nodes
         .iter()
         .find(|n| n["path"].as_array().unwrap().len() == depth);
     if let Some(n) = leaf {
         return leaf_command(root, name, n, seen);
     }
-    let mut cmd = Command::new(name.to_string());
+    let mut cmd = CommandSpec::new(name.to_string());
     let mut subs: Vec<(String, Vec<&Value>)> = Vec::new();
     for n in nodes {
         let next = n["path"][depth].as_str().unwrap().to_string();
@@ -69,7 +70,7 @@ fn group(root: &mut Root, name: &str, nodes: &[&Value], depth: usize, seen: &See
     cmd
 }
 
-fn leaf_command(root: &mut Root, name: &str, n: &Value, seen: &Seen) -> Command {
+fn leaf_command(root: &mut Root, name: &str, n: &Value, seen: &Seen) -> CommandSpec {
     let words: Vec<String> = n["path"]
         .as_array()
         .unwrap()
@@ -77,16 +78,15 @@ fn leaf_command(root: &mut Root, name: &str, n: &Value, seen: &Seen) -> Command 
         .map(|w| w.as_str().unwrap().to_string())
         .collect();
     let path = words.join(" ");
-    let mut cmd = Command::new(name.to_string()).about(n["summary"].as_str().unwrap().to_string());
+    let mut cmd =
+        CommandSpec::new(name.to_string()).about(n["summary"].as_str().unwrap().to_string());
     for f in n["flags"].as_array().unwrap() {
         let fname = f["name"].as_str().unwrap().to_string();
-        let mut a = Arg::new(fname.clone()).long(fname);
-        a = match f["type"].as_str().unwrap() {
-            "bool" => a.action(ArgAction::SetTrue),
-            "int" => a.value_parser(clap::value_parser!(i64)),
-            _ => a,
-        };
-        cmd = cmd.arg(a);
+        cmd = cmd.flag(match f["type"].as_str().unwrap() {
+            "bool" => FlagSpec::bool(fname),
+            "int" => FlagSpec::int(fname),
+            _ => FlagSpec::string(fname),
+        });
     }
     let arg_names: Vec<String> = n["args"]
         .as_array()
@@ -96,22 +96,26 @@ fn leaf_command(root: &mut Root, name: &str, n: &Value, seen: &Seen) -> Command 
         .collect();
     for a in n["args"].as_array().unwrap() {
         let an = a["name"].as_str().unwrap().to_string();
-        let mut arg = Arg::new(an.clone()).required(a["required"].as_bool().unwrap_or(false));
+        let mut arg = ArgSpec::new(an.clone());
+        if a["required"].as_bool().unwrap_or(false) {
+            arg = arg.required();
+        }
         if an == "item" {
-            arg = arg.num_args(0..);
+            arg = arg.variadic();
         }
         cmd = cmd.arg(arg);
     }
     if n["reason"] == "hidden-internal" {
-        cmd = cmd.hide(true);
+        cmd = cmd.hidden();
     }
     if n["source"] == "declared" {
-        root.set_side_effect(&path, n["side_effect"].as_str().unwrap());
+        cmd = cmd.side_effect(n["side_effect"].as_str().unwrap());
     }
+    let _ = &root;
     if n["invocable"].as_bool().unwrap() {
         let seen = seen.clone();
         let p = path.clone();
-        root.handle(&path, move |inv, out, _| {
+        cmd = cmd.handler(move |inv, out, _| {
             *seen.lock().unwrap() = Some((
                 p.clone(),
                 inv.flags

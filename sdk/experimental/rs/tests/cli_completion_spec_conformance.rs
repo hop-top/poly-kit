@@ -19,11 +19,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use clap::builder::{PossibleValue, PossibleValuesParser};
-use clap::{Arg, ArgAction, Command};
 use hop_top_kit::cli::completion::{bind_args, bind_flag, dir, file, func, Item};
 use hop_top_kit::cli::completion_spec::{render_fig, render_usage, Spec};
-use hop_top_kit::cli::Root;
+use hop_top_kit::cli::{ArgSpec, CommandSpec, FlagSpec, Root, ValueSpec};
 use serde::Deserialize;
 
 const FILES: &[&str] = &[
@@ -149,7 +147,7 @@ fn build(tree: &ConfCmd) -> Root {
     root
 }
 
-fn build_cmd(c: &ConfCmd, parent: &str, is_root: bool, bindings: &mut Vec<Binding>) -> Command {
+fn build_cmd(c: &ConfCmd, parent: &str, is_root: bool, bindings: &mut Vec<Binding>) -> CommandSpec {
     let words = use_words(&c.use_);
     // cobra `Name()`: the Use line up to the first ASCII space.
     let name = c.use_.split(' ').next().unwrap_or_default().to_string();
@@ -158,7 +156,7 @@ fn build_cmd(c: &ConfCmd, parent: &str, is_root: bool, bindings: &mut Vec<Bindin
         (false, true) => name.clone(),
         (false, false) => format!("{parent} {name}"),
     };
-    let mut cmd = Command::new(name);
+    let mut cmd = CommandSpec::new(name);
     if !c.short.is_empty() {
         cmd = cmd.about(c.short.clone());
     }
@@ -166,7 +164,7 @@ fn build_cmd(c: &ConfCmd, parent: &str, is_root: bool, bindings: &mut Vec<Bindin
         cmd = cmd.alias(a.clone());
     }
     if c.hidden || !c.deprecated.is_empty() {
-        cmd = cmd.hide(true);
+        cmd = cmd.hidden();
     }
 
     // Positionals: none under NoArgs; else kit/args; else Use operands.
@@ -190,12 +188,15 @@ fn build_cmd(c: &ConfCmd, parent: &str, is_root: bool, bindings: &mut Vec<Bindin
         .map(|v| v.split('\t').next().unwrap_or_default().to_string())
         .collect();
     for op in args {
-        let mut a = Arg::new(op.name).required(!op.optional);
+        let mut a = ArgSpec::new(op.name);
+        if !op.optional {
+            a = a.required();
+        }
         if op.variadic {
-            a = a.num_args(1..);
+            a = a.variadic();
         }
         if !valid.is_empty() {
-            a = a.value_parser(PossibleValuesParser::new(valid.clone()));
+            a = a.allowed_values(valid.iter().map(ValueSpec::new));
         }
         cmd = cmd.arg(a);
     }
@@ -210,16 +211,7 @@ fn build_cmd(c: &ConfCmd, parent: &str, is_root: bool, bindings: &mut Vec<Bindin
     if is_root && !c.version.is_empty() && !c.flags.iter().any(|f| f.name == "version") {
         // cobra's version flag: `-v` unless the root already uses it.
         let taken = c.flags.iter().any(|f| f.short == "v");
-        let mut v = Arg::new("version")
-            .long("version")
-            .action(ArgAction::Version);
-        if !taken {
-            v = v.short('v');
-        }
-        cmd = cmd
-            .version(c.version.clone())
-            .disable_version_flag(true)
-            .arg(v);
+        cmd = cmd.version(c.version.clone(), (!taken).then_some('v'));
     }
     for sub in &c.commands {
         cmd = cmd.subcommand(build_cmd(sub, &path, false, bindings));
@@ -227,45 +219,44 @@ fn build_cmd(c: &ConfCmd, parent: &str, is_root: bool, bindings: &mut Vec<Bindin
     cmd
 }
 
-fn add_flag(mut cmd: Command, f: &ConfFlag, path: &str, bindings: &mut Vec<Binding>) -> Command {
+fn add_flag(
+    cmd: CommandSpec,
+    f: &ConfFlag,
+    path: &str,
+    bindings: &mut Vec<Binding>,
+) -> CommandSpec {
     let (varname, usage) = unquote_usage(&f.type_, &f.usage);
-    let mut a = Arg::new(f.name.clone()).long(f.name.clone()).help(usage);
+    let mut a = match f.type_.as_str() {
+        _ if f.name == "help" => FlagSpec::help_flag(f.name.clone()),
+        "bool" => FlagSpec::bool(f.name.clone()),
+        "count" => FlagSpec::count(f.name.clone()),
+        "string" | "int" | "duration" => FlagSpec::string(f.name.clone()).value_name(varname),
+        "stringSlice" | "stringArray" => FlagSpec::strings(f.name.clone()).value_name(varname),
+        t => panic!("flag {}: unknown type {t:?}", f.name),
+    }
+    .help(usage);
     if let Some(s) = f.short.chars().next() {
         a = a.short(s);
     }
-    a = match f.type_.as_str() {
-        _ if f.name == "help" => {
-            cmd = cmd.disable_help_flag(true);
-            a.action(ArgAction::Help)
-        }
-        "bool" => a.action(ArgAction::SetTrue),
-        "count" => a.action(ArgAction::Count),
-        "string" | "int" | "duration" => a.action(ArgAction::Set).value_name(varname),
-        "stringSlice" | "stringArray" => a.action(ArgAction::Append).value_name(varname),
-        t => panic!("flag {}: unknown type {t:?}", f.name),
-    };
     if f.persistent {
-        a = a.global(true);
+        a = a.persistent();
     }
     if f.hidden || !f.deprecated.is_empty() {
-        a = a.hide(true);
+        a = a.hidden();
     }
     if f.required {
-        a = a.required(true);
+        a = a.required();
     }
     if !f.no_opt_default.is_empty() {
-        a = a
-            .num_args(0..=1)
-            .require_equals(true)
-            .default_missing_value(f.no_opt_default.clone());
+        a = a.no_opt_default(f.no_opt_default.clone());
     }
     if let Some(vals) = &f.enum_ {
         // A kit enum is advisory: the bare value stays accepted, hidden.
-        let mut pv: Vec<PossibleValue> = vals.iter().map(PossibleValue::new).collect();
+        let mut pv: Vec<ValueSpec> = vals.iter().map(ValueSpec::new).collect();
         if !f.no_opt_default.is_empty() && !vals.contains(&f.no_opt_default) {
-            pv.push(PossibleValue::new(f.no_opt_default.clone()).hide(true));
+            pv.push(ValueSpec::hidden(f.no_opt_default.clone()));
         }
-        a = a.value_parser(PossibleValuesParser::new(pv));
+        a = a.allowed_values(pv);
     }
     let key = |b| Binding::Flag(path.to_string(), f.name.clone(), b);
     if let Some(exts) = &f.filename_ext {
@@ -277,7 +268,7 @@ fn add_flag(mut cmd: Command, f: &ConfFlag, path: &str, bindings: &mut Vec<Bindi
     if f.completion_function {
         bindings.push(key(Bind::Func));
     }
-    cmd.arg(a)
+    cmd.flag(a)
 }
 
 /// pflag `UnquoteUsage`: the first backquoted word names the value and

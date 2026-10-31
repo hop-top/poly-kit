@@ -13,12 +13,11 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
-use clap::{Arg, ArgAction, Command};
 use hop_top_kit::cli::completion::{
     self, bind_args, bind_flag, config_keys, dir, file, func, prefixed, static_items,
     static_values, Completer, Context, Item,
 };
-use hop_top_kit::cli::{Config, Root};
+use hop_top_kit::cli::{CommandSpec, Config, FlagSpec, Root};
 use hop_top_kit::config::Value;
 use serde::Deserialize;
 
@@ -307,19 +306,19 @@ struct RequestsFile {
     cases: Vec<RequestCase>,
 }
 
-fn build_command(c: &ConfCommand) -> Command {
-    let mut cmd = Command::new(c.name.clone()).about(c.about.clone());
+fn build_command(c: &ConfCommand) -> CommandSpec {
+    let mut cmd = CommandSpec::new(c.name.clone()).about(c.about.clone());
     for f in &c.flags {
-        let mut a = Arg::new(f.long.clone())
-            .long(f.long.clone())
-            .help(f.help.clone());
+        let mut a = if f.value {
+            FlagSpec::string(f.long.clone())
+        } else {
+            FlagSpec::bool(f.long.clone())
+        }
+        .help(f.help.clone());
         if let Some(s) = &f.short {
             a = a.short(s.chars().next().unwrap());
         }
-        if !f.value {
-            a = a.action(ArgAction::SetTrue);
-        }
-        cmd = cmd.arg(a);
+        cmd = cmd.flag(a);
     }
     for child in &c.commands {
         cmd = cmd.subcommand(build_command(child));
@@ -446,9 +445,9 @@ fn scripts() {
         *used = true;
         let want = fs::read_to_string(corpus().join(&c.golden)).unwrap();
         let root = Root::new(
-            Command::new(c.program.clone())
+            CommandSpec::new(c.program.clone())
                 .about("Kit app")
-                .subcommand(Command::new("sub").about("A subcommand")),
+                .subcommand(CommandSpec::new("sub").about("A subcommand")),
         );
         let mut argv = vec![c.program.as_str(), "completion", c.shell.as_str()];
         if c.no_descriptions {

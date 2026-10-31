@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn completion_offers_each_proxy_once() {
         for hidden in [true, false] {
-            let mut root = Root::new(Command::new("app").subcommand(Command::new("deploy")));
+            let mut root = Root::from_clap(Command::new("app").subcommand(Command::new("deploy")));
             root.alias_with("d", "deploy", &AliasOptions::new().hidden(hidden))
                 .unwrap();
             assert_eq!(complete(&root, &["d"]), ["d", "deploy"], "hidden {hidden}");
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn alias_with_proxies_a_direct_child() {
-        let mut root = Root::new(Command::new("app").subcommand(Command::new("deploy")));
+        let mut root = Root::from_clap(Command::new("app").subcommand(Command::new("deploy")));
         root.alias_with("d", "deploy", &AliasOptions::new().hidden(false))
             .unwrap();
         let cmd = root.command();

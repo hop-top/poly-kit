@@ -9,8 +9,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
-use clap::{Arg, ArgAction, Command};
-use hop_top_kit::cli::{Config, Root};
+use hop_top_kit::cli::{ArgSpec, CommandSpec, Config, FlagSpec, Root};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -87,36 +86,34 @@ struct File {
     cases: Vec<Case>,
 }
 
-fn command(c: &Cmd, root: &mut Root, prefix: &str) -> Command {
+fn command(c: &Cmd, root: &mut Root, prefix: &str) -> CommandSpec {
     let path = format!("{prefix} {}", c.name).trim().to_string();
-    let mut cmd = Command::new(c.name.clone()).about(c.about.clone());
+    let mut spec = CommandSpec::new(c.name.clone()).about(c.about.clone());
     for f in &c.flags {
-        let mut a = Arg::new(f.long.clone())
-            .long(f.long.clone())
-            .help(f.help.clone());
-        if let Some(s) = f.short.chars().next() {
-            a = a.short(s);
+        let mut fl = match f.ty.as_str() {
+            "bool" => FlagSpec::bool(f.long.clone()),
+            "int" => FlagSpec::int(f.long.clone()),
+            _ => FlagSpec::string(f.long.clone()),
         }
-        a = match f.ty.as_str() {
-            "bool" => a.action(ArgAction::SetTrue),
-            "int" => a.value_parser(clap::value_parser!(i64)),
-            _ => a,
-        };
+        .help(f.help.clone());
+        if let Some(s) = f.short.chars().next() {
+            fl = fl.short(s);
+        }
         if !f.default.is_empty() {
-            a = a.default_value(f.default.clone());
+            fl = fl.default_value(f.default.clone());
         }
         if !f.enum_.is_empty() {
             root.with_command_flag_enum(&path, &f.long, f.enum_.clone());
         }
-        cmd = cmd.arg(a);
+        spec = spec.flag(fl);
     }
     if c.commands.is_empty() {
-        cmd = cmd.arg(Arg::new("args").num_args(0..));
+        spec = spec.arg(ArgSpec::new("args").variadic());
         let p = path.clone();
         if !c.side_effect.is_empty() {
-            root.set_side_effect(&path, &c.side_effect);
+            spec = spec.side_effect(&c.side_effect);
         }
-        root.handle(&path, move |inv, out, _err| {
+        spec = spec.handler(move |inv, out, _err| {
             let g = &inv.globals;
             let flags: BTreeMap<_, _> = inv
                 .flags
@@ -143,9 +140,9 @@ fn command(c: &Cmd, root: &mut Root, prefix: &str) -> Command {
         });
     }
     for s in &c.commands {
-        cmd = cmd.subcommand(command(s, root, &path));
+        spec = spec.subcommand(command(s, root, &path));
     }
-    cmd
+    spec
 }
 
 #[test]

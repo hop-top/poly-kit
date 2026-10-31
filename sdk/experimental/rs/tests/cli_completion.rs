@@ -4,15 +4,15 @@
 //! `cli_completion_root.rs`.
 
 #![cfg(feature = "cli")]
+#![allow(clippy::result_large_err)]
 
 use std::sync::{Arc, Mutex};
 
-use clap::{Arg, Command};
 use hop_top_kit::cli::completion::{
     self, bind_args, bind_flag, config_keys, dir, file, func, prefixed, static_items,
     static_values, Completer, Context, Directive, Item, Registry,
 };
-use hop_top_kit::cli::Root;
+use hop_top_kit::cli::{CommandSpec, FlagSpec, Root};
 
 fn orbits() -> Vec<Item> {
     vec![
@@ -174,15 +174,11 @@ fn registry_arg_lookup() {
 }
 
 fn test_root(flags: &[&str]) -> Root {
-    let mut cmd = Command::new("test");
+    let mut cmd = CommandSpec::new("test");
     for f in flags {
-        cmd = cmd.arg(
-            Arg::new(f.to_string())
-                .long(f.to_string())
-                .help(format!("{f} flag")),
-        );
+        cmd = cmd.flag(FlagSpec::string(f.to_string()).help(format!("{f} flag")));
     }
-    Root::new(Command::new("tool").subcommand(cmd))
+    Root::new(CommandSpec::new("tool").subcommand(cmd))
 }
 
 #[test]
@@ -201,7 +197,7 @@ fn bind_flag_cobra_integration() {
 
 #[test]
 fn bind_args_cobra_integration() {
-    let mut root = Root::new(Command::new("tool").subcommand(Command::new("launch")));
+    let mut root = Root::new(CommandSpec::new("tool").subcommand(CommandSpec::new("launch")));
     bind_args(
         &mut root,
         "launch",
@@ -269,7 +265,7 @@ fn complete(root: &Root, args: &[&str], no_desc: bool) -> (String, String) {
 
 #[test]
 fn example_bind_args() {
-    let mut root = Root::new(Command::new("deploy"));
+    let mut root = Root::new(CommandSpec::new("deploy"));
     bind_args(
         &mut root,
         "",
@@ -285,7 +281,7 @@ fn example_bind_args() {
 
 #[test]
 fn completer_error_is_reported_with_the_error_directive() {
-    let mut root = Root::new(Command::new("tool"));
+    let mut root = Root::new(CommandSpec::new("tool"));
     bind_args(
         &mut root,
         "",

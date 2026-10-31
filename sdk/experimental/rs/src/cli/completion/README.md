@@ -2,7 +2,7 @@
 
 ## What it answers
 
-How does a flag or positional argument of a kit-rs CLI get dynamic shell completions, the way Go `console/cli/completion` gives them to cobra? Parsing and dispatch stay with clap; the command tree itself is `hop_top_kit::cli::Root`.
+How does a flag or positional argument of a kit-rs CLI get dynamic shell completions, the way Go `console/cli/completion` gives them to cobra? The command tree is `hop_top_kit::cli::Root`, built from kit-owned `CommandSpec`s; the parsing provider (clap) is adapter-internal.
 
 ## Use it when
 
@@ -12,16 +12,15 @@ How does a flag or positional argument of a kit-rs CLI get dynamic shell complet
 - config key names → `config_keys(value)` (a key list, or a `config::Value` with feature `config`)
 - file or directory paths → `file([".yaml"])` / `dir()`
 - attach to a flag → `bind_flag(&mut root, "deploy", "env", c)`; to positional args → `bind_args(&mut root, "deploy", c)`
-- a closed value set for a flag → `Root::with_flag_enum`, or clap's `value_parser([...])`
+- a closed value set for a flag → `Root::with_flag_enum`, or a hard closed set with `FlagSpec::allowed_values`
 
 ## Quick start
 
 ```rust
-use clap::Command;
 use hop_top_kit::cli::completion::{bind_args, prefixed, static_values};
-use hop_top_kit::cli::Root;
+use hop_top_kit::cli::{CommandSpec, Root};
 
-let mut root = Root::new(Command::new("tool").subcommand(Command::new("deploy")));
+let mut root = Root::new(CommandSpec::new("tool").subcommand(CommandSpec::new("deploy")));
 bind_args(&mut root, "deploy", prefixed("env", static_values(["prod", "preview", "staging"])));
 
 let (mut out, mut err) = (Vec::new(), Vec::new());
@@ -40,7 +39,7 @@ assert_eq!(String::from_utf8(out).unwrap(), "env:prod\nenv:preview\n:4\n");
 
 ## Neighbours
 
-- `hop_top_kit::cli::Root` (`../root.rs`): the clap root completers bind to, aliases and flag enums
+- `hop_top_kit::cli::Root` (`../root.rs`): the kit root completers bind to, aliases and flag enums
 - `hop_top_kit::config`: the config tree `config_keys` reads
 
 ## See also

@@ -1,7 +1,8 @@
-//! The minimal clap root that completion hangs on. Ports the parts of Go
-//! `console/cli` that shell completion reads: the `completion` command in
-//! the management group, plus root aliases (`alias.rs`) and the flag
-//! value-enum registry (`enums.rs`).
+//! The kit root: a [`CommandSpec`] tree under kit's persistent flags,
+//! the `completion` command in the management group, root aliases
+//! (`alias.rs`) and the flag value-enum registry (`enums.rs`). Ports Go
+//! `console/cli`'s `Root`; clap is the parsing provider behind it and
+//! never appears in its API.
 
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsString;
@@ -11,6 +12,7 @@ use std::sync::Arc;
 
 use clap::{Arg, ArgAction, Command};
 
+use super::adapter::to_clap;
 use super::completion::{
     self, completion_command, func, resolve, Completer, Context, Directive, Shell, COMPLETION,
     NO_DESC_FLAG, NO_DESC_REQUEST_CMD, REQUEST_CMD,
@@ -19,30 +21,29 @@ use super::completion_spec::{write_export, FIG, USAGE};
 use super::config::{Config, GlobalKind};
 use super::enums::apply_enum_help;
 use super::run::HandlerFn;
+use super::spec::CommandSpec;
 
 const MANAGEMENT: &str = "management";
 
-/// A clap command tree with kit's completion surface.
+/// A command tree with kit's completion surface.
 ///
-/// [`Root::new`] takes the finished tree; [`Root::command`] adds the
+/// [`Root::new`] takes the root [`CommandSpec`]; the built tree adds the
 /// hidden `completion bash|zsh|fish|powershell` command (in the
 /// `management` group, which default help hides) unless a command or
 /// alias already answers to `completion`.
 /// Like Go kit, the root has no `help` subcommand; `-h/--help` remain.
 ///
-/// Wire it in `main` ahead of normal dispatch:
+/// Wire it in `main`:
 ///
 /// ```no_run
-/// use clap::Command;
-/// use hop_top_kit::cli::Root;
+/// use hop_top_kit::cli::{CommandSpec, Root};
 ///
-/// let root = Root::new(Command::new("mytool").subcommand(Command::new("deploy")));
+/// let root = Root::new(
+///     CommandSpec::new("mytool")
+///         .subcommand(CommandSpec::new("deploy").handler(|_, _, _| Ok(()))),
+/// );
 /// let (mut out, mut err) = (std::io::stdout(), std::io::stderr());
-/// if let Some(done) = root.try_builtin(std::env::args_os(), &mut out, &mut err) {
-///     std::process::exit(if done.is_ok() { 0 } else { 1 });
-/// }
-/// let matches = root.command().get_matches();
-/// # let _ = matches;
+/// std::process::exit(root.run(std::env::args(), &mut out, &mut err));
 /// ```
 pub struct Root {
     pub(super) cmd: Command,
@@ -67,8 +68,21 @@ impl fmt::Debug for Root {
 }
 
 impl Root {
-    /// Wraps a finished command tree.
-    pub fn new(cmd: Command) -> Root {
+    /// Wraps the root command `spec`, its subtree included.
+    pub fn new(spec: CommandSpec) -> Root {
+        let mut root = Root::bare(to_clap(&spec));
+        root.register(&spec, "");
+        root
+    }
+
+    /// Wraps a raw clap tree: for the adapter's own tests, which probe
+    /// clap rules a [`CommandSpec`] cannot state.
+    #[cfg(test)]
+    pub(crate) fn from_clap(cmd: Command) -> Root {
+        Root::bare(cmd)
+    }
+
+    fn bare(cmd: Command) -> Root {
         Root {
             cmd: cmd.disable_help_subcommand(true),
             aliases: BTreeMap::new(),
@@ -90,16 +104,45 @@ impl Root {
     /// `--help-<group>` flags, as Go's `cli.New` registers them. Add
     /// the CLI's commands with [`Root::add_command`].
     pub fn with_config(cfg: Config) -> Root {
-        let mut root = Root::new(base_command(&cfg));
+        let mut root = Root::bare(base_command(&cfg));
         root.config = Some(cfg);
         root
     }
 
     /// Adds a command (with its subtree) to the root.
-    pub fn add_command(&mut self, cmd: Command) -> &mut Root {
+    pub fn add_command(&mut self, spec: CommandSpec) -> &mut Root {
         let c = std::mem::take(&mut self.cmd);
-        self.cmd = c.subcommand(cmd);
+        self.cmd = c.subcommand(to_clap(&spec));
+        self.register(&spec, &spec.name);
         self
+    }
+
+    /// Records the handlers, annotations, groups and help groups of
+    /// `spec` and its subtree, `path` being the space-separated path
+    /// of `spec` (empty for the root).
+    fn register(&mut self, spec: &CommandSpec, path: &str) {
+        if let Some(h) = &spec.handler {
+            self.handlers.insert(path.to_string(), Arc::clone(h));
+        }
+        if !spec.annotations.is_empty() {
+            self.annotations
+                .entry(path.to_string())
+                .or_default()
+                .extend(spec.annotations.clone());
+        }
+        if let (Some(id), false) = (&spec.group, path.is_empty()) {
+            if !path.contains(' ') {
+                self.groups.insert(path.to_string(), id.clone());
+            }
+        }
+        for s in &spec.subcommands {
+            let p = if path.is_empty() {
+                s.name.clone()
+            } else {
+                format!("{path} {}", s.name)
+            };
+            self.register(s, &p);
+        }
     }
 
     /// Puts the root subcommand `name` in help group `id`; a hidden
@@ -196,7 +239,7 @@ impl Root {
     /// The command tree to parse with: the adopter's tree, alias
     /// registrations, the built-in `completion` command when it applies
     /// and enum help suffixes.
-    pub fn command(&self) -> Command {
+    pub(crate) fn command(&self) -> Command {
         let mut cmd = self.cmd.clone();
         if self.has_builtin_completion() {
             cmd = cmd.subcommand(completion_command(self.cmd.get_name()));
@@ -212,7 +255,7 @@ impl Root {
 
     /// [`Root::command`] with the management group shown, the analogue
     /// of Go's `--help-all`.
-    pub fn help_all_command(&self) -> Command {
+    pub(crate) fn help_all_command(&self) -> Command {
         let mut cmd = self.command();
         if self.has_builtin_completion() {
             cmd = cmd.mut_subcommand(COMPLETION, |c| c.hide(false));
@@ -227,7 +270,7 @@ impl Root {
 
     /// [`Root::command`] showing only the commands of group `id`
     /// (`--help-<id>`): the other root subcommands are hidden.
-    pub fn help_group_command(&self, id: &str) -> Command {
+    pub(crate) fn help_group_command(&self, id: &str) -> Command {
         let mut cmd = self.help_all_command();
         let names: Vec<String> = cmd
             .get_subcommands()
@@ -239,6 +282,35 @@ impl Root {
             }
         }
         cmd
+    }
+
+    /// The default help, as `-h` prints it: management commands and
+    /// hidden flags left out.
+    pub fn render_help(&self) -> String {
+        let mut c = self.command();
+        c.render_help().to_string()
+    }
+
+    /// The `--help-all` help: the management group shown.
+    pub fn render_help_all(&self) -> String {
+        let mut c = self.help_all_command();
+        c.render_help().to_string()
+    }
+
+    /// The `--help-<id>` help: only the commands of group `id`.
+    pub fn render_help_group(&self, id: &str) -> String {
+        let mut c = self.help_group_command(id);
+        c.render_help().to_string()
+    }
+
+    /// The help of the command at `path` (space-separated), `None`
+    /// when no such command exists.
+    pub fn render_command_help(&self, path: &str) -> Option<String> {
+        let mut built = self.command();
+        built.build();
+        let words = resolve_path_words(&built, path)?;
+        let mut cmd = find_path(&built, &words)?.clone();
+        Some(cmd.render_help().to_string())
     }
 
     /// The help group of a root subcommand: `management` for the

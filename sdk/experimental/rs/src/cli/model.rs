@@ -133,6 +133,18 @@ impl CommandInfo {
         self.annotations.get(SIDE_EFFECT).map(String::as_str)
     }
 
+    /// The descendant at `path` (space-separated, relative to this
+    /// command); the empty path is this command.
+    pub fn find(&self, path: &str) -> Option<&CommandInfo> {
+        path.split_whitespace()
+            .try_fold(self, |cur, w| cur.commands.iter().find(|c| c.name == w))
+    }
+
+    /// The flag named `name` declared on this command.
+    pub fn flag(&self, name: &str) -> Option<&FlagInfo> {
+        self.flags.iter().find(|f| f.name == name)
+    }
+
     /// Calls `f` on this command and every descendant, parents first.
     pub fn walk<'a>(&'a self, f: &mut dyn FnMut(&'a CommandInfo)) {
         f(self);
