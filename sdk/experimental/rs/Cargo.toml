@@ -77,6 +77,20 @@ domain = ["bus"]
 # port of go/core/breaker. Builds on `domain` for the event publisher;
 # nothing of its own, wasm-safe given a caller clock.
 breaker = ["domain"]
+# Local-first replication, a port of go/runtime/sync: the hybrid logical
+# clock, diffs, last-write-wins and custom merges, named remotes with sync
+# modes and filters, the memory transport and the replicator (diff queue,
+# per-remote cursors, status). Builds on `domain` for the repository port
+# and on `bus` for change capture. base64 carries the diff snapshots as Go's
+# encoding/json does ([]byte). The core is wasm-safe given a caller wall
+# clock: the replicator's timer threads are compiled off wasm32 only, and
+# there a round is driven with `Replicator::sync_once`.
+sync = ["domain", "dep:serde", "dep:serde_json", "dep:base64"]
+# The HTTP transport (`/sync/push`, `/sync/pull`, `/sync/ping`) over the
+# netpolicy guarded client beneath `api`, so `--offline` refuses a remote
+# host. Native only: the blocking `Transport` impl drives reqwest on a
+# small current-thread tokio runtime of its own (rt and time only).
+sync-http = ["sync", "api", "dep:tokio", "tokio/rt", "tokio/time"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
 httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
 # Dual-spec MCP surface. `rmcp` supplies the protocol vocabulary (version

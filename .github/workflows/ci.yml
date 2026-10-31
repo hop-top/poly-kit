@@ -682,6 +682,16 @@ jobs:
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features breaker --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
+      # The sync core: clock, diffs, remotes, the memory transport and the
+      # replicator. It reads only the wall clock its caller gives it, and
+      # starts no thread (`sync-http` is native only).
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features sync
+        if: steps.scope.outputs.run == 'true'
+      - name: clippy (wasm32, sync)
+        if: steps.scope.outputs.run == 'true'
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features sync --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
       # The consent core: grant model, decisions and the memory store.
       # The per-tool files and the relay (`consent-file`) are native only.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features consent
