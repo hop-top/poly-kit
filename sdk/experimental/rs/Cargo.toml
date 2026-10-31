@@ -254,6 +254,9 @@ llm-http = ["llm", "api", "dep:base64", "dep:tokio", "tokio/time"]
 # for openai and its compatible hosts (openrouter, xai, lmstudio, groq,
 # together, fireworks, deepseek, mistral). Native only.
 llm-openai = ["llm-http"]
+# The Ollama chat adapter (`/api/chat`, NDJSON streaming) over HTTP. Native
+# only.
+llm-ollama = ["llm-http"]
 
 # Notification primitives over the bus `Sink`, a port of go/runtime/notify:
 # the severity convention, the filter and retry + dead-letter decorators,
