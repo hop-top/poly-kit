@@ -119,7 +119,7 @@ impl std::fmt::Display for NoMatch {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PickError {
     /// Go's `ErrNoProviderMatches`.
-    NoMatch(NoMatch),
+    NoMatch(Box<NoMatch>),
     /// The catalog failed.
     Catalog(LlmError),
 }
@@ -198,11 +198,11 @@ impl Picker {
                 self.trace
                     .pick(profile, budget, candidate_count, eliminated.len(), None);
             }
-            return Err(PickError::NoMatch(NoMatch {
+            return Err(PickError::NoMatch(Box::new(NoMatch {
                 filter: profile.filter.clone(),
                 candidate_count,
                 eliminated,
-            }));
+            })));
         }
         let winner = rank::rank(survivors, budget);
         if on {
