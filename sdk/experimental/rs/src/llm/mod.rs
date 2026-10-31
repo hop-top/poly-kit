@@ -41,8 +41,13 @@ mod toolnames;
 pub mod types;
 mod uri;
 
+#[cfg(feature = "llm-http")]
+mod wirehttp;
+
 #[cfg(feature = "llm-anthropic")]
 pub mod anthropic;
+#[cfg(feature = "llm-openai")]
+pub mod openai;
 
 #[cfg(feature = "redact")]
 pub use buscontent::{redact_request, redact_response};
@@ -69,6 +74,8 @@ pub use types::{
     ToolDef, ToolResponse, Usage,
 };
 pub use uri::{parse_uri, redact_uri, Uri};
+#[cfg(feature = "llm-http")]
+pub use wirehttp::{Limits, Sleeper};
 
 /// [`Registry::load_config`] on the default registry, with llm.yaml from
 /// disk, the process environment and no secret store.

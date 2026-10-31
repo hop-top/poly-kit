@@ -598,10 +598,11 @@ fn gemini_stream_events_vectors_not_applicable() {
     }
 }
 
-/// The openai_* sections pin the openai adapter, which this port does
-/// not have. They must still be present and well formed.
+/// The openai_* sections pin the openai adapter; llm_openai_conformance
+/// runs them (feature `llm-openai`). Here they must still be present and
+/// well formed.
 #[test]
-fn openai_vectors_not_applicable() {
+fn openai_vectors_present() {
     let c = load();
     for (section, vs) in [
         ("openai_request", &c.openai_request),
@@ -613,7 +614,7 @@ fn openai_vectors_not_applicable() {
     ] {
         assert!(!vs.is_empty(), "{section} is empty");
         eprintln!(
-            "{section}: {} vectors not applicable (no openai adapter in this port)",
+            "{section}: {} vectors, run by llm_openai_conformance",
             vs.len()
         );
     }
