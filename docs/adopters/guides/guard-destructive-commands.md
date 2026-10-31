@@ -14,8 +14,9 @@ file, a typed confirmation token, and the served-caller variant.
 
 - A CLI built on `hop.top/kit/go/console/cli` (`cli.New`).
 - Every runnable leaf already carries `kit/side-effect`
-  (`cli.SetSideEffect`). Untagged commands bypass the policy gate;
-  the validator refuses them separately.
+  (`cli.SetSideEffect`). An untagged command is gated only when its
+  name says destructive (see "Destructive names", below); the
+  validator refuses untagged commands separately.
 
 ## 1. Tag the command
 
@@ -56,6 +57,25 @@ The refusal is `UNAUTHORIZED` with transient transience: the caller
 clears it by re-running with `--confirm=yes`. A dry run
 (`--dry-run`, honored by the leaf) skips the confirmation and is not
 counted against the budget.
+
+### Destructive names
+
+A command with no `kit/side-effect` annotation (absent or empty) whose
+leaf name is `delete`, `remove`, `rm`, `destroy`, `purge` or `drop` is
+gated as `destructive-shared`: the `--confirm` matrix above applies,
+the `--policy` allow rules treat it as destructive, and it counts
+against `--max-ops`. It is the same table `cmdreflect` uses to mark
+the command `inferred`, so the CLI, REST, MCP and the manifest agree.
+Only the leaf name counts: `widget delete` is gated, `delete list` is
+not.
+
+An explicit annotation always wins, so `delete` tagged `read` or
+`write` is not gated, and a value kit does not recognize is a
+declaration defect, never inferred over. To opt a destructive-named
+command out of the confirmation, declare what it really does. A policy
+`unannotated` class applies only to commands the name does not catch.
+`--dry-run` still reads the annotation alone: an inferred command is
+untagged, so `--dry-run` refuses it until you tag it.
 
 `--confirm`, `--max-ops`, `--policy` are persistent root flags that
 `cli.New` always registers. They are hidden from `--help`, so tell

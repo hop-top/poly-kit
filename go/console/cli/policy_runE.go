@@ -363,7 +363,7 @@ func (r *Root) wrapPolicyRunE(
 		return nil
 	}
 	return func(cmd *cobra.Command, args []string) error {
-		se, hasSE := GetSideEffect(cmd)
+		se, hasSE := gateSideEffect(cmd)
 
 		// Dry-run first, as the pre-execution hook would have: refuse
 		// --dry-run on a leaf that does not honor it, and learn

@@ -47,7 +47,10 @@ func syncRemoveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "remove <name>",
 		Short: "Remove a sync remote",
-		Args:  cobra.ExactArgs(1),
+		// Edits the remote list, reversibly: declared write so the
+		// destructive-name inference does not gate it.
+		Annotations: map[string]string{"kit/side-effect": "write-local"},
+		Args:        cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			name := args[0]
 			lines, err := readRemotesFile()

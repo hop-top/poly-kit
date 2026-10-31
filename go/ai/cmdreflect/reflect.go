@@ -392,7 +392,7 @@ func reflectSafety(cmd *cobra.Command) Safety {
 	// collapsing them published every silent destructive command to
 	// agents as safe.
 	if s.Tier == TierUnknown && raw == "" {
-		if destructiveNames[cmd.Name()] {
+		if cmdmeta.IsDestructiveName(cmd.Name()) {
 			s.Tier = TierDestructiveShared
 			s.TierInferred = true
 		} else {

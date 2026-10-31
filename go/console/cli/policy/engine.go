@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/cli/cmdmeta"
 )
 
 // sideEffectAnnotation is the cobra command annotation key kit reads
@@ -14,8 +16,14 @@ import (
 const sideEffectAnnotation = "kit/side-effect"
 
 // readSideEffect returns the side-effect tag on cmd as a local
-// SideEffect value. Returns ("", false) when the annotation is absent.
+// SideEffect value. An unannotated command whose leaf name is in the
+// cmdmeta destructive-name table reads as destructive-shared, as it
+// does for cmdreflect. Returns ("", false) when the annotation is
+// absent and nothing is inferred.
 func readSideEffect(cmd *cobra.Command) (SideEffect, bool) {
+	if cmdmeta.InferredDestructive(cmd) {
+		return SideEffect("destructive-shared"), true
+	}
 	if cmd == nil || cmd.Annotations == nil {
 		return "", false
 	}

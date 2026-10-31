@@ -40,7 +40,9 @@ pub use alias::{
 pub use alias_store::{alias_command, aliases_command, AliasStore, SharedAliasStore};
 pub use config::{ChdirResolver, Config, Disable, GlobalFlag, GlobalKind, GroupConfig};
 pub use gate::{destructive_token, PromptSource, Prompter};
-pub use model::{ArgInfo, CommandInfo, FlagInfo, FlagKind, SIDE_EFFECT};
+pub use model::{
+    inferred_destructive, ArgInfo, CommandInfo, FlagInfo, FlagKind, DESTRUCTIVE_NAMES, SIDE_EFFECT,
+};
 pub use paths_cmd::{config_command, ConfigResolver, ResolvedPath};
 pub use plan::{Effect, Plan};
 pub use policy::{default_policy_loader, Policy, PolicyLoader};

@@ -13,7 +13,7 @@ The kit CLI root (feature `cli`): the parts of Go `console/cli` a kit-rs CLI aut
 | [`usage.rs`](usage.rs) | flag-error surfaces (unknown flag, missing value, unknown command, suggestions) and autocorrect | you change an error text |
 | [`model.rs`](model.rs) | `Root::model()`: the kit-owned `CommandInfo` / `FlagInfo` tree a surface projects | a surface must read the tree without clap |
 | [`root.rs`](root.rs) | `Root`: wraps the root `CommandSpec`; adds the hidden `completion` command unless a command or alias owns the name (or `disable_completion_command`); the `__complete` entry point | your CLI must offer shell completion |
-| [`gate.rs`](gate.rs) | the delegation gates in Go's order: `--dry-run` enforcement, `--policy`, the `--confirm` matrix and typed token, the `--max-ops` account; `PromptSource` | a command must be confirmed, previewed or budgeted |
+| [`gate.rs`](gate.rs) | the delegation gates in Go's order: `--dry-run` enforcement, `--policy`, the `--confirm` matrix and typed token, the `--max-ops` account; `PromptSource` | a command must be confirmed, previewed or budgeted; an unannotated `delete`/`remove`/`rm`/`destroy`/`purge`/`drop` leaf is gated as destructive, from the one `DESTRUCTIVE_NAMES` table in `model.rs` that the `/v1/commands` descriptor also reads |
 | [`policy.rs`](policy.rs) | `Policy`, `Engine`, the loader and the shipped `kit-default` | you load or enforce a named policy |
 | [`validate.rs`](validate.rs) | `Root::validate` and `validate_signature`, `ValidationError`, the failure modes | a tree must be checked at boot |
 | [`validate_flag.rs`](validate_flag.rs) | `Root::with_flag_validator` | a flag value must be refused before the handler |

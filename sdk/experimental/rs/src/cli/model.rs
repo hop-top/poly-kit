@@ -13,6 +13,24 @@ use super::root::Root;
 /// The `kit/side-effect` annotation key.
 pub const SIDE_EFFECT: &str = "kit/side-effect";
 
+/// The one table of leaf names treated as destructive when a command
+/// carries no `kit/side-effect` annotation (Go's `cmdmeta` table).
+/// The CLI gate and the `/v1/commands` descriptor both read it through
+/// [`inferred_destructive`]; nothing keeps a copy.
+pub const DESTRUCTIVE_NAMES: [&str; 6] = ["delete", "remove", "rm", "destroy", "purge", "drop"];
+
+/// The tier an inferred-destructive command is gated as, the same
+/// `destructive-shared` Go's reflection assigns it.
+pub const INFERRED_TIER: &str = "destructive-shared";
+
+/// Whether a command is destructive by name alone: its `kit/side-effect`
+/// annotation (`declared`) is absent or empty and its leaf name is in
+/// [`DESTRUCTIVE_NAMES`]. An explicit annotation, valid or malformed,
+/// always wins and is never inferred over.
+pub fn inferred_destructive(leaf_name: &str, declared: Option<&str>) -> bool {
+    declared.is_none_or(str::is_empty) && DESTRUCTIVE_NAMES.contains(&leaf_name)
+}
+
 /// What a flag carries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FlagKind {
@@ -131,6 +149,12 @@ impl CommandInfo {
     /// The `kit/side-effect` annotation.
     pub fn side_effect(&self) -> Option<&str> {
         self.annotations.get(SIDE_EFFECT).map(String::as_str)
+    }
+
+    /// Whether this command is destructive by name, with no
+    /// `kit/side-effect` annotation to say otherwise.
+    pub fn inferred_destructive(&self) -> bool {
+        inferred_destructive(&self.name, self.side_effect())
     }
 
     /// The descendant at `path` (space-separated, relative to this

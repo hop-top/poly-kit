@@ -2,6 +2,8 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/cli/cmdmeta"
 )
 
 // SideEffect classifies what a command does to observable state.
@@ -104,6 +106,18 @@ func GetSideEffect(cmd *cobra.Command) (SideEffect, bool) {
 		return "", false
 	}
 	return SideEffect(v), true
+}
+
+// gateSideEffect is the tier the delegation gates act on: the declared
+// kit/side-effect, else destructive-shared for a command whose leaf
+// name is in the cmdmeta destructive-name table. It is the same
+// inference cmdreflect applies, so the CLI gate and every projection
+// agree. A declared value, valid or malformed, is never replaced.
+func gateSideEffect(cmd *cobra.Command) (SideEffect, bool) {
+	if cmdmeta.InferredDestructive(cmd) {
+		return SideEffectDestructiveShared, true
+	}
+	return GetSideEffect(cmd)
 }
 
 // SetSideEffect attaches the kit/side-effect tag in idiomatic form.

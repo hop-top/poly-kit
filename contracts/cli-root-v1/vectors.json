@@ -185,6 +185,56 @@
     }
    ]
   },
+  "infer": {
+   "program": "kitapp",
+   "version": "1.2.3",
+   "about": "Kit app",
+   "commands": [
+    {
+     "name": "delete",
+     "about": "Delete",
+     "kind": "dryrun"
+    },
+    {
+     "name": "list",
+     "about": "List",
+     "kind": "dryrun"
+    },
+    {
+     "name": "drop",
+     "about": "Drop",
+     "side_effect": "read",
+     "kind": "dryrun"
+    },
+    {
+     "name": "purge",
+     "about": "Purge",
+     "side_effect": "bogus",
+     "kind": "dryrun"
+    },
+    {
+     "name": "widget",
+     "about": "Widgets",
+     "commands": [
+      {
+       "name": "remove",
+       "about": "Remove",
+       "kind": "dryrun"
+      },
+      {
+       "name": "list",
+       "about": "List",
+       "kind": "dryrun"
+      }
+     ]
+    },
+    {
+     "name": "delete-all",
+     "about": "Not in the table",
+     "kind": "dryrun"
+    }
+   ]
+  },
   "strict": {
    "program": "kitapp",
    "version": "1.2.3",
@@ -1238,6 +1288,99 @@
    ],
    "exit": 0,
    "stdout": "{\"dry_run\":true,\"path\":\"rm\"}\n"
+  },
+  {
+   "name": "an unannotated destructive-named leaf is refused without confirmation",
+   "tree": "infer",
+   "args": [
+    "delete"
+   ],
+   "exit": 5,
+   "stderr_contains": [
+    "UNAUTHORIZED",
+    "refused: --confirm=no (or non-TTY default)"
+   ]
+  },
+  {
+   "name": "confirm yes lets an unannotated destructive-named leaf run",
+   "tree": "infer",
+   "args": [
+    "--confirm",
+    "yes",
+    "delete"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"delete\"}\n"
+  },
+  {
+   "name": "the destructive name is the leaf name below a group",
+   "tree": "infer",
+   "args": [
+    "widget",
+    "remove"
+   ],
+   "exit": 5,
+   "stderr_contains": [
+    "refused: --confirm=no"
+   ]
+  },
+  {
+   "name": "a group's other leaf is not gated",
+   "tree": "infer",
+   "args": [
+    "widget",
+    "list"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"widget list\"}\n"
+  },
+  {
+   "name": "an unannotated leaf outside the table is not gated",
+   "tree": "infer",
+   "args": [
+    "list"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"list\"}\n"
+  },
+  {
+   "name": "a name only near the table is not gated",
+   "tree": "infer",
+   "args": [
+    "delete-all"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"delete-all\"}\n"
+  },
+  {
+   "name": "an explicit read annotation beats the destructive name",
+   "tree": "infer",
+   "args": [
+    "drop"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"drop\"}\n"
+  },
+  {
+   "name": "a malformed annotation is not inferred over",
+   "tree": "infer",
+   "args": [
+    "purge"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"purge\"}\n"
+  },
+  {
+   "name": "dry-run still refuses an unannotated destructive-named leaf",
+   "tree": "infer",
+   "args": [
+    "--dry-run",
+    "delete"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "missing the required kit/side-effect tag"
+   ]
   },
   {
    "name": "dry-run on a read is a no-op",
