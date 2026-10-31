@@ -46,6 +46,8 @@ Verified by `example_test.go` in this directory.
 - Wire: a SQLite file (or `""` for in-memory) owned by this engine; the schema is created on `New`.
 - Claim is a single atomic statement: priority ascending, then `created_at` ascending, within the queue.
 - `Heartbeat` extends the claim expiry; `ReleaseStaleClaims` returns expired active jobs to `pending`.
+- `EnqueueOpts.ClaimTTL` sets the per-job claim lifetime (zero keeps the 5m default).
+- Publishes `job.*` lifecycle events (`JobEvent` payload) when built with `job.WithPublisher`.
 - Call `Close` to release the connection.
 
 ## Run it locally
