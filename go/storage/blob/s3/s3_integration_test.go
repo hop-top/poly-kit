@@ -118,3 +118,21 @@ func TestConformance(t *testing.T) {
 		return st
 	})
 }
+
+// TestConformanceStat runs the optional Stater suite (HeadObject).
+func TestConformanceStat(t *testing.T) {
+	base := testStore(t)
+	n := 0
+	blobtest.RunStat(t, func(t *testing.T) blob.Store {
+		n++
+		st := New(base.client, base.bucket, fmt.Sprintf("blob-test/stat-%d-%d", time.Now().UnixNano(), n))
+		t.Cleanup(func() {
+			ctx := context.Background()
+			objs, _ := st.List(ctx, "")
+			for _, o := range objs {
+				_ = st.Delete(ctx, o.Key)
+			}
+		})
+		return st
+	})
+}
