@@ -4,23 +4,22 @@
 
 #![cfg(feature = "cli")]
 
-use clap::{Arg, ArgAction, Command};
 use hop_top_kit::cli::completion::{bind_args, bind_flag, dir, file, func, static_values, Item};
-use hop_top_kit::cli::completion_spec::{render_fig, render_usage, Completion, Spec};
-use hop_top_kit::cli::Root;
+use hop_top_kit::cli::completion_spec::{render_usage, Completion, Spec};
+use hop_top_kit::cli::{ArgSpec, CommandSpec, FlagSpec, Root};
 
 /// A root with one leaf carrying a scoped enum flag (static) and a
 /// completer-bound flag (dynamic).
 fn spec_root() -> Root {
-    let list = Command::new("list")
+    let list = CommandSpec::new("list")
         .about("list widgets")
-        .arg(Arg::new("status").long("status").help("widget status"))
-        .arg(Arg::new("owner").long("owner").help("widget owner"));
-    let cmd = Command::new("spectool")
-        .version("0.1.0")
+        .flag(FlagSpec::string("status").help("widget status"))
+        .flag(FlagSpec::string("owner").help("widget owner"));
+    let cmd = CommandSpec::new("spectool")
+        .version("0.1.0", Some('V'))
         .about("spec test tool")
         .subcommand(list)
-        .subcommand(Command::new("status").about("tool status"));
+        .subcommand(CommandSpec::new("status").about("tool status"));
     let mut root = Root::new(cmd);
     bind_flag(&mut root, "list", "owner", static_values(["ann", "bob"]));
     root.with_command_flag_enum("list", "status", ["TODO", "DONE"]);
@@ -73,9 +72,9 @@ fn completion_usage_command() {
 #[test]
 fn completion_spec_commands_sit_under_completion() {
     let root = spec_root();
-    let cmd = root.command();
-    let comp = cmd.find_subcommand("completion").expect("completion");
-    let names: Vec<&str> = comp.get_subcommands().map(Command::get_name).collect();
+    let model = root.model();
+    let comp = model.find("completion").expect("completion");
+    let names: Vec<&str> = comp.commands.iter().map(|c| c.name.as_str()).collect();
     for n in ["bash", "fig", "usage"] {
         assert_eq!(
             names.iter().filter(|x| **x == n).count(),
@@ -121,7 +120,7 @@ fn completion_spec_leaves_complete_nothing() {
 fn disabled_completion_command_has_no_exports() {
     let mut root = spec_root();
     root.disable_completion_command();
-    assert!(root.command().find_subcommand("completion").is_none());
+    assert!(root.model().find("completion").is_none());
     let (mut out, mut err) = (Vec::new(), Vec::new());
     assert!(root
         .try_builtin(["spectool", "completion", "fig"], &mut out, &mut err)
@@ -134,17 +133,14 @@ fn disabled_completion_command_has_no_exports() {
 /// command requires positionals and flags the probe does not give.
 #[test]
 fn optional_value_flag_reads_default_missing() {
-    let cmd = Command::new("tool").subcommand(
-        Command::new("run")
-            .arg(Arg::new("job").required(true))
-            .arg(Arg::new("token").long("token").required(true))
-            .arg(
-                Arg::new("wait")
-                    .long("wait")
+    let cmd = CommandSpec::new("tool").subcommand(
+        CommandSpec::new("run")
+            .arg(ArgSpec::new("job").required())
+            .flag(FlagSpec::string("token").required())
+            .flag(
+                FlagSpec::string("wait")
                     .value_name("duration")
-                    .num_args(0..=1)
-                    .require_equals(true)
-                    .default_missing_value("30s"),
+                    .no_opt_default("30s"),
             ),
     );
     let mut root = Root::new(cmd);
@@ -162,15 +158,10 @@ fn optional_value_flag_reads_default_missing() {
 /// ancestor; clap's help and version flags follow cobra's.
 #[test]
 fn global_flags_belong_to_their_declaring_command() {
-    let cmd = Command::new("tool")
-        .version("2.0.0")
-        .arg(
-            Arg::new("verbose")
-                .long("verbose")
-                .global(true)
-                .action(ArgAction::SetTrue),
-        )
-        .subcommand(Command::new("run"));
+    let cmd = CommandSpec::new("tool")
+        .version("2.0.0", Some('V'))
+        .flag(FlagSpec::bool("verbose").persistent())
+        .subcommand(CommandSpec::new("run"));
     let mut root = Root::new(cmd);
     root.disable_completion_command();
     let spec = Spec::from_root(&root);
@@ -191,12 +182,12 @@ fn global_flags_belong_to_their_declaring_command() {
 /// completers are spec-visible, any other calls back.
 #[test]
 fn completer_kinds_map_to_spec_completions() {
-    let cmd = Command::new("tool").subcommand(
-        Command::new("run")
-            .arg(Arg::new("conf").long("conf"))
-            .arg(Arg::new("out").long("out"))
-            .arg(Arg::new("who").long("who"))
-            .arg(Arg::new("job")),
+    let cmd = CommandSpec::new("tool").subcommand(
+        CommandSpec::new("run")
+            .flag(FlagSpec::string("conf"))
+            .flag(FlagSpec::string("out"))
+            .flag(FlagSpec::string("who"))
+            .arg(ArgSpec::new("job")),
     );
     let mut root = Root::new(cmd);
     root.disable_completion_command();
@@ -224,21 +215,12 @@ fn completer_kinds_map_to_spec_completions() {
     assert_eq!(run.args[0].complete, Completion::Dynamic);
 }
 
-/// A short-only flag has no long name to offer.
-#[test]
-fn short_only_flag() {
-    let cmd = Command::new("tool").arg(Arg::new("quiet").short('q').action(ArgAction::SetTrue));
-    let mut root = Root::new(cmd);
-    root.disable_completion_command();
-    let out = render_usage(&Spec::from_root(&root));
-    assert!(out.contains("\nflag \"-q\"\n"), "{out}");
-}
-
 /// Root aliases are completed by the root's positional completion, so
 /// the root gets a callback, as Go's alias wrapper gives it.
 #[test]
 fn root_aliases_call_back() {
-    let cmd = Command::new("tool").subcommand(Command::new("a").subcommand(Command::new("b")));
+    let cmd = CommandSpec::new("tool")
+        .subcommand(CommandSpec::new("a").subcommand(CommandSpec::new("b")));
     let mut root = Root::new(cmd);
     root.disable_completion_command();
     root.alias("ab", "a b").unwrap();
@@ -249,79 +231,11 @@ fn root_aliases_call_back() {
     assert!(shim.hidden && shim.args.is_empty(), "{shim:?}");
 }
 
-/// A clap flag whose value may be left out but is not attached-only
-/// (no `require_equals`, as the output flags' `--format-help`) binds
-/// the next word: a normal value flag, candidates kept.
-#[test]
-fn optional_value_without_require_equals_is_a_normal_value() {
-    let cmd = Command::new("tool")
-        .arg(
-            Arg::new("format-help")
-                .long("format-help")
-                .help("Show available formats and their options")
-                .num_args(0..=1)
-                .require_equals(false)
-                .global(true)
-                .hide(true),
-        )
-        .arg(
-            Arg::new("many")
-                .long("many")
-                .num_args(0..)
-                .value_parser(["a", "b"]),
-        );
-    let m = cmd
-        .clone()
-        .try_get_matches_from(["tool", "--format-help", "json"])
-        .unwrap();
-    assert_eq!(
-        m.get_one::<String>("format-help").map(String::as_str),
-        Some("json")
-    );
-    let mut root = Root::new(cmd);
-    root.disable_completion_command();
-    let spec = Spec::from_root(&root);
-
-    let usage = render_usage(&spec);
-    assert!(
-        usage.contains(
-            "\nflag \"--format-help <string>\" help=\"Show available formats and their options\" global=#true hide=#true\n"
-        ),
-        "{usage}"
-    );
-    assert!(
-        usage.contains("\nflag \"--many <string>\" {\n    choices strict=#false \"a\" \"b\"\n}\n"),
-        "{usage}"
-    );
-    assert!(!usage.contains("require_equals"), "{usage}");
-    assert!(!usage.contains("default_missing"), "{usage}");
-
-    let fig = render_fig(&spec);
-    assert!(
-        fig.contains(
-            "    {\n      name: \"--format-help\",\n      description: \"Show available formats and their options\",\n      hidden: true,\n      isPersistent: true,\n      args: {\n        name: \"string\",\n      },\n    },\n"
-        ),
-        "{fig}"
-    );
-    assert!(
-        fig.contains("      args: {\n        name: \"string\",\n        suggestions: [\"a\", \"b\"],\n      },\n"),
-        "{fig}"
-    );
-    assert!(!fig.contains("requiresSeparator"), "{fig}");
-}
-
 /// A default-missing value the flag's own parser rejects is unknown,
 /// so it is left out rather than written as "".
 #[test]
 fn rejected_default_missing_is_left_out() {
-    let cmd = Command::new("tool").arg(
-        Arg::new("typed")
-            .long("typed")
-            .num_args(0..=1)
-            .require_equals(true)
-            .default_missing_value("auto")
-            .value_parser(clap::value_parser!(u64)),
-    );
+    let cmd = CommandSpec::new("tool").flag(FlagSpec::uint("typed").no_opt_default("auto"));
     let mut root = Root::new(cmd);
     root.disable_completion_command();
     let usage = render_usage(&Spec::from_root(&root));
@@ -335,7 +249,7 @@ fn rejected_default_missing_is_left_out() {
 /// An empty value name is cobra's `value`.
 #[test]
 fn empty_value_name_is_value() {
-    let cmd = Command::new("tool").arg(Arg::new("bt").long("bt").value_name(""));
+    let cmd = CommandSpec::new("tool").flag(FlagSpec::string("bt").value_name(""));
     let mut root = Root::new(cmd);
     root.disable_completion_command();
     let usage = render_usage(&Spec::from_root(&root));

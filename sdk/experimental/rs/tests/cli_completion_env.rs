@@ -4,13 +4,13 @@
 
 #![cfg(feature = "cli")]
 
-use clap::Command;
-use hop_top_kit::cli::Root;
+use hop_top_kit::cli::{CommandSpec, Root};
 
 #[test]
 fn completion_descriptions_env_turns_descriptions_off() {
     let root = Root::new(
-        Command::new("envtool-x").subcommand(Command::new("deploy").about("Deploy a target")),
+        CommandSpec::new("envtool-x")
+            .subcommand(CommandSpec::new("deploy").about("Deploy a target")),
     );
     let complete = || {
         let (mut out, mut err) = (Vec::new(), Vec::new());

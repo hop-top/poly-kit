@@ -18,14 +18,17 @@
 //! # Example
 //!
 //! ```
-//! use clap::{Arg, Command};
 //! use hop_top_kit::cli::completion_spec::{render_usage, Spec};
-//! use hop_top_kit::cli::Root;
+//! use hop_top_kit::cli::{ArgSpec, CommandSpec, Root, ValueSpec};
 //!
-//! let deploy = Command::new("deploy")
+//! let deploy = CommandSpec::new("deploy")
 //!     .about("Deploy")
-//!     .arg(Arg::new("env").required(true).value_parser(["prod", "staging"]));
-//! let mut root = Root::new(Command::new("tool").about("Example tool").subcommand(deploy));
+//!     .arg(
+//!         ArgSpec::new("env")
+//!             .required()
+//!             .allowed_values([ValueSpec::new("prod"), ValueSpec::new("staging")]),
+//!     );
+//! let mut root = Root::new(CommandSpec::new("tool").about("Example tool").subcommand(deploy));
 //! root.disable_completion_command();
 //!
 //! assert_eq!(
@@ -163,3 +166,6 @@ pub struct Spec {
     /// The root's version.
     pub version: String,
 }
+
+#[cfg(test)]
+mod clap_edges;

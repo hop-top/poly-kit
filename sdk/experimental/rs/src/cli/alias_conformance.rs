@@ -8,18 +8,19 @@
 //! Rust has no dispatch hook: the caller runs an alias proxy through
 //! `Root::alias_target`. This runner is that caller: it re-parses the
 //! target path with the proxy's arguments, as an adopter's `main` does.
-
-#![cfg(feature = "cli")]
+//! It lives in the crate because it asserts on the parse provider's own
+//! matches (native alias vs proxy), which are adapter-internal.
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
-use clap::error::ErrorKind;
-use clap::{Arg, ArgMatches, Command};
-use hop_top_kit::cli::{
-    detect_cycles, validate_alias_name, AliasHelp, AliasNameRules, AliasOptions, Root, SHIM_ARGS,
+use crate::cli::{
+    detect_cycles, validate_alias_name, AliasHelp, AliasNameRules, AliasOptions, ArgSpec,
+    CommandSpec, FlagSpec, Root, SHIM_ARGS,
 };
+use clap::error::ErrorKind;
+use clap::ArgMatches;
 use serde::Deserialize;
 
 const PORT: &str = "rs";
@@ -230,17 +231,13 @@ struct Run {
     target: Option<String>,
 }
 
-fn build(n: &Node) -> Command {
-    let mut c = Command::new(n.name.clone()).about(n.description.clone());
+fn build(n: &Node) -> CommandSpec {
+    let mut c = CommandSpec::new(n.name.clone()).about(n.description.clone());
     for f in &n.flags {
-        c = c.arg(
-            Arg::new(f.name.clone())
-                .long(f.name.clone())
-                .default_value(f.default.clone()),
-        );
+        c = c.flag(FlagSpec::string(f.name.clone()).default_value(f.default.clone()));
     }
     if n.commands.is_empty() {
-        c = c.arg(Arg::new("args").num_args(0..));
+        c = c.arg(ArgSpec::new("args").variadic());
     }
     for sub in &n.commands {
         c = c.subcommand(build(sub));

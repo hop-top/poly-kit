@@ -11,11 +11,10 @@
 //! # Example
 //!
 //! ```
-//! use clap::Command;
 //! use hop_top_kit::cli::completion::{bind_args, prefixed, static_values};
-//! use hop_top_kit::cli::Root;
+//! use hop_top_kit::cli::{CommandSpec, Root};
 //!
-//! let mut root = Root::new(Command::new("tool").subcommand(Command::new("deploy")));
+//! let mut root = Root::new(CommandSpec::new("tool").subcommand(CommandSpec::new("deploy")));
 //! bind_args(&mut root, "deploy", prefixed("env", static_values(["prod", "preview", "staging"])));
 //!
 //! let (mut out, mut err) = (Vec::new(), Vec::new());

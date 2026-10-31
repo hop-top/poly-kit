@@ -74,6 +74,9 @@ pub struct Config {
     pub globals: Vec<GlobalFlag>,
     /// Extra command groups beyond the built-in hidden `management`.
     pub groups: Vec<GroupConfig>,
+    /// Skips the pre-flight [`Root::validate`](super::Root::validate)
+    /// that `execute` runs by default (Go `DisableValidate`).
+    pub disable_validate: bool,
 }
 
 impl Config {
