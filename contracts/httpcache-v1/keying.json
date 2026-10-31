@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Cross-language cache-key vectors for kit/storage/httpcache. Key = prefix + lowercase-hex sha256(method + \" \" + url), where url is the request URL re-serialized by the language's URL type and method is used VERBATIM (no case folding). Vary-aware keying is a v1 non-goal: the key depends on method and URL only, never on request headers. Ports MUST reproduce these digests exactly.",
+  "note": "Cross-language cache-key vectors for kit/storage/httpcache. Key = prefix + lowercase-hex sha256(method + \" \" + url), where url is the request URL re-serialized by the language's URL type and method is used VERBATIM (no case folding). The primary key depends on method and URL only, never on request headers. Responses that carry a Vary header are stored under a secondary variant key instead (see the vary section), so the primary key stays stable for Vary-less responses. Ports MUST reproduce these digests exactly.",
   "default_prefix": "httpcache:",
   "derivation": {
     "hash": "sha256",
@@ -8,7 +8,8 @@
     "preimage": "method + \" \" + url",
     "separator": " ",
     "key": "prefix + digest",
-    "vary_aware": false
+    "vary_aware": false,
+    "vary_aware_note": "false = the PRIMARY key is never header-aware; Vary responses use the vary section's secondary keys"
   },
   "normalization": {
     "note": "The v1 contract applies NO normalization of its own. The url in the preimage is whatever the URL type re-serializes; the vectors below pin exactly which transforms that does and does not include.",
@@ -229,5 +230,52 @@
       "prefix": "app:v2:",
       "want_effective_prefix": "app:v2:"
     }
-  ]
+  ],
+  "vary": {
+    "note": "Responses with a Vary header are NOT stored at the primary key. The URL's Vary field list is recorded at index_key (value: JSON array of the field names) and the response at the variant key derived from the request's values for those fields. Lookup reads index_key first: present = use the variant key, absent = use the primary key (and treat a primary entry that carries a Vary header as a miss). Saving a Vary-less response deletes index_key.",
+    "fields": "every Vary header line split on comma, trimmed, lowercased, de-duplicated, sorted ascending. Vary: * is never stored.",
+    "index_key": "prefix + \"varyidx:\" + lowercase-hex sha256(method + \" \" + url)",
+    "variant_key": "prefix + \"vary:\" + lowercase-hex sha256(preimage)",
+    "variant_preimage": "method + \" \" + url, then for each field in order: \"\\n\" + field + \":\" + the request's values for that field, each trimmed, joined with \", \" (empty string when the request lacks the field)",
+    "index_cases": [
+      {
+        "name": "index key for baseline GET",
+        "method": "GET",
+        "url": "https://example.com/a",
+        "want_key": "httpcache:varyidx:91cd61a36ae99d448f15adfab08b5fb6a0e496ba473fdd6f82d36423f0d64c44"
+      }
+    ],
+    "variant_cases": [
+      {
+        "name": "single field",
+        "method": "GET",
+        "url": "https://example.com/a",
+        "fields": ["accept-language"],
+        "request_headers": { "Accept-Language": ["fr"] },
+        "want_digest": "1445de06ebac992ee64cb20de36e03eca397f29c143a024e7d66c723dfa82e85"
+      },
+      {
+        "name": "absent field is an empty value",
+        "method": "GET",
+        "url": "https://example.com/a",
+        "fields": ["accept-language"],
+        "request_headers": {},
+        "want_digest": "4c7a84ce3fea73bcbbe0eab4b590111004f48461c2876df101d422d2f759e48c"
+      },
+      {
+        "name": "two fields, repeated header lines joined and trimmed",
+        "method": "GET",
+        "url": "https://example.com/a",
+        "fields": ["accept", "accept-language"],
+        "request_headers": { "Accept": ["text/html", " text/plain "], "Accept-Language": ["en"] },
+        "want_digest": "17eb2c4950d89d9ce82ee9b4dd9b72087c8401cbf575df0b5d4c024b527f29af"
+      }
+    ],
+    "field_list_cases": [
+      { "name": "case and whitespace folded, sorted", "vary": ["Accept-Language ,  ACCEPT"], "want": ["accept", "accept-language"] },
+      { "name": "repeated lines and duplicates collapse", "vary": ["Accept", "accept, Accept-Language"], "want": ["accept", "accept-language"] },
+      { "name": "star wins", "vary": ["Accept, *"], "want": ["*"] },
+      { "name": "no vary", "vary": [], "want": [] }
+    ]
+  }
 }
