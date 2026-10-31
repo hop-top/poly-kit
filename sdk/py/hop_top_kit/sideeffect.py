@@ -70,6 +70,16 @@ def class_of(tier: str) -> str | None:
     return _CLASS.get(tier)
 
 
+def is_valid_tier(tier: str) -> bool:
+    return tier in _CLASS
+
+
+def malformed_side_effect(annotations: Mapping[str, str] | None) -> str | None:
+    """The declared ``kit/side-effect`` when non-empty and naming no tier, else ``None``."""
+    declared = (annotations or {}).get(SIDE_EFFECT)
+    return declared if declared and not is_valid_tier(declared) else None
+
+
 def is_destructive_name(name: str) -> bool:
     return name in DESTRUCTIVE_NAMES
 

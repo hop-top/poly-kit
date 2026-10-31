@@ -357,8 +357,13 @@ def test_inference_leaves_the_rest_alone() -> None:
     _gate().run(_leaf("list"), g.Globals(), probe)
     _gate().run(_leaf("delete-all"), g.Globals(), probe)
     _gate().run(_leaf("drop", **{SE: "read"}), g.Globals(), probe)
-    _gate().run(_leaf("purge", **{SE: "bogus"}), g.Globals(), probe)
-    assert len(probe.calls) == 4
+    assert len(probe.calls) == 3
+    # a malformed tag is never inferred over, and fails closed (see below)
+    assert (
+        _refusal(lambda: _gate().run(_leaf("purge", **{SE: "bogus"}), g.Globals(), probe)).exit_code
+        == 2
+    )
+    assert len(probe.calls) == 3
 
 
 def test_policy_sees_the_inferred_tier() -> None:
@@ -411,3 +416,32 @@ def test_inferred_preview_respects_opt_out_and_declared_wins() -> None:
     # a declared destructive leaf keeps the handler-runs-as-preview contract
     _gate().run(_leaf("delete", **{SE: "destructive"}), g.Globals(dry_run=True), probe)
     assert probe.calls == [True]
+
+
+# -- fail closed on a malformed tier ------------------------------------------
+
+
+@pytest.mark.parametrize("bad", ["destructve", "Destructive", "wirte", " read"])
+def test_malformed_tier_is_refused_before_the_handler(bad: str) -> None:
+    mutated: list[str] = []
+
+    def handler() -> None:
+        mutated.append("mutated")
+
+    for g_ in (g.Globals(), g.Globals(confirm="yes"), g.Globals(dry_run=True)):
+        err = _refusal(lambda g_=g_: _gate().run(_leaf("purge", **{SE: bad}), g_, handler))
+        assert (err.code, err.exit_code) == ("USAGE", 2)
+        assert f'malformed kit/side-effect tag "{bad}"' in err.message
+    assert mutated == []
+
+
+def test_malformed_tier_is_refused_before_policy() -> None:
+    gate = _gate(policy_loader=_loader(pol.parse("allow:\n  write: []\n")))
+    err = _refusal(lambda: gate.run(_leaf("x", **{SE: "bogus"}), g.Globals(policy="p"), Probe()))
+    assert err.exit_code == 2
+
+
+def test_policy_engine_fails_closed_on_an_unknown_tier() -> None:
+    v = pol.Engine(pol.Policy()).authorize(pol.CommandRef("x", "destructve"))
+    assert not v.allowed and "unknown side-effect" in v.reason
+    assert pol.Engine(pol.Policy()).authorize(pol.CommandRef("x", "destructive-local")).allowed

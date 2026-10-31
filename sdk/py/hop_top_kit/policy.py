@@ -154,6 +154,9 @@ class Engine:
             se = self.policy.unannotated
         if se is None or se == "read":
             return Verdict(True)
+        if not sideeffect.is_valid_tier(se):
+            # Fail closed on a tier outside kit's vocabulary.
+            return self._refuse(f'policy: unknown side-effect "{se}" for {cmd.verb}')
         patterns = _lookup_class(self.policy.allow, se)
         if patterns is not None and not match_any(patterns, cmd.verb):
             return self._refuse(f"policy: {se} not allowed for {cmd.verb}")

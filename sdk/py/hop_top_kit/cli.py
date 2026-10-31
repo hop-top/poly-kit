@@ -39,6 +39,7 @@ Usage:
 from __future__ import annotations
 
 import contextvars
+import dataclasses
 import inspect
 import io
 import os
@@ -50,7 +51,9 @@ from typing import Any, Optional, TextIO
 
 import typer
 
-from hop_top_kit import netpolicy, parity
+from hop_top_kit import delegation, netpolicy, parity
+from hop_top_kit.gate import Gate, PolicyLoader, PromptSource
+from hop_top_kit.sideeffect import annotate, is_dry_run  # noqa: F401 - re-exported
 from hop_top_kit.parity import HELP_SECTION_ORDER, HELP_SECTIONS
 
 # Click layer typer drives: vendored ``typer._click`` on typer>=0.26, the
@@ -68,6 +71,7 @@ class Disable:
     quiet: bool = False
     no_color: bool = False
     hints: bool = False  # suppress --no-hints flag
+    dry_run: bool = False  # suppress the global --dry-run flag
 
 
 @dataclass
@@ -554,6 +558,8 @@ def create_app(
     disable: Disable | None = None,
     globals: list[GlobalFlag] | None = None,
     help_config: HelpConfig | None = None,
+    policy_loader: PolicyLoader | None = None,
+    prompt_source: PromptSource | None = None,
 ) -> tuple[typer.Typer, Theme]:
     """Create a Typer app pre-configured to the hop-top CLI contract.
 
@@ -573,6 +579,13 @@ def create_app(
         disable:  ``Disable`` instance to selectively suppress built-in flags
                   (format, quiet, no_color).  Merged with *no_color* param.
         globals:  Extra ``GlobalFlag`` entries to add to the root callback.
+                  ``confirm``, ``max-ops``, ``policy`` and ``dry-run`` are
+                  reserved for the delegation gate (``ValueError``).
+        policy_loader: Resolves ``--policy <name>``; see
+                  :func:`hop_top_kit.policy.default_policy_loader`. ``None``
+                  leaves only the shipped ``kit-default`` available.
+        prompt_source: The terminal ``--confirm prompt`` asks on; defaults
+                  to the controlling terminal.
 
     Returns:
         A tuple of ``(typer.Typer, Theme)`` where the Typer instance is
@@ -616,11 +629,18 @@ def create_app(
     # Merge no_color (legacy param) into disable.
     dis = disable or Disable()
     if no_color:
-        dis = Disable(
-            format=dis.format,
-            quiet=dis.quiet,
-            no_color=True,
-        )
+        dis = dataclasses.replace(dis, no_color=True)
+
+    for gf in globals or []:
+        if gf.name in delegation.RESERVED_GLOBALS:
+            raise ValueError(f"GlobalFlag {gf.name!r} is reserved for the delegation gate")
+
+    gate = Gate(
+        name,
+        policy_loader=policy_loader,
+        prompt_source=prompt_source,
+        dry_run_disabled=dis.dry_run,
+    )
 
     hcfg = help_config or HelpConfig()
     theme = _build_theme(accent)
@@ -720,7 +740,14 @@ def create_app(
             elif section in ("flags", "global flags", "options"):
                 _tc._typer_format_options(self, ctx=ctx, formatter=formatter)
 
+    def _resolve_gated(self, ctx: typer.Context, args: list[str]):  # type: ignore[no-untyped-def]
+        cmd_name, cmd, rest = typer.core.TyperGroup.resolve_command(self, ctx, args)
+        if cmd is not None and cmd_name:
+            delegation.install(cmd, cmd_name, gate)
+        return cmd_name, cmd, rest
+
     extra_attrs: dict = {
+        "resolve_command": _resolve_gated,
         "format_commands": _format_commands_with_args,
         "format_options": _format_options_ordered,
         "format_usage": _format_usage_colored,
@@ -816,6 +843,47 @@ def create_app(
         Optional[bool],
         typer.Option(None, "--offline", help="Disable network access"),
     )
+
+    # Delegation gate globals, hidden like Go's. Only these root values
+    # drive the gate; see hop_top_kit.delegation.
+    params["confirm"] = (
+        str,
+        typer.Option(
+            "",
+            "--confirm",
+            hidden=True,
+            help="Confirmation for destructive commands (auto|yes|no|prompt). "
+            "Default: prompt on a terminal, no otherwise.",
+        ),
+    )
+    params["max_ops"] = (
+        int,
+        typer.Option(
+            0,
+            "--max-ops",
+            hidden=True,
+            help="Cap mutating operations per invocation. 0 = unlimited.",
+        ),
+    )
+    params["policy"] = (
+        str,
+        typer.Option(
+            "",
+            "--policy",
+            hidden=True,
+            help="Named delegation policy (<config>/<tool>/policies/<name>.yaml).",
+        ),
+    )
+    if not dis.dry_run:
+        params["dry_run"] = (
+            bool,
+            typer.Option(
+                False,
+                "--dry-run",
+                hidden=True,
+                help="Preview side effects without applying them (must be supported by the command).",
+            ),
+        )
 
     # Named diagnostic streams (comma-separated); flag name from the contract.
     params["stream"] = (
