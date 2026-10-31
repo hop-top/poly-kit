@@ -20,8 +20,11 @@ use super::completion::{
 use super::completion_spec::{write_export, FIG, USAGE};
 use super::config::{Config, GlobalKind};
 use super::enums::apply_enum_help;
+use super::gate::PromptSource;
+use super::policy::PolicyLoader;
 use super::run::HandlerFn;
 use super::spec::CommandSpec;
+use super::validate_flag::FlagValidator;
 
 const MANAGEMENT: &str = "management";
 
@@ -56,6 +59,9 @@ pub struct Root {
     pub(super) annotations: HashMap<String, BTreeMap<String, String>>,
     pub(super) handlers: HashMap<String, Arc<HandlerFn>>,
     pub(super) groups: HashMap<String, String>,
+    pub(super) policy_loader: Option<PolicyLoader>,
+    pub(super) prompt_source: PromptSource,
+    pub(super) flag_validators: Vec<(String, FlagValidator)>,
 }
 
 impl fmt::Debug for Root {
@@ -94,6 +100,9 @@ impl Root {
             annotations: HashMap::new(),
             handlers: HashMap::new(),
             groups: HashMap::new(),
+            policy_loader: None,
+            prompt_source: PromptSource::controlling_tty(),
+            flag_validators: Vec::new(),
         }
     }
 
@@ -230,6 +239,11 @@ impl Root {
                 .any(|c| c.get_name() == COMPLETION || c.get_all_aliases().any(|a| a == COMPLETION))
     }
 
+    /// Whether `top` names the built-in `completion` command.
+    pub(super) fn is_builtin_top(&self, top: &str) -> bool {
+        top == COMPLETION && self.has_builtin_completion()
+    }
+
     /// Whether `path` is the built-in `completion` command or one of its
     /// leaves, which complete no arguments.
     pub(crate) fn is_builtin_completion_path(&self, path: &str) -> bool {
@@ -250,7 +264,44 @@ impl Root {
                 cmd = cmd.mut_subcommand(name, |c| c.hide(true));
             }
         }
+        let cmd = self.with_confirm_tokens(cmd, "");
         apply_enum_help(cmd, "", &self.enums)
+    }
+
+    /// Registers `--confirm-token` on every leaf that demands a typed
+    /// confirmation (`kit/destructive-token`).
+    fn with_confirm_tokens(&self, cmd: Command, path: &str) -> Command {
+        let names: Vec<String> = cmd
+            .get_subcommands()
+            .map(|c| c.get_name().to_string())
+            .collect();
+        let leaf = names.is_empty();
+        let mut cmd = cmd;
+        for n in names {
+            let p = if path.is_empty() {
+                n.clone()
+            } else {
+                format!("{path} {n}")
+            };
+            cmd = cmd.mut_subcommand(&n, |c| self.with_confirm_tokens(c, &p));
+        }
+        if leaf
+            && !path.is_empty()
+            && super::gate::requires_token(&self.annotations_of(path))
+            && !cmd
+                .get_arguments()
+                .any(|a| a.get_id().as_str() == super::gate::CONFIRM_TOKEN_FLAG)
+        {
+            cmd = cmd.arg(
+                Arg::new(super::gate::CONFIRM_TOKEN_FLAG)
+                    .long(super::gate::CONFIRM_TOKEN_FLAG)
+                    .help(
+                        "Typed confirmation token (sha) printed by the command's prompt. \
+                         Required for kit/destructive-token commands.",
+                    ),
+            );
+        }
+        cmd
     }
 
     /// [`Root::command`] with the management group shown, the analogue
@@ -678,6 +729,36 @@ fn base_command(cfg: &Config) -> Command {
                 .help("Preview side effects without applying them (must be supported by the command)."),
         );
     }
+    // Delegation-safety globals: always registered, names reserved.
+    cmd = cmd
+        .arg(
+            Arg::new("confirm")
+                .long("confirm")
+                .global(true)
+                .hide(true)
+                .help(
+                    "Confirmation policy for destructive commands (auto|yes|no|prompt). \
+                     Default: prompt on a TTY, no otherwise.",
+                ),
+        )
+        .arg(
+            Arg::new("max-ops")
+                .long("max-ops")
+                .global(true)
+                .hide(true)
+                .value_parser(clap::value_parser!(i64))
+                .help("Cap mutating operations per invocation. 0 = unlimited."),
+        )
+        .arg(
+            Arg::new("policy")
+                .long("policy")
+                .global(true)
+                .hide(true)
+                .help(
+                    "Named delegation policy (loaded from \
+                     $XDG_CONFIG_HOME/<tool>/policies/<name>.yaml).",
+                ),
+        );
     cmd = cmd
         .arg(
             Arg::new("autocorrect")

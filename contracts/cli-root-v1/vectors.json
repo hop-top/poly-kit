@@ -74,6 +74,331 @@
     "d": "deploy",
     "rs": "router start"
    }
+  },
+  "ops": {
+   "program": "kitapp",
+   "version": "1.2.3",
+   "about": "Kit app",
+   "policy": true,
+   "chdir_resolver": {
+    "shortname": "proj"
+   },
+   "project_marker": ".kit/config.yaml",
+   "fixtures": {
+    "proj/": "",
+    "marker/.kit/config.yaml": "a: 1\n",
+    "bare/": "",
+    "base.yaml": "a: 1\n",
+    "xdg/kitapp/policies/readonly.yaml": "name: readonly\nallow:\n  write: []\n  destructive: []\n",
+    "xdg/kitapp/policies/nodel.yaml": "allow:\n  destructive: []\n",
+    "xdg/kitapp/policies/confirm.yaml": "require_confirm:\n  - add\n",
+    "xdg/kitapp/policies/broken.yaml": "allow: [\n"
+   },
+   "flag_validators": [
+    {
+     "flag": "level",
+     "reject": [
+      "bad"
+     ],
+     "code": "INVALID_LEVEL",
+     "message": "level must not be bad",
+     "exit": 2
+    }
+   ],
+   "commands": [
+    {
+     "name": "ls",
+     "about": "List",
+     "side_effect": "read",
+     "kind": "dryrun"
+    },
+    {
+     "name": "add",
+     "about": "Add",
+     "side_effect": "write",
+     "kind": "dryrun"
+    },
+    {
+     "name": "rm",
+     "about": "Remove",
+     "side_effect": "destructive",
+     "kind": "dryrun"
+    },
+    {
+     "name": "purge",
+     "about": "Purge",
+     "side_effect": "destructive",
+     "annotations": {
+      "kit/destructive-token": "required"
+     },
+     "kind": "dryrun"
+    },
+    {
+     "name": "shell",
+     "about": "Shell",
+     "side_effect": "interactive",
+     "kind": "dryrun"
+    },
+    {
+     "name": "sync",
+     "about": "Sync",
+     "side_effect": "write",
+     "dry_run": "opted-out",
+     "kind": "dryrun"
+    },
+    {
+     "name": "import",
+     "about": "Import",
+     "side_effect": "write",
+     "kind": "dryrun",
+     "flags": [
+      {
+       "long": "policy",
+       "help": "Policy file",
+       "type": "string"
+      }
+     ]
+    },
+    {
+     "name": "where",
+     "about": "Cwd",
+     "side_effect": "read",
+     "kind": "pwd"
+    },
+    {
+     "name": "cfg",
+     "about": "Config args",
+     "side_effect": "read",
+     "kind": "config"
+    },
+    {
+     "name": "tune",
+     "about": "Tune",
+     "side_effect": "read",
+     "flags": [
+      {
+       "long": "level",
+       "help": "Level",
+       "type": "string"
+      }
+     ]
+    }
+   ]
+  },
+  "strict": {
+   "program": "kitapp",
+   "version": "1.2.3",
+   "about": "Kit app",
+   "validate": true,
+   "commands": [
+    {
+     "name": "status",
+     "about": "Status",
+     "long": "Long status",
+     "side_effect": "read",
+     "annotations": {
+      "kit/top-level-verb": "true",
+      "kit/idempotent": "yes"
+     }
+    },
+    {
+     "name": "ls",
+     "about": "Ls",
+     "long": "Long ls",
+     "side_effect": "read",
+     "annotations": {
+      "kit/top-level-verb": "true",
+      "kit/idempotent": "yes"
+     }
+    }
+   ]
+  },
+  "strict_bad": {
+   "program": "kitapp",
+   "version": "1.2.3",
+   "about": "Kit app",
+   "validate": true,
+   "commands": [
+    {
+     "name": "status",
+     "about": "Status",
+     "long": "Long status",
+     "side_effect": "read",
+     "annotations": {
+      "kit/top-level-verb": "true",
+      "kit/idempotent": "yes"
+     }
+    },
+    {
+     "name": "nolong",
+     "about": "No long",
+     "side_effect": "read",
+     "annotations": {
+      "kit/top-level-verb": "true",
+      "kit/idempotent": "yes"
+     }
+    },
+    {
+     "name": "plain",
+     "about": "Plain",
+     "long": "Plain long",
+     "side_effect": "read"
+    },
+    {
+     "name": "untagged",
+     "about": "Untagged",
+     "long": "Long",
+     "annotations": {
+      "kit/top-level-verb": "true"
+     }
+    },
+    {
+     "name": "bad",
+     "about": "Bad",
+     "long": "Long",
+     "side_effect": "nope",
+     "annotations": {
+      "kit/top-level-verb": "true"
+     }
+    },
+    {
+     "name": "g",
+     "about": "G",
+     "commands": [
+      {
+       "name": "h",
+       "about": "H",
+       "commands": [
+        {
+         "name": "i",
+         "about": "I",
+         "long": "Long",
+         "side_effect": "read"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "sig": {
+   "program": "kitapp",
+   "version": "1.2.3",
+   "about": "Kit app",
+   "signature": "reject",
+   "commands": [
+    {
+     "name": "shadow",
+     "about": "Shadow",
+     "side_effect": "read",
+     "flags": [
+      {
+       "long": "quiet",
+       "help": "Mine",
+       "type": "bool"
+      }
+     ]
+    },
+    {
+     "name": "hold",
+     "about": "Hold",
+     "side_effect": "read",
+     "annotations": {
+      "kit/reserves-children": "taken"
+     },
+     "commands": [
+      {
+       "name": "taken",
+       "about": "Taken",
+       "side_effect": "read"
+      }
+     ]
+    }
+   ]
+  },
+  "sig_ok": {
+   "program": "kitapp",
+   "version": "1.2.3",
+   "about": "Kit app",
+   "signature": "reject",
+   "commands": [
+    {
+     "name": "ls",
+     "about": "List",
+     "side_effect": "read",
+     "kind": "pwd",
+     "annotations": {
+      "kit/passthrough": "true"
+     }
+    }
+   ]
+  },
+  "store": {
+   "program": "kitapp",
+   "version": "1.2.3",
+   "about": "Kit app",
+   "alias_store": "aliases.yaml",
+   "fixtures": {
+    "aliases.yaml": "ll: ls\n"
+   },
+   "commands": [
+    {
+     "name": "ls",
+     "about": "List",
+     "side_effect": "read"
+    }
+   ]
+  },
+  "cfgcmd": {
+   "program": "kitapp",
+   "version": "1.2.3",
+   "about": "Kit app",
+   "config_chain": [
+    {
+     "path": "{tmp}/nowhere/config.yaml",
+     "source": "cwd",
+     "scope": "local"
+    },
+    {
+     "path": "{tmp}/base.yaml",
+     "source": "user",
+     "scope": "user"
+    },
+    {
+     "path": "{tmp}/system.yaml",
+     "source": "system",
+     "scope": "system"
+    }
+   ],
+   "fixtures": {
+    "base.yaml": "a: 1\n"
+   },
+   "commands": [
+    {
+     "name": "ls",
+     "about": "List",
+     "side_effect": "read"
+    }
+   ]
+  },
+  "cfgnone": {
+   "program": "kitapp",
+   "version": "1.2.3",
+   "about": "Kit app",
+   "config_chain": [
+    {
+     "path": "{tmp}/nowhere/config.yaml",
+     "source": "cwd",
+     "scope": "local"
+    }
+   ],
+   "commands": [
+    {
+     "name": "ls",
+     "about": "List",
+     "side_effect": "read"
+    }
+   ]
   }
  },
  "cases": [
@@ -469,6 +794,728 @@
    ],
    "stdout_omits": [
     "completion"
+   ]
+  },
+  {
+   "name": "chdir to a directory",
+   "tree": "ops",
+   "args": [
+    "-C",
+    "{tmp}/proj",
+    "where"
+   ],
+   "exit": 0,
+   "stdout": "{\"cwd\":\"proj\"}\n"
+  },
+  {
+   "name": "chdir long form",
+   "tree": "ops",
+   "args": [
+    "--chdir",
+    "proj",
+    "where"
+   ],
+   "exit": 0,
+   "stdout": "{\"cwd\":\"proj\"}\n"
+  },
+  {
+   "name": "chdir missing target goes to the resolver",
+   "tree": "ops",
+   "args": [
+    "-C",
+    "shortname",
+    "where"
+   ],
+   "exit": 0,
+   "stdout": "{\"cwd\":\"proj\"}\n"
+  },
+  {
+   "name": "chdir resolver refusal",
+   "tree": "ops",
+   "args": [
+    "-C",
+    "nope",
+    "where"
+   ],
+   "exit": 1,
+   "stderr_contains": [
+    "target \"nope\""
+   ]
+  },
+  {
+   "name": "no chdir stays put",
+   "tree": "ops",
+   "args": [
+    "where"
+   ],
+   "exit": 0,
+   "stdout": null
+  },
+  {
+   "name": "config key=value overrides",
+   "tree": "ops",
+   "args": [
+    "-c",
+    "a=1",
+    "-c",
+    "b.c=x",
+    "cfg"
+   ],
+   "exit": 0,
+   "stdout": "{\"overrides\":{\"a\":1,\"b\":{\"c\":\"x\"}},\"paths\":[]}\n"
+  },
+  {
+   "name": "config path layer",
+   "tree": "ops",
+   "args": [
+    "-c",
+    "{tmp}/base.yaml",
+    "cfg"
+   ],
+   "exit": 0,
+   "stdout": "{\"overrides\":{},\"paths\":[\"{tmp}/base.yaml\"]}\n"
+  },
+  {
+   "name": "config project marker resolves a directory",
+   "tree": "ops",
+   "args": [
+    "-c",
+    "{tmp}/marker",
+    "cfg"
+   ],
+   "exit": 0,
+   "stdout": "{\"overrides\":{},\"paths\":[\"{tmp}/marker/.kit/config.yaml\"]}\n"
+  },
+  {
+   "name": "config bare directory without marker is refused",
+   "tree": "ops",
+   "args": [
+    "-c",
+    "{tmp}/bare",
+    "cfg"
+   ],
+   "exit": 0,
+   "stdout_contains": [
+    "\"error\":"
+   ]
+  },
+  {
+   "name": "config token that is neither a pair nor a file",
+   "tree": "ops",
+   "args": [
+    "-c",
+    "nosuch",
+    "cfg"
+   ],
+   "exit": 0,
+   "stdout_contains": [
+    "\"error\":"
+   ]
+  },
+  {
+   "name": "destructive refused without a terminal",
+   "tree": "ops",
+   "args": [
+    "rm"
+   ],
+   "exit": 5,
+   "stderr_contains": [
+    "UNAUTHORIZED",
+    "refused: --confirm=no (or non-TTY default)"
+   ]
+  },
+  {
+   "name": "confirm yes lets a destructive run",
+   "tree": "ops",
+   "args": [
+    "--confirm",
+    "yes",
+    "rm"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"rm\"}\n"
+  },
+  {
+   "name": "confirm auto lets a destructive run",
+   "tree": "ops",
+   "args": [
+    "--confirm",
+    "auto",
+    "rm"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"rm\"}\n"
+  },
+  {
+   "name": "confirm no refuses a destructive",
+   "tree": "ops",
+   "args": [
+    "--confirm",
+    "no",
+    "rm"
+   ],
+   "exit": 5,
+   "stderr_contains": [
+    "refused: --confirm=no"
+   ]
+  },
+  {
+   "name": "confirm prompt accepts y",
+   "tree": "ops",
+   "args": [
+    "--confirm",
+    "prompt",
+    "rm"
+   ],
+   "exit": 0,
+   "prompt_answer": "y",
+   "stdout": "{\"dry_run\":false,\"path\":\"rm\"}\n"
+  },
+  {
+   "name": "confirm prompt refuses n",
+   "tree": "ops",
+   "args": [
+    "--confirm",
+    "prompt",
+    "rm"
+   ],
+   "exit": 5,
+   "prompt_answer": "n",
+   "stderr_contains": [
+    "aborted by user at confirm prompt for kitapp rm"
+   ]
+  },
+  {
+   "name": "an unset confirm prompts when a terminal exists",
+   "tree": "ops",
+   "args": [
+    "rm"
+   ],
+   "exit": 0,
+   "prompt_answer": "yes",
+   "stdout": "{\"dry_run\":false,\"path\":\"rm\"}\n"
+  },
+  {
+   "name": "a write needs no confirmation",
+   "tree": "ops",
+   "args": [
+    "add"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"add\"}\n"
+  },
+  {
+   "name": "a read needs no confirmation",
+   "tree": "ops",
+   "args": [
+    "ls"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"ls\"}\n"
+  },
+  {
+   "name": "confirm refusal is a json envelope",
+   "tree": "ops",
+   "args": [
+    "--format",
+    "json",
+    "rm"
+   ],
+   "exit": 5,
+   "stderr_json": {
+    "code": "UNAUTHORIZED"
+   }
+  },
+  {
+   "name": "typed token required",
+   "tree": "ops",
+   "args": [
+    "--confirm",
+    "yes",
+    "purge"
+   ],
+   "exit": 5,
+   "stderr_contains": [
+    "requires --confirm-token=9bcc9064589a"
+   ]
+  },
+  {
+   "name": "typed token accepted",
+   "tree": "ops",
+   "args": [
+    "purge",
+    "--confirm-token",
+    "9bcc9064589a"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"purge\"}\n"
+  },
+  {
+   "name": "typed token mismatch",
+   "tree": "ops",
+   "args": [
+    "purge",
+    "--confirm-token",
+    "deadbeef0000"
+   ],
+   "exit": 5,
+   "stderr_contains": [
+    "--confirm-token mismatch for kitapp purge; expected 9bcc9064589a"
+   ]
+  },
+  {
+   "name": "policy refuses a write",
+   "tree": "ops",
+   "args": [
+    "--policy",
+    "readonly",
+    "add"
+   ],
+   "exit": 5,
+   "stderr_contains": [
+    "policy: write not allowed for add"
+   ]
+  },
+  {
+   "name": "policy allows a read",
+   "tree": "ops",
+   "args": [
+    "--policy",
+    "readonly",
+    "ls"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"ls\"}\n"
+  },
+  {
+   "name": "policy refusal of a destructive is final under confirm yes",
+   "tree": "ops",
+   "args": [
+    "--policy",
+    "nodel",
+    "--confirm",
+    "yes",
+    "rm"
+   ],
+   "exit": 5,
+   "stderr_contains": [
+    "policy: destructive not allowed for rm"
+   ]
+  },
+  {
+   "name": "policy require_confirm lifts a write into the gate",
+   "tree": "ops",
+   "args": [
+    "--policy",
+    "confirm",
+    "add"
+   ],
+   "exit": 5,
+   "stderr_contains": [
+    "refused: --confirm=no"
+   ]
+  },
+  {
+   "name": "policy require_confirm passes under confirm yes",
+   "tree": "ops",
+   "args": [
+    "--policy",
+    "confirm",
+    "--confirm",
+    "yes",
+    "add"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"add\"}\n"
+  },
+  {
+   "name": "unknown policy is a usage error",
+   "tree": "ops",
+   "args": [
+    "--policy",
+    "ghost",
+    "add"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE",
+    "policy \"ghost\""
+   ]
+  },
+  {
+   "name": "unparsable policy is a usage error",
+   "tree": "ops",
+   "args": [
+    "--policy",
+    "broken",
+    "add"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE",
+    "policy \"broken\""
+   ]
+  },
+  {
+   "name": "kit-default policy refuses a write from the cli",
+   "tree": "ops",
+   "args": [
+    "--policy",
+    "kit-default",
+    "add"
+   ],
+   "exit": 5,
+   "stderr_contains": [
+    "policy: write not allowed for add",
+    "policy kit-default:"
+   ]
+  },
+  {
+   "name": "a leaf-local policy flag is not the delegation policy",
+   "tree": "ops",
+   "args": [
+    "import",
+    "--policy",
+    "{tmp}/some.yaml"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"import\"}\n"
+  },
+  {
+   "name": "max-ops within budget",
+   "tree": "ops",
+   "args": [
+    "--max-ops",
+    "1",
+    "add"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"add\"}\n"
+  },
+  {
+   "name": "dry-run tags a write",
+   "tree": "ops",
+   "args": [
+    "--dry-run",
+    "add"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":true,\"path\":\"add\"}\n"
+  },
+  {
+   "name": "dry-run skips the destructive confirm",
+   "tree": "ops",
+   "args": [
+    "--dry-run",
+    "rm"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":true,\"path\":\"rm\"}\n"
+  },
+  {
+   "name": "dry-run on a read is a no-op",
+   "tree": "ops",
+   "args": [
+    "--dry-run",
+    "ls"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"ls\"}\n"
+  },
+  {
+   "name": "dry-run refused on an interactive leaf",
+   "tree": "ops",
+   "args": [
+    "--dry-run",
+    "shell"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE",
+    "\"kitapp shell\" does not accept --dry-run: interactive"
+   ]
+  },
+  {
+   "name": "dry-run refused on an opted-out leaf",
+   "tree": "ops",
+   "args": [
+    "--dry-run",
+    "sync"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "\"kitapp sync\" does not support --dry-run: the command explicitly opted out"
+   ]
+  },
+  {
+   "name": "an opted-out leaf runs without dry-run",
+   "tree": "ops",
+   "args": [
+    "sync"
+   ],
+   "exit": 0,
+   "stdout": "{\"dry_run\":false,\"path\":\"sync\"}\n"
+  },
+  {
+   "name": "dry-run refusal is a json envelope",
+   "tree": "ops",
+   "args": [
+    "--format",
+    "json",
+    "--dry-run",
+    "shell"
+   ],
+   "exit": 2,
+   "stderr_json": {
+    "code": "USAGE"
+   }
+  },
+  {
+   "name": "flag validator rejects",
+   "tree": "ops",
+   "args": [
+    "--format",
+    "json",
+    "tune",
+    "--level",
+    "bad"
+   ],
+   "exit": 2,
+   "stderr_json": {
+    "code": "INVALID_LEVEL",
+    "message": "level must not be bad"
+   }
+  },
+  {
+   "name": "flag validator accepts",
+   "tree": "ops",
+   "args": [
+    "tune",
+    "--level",
+    "ok"
+   ],
+   "exit": 0,
+   "stdout_contains": [
+    "\"level\":\"ok\""
+   ]
+  },
+  {
+   "name": "flag validator ignores an unset flag",
+   "tree": "ops",
+   "args": [
+    "tune"
+   ],
+   "exit": 0,
+   "stdout_contains": [
+    "\"path\":\"tune\""
+   ]
+  },
+  {
+   "name": "validate accepts an annotated tree",
+   "tree": "strict",
+   "args": [
+    "ls"
+   ],
+   "exit": 0,
+   "stdout_contains": [
+    "\"path\":\"ls\""
+   ]
+  },
+  {
+   "name": "validate refuses an unannotated tree",
+   "tree": "strict_bad",
+   "args": [
+    "ls"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "cli validation failed",
+    "missing kit/side-effect annotation: kitapp untagged",
+    "with invalid kit/side-effect: kitapp bad=\"nope\"",
+    "missing Long: kitapp nolong",
+    "depth-1 leaf missing kit/top-level-verb: kitapp plain",
+    "kitapp g h i"
+   ]
+  },
+  {
+   "name": "signature reject names each violation",
+   "tree": "sig",
+   "args": [
+    "shadow"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "signature validation failed",
+    "kitapp shadow [local-globals] leaf redefines global flag(s): quiet",
+    "kitapp hold taken [reserved-name] child name \"taken\" is reserved by parent \"kitapp hold\""
+   ]
+  },
+  {
+   "name": "signature reject passes a clean tree",
+   "tree": "sig_ok",
+   "args": [
+    "ls"
+   ],
+   "exit": 0,
+   "stdout_contains": [
+    "\"cwd\""
+   ]
+  },
+  {
+   "name": "alias store entry dispatches",
+   "tree": "store",
+   "args": [
+    "ll"
+   ],
+   "exit": 0,
+   "stdout_contains": [
+    "\"path\":\"ls\""
+   ]
+  },
+  {
+   "name": "alias list",
+   "tree": "store",
+   "args": [
+    "--format",
+    "json",
+    "alias",
+    "list"
+   ],
+   "exit": 0,
+   "stdout": "[\n  {\n    \"alias\": \"ll\",\n    \"target\": \"ls\"\n  }\n]\n"
+  },
+  {
+   "name": "bare alias lists",
+   "tree": "store",
+   "args": [
+    "--format",
+    "json",
+    "alias"
+   ],
+   "exit": 0,
+   "stdout": "[\n  {\n    \"alias\": \"ll\",\n    \"target\": \"ls\"\n  }\n]\n"
+  },
+  {
+   "name": "aliases lists",
+   "tree": "store",
+   "args": [
+    "--format",
+    "json",
+    "aliases"
+   ],
+   "exit": 0,
+   "stdout": "[\n  {\n    \"alias\": \"ll\",\n    \"target\": \"ls\"\n  }\n]\n"
+  },
+  {
+   "name": "alias add",
+   "tree": "store",
+   "args": [
+    "--format",
+    "json",
+    "alias",
+    "add",
+    "gg",
+    "ls"
+   ],
+   "exit": 0,
+   "stdout": "{\n  \"alias\": \"gg\",\n  \"target\": \"ls\"\n}\n"
+  },
+  {
+   "name": "alias delete",
+   "tree": "store",
+   "args": [
+    "--format",
+    "json",
+    "alias",
+    "delete",
+    "ll"
+   ],
+   "exit": 0,
+   "stdout": "{\n  \"alias\": \"ll\",\n  \"target\": \"ls\"\n}\n"
+  },
+  {
+   "name": "alias delete of a missing alias fails",
+   "tree": "store",
+   "args": [
+    "alias",
+    "delete",
+    "zz"
+   ],
+   "exit": 1,
+   "stderr_contains": [
+    "\"zz\" not found"
+   ]
+  },
+  {
+   "name": "alias add refuses a whitespace name",
+   "tree": "store",
+   "args": [
+    "alias",
+    "add",
+    "a b",
+    "ls"
+   ],
+   "exit": 1,
+   "stderr_contains": [
+    "must be non-empty without whitespace"
+   ]
+  },
+  {
+   "name": "config paths prints the chain",
+   "tree": "cfgcmd",
+   "args": [
+    "config",
+    "paths"
+   ],
+   "exit": 0,
+   "stdout": "{tmp}/nowhere/config.yaml\n{tmp}/base.yaml\n{tmp}/system.yaml\n"
+  },
+  {
+   "name": "config path prints the highest existing",
+   "tree": "cfgcmd",
+   "args": [
+    "config",
+    "path"
+   ],
+   "exit": 0,
+   "stdout": "{tmp}/base.yaml\n"
+  },
+  {
+   "name": "config paths json",
+   "tree": "cfgcmd",
+   "args": [
+    "config",
+    "paths",
+    "--format",
+    "json"
+   ],
+   "exit": 0,
+   "stdout": "[\n  {\n    \"path\": \"{tmp}/nowhere/config.yaml\",\n    \"source\": \"cwd\",\n    \"scope\": \"local\",\n    \"exists\": false\n  },\n  {\n    \"path\": \"{tmp}/base.yaml\",\n    \"source\": \"user\",\n    \"scope\": \"user\",\n    \"exists\": true\n  },\n  {\n    \"path\": \"{tmp}/system.yaml\",\n    \"source\": \"system\",\n    \"scope\": \"system\",\n    \"exists\": false\n  }\n]\n"
+  },
+  {
+   "name": "config path with no file exits 1",
+   "tree": "cfgnone",
+   "args": [
+    "config",
+    "path"
+   ],
+   "exit": 1,
+   "stderr_contains": [
+    "no config file found in resolution chain"
+   ]
+  },
+  {
+   "name": "config path rejects an unknown format",
+   "tree": "cfgcmd",
+   "args": [
+    "config",
+    "path",
+    "--format",
+    "xml"
+   ],
+   "exit": 1,
+   "stderr_contains": [
+    "unknown --format \"xml\" (want text|json|yaml)"
    ]
   }
  ]

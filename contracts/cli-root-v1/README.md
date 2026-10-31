@@ -2,7 +2,7 @@
 
 ## What it answers
 
-What a kit CLI root does at the command line, independent of language: which persistent flags it registers and how they resolve, what `-v` / `--version` print, what default help hides and `--help-all` shows, how root aliases dispatch, what each flag error looks like (text, JSON and YAML envelopes), and when opt-in autocorrect applies a fix.
+What a kit CLI root does at the command line, independent of language: which persistent flags it registers and how they resolve, what `-v` / `--version` print, what default help hides and `--help-all` shows, how root aliases dispatch, what each flag error looks like (text, JSON and YAML envelopes), when opt-in autocorrect applies a fix, and what the root enforces before a command runs: `-C/--chdir`, `-c/--config` layering, the `--confirm` / `--max-ops` / `--policy` delegation gates, `--dry-run`, flag validators, `Root.Validate` and the signature validators, the alias store commands and `config path|paths`.
 
 ## Use it when
 
@@ -13,7 +13,7 @@ What a kit CLI root does at the command line, independent of language: which per
 
 ```sh
 go test ./go/console/cli/ -run '^TestConformanceCLIRoot'
-cargo test --features cli --test cli_root_conformance   # from sdk/experimental/rs
+cargo test --features cli,config --test cli_root_conformance   # from sdk/experimental/rs
 ```
 
 ## Contract
@@ -24,7 +24,11 @@ Go is canonical. A runner failure means the implementation drifted, not that the
 
 Pinned: persistent flags before and after the command, `-VV` counting, `-v` and `--version`, `--` ending options, unknown / near / value-less / badly typed flags, unknown and near-miss commands, the value-name fallback to the type name (`--env <string>`), enum alternatives on a value-less flag, direct and deep aliases, and autocorrect (`read` applies on a `kit/side-effect: read` leaf only; `--autocorrect` beats `KIT_AUTOCORRECT`; off by default).
 
-Not pinned: help layout and section titles, the `--format` flag's format list, `prompt`-mode autocorrect, and a value-less `--format json ghost` (Go renders that unknown-command refusal as text because the flag is read before the parse).
+A tree may also carry `fixtures` (files, or directories with a trailing slash, created in a per-case temp dir that is the working directory; `{tmp}` in any string names it), `validate` (the pre-flight `Root.Validate`; a failure comes back unrendered, and the runner shows its message on stderr), `signature` (`reject`), `policy` (named policies resolve under `$XDG_CONFIG_HOME/<program>/policies/`, which the runner points into the temp dir), `chdir_resolver` (a `-C` target to a fixture directory), `project_marker`, `flag_validators` (reject listed values of a flag with a code and message), `alias_store` (a fixture file the `alias` and `aliases` commands are backed by) and `config_chain` (the chain `config path|paths` walks). A command may set `kind` (`pwd` prints the working directory's base name, `dryrun` whether kit applied `--dry-run`, `config` the `-c` paths and overrides), `annotations`, `dry_run: opted-out` and a `long` description. A case may set `prompt_answer`, the line the confirm prompt reads; absent, there is no terminal to ask on.
+
+Also pinned: `-C` as a directory, through the resolver and refused; `-c` pairs, files, a project-marker directory and the refusals; every `--confirm` mode (`yes`, `auto`, `no`, `prompt` answered `y` and `n`, the unset default by terminal availability), the typed `--confirm-token`, a `--policy` refusal that `--confirm=yes` does not lift, `require_confirm`, an unknown or unparsable policy as USAGE, the shipped `kit-default` and its remedy, a leaf-local `--policy` that is not the delegation policy, `--max-ops` within budget; `--dry-run` on a write, a destructive (no confirmation), a read (no-op), an interactive and an opted-out leaf; a flag validator's refusal, acceptance and skipped default; each `Root.Validate` bucket named in the failure; each signature check; the alias commands' output; `config path` and `paths` in text and JSON.
+
+Not pinned: help layout and section titles, the `--format` flag's format list, `prompt`-mode autocorrect, a value-less `--format json ghost` (Go renders that unknown-command refusal as text because the flag is read before the parse), the second line fang prints after a validator's envelope, the `--max-ops` refusal past the budget (one invocation runs one command; the engine's `RecordOp` is unit-tested in each port), the dry-run plan's timestamp, and the Go-only validation arms (`kit/idempotent`, `kit/cache-ttl`, `kit/output-schema`, the reserved `status`).
 
 ## Runners
 

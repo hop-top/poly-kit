@@ -40,7 +40,10 @@ output = [
     "dep:thiserror",
     "dep:comfy-table",
 ]
-cli = ["output", "dep:clap"]
+# sha2 derives the typed-confirmation token of a destructive command
+# (sha256 of its command path, as Go does); already in the tree for
+# webhook, httpcache and redact.
+cli = ["output", "dep:clap", "dep:sha2"]
 id = ["dep:type-safe-id", "dep:uuid", "dep:serde", "dep:thiserror"]
 bus = ["dep:serde", "dep:serde_json"]
 # The bus network adapter: Go's NetworkAdapter over a native WebSocket
