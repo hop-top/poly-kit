@@ -126,3 +126,46 @@ def test_hide_removes_a_leaf_from_the_surface() -> None:
 
     with pytest.raises(SurfaceNotEnabledError):
         bridge.invoke(Invocation(path=("ping",), meta=Meta(surface=Surface.MCP)))
+
+
+# -- destructive-by-name inference (shared with the CLI gate) ----------------
+
+
+@pytest.mark.parametrize("name", ["delete", "remove", "rm", "destroy", "purge", "drop"])
+def test_unannotated_destructive_name_classifies_destructive(name: str) -> None:
+    """The one inference table, as Go's cmdreflect applies it."""
+    assert classify(None, leaf_name=name).destructive
+    assert classify({}, leaf_name=name).destructive
+    assert classify({"kit/side-effect": ""}, leaf_name=name).destructive
+
+
+def test_inference_never_overrides_an_explicit_annotation() -> None:
+    assert not classify({"kit/side-effect": "read"}, leaf_name="drop").destructive
+    assert not classify({"kit/side-effect": "bogus"}, leaf_name="purge").destructive
+    assert not classify(None, leaf_name="delete-all").destructive
+    assert not classify(None, leaf_name="list").destructive
+
+
+def test_bridge_blocks_an_unannotated_destructive_named_leaf_remotely() -> None:
+    from hop_top_kit.mcp import Invocation, Meta
+    from hop_top_kit.mcp.safety import DestructiveBlockedError
+
+    ran: list[str] = []
+
+    def run(flags: dict) -> Result:
+        ran.append("ran")
+        return Result()
+
+    root = Command(
+        name="root",
+        children=[
+            Command(name="widget", children=[Command(name="remove", short="r", run=run)]),
+            Command(name="list", short="l", run=lambda flags: Result()),
+        ],
+    )
+    bridge = Bridge(root)
+    assert bridge.resolve_leaf(("widget", "remove")).cls.destructive
+    assert not bridge.resolve_leaf(("list",)).cls.destructive
+    with pytest.raises(DestructiveBlockedError):
+        bridge.invoke(Invocation(path=("widget", "remove"), meta=Meta(surface=Surface.MCP)))
+    assert ran == []

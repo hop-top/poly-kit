@@ -436,7 +436,7 @@ class Bridge:
                 leaf = Leaf(
                     path=path,
                     cmd=cmd,
-                    cls=classify(cmd.annotations),
+                    cls=classify(cmd.annotations, leaf_name=cmd.name),
                     enabled={surface: True for surface in defaults},
                 )
                 self._leaves.append(leaf)

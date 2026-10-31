@@ -426,7 +426,12 @@ def mrtr_tree(counter: list[int]) -> Command:
                 name="purge",
                 short="Purge a target",
                 run=purge,
-                annotations={"kit/requires-confirmation": "true"},
+                # Go's mrtrLockTree tags purge write: an unannotated
+                # `purge` is inferred destructive and blocked remotely.
+                annotations={
+                    "kit/side-effect": "write",
+                    "kit/requires-confirmation": "true",
+                },
                 flags=[Flag("target", "what to purge", "string")],
             ),
         ],

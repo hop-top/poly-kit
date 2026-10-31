@@ -2,6 +2,12 @@
 
 Prevents dangerous operations without explicit --force. In non-TTY
 environments, caution-level ops also require --force.
+
+This is a library call the command author makes explicitly. It is
+independent of the root-enforced delegation gate (``--confirm``,
+``--confirm-token``, ``--policy``, ``--max-ops``, ``--dry-run``) in
+:mod:`hop_top_kit.gate`, which acts on ``kit/side-effect`` annotations
+without the command calling anything; a destructive leaf may pass both.
 """
 
 from __future__ import annotations
