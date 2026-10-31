@@ -5,7 +5,7 @@
 How does stored state (a database, config, saved documents, caches) move forward when a new build
 ships? The migration half of Go `go/core/upgrade`: versioned `Migration`s per schema, a `Migrator` that
 backs up, applies the pending ones in semver order, records the version reached and rolls back on
-failure. Self-update (release check, download, binary replace) is not ported.
+failure. The release check (`check`) tells a tool a newer build is out. Self-update (download, binary replace) is not ported.
 
 ## Use it when
 
@@ -16,6 +16,7 @@ failure. Self-update (release check, download, binary replace) is not ported.
 - a step must be checked before the version is recorded → `with_verify` per migration, `Migrator::verify` for the final state
 - other parts of the app react to migrations → `publisher(bus)`: `kit.core.migration.*` events, in order
 - a failure must be inspected before undoing it → `manual_rollback()`, then `rollback_latest()`
+- the tool should say a newer release exists → `check::Checker::check` with the request in your transport (route it through `GuardedClient`), `notify` to print the notice; set `CheckConfig::offline(globals.offline)` so `--offline` skips it before any request or cache read
 - a `migrate status` view → `Migrator::status` (stored, target, pending per schema)
 
 ## Quick start
@@ -55,6 +56,7 @@ m.run(&Context::background()).unwrap(); // nothing pending
 - A failed `up` or `verify`, or a context done before the next `up` (`is_verify`, `is_canceled`),
   stops the run; in auto mode applied `down`s run newest first on a fresh context, else the backup
   is restored. A failed verify undoes its own step too. Error texts match Go's.
+- `check` never fails: errors sit in `CheckResult::error`, a fresh cache (default 4h) answers without a request, and an offline check returns `Skipped::Offline` touching neither transport, cache nor state dir.
 - A prune failure goes to `on_warning` (default stderr, Go's `log.Printf` text); never fatal.
 - Registration is per `Migrator`; Go's process-wide default registry has no Rust counterpart, since
   Rust has no `init()` to fill it from. Only the `configfile` driver is ported.

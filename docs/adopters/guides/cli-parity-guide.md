@@ -61,7 +61,7 @@ Per-port detail: [Go](../../../go/core/netpolicy/README.md#contract),
 [PHP](../reference/php-sdk.md#offline-enforcement),
 [Rust](../reference/rs-sdk.md#offline-enforcement). Rust registers
 `--offline` and carries it in `Globals::offline`: build the `NetPolicy`
-from it. PHP does not register it yet, having no global-flag layer: set
+from it, and pass it to `upgrade::check::CheckConfig::offline` to skip the upgrade check. PHP does not register it yet, having no global-flag layer: set
 the marker from your own flag, as its page's "CLI flag" section shows.
 
 ## Reading `-V` and `--quiet`
