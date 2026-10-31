@@ -1,0 +1,11 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 9add50d0
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  status: 200
+  headers:
+    content-length: '4'
+    content-type: text/plain
+    etag: '"9f5b6d9a034d175868bf593885b7dc4e"'
+  body: two!

@@ -1,0 +1,12 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 8c80bbe1
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  status: 200
+  headers:
+    content-length: '1513'
+    content-type: application/xml
+  body: |
+    <?xml version='1.0' encoding='utf-8'?>
+    <ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><IsTruncated>false</IsTruncated><Name>kit-blob-s3-conformance</Name><Prefix>special/</Prefix><MaxKeys>1000</MaxKeys><EncodingType>url</EncodingType><KeyCount>4</KeyCount><Contents><Key>special/amp%26ersand/%3Ctag%3E.txt</Key><ETag>"bae9eb99a12f2d353bb88aaaa916f6b2"</ETag><Size>20</Size><LastModified>normalized</LastModified><StorageClass>STANDARD</StorageClass><ChecksumAlgorithm>CRC64NVME</ChecksumAlgorithm><ChecksumType>FULL_OBJECT</ChecksumType></Contents><Contents><Key>special/dir/with%20space.txt</Key><ETag>"892fba7610f77fe43ebede11230a050a"</ETag><Size>18</Size><LastModified>normalized</LastModified><StorageClass>STANDARD</StorageClass><ChecksumAlgorithm>CRC64NVME</ChecksumAlgorithm><ChecksumType>FULL_OBJECT</ChecksumType></Contents><Contents><Key>special/plus%2Bsign/%C3%A9-%C3%BC.txt</Key><ETag>"58179009361144bb6f3ca448eb8196bc"</ETag><Size>19</Size><LastModified>normalized</LastModified><StorageClass>STANDARD</StorageClass><ChecksumAlgorithm>CRC64NVME</ChecksumAlgorithm><ChecksumType>FULL_OBJECT</ChecksumType></Contents><Contents><Key>special/tilde~/q%3Fmark%3D1.txt</Key><ETag>"6a1f0212ebe102784476f31b6e195f55"</ETag><Size>19</Size><LastModified>normalized</LastModified><StorageClass>STANDARD</StorageClass><ChecksumAlgorithm>CRC64NVME</ChecksumAlgorithm><ChecksumType>FULL_OBJECT</ChecksumType></Contents></ListBucketResult>

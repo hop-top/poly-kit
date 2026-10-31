@@ -1,0 +1,10 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: ffaf1a7b
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: HEAD
+  target: /kit-blob-s3-conformance/conformance/existsmissing/nope
+  headers: {}
+  body: ''
+  occurrence: 0

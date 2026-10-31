@@ -1,0 +1,12 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 2b463cdc
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  status: 200
+  headers:
+    content-length: '595'
+    content-type: application/xml
+  body: |
+    <?xml version='1.0' encoding='utf-8'?>
+    <ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><IsTruncated>false</IsTruncated><Name>kit-blob-s3-conformance</Name><Prefix>unprefixed-root/</Prefix><MaxKeys>1000</MaxKeys><EncodingType>url</EncodingType><KeyCount>1</KeyCount><Contents><Key>unprefixed-root/a.txt</Key><ETag>"0cc175b9c0f1b6a831c399e269772661"</ETag><Size>1</Size><LastModified>normalized</LastModified><StorageClass>STANDARD</StorageClass><ChecksumAlgorithm>CRC64NVME</ChecksumAlgorithm><ChecksumType>FULL_OBJECT</ChecksumType></Contents></ListBucketResult>

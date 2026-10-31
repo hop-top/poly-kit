@@ -1,0 +1,10 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 9add50d0
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: GET
+  target: /kit-blob-s3-conformance/conformance/putgetoverwrite/a/b.txt
+  headers: {}
+  body: ''
+  occurrence: 0

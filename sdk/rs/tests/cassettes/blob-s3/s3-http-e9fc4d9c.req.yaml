@@ -1,0 +1,11 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: e9fc4d9c
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: PUT
+  target: /kit-blob-s3-conformance/conformance/listcontenttypeneverwrong/ct/gone
+  headers:
+    content-type: image/png
+  body: '1'
+  occurrence: 0

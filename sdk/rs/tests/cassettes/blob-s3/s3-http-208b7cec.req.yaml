@@ -1,0 +1,11 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 208b7cec
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: PUT
+  target: /kit-blob-s3-conformance/special/plus%2Bsign/%C3%A9-%C3%BC.txt
+  headers:
+    content-type: text/plain
+  body: plus+sign/é-ü.txt
+  occurrence: 0

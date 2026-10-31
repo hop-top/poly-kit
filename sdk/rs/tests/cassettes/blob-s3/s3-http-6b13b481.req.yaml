@@ -1,0 +1,11 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 6b13b481
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: PUT
+  target: /kit-blob-s3-conformance/conformance/listprefixkeysandsizes/data/x.bin
+  headers:
+    content-type: text/plain
+  body: '333'
+  occurrence: 0

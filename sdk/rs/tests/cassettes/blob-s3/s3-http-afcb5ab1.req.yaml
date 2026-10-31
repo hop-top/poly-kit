@@ -1,0 +1,11 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: afcb5ab1
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: PUT
+  target: /kit-blob-s3-conformance/conformance/listcontenttypeneverwrong/ct/over
+  headers:
+    content-type: text/csv
+  body: '2'
+  occurrence: 0

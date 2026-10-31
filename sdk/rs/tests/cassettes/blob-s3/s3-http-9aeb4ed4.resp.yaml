@@ -1,0 +1,12 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 9aeb4ed4
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  status: 404
+  headers:
+    content-length: '219'
+    content-type: application/xml
+  body: |-
+    <?xml version='1.0' encoding='utf-8'?>
+    <Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><RequestId>normalized</RequestId><Key>unprefixed-root/a.txt</Key></Error>
