@@ -135,6 +135,19 @@ serve = [
 # consumer wiring the lifecycle into its own parser does not compile
 # clap.
 serve-cli = ["serve", "cli"]
+# The unix-socket transport, a port of go/transport/socket: NDJSON over
+# a 0600 Unix domain socket, peer-credential auth, idempotency replay,
+# hosted as a serve Service. Unix only. Peer credentials come from
+# tokio's `UnixStream::peer_cred` (net), lines from its io-util; no
+# crate beyond the ones `serve` and `telemetry` already carry
+# (getrandom for request ids).
+socket = [
+    "serve",
+    "dep:serde",
+    "dep:getrandom",
+    "tokio/net",
+    "tokio/io-util",
+]
 telemetry = [
     "api",
     "dep:tokio",

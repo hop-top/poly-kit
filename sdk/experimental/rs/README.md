@@ -19,6 +19,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 |------|------------|-----------------|
 | [`serve/`](src/serve/README.md), [`mcp/`](src/mcp/README.md) | serve hierarchy and service lifecycle (feature `serve`, `serve-cli` for the clap command); dual-spec MCP surface over a bridged command tree (feature `mcp`) | your CLI hosts long-running services, or MCP clients must call your commands as tools |
 | [`output/`](src/output/README.md) | `--format` flag family, `Formatter` trait, registry, `CliError` (feature `output`); shipped formatters in [`builtins/`](src/output/builtins/README.md) | a command renders one payload as table, json or yaml |
+| [`socket/`](src/socket/README.md) | unix-socket JSON-lines transport with peer-uid auth and idempotency replay, a `serve` service (feature `socket`, unix only) | a tool must answer a local client over a `0600` socket |
 | [`bus/`](src/bus/README.md) | in-process event bus with topic grammar (feature `bus`); peers over WebSocket in [`bus/network/`](src/bus/network/README.md) (feature `bus-network`) | components publish or subscribe to named events, across processes too |
 | [`domain/`](src/domain/README.md) | state machine with veto-able pre and fire-and-forget post transition events; the `Repository` port (feature `domain`) | an entity has a lifecycle others react to |
 | [`breaker/`](src/breaker/README.md) | circuit breaker, MaxOps/MaxBytes budgets, bursty rate limiter (feature `breaker`) | a tool must stop itself after failures, a budget or a rate |
@@ -67,6 +68,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `id`; `timeutil` | `type-safe-id`, `uuid`, `serde`, `thiserror`; `chrono`, `interim`, `thiserror` | 25; 19 |
 | `httpcache` | `kv` + `serde`, `serde_json`, `sha2`, `base64` | 33 |
 | `cli`; `tui` | `output` + `clap`; nothing (std only) | 35; 0 |
+| `socket` | `serve` + `serde`, `getrandom`, tokio `net`/`io-util` (unix only) | 0 beyond `serve` |
 | `serve` (`serve-cli`) | `output` + `tokio`, `serde_json` (+ `cli`) | 37 (50) |
 | `mcp`; `uri` | `rmcp` (default-features off) + `serde`, `serde_json`; `hop-top-cite` | 39; 41 |
 | `policy` | `domain` + `cel`, `serde`, `serde_json`, `serde_norway` (`PolicyDeniedError::to_cli_error` with `output`) | 48 |

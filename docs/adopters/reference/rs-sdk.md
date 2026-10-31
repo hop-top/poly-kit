@@ -46,6 +46,14 @@ A `serve` the root already owned is replaced, never doubled. See
 [`examples/serve.rs`](../../../sdk/experimental/rs/examples/serve.rs) for a service that binds a real
 listener, and `docs/contracts/serve-lifecycle.md` for the contract.
 
+### Socket service
+
+Feature `socket` (unix) adds `SocketService`, a port of `go/transport/socket`: a
+`serve` service answering NDJSON over a `0600` Unix socket from an explicit
+`Handlers` map, with kernel-uid `PeerAuthenticator` and opt-in `idempotency_key`
+replay. Contract and limits: [`src/socket/README.md`](../../../sdk/experimental/rs/src/socket/README.md);
+wire format: [socket wire reference](socket-wire.md).
+
 ## URI facade
 
 The Rust URI facade is experimental and feature-gated:

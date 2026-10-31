@@ -45,10 +45,10 @@
 //! # Deliberate non-goals
 //!
 //! Everything the contract lists under "Explicitly not required" is
-//! absent: no REST/OpenAPI projection, no socket service, no
-//! command-tree reflection, no permission/provenance/audit surface, no
-//! `toolspec/policy` table (the *gate* is here as [`PolicyGate`], a
-//! two-argument predicate, which is what the contract requires).
+//! absent: no REST/OpenAPI projection, no command-tree reflection, no
+//! permission/provenance/audit surface, no `toolspec/policy` table (the *gate* is here as [`PolicyGate`], a
+//! two-argument predicate, which is what the contract requires). A socket
+//! service ships apart, as feature `socket` (`crate::socket`).
 //!
 //! # Sinks
 //!
