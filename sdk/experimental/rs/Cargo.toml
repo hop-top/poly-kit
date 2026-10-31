@@ -150,6 +150,14 @@ consent-file = ["consent", "config", "id"]
 # sha2 backs the Hash strategy. No I/O, wasm-safe.
 redact = ["dep:regex", "dep:regex-syntax", "dep:serde", "dep:serde_json", "dep:sha2"]
 
+# Declarative guard engine, a port of go/runtime/policy: CEL rules on the
+# veto-able pre-transition and pre-entity events, deny-overrides
+# composition and the typed denial. `cel` is the expression backend
+# (pure Rust, regex for `matches`); serde_norway parses the rule YAML.
+# Builds on `domain` for the state machine topics. The only I/O is the
+# optional rule-file load and the env principal, both compiled off wasm32.
+policy = ["domain", "dep:cel", "dep:serde", "dep:serde_json", "dep:serde_norway"]
+
 # Layered YAML configuration, a port of go/core/config. Parsing, merge,
 # scalar resolution, overrides and precedence are pure and wasm-safe;
 # file loading, paths, Set/Unset and reload are compiled off wasm32 only.
@@ -252,6 +260,12 @@ regex = { version = "1", optional = true }
 # (0.8.11, published 2026-06-09).
 regex-syntax = { version = "=0.8.11", optional = true }
 thiserror = { version = "2", optional = true }
+# policy: CEL interpreter. Exact pin: expression semantics are the
+# policy contract. cel-rust/cel-rust, MIT, no advisories; 0.15.0 was
+# published 2026-10-06. Default features off: `regex` backs the
+# `matches` function; chrono/chrono-tz (timestamp functions) and the
+# base64 encoders are not needed by guard rules.
+cel = { version = "=0.15.0", default-features = false, features = ["regex"], optional = true }
 rmcp = { version = "3.7.0", default-features = false, optional = true }
 clap = { version = "4", features = ["derive", "string"], optional = true }
 comfy-table = { version = "8", default-features = false, optional = true }

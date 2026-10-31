@@ -45,6 +45,11 @@ pub mod consent;
 #[cfg(feature = "redact")]
 pub mod redact;
 
+// Declarative CEL guard engine on the veto-able pre-events (a port of
+// go/runtime/policy).
+#[cfg(feature = "policy")]
+pub mod policy;
+
 // Base directories for config, consent, telemetry and upgrade files (a
 // port of go/core/xdg's home, config-home, data-home and state-home
 // resolution). Filesystem-only: off wasm32.

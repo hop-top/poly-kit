@@ -1,0 +1,83 @@
+# Default stage policy ruleset shipped with kit.
+#
+# Adopters include this verbatim:
+#
+#     // somewhere at boot
+#     cfg, _ := policy.LoadConfig("path/to/stage.yaml")
+#     eng,  _ := withcel.New(cfg, policy.WithStageResolver(stageRes))
+#     policy.Wire(b, eng)
+#
+# Or copy and customise individual rules by name; subsequent rule
+# loaders may override entries with the same `name`. The CEL `stage`
+# binding is populated by a resolver wired through
+# policy.WithStageResolver — see go/core/stage for the reference
+# implementation.
+#
+# Documented binding shape (matches go/core/stage.State, with the
+# Stage field renamed to `mode` to avoid the awkward stage.stage):
+#
+#     stage = {
+#       mode:   "active" | "public_feedback" | "feature_freeze"
+#                 | "maintenance" | "sunset" | "archived",
+#       since:  <RFC3339 timestamp>,
+#       until:  <RFC3339 timestamp or null>,
+#       reason: <string>,
+#       allow:  <list of strings>,
+#       deny:   <list of strings>,
+#     }
+#
+# The `entity` binding is populated automatically by the policy
+# subscriber from PreEntityPayload:
+#
+#     entity = {
+#       kind:       "track" | "task" | ...,
+#       op:         "create" | "update" | "delete",
+#       track_type: "feature" | "fix" | "chore" | "docs" | "feedback",
+#     }
+#
+# All rules use `effect: deny`/`otherwise: allow` so the default
+# (no-match → allow) is preserved when stage is `active` or the
+# entity shape doesn't trip the rule.
+
+policies:
+  - name: archived-blocks-all-mutations
+    on: kit.runtime.entity.pre_validated
+    when: 'stage.mode == "archived" && entity.op in ["create", "update", "delete"]'
+    effect: deny
+    otherwise: allow
+    message: "scope is archived; mutations not allowed"
+
+  - name: sunset-blocks-creates
+    on: kit.runtime.entity.pre_validated
+    when: 'stage.mode == "sunset" && entity.op == "create"'
+    effect: deny
+    otherwise: allow
+    message: "scope is in sunset; new entities not allowed (updates/deletes ok)"
+
+  - name: feature-freeze-blocks-track-create
+    on: kit.runtime.entity.pre_validated
+    when: 'stage.mode == "feature_freeze" && entity.kind == "track" && entity.op == "create"'
+    effect: deny
+    otherwise: allow
+    message: "scope is in feature_freeze; new tracks not allowed (fix/chore tasks ok)"
+
+  - name: feature-freeze-blocks-feature-tasks
+    on: kit.runtime.entity.pre_validated
+    when: 'stage.mode == "feature_freeze" && entity.kind == "task" && (entity.track_type == "feature" || entity.track_type == "refactor")'
+    effect: deny
+    otherwise: allow
+    message: "scope is in feature_freeze; only fix/chore/docs tasks allowed"
+
+  - name: maintenance-blocks-track-create
+    on: kit.runtime.entity.pre_validated
+    when: 'stage.mode == "maintenance" && entity.kind == "track" && entity.op == "create"'
+    effect: deny
+    otherwise: allow
+    message: "scope is in maintenance; no new tracks (fix/chore/docs tasks only)"
+
+  - name: public-feedback-allows-feedback-only-tracks
+    on: kit.runtime.entity.pre_validated
+    when: 'stage.mode == "public_feedback" && entity.kind == "track" && entity.op == "create" && entity.track_type != "feedback"'
+    effect: deny
+    otherwise: allow
+    message: "scope is in public_feedback; only feedback-typed tracks may be created"
