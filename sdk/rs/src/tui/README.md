@@ -31,7 +31,7 @@ eprintln!("{}", status_line(&styler, InfoType::Success, "Deployed"));
 - Streams: progress, status and prompts go to stderr; stdout stays the data envelope.
 - Non-interactive: `Confirm::ask` with `interactive = false` reads and writes nothing and returns the default answer, so CI never hangs; end of input while interactive is an `UnexpectedEof` error, never a guessed answer. `ask_stdio` is interactive only when stdin and stderr are both terminals.
 - Progress: `emit` is best effort, never panics, never blocks on a failed write; reporters are `Send + Sync`, one line per lock. JSONL keys are `phase`, `at`, `item`, `bytes`, `total`, `ok`, `extra`, zero optional fields omitted, `at` RFC 3339 UTC. `select`: quiet wins, then an explicit `--progress-format`, then `--format json` implies JSONL, else human.
-- Status symbols, spinner frames and interval are copied from [`contracts/parity/parity.json`](../../../../../contracts/parity/parity.json); a unit test fails when a copy drifts.
+- Status symbols, spinner frames and interval are copied from [`contracts/parity/parity.json`](../../../../contracts/parity/parity.json); a unit test fails when a copy drifts.
 - Every renderer returns a `String` and every prompt takes its reader and writer: no test needs a TTY.
 - Text safety: every caller-supplied string a renderer interpolates (progress human `phase` and `item`, status text, confirm prompt, app shell header and footer) has control chars (C0, DEL, C1 including ESC, CSI U+009B, CR, LF) replaced with U+FFFD, so a remote-derived name cannot move the cursor or inject escapes. JSONL is already JSON-escaped and unchanged. Go writes these raw; this is a deliberate divergence. The app shell main region is the renderer's own output and passes through untouched, as does the shell's own styling; a styled header must come from the `Styler`, not from ANSI in the text.
 - Widths count chars outside ANSI escapes. Wide glyphs are not measured and long lines are not wrapped.
@@ -73,4 +73,4 @@ Consequences: the confirm prompt reads a line, not a key (`ConfirmState` keeps t
 ## Neighbours
 
 - `output`: the stdout data envelope and `--format`
-- Go reference: [`go/console/tui`](../../../../../go/console/tui/README.md), [`go/console/progress`](../../../../../go/console/progress/README.md)
+- Go reference: [`go/console/tui`](../../../../go/console/tui/README.md), [`go/console/progress`](../../../../go/console/progress/README.md)

@@ -23,4 +23,4 @@ scheme in `default_registry()`. Feature `llm-ollama`, native only.
 
 ## See also
 
-- [`go/ai/llm/ollama`](../../../../../../go/ai/llm/ollama), the Go reference
+- [`go/ai/llm/ollama`](../../../../../go/ai/llm/ollama), the Go reference

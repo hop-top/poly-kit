@@ -19,7 +19,7 @@ The core package is evaluator-agnostic: callers MUST supply an
 pass `WithEvaluator` to plug Cedar/OPA/etc.
 
 Rust: `hop_top_kit::policy` (feature `policy`) follows this package; see
-[its README](../../../sdk/experimental/rs/src/policy/README.md).
+[its README](../../../sdk/rs/src/policy/README.md).
 
 ## Wiring
 

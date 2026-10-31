@@ -141,7 +141,7 @@ fn base_url_vectors() {
         want: String,
     }
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../contracts/llm-v1/vectors.json");
+        .join("../../contracts/llm-v1/vectors.json");
     let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     assert_eq!(raw["version"], "v1");
     let vs: Vec<V> = serde_json::from_value(raw["routellm_base_url"].clone()).unwrap();

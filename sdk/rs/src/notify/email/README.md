@@ -46,5 +46,5 @@ let sink = EmailSink::new(SmtpMailer::new("localhost", 25).from("ops@example.com
 
 ## See also
 
-- [Notify sink reference](../../../../../../docs/adopters/reference/notify-sinks.md)
-- [`go/runtime/notify`](../../../../../../go/runtime/notify/README.md), the Go reference
+- [Notify sink reference](../../../../../docs/adopters/reference/notify-sinks.md)
+- [`go/runtime/notify`](../../../../../go/runtime/notify/README.md), the Go reference
