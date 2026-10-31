@@ -7,8 +7,9 @@
 //! (`hop.top/kit/go/runtime/domain`): [`StateMachine`] enforces allowed
 //! transitions and, given an [`EventPublisher`], publishes a veto-able
 //! pre-transition event and a fire-and-forget post-transition event.
-//! The rest of the Go package (repository, service, validator) is not
-//! ported.
+//! The repository port ([`Entity`], [`Query`], [`Repository`],
+//! [`RepoError`]) comes with it. The rest of the Go package (service,
+//! validator, audit) is not ported.
 //!
 //! # Example
 //!
@@ -34,9 +35,11 @@
 //! ```
 
 pub(crate) mod quote;
+pub mod repository;
 pub mod statemachine;
 pub mod topics;
 
+pub use repository::{Entity, Query, RepoError, Repository};
 pub use statemachine::{
     is_invalid_transition, EventPublisher, Payload, PublishError, Rules, State, StateMachine,
     StateMachineError, TransitionError, TransitionPayload, SOURCE,

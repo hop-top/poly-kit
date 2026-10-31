@@ -45,7 +45,7 @@ In scope:
   the ack tracker and the rewind on reconnect. The acceptor side
   (pubacks, the dedupe memory and its principal bound) waits for a
   stream acceptor, as the stream wire transcripts do
-- domain state machine
+- domain state machine and repository port
 - full config (not a bus-only subset)
 - a browser WebSocket transport
 
