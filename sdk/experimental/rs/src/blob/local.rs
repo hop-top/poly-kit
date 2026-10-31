@@ -20,6 +20,21 @@ static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
 /// key prefix and never listed.
 const META_DIR: &str = ".blob-meta";
 
+/// Whether the first segment of `resolved` under `root` names the metadata
+/// directory as a filesystem would resolve it: case-insensitively (macOS,
+/// Windows) and with trailing dots and spaces dropped (Windows).
+fn is_meta_segment(resolved: &Path, root: &Path) -> bool {
+    let Ok(rel) = resolved.strip_prefix(root) else {
+        return false;
+    };
+    rel.components().next().is_some_and(|c| {
+        c.as_os_str().to_str().is_some_and(|f| {
+            f.trim_end_matches(['.', ' '])
+                .eq_ignore_ascii_case(META_DIR)
+        })
+    })
+}
+
 /// Buffer size used when streaming a blob into its staging file.
 const COPY_BUF: usize = 64 * 1024;
 
@@ -94,7 +109,7 @@ impl LocalStore {
         if resolved == self.root || !resolved.starts_with(&self.root) {
             return Err(BlobError::KeyEscapesRoot(key.to_string()));
         }
-        if resolved.starts_with(self.root.join(META_DIR)) {
+        if is_meta_segment(&resolved, &self.root) {
             return Err(BlobError::ReservedKey(key.to_string()));
         }
         Ok(resolved)

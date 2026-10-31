@@ -406,6 +406,23 @@ func TestSidecarNamespaceCannotCollideWithKeys(t *testing.T) {
 	}
 }
 
+// On case-insensitive filesystems (macOS, Windows) and on Windows, which
+// drops trailing dots and spaces, these spellings land in the real
+// metadata directory, so they must be reserved too.
+func TestReservedNamespaceIgnoresCaseAndTrailingDotsSpaces(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	for _, k := range []string{".BLOB-META/x", ".Blob-Meta", ".blob-meta./x", ".blob-meta /x", "a/../.BLOB-META/x"} {
+		if err := s.Put(ctx, k, strings.NewReader("x"), "text/plain"); err == nil {
+			t.Errorf("Put %q: want reserved-namespace error", k)
+		}
+	}
+	// A key merely starting with the name is an ordinary key.
+	if err := s.Put(ctx, ".blob-metadata/x", strings.NewReader("x"), ""); err != nil {
+		t.Fatalf("Put .blob-metadata/x: %v", err)
+	}
+}
+
 func TestConformanceStat(t *testing.T) {
 	blobtest.RunStat(t, func(t *testing.T) blob.Store { return setup(t) })
 }
