@@ -533,7 +533,7 @@ test-parity-llm: ## llm-v1 conformance corpus (Go, Rust, Python and TypeScript r
 	@echo "==> llm-v1 conformance: Go"
 	go test ./go/ai/llm/ ./go/ai/llm/anthropic/ ./go/ai/llm/google/ ./go/ai/llm/openai/ ./go/ai/llm/routellm/ -run '^TestConformance' -count=1
 	@echo "==> llm-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features llm-anthropic --test llm_conformance --locked
+	cd sdk/experimental/rs && cargo test --features llm-anthropic,llm-openai,llm-google,llm-routellm --test llm_conformance --test llm_openai_conformance --test llm_google_conformance --locked
 	@echo "==> llm-v1 conformance: Python"
 	cd sdk/py && uv run pytest -q -rs tests/test_llm_conformance.py tests/test_llm_openai_conformance.py
 	@echo "==> llm-v1 conformance: TypeScript (every section)"

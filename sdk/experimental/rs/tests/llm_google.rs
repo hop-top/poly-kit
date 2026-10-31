@@ -813,7 +813,7 @@ async fn stream_error_key_straddling_the_cap_is_scrubbed() {
 }
 
 fn env_key(k: &str) -> Option<String> {
-    (k == "GOOGLE_API_KEY").then(|| leak_key())
+    (k == "GOOGLE_API_KEY").then(leak_key)
 }
 
 fn builder_with_env_key(
