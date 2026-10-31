@@ -170,7 +170,16 @@ if [ "${#triggers[@]}" -gt 0 ]; then
 fi
 
 if [ "$full_on_delete" -eq 1 ]; then
-    hit=$(changed | while IFS= read -r f; do [ -e "$f" ] || printf '%s\n' "$f"; done | head -n 1)
+    # Drain the whole list, keeping the first missing path: stopping at the
+    # first hit (head -n 1) SIGPIPEs the producer on a large change set (a
+    # directory move), which pipefail reports as exit 141.
+    hit=$(changed | {
+        first=
+        while IFS= read -r f; do
+            [ -n "$first" ] || [ -e "$f" ] || first=$f
+        done
+        printf '%s' "$first"
+    })
     [ -z "$hit" ] || full "$hit deleted"
 fi
 
