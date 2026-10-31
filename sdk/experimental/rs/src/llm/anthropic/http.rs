@@ -50,6 +50,11 @@ impl Adapter {
             let (err, retry, after) = match rb.json(body).send().await {
                 Err(NetError::Offline(o)) => return Err(o.into()),
                 Err(NetError::HostNotAllowed(h)) => return Err(h.into()),
+                Err(NetError::Redirect(r)) => {
+                    return Err(LlmError::Transport {
+                        message: format!("{SCHEME}: POST {}: {r}", self.destination),
+                    })
+                }
                 Err(NetError::Transport(e)) => (self.transport_error(e), true, None),
                 Ok(resp) if resp.status().is_success() => return Ok(resp),
                 Ok(resp) => {

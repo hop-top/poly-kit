@@ -46,7 +46,7 @@ assert_eq!(
   never match (`validate_allow_hosts` names them). Loopback and unix sockets pass; `--offline` wins
   when both apply. Refusal: `<method> <url>: host not allowed by netpolicy.allow_hosts`. `NetPolicy`
   is `Clone`, not `Copy`.
-- Redirects: `GuardedClient` judges every redirect hop with the same decision (reqwest follows up to 10 by default); a refused hop stops the chain with the typed refusal, audited as op `redirect`. It overrides any `redirect` policy on a builder passed to `build`.
+- Redirects are the client's own, named by `Redirects`: `None` returns the 3xx unfollowed (what the llm adapter uses, so a credential never moves to a host the server names); `Follow { max }` (the default, max 10) judges every hop with the same decision as the first URL, so an allowed host cannot bounce a request to a refused one (typed refusal, audited as op `redirect`), and refuses a hop to another origin when the request carries `Authorization`, `Proxy-Authorization`, `Cookie`, `X-Api-Key` or `Api-Key` (`NetError::Redirect`; refused, not stripped, because stripping needs per-header knowledge). `build(policy, builder, redirects)` replaces any `redirect` policy on `builder`. Go's `Guard` judges each hop too (`http.Client` calls the transport per hop) but leaves credential headers to `net/http`, which strips `Authorization` and `Cookie` cross-origin and not custom headers: a divergence.
 - Audit: `with_audit` sinks see every refusal, offline and allowlist, with the same stripped
   destination as the error.
 - A portless bracketed host is loopback only when the brackets hold a loopback IPv6 address.

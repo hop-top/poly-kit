@@ -85,4 +85,4 @@ mod reqwest;
 #[cfg(feature = "api")]
 pub(crate) use self::reqwest::destination;
 #[cfg(feature = "api")]
-pub use self::reqwest::{GuardedClient, NetError, RequestBuilder};
+pub use self::reqwest::{GuardedClient, NetError, RedirectError, Redirects, RequestBuilder};

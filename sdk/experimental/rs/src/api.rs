@@ -211,6 +211,11 @@ fn net_error(method: &Method, e: NetError) -> ApiError {
             code: HOST_NOT_ALLOWED_CODE.into(),
             message: h.to_string(),
         },
+        NetError::Redirect(r) => ApiError {
+            status: 0,
+            code: "redirect_refused".into(),
+            message: r.to_string(),
+        },
         NetError::Transport(t) => transport_error(method, t),
     }
 }

@@ -49,6 +49,10 @@ pub enum NetError {
     /// The request was refused by the host allowlist.
     #[error(transparent)]
     HostNotAllowed(#[from] HostNotAllowedError),
+    /// A redirect was refused or ran past its limit. Nothing was sent
+    /// to the hop's target.
+    #[error(transparent)]
+    Redirect(#[from] RedirectError),
     /// The request was attempted and reqwest failed it (or rejected it
     /// while building, e.g. an unsupported scheme).
     ///
@@ -138,19 +142,79 @@ fn scrub(e: reqwest::Error) -> reqwest::Error {
 }
 
 /// reqwest's own default redirect limit.
-const MAX_REDIRECTS: usize = 10;
+const DEFAULT_MAX_REDIRECTS: usize = 10;
 
-/// The typed refusal a redirect hop raised, if `e` carries one in its
-/// source chain.
-fn redirect_refusal(e: &reqwest::Error) -> Option<PolicyError> {
-    let mut src: Option<&(dyn std::error::Error + 'static)> = Some(e);
-    while let Some(err) = src {
-        if let Some(p) = err.downcast_ref::<PolicyError>() {
-            return Some(p.clone());
+/// Request headers that carry a credential. A hop to another origin
+/// with one of these is refused rather than stripped: stripping is
+/// per-header knowledge (a custom `X-Api-Key` style header is not on
+/// any standard list), refusing is not.
+const CREDENTIAL_HEADERS: &[&str] = &[
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "x-api-key",
+    "api-key",
+];
+
+/// What the client does with a 3xx response. Kit-owned: the inner
+/// reqwest client always runs with its redirect handling off, because
+/// reqwest's policy hook cannot see the request's headers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Redirects {
+    /// Return the 3xx response to the caller unfollowed. For callers
+    /// that must never move a credential to a host the server names.
+    None,
+    /// Follow up to `max` hops. Every hop is judged by the policy
+    /// (host allowlist, `--offline`) before it is sent, and a hop to
+    /// another origin is refused when the request carries a credential
+    /// header. A 301/302 on a POST and every 303 become a bodiless GET,
+    /// as in reqwest.
+    Follow { max: usize },
+}
+
+impl Default for Redirects {
+    /// Follow up to reqwest's own limit of 10.
+    fn default() -> Self {
+        Redirects::Follow {
+            max: DEFAULT_MAX_REDIRECTS,
         }
-        src = err.source();
     }
-    None
+}
+
+/// A redirect the client refused to follow.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RedirectError {
+    /// The request carries a credential header and the hop leaves its
+    /// origin. Both ends are stripped as in a refusal.
+    CrossOriginCredentials { from: String, to: String },
+    /// More hops than the mode allows.
+    TooMany { max: usize },
+}
+
+impl std::fmt::Display for RedirectError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RedirectError::CrossOriginCredentials { from, to } => write!(
+                f,
+                "redirect from {from} to {to} refused: request carries credentials"
+            ),
+            RedirectError::TooMany { max } => write!(f, "too many redirects (limit {max})"),
+        }
+    }
+}
+
+impl std::error::Error for RedirectError {}
+
+fn origin(u: &reqwest::Url) -> (String, Option<String>, Option<u16>) {
+    (
+        u.scheme().to_string(),
+        u.host_str().map(str::to_string),
+        u.port_or_known_default(),
+    )
+}
+
+fn is_redirect(status: reqwest::StatusCode) -> bool {
+    matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308)
 }
 
 /// The port's shared HTTP client: the construction path through which
@@ -171,53 +235,45 @@ fn redirect_refusal(e: &reqwest::Error) -> Option<PolicyError> {
 pub struct GuardedClient {
     inner: reqwest::Client,
     policy: NetPolicy,
+    redirects: Redirects,
 }
 
 impl GuardedClient {
-    /// Build a client under `policy` with reqwest's defaults.
+    /// Build a client under `policy` with reqwest's defaults and
+    /// [`Redirects::default`].
     pub fn new(policy: NetPolicy) -> Result<Self, reqwest::Error> {
-        Self::build(policy, reqwest::Client::builder())
+        Self::build(policy, reqwest::Client::builder(), Redirects::default())
     }
 
     /// Build a client under `policy` from a configured
     /// `reqwest::ClientBuilder`, for callers that need timeouts or other
     /// transport settings. The policy is applied regardless of how the
-    /// builder was configured.
+    /// builder was configured. Redirects are the client's own business,
+    /// named by `redirects`; any `redirect` policy on `builder` is
+    /// replaced, so a caller cannot opt out of the per-hop check by
+    /// accident, nor into following by omission.
     pub fn build(
         policy: NetPolicy,
         builder: reqwest::ClientBuilder,
+        redirects: Redirects,
     ) -> Result<Self, reqwest::Error> {
-        // reqwest follows redirects by default, and the policy in
-        // `execute` sees only the first URL: without this an allowed
-        // host could bounce the request to a refused one. Every hop is
-        // judged by the same decision, and a refusal stops the chain
-        // with the typed error. The default limit of 10 is kept.
-        let hop_policy = policy.clone();
-        let builder = builder.redirect(reqwest::redirect::Policy::custom(move |attempt| {
-            if attempt.previous().len() >= MAX_REDIRECTS {
-                return attempt.error("too many redirects");
-            }
-            match hop_policy.url_denial(attempt.url()) {
-                None => attempt.follow(),
-                Some(reason) => {
-                    let err = hop_policy.refuse(
-                        reason,
-                        "redirect".to_string(),
-                        destination(attempt.url()),
-                    );
-                    attempt.error(err)
-                }
-            }
-        }));
         Ok(Self {
-            inner: builder.build()?,
+            inner: builder
+                .redirect(reqwest::redirect::Policy::none())
+                .build()?,
             policy,
+            redirects,
         })
     }
 
     /// The policy this client enforces.
     pub fn policy(&self) -> NetPolicy {
         self.policy.clone()
+    }
+
+    /// What this client does with a 3xx response.
+    pub fn redirects(&self) -> Redirects {
+        self.redirects
     }
 
     /// Start a request. The returned builder is reqwest's own, so the
@@ -246,20 +302,98 @@ impl GuardedClient {
     /// crate without passing through here. A failure's URL is stripped
     /// to scheme, host and path (see [`NetError::Transport`]).
     pub async fn execute(&self, req: reqwest::Request) -> Result<reqwest::Response, NetError> {
-        if let Some(reason) = self.policy.url_denial(req.url()) {
-            return Err(self
-                .policy
-                .refuse(reason, req.method().to_string(), destination(req.url()))
-                .into());
+        self.judge(req.method().as_str(), req.url())?;
+        let Redirects::Follow { max } = self.redirects else {
+            return self.send(req).await;
+        };
+        let carries_credentials = req
+            .headers()
+            .keys()
+            .any(|k| CREDENTIAL_HEADERS.contains(&k.as_str()));
+        let first = req.url().clone();
+        let mut next = req.try_clone();
+        let mut resp = self.send(req).await?;
+        let mut hops = 0;
+        while is_redirect(resp.status()) {
+            // A body that cannot be replayed (a stream) ends the chain
+            // at the 3xx, which the caller sees as a response.
+            let Some(cur) = next.take() else { break };
+            let Some(to) = resp
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|loc| cur.url().join(loc).ok())
+            else {
+                break;
+            };
+            if hops >= max {
+                return Err(RedirectError::TooMany { max }.into());
+            }
+            hops += 1;
+            // The same decision as the first URL, per hop: an allowed
+            // host cannot bounce the request to a refused one.
+            self.judge("redirect", &to)?;
+            if carries_credentials && origin(&to) != origin(&first) {
+                let (from, dest) = (destination(&first), destination(&to));
+                self.policy
+                    .note(RefusalReason::CrossOriginCredentials, "redirect", &dest);
+                return Err(RedirectError::CrossOriginCredentials { from, to: dest }.into());
+            }
+            let req = redirected(&cur, resp.status(), to);
+            next = req.try_clone();
+            resp = self.send(req).await?;
         }
+        Ok(resp)
+    }
+
+    fn judge(&self, op: &str, url: &reqwest::Url) -> Result<(), NetError> {
+        match self.policy.url_denial(url) {
+            Some(reason) => Err(self
+                .policy
+                .refuse(reason, op.to_string(), destination(url))
+                .into()),
+            None => Ok(()),
+        }
+    }
+
+    async fn send(&self, req: reqwest::Request) -> Result<reqwest::Response, NetError> {
         self.inner
             .execute(req)
             .await
-            .map_err(|e| match redirect_refusal(&e) {
-                Some(refusal) => refusal.into(),
-                None => NetError::Transport(scrub(e)),
-            })
+            .map_err(|e| NetError::Transport(scrub(e)))
     }
+}
+
+/// The request for the next hop. 303, and 301/302 on a POST, become a
+/// bodiless GET; 307/308 replay method and body.
+fn redirected(
+    prev: &reqwest::Request,
+    status: reqwest::StatusCode,
+    to: reqwest::Url,
+) -> reqwest::Request {
+    let to_get = status.as_u16() == 303
+        || (matches!(status.as_u16(), 301 | 302) && prev.method() == reqwest::Method::POST);
+    let method = if to_get {
+        reqwest::Method::GET
+    } else {
+        prev.method().clone()
+    };
+    let mut req = reqwest::Request::new(method, to);
+    *req.headers_mut() = prev.headers().clone();
+    if to_get {
+        for h in [
+            reqwest::header::CONTENT_TYPE,
+            reqwest::header::CONTENT_LENGTH,
+            reqwest::header::CONTENT_ENCODING,
+            reqwest::header::TRANSFER_ENCODING,
+        ] {
+            req.headers_mut().remove(h);
+        }
+    } else if let Some(body) = prev.body().and_then(|b| b.as_bytes()) {
+        *req.body_mut() = Some(body.to_vec().into());
+    }
+    *req.timeout_mut() = prev.timeout().copied();
+    req
 }
 
 /// A request under construction against a [`GuardedClient`].

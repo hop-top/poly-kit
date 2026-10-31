@@ -158,13 +158,7 @@ impl NetPolicy {
     /// Build the typed refusal for `reason` and report it to the audit
     /// sink. Every refusal this crate makes passes through here.
     pub(crate) fn refuse(&self, reason: RefusalReason, op: String, dest: String) -> PolicyError {
-        if let Some(sink) = &self.audit {
-            sink(&Refusal {
-                reason,
-                op: op.clone(),
-                dest: dest.clone(),
-            });
-        }
+        self.note(reason, &op, &dest);
         match reason {
             RefusalReason::Offline => PolicyError::Offline(OfflineError {
                 method: op,
@@ -174,6 +168,20 @@ impl NetPolicy {
                 method: op,
                 url: dest,
             }),
+            RefusalReason::CrossOriginCredentials => {
+                unreachable!("redirect refusals are not policy errors; see GuardedClient")
+            }
+        }
+    }
+
+    /// Report a refusal to the audit sink.
+    pub(crate) fn note(&self, reason: RefusalReason, op: &str, dest: &str) {
+        if let Some(sink) = &self.audit {
+            sink(&Refusal {
+                reason,
+                op: op.to_string(),
+                dest: dest.to_string(),
+            });
         }
     }
 
@@ -204,6 +212,9 @@ pub enum RefusalReason {
     Offline,
     /// A host allowlist is in force and the destination is not on it.
     HostNotAllowed,
+    /// A redirect hop left the request's origin while the request
+    /// carried a credential header.
+    CrossOriginCredentials,
 }
 
 /// One refused operation, handed to the audit sink
