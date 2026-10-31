@@ -8,8 +8,9 @@
 //! breaker-gated [`Runner`].
 //!
 //! The commands are spawned directly, never through a shell. A title or
-//! text is one argument, so no shell metacharacter is interpreted; the
-//! AppleScript literal is escaped for `"` and `\`.
+//! text is one argument, so no shell metacharacter is interpreted. Both
+//! commands get `--` before them so a leading `-` is not an option, and
+//! osascript receives them as the script's argv, not in its source.
 
 use std::fmt;
 use std::io;
@@ -176,21 +177,30 @@ impl OsNotifySink {
     /// The command and arguments for a rendered `title` and `text`.
     pub fn command(&self, title: &str, text: &str) -> (String, Vec<String>) {
         match self.platform {
+            // The text and title are argv of the script (`--` ends
+            // osascript's own option parsing), never interpolated into
+            // its source, so no quoting is needed and none can be broken.
             // `display notification` takes the body first, the title last.
             Platform::Darwin => (
                 "osascript".to_string(),
-                vec![
-                    "-e".to_string(),
-                    format!(
-                        "display notification {} with title {}",
-                        escape_applescript(text),
-                        escape_applescript(title)
-                    ),
-                ],
+                [
+                    "-e",
+                    "on run argv",
+                    "-e",
+                    "display notification (item 1 of argv) with title (item 2 of argv)",
+                    "-e",
+                    "end run",
+                    "--",
+                    text,
+                    title,
+                ]
+                .map(str::to_string)
+                .to_vec(),
             ),
             Platform::Linux => (
                 "notify-send".to_string(),
-                vec![title.to_string(), text.to_string()],
+                // `--` so a title starting with `-` is not an option.
+                ["--", title, text].map(str::to_string).to_vec(),
             ),
         }
     }
@@ -234,21 +244,6 @@ impl Sink for OsNotifySink {
     fn close(&self) -> Result<(), BusError> {
         Ok(())
     }
-}
-
-/// `s` as an AppleScript string literal: double quotes around it, `"`
-/// and `\` escaped. Everything else passes through.
-pub fn escape_applescript(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        if matches!(c, '"' | '\\') {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out.push('"');
-    out
 }
 
 /// Whether an executable `name` is in a `PATH` directory.

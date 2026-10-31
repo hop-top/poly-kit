@@ -403,7 +403,9 @@ fn body_on_the_wire(body: &str) -> (String, Vec<String>) {
     let srv = Server::start(Config::default());
     let mut m = msg();
     m.body = body.into();
-    mailer(srv.port).send_message(&Context::background(), &m).unwrap();
+    mailer(srv.port)
+        .send_message(&Context::background(), &m)
+        .unwrap();
     let s = srv.wait_sessions(1).remove(0);
     let (_, wire) = s.data.split_once("\r\n\r\n").expect("header end");
     (wire.to_string(), s.commands)
@@ -415,7 +417,11 @@ fn smtp_bare_cr_dot_cr_cannot_end_the_message() {
     // the MAIL FROM after it.
     let (wire, cmds) = body_on_the_wire("x\r.\r\nMAIL FROM:<evil@x.io>");
     assert_eq!(wire, "x\r\n..\r\nMAIL FROM:<evil@x.io>\r\n");
-    assert_eq!(cmds.iter().filter(|c| c.starts_with("MAIL")).count(), 1, "{cmds:?}");
+    assert_eq!(
+        cmds.iter().filter(|c| c.starts_with("MAIL")).count(),
+        1,
+        "{cmds:?}"
+    );
 }
 
 #[test]

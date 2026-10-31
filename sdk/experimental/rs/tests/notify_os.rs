@@ -11,9 +11,7 @@ use std::time::{Duration, Instant};
 
 use hop_top_kit::breaker::{Breaker, Record};
 use hop_top_kit::bus::{BusError, Context, Sink};
-use hop_top_kit::notify::osnotify::{
-    escape_applescript, ExecRunner, OsNotifyError, OsNotifySink, Platform, Runner,
-};
+use hop_top_kit::notify::osnotify::{ExecRunner, OsNotifyError, OsNotifySink, Platform, Runner};
 use hop_top_kit::notify::{is_broken_circuit, LiteralTemplate, TextTemplate};
 use hop_top_kit::redact::Redactor;
 use notify_support::event;
@@ -122,11 +120,19 @@ fn command_darwin() {
     let s = OsNotifySink::for_platform(Platform::Darwin);
     let (name, args) = s.command("the title", "the body");
     assert_eq!(name, "osascript");
+    // Title and text are argv of the script, never part of its source.
     assert_eq!(
         args,
         [
             "-e",
-            r#"display notification "the body" with title "the title""#
+            "on run argv",
+            "-e",
+            "display notification (item 1 of argv) with title (item 2 of argv)",
+            "-e",
+            "end run",
+            "--",
+            "the body",
+            "the title"
         ]
     );
 }
@@ -135,11 +141,11 @@ fn command_darwin() {
 fn command_linux() {
     let (name, args) = OsNotifySink::for_platform(Platform::Linux).command("hello", "world");
     assert_eq!(name, "notify-send");
-    assert_eq!(args, ["hello", "world"]);
+    assert_eq!(args, ["--", "hello", "world"]);
 }
 
 #[test]
-fn drain_darwin_runs_the_escaped_script() {
+fn drain_darwin_passes_text_as_argv() {
     let r = Fake::default();
     let s = OsNotifySink::for_platform(Platform::Darwin)
         .title(LiteralTemplate::new(r#"a "title" \ here"#))
@@ -148,13 +154,9 @@ fn drain_darwin_runs_the_escaped_script() {
     drain(&s).unwrap();
     let (name, args) = r.last();
     assert_eq!(name, "osascript");
-    assert_eq!(
-        args,
-        [
-            "-e",
-            r#"display notification "body" with title "a \"title\" \\ here""#
-        ]
-    );
+    // Quotes and backslashes need no escaping: they are argv.
+    assert_eq!(&args[6..], ["--", "body", r#"a "title" \ here"#]);
+    assert!(!args[..6].iter().any(|a| a.contains("here")));
 }
 
 #[test]
@@ -169,7 +171,7 @@ fn drain_linux_runs_notify_send() {
         r.last(),
         (
             "notify-send".to_string(),
-            vec!["kit alert".into(), "queue depth high".into()]
+            vec!["--".into(), "kit alert".into(), "queue depth high".into()]
         )
     );
 }
@@ -214,7 +216,10 @@ fn redactor_runs_on_title_and_text() {
         .runner(r.clone());
     drain(&s).unwrap();
     let (_, args) = r.last();
-    assert_eq!(args, ["title ***REDACTED***", "body ***REDACTED*** end"]);
+    assert_eq!(
+        args,
+        ["--", "title ***REDACTED***", "body ***REDACTED*** end"]
+    );
 }
 
 fn breaker(name: &str) -> Arc<Breaker> {
@@ -243,20 +248,6 @@ fn closed_circuit_allows_the_call() {
 }
 
 #[test]
-fn escape_applescript_cases() {
-    for (input, want) in [
-        ("", r#""""#),
-        ("plain", r#""plain""#),
-        (r#"with "quotes""#, r#""with \"quotes\"""#),
-        (r"back\slash", r#""back\\slash""#),
-        (r#"mix \"both\""#, r#""mix \\\"both\\\"""#),
-        ("unicode 你好", r#""unicode 你好""#),
-    ] {
-        assert_eq!(escape_applescript(input), want, "{input:?}");
-    }
-}
-
-#[test]
 fn text_template_renders_the_event() {
     let t = TextTemplate::parse("{{.Source}}/{{.Topic}}").unwrap();
     let r = Fake::default();
@@ -265,7 +256,7 @@ fn text_template_renders_the_event() {
         .text(LiteralTemplate::new("x"))
         .runner(r.clone());
     drain(&s).unwrap();
-    assert_eq!(r.last().1[0], "test/kit.notify.test");
+    assert_eq!(r.last().1[1], "test/kit.notify.test");
 }
 
 #[test]
@@ -341,4 +332,39 @@ fn real_notification() {
         ));
     let (ctx, _c) = Context::background().with_timeout(Duration::from_secs(10));
     s.drain(&ctx, &ev()).unwrap();
+}
+
+#[test]
+fn leading_dash_is_never_an_option() {
+    let (_, linux) = OsNotifySink::for_platform(Platform::Linux).command("-u critical", "--hint=x");
+    assert_eq!(linux, ["--", "-u critical", "--hint=x"]);
+    let (_, mac) = OsNotifySink::for_platform(Platform::Darwin).command("-e evil", "-x");
+    let dd = mac.iter().position(|a| a == "--").expect("-- present");
+    assert_eq!(&mac[dd + 1..], ["-x", "-e evil"]);
+}
+
+/// The real osascript takes a hostile title and text as plain values.
+#[cfg(target_os = "macos")]
+#[test]
+fn osascript_receives_hostile_text_as_argv() {
+    let s = OsNotifySink::for_platform(Platform::Darwin);
+    let (name, mut args) = s.command(
+        r#"-x" & (do shell script "touch /nonexistent/x") & ""#,
+        r"\",
+    );
+    // Same invocation, but return the values instead of notifying.
+    args[3] = "return (item 1 of argv) & \"|\" & (item 2 of argv)".into();
+    let out = std::process::Command::new(name)
+        .args(&args)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim_end(),
+        r#"\|-x" & (do shell script "touch /nonexistent/x") & ""#
+    );
 }

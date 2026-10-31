@@ -78,8 +78,9 @@ event out to them. The runnable form is `tests/notify_e2e.rs`.
   advertised and only over TLS or to a loopback host (Go's rule), MAIL/RCPT/DATA with dot-stuffing. Unlike Go, an
   address, subject or content type with a line break is refused. A send past the dial does not poll for cancellation;
   its socket reads and writes time out instead.
-- OS: macOS `osascript -e 'display notification "<text>" with title "<title>"'` (`"` and `\` escaped), Linux
-  `notify-send <title> <text>` (probed on `PATH` in `OsNotifySink::new`), Windows an error. Spawned directly, never
+- OS: macOS `osascript -e 'on run argv' ... -- <text> <title>` (title and text are the script's argv, never
+  interpolated into its source), Linux `notify-send -- <title> <text>` (probed on `PATH` in `OsNotifySink::new`), Windows
+  an error. `--` keeps a leading `-` from being read as an option. Spawned directly, never
   through a shell; `Runner` is the test seam (`.runner(..)`, `for_platform(..)`). `ExecRunner` kills the child when the
   context ends.
 - Not ported: the typed-payload `WithSeverity` path. No `contracts/` corpus covers notify; the Go tests are ported (see
