@@ -67,11 +67,18 @@ func (s *Store) resolve(key string) (string, error) {
 	if !strings.HasPrefix(resolved, s.root+string(os.PathSeparator)) && resolved != s.root {
 		return "", fmt.Errorf("blob/local: key %q escapes store root", key)
 	}
-	if rel, err := filepath.Rel(s.root, resolved); err == nil &&
-		(rel == metaDir || strings.HasPrefix(rel, metaDir+string(os.PathSeparator))) {
+	if rel, err := filepath.Rel(s.root, resolved); err == nil && isMetaSegment(rel) {
 		return "", fmt.Errorf("blob/local: key %q uses reserved namespace %q", key, metaDir)
 	}
 	return resolved, nil
+}
+
+// isMetaSegment reports whether rel's first segment names the metadata
+// directory as a filesystem would resolve it: case-insensitively (macOS,
+// Windows) and with trailing dots and spaces dropped (Windows).
+func isMetaSegment(rel string) bool {
+	first, _, _ := strings.Cut(rel, string(os.PathSeparator))
+	return strings.EqualFold(strings.TrimRight(first, ". "), metaDir)
 }
 
 // metaPath returns the sidecar path for a resolved content path p.

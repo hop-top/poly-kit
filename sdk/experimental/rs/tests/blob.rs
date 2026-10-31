@@ -348,7 +348,17 @@ fn sidecar_namespace_cannot_collide_with_keys() {
     }
     assert_eq!(got.len(), 3);
 
-    for key in [".blob-meta/x", ".blob-meta", "a/../.blob-meta/x"] {
+    // Case variants and trailing dots/spaces resolve to the real metadata
+    // directory on case-insensitive filesystems and on Windows.
+    for key in [
+        ".blob-meta/x",
+        ".blob-meta",
+        "a/../.blob-meta/x",
+        ".BLOB-META/x",
+        ".Blob-Meta",
+        ".blob-meta./x",
+        ".blob-meta /x",
+    ] {
         assert!(
             matches!(
                 s.put(key, "x".as_bytes(), ""),
@@ -494,4 +504,11 @@ fn stat_by_list_missing_is_not_found() {
         stat_by_list(&s, "k"),
         Err(BlobError::NotFound(k)) if k == "k"
     ));
+}
+
+#[test]
+fn a_key_merely_starting_with_the_reserved_name_is_ordinary() {
+    let (_dir, s) = setup();
+    s.put(".blob-metadata/x", "x".as_bytes(), "")
+        .expect("ordinary key");
 }
