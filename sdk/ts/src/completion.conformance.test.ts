@@ -12,6 +12,7 @@ import { Command } from 'commander';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AliasStore, bridgeAliases, findCommand } from './alias';
+import { createCLI } from './cli';
 import { bindArgs, bindFlag, completeRequest, completionCommand } from './completion';
 
 import {
@@ -184,11 +185,11 @@ function walk(cmd: Command, fn: (c: Command) => void): void {
   for (const c of cmd.commands) walk(c, fn);
 }
 
-/** A kit root as the Go runner builds it, in commander terms. */
+/** A kit root as the Go runner builds it (createCLI: persistent root flags included). */
 function buildRoot(t: Tree): Command {
   strictKeys(t, ['program', 'about', 'commands', 'aliases', 'flag_enums',
     'flag_completers', 'arg_completers'], t.program);
-  const program = new Command(t.program).description(t.about);
+  const { program } = createCLI({ name: t.program, version: '1.0.0', description: t.about });
   for (const c of t.commands) program.addCommand(buildCommand(c));
   const store = new AliasStore('');
   for (const [name, target] of Object.entries(t.aliases)) store.set(name, target);
