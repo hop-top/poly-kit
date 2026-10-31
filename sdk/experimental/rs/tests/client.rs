@@ -77,9 +77,33 @@ async fn record_writes_jsonl_line() {
         let v: Value = serde_json::from_str(line).unwrap();
         assert_eq!(v["schema_version"], "1");
         assert_eq!(v["sdk_lang"], "rs");
+        assert_eq!(v["sdk_version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(v["mode"], "full");
         assert!(v["installation_id"].as_str().unwrap().len() == 64);
     }
+    teardown_env();
+}
+
+#[tokio::test]
+async fn explicit_sdk_version_overrides_default() {
+    let _g = ENV_LOCK.lock().unwrap();
+    let tmp = setup_env("full");
+    let sink_path = tmp.path().join("events.jsonl");
+
+    let client = Client::new(ClientOptions {
+        sink: SinkKind::Jsonl,
+        sink_file: Some(sink_path.to_string_lossy().into_owned()),
+        queue_size: 16,
+        sdk_version: Some("9.9.9-test".to_string()),
+        ..Default::default()
+    })
+    .expect("client construction");
+    client.record("test.event", json!({})).unwrap();
+    client.shutdown(Duration::from_millis(200)).await.unwrap();
+
+    let content = std::fs::read_to_string(&sink_path).expect("sink file");
+    let v: Value = serde_json::from_str(content.lines().next().unwrap()).unwrap();
+    assert_eq!(v["sdk_version"], "9.9.9-test");
     teardown_env();
 }
 
