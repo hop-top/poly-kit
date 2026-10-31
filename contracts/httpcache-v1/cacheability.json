@@ -21,5 +21,22 @@
     { "name": "500 not cached", "status": 500, "headers": {}, "want": false },
     { "name": "response no-store opts out", "status": 200, "headers": { "Cache-Control": "no-store" }, "want": false },
     { "name": "response no-store among directives", "status": 200, "headers": { "Cache-Control": "max-age=60, no-store" }, "want": false }
+  ],
+  "extension_note": "The sections below extend the v1 gate with the request-dependent rules of RFC 9111. They are additive: the v1 sections above are unchanged.",
+  "vary_response_cacheable": [
+    { "name": "Vary: * is never stored", "status": 200, "headers": { "Vary": "*" }, "want": false },
+    { "name": "Vary: * among fields is never stored", "status": 200, "headers": { "Vary": "Accept, *" }, "want": false },
+    { "name": "Vary with fields is stored (per variant)", "status": 200, "headers": { "Vary": "Accept-Language" }, "want": true }
+  ],
+  "authorization_response_cacheable": [
+    { "name": "no directive: not stored", "response_headers": {}, "want": false },
+    { "name": "max-age alone: not stored", "response_headers": { "Cache-Control": "max-age=60" }, "want": false },
+    { "name": "private: not stored", "response_headers": { "Cache-Control": "private" }, "want": false },
+    { "name": "public: stored", "response_headers": { "Cache-Control": "public" }, "want": true },
+    { "name": "public is case-insensitive", "response_headers": { "Cache-Control": "max-age=60, PUBLIC" }, "want": true },
+    { "name": "s-maxage: stored", "response_headers": { "Cache-Control": "s-maxage=60" }, "want": true },
+    { "name": "must-revalidate: stored", "response_headers": { "Cache-Control": "must-revalidate" }, "want": true },
+    { "name": "directives are token-bounded", "response_headers": { "Cache-Control": "publicly-visible, s-maxage-ish=1" }, "want": false },
+    { "name": "public plus no-store: not stored", "response_headers": { "Cache-Control": "public, no-store" }, "want": false }
   ]
 }

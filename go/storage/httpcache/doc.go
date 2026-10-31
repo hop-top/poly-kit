@@ -31,6 +31,11 @@
 //   - Only 2xx responses are stored.
 //   - Cache-Control: no-store on request or response opts the
 //     exchange out, on both the request and the stored response.
+//   - A response with Vary is stored per variant (keyed on the request's
+//     values for the varied headers); Vary: * is never stored.
+//   - A response to a request with Authorization is stored only when it
+//     carries Cache-Control public, s-maxage or must-revalidate (RFC 9111
+//     section 3.5), so one identity's response is not replayed to another.
 //   - A stored entry past its TTL is a miss (the request is refetched).
 //
 // Entries are persisted as a language-neutral JSON envelope (status,
@@ -45,7 +50,6 @@
 // caller owns the wrapped RoundTripper.
 //
 // Deliberate v1 non-goals (additive seams for a later version):
-// Vary-aware keying, ETag/If-None-Match revalidation, and deriving
-// TTL from Cache-Control max-age. v1 keys on method+URL and honors
-// only no-store; WithTTL is authoritative for freshness.
+// ETag/If-None-Match revalidation and deriving TTL from Cache-Control
+// max-age. WithTTL is authoritative for freshness.
 package httpcache
