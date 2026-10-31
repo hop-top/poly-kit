@@ -36,7 +36,7 @@ type WSClient struct {
 // independent of process-wide install order.
 func DialWS(ctx context.Context, url string, _ ...WSOption) (*WSClient, error) {
 	conn, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{
-		HTTPClient: &http.Client{Transport: netpolicy.Guard(http.DefaultTransport)},
+		HTTPClient: netpolicy.NewClient(http.DefaultTransport),
 	})
 	if err != nil {
 		return nil, err

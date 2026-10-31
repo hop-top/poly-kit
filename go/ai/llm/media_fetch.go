@@ -70,8 +70,13 @@ var (
 	}
 )
 
-var mediaClient = &http.Client{
-	Transport: netpolicy.Guard(&http.Transport{
+var mediaClient = newMediaClient()
+
+// newMediaClient never follows a redirect: the 3xx is returned as-is.
+// CheckRedirect composes that verdict after the cross-origin header
+// check.
+func newMediaClient() *http.Client {
+	c := netpolicy.NewClient(&http.Transport{
 		Proxy:                 nil,
 		DialContext:           dialPublic,
 		ForceAttemptHTTP2:     true,
@@ -79,9 +84,10 @@ var mediaClient = &http.Client{
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: time.Second,
-	}),
-	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	Timeout:       mediaFetchTimeout,
+	})
+	c.CheckRedirect = netpolicy.CheckRedirect(func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse })
+	c.Timeout = mediaFetchTimeout
+	return c
 }
 
 // fetchMedia GETs raw under the rules in the file comment and returns
