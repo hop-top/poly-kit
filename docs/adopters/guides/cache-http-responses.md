@@ -110,9 +110,10 @@ rebuilt as `HTTP/1.1` with the stored status, headers (framing headers
   credentials: that is what those directives mean. For per-user data
   that must be cached, use a separate `WithPrefix` and store per
   identity, or send `Cache-Control: no-store`.
-- `Cache-Control: private` is not read; a store shared between users must
-  not hold personalized responses that lack `Vary` on the distinguishing
-  header.
+- A response marked `Cache-Control: private` is never stored, even with
+  `public`, `s-maxage` or `must-revalidate` alongside it. Personalized
+  responses that are not marked private and lack `Vary` on the
+  distinguishing header can still be shared between users.
 - No ETag or `If-None-Match` revalidation.
 - Whole body is buffered in memory and stored in the kv value; avoid for
   large downloads (use [blob](store-files-with-blob.md)).

@@ -37,6 +37,15 @@
     { "name": "s-maxage: stored", "response_headers": { "Cache-Control": "s-maxage=60" }, "want": true },
     { "name": "must-revalidate: stored", "response_headers": { "Cache-Control": "must-revalidate" }, "want": true },
     { "name": "directives are token-bounded", "response_headers": { "Cache-Control": "publicly-visible, s-maxage-ish=1" }, "want": false },
-    { "name": "public plus no-store: not stored", "response_headers": { "Cache-Control": "public, no-store" }, "want": false }
+    { "name": "public plus no-store: not stored", "response_headers": { "Cache-Control": "public, no-store" }, "want": false },
+    { "name": "private plus must-revalidate: not stored", "response_headers": { "Cache-Control": "private, must-revalidate" }, "want": false },
+    { "name": "public plus private: not stored", "response_headers": { "Cache-Control": "public, private" }, "want": false },
+    { "name": "private with field list plus s-maxage: not stored", "response_headers": { "Cache-Control": "private=\"Set-Cookie\", s-maxage=60" }, "want": false }
+  ],
+  "private_note": "The store is shared across identities (RFC 9111 §5.2.2.7): a response marked private is never stored, with or without Authorization on the request.",
+  "private_response_cacheable": [
+    { "name": "private: not stored", "status": 200, "headers": { "Cache-Control": "private" }, "want": false },
+    { "name": "private among directives: not stored", "status": 200, "headers": { "Cache-Control": "max-age=60, PRIVATE" }, "want": false },
+    { "name": "private is token-bounded", "status": 200, "headers": { "Cache-Control": "private-ish" }, "want": true }
   ]
 }
