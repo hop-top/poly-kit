@@ -87,7 +87,8 @@ pub struct HmacConfig {
     pub header: String,
     /// The shared key.
     pub secret: Vec<u8>,
-    /// `sha256` (default) or `sha512`.
+    /// `sha256` (default) or `sha512`; `sha1` only with the
+    /// `webhook-sha1` feature (legacy senders), refused otherwise.
     pub hash: String,
     /// Precedes the digest in the header (`sha256=`).
     pub prefix: String,
@@ -111,6 +112,15 @@ fn mac_bytes(hash: &str, secret: &[u8], msg: &[&[u8]]) -> Vec<u8> {
     }
     if hash == "sha512" {
         run!(Sha512)
+    } else if hash == "sha1" {
+        #[cfg(feature = "webhook-sha1")]
+        {
+            run!(sha1::Sha1)
+        }
+        #[cfg(not(feature = "webhook-sha1"))]
+        {
+            unreachable!("check_hmac refuses sha1 without webhook-sha1")
+        }
     } else {
         run!(Sha256)
     }
@@ -138,11 +148,14 @@ fn check_hmac(cfg: &HmacConfig) -> Result<(), ApiServerError> {
     if cfg.header.is_empty() || cfg.secret.is_empty() {
         return Err(bad("HMAC needs a header and a secret".into()));
     }
-    if !matches!(cfg.hash.as_str(), "" | "sha256" | "sha512") {
-        return Err(bad(format!(
-            "HMAC hash {:?}: want sha256 or sha512 (sha1 is not supported)",
-            cfg.hash
-        )));
+    let sha1_ok = cfg!(feature = "webhook-sha1");
+    if !(matches!(cfg.hash.as_str(), "" | "sha256" | "sha512") || (sha1_ok && cfg.hash == "sha1")) {
+        let want = if sha1_ok {
+            "sha256, sha512 or sha1"
+        } else {
+            "sha256 or sha512 (sha1 needs the webhook-sha1 feature)"
+        };
+        return Err(bad(format!("HMAC hash {:?}: want {want}", cfg.hash)));
     }
     if !matches!(cfg.encoding.as_str(), "" | "hex" | "base64") {
         return Err(bad(format!(
