@@ -915,6 +915,13 @@ jobs:
       # mcp without output: serde_json keeps sorted maps.
       - run: cargo test --locked --no-default-features --features mcp
         if: steps.scope.outputs.run == 'true'
+      # Every feature alone, tests and examples included: a file that
+      # names another feature's items without declaring it compiles
+      # under --all-features and breaks for the consumer who enables
+      # only its own. The list comes from Cargo.toml's [features].
+      - run: scripts/check-rs-features.sh
+        if: steps.scope.outputs.run == 'true'
+        working-directory: .
 
   php-test:
     runs-on: ubuntu-latest
