@@ -65,6 +65,8 @@ mod timeouts;
 pub mod tls;
 #[cfg(feature = "webhook")]
 pub mod webhook;
+#[cfg(feature = "api-server-ws")]
+pub mod ws;
 
 pub use accesslog::{access_line, stderr_sink, LogSink};
 pub use auth::OnAuthRefused;
