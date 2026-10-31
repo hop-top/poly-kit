@@ -119,7 +119,7 @@ pub mod identity;
 
 // Base directories for config, consent, telemetry and upgrade files (a
 // port of go/core/xdg's home, config-home, data-home and state-home
-// resolution). Filesystem-only: off wasm32.
+// resolution), and the `cli` policy loader. Filesystem-only: off wasm32.
 #[cfg(all(
     any(
         feature = "config",
