@@ -32,20 +32,20 @@ The root-command factory and everything a command prints, prompts or completes.
 | CLI factory | Root command with the global-flag contract, themed help, config wiring, version | `go/console/cli` | [CLI API reference](cli-api-reference.md); [Getting started](../guides/getting-started-cli.md) |
 | Output and errors | `--format` table/json/yaml/csv, column projection, error envelope, exit-code taxonomy | `go/console/output` | [Output reference](output.md) |
 | Logging | charm log wrapper honouring `quiet` / `no-color` | `go/console/log` | [Log API](log-api.md) |
-| Markdown rendering | Glamour terminal markdown renderer | `go/console/markdown` | not yet documented |
-| Command annotations | Reads kit cobra annotations off a command (cobra-specific leaf) | `go/console/cli/cmdmeta` | not yet documented (package [README](../../../go/console/cli/cmdmeta/README.md) only) |
+| Markdown rendering | Glamour terminal markdown renderer | `go/console/markdown` | [render-markdown-in-the-terminal](../guides/render-markdown-in-the-terminal.md) |
+| Command annotations | Reads kit cobra annotations off a command (cobra-specific leaf) | `go/console/cli/cmdmeta` | [declare-and-read-command-annotations](../guides/declare-and-read-command-annotations.md) |
 | Shell completion | Dynamic flag/arg completion, completion scripts, Fig and Usage spec export | `go/console/cli/completion` | [Completion API](completion-api.md); [Completion user guide](../guides/completion-user-guide.md) |
 | Aliases | Git-style user-defined command aliases | `go/console/alias` | [Alias API](alias-api.md) |
 | Flag helpers | Enum flags, `SetFlag`, `TextFlag`, flag registration | `go/console/cli` | [Flag enums](flag-enums.md); [SetFlag/TextFlag](setflag-textflag-api.md) |
 | Help rendering | Root `--help` layout contract, `--help-all` | `go/console/cli` | [Help rendering](help-rendering.md) |
-| Autocorrect | Typo suggestions and did-you-mean for unknown commands and flags | `go/console/cli` | not yet documented (package [README](../../../go/console/cli/README.md) only) |
+| Autocorrect | Rewrites mistyped flag names; unknown commands get cobra did-you-mean | `go/console/cli` | [enable-flag-autocorrect](../guides/enable-flag-autocorrect.md) |
 | Config path commands | Ready-made `config path` / `config paths` subcommands | `go/console/cli/config` | [Inspect config paths](../guides/inspect-config-paths.md) |
-| URI scheme handlers | Register `yourtool://` schemes and handler commands | `go/console/uri` | not yet documented (package [README](../../../go/console/uri/README.md) only) |
+| URI scheme handlers | Register `yourtool://` schemes and handler commands | `go/console/uri` | [register-custom-uri-schemes](../guides/register-custom-uri-schemes.md) |
 | Fuzzy matching | Subsequence, substring, Levenshtein disambiguation | `go/console/hay` | [Hay](hay.md) |
 | Process status | Cross-tool `<tool> ps` convention | `go/console/ps` | [ps](ps.md) |
 | Wizard | Interactive form/prompt engine (headless, line-based, Bubble Tea) | `go/console/wizard` | [Wizard API](wizard-api.md) |
 | TUI components | Themed Bubble Tea components, styles, dialogs, AppShell | `go/console/tui` | [TUI component gallery](../guides/tui-component-gallery.md); [Migrate to AppShell](../guides/migrate-to-appshell.md) |
-| Progress events | Per-phase progress events; human lines vs JSON chosen by kit | `go/console/progress` | not yet documented (package [README](../../../go/console/progress/README.md) only) |
+| Progress events | Per-phase progress events; human lines vs JSON chosen by kit | `go/console/progress` | [report-command-progress](../guides/report-command-progress.md) |
 
 ## Config, storage and secrets
 
@@ -55,12 +55,12 @@ Where configuration resolves from and where state and secrets live.
 |---|---|---|---|
 | Layered config | System, user, project, env layers; hot reload; PKL schema support | `go/core/config` | [Config](config.md); [Inspect config paths](../guides/inspect-config-paths.md) |
 | XDG paths | XDG Base Directory resolution for config, data, cache, state | `go/core/xdg` | [XDG](xdg.md) |
-| Project registry | Reader/writer for the shared project registry | `go/core/projects` | not yet documented |
+| Project registry | Reader/writer for the shared project registry | `go/core/projects` | [use-the-project-registry](../guides/use-the-project-registry.md) |
 | Key-value store | KV interface, TTL store, memory/SQLite/Badger/etcd/TiDB drivers | `go/storage/kv` | [Storage abstractions](../concepts/storage-abstractions.md) |
-| Blob store | Object storage interface for opaque bytes | `go/storage/blob` | not yet documented (package [README](../../../go/storage/blob/README.md) only) |
+| Blob store | Object storage interface for opaque bytes | `go/storage/blob` | [store-files-with-blob](../guides/store-files-with-blob.md) |
 | SQLite connections | Shared SQLite management: WAL, busy timeout, foreign keys | `go/storage/sqldb` | [Storage abstractions](../concepts/storage-abstractions.md) |
-| SQLite JSON store | Generic JSON KV over SQLite with backup/restore and at-rest encryption | `go/storage/sqlstore` | not yet documented |
-| HTTP cache | Caching `http.RoundTripper` over a TTL store | `go/storage/httpcache` | not yet documented (package [README](../../../go/storage/httpcache/README.md) only) |
+| SQLite JSON store | Generic JSON KV over SQLite with backup/restore and at-rest encryption | `go/storage/sqlstore` | [use-the-sqlite-json-store](../guides/use-the-sqlite-json-store.md) |
+| HTTP cache | Caching `http.RoundTripper` over a TTL store | `go/storage/httpcache` | [cache-http-responses](../guides/cache-http-responses.md) |
 | Secrets | Store/MutableStore/Keeper plus env, keyring, age file, file, 1Password, Infisical, GitHub Actions, OpenBao, composite and memory backends | `go/storage/secret` | [Secret management guide](../guides/secret-management-guide.md) |
 
 ## Serving and transports
@@ -80,7 +80,7 @@ Projecting one command tree onto REST, RPC, socket and MCP.
 | Served authentication | Bearer verification: tool JWT, JWKS, OIDC discovery, API keys | `go/transport/authn` | [Secure remote serving](../guides/secure-remote-serving.md) |
 | Served middleware | Permission, quota, rate limit, audit, usage ledger for served commands | `go/transport/api` | [Served middleware](served-middleware.md) |
 | Served observability | OpenTelemetry spans and metrics for served commands | `go/transport/observability` | [Served observability](served-observability.md) |
-| Bridge payloads | Payload types, manifest loader, payload-to-handler matching | `go/bridge` | not yet documented (package [README](../../../go/bridge/README.md) only) |
+| Bridge payloads | Payload types, manifest loader, payload-to-handler matching | `go/bridge` | [route-bridge-payloads](../guides/route-bridge-payloads.md) |
 
 ## Events, jobs and runtime
 
@@ -89,7 +89,7 @@ In-process events, background work, replication and telemetry.
 | Capability | What it does | Go package | Usage docs |
 |---|---|---|---|
 | Event bus | Pub/sub over topics; memory, SQLite and network adapters; CloudEvents | `go/runtime/bus` | [Bus overview](../concepts/bus-overview.md); [Bus API](bus-api.md); [Hook CLI into bus](../guides/hook-cli-into-bus.md) |
-| Job queue | Backend-agnostic async jobs: `Job`, `Service`, `Status`, in-memory mock | `go/runtime/job` | not yet documented (package [README](../../../go/runtime/job/README.md) only) |
+| Job queue | Backend-agnostic async jobs: `Job`, `Service`, `Status`, in-memory mock | `go/runtime/job` | [run-background-jobs](../guides/run-background-jobs.md) |
 | Notifications | Outbound sinks (email, webhook, desktop) with severity filtering and retry | `go/runtime/notify` | [Notifications overview](../concepts/notifications-overview.md); [Notify sinks](notify-sinks.md) |
 | Domain building blocks | Entity, repository, state machine, SQLite repository, version DAG | `go/runtime/domain` | [Domain events](domain-events.md); [Engine overview](../concepts/engine-overview.md) |
 | Entity sync | Local-first entity replication across remotes, HLC ordering | `go/runtime/sync` | [Engine sync](engine-sync.md) |
@@ -106,18 +106,18 @@ What a tool is allowed to touch, and proof of who it is.
 | Breaker | Circuit breaker, byte/op budgets, rate limiter; `breaker` subcommands | `go/core/breaker` | [Breaker](breaker.md) |
 | Network policy | `--offline` enforcement beneath the default HTTP client; typed refusal | `go/core/netpolicy` | [Offline refusals](../guides/cli-parity-guide.md#offline-refusals) |
 | Redaction | Secret and PII redaction with gitleaks rule semantics | `go/core/redact` | [Redact](redact.md) |
-| Delegation safety | Command-layer guard: destructive ops behind `--force`, stricter off-TTY | `go/console/cli/policy` | not yet documented (package [README](../../../go/console/cli/policy/README.md) only) |
+| Delegation safety | Command-layer guard: `--confirm`, `--max-ops`, policy files for destructive ops; stricter off-TTY | `go/console/cli/policy` | [guard-destructive-commands](../guides/guard-destructive-commands.md) |
 | Event policy engine | Declarative rules over bus events; optional CEL evaluator | `go/runtime/policy` | [Configure bus enforcement](../guides/configure-bus-enforcement.md); [Choose enforcement mode](../guides/choose-enforcement-mode.md) |
 | Operating mode | Stages (active, feature_freeze, maintenance, sunset); `stage` subcommand | `go/core/stage` | [Stage](stage.md) |
 | Consent grants | Per-capability consent with audit and revoke; telemetry-consent migration | `go/core/consent` | [Consent grants](consent-grants.md) |
 | Side-effect seams | Exec, FS, HTTP, Bus interfaces as the mutation boundary; recording fakes | `go/runtime/sideeffect` | [Side effects](sideeffect.md) |
 | Provenance | Records where each output field came from; analyzer for lint | `go/runtime/provenance` | [Provenance](provenance.md) |
-| Audit log | Hash-chained append-only audit log and verifier | `go/security` | not yet documented (package [README](../../../go/security/README.md) only) |
+| Audit log | Hash-chained append-only audit log and verifier | `go/security` | [keep-a-tamper-evident-audit-log](../guides/keep-a-tamper-evident-audit-log.md) |
 | Identity | Local-first Ed25519 keypairs, JWT claims, symmetric key derivation | `go/core/identity` | [Engine security](engine-security.md) |
-| TypeID | Prefixed, sortable entity IDs; cross-language wire form | `go/core/id` | not yet documented (package [README](../../../go/core/id/README.md) only) |
-| Upgrade and migrations | Version check, download, replace; versioned state migrations | `go/core/upgrade` | not yet documented (package [README](../../../go/core/upgrade/README.md) only) |
-| Utilities | Retry with backoff, env, fingerprint, humanize, jsonl helpers | `go/core/util` | not yet documented |
-| Avatars | Provider-agnostic avatar URL / data-URI generation from a seed | `go/core/avatar` | not yet documented (package [README](../../../go/core/avatar/README.md) only) |
+| TypeID | Prefixed, sortable entity IDs; cross-language wire form | `go/core/id` | [use-typeid-entity-ids](../guides/use-typeid-entity-ids.md) |
+| Upgrade and migrations | Version check, download, replace; versioned state migrations | `go/core/upgrade` | [upgrade-and-migrate](../guides/upgrade-and-migrate.md) |
+| Utilities | Retry with backoff, env, fingerprint, humanize, jsonl helpers | `go/core/util` | [util-helpers](util-helpers.md) |
+| Avatars | Provider-agnostic avatar URL / data-URI generation from a seed | `go/core/avatar` | [generate-avatars](../guides/generate-avatars.md) |
 
 ## AI and agents
 
