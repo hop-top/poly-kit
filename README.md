@@ -33,7 +33,7 @@ benchmarks — not flag parsers and output renderers.
 ## Features
 
 - **Cross-language parity.** Same flags, same help layout, same
-  output formats across Go, TS, Python. Contract in
+  output formats across Go, TS, Python and Rust (CLI layer). Contract in
   `contracts/parity/parity.json`.
 - **Command surface bridge.** One cobra tree projects to 13
   transport surfaces: CLI, REST, RPC, MCP, WS, SSE, Bus, Cron,
@@ -63,8 +63,9 @@ benchmarks — not flag parsers and output renderers.
 - **Storage abstractions.** Secret (9 backends), KV (5), blob (2).
 - **Conformance harness.** xrr-backed cassette grading, story DSL,
   scenario DSL.
-- **Three SDKs at parity.** [`go/`](go/), [`sdk/ts/`](sdk/ts/),
-  [`sdk/py/`](sdk/py/).
+- **Four SDKs.** [`go/`](go/), [`sdk/ts/`](sdk/ts/), [`sdk/py/`](sdk/py/)
+  and [`sdk/rs/`](sdk/rs/) (Rust, prerelease). Per-capability status:
+  [capability parity](docs/adopters/reference/capability-parity.md).
 
 ## Primitives
 
@@ -100,6 +101,11 @@ npm install @hop-top/kit
 ```sh
 pip install hop-top-kit
 ```
+
+### Rust
+
+Prerelease versions need an explicit version requirement and the features
+you use; see [`sdk/rs/README.md`](sdk/rs/README.md#install).
 
 ## Getting started
 

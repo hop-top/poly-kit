@@ -1040,7 +1040,7 @@ Go  0.6.0-alpha.0   TS  0.6.0-alpha.0  Py  0.6.0-alpha.0   ← new pre-1.0 minor
 ```
 
 A linked cut on `main` (a major, or a minor while pre-1.0) happens only
-with every member, experimental ones included, at an rc of it. Standalone projects scaffolded from
+with every member, kit-php and kit-rs included, at an rc of it. Standalone projects scaffolded from
 this monorepo follow their own version progression.
 
 ## LTS policy

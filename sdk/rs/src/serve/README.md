@@ -76,8 +76,5 @@ assert_eq!(res.exit_code, 0);
 - `hop_top_kit::bus`: topic grammar the six transitions follow
 - `hop_top_kit::output`: `CliError` and the exit-code taxonomy the outcomes map onto
 - `examples/serve.rs`: a service binding a real listener, driven by `tests/serve_command.rs`
-
-## See also
-
 - [Migrate to served commands](../../../../docs/adopters/guides/migrate-to-served-commands.md)
 - [Crate README, Serve](../../../../docs/adopters/reference/rs-sdk.md#serve)

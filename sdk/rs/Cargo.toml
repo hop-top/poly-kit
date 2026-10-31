@@ -4,7 +4,7 @@ version = "0.5.0-alpha.6"
 edition = "2021"
 # Minimum supported Rust version: the highest `rust-version` among the
 # locked dependencies (uuid 1.28). CI tests this floor; raising it is
-# a breaking change, see "Rust versions" in the README.
+# a breaking change, see "Rust versions" in docs/adopters/reference/rs-sdk.md.
 rust-version = "1.89"
 license = "MIT AND Apache-2.0"
 description = "Cross-language CLI UX parity toolkit"

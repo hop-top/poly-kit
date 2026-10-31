@@ -42,7 +42,7 @@ kit ships as multiple deployable units under one repo:
 | Go module `hop.top/kit` | `go/` | Library imported by Go consumers |
 | TS package `@hop-top/kit` | `sdk/ts/` | Library for Node + browser consumers |
 | Python package `hop-top-kit` | `sdk/py/` | Library for Python consumers |
-| Rust crate `kit-rs` *(experimental)* | `sdk/rs/` | Library for Rust consumers; telemetry parity |
+| Rust crate `hop-top-kit` (release component `kit-rs`) | `sdk/rs/` | Library for Rust consumers; telemetry parity |
 | PHP package `hop-top/kit` *(experimental)* | `sdk/experimental/php/` | Library for PHP consumers; telemetry parity |
 | `kit` sidecar binary | `cmd/kit/` | Engine + consent/telemetry subcommand tree |
 | `routellm-server` binary | `cmd/routellm-server/` | Standalone LLM router |

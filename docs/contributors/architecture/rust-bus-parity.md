@@ -172,5 +172,5 @@ vectors. Rust never defines wire behaviour that Go lacks.
   wasm-safe core.
 - Docs that said "core only; sync dispatch" or "network adapter not
   ported" are corrected as each piece lands.
-- The consumer-facing surface grows; it stays experimental under
-  `sdk/rs` until the parity work is complete.
+- The consumer-facing surface grows; the bus parity work is tracked
+  here until it is complete.
