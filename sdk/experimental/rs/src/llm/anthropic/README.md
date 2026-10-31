@@ -9,7 +9,7 @@ scheme in `default_registry()`. Feature `llm-anthropic`, native only.
 ## Use it when
 
 - you resolve `anthropic://<model>` → nothing to do; the key is the URI's `api_key` (`apply_api_key` puts `ANTHROPIC_API_KEY` there)
-- you need timeouts or a proxy → `Adapter::builder(cfg).client(GuardedClient::build(policy, reqwest_builder, Redirects::None)?)`
+- you need timeouts or a proxy → `Adapter::builder(cfg).client(GuardedClient::build(policy, reqwest_builder, Redirects::None, HeaderMap::new())?)`
 - you run under a non-tokio timer or in tests → `.sleeper(Arc::new(|d| Box::pin(...)))`; `.max_retries(0)` disables retries
 - you test without the process environment → `.env(|name| ...)` for the `ANTHROPIC_*` reads
 - your app owns its config → `.hermetic()`: no `ANTHROPIC_*`, `LLM_BASE_URL` or llm.yaml, from the process or `.env`/`.config_file`

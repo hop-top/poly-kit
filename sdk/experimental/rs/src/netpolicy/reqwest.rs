@@ -156,6 +156,17 @@ const CREDENTIAL_HEADERS: &[&str] = &[
     "api-key",
 ];
 
+/// Headers a cross-origin hop keeps. Everything else the request
+/// carried (custom headers can hold identity just as well as the
+/// standard credential ones) stays behind.
+const CROSS_ORIGIN_HEADERS: &[&str] = &[
+    "accept",
+    "accept-encoding",
+    "accept-language",
+    "user-agent",
+    "content-type",
+];
+
 /// What the client does with a 3xx response. Kit-owned: the inner
 /// reqwest client always runs with its redirect handling off, because
 /// reqwest's policy hook cannot see the request's headers.
@@ -236,13 +247,20 @@ pub struct GuardedClient {
     inner: reqwest::Client,
     policy: NetPolicy,
     redirects: Redirects,
+    /// The client defaults that are credentials, by name.
+    default_credentials: bool,
 }
 
 impl GuardedClient {
     /// Build a client under `policy` with reqwest's defaults and
     /// [`Redirects::default`].
     pub fn new(policy: NetPolicy) -> Result<Self, reqwest::Error> {
-        Self::build(policy, reqwest::Client::builder(), Redirects::default())
+        Self::build(
+            policy,
+            reqwest::Client::builder(),
+            Redirects::default(),
+            reqwest::header::HeaderMap::new(),
+        )
     }
 
     /// Build a client under `policy` from a configured
@@ -252,17 +270,29 @@ impl GuardedClient {
     /// named by `redirects`; any `redirect` policy on `builder` is
     /// replaced, so a caller cannot opt out of the per-hop check by
     /// accident, nor into following by omission.
+    ///
+    /// Default headers go in `default_headers`, not on `builder`:
+    /// reqwest cannot be asked what a builder holds, and the client must
+    /// know whether its defaults carry a credential to refuse a
+    /// cross-origin hop. (A `default_headers` set on `builder` is
+    /// replaced.)
     pub fn build(
         policy: NetPolicy,
         builder: reqwest::ClientBuilder,
         redirects: Redirects,
+        default_headers: reqwest::header::HeaderMap,
     ) -> Result<Self, reqwest::Error> {
+        let default_credentials = default_headers
+            .keys()
+            .any(|k| CREDENTIAL_HEADERS.contains(&k.as_str()));
         Ok(Self {
             inner: builder
                 .redirect(reqwest::redirect::Policy::none())
+                .default_headers(default_headers)
                 .build()?,
             policy,
             redirects,
+            default_credentials,
         })
     }
 
@@ -306,10 +336,11 @@ impl GuardedClient {
         let Redirects::Follow { max } = self.redirects else {
             return self.send(req).await;
         };
-        let carries_credentials = req
-            .headers()
-            .keys()
-            .any(|k| CREDENTIAL_HEADERS.contains(&k.as_str()));
+        let carries_credentials = self.default_credentials
+            || req
+                .headers()
+                .keys()
+                .any(|k| CREDENTIAL_HEADERS.contains(&k.as_str()));
         let first = req.url().clone();
         let mut next = req.try_clone();
         let mut resp = self.send(req).await?;
@@ -339,7 +370,8 @@ impl GuardedClient {
                     .note(RefusalReason::CrossOriginCredentials, "redirect", &dest);
                 return Err(RedirectError::CrossOriginCredentials { from, to: dest }.into());
             }
-            let req = redirected(&cur, resp.status(), to);
+            let cross_origin = origin(&to) != origin(&first);
+            let req = redirected(&cur, resp.status(), to, cross_origin);
             next = req.try_clone();
             resp = self.send(req).await?;
         }
@@ -370,6 +402,7 @@ fn redirected(
     prev: &reqwest::Request,
     status: reqwest::StatusCode,
     to: reqwest::Url,
+    cross_origin: bool,
 ) -> reqwest::Request {
     let to_get = status.as_u16() == 303
         || (matches!(status.as_u16(), 301 | 302) && prev.method() == reqwest::Method::POST);
@@ -380,6 +413,17 @@ fn redirected(
     };
     let mut req = reqwest::Request::new(method, to);
     *req.headers_mut() = prev.headers().clone();
+    if cross_origin {
+        let drop: Vec<_> = req
+            .headers()
+            .keys()
+            .filter(|k| !CROSS_ORIGIN_HEADERS.contains(&k.as_str()))
+            .cloned()
+            .collect();
+        for k in drop {
+            req.headers_mut().remove(k);
+        }
+    }
     if to_get {
         for h in [
             reqwest::header::CONTENT_TYPE,
