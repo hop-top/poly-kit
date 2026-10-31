@@ -61,6 +61,9 @@ assert_eq!(res.exit_code, 0);
   at construction; `override_service` is the escape hatch.
 - Exit codes come from `LifecycleOutcome::exit_code`: clean stop 0, start failure or crash or shutdown
   timeout 1, usage or config 2, unknown service 3, policy denied 5.
+- Config keys: `configs_from_lookup` (features `serve` + `config`) resolves `services.<name>.{enabled,ready_timeout,
+  stop_timeout}` from a config `EnvLookup`, so `<TOOL>_SERVICES_API_ENABLED=true` enables `api`; `configs_from_keys`
+  takes any dotted-key reader. An unparseable `enabled` is false.
 - Defaults: `ready_timeout` 30s, `stop_timeout` 30s, `shutdown_timeout` 60s, `failure_policy` fail-fast.
 - Lifecycle events publish under `kit.serve.*` through the narrow `Publisher` trait, so `serve` does not
   depend on the `bus` feature; adopters wire a `bus::SharedBus` or their own sink behind it.

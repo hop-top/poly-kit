@@ -183,6 +183,66 @@ impl ServiceConfig {
 /// with no entry is not configured, and the supervisor form skips it.
 pub type ServiceConfigs = HashMap<String, ServiceConfig>;
 
+/// Resolves the `services.<name>` block of every name in `names` from a
+/// dotted-key reader, the shape of Go's `serveConfigs`.
+///
+/// A name with none of the three lifecycle keys readable is not
+/// configured and gets no entry. A configured one takes `enabled` from
+/// its key (default `false`; anything `strconv.ParseBool` would not
+/// accept reads as `false`, so a typo never opens a port) and the two
+/// budgets from theirs (default when unset or unparseable).
+pub fn configs_from_keys<F>(get: F, names: &[&str]) -> ServiceConfigs
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let mut out = ServiceConfigs::new();
+    for name in names {
+        let key = |sub: &str| get(&format!("services.{name}.{sub}"));
+        let (enabled, ready, stop) = (
+            key(KEY_ENABLED),
+            key(KEY_READY_TIMEOUT),
+            key(KEY_STOP_TIMEOUT),
+        );
+        if enabled.is_none() && ready.is_none() && stop.is_none() {
+            continue;
+        }
+        let budget = |raw: Option<String>, default: Duration| {
+            raw.and_then(|r| parse_duration(&r).ok())
+                .filter(|d| !d.is_zero())
+                .unwrap_or(default)
+        };
+        out.insert(
+            (*name).to_string(),
+            ServiceConfig {
+                enabled: enabled.is_some_and(|r| parse_bool(&r)),
+                ready_timeout: budget(ready, DEFAULT_READY_TIMEOUT),
+                stop_timeout: budget(stop, DEFAULT_STOP_TIMEOUT),
+            },
+        );
+    }
+    out
+}
+
+/// Go `strconv.ParseBool`'s accepted spellings; anything else is false.
+fn parse_bool(raw: &str) -> bool {
+    matches!(raw, "1" | "t" | "T" | "TRUE" | "true" | "True")
+}
+
+/// [`configs_from_keys`] over a config [`EnvLookup`](crate::config::EnvLookup):
+/// `<TOOL>_SERVICES_<NAME>_ENABLED`, `_READY_TIMEOUT` and `_STOP_TIMEOUT`
+/// win over file values synced into the lookup, which win over seeded
+/// defaults, viper's order.
+#[cfg(all(feature = "config", not(target_arch = "wasm32")))]
+pub fn configs_from_lookup(lookup: &crate::config::EnvLookup, names: &[&str]) -> ServiceConfigs {
+    configs_from_keys(
+        |k| {
+            let v = lookup.get_string(k);
+            (!v.is_empty()).then_some(v)
+        },
+        names,
+    )
+}
+
 /// The supervisor's answer to "one service failed while others run".
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FailurePolicy {

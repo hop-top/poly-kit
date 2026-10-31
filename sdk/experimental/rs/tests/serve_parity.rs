@@ -263,11 +263,11 @@ fn the_rust_port_row_is_an_honest_record() {
     );
     assert!(implementation.contains("serve-cli"), "{implementation}");
 
-    // The note records the one remaining gap and no longer blames a
-    // missing parser: the empty cli.rs was the reason the command half
-    // was pending, and that reason is gone.
+    // The note no longer records an env-var gap: the spelling resolves
+    // through the config lookup, and the note names the entry point.
     let note = rs["note"].as_str().unwrap();
     assert!(!note.contains("cli.rs"), "{note}");
+    assert!(!note.contains("gap"), "{note}");
     assert!(note.contains("_SERVICES_API_ENABLED"), "{note}");
-    assert!(note.contains("config loader"), "{note}");
+    assert!(note.contains("configs_from_lookup"), "{note}");
 }
