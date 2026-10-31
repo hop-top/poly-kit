@@ -42,6 +42,8 @@ pub struct ConfigFile {
     pub default: String,
     pub providers: BTreeMap<String, ProviderBlock>,
     pub fallback: Vec<String>,
+    /// The `pool:` block, defaults applied; see [`load_pool`](super::load_pool).
+    pub pool: Vec<super::PoolEntry>,
 }
 
 impl ConfigFile {
@@ -61,6 +63,32 @@ impl ConfigFile {
         };
         if let Some(Value::Seq(items)) = m.get("fallback") {
             cf.fallback = items.iter().map(scalar).collect();
+        }
+        if let Some(Value::Seq(items)) = m.get("pool") {
+            for item in items {
+                let Value::Map(e) = item else { continue };
+                let text = |k: &str| e.get(k).map(scalar).unwrap_or_default();
+                // Enabled is a tristate: missing means true. Weight 0
+                // (or missing) means 1.0.
+                let enabled = match e.get("enabled") {
+                    Some(Value::Bool(b)) => *b,
+                    Some(Value::String(s)) => s != "false",
+                    _ => true,
+                };
+                let weight = match e.get("weight") {
+                    Some(Value::Float(f)) if *f != 0.0 => *f,
+                    Some(Value::Int(i)) if *i != 0 => *i as f64,
+                    Some(Value::Uint(u)) if *u != 0 => *u as f64,
+                    _ => 1.0,
+                };
+                cf.pool.push(super::PoolEntry {
+                    alias: text("alias"),
+                    scheme: text("scheme"),
+                    model: text("model"),
+                    enabled,
+                    weight,
+                });
+            }
         }
         if let Some(Value::Map(providers)) = m.get("providers") {
             for (name, block) in providers {
