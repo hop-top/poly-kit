@@ -14,3 +14,13 @@ this repository's build graph, tests included, imports openpgp; govulncheck
 reports it as required but never imported. Remove this entry when the
 advisory is withdrawn or narrowed to the package.
 """
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0449"
+reason = """
+Informational, not a vulnerability: unsafe-libyaml is unmaintained and has
+no fixed release. It reaches sdk/rs/Cargo.lock only as a dev-dependency,
+through hop-top-xrr's serde_yaml 0.9, which reads the committed test
+cassettes under sdk/rs/tests/cassettes; nothing shipped links it. Remove this
+entry once hop-top-xrr moves off serde_yaml.
+"""
