@@ -68,7 +68,14 @@ interface CLIConfig {
     noColor?: boolean;
     hints?: boolean;
     offline?: boolean;
+    dryRun?: boolean; // drops the root --dry-run
   };
+
+  // Resolves a named root --policy; see "Delegation gates". Unset wires
+  // none: only the reserved "kit-default" resolves.
+  policy?: PolicyLoader;
+  // Terminal the --confirm prompt asks on; default is /dev/tty.
+  promptSource?: PromptSource;
 
   // Command groups for partitioned help.
   groups?: Array<{
@@ -115,6 +122,43 @@ contract:
   plus `--quiet`, `--no-color`, `--no-hints` and `--offline`. Each is
   suppressible through `disable`.
 - `showHelpAfterError` enabled.
+- Hidden delegation flags `--dry-run`, `--confirm`, `--max-ops`,
+  `--policy` (see below).
+
+### Delegation gates
+
+`createCLI` enforces Go's delegation gates before every runnable leaf's
+action, off the leaf's `kit/side-effect` annotation (set on
+`(cmd as { annotations?: Record<string,string> }).annotations`):
+
+| Flag | Effect |
+|------|--------|
+| `--confirm yes\|no\|auto\|prompt` | Destructive tiers only. Unset: `prompt` when a terminal exists, else `no`. `no` and a declined prompt refuse with UNAUTHORIZED (exit 5, transient). |
+| `--confirm-token <sha>` | Registered on leaves annotated `kit/destructive-token: required`. Demands `destructiveToken("<tool> <path>")` (first 12 hex of the path's sha256); `--confirm=yes` alone never proceeds. |
+| `--max-ops <n>` | Mutating ops allowed per invocation; past it RATE_LIMITED (exit 64) after the run. |
+| `--policy <name>` | Operator policy `$XDG_CONFIG_HOME/<tool>/policies/<name>.yaml` through `cfg.policy` (`defaultPolicyLoader(tool)`); `kit-default` is shipped. The name must match `[A-Za-z0-9_-]{1,64}` before any file is read. An unreadable policy is USAGE (exit 2); a policy refusal is UNAUTHORIZED and `--confirm=yes` does not lift it. |
+| `--dry-run` | Write and destructive tiers preview (the confirm gate and ops budget are skipped); read is a no-op; interactive, `kit/dry-run: opted-out`, untagged and malformed refuse with USAGE. Handlers call `isDryRun(cmd)` and `renderPlan`. |
+
+A command's own flag of one of these names is that command's: `--policy`
+is never read as the delegation policy from a leaf; `--confirm` and
+`--max-ops` on a leaf are the leaf's values, as in Go.
+
+**Inference.** A leaf named `delete`, `remove`, `rm`, `destroy`, `purge`
+or `drop` with an absent or empty `kit/side-effect` is gated as
+`destructive-shared`; an explicit annotation, valid or malformed, wins.
+One table (`isDestructiveName`, `inferredDestructive`, `gateSideEffect`)
+serves the CLI gate and the MCP bridge. The capability manifest keeps
+reporting the declared annotation only, as Go's does. Under `--dry-run`
+an inferred leaf never promised to honor it, so kit renders the plan
+itself and does not invoke the handler.
+
+**Breaking:** unannotated destructive-named leaves now require
+confirmation on the CLI and are blocked on MCP under the default policy;
+`--dry-run`, `--confirm`, `--max-ops` and `--policy` are reserved root
+flags. Declare a tier or `--confirm yes` to proceed.
+
+Not ported: `permissions:` rule evaluation and per-caller `callers:`
+budgets (loaded and validated, never evaluated).
 
 ### verboseCount and isQuiet
 

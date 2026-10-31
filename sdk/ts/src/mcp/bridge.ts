@@ -18,6 +18,7 @@
 
 import type { Command, Option } from 'commander';
 import { declaredArgs, takesNoValue } from '../toolspec-internal.js';
+import { gateSideEffect, isDestructiveLike } from '../sideeffect.js';
 import {
   DestructiveBlockedError,
   policyAllowed,
@@ -36,7 +37,6 @@ import {
 } from './types.js';
 
 /** Annotation keys read off a command, matching the kit/ vocabulary. */
-const ANN_SIDE_EFFECT = 'kit/side-effect';
 const ANN_AUTH_REQUIRED = 'kit/auth-required';
 const ANN_REQUIRES_CONFIRM = 'kit/requires-confirmation';
 const ANN_PERMISSIONS = 'kit/permissions';
@@ -134,15 +134,10 @@ export function commanderBridge(
 export function classify(cmd: AnnotatedCommand): SafetyClass {
   const ann = cmd.annotations ?? {};
   const cls: SafetyClass = {};
-  switch (ann[ANN_SIDE_EFFECT]) {
-    case 'destructive':
-    case 'destructive-local':
-    case 'destructive-shared':
-      cls.destructive = true;
-      break;
-    default:
-      break;
-  }
+  // A declared tier wins; an unannotated destructive-named leaf is the
+  // inferred destructive tier, as the CLI gate and Go's cmdreflect read it.
+  const tier = gateSideEffect(cmd.name(), ann);
+  if (tier !== undefined && isDestructiveLike(tier)) cls.destructive = true;
   if (ann[ANN_AUTH_REQUIRED] === 'true') cls.authRequired = true;
   if (ann[ANN_REQUIRES_CONFIRM] === 'true') cls.requiresConfirmation = true;
   const perms = splitCSV(ann[ANN_PERMISSIONS]);

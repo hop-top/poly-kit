@@ -64,6 +64,7 @@ upgrade detection), `llm`, `anthropic`, `openai`, `routellm`, `alias`, `uri`
 - Five built-in formatters (`json`, `yaml`, `table`, `csv`, `text`), the same set every kit SDK ships.
 - Column order comes from an explicit `ColumnSpec[]`; `--cols` reorders as well as selects; `header` must equal `key`.
 - `serve <service>` starts a named service even when `services.<name>.enabled` is false; a supervisor run resolving to zero services exits 2.
+- Delegation gates: root `--confirm`, `--confirm-token`, `--max-ops`, `--policy`, `--dry-run` enforce a leaf's `kit/side-effect`; an unannotated leaf named `delete`/`remove`/`rm`/`destroy`/`purge`/`drop` is gated as destructive (and blocked on MCP by default). See the API reference.
 - MCP exposure is default-closed: `defaultPolicy()` blocks every destructive leaf on every remote surface.
 - Telemetry is default-denied: `Client.record()` is a no-op without both a granted consent decision and a non-`off` mode.
 
