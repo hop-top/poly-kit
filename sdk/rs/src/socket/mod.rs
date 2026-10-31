@@ -21,7 +21,7 @@ mod peer;
 mod transport;
 mod wire;
 
-pub use handler::{Handler, HandlerFuture, Handlers, RouteError};
+pub use handler::{CommandMeta, Handler, HandlerFuture, Handlers, RouteError};
 pub use ledger::DEFAULT_TTL;
 pub use peer::{
     Authenticator, Connection, Identity, PeerAuthConfig, PeerAuthenticator, PeerCred, Refusal,

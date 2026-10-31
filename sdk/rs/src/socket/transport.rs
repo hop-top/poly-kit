@@ -14,7 +14,7 @@ use tokio::task::JoinSet;
 use crate::serve::{CancelToken, ReadySignal, ServeFuture, Service};
 
 use super::bind::{self, rand32};
-use super::handler::Handlers;
+use super::handler::{CommandMeta, Handlers};
 use super::ledger::{Admission, Claim, Ledger, DEFAULT_TTL, REFUSE_CODE};
 use super::peer::{Authenticator, Connection, PeerCred};
 use super::wire::*;
@@ -23,6 +23,10 @@ use super::wire::*;
 const CANCEL_GRACE: Duration = Duration::from_secs(2);
 
 type RefusedFn = dyn Fn(&Invocation, &str) + Send + Sync;
+type PermissionFn = dyn Fn(&Invocation, &CommandMeta) -> Result<(), String> + Send + Sync;
+
+/// The `surface` rules see here: Go's `cmdsurface.SurfaceSocket`.
+const SURFACE: &str = "socket";
 
 /// The `socket` service: NDJSON over a Unix domain socket, answered in
 /// order, owner-only.
@@ -31,6 +35,7 @@ pub struct SocketService {
     handlers: Handlers,
     auth: Option<Arc<dyn Authenticator>>,
     on_refused: Option<Arc<RefusedFn>>,
+    permission: Option<Arc<PermissionFn>>,
     ttl: Option<Duration>,
     ready: AtomicBool,
     addr: Mutex<Option<String>>,
@@ -47,6 +52,7 @@ impl SocketService {
             handlers,
             auth: None,
             on_refused: None,
+            permission: None,
             ttl: None,
             ready: AtomicBool::new(false),
             addr: Mutex::new(None),
@@ -63,7 +69,7 @@ impl SocketService {
     }
 
     /// Called for a request refused before reaching a handler (a failed
-    /// authentication) with the invocation as it would have been
+    /// authentication, a permission refusal) with the invocation as it would have been
     /// dispatched and the reason; route it to the audit stream.
     pub fn on_refused<F>(mut self, f: F) -> Self
     where
@@ -71,6 +77,52 @@ impl SocketService {
     {
         self.on_refused = Some(Arc::new(f));
         self
+    }
+
+    /// Decides whether the caller may run the command: asked once the
+    /// path resolves and before anything runs (Go's `PermissionFunc`
+    /// slot). `Err` is the reason; the request answers `DENIED` with
+    /// `cmdsurface: permission denied: <path> on socket: <reason>`, and
+    /// `on_refused` hears of it.
+    pub fn permission<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Invocation, &CommandMeta) -> Result<(), String> + Send + Sync + 'static,
+    {
+        self.permission = Some(Arc::new(f));
+        self
+    }
+
+    /// Gates every command on `gate`: the policy's `callers:` rules,
+    /// `permissions:` rules and `max_ops` budgets. The caller is the
+    /// authenticator's verdict (verified), else the owner the `0600`
+    /// socket file vouches for; a claim in the request never names it.
+    /// A command's tier and scopes come from [`Handlers::annotate`].
+    #[cfg(feature = "cli-permissions")]
+    pub fn served_gate(self, gate: Arc<crate::cli::ServedGate>) -> Self {
+        self.permission(move |inv, meta| {
+            use crate::cli::{CallerSource, PermissionRequest, ServedCall};
+            let mut req = PermissionRequest {
+                surface: SURFACE.into(),
+                path: inv.path.clone(),
+                tier: meta.side_effect.clone(),
+                args: inv.args.clone(),
+                flags: inv.flags.clone().into_iter().collect(),
+                ..PermissionRequest::default()
+            };
+            if inv.meta.established == Established::Verified {
+                req.caller = inv.meta.caller.clone();
+                req.tenant = inv.meta.tenant.clone();
+                req.scopes = inv.meta.scopes.clone();
+                req.source = CallerSource::Verified;
+            } else {
+                req.source = CallerSource::Transport;
+            }
+            gate.decide(&ServedCall {
+                request: &req,
+                permissions: Some(meta.permissions.as_str()).filter(|p| !p.is_empty()),
+                probe: false,
+            })
+        })
     }
 
     /// Turn `idempotency_key` replay on, replaying a recorded result
@@ -86,6 +138,7 @@ struct Shared {
     handlers: Handlers,
     auth: Option<Arc<dyn Authenticator>>,
     on_refused: Option<Arc<RefusedFn>>,
+    permission: Option<Arc<PermissionFn>>,
     ledger: Option<Ledger>,
     server_uid: u32,
 }
@@ -121,6 +174,7 @@ impl Service for SocketService {
                 handlers: self.handlers.clone(),
                 auth: self.auth.clone(),
                 on_refused: self.on_refused.clone(),
+                permission: self.permission.clone(),
                 ledger: self.ttl.map(Ledger::new),
                 server_uid: bound.uid,
             });
@@ -370,6 +424,19 @@ async fn dispatch(
             format!("unknown command: {}", inv.path.join(" ")),
         ));
     };
+
+    if let Some(permit) = &sh.permission {
+        if let Err(reason) = permit(&inv, &sh.handlers.meta(&inv.path)) {
+            let msg = format!(
+                "cmdsurface: permission denied: {} on {SURFACE}: {reason}",
+                inv.path.join(" ")
+            );
+            if let Some(f) = &sh.on_refused {
+                f(&inv, &msg);
+            }
+            return Some(Response::error(CODE_DENIED, msg));
+        }
+    }
 
     let mut claim: Option<Claim> = None;
     if let (Some(ledger), false) = (&sh.ledger, inv.meta.idempotency_key.is_empty()) {
