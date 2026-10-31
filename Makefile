@@ -281,6 +281,9 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 check-rs-features: ## Rust: cargo check --all-targets once per feature, each alone (slow; CI rs-features)
 	@scripts/check-rs-features.sh
 
+doc-rs: ## Rust: rustdoc with every feature, warnings (broken intra-doc links) as errors — what docs.rs renders
+	cd sdk/experimental/rs && RUSTDOCFLAGS="-D warnings" cargo doc --locked --all-features --no-deps
+
 # The bus on wasm32-unknown-unknown, run under Node: one thread, so the
 # async pool is uncapped and close reports NotDrained instead of
 # blocking. wasm-bindgen-test-runner comes from wasm-bindgen-cli, whose
