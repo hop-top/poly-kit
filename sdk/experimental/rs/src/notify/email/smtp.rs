@@ -22,7 +22,7 @@ use std::time::Duration;
 use base64::Engine as _;
 
 use crate::bus::{BusError, Context};
-use crate::netpolicy::{is_loopback, NetPolicy, OfflineError};
+use crate::netpolicy::{is_loopback, HostNotAllowedError, NetPolicy, OfflineError, PolicyError};
 
 use super::{Mailer, Message, DEFAULT_CONTENT_TYPE};
 
@@ -37,6 +37,9 @@ pub enum SmtpError {
     /// The dial was refused by an offline policy. Also a dial failure:
     /// [`SmtpError::is_dial`] is true for it.
     Offline(OfflineError),
+    /// The dial was refused by the host allowlist. Also a dial failure:
+    /// [`SmtpError::is_dial`] is true for it.
+    HostNotAllowed(HostNotAllowedError),
     /// A missing or unsafe address or header, found before any I/O.
     Invalid(String),
     /// The protocol exchange failed: a refused command or an I/O error.
@@ -46,12 +49,20 @@ pub enum SmtpError {
 impl SmtpError {
     /// Whether the dial failed, for any reason a refusal included.
     pub fn is_dial(&self) -> bool {
-        matches!(self, SmtpError::Dial(_) | SmtpError::Offline(_))
+        matches!(
+            self,
+            SmtpError::Dial(_) | SmtpError::Offline(_) | SmtpError::HostNotAllowed(_)
+        )
     }
 
     /// Whether the offline policy refused the dial.
     pub fn is_offline(&self) -> bool {
         matches!(self, SmtpError::Offline(_))
+    }
+
+    /// Whether the host allowlist refused the dial.
+    pub fn is_host_not_allowed(&self) -> bool {
+        matches!(self, SmtpError::HostNotAllowed(_))
     }
 }
 
@@ -60,6 +71,7 @@ impl fmt::Display for SmtpError {
         match self {
             SmtpError::Dial(m) => write!(f, "emailsink: smtp dial failed: {m}"),
             SmtpError::Offline(e) => write!(f, "emailsink: smtp dial failed: {e}"),
+            SmtpError::HostNotAllowed(e) => write!(f, "emailsink: smtp dial failed: {e}"),
             SmtpError::Invalid(m) | SmtpError::Protocol(m) => write!(f, "emailsink: {m}"),
         }
     }
@@ -177,9 +189,10 @@ impl SmtpMailer {
 
     fn dial(&self, ctx: &Context) -> Result<TcpStream, SmtpError> {
         let addr = format!("{}:{}", self.host, self.port);
-        self.policy
-            .check_dial("tcp", &addr)
-            .map_err(SmtpError::Offline)?;
+        self.policy.check_dial("tcp", &addr).map_err(|e| match e {
+            PolicyError::Offline(o) => SmtpError::Offline(o),
+            PolicyError::HostNotAllowed(h) => SmtpError::HostNotAllowed(h),
+        })?;
         if let Some(e) = ctx.err() {
             return Err(SmtpError::Dial(e.to_string()));
         }

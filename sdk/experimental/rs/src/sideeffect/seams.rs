@@ -126,6 +126,7 @@ impl Response {
 pub struct HttpError {
     message: String,
     offline: bool,
+    host_not_allowed: bool,
 }
 
 impl HttpError {
@@ -133,6 +134,7 @@ impl HttpError {
         HttpError {
             message: message.into(),
             offline: false,
+            host_not_allowed: false,
         }
     }
 
@@ -141,7 +143,22 @@ impl HttpError {
         HttpError {
             message: message.into(),
             offline: true,
+            host_not_allowed: false,
         }
+    }
+
+    /// A refusal by the `netpolicy.allow_hosts` allowlist.
+    pub fn host_not_allowed(message: impl Into<String>) -> Self {
+        HttpError {
+            message: message.into(),
+            offline: false,
+            host_not_allowed: true,
+        }
+    }
+
+    /// Whether the request was refused by the host allowlist.
+    pub fn is_host_not_allowed(&self) -> bool {
+        self.host_not_allowed
     }
 
     /// Whether the request was refused by the `--offline` policy.

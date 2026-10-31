@@ -392,3 +392,20 @@ fn errors_never_carry_the_url_path_or_query() {
     assert!(!err.contains(secret), "{err}");
     assert!(err.contains("127.0.0.1"), "destination host is kept: {err}");
 }
+
+#[test]
+fn host_allowlist_refuses_an_unlisted_endpoint_without_naming_the_url() {
+    let policy = NetPolicy::online().with_allow_hosts(["hooks.example"]);
+    let s =
+        WebhookSink::new("http://other.example.invalid/hook?token=secret").policy(policy.clone());
+    let err = drain(&s).unwrap_err().to_string();
+    assert!(
+        err.contains("host not allowed by netpolicy.allow_hosts"),
+        "{err}"
+    );
+    assert!(!err.contains("secret"), "{err}");
+
+    let srv = Server::ok();
+    drain(&WebhookSink::new(&srv.url).policy(policy)).unwrap();
+    assert_eq!(srv.hits(), 1, "loopback stays reachable");
+}

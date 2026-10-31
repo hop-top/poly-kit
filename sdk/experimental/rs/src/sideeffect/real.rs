@@ -179,6 +179,8 @@ mod http {
     fn error(e: NetError) -> HttpError {
         match e {
             NetError::Offline(o) => HttpError::offline(o.to_string()),
+            NetError::HostNotAllowed(h) => HttpError::host_not_allowed(h.to_string()),
+            NetError::Redirect(r) => HttpError::new(r.to_string()),
             NetError::Transport(t) => HttpError::new(t.to_string()),
         }
     }

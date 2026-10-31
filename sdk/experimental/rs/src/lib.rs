@@ -87,7 +87,8 @@ pub mod identity;
         feature = "config",
         feature = "telemetry",
         feature = "upgrade",
-        feature = "identity"
+        feature = "identity",
+        feature = "cli"
     ),
     not(target_arch = "wasm32")
 ))]

@@ -736,3 +736,34 @@ fn org_and_project_headers_go_only_to_trusted_endpoints() {
     let remote = headers("https://gateway.example/v1");
     assert_eq!(remote, ["authorization"], "{remote:?}");
 }
+
+#[tokio::test]
+async fn host_allowlist_refusal_is_a_policy_error_not_a_transport_one() {
+    let mut c = cfg(
+        "openai",
+        "https://api.openai.invalid",
+        "gpt-4o",
+        &fake_key(),
+    );
+    c.net_policy = hop_top_kit::netpolicy::NetPolicy::online().with_allow_hosts(["other.example"]);
+    let err = Adapter::new(c).unwrap().complete(&hi()).await.unwrap_err();
+    assert!(matches!(err, LlmError::HostNotAllowed(_)), "{err:?}");
+    assert!(!err.is_fallbackable(), "{err:?}");
+}
+
+#[tokio::test]
+async fn a_redirect_is_not_followed() {
+    let srv = serve(vec![Canned {
+        status: 307,
+        headers: vec![("location".into(), "http://127.0.0.1:1/elsewhere".into())],
+        body: String::new(),
+        hang: false,
+    }])
+    .await;
+    let err = adapter(&srv.url).complete(&hi()).await.unwrap_err();
+    assert!(
+        !matches!(err, LlmError::Transport { .. }),
+        "a 307 is an API status, not a followed hop: {err:?}"
+    );
+    assert_eq!(srv.attempts(), 1);
+}

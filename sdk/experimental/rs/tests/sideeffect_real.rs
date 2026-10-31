@@ -184,6 +184,18 @@ mod http {
     }
 
     #[tokio::test]
+    async fn real_http_host_allowlist_refusal_is_typed_and_scrubbed() {
+        let h =
+            real::Http::with_policy(NetPolicy::online().with_allow_hosts(["ok.example"])).unwrap();
+        let err = h
+            .send(Request::get("https://example.com/x?token=secret"))
+            .await
+            .unwrap_err();
+        assert!(err.is_host_not_allowed() && !err.is_offline(), "{err}");
+        assert!(!err.to_string().contains("secret"), "{err}");
+    }
+
+    #[tokio::test]
     async fn real_http_allows_loopback_when_offline() {
         let mut server = Server::new_async().await;
         server

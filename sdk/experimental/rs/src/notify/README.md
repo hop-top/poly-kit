@@ -55,7 +55,7 @@ event out to them. The runnable form is `tests/notify_e2e.rs`.
 - Outbound pipeline on every sink: `template render → redactor → breaker → egress`. Redactor and breaker are opt-in.
 - Templates are Go's `text/template` cut to literal text and `{{.Field}}` actions. Bad syntax fails at construction,
   an unknown field at render.
-- Webhook: POST through the guarded `api` client, so `--offline` refuses a remote endpoint and allows loopback.
+- Webhook: POST through the guarded `api` client, so `--offline` and the `netpolicy.allow_hosts` allowlist refuse a remote endpoint (loopback stays allowed). Redirects are not followed. SMTP dials are checked the same way: `SmtpError::is_offline` / `is_host_not_allowed`.
   Non-2xx is an error with the status and at most 512 bytes of body; redirects are not followed (Go follows ten).
   `drain` is synchronous, safe inside an async task, and honors the `Context`.
 - Email: see [`email/`](email/README.md). `SmtpMailer` dials through `NetPolicy`; AUTH PLAIN only over TLS or to

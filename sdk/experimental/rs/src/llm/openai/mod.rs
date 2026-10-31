@@ -236,8 +236,10 @@ impl Builder {
         let client = match self.client {
             Some(c) => c,
             None => GuardedClient::build(
-                cfg.net_policy,
-                reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()),
+                cfg.net_policy.clone(),
+                reqwest::Client::builder(),
+                crate::netpolicy::Redirects::None,
+                reqwest::header::HeaderMap::new(),
             )
             .map_err(|e| LlmError::invalid(format!("openai: http client: {e}")))?,
         };

@@ -20,7 +20,9 @@ use std::time::Duration;
 
 use crate::breaker::Breaker;
 use crate::bus::{BusError, Context, ContextError, Event, Sink};
-use crate::netpolicy::{GuardedClient, NetError, NetPolicy, OFFLINE_MESSAGE};
+use crate::netpolicy::{
+    GuardedClient, NetError, NetPolicy, Redirects, HOST_NOT_ALLOWED_MESSAGE, OFFLINE_MESSAGE,
+};
 use crate::redact::Redactor;
 
 use super::template::{Template, TemplateError, TextTemplate};
@@ -184,10 +186,10 @@ impl WebhookSink {
             return Ok(c.clone());
         }
         let c = GuardedClient::build(
-            self.policy,
-            reqwest::Client::builder()
-                .timeout(self.timeout)
-                .redirect(reqwest::redirect::Policy::none()),
+            self.policy.clone(),
+            reqwest::Client::builder().timeout(self.timeout),
+            Redirects::None,
+            reqwest::header::HeaderMap::new(),
         )
         .map_err(|e| format!("webhook: http client: {e}"))?;
         *slot = Some(c.clone());
@@ -277,10 +279,12 @@ fn destination(url: &str) -> String {
 }
 
 /// The cause of a failed request without the URL reqwest quotes. An
-/// offline refusal is reduced to its message, as its text names the path.
+/// policy refusal is reduced to its message, as its text names the path.
 fn failure(e: NetError) -> String {
     match e {
         NetError::Offline(_) => OFFLINE_MESSAGE.to_string(),
+        NetError::HostNotAllowed(_) => HOST_NOT_ALLOWED_MESSAGE.to_string(),
+        NetError::Redirect(_) => "redirect refused".to_string(),
         NetError::Transport(r) => chain(&r.without_url()),
     }
 }

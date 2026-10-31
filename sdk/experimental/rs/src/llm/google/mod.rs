@@ -162,7 +162,9 @@ impl Builder {
             Some(c) => c,
             None => GuardedClient::build(
                 self.cfg.net_policy,
-                reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()),
+                reqwest::Client::builder(),
+                crate::netpolicy::Redirects::None,
+                reqwest::header::HeaderMap::new(),
             )
             .map_err(|e| LlmError::invalid(format!("gemini: http client: {e}")))?,
         };
