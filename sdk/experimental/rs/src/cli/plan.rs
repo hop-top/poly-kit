@@ -96,6 +96,44 @@ impl Invocation {
     }
 }
 
+impl Invocation {
+    /// The preview kit renders for an inferred-destructive leaf under
+    /// `--dry-run`: the command path, the arguments and flags given, the
+    /// inferred tier and what a real run needs. The handler is not run.
+    pub(super) fn render_inferred_preview(
+        &self,
+        tool_path: &str,
+        out: &mut dyn Write,
+    ) -> Result<(), CliError> {
+        let mut args = BTreeMap::new();
+        if !self.args.is_empty() {
+            args.insert("args".to_string(), self.args.join(" "));
+        }
+        for (name, vals) in &self.given {
+            if name != "dry-run" {
+                args.insert(format!("--{name}"), vals.join(","));
+            }
+        }
+        let kind = tool_path.rsplit(' ').next().unwrap_or("").to_string();
+        let plan = Plan {
+            args,
+            effects: vec![Effect {
+                kind,
+                target: tool_path.to_string(),
+                reversible: false,
+                detail: "inferred destructive-shared; a real run requires --confirm".into(),
+            }],
+            warnings: vec![
+                "no kit/side-effect annotation: tier inferred from the command name; kit \
+                 rendered this preview and did not run the command"
+                    .into(),
+            ],
+            ..Plan::default()
+        };
+        self.render_plan(tool_path, plan, out)
+    }
+}
+
 /// `YYYY-MM-DDTHH:MM:SSZ` for now, from the Unix epoch (civil date
 /// algorithm, no time dependency).
 pub(super) fn rfc3339_now() -> String {

@@ -1371,15 +1371,61 @@
    "stdout": "{\"dry_run\":false,\"path\":\"purge\"}\n"
   },
   {
-   "name": "dry-run still refuses an unannotated destructive-named leaf",
+   "name": "dry-run previews an unannotated destructive-named leaf without running its handler",
+   "tree": "infer",
+   "args": [
+    "--format",
+    "json",
+    "--dry-run",
+    "delete"
+   ],
+   "exit": 0,
+   "stdout_contains": [
+    "\"command\": \"kitapp delete\"",
+    "inferred destructive-shared"
+   ],
+   "stdout_omits": [
+    "\"path\""
+   ]
+  },
+  {
+   "name": "dry-run previews a destructive name below a group",
+   "tree": "infer",
+   "args": [
+    "--format",
+    "json",
+    "--dry-run",
+    "widget",
+    "remove"
+   ],
+   "exit": 0,
+   "stdout_contains": [
+    "\"command\": \"kitapp widget remove\"",
+    "inferred destructive-shared"
+   ]
+  },
+  {
+   "name": "dry-run on an unannotated non-destructive name is still refused",
    "tree": "infer",
    "args": [
     "--dry-run",
-    "delete"
+    "list"
    ],
    "exit": 2,
    "stderr_contains": [
     "missing the required kit/side-effect tag"
+   ]
+  },
+  {
+   "name": "dry-run still refuses a destructive name with a malformed annotation",
+   "tree": "infer",
+   "args": [
+    "--dry-run",
+    "purge"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "malformed kit/side-effect tag"
    ]
   },
   {

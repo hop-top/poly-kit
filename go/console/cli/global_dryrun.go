@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/runtime/sideeffect"
@@ -122,8 +123,12 @@ func OptOutDryRun(cmd *cobra.Command) {
 //  3. kit/side-effect = write|destructive → allow.
 //  4. kit/side-effect = read → silent no-op.
 //  5. kit/side-effect = interactive → reject with diagnostic.
-//  6. No tag, or an empty one → reject (untagged-leaf backstop).
-//  7. Any other value → reject as malformed.
+//  6. No tag, or an empty one, on a leaf named delete|remove|rm|
+//     destroy|purge|drop → allow (inferred destructive-shared); kit
+//     renders the preview and skips the handler (kitRendersDryRun).
+//  7. No tag, or an empty one, otherwise → reject (untagged-leaf
+//     backstop).
+//  8. Any other value → reject as malformed.
 func resolveDryRunPolicy(cmd *cobra.Command) dryRunPolicy {
 	if cmd == nil {
 		return dryRunPolicyRejectUntagged
@@ -135,6 +140,13 @@ func resolveDryRunPolicy(cmd *cobra.Command) dryRunPolicy {
 		case dryRunSupported:
 			return dryRunPolicyAllow
 		}
+	}
+	// An unannotated destructive-named leaf is gated as
+	// destructive-shared (see gateSideEffect); --dry-run previews it
+	// the same way. A declared value, valid or not, is never inferred
+	// over.
+	if cmdmeta.InferredDestructive(cmd) {
+		return dryRunPolicyAllow
 	}
 	s, ok := GetSideEffect(cmd)
 	if !ok || s == "" {
@@ -333,4 +345,47 @@ func (r *Root) installDryRunHook() func(*cobra.Command, []string) error {
 		}
 		return nil
 	}
+}
+
+// kitRendersDryRun reports whether kit, not the handler, produces the
+// --dry-run output for cmd: an unannotated leaf named in the
+// destructive-name table. Such a leaf is gated as destructive-shared
+// but never promised to honor --dry-run, so calling its handler could
+// act with the confirmation skipped. A leaf that opted in with the
+// legacy SupportsDryRun annotation did promise, and runs its handler.
+func kitRendersDryRun(cmd *cobra.Command) bool {
+	return cmdmeta.InferredDestructive(cmd) &&
+		cmd.Annotations[dryRunAnnotation] != dryRunSupported
+}
+
+// renderInferredPreview writes the Plan kit assembles for an inferred
+// destructive leaf: the command path, the positional arguments and
+// flags given, the inferred tier and what a real run would need. It
+// does not run the handler.
+func renderInferredPreview(cmd *cobra.Command, args []string) error {
+	given := map[string]any{}
+	cmd.Flags().Visit(func(f *pflag.Flag) {
+		if f.Name != globalDryRunFlag {
+			given[f.Name] = f.Value.String()
+		}
+	})
+	planArgs := map[string]any{}
+	if len(args) > 0 {
+		planArgs["args"] = args
+	}
+	if len(given) > 0 {
+		planArgs["flags"] = given
+	}
+	return RenderPlan(cmd, Plan{
+		Args: planArgs,
+		Effects: []Effect{{
+			Kind:   cmd.Name(),
+			Target: cmd.CommandPath(),
+			Detail: "inferred destructive-shared; a real run requires --confirm",
+		}},
+		Warnings: []string{
+			"no kit/side-effect annotation: tier inferred from the command name; " +
+				"kit rendered this preview and did not run the command",
+		},
+	})
 }

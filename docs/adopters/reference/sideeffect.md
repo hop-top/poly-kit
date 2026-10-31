@@ -174,7 +174,15 @@ before the first side effect.
 | `interactive`     | rejected with friendly diagnostic          |
 
 A command with no `kit/side-effect`, or one kit does not recognize,
-rejects `--dry-run`: see below.
+rejects `--dry-run`: see below. The exception is an unannotated leaf
+named `delete`, `remove`, `rm`, `destroy`, `purge` or `drop`: it is
+gated as `destructive-shared`, and `--dry-run` previews it: kit renders
+the `Plan` itself and does not call the handler (the leaf never
+promised to honor `--dry-run`), so nothing mutates. A leaf that calls
+`cli.SupportsDryRun` runs its own handler instead. In Go, none of the
+leaf's user code runs for the preview (`Run`, `PreRun`, `PostRun` and
+persistent hooks included); `Run`-only leaves are wrapped like `RunE`
+ones.
 
 A rejection is a `USAGE` envelope (exit 2) with a `suggested_fix`,
 rendered in the active `--format` and raised before the command's
@@ -195,21 +203,22 @@ Plus two annotation overrides:
 
 ## How `kit/side-effect` resolves
 
-What kit does with each form of the annotation. `--dry-run` reads the
-annotation itself, so only a declaration opts a command in; kit's
-guesses never do.
+What kit does with each form of the annotation. `--dry-run` follows
+the same resolution for the `inferred` row only; an `unannotated` or
+`malformed` command is never opted in by a guess.
 
 | `kit/side-effect` | Kit treats it as | Source | `--dry-run` | `spec coverage` |
 |-------------------|------------------|--------|-------------|-----------------|
 | a six-tier value (`read` … `interactive`) | as written | `declared` | per the policy table above | annotated |
 | legacy `write` / `destructive` | `write-shared` / `destructive-shared` | `declared` | supported | annotated |
-| absent or empty, name `delete`, `remove`, `rm`, `destroy`, `purge` or `drop` | destructive (heuristic) | `inferred` | rejected: missing tag | unannotated |
+| absent or empty, name `delete`, `remove`, `rm`, `destroy`, `purge` or `drop` | destructive (heuristic) | `inferred` | kit-rendered `Plan`, handler not run | unannotated |
 | absent or empty, any other name | unannotated: never read | `unannotated` | rejected: missing tag | unannotated |
 | a value kit does not recognize | a declaration defect | `malformed` | rejected: missing tag | unannotated |
 
 The CLI's `--confirm`, policy and `--max-ops` gates act on the same
 resolution: the `inferred` row is gated like a declared destructive
-tier, in the Go and Rust CLIs alike. Only `--dry-run` ignores it.
+tier, in the Go and Rust CLIs alike; `--dry-run` previews it without
+running the handler.
 
 How each row reaches REST, the manifest and `Root.Validate` is in the
 [command reflection reference](cmdreflect.md#how-kitside-effect-resolves).

@@ -80,6 +80,10 @@ pub struct Invocation {
     /// and the command's tier honors it. A read command accepts the
     /// flag and still runs for real.
     pub dry_run: bool,
+    /// Whether kit renders this run's `--dry-run` preview itself and
+    /// skips the handler: an unannotated destructive-named leaf, which
+    /// is gated as destructive but never promised to honor `--dry-run`.
+    pub(super) kit_preview: bool,
     /// The root's aliases (alias to target path) as they stand.
     pub aliases: BTreeMap<String, String>,
     /// The root's config project marker (see
@@ -318,6 +322,9 @@ impl Root {
                 {
                     return Err(e);
                 }
+            }
+            if inv.kit_preview {
+                return inv.render_inferred_preview(&leaf.full_path, out);
             }
             handler(inv, out, err)
         })

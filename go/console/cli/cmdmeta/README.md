@@ -52,7 +52,8 @@ fmt.Println(ok, steps[0].Suggest, "/", steps[0].Reason)
   `pkl.NewConfigCommand`.
 - `IsDryRunSupported` resolution order: `kit/dry-run: opted-out` is
   false; `kit/dry-run: supported` is true; side-effect `write*` or
-  `destructive*` is true; `read`, `interactive`, unknown or missing tag
+  `destructive*` is true; an untagged leaf named in the destructive-name
+  table is true; `read`, `interactive`, unknown or other missing tag
   is false.
 - `ParseArgs` is the one `kit/args` grammar every reader shares: a comma
   list; `name` required, `name?` optional, `name...` variadic (one or

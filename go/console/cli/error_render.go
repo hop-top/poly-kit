@@ -179,6 +179,7 @@ func (r *Root) wrapRunESubtree(cmd *cobra.Command) {
 		return
 	}
 	if cmd.Annotations == nil || cmd.Annotations[wrappedAnnotation] != "true" {
+		r.liftRunToRunE(cmd)
 		if cmd.RunE != nil {
 			// Innermost (adopter) → flag-validator → error-render →
 			// idempotency → deprecation-warn → policy. Flag
@@ -192,13 +193,14 @@ func (r *Root) wrapRunESubtree(cmd *cobra.Command) {
 			inner := wrapIdempotencyRunE(wrapRunE(adopter), r.IdemStore)
 			inner = wrapDeprecationRunE(inner)
 			cmd.RunE = r.wrapPolicyRunE(cmd, inner)
-			cmd.PreRunE = wrapPreRunUsage(cmd)
+			cmd.PreRunE = r.wrapPreRunUsage(cmd)
 			if cmd.Annotations == nil {
 				cmd.Annotations = make(map[string]string)
 			}
 			cmd.Annotations[wrappedAnnotation] = "true"
 		}
 	}
+	r.guardUserHooks(cmd)
 	for _, c := range cmd.Commands() {
 		r.wrapRunESubtree(c)
 	}
@@ -304,7 +306,7 @@ func (r *Root) installUsageClassification() {
 //
 // The adopter's PreRunE, or PreRun when that is what they set, runs
 // afterwards exactly as cobra would have run it.
-func wrapPreRunUsage(cmd *cobra.Command) func(*cobra.Command, []string) error {
+func (r *Root) wrapPreRunUsage(cmd *cobra.Command) func(*cobra.Command, []string) error {
 	preRunE, preRun := cmd.PreRunE, cmd.PreRun
 	return func(c *cobra.Command, args []string) error {
 		if err := c.ValidateRequiredFlags(); err != nil {
@@ -312,6 +314,9 @@ func wrapPreRunUsage(cmd *cobra.Command) func(*cobra.Command, []string) error {
 		}
 		if err := c.ValidateFlagGroups(); err != nil {
 			return usageError(c, err)
+		}
+		if r.kitPreviewsDryRun(c) {
+			return nil
 		}
 		if preRunE != nil {
 			return preRunE(c, args)
@@ -474,4 +479,97 @@ func (r *Root) failedCommand() *cobra.Command {
 		return r.Cmd
 	}
 	return cmd
+}
+
+// liftRunToRunE turns a leaf's cobra Run into an equivalent RunE so the
+// RunE middleware (confirm and policy gates, the --dry-run preview)
+// wraps it too. A Run leaf is otherwise outside every gate. Cobra's own
+// built-ins (help, completion) keep their Run.
+func (r *Root) liftRunToRunE(cmd *cobra.Command) {
+	if cmd.RunE != nil || cmd.Run == nil || cmd == r.Cmd ||
+		!isLeaf(cmd) || isCobraBuiltin(cmd) {
+		return
+	}
+	run := cmd.Run
+	cmd.Run = nil
+	cmd.RunE = func(c *cobra.Command, args []string) error {
+		run(c, args)
+		return nil
+	}
+}
+
+const hooksGuardedAnnotation = "kit.cli.hooks.guarded"
+
+// kitPreviewsDryRun reports whether kit renders the --dry-run preview
+// for the command being executed, so no user-defined code may run for
+// it: kit's --dry-run is on, the leaf's policy allows it, and kit (not
+// the handler) renders it (see kitRendersDryRun).
+func (r *Root) kitPreviewsDryRun(c *cobra.Command) bool {
+	return r.globalDryRun() && c != nil && isLeaf(c) && !isCobraBuiltin(c) &&
+		resolveDryRunPolicy(c) == dryRunPolicyAllow && kitRendersDryRun(c)
+}
+
+// guardUserHooks wraps the adopter's PostRun and persistent hooks on a
+// non-root command so they are skipped when kit previews the run itself.
+// (PreRun is skipped in wrapPreRunUsage.) The root's persistent chain is
+// kit's own and is left alone. Idempotent.
+func (r *Root) guardUserHooks(cmd *cobra.Command) {
+	if cmd == r.Cmd || cmd.Annotations[hooksGuardedAnnotation] == "true" {
+		return
+	}
+	if cmd.PostRun == nil && cmd.PostRunE == nil && cmd.PersistentPreRun == nil &&
+		cmd.PersistentPreRunE == nil && cmd.PersistentPostRun == nil &&
+		cmd.PersistentPostRunE == nil {
+		return
+	}
+	skip := r.kitPreviewsDryRun
+	if f := cmd.PostRun; f != nil {
+		cmd.PostRun = func(c *cobra.Command, a []string) {
+			if !skip(c) {
+				f(c, a)
+			}
+		}
+	}
+	if f := cmd.PostRunE; f != nil {
+		cmd.PostRunE = func(c *cobra.Command, a []string) error {
+			if skip(c) {
+				return nil
+			}
+			return f(c, a)
+		}
+	}
+	if f := cmd.PersistentPreRun; f != nil {
+		cmd.PersistentPreRun = func(c *cobra.Command, a []string) {
+			if !skip(c) {
+				f(c, a)
+			}
+		}
+	}
+	if f := cmd.PersistentPreRunE; f != nil {
+		cmd.PersistentPreRunE = func(c *cobra.Command, a []string) error {
+			if skip(c) {
+				return nil
+			}
+			return f(c, a)
+		}
+	}
+	if f := cmd.PersistentPostRun; f != nil {
+		cmd.PersistentPostRun = func(c *cobra.Command, a []string) {
+			if !skip(c) {
+				f(c, a)
+			}
+		}
+	}
+	if f := cmd.PersistentPostRunE; f != nil {
+		cmd.PersistentPostRunE = func(c *cobra.Command, a []string) error {
+			if skip(c) {
+				return nil
+			}
+			return f(c, a)
+		}
+	}
+	if cmd.Annotations == nil {
+		cmd.Annotations = make(map[string]string)
+	}
+	cmd.Annotations[hooksGuardedAnnotation] = "true"
 }

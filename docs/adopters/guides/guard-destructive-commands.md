@@ -74,8 +74,20 @@ An explicit annotation always wins, so `delete` tagged `read` or
 declaration defect, never inferred over. To opt a destructive-named
 command out of the confirmation, declare what it really does. A policy
 `unannotated` class applies only to commands the name does not catch.
-`--dry-run` still reads the annotation alone: an inferred command is
-untagged, so `--dry-run` refuses it until you tag it.
+`--dry-run` previews an inferred command with the same `Plan` shape a
+declared `destructive-shared` command renders, with no confirmation.
+Kit renders the plan itself (command path, arguments and flags given,
+the inferred tier, "a real run requires --confirm") and does not call
+the handler: an unannotated command never promised to honor
+`--dry-run`, so nothing can mutate. Tag it, or call
+`cli.SupportsDryRun`, to render its own preview.
+
+In Go no user code runs for that preview: not `Run` or `RunE`, not the
+leaf's `PreRun`/`PreRunE`/`PostRun`/`PostRunE`, not its (or a
+non-root ancestor's) persistent hooks. A `Run`-only leaf is wrapped like
+a `RunE` one, so it is also confirm-gated. An unannotated command whose name is not in the table still
+refuses `--dry-run` as untagged, and a declared value (malformed,
+`kit/dry-run: opted-out`) is never inferred over.
 
 `--confirm`, `--max-ops`, `--policy` are persistent root flags that
 `cli.New` always registers. They are hidden from `--help`, so tell
