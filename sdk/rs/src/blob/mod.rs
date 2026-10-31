@@ -45,7 +45,7 @@ pub struct Object {
 #[derive(Debug, Error)]
 pub enum BlobError {
     /// The key resolves outside the store root.
-    #[error("blob: key {0:?} escapes store root")]
+    #[error("blob/local: key {0:?} escapes store root")]
     KeyEscapesRoot(String),
 
     /// The key falls in the store's reserved metadata namespace.
