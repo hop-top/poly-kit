@@ -182,7 +182,7 @@ class Leaf:
 
 @dataclass
 class Globals:
-    """The resolved root flags. Only the root's values count, never a leaf-local flag."""
+    """The resolved root flags. Resolved by the caller; ``policy`` is always the root's."""
 
     confirm: str = ""
     max_ops: int = 0
