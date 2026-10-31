@@ -14,8 +14,8 @@ use std::path::PathBuf;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use hop_top_kit::httpcache::{
-    cacheable_request, cacheable_response, Cache, Config, Headers, Request, Response, Url,
-    DEFAULT_PREFIX,
+    cacheable_request, cacheable_response, storable_for, vary_fields, Cache, Config, Headers,
+    Request, Response, Url, DEFAULT_PREFIX,
 };
 use hop_top_kit::kv::Config as KvConfig;
 use serde::Deserialize;
@@ -544,6 +544,209 @@ fn contract_cacheability_end_to_end() {
 
         let want = if case.want { 1 } else { 2 };
         assert_eq!(fetches, want, "resp/{}", case.name);
+    }
+}
+
+// ---------------------------------------------------------------------
+// keying.json: vary section
+// ---------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct VaryKeying {
+    vary: VarySection,
+}
+
+#[derive(Deserialize)]
+struct VarySection {
+    index_cases: Vec<IndexCase>,
+    variant_cases: Vec<VariantCase>,
+    field_list_cases: Vec<FieldListCase>,
+}
+
+#[derive(Deserialize)]
+struct IndexCase {
+    name: String,
+    method: String,
+    url: String,
+    want_key: String,
+}
+
+#[derive(Deserialize)]
+struct VariantCase {
+    name: String,
+    method: String,
+    url: String,
+    fields: Vec<String>,
+    request_headers: BTreeMap<String, Vec<String>>,
+    want_digest: String,
+}
+
+#[derive(Deserialize)]
+struct FieldListCase {
+    name: String,
+    vary: Vec<String>,
+    want: Vec<String>,
+}
+
+/// Index key, variant key and Vary field-list vectors.
+#[test]
+fn contract_vary_keying() {
+    let v: VaryKeying = read_contract("keying.json");
+    assert!(!v.vary.index_cases.is_empty());
+    assert!(!v.vary.variant_cases.is_empty());
+    assert!(!v.vary.field_list_cases.is_empty());
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = KvConfig::sqlite(dir.path().join("kv.db").to_str().expect("utf-8 path"))
+        .open()
+        .expect("open store");
+    let cache = Cache::new(&store);
+
+    for c in &v.vary.index_cases {
+        let req = Request::new(c.method.clone(), &c.url).expect("request");
+        assert_eq!(cache.vary_index_key(&req), c.want_key, "index/{}", c.name);
+    }
+    for c in &v.vary.variant_cases {
+        let mut req = Request::new(c.method.clone(), &c.url).expect("request");
+        for (name, values) in &c.request_headers {
+            for value in values {
+                req.headers.append(name, value.clone());
+            }
+        }
+        assert_eq!(
+            cache.vary_key(&req, &c.fields),
+            format!("{DEFAULT_PREFIX}vary:{}", c.want_digest),
+            "variant/{}",
+            c.name
+        );
+    }
+    for c in &v.vary.field_list_cases {
+        let mut h = Headers::new();
+        for line in &c.vary {
+            h.append("Vary", line.clone());
+        }
+        assert_eq!(vary_fields(&h), c.want, "fields/{}", c.name);
+    }
+}
+
+// ---------------------------------------------------------------------
+// cacheability.json: vary / authorization / private sections
+// ---------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct Extensions {
+    vary_response_cacheable: Vec<ResponseCase>,
+    authorization_response_cacheable: Vec<AuthCase>,
+    private_response_cacheable: Vec<ResponseCase>,
+}
+
+#[derive(Deserialize)]
+struct AuthCase {
+    name: String,
+    response_headers: BTreeMap<String, String>,
+    want: bool,
+}
+
+fn response_with(status: u16, headers: &BTreeMap<String, String>) -> Response {
+    let mut resp = Response::new(status, "x");
+    for (name, value) in headers {
+        resp.headers.set(name, value.clone());
+    }
+    resp
+}
+
+/// The extension sections through the storage gate.
+#[test]
+fn contract_vary_auth_private_storable() {
+    let c: Extensions = read_contract("cacheability.json");
+    assert!(!c.vary_response_cacheable.is_empty());
+    assert!(!c.authorization_response_cacheable.is_empty());
+    assert!(!c.private_response_cacheable.is_empty());
+
+    let plain = Request::get("https://example.com/a").expect("request");
+    let authed = plain.clone().with_header("Authorization", "Bearer x");
+
+    for case in &c.vary_response_cacheable {
+        let resp = response_with(case.status, &case.headers);
+        assert_eq!(storable_for(&plain, &resp), case.want, "vary/{}", case.name);
+    }
+    for case in &c.authorization_response_cacheable {
+        let resp = response_with(200, &case.response_headers);
+        assert_eq!(
+            storable_for(&authed, &resp),
+            case.want,
+            "auth/{}",
+            case.name
+        );
+    }
+    for case in &c.private_response_cacheable {
+        let resp = response_with(case.status, &case.headers);
+        assert_eq!(
+            storable_for(&plain, &resp),
+            case.want,
+            "private/{}",
+            case.name
+        );
+    }
+}
+
+/// The same sections observed end to end: stored means the second call
+/// is served without a fetch.
+#[test]
+fn contract_vary_auth_private_end_to_end() {
+    let c: Extensions = read_contract("cacheability.json");
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut n = 0;
+    let mut run = |label: &str, name: &str, req: &Request, resp: Response, want: bool| {
+        n += 1;
+        let store = KvConfig::sqlite(
+            dir.path()
+                .join(format!("ext{n}.db"))
+                .to_str()
+                .expect("utf-8 path"),
+        )
+        .open()
+        .expect("open store");
+        let cache = Cache::new(&store);
+        let mut fetches = 0;
+        let mut fetch = |_: &Request| {
+            fetches += 1;
+            Ok::<_, std::convert::Infallible>(resp.clone())
+        };
+        cache.fetch(req, &mut fetch).expect("first fetch");
+        cache.fetch(req, &mut fetch).expect("second fetch");
+        let expect = if want { 1 } else { 2 };
+        assert_eq!(fetches, expect, "{label}/{name}");
+    };
+
+    let plain = Request::get("https://example.com/a").expect("request");
+    let authed = plain.clone().with_header("Authorization", "Bearer x");
+    for case in &c.vary_response_cacheable {
+        run(
+            "vary",
+            &case.name,
+            &plain,
+            response_with(case.status, &case.headers),
+            case.want,
+        );
+    }
+    for case in &c.authorization_response_cacheable {
+        run(
+            "auth",
+            &case.name,
+            &authed,
+            response_with(200, &case.response_headers),
+            case.want,
+        );
+    }
+    for case in &c.private_response_cacheable {
+        run(
+            "private",
+            &case.name,
+            &plain,
+            response_with(case.status, &case.headers),
+            case.want,
+        );
     }
 }
 

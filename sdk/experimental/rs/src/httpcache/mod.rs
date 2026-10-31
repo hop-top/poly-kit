@@ -19,6 +19,12 @@
 //! - Only `GET` requests are cached; everything else passes through.
 //! - Only 2xx responses are stored.
 //! - `Cache-Control: no-store` on either side opts the exchange out.
+//! - A response with `Vary` is stored per variant: the field list is
+//!   recorded at an index key and the body at a key derived from the
+//!   request's values for those fields. `Vary: *` is never stored.
+//! - A response marked `private` is never stored (the store is shared
+//!   across identities); a request carrying `Authorization` is stored
+//!   only if the response says `public`, `s-maxage` or `must-revalidate`.
 //! - An entry past its TTL is a miss.
 //!
 //! Cache-layer failures never surface to the caller: a read or decode
@@ -230,8 +236,9 @@ impl<'a, S: TtlStore> Cache<'a, S> {
 
     /// Derives the cache key: `prefix + hex(sha256(method + " " + url))`.
     ///
-    /// Keying is method-and-URL only; it is deliberately not Vary-aware,
-    /// and applies no normalization of its own. Pinned by
+    /// This is the primary key: method-and-URL only, never header-aware,
+    /// and applies no normalization of its own. Responses with `Vary` use
+    /// [`Cache::vary_key`] instead. Pinned by
     /// `contracts/httpcache-v1/keying.json`.
     #[must_use]
     pub fn key(&self, req: &Request) -> String {
@@ -248,6 +255,36 @@ impl<'a, S: TtlStore> Cache<'a, S> {
             let _ = write!(key, "{byte:02x}");
         }
         key
+    }
+
+    /// Derives the Vary index key: `prefix + "varyidx:" + hex(sha256(method + " " + url))`.
+    ///
+    /// The index records the Vary field list of a URL. Pinned by the
+    /// `vary` section of `contracts/httpcache-v1/keying.json`.
+    #[must_use]
+    pub fn vary_index_key(&self, req: &Request) -> String {
+        let pre = format!("{} {}", req.method, req.url.as_string());
+        format!("{}varyidx:{}", self.config.effective_prefix(), digest(&pre))
+    }
+
+    /// Derives the variant key for the Vary `fields` (see [`vary_fields`]):
+    /// `prefix + "vary:" + hex(sha256(preimage))`.
+    ///
+    /// The preimage is `method + " " + url`, then for each field in order
+    /// `"\n" + field + ":" + values`, where values are the request's header
+    /// values, each trimmed, joined with `", "`. A request without the field
+    /// contributes an empty value, so "absent" is its own variant.
+    #[must_use]
+    pub fn vary_key(&self, req: &Request, fields: &[String]) -> String {
+        let mut pre = format!("{} {}", req.method, req.url.as_string());
+        for field in fields {
+            let vals: Vec<&str> = req.headers.values(field).iter().map(|v| v.trim()).collect();
+            pre.push('\n');
+            pre.push_str(field);
+            pre.push(':');
+            pre.push_str(&vals.join(", "));
+        }
+        format!("{}vary:{}", self.config.effective_prefix(), digest(&pre))
     }
 
     /// Serves `req` from cache when possible, otherwise calls `fetch` and
@@ -269,38 +306,85 @@ impl<'a, S: TtlStore> Cache<'a, S> {
         }
 
         let key = self.key(req);
-        if let Some(resp) = self.load(&key) {
+        if let Some(resp) = self.load(req, &key) {
             return Ok(resp);
         }
 
         let resp = fetch(req)?;
-        if cacheable_response(&resp) {
-            self.save(&key, &resp);
+        if storable_for(req, &resp) {
+            self.save(req, &key, &resp);
         }
         Ok(resp)
     }
 
     /// Reads and decodes a stored response, reporting `None` on a miss or
     /// on any malformed entry.
-    fn load(&self, key: &str) -> Option<Response> {
-        let raw = self.store.get(key.as_bytes()).ok().flatten()?;
-        let entry: Entry = serde_json::from_slice(&raw).ok()?;
-        Some(entry.into_response())
+    ///
+    /// When the URL has a recorded Vary field list the matching variant is
+    /// loaded; otherwise the primary entry is, and an entry that itself
+    /// names a Vary (written by a Vary-unaware writer sharing the store)
+    /// is a miss.
+    fn load(&self, req: &Request, key: &str) -> Option<Response> {
+        if let Ok(Some(idx)) = self.store.get(self.vary_index_key(req).as_bytes()) {
+            let fields: Vec<String> = serde_json::from_slice(&idx).ok()?;
+            if fields.is_empty() {
+                return None;
+            }
+            return self.load_key(&self.vary_key(req, &fields), false);
+        }
+        self.load_key(key, true)
     }
 
-    /// Serializes and stores a response. Write failures are ignored:
-    /// caching is best-effort and must not fail the caller's request.
-    fn save(&self, key: &str, resp: &Response) {
+    fn load_key(&self, key: &str, primary: bool) -> Option<Response> {
+        let raw = self.store.get(key.as_bytes()).ok().flatten()?;
+        let entry: Entry = serde_json::from_slice(&raw).ok()?;
+        let resp = entry.into_response();
+        if primary && !vary_fields(&resp.headers).is_empty() {
+            return None;
+        }
+        Some(resp)
+    }
+
+    /// Serializes and stores a response. Without Vary it lands on the
+    /// primary key (and clears any stale Vary index for the URL); with Vary
+    /// it lands on the variant key and the field list is recorded in the
+    /// index. Write failures are ignored: caching is best-effort and must
+    /// not fail the caller's request.
+    fn save(&self, req: &Request, key: &str, resp: &Response) {
         let Ok(raw) = serde_json::to_vec(&Entry::from_response(resp)) else {
             return;
         };
+        let fields = vary_fields(&resp.headers);
+        if fields.is_empty() {
+            let _ = self.store.delete(self.vary_index_key(req).as_bytes());
+            self.put(key, &raw);
+            return;
+        }
+        let Ok(idx) = serde_json::to_vec(&fields) else {
+            return;
+        };
+        self.put(&self.vary_index_key(req), &idx);
+        self.put(&self.vary_key(req, &fields), &raw);
+    }
+
+    fn put(&self, key: &str, raw: &[u8]) {
         let _: Result<(), KvError> = if self.config.ttl.is_zero() {
-            self.store.put(key.as_bytes(), &raw)
+            self.store.put(key.as_bytes(), raw)
         } else {
             self.store
-                .put_with_ttl(key.as_bytes(), &raw, self.config.ttl)
+                .put_with_ttl(key.as_bytes(), raw, self.config.ttl)
         };
     }
+}
+
+/// Lowercase-hex sha256 of `s`.
+fn digest(s: &str) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(64);
+    for byte in Sha256::digest(s.as_bytes()) {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
 }
 
 /// Reports whether `req` is eligible for caching.
@@ -316,6 +400,75 @@ pub fn cacheable_request(req: &Request) -> bool {
 #[must_use]
 pub fn cacheable_response(resp: &Response) -> bool {
     (200..300).contains(&resp.status) && !has_no_store(&resp.headers)
+}
+
+/// Reports whether `resp`, fetched for `req`, may be written to the store.
+///
+/// Layers the request-dependent rules of RFC 9111 on top of
+/// [`cacheable_response`]:
+///
+/// - §4.1: `Vary: *` can never be matched, so it is not stored.
+/// - §5.2.2.7: a `private` response is never stored; the store is shared
+///   across identities. This wins over the §3.5 exemptions.
+/// - §3.5: a request carrying `Authorization` is stored only when the
+///   response says `public`, `s-maxage` or `must-revalidate`.
+///
+/// Mirrored by the `vary_*`, `authorization_*` and `private_*` sections of
+/// `contracts/httpcache-v1/cacheability.json`.
+#[must_use]
+pub fn storable_for(req: &Request, resp: &Response) -> bool {
+    if !cacheable_response(resp) {
+        return false;
+    }
+    if vary_fields(&resp.headers) == ["*"] {
+        return false;
+    }
+    if has_directive(&resp.headers, "private") {
+        return false;
+    }
+    if req
+        .headers
+        .get("Authorization")
+        .is_some_and(|v| !v.is_empty())
+    {
+        return has_directive(&resp.headers, "public")
+            || has_directive(&resp.headers, "s-maxage")
+            || has_directive(&resp.headers, "must-revalidate");
+    }
+    true
+}
+
+/// Returns the lowercased, sorted, de-duplicated field names of every
+/// `Vary` header line. `*` collapses the result to `["*"]`; no `Vary`
+/// yields an empty list.
+#[must_use]
+pub fn vary_fields(headers: &Headers) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    for line in headers.values("Vary") {
+        for field in line.split(',') {
+            let field = field.trim().to_ascii_lowercase();
+            if field.is_empty() {
+                continue;
+            }
+            if field == "*" {
+                return vec!["*".to_string()];
+            }
+            seen.insert(field);
+        }
+    }
+    seen.into_iter().collect()
+}
+
+/// Reports whether any `Cache-Control` header carries the named directive
+/// (case-insensitive, token-bounded, with or without `=value`).
+fn has_directive(headers: &Headers, name: &str) -> bool {
+    headers.values("Cache-Control").iter().any(|value| {
+        value.split(',').any(|token| {
+            let token = token.trim();
+            let token = token.split_once('=').map_or(token, |(n, _)| n.trim());
+            token.eq_ignore_ascii_case(name)
+        })
+    })
 }
 
 /// Reports whether any `Cache-Control` header carries `no-store`.
