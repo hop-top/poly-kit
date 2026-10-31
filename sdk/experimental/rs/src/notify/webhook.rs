@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use crate::breaker::Breaker;
 use crate::bus::{BusError, Context, ContextError, Event, Sink};
-use crate::netpolicy::{GuardedClient, NetPolicy};
+use crate::netpolicy::{GuardedClient, NetError, NetPolicy, OFFLINE_MESSAGE};
 use crate::redact::Redactor;
 
 use super::template::{Template, TemplateError, TextTemplate};
@@ -203,11 +203,12 @@ impl WebhookSink {
             req = req.header(k, v);
         }
         let req = req.body(body);
+        let dest = destination(&self.url);
         let sent = block_on_ctx(ctx, async move {
             let mut resp = req
                 .send()
                 .await
-                .map_err(|e| format!("webhook: post: {}", chain(&e)))?;
+                .map_err(|e| format!("webhook: post {dest}: {}", failure(e)))?;
             let status = resp.status();
             if status.is_success() {
                 return Ok(());
@@ -249,10 +250,7 @@ impl Sink for WebhookSink {
         }
         let out = self.post(ctx, body, content_type);
         if let Some(b) = &self.breaker {
-            b.record(
-                !matches!(&out, Err(m) if m.starts_with("webhook: post:")),
-                0,
-            );
+            b.record(!matches!(&out, Err(m) if m.starts_with("webhook: post")), 0);
         }
         out.map_err(BusError::handler)
     }
@@ -261,6 +259,29 @@ impl Sink for WebhookSink {
     /// is the caller's.
     fn close(&self) -> Result<(), BusError> {
         Ok(())
+    }
+}
+
+/// The scheme, host and port of `url`, and nothing else: a webhook URL
+/// often carries its token in the path, query or userinfo, so none of
+/// those may reach an error. Unparseable input names no destination.
+fn destination(url: &str) -> String {
+    match reqwest::Url::parse(url) {
+        Ok(u) => match (u.host_str(), u.port()) {
+            (Some(h), Some(p)) => format!("{}://{h}:{p}", u.scheme()),
+            (Some(h), None) => format!("{}://{h}", u.scheme()),
+            _ => format!("{}:", u.scheme()),
+        },
+        Err(_) => "<invalid url>".to_string(),
+    }
+}
+
+/// The cause of a failed request without the URL reqwest quotes. An
+/// offline refusal is reduced to its message, as its text names the path.
+fn failure(e: NetError) -> String {
+    match e {
+        NetError::Offline(_) => OFFLINE_MESSAGE.to_string(),
+        NetError::Transport(r) => chain(&r.without_url()),
     }
 }
 

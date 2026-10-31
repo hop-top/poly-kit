@@ -100,7 +100,7 @@ fn timeout_is_an_error() {
     let start = Instant::now();
     let err = drain(&s).unwrap_err().to_string();
     assert!(start.elapsed() < Duration::from_millis(400), "{err}");
-    assert!(err.starts_with("webhook: post:"), "{err}");
+    assert!(err.starts_with("webhook: post"), "{err}");
     assert!(
         ["timed out", "timeout", "deadline"]
             .iter()
@@ -359,4 +359,36 @@ fn retry_around_a_webhook_retries_5xx_then_succeeds() {
     let err = r.drain(&Context::background(), &ev()).unwrap_err();
     assert!(err.to_string().contains("503"));
     assert_eq!(srv.hits(), 3);
+}
+
+#[test]
+fn errors_never_carry_the_url_path_or_query() {
+    let dead = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap()
+    };
+    let secret = "SECRETPATH";
+    let cases = [
+        // Refused connection.
+        format!("http://{dead}/hooks/{secret}?key=SECRETQUERY"),
+        // Offline refusal.
+        format!("http://user:SECRETPW@webhook.example.invalid/hooks/{secret}"),
+    ];
+    for (i, url) in cases.iter().enumerate() {
+        let mut s = WebhookSink::new(url);
+        if i == 1 {
+            s = s.policy(NetPolicy::offline());
+        }
+        let err = drain(&s).unwrap_err().to_string();
+        for leak in [secret, "SECRETQUERY", "SECRETPW", "/hooks"] {
+            assert!(!err.contains(leak), "{leak} leaked: {err}");
+        }
+    }
+    // Timeout path.
+    let srv = Server::start(200, "", Duration::from_millis(500));
+    let s =
+        WebhookSink::new(format!("{}/hooks/{secret}", srv.url)).timeout(Duration::from_millis(20));
+    let err = drain(&s).unwrap_err().to_string();
+    assert!(!err.contains(secret), "{err}");
+    assert!(err.contains("127.0.0.1"), "destination host is kept: {err}");
 }
