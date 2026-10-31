@@ -14,6 +14,8 @@ on a clap root is `hop_top_kit::cli`.
   `DispatchOptions::columns`
 - a command fails and the failure must carry a cross-tool exit code → build a `CliError` (`usage`,
   `not_found`, `transient`, ...) and `render_error`
+- a command has a next step to suggest after its table → `hint::HintSet`, `hint::render_hints` (silent off a
+  terminal, off `table`, under `--no-hints`/`--quiet`/`HOP_QUIET_HINTS`)
 - a custom format is needed → implement `Formatter`, `Registry::register`; see [builtins](builtins/README.md)
 
 ## Quick start
