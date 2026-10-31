@@ -13,6 +13,15 @@
 //	    Accent:  "#FF5F87",
 //	})
 //
+// # Destructive names
+//
+// A leaf with no kit/side-effect annotation whose name is delete, remove,
+// rm, destroy, purge or drop is gated as destructive-shared: --confirm,
+// the policy allow rules and --max-ops treat it like a declared
+// destructive command. The table lives in package cmdmeta and is shared
+// with cmdreflect, so every surface agrees. An explicit annotation always
+// wins; tag the command to opt out.
+//
 // # Config
 //
 // Config drives what New registers:

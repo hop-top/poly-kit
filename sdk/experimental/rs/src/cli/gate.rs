@@ -316,10 +316,18 @@ impl Root {
     where
         F: FnOnce(&Invocation, &mut dyn Write) -> Result<(), CliError>,
     {
-        let se = leaf
+        let declared = leaf
             .annotations
             .get(super::model::SIDE_EFFECT)
             .map(String::as_str);
+        // An unannotated destructive-named leaf is gated as the
+        // destructive tier Go's reflection gives it.
+        let leaf_name = leaf.verb.rsplit(' ').next().unwrap_or("");
+        let se = if super::model::inferred_destructive(leaf_name, declared) {
+            Some(super::model::INFERRED_TIER)
+        } else {
+            declared
+        };
         let dry_run = self.apply_dry_run(leaf, inv)?;
         inv.dry_run = dry_run;
 

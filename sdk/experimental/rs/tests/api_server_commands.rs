@@ -796,3 +796,64 @@ async fn a_leaf_local_control_never_shadows_the_roots() {
         "a refused policy runs nothing"
     );
 }
+
+/// The descriptor and the CLI gate read one name table: whatever
+/// discovery calls inferred-destructive is refused at the gate without a
+/// confirm, and nothing else is.
+#[tokio::test(flavor = "multi_thread")]
+async fn descriptor_and_cli_gate_agree_on_inferred_destructive() {
+    let mut cfg = Config::new("fix", "1.0.0", "Fixture");
+    cfg.disable_validate = true;
+    let mut root = Root::with_config(cfg);
+    root.with_prompt_source(hop_top_kit::cli::PromptSource::none());
+    let mut names: Vec<&str> = hop_top_kit::cli::DESTRUCTIVE_NAMES.to_vec();
+    names.extend(["list", "delete-all"]);
+    for name in &names {
+        root.add_command(CommandSpec::new(*name).about(*name).handler(|_, out, _| {
+            write!(out, "ran").unwrap();
+            Ok(())
+        }));
+    }
+    // An explicit annotation beats the name.
+    root.add_command(
+        CommandSpec::new("widget").about("w").subcommand(
+            CommandSpec::new("drop")
+                .about("d")
+                .side_effect("read")
+                .handler(|_, out, _| {
+                    write!(out, "ran").unwrap();
+                    Ok(())
+                }),
+        ),
+    );
+    let proj = CommandProjection::new(Arc::new(root), "fix", "1.0.0");
+    let disc = proj.discovery();
+    for name in &names {
+        let entry = disc["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == *name)
+            .unwrap()
+            .clone();
+        let inferred = entry["side_effect_source"] == "inferred";
+        assert_eq!(
+            inferred,
+            hop_top_kit::cli::DESTRUCTIVE_NAMES.contains(name),
+            "{name}"
+        );
+        let (status, out) =
+            send(proj.router(), "POST", &format!("/v1/commands/{name}"), None).await;
+        if inferred {
+            assert_eq!(
+                (status, &out["exit_code"]),
+                (403, &Value::from(5)),
+                "{name}: {out}"
+            );
+        } else {
+            assert_eq!(status, 200, "{name}: {out}");
+        }
+    }
+    let (status, out) = send(proj.router(), "GET", "/v1/commands/widget/drop", None).await;
+    assert_eq!(status, 200, "{out}");
+}

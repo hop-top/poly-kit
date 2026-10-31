@@ -260,7 +260,7 @@ func getCmd(ns api.Service[Note]) *cobra.Command {
 }
 
 func deleteCmd(ns api.Service[Note]) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a note",
 		Args:  cobra.ExactArgs(1),
@@ -272,6 +272,10 @@ func deleteCmd(ns api.Service[Note]) *cobra.Command {
 			return nil
 		},
 	}
+	// Destructive by name; declared so the tier is explicit. Needs
+	// --confirm.
+	cli.SetSideEffect(cmd, cli.SideEffectDestructiveLocal)
+	return cmd
 }
 
 func historyCmd(vr *version.VersionedRepository[Note]) *cobra.Command {
@@ -357,7 +361,7 @@ func syncAddCmd(repl *sync.Replicator[Note]) *cobra.Command {
 }
 
 func syncRemoveCmd(repl *sync.Replicator[Note]) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "remove <name>",
 		Short: "Remove a sync remote",
 		Args:  cobra.ExactArgs(1),
@@ -369,6 +373,10 @@ func syncRemoveCmd(repl *sync.Replicator[Note]) *cobra.Command {
 			return nil
 		},
 	}
+	// Edits the remote list, reversibly: declared write so the
+	// destructive-name inference does not gate it.
+	cli.SetSideEffect(cmd, cli.SideEffectWriteLocal)
+	return cmd
 }
 
 func syncStatusCmd(repl *sync.Replicator[Note]) *cobra.Command {

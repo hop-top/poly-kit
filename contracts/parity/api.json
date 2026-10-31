@@ -2279,6 +2279,9 @@
         "path": "/v1/commands/widget/delete",
         "status": 200,
         "body": {
+          "flags": {
+            "confirm": "yes"
+          },
           "args": []
         },
         "call": {
@@ -2286,7 +2289,9 @@
             "widget",
             "delete"
           ],
-          "flags": {},
+          "flags": {
+            "confirm": "yes"
+          },
           "args": []
         }
       },

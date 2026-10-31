@@ -207,6 +207,10 @@ guesses never do.
 | absent or empty, any other name | unannotated: never read | `unannotated` | rejected: missing tag | unannotated |
 | a value kit does not recognize | a declaration defect | `malformed` | rejected: missing tag | unannotated |
 
+The CLI's `--confirm`, policy and `--max-ops` gates act on the same
+resolution: the `inferred` row is gated like a declared destructive
+tier, in the Go and Rust CLIs alike. Only `--dry-run` ignores it.
+
 How each row reaches REST, the manifest and `Root.Validate` is in the
 [command reflection reference](cmdreflect.md#how-kitside-effect-resolves).
 Run `<tool> spec coverage` to list the commands in the last three rows.

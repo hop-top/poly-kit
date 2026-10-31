@@ -264,8 +264,6 @@ pub fn confirm_flags_for(d: &CommandDescriptor) -> Vec<CommandFlag> {
     out
 }
 
-const DESTRUCTIVE_NAMES: [&str; 6] = ["delete", "remove", "rm", "destroy", "purge", "drop"];
-
 /// The descriptors of every command below the root, in tree order.
 pub fn descriptors(root: &Root) -> Vec<CommandDescriptor> {
     let model = root.model();
@@ -290,14 +288,14 @@ pub fn descriptors(root: &Root) -> Vec<CommandDescriptor> {
 }
 
 fn describe(root: &Root, c: &CommandInfo) -> CommandDescriptor {
-    let (class, source) = match c.side_effect() {
+    let (class, source) = match c.side_effect().filter(|t| !t.is_empty()) {
         Some("read") => (SideEffectClass::Read, SideEffectSource::Declared),
         Some(t) if t.starts_with("destructive") => {
             (SideEffectClass::Destructive, SideEffectSource::Declared)
         }
         Some("interactive") => (SideEffectClass::Interactive, SideEffectSource::Declared),
         Some(_) => (SideEffectClass::Write, SideEffectSource::Declared),
-        None if DESTRUCTIVE_NAMES.contains(&c.name.as_str()) => {
+        None if c.inferred_destructive() => {
             (SideEffectClass::Destructive, SideEffectSource::Inferred)
         }
         None => (SideEffectClass::Write, SideEffectSource::Unannotated),

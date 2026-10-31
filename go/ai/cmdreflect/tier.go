@@ -58,19 +58,6 @@ func (t Tier) Declared() bool {
 	return t != TierUnannotated && t != TierUnknown
 }
 
-// destructiveNames is the heuristic kit applies when a command
-// carries no kit/side-effect annotation. It is a default, not a
-// contract: an adopter who annotates gets exactly what they
-// declared.
-var destructiveNames = map[string]bool{
-	"delete":  true,
-	"remove":  true,
-	"rm":      true,
-	"destroy": true,
-	"purge":   true,
-	"drop":    true,
-}
-
 // resolveTier maps a kit/side-effect annotation value onto the
 // ladder. Legacy values resolve conservatively: bare "write" lands
 // at write-shared and bare "destructive" at destructive-shared,
