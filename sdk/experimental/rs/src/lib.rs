@@ -135,6 +135,10 @@ pub mod xdg;
 #[cfg(feature = "upgrade")]
 pub mod upgrade;
 
+// The 12-factor compliance check over a toolspec (static pass).
+#[cfg(feature = "compliance")]
+pub mod compliance;
+
 #[cfg(feature = "sqldb")]
 pub mod sqldb;
 

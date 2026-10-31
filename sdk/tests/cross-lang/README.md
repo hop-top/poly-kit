@@ -6,7 +6,7 @@ This directory hosts three independent harnesses over the same runners tree:
 |---------|-------------|------|
 | Telemetry envelope | `./run.sh` | Envelope shape + redactor placeholders across py/ts/rs/php |
 | Column ordering | `./run-order.sh` | The five column-order rules across go/py/ts/rs/php |
-| Compliance verdict | `./run-compliance.sh` | Score, denominator + per-factor status (F13 included) across go/ts/py |
+| Compliance verdict | `./run-compliance.sh` | Score, denominator + per-factor status (F13 included) across go/ts/py/rs |
 
 They share `fixtures/`, `expected/`, and `runners/` but have separate
 fixture files, comparison paths, and orchestrators. See
@@ -208,6 +208,7 @@ runners/php/order.php
 |------|----------|
 | go   | `go` |
 | py   | `python3>=3.11` + pyyaml (`uv sync` in `sdk/py/`) |
+| rs   | `cargo` |
 | ts   | `node` + a **current** `sdk/ts/dist/output.js` (`pnpm build` in `sdk/ts/`) |
 | rs   | `cargo` |
 | php  | `php` + `vendor/autoload.php` (`composer install` in `sdk/experimental/php/`) |
@@ -302,8 +303,9 @@ expectation that happens to match either can pass for the wrong reason.
 
 # Compliance conformance harness
 
-`./run-compliance.sh` pins the **compliance verdict** across the three ports
-that ship a compliance checker — Go, TypeScript, Python. Where the other two
+`./run-compliance.sh` pins the **compliance verdict** across the ports
+that ship a compliance checker — Go, TypeScript, Python, Rust (feature
+`compliance`, static pass only). Where the other two
 harnesses cover the telemetry envelope and column order, this one covers what
 the 12-factor checker actually decides about a toolspec.
 
@@ -356,6 +358,7 @@ run-compliance.sh                   # orchestrator
 runners/go/compliance/              # reference runtime (F13 landed here first)
 runners/py/compliance.py            # imports the in-tree SDK, not an installed copy
 runners/ts/compliance.cjs           # consumes a bundle built from working-tree source
+runners/rs/src/compliance.rs        # `cargo run --bin compliance`, path dependency on the in-tree crate
 ```
 
 ## Prerequisites
@@ -365,6 +368,7 @@ runners/ts/compliance.cjs           # consumes a bundle built from working-tree 
 | go   | `go` |
 | ts   | `node` + `sdk/ts/node_modules` (`pnpm install` in `sdk/ts/`) |
 | py   | `python3>=3.11` + pyyaml (`uv sync` in `sdk/py/`) |
+| rs   | `cargo` |
 
 The TS runner does **not** read `dist/`. `compliance` is not in the package
 exports map and tsup does not build it, so there is no bundle to consume: the
