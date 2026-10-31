@@ -352,7 +352,7 @@ def _render_preview(leaf: Leaf, out: IO[str]) -> None:
                 "kind": "unknown-destructive",
                 "target": leaf.full_path,
                 "reversible": False,
-                "detail": "inferred destructive from the command name",
+                "detail": "inferred destructive-shared; a real run requires --confirm",
             }
         ],
         "warnings": [

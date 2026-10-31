@@ -65,10 +65,6 @@ const CASE_SKIP: Array<[RegExp, string]> = [
     /^a malformed annotation is not inferred over$/,
     'TS validates side-effect tiers at run time with no disable_validate; Go runs this tree with validation off',
   ],
-  [
-    /^dry-run still refuses an unannotated destructive-named leaf$/,
-    'pending-T-2053: pins the old untagged refusal; TS previews an inferred leaf (kit renders the plan, handler not run)',
-  ],
 ];
 
 function skipReason(c: Case): string | undefined {
