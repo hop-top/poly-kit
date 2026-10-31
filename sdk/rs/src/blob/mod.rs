@@ -9,8 +9,8 @@
 //!   separate trait so [`Store`] is unchanged.
 //! - [`local::LocalStore`] — filesystem-backed backend rooted at a directory.
 //!
-//! Only the local backend is ported. The Go S3 backend is intentionally
-//! out of scope for the Rust SDK.
+//! - [`s3::S3Store`] — Amazon S3 (and S3-compatible) backend, behind the
+//!   `blob-s3` feature.
 //!
 //! # Write atomicity
 //!
@@ -21,6 +21,10 @@
 //! semantics.
 
 pub mod local;
+
+#[cfg(feature = "blob-s3")]
+#[cfg_attr(docsrs, doc(cfg(feature = "blob-s3")))]
+pub mod s3;
 
 use std::io::Read;
 
@@ -41,7 +45,7 @@ pub struct Object {
 #[derive(Debug, Error)]
 pub enum BlobError {
     /// The key resolves outside the store root.
-    #[error("blob/local: key {0:?} escapes store root")]
+    #[error("blob: key {0:?} escapes store root")]
     KeyEscapesRoot(String),
 
     /// The key falls in the store's reserved metadata namespace.
@@ -50,9 +54,29 @@ pub enum BlobError {
 
     /// The requested key does not exist. The cross-backend missing-key
     /// sentinel (Go: `blob.ErrNotFound`): `get`, `stat` and
-    /// [`stat_by_list`] return it for every missing key.
-    #[error("blob/local: key {0:?} not found")]
+    /// [`stat_by_list`] return it for every missing key, on every backend.
+    #[error("blob: key {0:?} not found")]
     NotFound(String),
+
+    /// The backend configuration is unusable (missing credential, bad
+    /// endpoint, …).
+    #[error("blob: invalid config: {0}")]
+    InvalidConfig(String),
+
+    /// A remote backend failed the operation. `source` is the backend's own
+    /// error, for the S3 backend a `ResponseError` (the service answered
+    /// non-2xx) or the transport's failure, which downcasts to the
+    /// netpolicy `NetError` when `--offline` or the allowlist refused it.
+    #[error("blob: {op} {target}: {source}")]
+    Remote {
+        /// Short name of the failed operation (`put`, `list`, …).
+        op: &'static str,
+        /// The key or prefix the operation addressed.
+        target: String,
+        /// Underlying error.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
     /// An underlying filesystem operation failed.
     #[error("blob/local: {op}: {source}")]
