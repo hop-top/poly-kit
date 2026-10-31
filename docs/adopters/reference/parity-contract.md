@@ -9,7 +9,7 @@ the short entry point; this page carries the full record.
 
 | File | Kind | Ports | Tests |
 |------|------|-------|-------|
-| `parity.json` | loaded constants (`status`, `spinner`, `anim`, `help`, `verbosity`, `streams`) | Go, TypeScript, Python | per-port block-registry guards |
+| `parity.json` | loaded constants (`status`, `spinner`, `anim`, `help`, `verbosity`, `streams`) | Go, TypeScript, Python, Rust | per-port block-registry guards |
 | `scope-defaults.json` | default deny patterns for the scope packages | per-language scope packages | `TestScopeDefaultsContractSync`, `TestScopeDefaultsRegistered` |
 | `sdk/tests/cross-lang/fixtures/mcp-wire.json` | MCP wire bytes (23 cases, 1 sequence) | Go, TypeScript, Python, Rust, PHP | `make test-parity-mcp` |
 | `sdk/tests/cross-lang/fixtures/toolspec-manifest*.json`, `toolspec-spec*.json` | `BuildManifest` bytes and live `<tool> spec` / `spec coverage` stdout for a shared command tree (`toolspec-manifest.tree.json`) | Go (generates), TypeScript | `TestManifestCrossLangFixture`, `TestSpecCommandCrossLangFixture` (`-update-manifest-fixture` regenerates), `sdk/ts/src/toolspec-manifest.test.ts`, `sdk/ts/src/toolspec-spec.test.ts` |
@@ -31,15 +31,17 @@ only when both hold:
    field on `parity.Data` plus an entry in `parity.Blocks`; in TypeScript a
    property on `ParityData` plus an entry in `PARITY_BLOCKS`
    (`sdk/ts/src/tui/parity.ts`); in Python an accessor plus an entry in
-   `BLOCKS` (`sdk/py/hop_top_kit/parity.py`). Each port carries its own
+   `BLOCKS` (`sdk/py/hop_top_kit/parity.py`); in Rust a field on `Parity` plus
+   an entry in `BLOCKS` (`sdk/experimental/rs/src/parity/mod.rs`). Each port carries its own
    block-registry guard, so a block declared without a loader fails in all
-   three:
+   four:
 
    | Port | Guard |
    |------|-------|
    | Go | `TestParityNoUnloadedBlocks`, `TestParityLoadedBlocksNonZero` |
    | TypeScript | `sdk/ts/src/tui/parity.test.ts` |
    | Python | `sdk/py/tests/test_parity.py` |
+| Rust | `sdk/experimental/rs/tests/parity.rs` |
 
    The guards assert two separate things, and both matter: that the block is
    *known*, and that it *loaded a non-empty value*. A block wired up under a
@@ -82,6 +84,7 @@ truth on disk.
 | Go | `//go:embed parity.json` in `contracts/parity/parity.go` |
 | TypeScript | `import` of the canonical path; tsup/esbuild inlines the JSON into the emitted bundle, so the published package stays self-contained |
 | Python | `hop_top_kit.parity` resolves the path once and every consumer imports from there |
+| Rust | `include_str!` of `src/parity/parity.json`, a copy (a crate cannot embed outside its directory) that `tests/parity.rs` holds byte-identical to the canonical file |
 
 TypeScript previously vendored `sdk/ts/src/tui/parity.json` and kept it in
 step with a sync test. That copy is gone: a second file kept correct by a

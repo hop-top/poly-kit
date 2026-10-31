@@ -12,7 +12,8 @@ symbols only one port has, so no other port can drift from them.
 
 - you add a constant all ports must agree on → add a `parity.json` block
   plus a loader field in every port (Go `parity.Data` + `parity.Blocks`,
-  TS `ParityData` + `PARITY_BLOCKS`, Python accessor + `BLOCKS`)
+  TS `ParityData` + `PARITY_BLOCKS`, Python accessor + `BLOCKS`, Rust
+  `parity::Parity` field + `parity::BLOCKS`)
 - you ship a `serve` or REST-server behavior in a port → flip its row in
   `serve.json` or `api.json` from `PENDING` to `SHIPPED`
 - you change the Go MCP surface → regenerate
@@ -34,7 +35,7 @@ in the fixture must be explainable as an intended Go-side change.
 
 | File | Holds | Guard |
 |------|-------|-------|
-| `parity.json` | blocks `status`, `spinner`, `anim`, `help`, `verbosity`, `streams` | `TestParityNoUnloadedBlocks`, `TestParityLoadedBlocksNonZero`, `sdk/ts/src/tui/parity.test.ts`, `sdk/py/tests/test_parity.py` |
+| `parity.json` | blocks `status`, `spinner`, `anim`, `help`, `verbosity`, `streams` | `TestParityNoUnloadedBlocks`, `TestParityLoadedBlocksNonZero`, `sdk/ts/src/tui/parity.test.ts`, `sdk/py/tests/test_parity.py`, `sdk/experimental/rs/tests/parity.rs` |
 | `scope-defaults.json` | default deny patterns for the scope packages | `TestScopeDefaultsContractSync`, `TestScopeDefaultsRegistered` |
 | `sdk/tests/cross-lang/fixtures/mcp-wire.json` | MCP wire bytes: 23 `cases`, 1 `sequences` entry with 5 steps | `make test-parity-mcp` (five runners) |
 | `sdk/tests/cross-lang/fixtures/toolspec-manifest*.json`, `toolspec-spec*.json` | manifest bytes and live `spec` / `spec coverage` stdout Go emits for `toolspec-manifest.tree.json` | `TestManifestCrossLangFixture`, `TestSpecCommandCrossLangFixture`, `sdk/ts/src/toolspec-manifest.test.ts`, `sdk/ts/src/toolspec-spec.test.ts` |
@@ -42,8 +43,9 @@ in the fixture must be explainable as an intended Go-side change.
 | `serve.json` | serve lifecycle `constants`, `behaviors`, per-port `ports` status | `TestServeContractMatchesGo` (pinned against `go/console/serve`) |
 | `api.json` | REST server tables (client address, Host, Origin, request id, OpenAPI documents, websocket topics, metrics, client certificates, idempotency), `constants`, per-port `ports` status | `TestAPIContract*` in `go/transport/api`, `TestAPIContractRegistered`, `make test-parity-api` |
 
-- All three ports read `parity.json` from this directory (Go `//go:embed`,
-  TS bundler inlining, Python `hop_top_kit.parity`); there is no copy.
+- Go (`//go:embed`) and TS (bundler inlining) read `parity.json` from this
+  directory with no copy. Python and Rust ship a vendored copy (a package
+  cannot embed outside its tree), each held byte-identical by a sync test.
 - `extends` is a test-suite registry, not a loader directive: nothing
   merges a listed file into `parity.Values` at runtime.
 - `PENDING` in `serve.json` or `api.json` passes; `PENDING` under `go`, a missing
@@ -55,7 +57,7 @@ in the fixture must be explainable as an intended Go-side change.
 
 ## Neighbours
 
-- `go/console/tui/styles`, `sdk/ts/src/tui`, `sdk/py/hop_top_kit/tui`:
+- `go/console/tui/styles`, `sdk/ts/src/tui`, `sdk/py/hop_top_kit/tui`, `sdk/experimental/rs/src/parity`:
   consumers of the loaded blocks
 - `go/console/cli/scope`: consumer of `scope-defaults.json`
 - `go/console/serve`: reference implementation `serve.json` is pinned to
