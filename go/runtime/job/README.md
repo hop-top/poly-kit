@@ -67,7 +67,7 @@ Verified by `example_test.go` in this directory.
 - Lifecycle events publish on `job.*` topics (`TopicCreated`, `TopicFailed`, ...) with a `JobEvent` payload through `domain.EventPublisher`; pass one with `job.WithPublisher`. The `mock` and `durabletask` engines publish them; the server-backed engines do not.
 - `EnqueueOpts.ClaimTTL` (default 5m) sets the claim lifetime per job; `mock` and `durabletask` honor it.
 - `Poller` logs `Claim`/`Complete`/`Fail`/`ReleaseStaleClaims` errors on `Poller.Logger` (default `slog.Default()`) and recovers handler panics as `*PanicError`, failing the job. `RunOne` recovers the same way.
-- `RunOne` is disabled when `JOB_RUNONE_DISABLE` is set.
+- `RunOne` is disabled when `JOB_RUNONE_DISABLE` is set. Its 10s cooldown marker lives in the OS temp dir; pass `job.WithCooldownDir(dir)` to isolate it (tests, multi-tenant hosts).
 
 ## Neighbours
 

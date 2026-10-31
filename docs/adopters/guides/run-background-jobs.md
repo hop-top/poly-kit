@@ -108,7 +108,8 @@ err := job.RunOne(ctx, svc, "default", "cli", handlers)
 
 `RunOne` returns nil without doing anything when `JOB_RUNONE_DISABLE`
 is set to any value, or when a cooldown marker file (in the OS temp
-dir) is under 10 seconds old, or when the queue is empty. Otherwise it
+dir, or the dir given by `job.WithCooldownDir(dir)`) is under 10 seconds
+old, or when the queue is empty. Otherwise it
 claims one job, runs its handler and completes or fails it. A failing
 handler returns the handler's error as well as failing the job.
 
