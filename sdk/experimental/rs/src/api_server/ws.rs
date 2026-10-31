@@ -49,6 +49,15 @@ pub const DEFAULT_MAX_MESSAGE_SIZE: usize = 65536;
 pub const DEFAULT_SEND_BUFFER: usize = 64;
 /// Subscriptions one connection may hold.
 pub const MAX_SUBSCRIPTIONS: usize = 1000;
+/// Longest subscription pattern, in bytes. Go caps only the count.
+pub const MAX_PATTERN_LEN: usize = 256;
+/// Most dot-separated segments in a pattern.
+pub const MAX_PATTERN_SEGMENTS: usize = 32;
+/// Most `**` segments in a pattern: each one retries every suffix of
+/// the topic, so the cost of a match grows with their number.
+pub const MAX_PATTERN_DOUBLE_STARS: usize = 3;
+/// Most bytes of subscription patterns one connection holds in all.
+pub const MAX_SUBSCRIPTION_BYTES: usize = 64 * 1024;
 /// How long one write may stall before the connection is dropped.
 pub const DEFAULT_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -102,9 +111,43 @@ impl Default for HubOptions {
     }
 }
 
+/// One connection's subscriptions and the bytes they hold.
+#[derive(Default)]
+struct Subs {
+    set: HashSet<String>,
+    bytes: usize,
+}
+
+impl Subs {
+    /// Stores `pattern` unless a bound refuses it.
+    fn add(&mut self, pattern: &str) -> bool {
+        if self.set.contains(pattern) {
+            return self.set.len() <= MAX_SUBSCRIPTIONS;
+        }
+        let doubles = pattern.split('.').filter(|s| *s == "**").count();
+        if self.set.len() >= MAX_SUBSCRIPTIONS
+            || pattern.len() > MAX_PATTERN_LEN
+            || pattern.split('.').count() > MAX_PATTERN_SEGMENTS
+            || doubles > MAX_PATTERN_DOUBLE_STARS
+            || self.bytes + pattern.len() > MAX_SUBSCRIPTION_BYTES
+        {
+            return false;
+        }
+        self.bytes += pattern.len();
+        self.set.insert(pattern.to_string());
+        true
+    }
+
+    fn remove(&mut self, pattern: &str) {
+        if self.set.remove(pattern) {
+            self.bytes -= pattern.len();
+        }
+    }
+}
+
 struct Entry {
     addr: String,
-    topics: Arc<Mutex<HashSet<String>>>,
+    topics: Arc<Mutex<Subs>>,
     tx: mpsc::Sender<Arc<str>>,
 }
 
@@ -204,7 +247,7 @@ impl Hub {
         ));
         let clients = lock(&self.inner.clients);
         for c in clients.values() {
-            let hit = lock(&c.topics).iter().any(|p| match_topic(p, topic));
+            let hit = lock(&c.topics).set.iter().any(|p| match_topic(p, topic));
             if hit && c.tx.try_send(data.clone()).is_err() {
                 self.inner.dropped.fetch_add(1, Ordering::Relaxed);
                 if let Some(f) = &self.inner.opts.on_drop {
@@ -516,7 +559,7 @@ impl Drop for Registered {
 async fn run_conn(hub: Hub, addr: String, mut ws: Ws) {
     let opts = &hub.inner.opts;
     let (tx, mut rx) = mpsc::channel::<Arc<str>>(opts.send_buffer.max(1));
-    let topics = Arc::new(Mutex::new(HashSet::new()));
+    let topics = Arc::new(Mutex::new(Subs::default()));
     let id = hub.inner.next.fetch_add(1, Ordering::Relaxed);
     let mut stop = hub.inner.stop.subscribe();
     {
@@ -600,18 +643,17 @@ async fn run_conn(hub: Hub, addr: String, mut ws: Ws) {
     .await;
 }
 
-fn on_message(data: &[u8], topics: &Arc<Mutex<HashSet<String>>>, tx: &mpsc::Sender<Arc<str>>) {
+fn on_message(data: &[u8], topics: &Arc<Mutex<Subs>>, tx: &mpsc::Sender<Arc<str>>) {
     let Ok(msg) = serde_json::from_slice::<Envelope>(data) else {
         return;
     };
     match msg.kind.as_str() {
         "subscribe" => {
             let mut t = lock(topics);
-            if t.len() >= MAX_SUBSCRIPTIONS {
+            if !t.add(&msg.topic) {
                 let _ = tx.try_send(envelope("error", &msg.topic));
                 return;
             }
-            t.insert(msg.topic.clone());
             let _ = tx.try_send(envelope("ack", &msg.topic));
         }
         "unsubscribe" => {
@@ -658,7 +700,9 @@ mod tests {
         assert!(authenticate_origin(&h, &["https://evil.test".into()]).is_ok());
         assert!(authenticate_origin(&h, &["http://evil.test".into()]).is_err());
         h.insert(header::ORIGIN, HeaderValue::from_static("evil.test"));
-        assert!(authenticate_origin(&h, &["*".into()]).is_err());
+        // Not a URL with a host: refused, unless a pattern matches the empty
+        // host, which, as in coder/websocket, `*` does.
+        assert!(authenticate_origin(&h, &["a.test".into()]).is_err());
     }
 
     #[test]
