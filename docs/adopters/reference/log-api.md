@@ -123,6 +123,33 @@ uses the `SUCC` label in the theme success colour (Guac `#52CF84`,
 not bold). JSON output adds `"kind":"success"` and keeps
 `"level":"info"`.
 
+### Rust (`hop_top_kit::cli::log`, feature `cli`)
+
+Hand-rolled, no logging crate: the lines are the Go/TS text format.
+
+```rust
+use hop_top_kit::cli::log::Logger;
+
+// in a handler: `inv` is the `Invocation`
+let log = inv.logger();           // level from -V; --quiet floors it
+log.info("starting", &[("port", &8080)]);
+log.success("deployed", &[("env", &"prod")]);
+```
+
+| Item | Description |
+|------|-------------|
+| `Logger::from_globals(&Globals)` | level from the `-V` count |
+| `Logger::with_verbose(&Globals, n)` | level from an explicit count |
+| `Logger::with_level(&Globals, Level)` | explicit level |
+| `Verbosity::contract()` | the parity table: 0 info, 1 debug, 2 trace; quiet raises to warn |
+| `.with_output(w)`, `.with_color(bool)` | redirect lines; force color |
+| `Invocation::verbose_count()`, `is_quiet()`, `logger()` | the accessors |
+
+`--quiet` only raises the level (it floors at `warn`). Color is on only
+when stderr is a terminal and neither `--no-color` nor `NO_COLOR` is set.
+The `Verbosity` table is the contract's `verbosity` block; Rust has no
+JSON format or custom formatter.
+
 ### Python *(planned: `hop_top_kit.log`)*
 
 Will wrap `structlog` with `KitRenderer`.
@@ -184,20 +211,20 @@ time, pid or hostname fields.
 
 ## Cross-language parity
 
-| Feature         | Go     | TS       | Python   |
-|-----------------|--------|----------|----------|
-| Quiet mode      | yes    | yes      | planned  |
-| Verbosity (-V)  | yes    | yes      | planned  |
-| No-color        | yes    | yes      | planned  |
-| Level colors    | yes    | yes      | planned  |
-| Stderr output   | yes    | yes      | planned  |
-| Custom output   | `SetOutput` | `output` | no  |
-| JSON format     | `SetFormatter`¹ | `format` | follow-up |
-| Explicit level  | `WithLevel` | `level` | follow-up |
-| Silent level    | follow-up | `'silent'` | follow-up |
-| `success()`     | follow-up | yes  | follow-up |
-| Custom formatter| n/a    | `formatter` (TS only) | processors |
-| Transport ext.  | n/a    | pino     | structlog|
+| Feature         | Go     | TS       | Python   | Rust     |
+|-----------------|--------|----------|----------|----------|
+| Quiet mode      | yes    | yes      | planned  | yes |
+| Verbosity (-V)  | yes    | yes      | planned  | yes |
+| No-color        | yes    | yes      | planned  | yes |
+| Level colors    | yes    | yes      | planned  | yes |
+| Stderr output   | yes    | yes      | planned  | yes |
+| Custom output   | `SetOutput` | `output` | no  | `with_output` |
+| JSON format     | `SetFormatter`¹ | `format` | follow-up | no |
+| Explicit level  | `WithLevel` | `level` | follow-up | `with_level` |
+| Silent level    | follow-up | `'silent'` | follow-up | no |
+| `success()`     | follow-up | yes  | follow-up | yes |
+| Custom formatter| n/a    | `formatter` (TS only) | processors | no |
+| Transport ext.  | n/a    | pino     | structlog| no |
 
 ¹ charm/log's own setter on the returned logger; kit sets no formatter
 and does not expose a kit-level option. Kit's `TraceLevel` has no
