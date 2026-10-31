@@ -152,6 +152,25 @@ pub trait TtlStore: Store {
     fn put_with_ttl(&self, key: &[u8], value: &[u8], ttl: Duration) -> Result<(), KvError>;
 }
 
+/// The atomic "claim a key" a dedupe store needs: a `get` then a `put`
+/// lets two callers both see the key absent. Optional beside
+/// [`TtlStore`], as Go's `kv.TTLInserter`.
+pub trait TtlInserter: TtlStore {
+    /// Stores `value` under `key`, expiring after `ttl`, only if no
+    /// live entry holds the key; reports whether it did. An expired
+    /// entry counts as absent; a refusal leaves the entry untouched.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KvError`] when the write fails.
+    fn put_if_absent_with_ttl(
+        &self,
+        key: &[u8],
+        value: &[u8],
+        ttl: Duration,
+    ) -> Result<bool, KvError>;
+}
+
 /// Backend selection for [`Config`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Backend {
@@ -402,6 +421,32 @@ impl TtlStore for SqliteStore {
             .map_err(KvError::Query)?;
         self.maybe_sweep();
         Ok(())
+    }
+}
+
+impl TtlInserter for SqliteStore {
+    /// One statement: an expired row is taken over, a live one
+    /// (including one with no expiry) is left alone.
+    fn put_if_absent_with_ttl(
+        &self,
+        key: &[u8],
+        value: &[u8],
+        ttl: Duration,
+    ) -> Result<bool, KvError> {
+        let now = now_millis();
+        let n = self
+            .conn
+            .execute(
+                "INSERT INTO kv (key, value, expires_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at
+                 WHERE kv.expires_at IS NOT NULL AND kv.expires_at <= ?4",
+                (TextKey(key), value, now.saturating_add(millis_i64(ttl)), now),
+            )
+            .map_err(KvError::Query)?;
+        if n > 0 {
+            self.maybe_sweep();
+        }
+        Ok(n > 0)
     }
 }
 

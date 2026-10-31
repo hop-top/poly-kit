@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"hop.top/kit/go/storage/kv"
 	"hop.top/kit/go/storage/kv/sqlite"
 )
 
@@ -143,4 +145,59 @@ func TestConcurrentAccess(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+var _ kv.TTLInserter = (*sqlite.Store)(nil)
+
+func TestPutIfAbsentWithTTL(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	ok, err := s.PutIfAbsentWithTTL(ctx, "once", []byte("first"), liveTTL)
+	require.NoError(t, err)
+	assert.True(t, ok)
+	ok, err = s.PutIfAbsentWithTTL(ctx, "once", []byte("second"), liveTTL)
+	require.NoError(t, err)
+	assert.False(t, ok)
+	val, found, err := s.Get(ctx, "once")
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, []byte("first"), val, "a refused insert leaves the value")
+
+	// An entry that has expired is absent: the key can be claimed again.
+	ok, err = s.PutIfAbsentWithTTL(ctx, "dying", []byte("a"), dyingTTL)
+	require.NoError(t, err)
+	require.True(t, ok)
+	time.Sleep(pastDying)
+	ok, err = s.PutIfAbsentWithTTL(ctx, "dying", []byte("b"), liveTTL)
+	require.NoError(t, err)
+	assert.True(t, ok)
+	val, _, _ = s.Get(ctx, "dying")
+	assert.Equal(t, []byte("b"), val)
+
+	// A key put without expiry is never claimable.
+	require.NoError(t, s.Put(ctx, "forever", []byte("x")))
+	ok, err = s.PutIfAbsentWithTTL(ctx, "forever", []byte("y"), liveTTL)
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
+
+func TestPutIfAbsentWithTTLOneWinner(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	var wins atomic.Int32
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ok, err := s.PutIfAbsentWithTTL(ctx, "race", []byte("v"), liveTTL)
+			assert.NoError(t, err)
+			if ok {
+				wins.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	assert.EqualValues(t, 1, wins.Load())
 }

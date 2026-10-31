@@ -187,3 +187,73 @@ func TestConcurrentUse(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+var _ kv.TTLInserter = (*memory.Store)(nil)
+
+func TestPutIfAbsentWithTTL(t *testing.T) {
+	ctx := context.Background()
+	c := &clock{t: time.Unix(1000, 0)}
+	s := memory.New()
+	s.SetClock(c.now)
+
+	ok, err := s.PutIfAbsentWithTTL(ctx, "k", []byte("first"), time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("first insert = %v, %v; want true", ok, err)
+	}
+	ok, err = s.PutIfAbsentWithTTL(ctx, "k", []byte("second"), time.Minute)
+	if err != nil || ok {
+		t.Fatalf("second insert = %v, %v; want false", ok, err)
+	}
+	if v, _, _ := s.Get(ctx, "k"); string(v) != "first" {
+		t.Fatalf("a refused insert replaced the value: %q", v)
+	}
+
+	c.add(59 * time.Second)
+	if ok, _ := s.PutIfAbsentWithTTL(ctx, "k", []byte("x"), time.Minute); ok {
+		t.Fatal("inserted over a live entry")
+	}
+	c.add(time.Second)
+	ok, err = s.PutIfAbsentWithTTL(ctx, "k", []byte("third"), time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("insert over an expired entry = %v, %v; want true", ok, err)
+	}
+	if v, _, _ := s.Get(ctx, "k"); string(v) != "third" {
+		t.Fatalf("value = %q, want third", v)
+	}
+}
+
+func TestPutIfAbsentWithTTLOneWinner(t *testing.T) {
+	ctx := context.Background()
+	s := memory.New()
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	wins := 0
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ok, err := s.PutIfAbsentWithTTL(ctx, "k", []byte("v"), time.Minute)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if ok {
+				mu.Lock()
+				wins++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if wins != 1 {
+		t.Fatalf("%d inserts won, want exactly 1", wins)
+	}
+}
+
+func TestPutIfAbsentWithTTLClosed(t *testing.T) {
+	s := memory.New()
+	_ = s.Close()
+	if _, err := s.PutIfAbsentWithTTL(context.Background(), "k", nil, time.Minute); !errors.Is(err, memory.ErrClosed) {
+		t.Fatalf("err = %v, want ErrClosed", err)
+	}
+}

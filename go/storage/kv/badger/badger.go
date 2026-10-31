@@ -2,6 +2,7 @@ package badger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -117,6 +118,35 @@ func (s *Store) PutWithTTL(ctx context.Context, key string, value []byte, ttl ti
 		e := badgerdb.NewEntry([]byte(key), value).WithTTL(ttl)
 		return txn.SetEntry(e)
 	})
+}
+
+// PutIfAbsentWithTTL stores value under key until ttl has passed, unless
+// a live entry already holds the key, and reports whether it stored. It
+// runs as one transaction; badger's conflict detection aborts the losers
+// of a race, which retry and then see the winner's entry.
+func (s *Store) PutIfAbsentWithTTL(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		inserted := false
+		err := s.db.Update(func(txn *badgerdb.Txn) error {
+			_, err := txn.Get([]byte(key))
+			if err == nil {
+				inserted = false
+				return nil
+			}
+			if !errors.Is(err, badgerdb.ErrKeyNotFound) {
+				return err
+			}
+			inserted = true
+			return txn.SetEntry(badgerdb.NewEntry([]byte(key), value).WithTTL(ttl))
+		})
+		if errors.Is(err, badgerdb.ErrConflict) {
+			continue
+		}
+		return inserted && err == nil, err
+	}
 }
 
 func (s *Store) Close() error {

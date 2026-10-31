@@ -75,6 +75,30 @@ func (s *Store) PutWithTTL(ctx context.Context, key string, value []byte, ttl ti
 	return err
 }
 
+// PutIfAbsentWithTTL stores value under key until ttl has passed, unless
+// a live entry already holds the key, and reports whether it stored. One
+// statement does the check and the write: an expired row is taken over, a
+// live one (including one with no expiry) is left alone.
+func (s *Store) PutIfAbsentWithTTL(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
+	now := time.Now().UnixMilli()
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO kv (key, value, expires_at) VALUES (?, ?, ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at
+		 WHERE kv.expires_at IS NOT NULL AND kv.expires_at <= ?`,
+		key, value, time.Now().Add(ttl).UnixMilli(), now)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		s.maybeSweep(ctx)
+	}
+	return n > 0, nil
+}
+
 func (s *Store) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT value FROM kv WHERE key = ? AND (expires_at IS NULL OR expires_at > ?)`,

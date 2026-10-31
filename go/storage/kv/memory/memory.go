@@ -89,16 +89,43 @@ func (s *Store) PutWithTTL(ctx context.Context, key string, value []byte, ttl ti
 	return s.put(ctx, key, value, ttl)
 }
 
+// PutIfAbsentWithTTL stores value under key until ttl has passed, unless
+// a live entry already holds the key, and reports whether it stored. The
+// check and the write happen under one lock. A ttl of zero or less
+// stores with no expiry.
+func (s *Store) PutIfAbsentWithTTL(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return false, ErrClosed
+	}
+	if el, ok := s.items[key]; ok {
+		if !s.expired(el.Value.(*entry)) {
+			return false, nil
+		}
+		s.remove(el)
+	}
+	return true, s.putLocked(key, value, ttl)
+}
+
 func (s *Store) put(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	e := &entry{key: key, value: append([]byte(nil), value...)}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return ErrClosed
 	}
+	return s.putLocked(key, value, ttl)
+}
+
+// putLocked stores the entry; s.mu is held and the store is open.
+func (s *Store) putLocked(key string, value []byte, ttl time.Duration) error {
+	e := &entry{key: key, value: append([]byte(nil), value...)}
 	if e.cost() > s.maxBytes {
 		return ErrValueTooLarge
 	}

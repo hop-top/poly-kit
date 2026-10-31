@@ -4,7 +4,7 @@
 
 Where do raw bytes go when the key is the only index you need? `kv.Store`
 is `Put`/`Get`/`Delete`/`List`/`Close` over `[]byte`; `kv.TTLStore` adds
-`PutWithTTL`. Wrong package when you need SQL (`go/storage/sqldb`), large
+`PutWithTTL`; `kv.TTLInserter` (memory, sqlite, badger) adds the atomic `PutIfAbsentWithTTL`, the claim a dedupe store needs. Wrong package when you need SQL (`go/storage/sqldb`), large
 streamed objects (`go/storage/blob`) or credentials (`go/storage/secret`).
 
 ## Use it when
