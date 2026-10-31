@@ -24,3 +24,4 @@ Task-oriented how-tos for adopters: one outcome per page, with the audience name
 - **Audit (hash-chained, verifiable log):** [`keep-a-tamper-evident-audit-log`](keep-a-tamper-evident-audit-log.md)
 - **IDs (TypeID):** [`use-typeid-entity-ids`](use-typeid-entity-ids.md)
 - **Upgrade and migrations (self-update, versioned state):** [`upgrade-and-migrate`](upgrade-and-migrate.md)
+- **Avatars (seed to URL, custom providers):** [`generate-avatars`](generate-avatars.md)
