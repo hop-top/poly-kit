@@ -30,6 +30,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`httpcache/`](src/httpcache/README.md) | HTTP response cache over a `kv` TTL store (feature `httpcache`) | responses must be reused across runs |
 | [`blob/`](src/blob/README.md) | object storage over a backend trait, local filesystem only (feature `blob`) | you store opaque files or artifacts |
 | [`id/`](src/id/README.md) | TypeID primitive (feature `id`) | you mint or parse prefixed identifiers |
+| [`policy/`](src/policy/README.md) | declarative CEL guard rules vetoing the state machine's pre-transition and the entity pre-events, deny-overrides, typed `PolicyDeniedError`, the stage ruleset, a port of `go/runtime/policy` (feature `policy`, wasm-safe) | who may do what is rules in a file, not code |
 | [`redact/`](src/redact/README.md) | secret and PII redaction with gitleaks rule semantics and the default corpus embedded, a port of `go/core/redact` (feature `redact`, wasm-safe) | text may carry credentials before it is logged, sent or shown |
 | [`telemetry/`](src/telemetry/README.md) | consent-gated usage events, redaction, sinks (feature `telemetry`) | you record usage under user consent |
 | [`timeutil/`](src/timeutil/README.md) | `since` and `until` relative-date parsing (feature `timeutil`) | a flag takes a human time expression |
@@ -64,6 +65,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `serve` (`serve-cli`) | `output` + `tokio`, `serde_json` (+ `cli`) | 37 (50) |
 | `mcp` | `rmcp` (default-features off) + `serde`, `serde_json` | 39 |
 | `uri` | `hop-top-cite` | 41 |
+| `policy` | `domain` + `cel`, `serde`, `serde_json`, `serde_norway` (`PolicyDeniedError::to_cli_error` with `output`) | 48 |
 | `llm` (`llm-anthropic`) | `config` + `netpolicy` + `url`, `sha2` (+ `api`, `base64`, `tokio` time; native only) | 53 (114) |
 | `telemetry` | `api` + `serde_norway`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
 

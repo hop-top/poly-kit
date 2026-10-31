@@ -701,6 +701,15 @@ jobs:
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features redact --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
+      # The policy engine: rule parsing and the CEL evaluator are pure;
+      # the rule-file load and the env principal are compiled off wasm32.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features policy
+        if: steps.scope.outputs.run == 'true'
+      - name: clippy (wasm32, policy)
+        if: steps.scope.outputs.run == 'true'
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features policy --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
       - name: netpolicy pulls no reqwest or tokio
         if: steps.scope.outputs.run == 'true'
         run: |
