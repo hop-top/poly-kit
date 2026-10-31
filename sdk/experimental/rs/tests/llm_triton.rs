@@ -152,3 +152,31 @@ fn registered_by_scheme() {
     let p = default_registry().resolve("triton://mf").unwrap();
     assert!(p.capabilities().is_empty());
 }
+
+#[test]
+fn key_is_checked_against_the_endpoint() {
+    for base in ["http://remote.example", "https://user:pw@h.example"] {
+        let e = client(base, "mf", "fake-triton-key").unwrap_err();
+        assert!(matches!(e, LlmError::KeyEndpoint { .. }), "{base}: {e}");
+        assert!(!e.to_string().contains("pw@"), "{e}");
+    }
+}
+
+#[tokio::test]
+async fn model_is_one_encoded_path_segment() {
+    for model in ["../../x", "a?b=c", "a#b", "a/b"] {
+        let srv = serve(vec![Canned::json(200, &out(json!([1.0])))]).await;
+        client(&srv.url, model, "")
+            .unwrap()
+            .score(&[1.0])
+            .await
+            .unwrap();
+        let p = srv.only().path;
+        assert!(
+            p.starts_with("/v2/models/") && p.ends_with("/infer"),
+            "{model}: {p}"
+        );
+        assert_eq!(p.matches('/').count(), 4, "{model}: {p}");
+        assert!(!p.contains('?') && !p.contains('#'), "{model}: {p}");
+    }
+}

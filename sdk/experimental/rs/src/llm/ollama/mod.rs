@@ -78,6 +78,9 @@ impl Builder {
                 crate::llm::redact_uri(base)
             ))
         })?;
+        // No key goes over plain http to a remote host or to a malformed
+        // endpoint.
+        crate::llm::check_endpoint_url(SCHEME, &p.api_key, base, &url)?;
         let limits = Limits::from_params(SCHEME, &p.params)?;
         let mut credentials = Vec::new();
         let mut secrets = Vec::new();

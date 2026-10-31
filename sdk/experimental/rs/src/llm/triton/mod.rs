@@ -73,12 +73,15 @@ impl Client {
         if model.is_empty() {
             return Err(LlmError::invalid("triton: model name is required"));
         }
-        let url = reqwest::Url::parse(&format!("{base}/v2/models/{model}/infer")).map_err(|e| {
+        let url = infer_url(&base, &model).map_err(|e| {
             LlmError::invalid(format!(
                 "triton: invalid base URL: parse {:?}: {e}",
                 crate::llm::redact_uri(&base)
             ))
         })?;
+        // No key goes over plain http to a remote host or to a malformed
+        // endpoint.
+        crate::llm::check_endpoint_url(SCHEME, &p.api_key, &base, &url)?;
         let mut credentials = Vec::new();
         let mut secrets = Vec::new();
         if !p.api_key.trim().is_empty() {
@@ -122,8 +125,7 @@ impl Client {
 
     fn url(&self) -> reqwest::Url {
         // Parsed at construction.
-        reqwest::Url::parse(&format!("{}/v2/models/{}/infer", self.base_url, self.model))
-            .expect("checked at construction")
+        infer_url(&self.base_url, &self.model).expect("checked at construction")
     }
 
     async fn infer(&self, input: &[f32]) -> Result<f64, LlmError> {
@@ -176,6 +178,12 @@ impl Client {
             .and_then(Value::as_f64)
             .ok_or_else(|| LlmError::Protocol("triton: empty output data".into()))
     }
+}
+
+/// `<base>/v2/models/<model>/infer`, the model one encoded path
+/// segment: a `/`, `?` or `#` in it cannot reach another path or query.
+fn infer_url(base: &str, model: &str) -> Result<reqwest::Url, url::ParseError> {
+    crate::llm::wirehttp::push_segments(base, &["v2", "models", model, "infer"], None)
 }
 
 impl Scorer for Client {
