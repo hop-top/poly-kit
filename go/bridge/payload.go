@@ -38,7 +38,7 @@ type Blob struct {
 }
 
 // Payload is the wire-level inbox message. Exactly one of Text/URL/File/Blob
-// must be non-nil; UnmarshalJSON enforces this invariant.
+// must be non-nil; MarshalJSON and UnmarshalJSON both enforce this invariant.
 type Payload struct {
 	ID            string `json:"id"`
 	Source        string `json:"source,omitempty"`
@@ -67,14 +67,8 @@ type payloadShadow struct {
 	Meta          map[string]string `json:"meta,omitempty"`
 }
 
-// UnmarshalJSON decodes a Payload and rejects messages with zero or multiple
-// content kinds set. Returns ErrInvalidOneof (wrapped with detail) on guard
-// failure.
-func (p *Payload) UnmarshalJSON(data []byte) error {
-	var s payloadShadow
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
+// kindCount returns how many of Text/URL/File/Blob are set.
+func (s payloadShadow) kindCount() int {
 	set := 0
 	if s.Text != nil {
 		set++
@@ -88,8 +82,31 @@ func (p *Payload) UnmarshalJSON(data []byte) error {
 	if s.Blob != nil {
 		set++
 	}
-	if set != 1 {
-		return fmt.Errorf("%w: got %d", ErrInvalidOneof, set)
+	return set
+}
+
+// MarshalJSON encodes a Payload and rejects messages with zero or multiple
+// content kinds set, exactly as UnmarshalJSON does, so a producer cannot
+// emit a message its receivers reject. Returns ErrInvalidOneof (wrapped with
+// detail) on guard failure.
+func (p Payload) MarshalJSON() ([]byte, error) {
+	s := payloadShadow(p)
+	if n := s.kindCount(); n != 1 {
+		return nil, fmt.Errorf("%w: got %d", ErrInvalidOneof, n)
+	}
+	return json.Marshal(s)
+}
+
+// UnmarshalJSON decodes a Payload and rejects messages with zero or multiple
+// content kinds set. Returns ErrInvalidOneof (wrapped with detail) on guard
+// failure.
+func (p *Payload) UnmarshalJSON(data []byte) error {
+	var s payloadShadow
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	if n := s.kindCount(); n != 1 {
+		return fmt.Errorf("%w: got %d", ErrInvalidOneof, n)
 	}
 	*p = Payload(s)
 	return nil
