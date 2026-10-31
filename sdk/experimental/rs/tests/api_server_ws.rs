@@ -11,7 +11,9 @@ use std::time::Duration;
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use hop_top_kit::api_server::ws::{
-    Hub, HubClosed, HubOptions, DEFAULT_MAX_MESSAGE_SIZE, DEFAULT_SEND_BUFFER, MAX_SUBSCRIPTIONS,
+    Hub, HubClosed, HubOptions, DEFAULT_MAX_MESSAGE_SIZE, DEFAULT_SEND_BUFFER,
+    MAX_PATTERN_DOUBLE_STARS, MAX_PATTERN_LEN, MAX_PATTERN_SEGMENTS, MAX_SUBSCRIPTIONS,
+    MAX_SUBSCRIPTION_BYTES,
 };
 use hop_top_kit::authn::{AuthFunc, AuthnError, Claims};
 use serde_json::{json, Value};
@@ -556,5 +558,77 @@ async fn topic_corpus() {
             "{pattern:?} vs {topic:?}"
         );
     }
+    run.stop().await;
+}
+
+async fn expect_error(ws: &mut Client, topic: &str) {
+    assert_eq!(
+        next_json(ws).await,
+        json!({"type": "error", "topic": topic}),
+        "refused with an error envelope"
+    );
+}
+
+#[tokio::test]
+async fn an_oversized_or_deep_pattern_is_refused_and_not_stored() {
+    let hub = Hub::new();
+    let run = server(&hub, |_| {}).await;
+    let mut ws = dial(&run).await;
+    next_json(&mut ws).await;
+
+    let long = "a".repeat(MAX_PATTERN_LEN + 1);
+    send(&mut ws, json!({"type": "subscribe", "topic": long})).await;
+    expect_error(&mut ws, &long).await;
+
+    let deep = vec!["a"; MAX_PATTERN_SEGMENTS + 1].join(".");
+    send(&mut ws, json!({"type": "subscribe", "topic": deep})).await;
+    expect_error(&mut ws, &deep).await;
+
+    let stars = vec!["**"; MAX_PATTERN_DOUBLE_STARS + 1].join(".");
+    send(&mut ws, json!({"type": "subscribe", "topic": stars})).await;
+    expect_error(&mut ws, &stars).await;
+
+    // Nothing was stored: a publish on a topic those would match is silent.
+    hub.publish(&long, &1).unwrap();
+    hub.publish(&deep, &1).unwrap();
+    expect_silence(&mut ws).await;
+
+    // The bounds themselves are allowed.
+    subscribe(&mut ws, &"a".repeat(MAX_PATTERN_LEN)).await;
+    subscribe(&mut ws, &vec!["a"; MAX_PATTERN_SEGMENTS].join(".")).await;
+    subscribe(&mut ws, &vec!["**"; MAX_PATTERN_DOUBLE_STARS].join(".")).await;
+    run.stop().await;
+}
+
+#[tokio::test]
+async fn the_total_subscription_bytes_are_budgeted_and_released() {
+    let hub = Hub::with_options(HubOptions {
+        max_message_size: 1 << 20,
+        ..HubOptions::default()
+    });
+    let run = server(&hub, |_| {}).await;
+    let mut ws = dial(&run).await;
+    next_json(&mut ws).await;
+    let per = MAX_PATTERN_LEN;
+    let fits = MAX_SUBSCRIPTION_BYTES / per;
+    assert!(
+        fits < MAX_SUBSCRIPTIONS,
+        "the byte budget bites before the count"
+    );
+    let pat = |i: usize| format!("{i:0>per$}");
+    for i in 0..fits {
+        send(&mut ws, json!({"type": "subscribe", "topic": pat(i)})).await;
+    }
+    for _ in 0..fits {
+        assert_eq!(next_json(&mut ws).await["type"], "ack");
+    }
+    send(&mut ws, json!({"type": "subscribe", "topic": pat(fits)})).await;
+    expect_error(&mut ws, &pat(fits)).await;
+    // Subscribing again to a held pattern costs nothing.
+    subscribe(&mut ws, &pat(0)).await;
+    // Unsubscribing frees the budget.
+    send(&mut ws, json!({"type": "unsubscribe", "topic": pat(0)})).await;
+    assert_eq!(next_json(&mut ws).await["type"], "ack");
+    subscribe(&mut ws, &pat(fits)).await;
     run.stop().await;
 }
