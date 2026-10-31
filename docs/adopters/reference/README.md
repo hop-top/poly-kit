@@ -19,3 +19,4 @@ Exact details per API: signatures, flags, exit codes, config shapes, wire format
 - **Engine:** [`engine-protocol`](engine-protocol.md) · [`engine-security`](engine-security.md) · [`engine-sync`](engine-sync.md)
 - **SDK long-form (detail behind each SDK README):** [`py-sdk`](py-sdk.md) · [`rs-sdk`](rs-sdk.md) · [`php-sdk`](php-sdk.md)
 - **Catalogs:** [`capability-index`](capability-index.md) · [`capability-parity`](capability-parity.md) · [`go-primitives`](go-primitives.md) · [`qmochi-charts`](qmochi-charts.md)
+- **Utilities (retry, env, time parsing, JSONL, helpers):** [`util-helpers`](util-helpers.md)
