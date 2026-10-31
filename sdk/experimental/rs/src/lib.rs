@@ -29,6 +29,11 @@ pub mod netpolicy;
 #[cfg(feature = "authn")]
 pub mod authn;
 
+// The REST server, a port of go/transport/api and the Go api service's
+// middleware plane. Native only.
+#[cfg(feature = "api-server")]
+pub mod api_server;
+
 #[cfg(feature = "blob")]
 pub mod blob;
 

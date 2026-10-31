@@ -1155,6 +1155,34 @@ carries the contract; the points that differ from Go:
   document. Back a `KeySource` with a guarded fetch.
 
 
+## REST server
+
+Feature `api-server` ports `go/transport/api` and the Go api service's
+middleware plane: an axum `Router` of your routes wrapped in kit's
+stack, served as a `serve::Service`. The module README
+([`src/api_server/README.md`](../../../sdk/experimental/rs/src/api_server/README.md))
+carries the contract and the order of the layers; the points that
+differ from Go:
+
+- The adopter's surface is an `axum::Router` (the documented platform
+  boundary); nothing of tower-http or axum's extractors is in kit's own
+  types. Refusals, the OpenAPI model, readiness checks, the event sink
+  and the config are kit-owned.
+- `Service::addr` reports the bound address (a kernel-picked port
+  included), ready is reported after the bind, stop drains in-flight
+  requests, and `validate` refuses a non-loopback bind with no
+  authentication unless `insecure_remote` is set.
+- OpenAPI is a kit-owned emitter to `serde_json::Value`, golden-tested
+  against huma's output for the same model in
+  [`contracts/parity/api.json`](../../../contracts/parity/api.json).
+  Schemas are the JSON Schema values you hand it; none are derived.
+- Rate limiting is per client address on `breaker`; Go's limit lives in
+  the invocation plane, so this layer is new on both sides' terms.
+- Probe paths `/healthz` and `/readyz` are reserved: a route of the
+  same path does not override them.
+- Not ported: websocket hub, the command-tree projection, TLS and mTLS
+  serving, read and write timeouts, idempotency keys, metrics.
+
 ## Build notes
 
 Counts in the front page's feature table are non-dev crates, root

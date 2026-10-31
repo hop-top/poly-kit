@@ -61,6 +61,7 @@
 
   "extends": [
     "scope-defaults.json",
-    "serve.json"
+    "serve.json",
+    "api.json"
   ]
 }

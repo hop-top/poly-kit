@@ -1,0 +1,1582 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/parity/api.json",
+  "description": "Cross-language conformance record for the kit REST server (go/transport/api and the Go api service's middleware plane). Go is the authority. Tables: client_address, trusted_proxies, hosts, listener_hosts, origin, and openapi_cases (expected documents rendered by huma from a language-neutral model; regenerate with go test ./go/transport/api -run TestAPIContractOpenAPI -update-api-contract). `ports` records which behaviors each port has shipped; PENDING passes.",
+  "version": 1,
+  "constants": {
+    "health": {
+      "liveness": "/healthz",
+      "readiness": "/readyz",
+      "ok": "ok",
+      "unavailable": "unavailable"
+    },
+    "topics": {
+      "request.started": "kit.api.request.started",
+      "request.ended": "kit.api.request.ended"
+    },
+    "event_source": "api.router",
+    "default_max_body_bytes": 1048576,
+    "request_id_header": "X-Request-ID",
+    "default_csp": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    "default_hsts_max_age_seconds": 31536000,
+    "default_auth_challenge": "Bearer",
+    "codes": {
+      "host_rejected": 403,
+      "origin_rejected": 403,
+      "body_too_large": 413,
+      "unauthenticated": 401,
+      "rate_limited": 429,
+      "method_not_allowed": 405
+    }
+  },
+  "ports": {
+    "go": {
+      "implementation": "go/transport/api, mounted by go/console/cli/service",
+      "request_id": "SHIPPED",
+      "client_address": "SHIPPED",
+      "access_log": "SHIPPED",
+      "recovery": "SHIPPED",
+      "security_headers": "SHIPPED",
+      "health_routes": "SHIPPED",
+      "host_check": "SHIPPED",
+      "origin_check": "SHIPPED",
+      "cors": "SHIPPED",
+      "body_limit": "SHIPPED",
+      "compression": "SHIPPED",
+      "auth": "SHIPPED",
+      "rate_limit": "SHIPPED",
+      "bus_events": "SHIPPED",
+      "openapi": "SHIPPED",
+      "sse": "SHIPPED",
+      "websocket": "SHIPPED",
+      "service_lifecycle": "SHIPPED"
+    },
+    "rs": {
+      "implementation": "sdk/experimental/rs/src/api_server, feature api-server",
+      "request_id": "SHIPPED",
+      "client_address": "SHIPPED",
+      "access_log": "SHIPPED",
+      "recovery": "SHIPPED",
+      "security_headers": "SHIPPED",
+      "health_routes": "SHIPPED",
+      "host_check": "SHIPPED",
+      "origin_check": "SHIPPED",
+      "cors": "SHIPPED",
+      "body_limit": "SHIPPED",
+      "compression": "SHIPPED",
+      "auth": "SHIPPED",
+      "rate_limit": "SHIPPED",
+      "bus_events": "SHIPPED",
+      "openapi": "SHIPPED",
+      "sse": "SHIPPED",
+      "websocket": "PENDING",
+      "service_lifecycle": "SHIPPED"
+    },
+    "ts": {
+      "implementation": "none",
+      "note": "no REST server port"
+    },
+    "py": {
+      "implementation": "none",
+      "note": "no REST server port"
+    }
+  },
+  "client_address": [
+    {
+      "name": "no trusted proxies: spoofed headers ignored",
+      "trusted": [],
+      "peer": "203.0.113.9:5555",
+      "headers": {
+        "X-Forwarded-For": [
+          "1.2.3.4"
+        ],
+        "Forwarded": [
+          "for=1.2.3.4;proto=https"
+        ],
+        "X-Real-IP": [
+          "1.2.3.4"
+        ],
+        "X-Forwarded-Proto": [
+          "https"
+        ]
+      },
+      "want": {
+        "client": "203.0.113.9",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "untrusted peer: spoofed headers ignored",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "203.0.113.9:5555",
+      "headers": {
+        "X-Forwarded-For": [
+          "1.2.3.4"
+        ],
+        "Forwarded": [
+          "for=1.2.3.4;proto=https"
+        ],
+        "X-Real-IP": [
+          "1.2.3.4"
+        ],
+        "X-Forwarded-Proto": [
+          "https"
+        ]
+      },
+      "want": {
+        "client": "203.0.113.9",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "trusted peer, X-Forwarded-For",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Forwarded-For": [
+          "198.51.100.7"
+        ],
+        "X-Forwarded-Proto": [
+          "https"
+        ]
+      },
+      "want": {
+        "client": "198.51.100.7",
+        "peer": "10.0.0.2:4321",
+        "https": true
+      }
+    },
+    {
+      "name": "chain of trusted proxies stops at the first untrusted address",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Forwarded-For": [
+          "6.6.6.6, 198.51.100.7, 10.1.1.1",
+          "10.0.0.9"
+        ]
+      },
+      "want": {
+        "client": "198.51.100.7",
+        "peer": "10.0.0.2:4321",
+        "https": false
+      }
+    },
+    {
+      "name": "every hop trusted: the leftmost",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Forwarded-For": [
+          "10.9.9.9, 10.1.1.1"
+        ]
+      },
+      "want": {
+        "client": "10.9.9.9",
+        "peer": "10.0.0.2:4321",
+        "https": false
+      }
+    },
+    {
+      "name": "client-supplied garbage left of the client is never read",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Forwarded-For": [
+          "not-an-ip, 198.51.100.7"
+        ]
+      },
+      "want": {
+        "client": "198.51.100.7",
+        "peer": "10.0.0.2:4321",
+        "https": false
+      }
+    },
+    {
+      "name": "Forwarded, chain, quoted IPv6 with port",
+      "trusted": [
+        "10.0.0.0/8",
+        "2001:db8:ffff::/48"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "Forwarded": [
+          "for=192.0.2.60;proto=http, For=\"[2001:db8:cafe::17]:4711\";Proto=HTTPS;by=10.0.0.1",
+          "for=\"[2001:db8:ffff::1]\""
+        ]
+      },
+      "want": {
+        "client": "2001:db8:cafe::17",
+        "peer": "10.0.0.2:4321",
+        "https": true
+      }
+    },
+    {
+      "name": "IPv6 peer and X-Forwarded-For",
+      "trusted": [
+        "2001:db8::/32"
+      ],
+      "peer": "[2001:db8::1]:443",
+      "headers": {
+        "X-Forwarded-For": [
+          "2001:db8:1::5, 2a00:1450::1"
+        ]
+      },
+      "want": {
+        "client": "2a00:1450::1",
+        "peer": "[2001:db8::1]:443",
+        "https": false
+      }
+    },
+    {
+      "name": "IPv4-mapped peer matches an IPv4 network",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "[::ffff:10.0.0.2]:80",
+      "headers": {
+        "X-Forwarded-For": [
+          "198.51.100.7:6000"
+        ]
+      },
+      "want": {
+        "client": "198.51.100.7",
+        "peer": "[::ffff:10.0.0.2]:80",
+        "https": false
+      }
+    },
+    {
+      "name": "single trusted address",
+      "trusted": [
+        "10.0.0.2"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Real-IP": [
+          "198.51.100.7"
+        ],
+        "X-Forwarded-Proto": [
+          "https"
+        ]
+      },
+      "want": {
+        "client": "198.51.100.7",
+        "peer": "10.0.0.2:4321",
+        "https": true
+      }
+    },
+    {
+      "name": "X-Real-IP loses to X-Forwarded-For",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Real-IP": [
+          "6.6.6.6"
+        ],
+        "X-Forwarded-For": [
+          "198.51.100.7"
+        ]
+      },
+      "want": {
+        "client": "198.51.100.7",
+        "peer": "10.0.0.2:4321",
+        "https": false
+      }
+    },
+    {
+      "name": "Forwarded and X-Forwarded-For disagree: neither believed",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "Forwarded": [
+          "for=6.6.6.6;proto=https"
+        ],
+        "X-Forwarded-For": [
+          "198.51.100.7"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "Forwarded and X-Forwarded-For agree",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "Forwarded": [
+          "for=198.51.100.7"
+        ],
+        "X-Forwarded-For": [
+          "198.51.100.7"
+        ],
+        "X-Forwarded-Proto": [
+          "https"
+        ]
+      },
+      "want": {
+        "client": "198.51.100.7",
+        "peer": "10.0.0.2:4321",
+        "https": true
+      }
+    },
+    {
+      "name": "X-Forwarded-Proto aligned with the client's hop",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Forwarded-For": [
+          "198.51.100.7, 10.1.1.1"
+        ],
+        "X-Forwarded-Proto": [
+          "https, http"
+        ]
+      },
+      "want": {
+        "client": "198.51.100.7",
+        "peer": "10.0.0.2:4321",
+        "https": true
+      }
+    },
+    {
+      "name": "X-Forwarded-Proto that cannot be aligned is ignored",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Forwarded-For": [
+          "198.51.100.7, 10.1.1.1, 10.1.1.2"
+        ],
+        "X-Forwarded-Proto": [
+          "https, http"
+        ]
+      },
+      "want": {
+        "client": "198.51.100.7",
+        "peer": "10.0.0.2:4321",
+        "https": false
+      }
+    },
+    {
+      "name": "lone X-Forwarded-Proto from a trusted peer",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Forwarded-Proto": [
+          "HTTPS"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": true
+      }
+    },
+    {
+      "name": "malformed: garbage X-Forwarded-For",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Forwarded-For": [
+          "198.51.100.7, bogus"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: garbage past a trusted hop",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Forwarded-For": [
+          "bogus, 10.1.1.1"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: unknown past a trusted hop",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "Forwarded": [
+          "for=unknown, for=10.1.1.1"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: empty X-Forwarded-For entry",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Forwarded-For": [
+          "198.51.100.7,"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: X-Forwarded-For hostname",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Forwarded-For": [
+          "evil.example"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: Forwarded for=unknown",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "Forwarded": [
+          "for=unknown"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: Forwarded obfuscated node",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "Forwarded": [
+          "for=_hidden"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: Forwarded without for",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "Forwarded": [
+          "proto=https;by=10.0.0.1"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: Forwarded repeated parameter",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "Forwarded": [
+          "for=198.51.100.7;for=6.6.6.6"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: Forwarded unterminated quote",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "Forwarded": [
+          "for=\"[2001:db8::1]"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: Forwarded bare IPv6 unquoted",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "Forwarded": [
+          "for=2001:db8::1"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: Forwarded trailing junk",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "Forwarded": [
+          "for=198.51.100.7 junk"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: two X-Real-IP values",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Real-IP": [
+          "198.51.100.7",
+          "6.6.6.6"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: X-Real-IP garbage",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "X-Real-IP": [
+          "???"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    },
+    {
+      "name": "malformed: malformed Forwarded beside XFF",
+      "trusted": [
+        "10.0.0.0/8"
+      ],
+      "peer": "10.0.0.2:4321",
+      "headers": {
+        "Forwarded": [
+          "for=bogus"
+        ],
+        "X-Forwarded-For": [
+          "198.51.100.7"
+        ]
+      },
+      "want": {
+        "client": "10.0.0.2",
+        "peer": "",
+        "https": false
+      }
+    }
+  ],
+  "trusted_proxies": {
+    "parse": {
+      "input": [
+        " 10.1.2.3/8 ",
+        "",
+        "192.0.2.1",
+        "2001:db8::/32",
+        "::1",
+        "::ffff:172.16.0.0/108"
+      ],
+      "canonical": [
+        "10.0.0.0/8",
+        "192.0.2.1/32",
+        "2001:db8::/32",
+        "::1/128",
+        "172.16.0.0/12"
+      ]
+    },
+    "invalid": [
+      "10.0.0.0/33",
+      "proxy.internal",
+      "10.0.0",
+      "fe80::1%eth0"
+    ]
+  },
+  "hosts": [
+    {
+      "name": "exact name, any port",
+      "allow": [
+        "example.test"
+      ],
+      "host": "example.test",
+      "permitted": true
+    },
+    {
+      "name": "exact name with port",
+      "allow": [
+        "example.test"
+      ],
+      "host": "example.test:8080",
+      "permitted": true
+    },
+    {
+      "name": "case and trailing dot",
+      "allow": [
+        "Example.Test"
+      ],
+      "host": "example.test.",
+      "permitted": true
+    },
+    {
+      "name": "host:port entry matches that port",
+      "allow": [
+        "example.test:8080"
+      ],
+      "host": "example.test:8080",
+      "permitted": true
+    },
+    {
+      "name": "host:port entry refuses another port",
+      "allow": [
+        "example.test:8080"
+      ],
+      "host": "example.test:9090",
+      "permitted": false
+    },
+    {
+      "name": "host:port entry refuses a bare name",
+      "allow": [
+        "example.test:8080"
+      ],
+      "host": "example.test",
+      "permitted": false
+    },
+    {
+      "name": "other name refused",
+      "allow": [
+        "example.test"
+      ],
+      "host": "evil.test",
+      "permitted": false
+    },
+    {
+      "name": "wildcard permits all",
+      "allow": [
+        "*"
+      ],
+      "host": "anything.test",
+      "permitted": true
+    },
+    {
+      "name": "empty Host is permitted",
+      "allow": [
+        "example.test"
+      ],
+      "host": "",
+      "permitted": true
+    },
+    {
+      "name": "IPv6 literal",
+      "allow": [
+        "::1"
+      ],
+      "host": "[::1]:80",
+      "permitted": true
+    },
+    {
+      "name": "IPv6 literal, canonical form",
+      "allow": [
+        "2001:db8::1"
+      ],
+      "host": "[2001:0db8:0:0:0:0:0:1]:80",
+      "permitted": true
+    },
+    {
+      "name": "IPv4-mapped IPv6 reads as IPv4",
+      "allow": [
+        "10.0.0.1"
+      ],
+      "host": "[::ffff:10.0.0.1]:80",
+      "permitted": true
+    },
+    {
+      "name": "empty allowlist refuses",
+      "allow": [],
+      "host": "example.test",
+      "permitted": false
+    }
+  ],
+  "listener_hosts": [
+    {
+      "addr": "127.0.0.1:8080",
+      "hosts": [
+        "localhost",
+        "127.0.0.1",
+        "::1"
+      ],
+      "wildcard": false
+    },
+    {
+      "addr": "localhost:80",
+      "hosts": [
+        "localhost",
+        "127.0.0.1",
+        "::1"
+      ],
+      "wildcard": false
+    },
+    {
+      "addr": "[::1]:80",
+      "hosts": [
+        "localhost",
+        "127.0.0.1",
+        "::1"
+      ],
+      "wildcard": false
+    },
+    {
+      "addr": "127.0.0.2:80",
+      "hosts": [
+        "localhost",
+        "127.0.0.1",
+        "::1",
+        "127.0.0.2"
+      ],
+      "wildcard": false
+    },
+    {
+      "addr": "0.0.0.0:80",
+      "hosts": [],
+      "wildcard": true
+    },
+    {
+      "addr": "[::]:80",
+      "hosts": [],
+      "wildcard": true
+    },
+    {
+      "addr": ":8080",
+      "hosts": [],
+      "wildcard": true
+    },
+    {
+      "addr": "10.1.2.3:80",
+      "hosts": [
+        "10.1.2.3"
+      ],
+      "wildcard": false
+    },
+    {
+      "addr": "Svc.Internal:80",
+      "hosts": [
+        "svc.internal"
+      ],
+      "wildcard": false
+    }
+  ],
+  "origin": [
+    {
+      "name": "safe methods always pass",
+      "allow": [],
+      "method": "GET",
+      "host": "a.test",
+      "headers": {
+        "Sec-Fetch-Site": "cross-site",
+        "Origin": "https://evil.test"
+      },
+      "permitted": true,
+      "message": ""
+    },
+    {
+      "name": "HEAD passes",
+      "allow": [],
+      "method": "HEAD",
+      "host": "a.test",
+      "headers": {
+        "Sec-Fetch-Site": "cross-site"
+      },
+      "permitted": true,
+      "message": ""
+    },
+    {
+      "name": "OPTIONS passes",
+      "allow": [],
+      "method": "OPTIONS",
+      "host": "a.test",
+      "headers": {
+        "Origin": "https://evil.test"
+      },
+      "permitted": true,
+      "message": ""
+    },
+    {
+      "name": "same-origin fetch metadata",
+      "allow": [],
+      "method": "POST",
+      "host": "a.test",
+      "headers": {
+        "Sec-Fetch-Site": "same-origin"
+      },
+      "permitted": true,
+      "message": ""
+    },
+    {
+      "name": "user-initiated navigation",
+      "allow": [],
+      "method": "POST",
+      "host": "a.test",
+      "headers": {
+        "Sec-Fetch-Site": "none"
+      },
+      "permitted": true,
+      "message": ""
+    },
+    {
+      "name": "cross-site fetch metadata is refused",
+      "allow": [],
+      "method": "POST",
+      "host": "a.test",
+      "headers": {
+        "Sec-Fetch-Site": "cross-site",
+        "Origin": "https://evil.test"
+      },
+      "permitted": false,
+      "message": "cross-origin request from \"https://evil.test\" refused"
+    },
+    {
+      "name": "same-site fetch metadata is refused",
+      "allow": [],
+      "method": "DELETE",
+      "host": "a.test",
+      "headers": {
+        "Sec-Fetch-Site": "same-site"
+      },
+      "permitted": false,
+      "message": "cross-origin request from \"Sec-Fetch-Site: same-site\" refused"
+    },
+    {
+      "name": "no browser headers: not a browser",
+      "allow": [],
+      "method": "POST",
+      "host": "a.test",
+      "headers": {},
+      "permitted": true,
+      "message": ""
+    },
+    {
+      "name": "Origin matching Host passes",
+      "allow": [],
+      "method": "POST",
+      "host": "a.test:8080",
+      "headers": {
+        "Origin": "http://a.test:8080"
+      },
+      "permitted": true,
+      "message": ""
+    },
+    {
+      "name": "Origin not matching Host is refused",
+      "allow": [],
+      "method": "POST",
+      "host": "a.test",
+      "headers": {
+        "Origin": "https://evil.test"
+      },
+      "permitted": false,
+      "message": "cross-origin request from \"https://evil.test\" refused"
+    },
+    {
+      "name": "null Origin is refused",
+      "allow": [],
+      "method": "POST",
+      "host": "a.test",
+      "headers": {
+        "Origin": "null"
+      },
+      "permitted": false,
+      "message": "cross-origin request from \"null\" refused"
+    },
+    {
+      "name": "trusted origin passes cross-site",
+      "allow": [
+        "https://app.test"
+      ],
+      "method": "POST",
+      "host": "a.test",
+      "headers": {
+        "Sec-Fetch-Site": "cross-site",
+        "Origin": "https://app.test"
+      },
+      "permitted": true,
+      "message": ""
+    },
+    {
+      "name": "trusted origin passes on Origin alone",
+      "allow": [
+        "https://app.test"
+      ],
+      "method": "POST",
+      "host": "a.test",
+      "headers": {
+        "Origin": "https://app.test"
+      },
+      "permitted": true,
+      "message": ""
+    },
+    {
+      "name": "trusted origin is exact",
+      "allow": [
+        "https://app.test"
+      ],
+      "method": "POST",
+      "host": "a.test",
+      "headers": {
+        "Origin": "https://app.test:8443"
+      },
+      "permitted": false,
+      "message": "cross-origin request from \"https://app.test:8443\" refused"
+    },
+    {
+      "name": "wildcard trusts every origin",
+      "allow": [
+        "*"
+      ],
+      "method": "POST",
+      "host": "a.test",
+      "headers": {
+        "Sec-Fetch-Site": "cross-site",
+        "Origin": "https://evil.test"
+      },
+      "permitted": true,
+      "message": ""
+    }
+  ],
+  "origin_invalid": [
+    "app.test",
+    "https://",
+    "https://app.test/path",
+    "https://app.test?q=1",
+    "https://app.test#frag"
+  ],
+  "openapi_cases": [
+    {
+      "name": "resource-crud",
+      "input": {
+        "title": "Widgets",
+        "version": "1.2.3",
+        "description": "Widget service",
+        "servers": [
+          {
+            "url": "https://api.example.test",
+            "description": "production"
+          },
+          {
+            "url": "http://127.0.0.1:8080"
+          }
+        ],
+        "schemas": {
+          "Widget": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string",
+                "description": "Display name"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "APIError": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "integer"
+              },
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "operations": [
+          {
+            "operation_id": "list-widgets",
+            "method": "GET",
+            "path": "/widgets/",
+            "summary": "List resources",
+            "tags": [
+              "widgets"
+            ],
+            "parameters": [
+              {
+                "name": "limit",
+                "in": "query",
+                "description": "Max results",
+                "schema": {
+                  "type": "integer",
+                  "default": 20
+                }
+              },
+              {
+                "name": "offset",
+                "in": "query",
+                "description": "Skip N results",
+                "schema": {
+                  "type": "integer",
+                  "default": 0
+                }
+              },
+              {
+                "name": "sort",
+                "in": "query",
+                "description": "Sort field",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              {
+                "name": "search",
+                "in": "query",
+                "description": "Search filter",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "OK",
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Widget"
+                  }
+                }
+              },
+              "500": {
+                "description": "Failed",
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          {
+            "operation_id": "create-widgets",
+            "method": "POST",
+            "path": "/widgets/",
+            "summary": "Create resource",
+            "tags": [
+              "widgets"
+            ],
+            "request_body": {
+              "description": "The widget",
+              "required": true,
+              "schema": {
+                "$ref": "#/components/schemas/Widget"
+              }
+            },
+            "responses": {
+              "201": {
+                "description": "Created",
+                "schema": {
+                  "$ref": "#/components/schemas/Widget"
+                }
+              }
+            }
+          },
+          {
+            "operation_id": "get-widgets",
+            "method": "GET",
+            "path": "/widgets/{id}",
+            "summary": "Get resource by ID",
+            "parameters": [
+              {
+                "name": "id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "OK",
+                "schema": {
+                  "$ref": "#/components/schemas/Widget"
+                }
+              },
+              "404": {
+                "description": "Not found",
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          {
+            "operation_id": "delete-widgets",
+            "method": "DELETE",
+            "path": "/widgets/{id}",
+            "summary": "Delete resource",
+            "description": "Removes the widget for good.",
+            "parameters": [
+              {
+                "name": "id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            ],
+            "responses": {
+              "204": {
+                "description": "Deleted"
+              }
+            },
+            "extensions": {
+              "x-kit-side-effect": "destructive"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "components": {
+          "schemas": {
+            "APIError": {
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "Widget": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "description": "Display name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "type": "object"
+            }
+          }
+        },
+        "info": {
+          "description": "Widget service",
+          "title": "Widgets",
+          "version": "1.2.3"
+        },
+        "openapi": "3.1.0",
+        "paths": {
+          "/widgets/": {
+            "get": {
+              "operationId": "list-widgets",
+              "parameters": [
+                {
+                  "description": "Max results",
+                  "in": "query",
+                  "name": "limit",
+                  "schema": {
+                    "default": 20,
+                    "type": "integer"
+                  }
+                },
+                {
+                  "description": "Skip N results",
+                  "in": "query",
+                  "name": "offset",
+                  "schema": {
+                    "default": 0,
+                    "type": "integer"
+                  }
+                },
+                {
+                  "description": "Sort field",
+                  "in": "query",
+                  "name": "sort",
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "description": "Search filter",
+                  "in": "query",
+                  "name": "search",
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "items": {
+                          "$ref": "#/components/schemas/Widget"
+                        },
+                        "type": "array"
+                      }
+                    }
+                  },
+                  "description": "OK"
+                },
+                "500": {
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/APIError"
+                      }
+                    }
+                  },
+                  "description": "Failed"
+                }
+              },
+              "summary": "List resources",
+              "tags": [
+                "widgets"
+              ]
+            },
+            "post": {
+              "operationId": "create-widgets",
+              "requestBody": {
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/Widget"
+                    }
+                  }
+                },
+                "description": "The widget",
+                "required": true
+              },
+              "responses": {
+                "201": {
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/Widget"
+                      }
+                    }
+                  },
+                  "description": "Created"
+                }
+              },
+              "summary": "Create resource",
+              "tags": [
+                "widgets"
+              ]
+            }
+          },
+          "/widgets/{id}": {
+            "delete": {
+              "description": "Removes the widget for good.",
+              "operationId": "delete-widgets",
+              "parameters": [
+                {
+                  "in": "path",
+                  "name": "id",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "responses": {
+                "204": {
+                  "description": "Deleted"
+                }
+              },
+              "summary": "Delete resource",
+              "x-kit-side-effect": "destructive"
+            },
+            "get": {
+              "operationId": "get-widgets",
+              "parameters": [
+                {
+                  "in": "path",
+                  "name": "id",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/Widget"
+                      }
+                    }
+                  },
+                  "description": "OK"
+                },
+                "404": {
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/APIError"
+                      }
+                    }
+                  },
+                  "description": "Not found"
+                }
+              },
+              "summary": "Get resource by ID"
+            }
+          }
+        },
+        "servers": [
+          {
+            "description": "production",
+            "url": "https://api.example.test"
+          },
+          {
+            "url": "http://127.0.0.1:8080"
+          }
+        ]
+      }
+    },
+    {
+      "name": "minimal",
+      "input": {
+        "title": "Bare",
+        "version": "0.0.1",
+        "operations": []
+      },
+      "expected": {
+        "components": {
+          "schemas": {}
+        },
+        "info": {
+          "title": "Bare",
+          "version": "0.0.1"
+        },
+        "openapi": "3.1.0"
+      }
+    },
+    {
+      "name": "required-query-and-array",
+      "input": {
+        "title": "Cmds",
+        "version": "2.0.0",
+        "operations": [
+          {
+            "operation_id": "invoke-run",
+            "method": "GET",
+            "path": "/v1/commands/run",
+            "summary": "Invoke run",
+            "tags": [
+              "commands"
+            ],
+            "parameters": [
+              {
+                "name": "target",
+                "in": "query",
+                "required": true,
+                "description": "Where",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              {
+                "name": "arg",
+                "in": "query",
+                "description": "Positional argument; repeat in order: name",
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "Command completed",
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exit_code": {
+                      "type": "integer"
+                    },
+                    "stdout": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "components": {
+          "schemas": {}
+        },
+        "info": {
+          "title": "Cmds",
+          "version": "2.0.0"
+        },
+        "openapi": "3.1.0",
+        "paths": {
+          "/v1/commands/run": {
+            "get": {
+              "operationId": "invoke-run",
+              "parameters": [
+                {
+                  "description": "Where",
+                  "in": "query",
+                  "name": "target",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "description": "Positional argument; repeat in order: name",
+                  "in": "query",
+                  "name": "arg",
+                  "schema": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "properties": {
+                          "exit_code": {
+                            "type": "integer"
+                          },
+                          "stdout": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    }
+                  },
+                  "description": "Command completed"
+                }
+              },
+              "summary": "Invoke run",
+              "tags": [
+                "commands"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}
