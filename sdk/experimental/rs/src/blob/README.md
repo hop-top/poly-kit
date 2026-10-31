@@ -55,11 +55,11 @@ assert_eq!(keys, vec!["reports/2026.txt".to_string()]);
   helper that prefers `Stater`: bound on `S: Stater`, or call `stat_by_list` (list-by-prefix plus
   exact-key match, content type only as good as `list`'s).
 - A key that resolves outside the store root is refused with `BlobError::KeyEscapesRoot`.
-- A missing key is `BlobError::NotFound`, not an empty reader.
 - `list` orders per directory by name, as Go's walk does: `a/b` precedes `a.txt`.
 - Parity: Go `go/storage/blob` is the reference; `tests/blob_conformance.rs` runs the shared corpus in
   `contracts/blob-v1`, and `tests/blob.rs` pins the atomic-write semantics described in its README.
   Keys that reduce to the root or contain `\` are refused here and not by Go; not in the corpus.
+- A missing key is `BlobError::NotFound`, not an empty reader. It is the cross-backend missing-key sentinel (Go: `blob.ErrNotFound`) and every path returns it: `get`, `stat` (a directory, or a key below a file, is missing too) and `stat_by_list`. `exists` is `Ok(false)` and `delete` is `Ok(())` for a missing key; `list` of an unmatched prefix is an empty `Vec`.
 - `delete` is idempotent: a missing key is `Ok(())`, as in Go. Reserved and escaping keys still error.
 - Parity: none recorded; Go `go/storage/blob` is the reference, and `tests/blob.rs` pins the
 

@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"hop.top/kit/go/storage/blob"
 )
@@ -208,7 +209,7 @@ func (s *Store) Get(_ context.Context, key string) (io.ReadCloser, error) {
 	}
 	f, err := os.Open(p)
 	if err != nil {
-		return nil, fmt.Errorf("blob/local: open: %w", err)
+		return nil, wrapMissing("open", err)
 	}
 	return f, nil
 }
@@ -220,10 +221,10 @@ func (s *Store) Delete(_ context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := os.Remove(p); err != nil && !isMissing(err) {
 		return fmt.Errorf("blob/local: remove: %w", err)
 	}
-	if err := os.Remove(s.metaPath(p)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := os.Remove(s.metaPath(p)); err != nil && !isMissing(err) {
 		return fmt.Errorf("blob/local: remove meta: %w", err)
 	}
 	return nil
@@ -269,8 +270,8 @@ func (s *Store) List(_ context.Context, prefix string) ([]blob.Object, error) {
 }
 
 // Stat returns the metadata of the blob at key: size from the file and
-// content type from the sidecar (empty when none). A missing key wraps
-// fs.ErrNotExist, as Get does. Implements blob.Stater.
+// content type from the sidecar (empty when none). A missing key matches
+// blob.ErrNotFound and fs.ErrNotExist, as Get does. Implements blob.Stater.
 func (s *Store) Stat(_ context.Context, key string) (blob.Object, error) {
 	p, err := s.resolve(key)
 	if err != nil {
@@ -278,10 +279,10 @@ func (s *Store) Stat(_ context.Context, key string) (blob.Object, error) {
 	}
 	info, err := os.Stat(p)
 	if err != nil {
-		return blob.Object{}, fmt.Errorf("blob/local: stat: %w", err)
+		return blob.Object{}, wrapMissing("stat", err)
 	}
 	if info.IsDir() {
-		return blob.Object{}, fmt.Errorf("blob/local: stat: %w", fs.ErrNotExist)
+		return blob.Object{}, wrapMissing("stat", fs.ErrNotExist)
 	}
 	return blob.Object{Key: key, Size: info.Size(), ContentType: s.readContentType(p)}, nil
 }
@@ -296,8 +297,35 @@ func (s *Store) Exists(_ context.Context, key string) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
-	if os.IsNotExist(err) {
+	if isMissing(err) {
 		return false, nil
 	}
 	return false, fmt.Errorf("blob/local: stat: %w", err)
+}
+
+// notFoundError is a missing-key error: it matches blob.ErrNotFound and
+// keeps the filesystem error in the chain, so errors.Is(err,
+// fs.ErrNotExist) still holds.
+type notFoundError struct {
+	op  string
+	err error
+}
+
+func (e *notFoundError) Error() string   { return "blob/local: " + e.op + ": " + e.err.Error() }
+func (e *notFoundError) Unwrap() []error { return []error{blob.ErrNotFound, fs.ErrNotExist, e.err} }
+
+// isMissing reports whether err says the path names nothing: the file is
+// absent, or a parent component is not a directory (the key cannot exist
+// either way).
+func isMissing(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+}
+
+// wrapMissing wraps err from the filesystem op: a missing file becomes a
+// notFoundError, anything else a plain wrapped error.
+func wrapMissing(op string, err error) error {
+	if isMissing(err) {
+		return &notFoundError{op: op, err: err}
+	}
+	return fmt.Errorf("blob/local: %s: %w", op, err)
 }

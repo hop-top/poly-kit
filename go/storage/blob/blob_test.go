@@ -48,7 +48,10 @@ func TestStatHelperFallsBackToExactListMatch(t *testing.T) {
 func TestStatHelperFallbackNotFound(t *testing.T) {
 	s := listOnly{objs: []blob.Object{{Key: "k2"}}}
 	_, err := blob.Stat(context.Background(), s, "k")
+	if !errors.Is(err, blob.ErrNotFound) {
+		t.Fatalf("err = %v, want blob.ErrNotFound", err)
+	}
 	if !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("err = %v, want fs.ErrNotExist", err)
+		t.Fatalf("err = %v, want fs.ErrNotExist kept for compat", err)
 	}
 }

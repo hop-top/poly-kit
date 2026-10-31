@@ -136,6 +136,15 @@ impl LocalStore {
     }
 }
 
+/// Whether `e` says the path names nothing: the file is absent, or a
+/// parent component is not a directory (the key cannot exist either way).
+fn is_missing(e: &io::Error) -> bool {
+    matches!(
+        e.kind(),
+        io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+    )
+}
+
 /// Report whether `name` is an in-flight (or crash-orphaned) staging file,
 /// which must never surface as a key.
 fn is_temp_name(name: &str) -> bool {
@@ -289,9 +298,12 @@ impl Store for LocalStore {
 
     fn get(&self, key: &str) -> Result<Self::Reader, BlobError> {
         let p = self.resolve(key)?;
-        File::open(&p).map_err(|e| match e.kind() {
-            io::ErrorKind::NotFound => BlobError::NotFound(key.to_string()),
-            _ => BlobError::io("open", e),
+        File::open(&p).map_err(|e| {
+            if is_missing(&e) {
+                BlobError::NotFound(key.to_string())
+            } else {
+                BlobError::io("open", e)
+            }
         })
     }
 
@@ -300,14 +312,14 @@ impl Store for LocalStore {
         // Idempotent like Go's local.Delete: a missing key is success.
         let removed = match fs::remove_file(&p) {
             Ok(()) => Ok(()),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(e) if is_missing(&e) => Ok(()),
             Err(e) => Err(BlobError::io("remove", e)),
         };
         // Drop the sidecar even when the content was already gone, so a
         // stray one never outlives its key.
         match fs::remove_file(self.meta_path(&p)) {
             Ok(()) => {}
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) if is_missing(&e) => {}
             Err(e) => return removed.and(Err(BlobError::io("remove meta", e))),
         }
         removed
@@ -357,7 +369,7 @@ impl Store for LocalStore {
         let p = self.resolve(key)?;
         match fs::metadata(&p) {
             Ok(_) => Ok(true),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) if is_missing(&e) => Ok(false),
             Err(e) => Err(BlobError::io("stat", e)),
         }
     }
@@ -366,9 +378,12 @@ impl Store for LocalStore {
 impl Stater for LocalStore {
     fn stat(&self, key: &str) -> Result<Object, BlobError> {
         let p = self.resolve(key)?;
-        let meta = fs::metadata(&p).map_err(|e| match e.kind() {
-            io::ErrorKind::NotFound => BlobError::NotFound(key.to_string()),
-            _ => BlobError::io("stat", e),
+        let meta = fs::metadata(&p).map_err(|e| {
+            if is_missing(&e) {
+                BlobError::NotFound(key.to_string())
+            } else {
+                BlobError::io("stat", e)
+            }
         })?;
         if meta.is_dir() {
             return Err(BlobError::NotFound(key.to_string()));

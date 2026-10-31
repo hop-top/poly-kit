@@ -7,6 +7,7 @@ package blobtest
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"sort"
 	"strings"
@@ -23,7 +24,8 @@ type Factory func(t *testing.T) blob.Store
 // Pinned contract:
 //   - Delete of a missing key succeeds (idempotent, S3 semantics).
 //   - Exists reports false, without error, for a missing key.
-//   - Get of a missing key returns an error.
+//   - Get of a missing key returns an error for which
+//     errors.Is(err, blob.ErrNotFound) is true.
 //   - Put overwrites; Get returns the latest bytes.
 //   - List returns every key with the prefix (a string-prefix match, so
 //     "logs/" excludes "logs-old/x"), with its Size, as the keys the
@@ -71,6 +73,9 @@ func Run(t *testing.T, newStore Factory) {
 		if err == nil {
 			rc.Close()
 			t.Fatal("Get(missing): want error")
+		}
+		if !errors.Is(err, blob.ErrNotFound) {
+			t.Fatalf("Get(missing) = %v, want errors.Is blob.ErrNotFound", err)
 		}
 	})
 
@@ -232,7 +237,8 @@ func untyped(ct string) bool {
 //   - Stat returns Key, Size and the exact ContentType of the latest Put
 //     (empty, or the provider's default such as S3's binary/octet-stream,
 //     when none was given).
-//   - Stat of a missing key returns an error, as Get does.
+//   - Stat of a missing key returns an error for which
+//     errors.Is(err, blob.ErrNotFound) is true, as Get does.
 //   - Overwrite updates type and size; Delete makes Stat fail again.
 func RunStat(t *testing.T, newStore Factory) {
 	t.Helper()
@@ -271,8 +277,9 @@ func RunStat(t *testing.T, newStore Factory) {
 
 	t.Run("StatMissingErrors", func(t *testing.T) {
 		_, st := stater(t)
-		if _, err := st.Stat(ctx, "st/nope"); err == nil {
-			t.Fatal("Stat(missing): want error")
+		_, err := st.Stat(ctx, "st/nope")
+		if !errors.Is(err, blob.ErrNotFound) {
+			t.Fatalf("Stat(missing) = %v, want errors.Is blob.ErrNotFound", err)
 		}
 	})
 
@@ -303,8 +310,8 @@ func RunStat(t *testing.T, newStore Factory) {
 		if err := s.Delete(ctx, "st/gone"); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := st.Stat(ctx, "st/gone"); err == nil {
-			t.Fatal("Stat after Delete: want error")
+		if _, err := st.Stat(ctx, "st/gone"); !errors.Is(err, blob.ErrNotFound) {
+			t.Fatalf("Stat after Delete = %v, want errors.Is blob.ErrNotFound", err)
 		}
 	})
 }
