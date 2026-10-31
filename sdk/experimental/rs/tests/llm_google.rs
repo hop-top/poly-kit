@@ -731,7 +731,16 @@ async fn keys_and_base_url_credentials_never_surface() {
         format!("http://user:{SECRET}@127.0.0.1:1"),
         format!("http://127.0.0.1:1?key={SECRET}"),
     ] {
-        let a = adapter(&base);
+        // A base carrying userinfo is refused at build; the rest fail in
+        // transport. Neither may echo a credential.
+        let a = match Adapter::new(cfg(&base, "gemini-2.0-flash", &key)) {
+            Ok(a) => a,
+            Err(e) => {
+                let t = format!("{e} {e:?}");
+                assert!(!t.contains(&key) && !t.contains(SECRET), "{base}: {t}");
+                continue;
+            }
+        };
         let errs = [
             a.complete(&hi()).await.unwrap_err(),
             a.stream(&hi()).await.err().unwrap(),
@@ -798,6 +807,111 @@ async fn stream_error_key_straddling_the_cap_is_scrubbed() {
                         &key[i..i + n]
                     );
                 }
+            }
+        }
+    }
+}
+
+fn env_key(k: &str) -> Option<String> {
+    (k == "GOOGLE_API_KEY").then(|| leak_key())
+}
+
+fn builder_with_env_key(
+    base: &str,
+    llm_base: Option<&'static str>,
+    yaml: &str,
+) -> Result<Adapter, LlmError> {
+    Adapter::builder(cfg(base, "m", ""))
+        .env(move |k| match k {
+            "LLM_BASE_URL" => llm_base.map(str::to_string),
+            other => env_key(other),
+        })
+        .config_file(hop_top_kit::llm::ConfigFile::parse(yaml).unwrap())
+        .build()
+}
+
+/// A key found in the environment goes only to a trusted endpoint.
+#[test]
+fn env_fallback_key_is_refused_for_an_untrusted_endpoint() {
+    for base in [
+        "https://evil.example/v1",
+        "http://evil.example",
+        "https://generativelanguage.googleapis.com.evil.example/v1beta",
+    ] {
+        let e = builder_with_env_key(base, None, "").unwrap_err();
+        assert!(matches!(e, LlmError::KeyEndpoint { .. }), "{base}: {e}");
+        assert!(!e.to_string().contains(&leak_key()));
+    }
+    // Trusted: the default, loopback, LLM_BASE_URL, llm.yaml.
+    assert!(builder_with_env_key("", None, "").is_ok());
+    assert!(builder_with_env_key("http://127.0.0.1:9", None, "").is_ok());
+    assert!(builder_with_env_key(
+        "https://proxy.example/v1",
+        Some("https://proxy.example"),
+        ""
+    )
+    .is_ok());
+    let yaml = "providers:\n  google:\n    base_url: https://gw.example/v1\n";
+    assert!(builder_with_env_key("https://gw.example/v1", None, yaml).is_ok());
+    // Hermetic: no env key at all.
+    assert!(Adapter::builder(cfg("", "m", ""))
+        .env(env_key)
+        .hermetic()
+        .build()
+        .is_err());
+}
+
+/// No key goes over plain http to a remote host, or to a malformed base.
+#[test]
+fn configured_key_is_checked_against_the_endpoint() {
+    for base in ["http://remote.example", "https://user:pw@h.example"] {
+        let e = Adapter::new(cfg(base, "m", &leak_key())).unwrap_err();
+        assert!(matches!(e, LlmError::KeyEndpoint { .. }), "{base}: {e}");
+        assert!(!e.to_string().contains("pw@"), "{e}");
+    }
+    assert!(Adapter::new(cfg("https://anywhere.example", "m", &leak_key())).is_ok());
+}
+
+/// The model reaches the path as one encoded segment.
+#[tokio::test]
+async fn model_is_encoded_into_the_path() {
+    for model in ["../../x", "a?key=b", "a#b", "a/b"] {
+        let srv = ok().await;
+        let mut req = hi();
+        req.model = model.into();
+        adapter(&srv.url).complete(&req).await.unwrap();
+        let got = srv.only().path;
+        assert!(
+            got.starts_with("/models/") && got.ends_with(":generateContent"),
+            "{model}: {got}"
+        );
+        assert!(!got.contains("..") || got.contains("%2F"), "{model}: {got}");
+        assert!(
+            !got.contains('?') && !got.contains('#'),
+            "{model}: {got}"
+        );
+        assert_eq!(got.matches('/').count(), 2, "{model}: {got}");
+    }
+}
+
+/// A non-streamed error body echoing a key cut by the cap leaks no part.
+#[tokio::test]
+async fn error_body_key_straddling_the_cap_is_scrubbed() {
+    let key = format!("{}-{}", "AIza", "Q7x9LmN2pR4vT6wZ8bC1dF3gH5jK");
+    for status in [400u16, 200] {
+        let msg = format!("{}{key}", "x".repeat(500));
+        let body = json!({"error": {"code": 400, "message": msg}}).to_string();
+        let srv = serve(vec![Canned::json(status, &body)]).await;
+        let a = Adapter::new(cfg(&srv.url, "m", &key)).unwrap();
+        let e = a.complete(&hi()).await.unwrap_err();
+        let text = format!("{e} {e:?}");
+        for n in 4..=key.len() {
+            for i in 0..=key.len() - n {
+                assert!(
+                    !text.contains(&key[i..i + n]),
+                    "{status}: {:?} leaked",
+                    &key[i..i + n]
+                );
             }
         }
     }

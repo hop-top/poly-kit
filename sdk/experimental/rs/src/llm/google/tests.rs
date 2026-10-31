@@ -77,17 +77,17 @@ fn key_env_precedence_and_blanks() {
 fn urls() {
     let a = build(cfg("", "gemini-2.0-flash", "k"), &[]).unwrap();
     assert_eq!(
-        a.url("gemini-2.0-flash", "generateContent")
+        a.url("gemini-2.0-flash", "generateContent", None)
             .unwrap()
             .as_str(),
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
     );
-    let a = build(cfg("http://h:1/v1beta/", "m", "k"), &[]).unwrap();
+    let a = build(cfg("http://127.0.0.1:1/v1beta/", "m", "k"), &[]).unwrap();
     assert_eq!(
-        a.url("m", "streamGenerateContent?alt=sse")
+        a.url("m", "streamGenerateContent", Some("alt=sse"))
             .unwrap()
             .as_str(),
-        "http://h:1/v1beta/models/m:streamGenerateContent?alt=sse"
+        "http://127.0.0.1:1/v1beta/models/m:streamGenerateContent?alt=sse"
     );
 }
 
