@@ -521,9 +521,8 @@ cross-runtime fixtures under `sdk/tests/cross-lang/` execute the contract
 against every runtime. Two gaps remain open and matter when writing
 portable code:
 
-- **`--format csv` and `--format text` do not exist in rs or php.** Only
-  `table`, `json` and `yaml` are portable across all five runtimes today.
-  The fixtures record this as `rs-php-no-csv-text`.
+- **`--format human` exists only in go and rs.** py, ts and php have no
+  `human` formatter. The fixtures record this as `py-ts-php-no-human`.
 - **rs has no ordered-column affordance on the `--template` path.** Go
   exposes `.Cols` and py and ts expose `cols`; php has a `{*}`
   placeholder yielding pre-joined values. The spelling for rs is an open

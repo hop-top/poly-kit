@@ -14,9 +14,8 @@ declare(strict_types=1);
  * Re-parsing rather than reporting the input is the point: it is the only way
  * to observe serialized key ORDER. Nothing here sorts keys.
  *
- * The PHP SDK ships table/json/yaml only — csv and text land in a follow-up
- * phase — so extended-format cases report "unsupported" rather than passing
- * silently.
+ * A format the registry does not hold (the extended `human`) is reported
+ * "unsupported" rather than passing silently.
  */
 
 require __DIR__ . '/../../../../experimental/php/vendor/autoload.php';

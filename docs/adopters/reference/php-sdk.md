@@ -178,10 +178,9 @@ paths, as does Go across all five formats. The cross-runtime fixtures
 under `sdk/tests/cross-lang/` execute the contract against every runtime.
 Two gaps are open:
 
-- **`csv` and `text` are not implemented** in PHP or Rust. Only `table`,
-  `json` and `yaml` are portable across all five runtimes, so a caller
-  writing against the kit output contract cannot assume `--format csv`
-  exists. The fixtures record this as `rs-php-no-csv-text`.
+- **`human` is Go and Rust only.** PHP, Python and TypeScript have no
+  `human` formatter, so a caller cannot assume `--format human` exists. The
+  fixtures record this as `py-ts-php-no-human`.
 - **rs has no ordered-column affordance on the `--template` path**,
   where PHP has `{*}`. The shared spelling for that tier is undecided.
 

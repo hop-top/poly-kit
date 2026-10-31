@@ -163,9 +163,9 @@ under `sdk/experimental/rs/src/output/builtins/` (registered in
 `builtins.rs`), php ships `CsvFormatter.php` and `TextFormatter.php`
 under `sdk/experimental/php/src/Output/Formatter/Builtin/`, and both
 SDKs test all five. The fixture set
-`sdk/tests/cross-lang/expected/ordering.json` still carries the
-`rs-php-no-csv-text` skip entry; the fixture skip entry predates the
-formatters.
+`sdk/tests/cross-lang/expected/ordering.json` also pins `human` in go
+and rs; py, ts and php have no such formatter and carry the
+`py-ts-php-no-human` skip entry.
 
 One gap remains open in the payload SDKs, and matters when writing
 portable code:

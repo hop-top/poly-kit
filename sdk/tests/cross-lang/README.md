@@ -221,17 +221,19 @@ are how this class of bug survived unnoticed in the first place.
 
 ## Format coverage is not uniform
 
-| runtime | table | json | yaml | csv | text |
-|---------|-------|------|------|-----|------|
-| go      | yes   | yes  | yes  | yes | yes  |
-| py      | yes   | yes  | yes  | yes | yes  |
-| ts      | yes   | yes  | yes  | yes | yes  |
-| rs      | yes   | yes  | yes  | —   | —    |
-| php     | yes   | yes  | yes  | —   | —    |
+| runtime | table | json | yaml | csv | text | human |
+|---------|-------|------|------|-----|------|-------|
+| go      | yes   | yes  | yes  | yes | yes  | yes   |
+| py      | yes   | yes  | yes  | yes | yes  | —     |
+| ts      | yes   | yes  | yes  | yes | yes  | —     |
+| rs      | yes   | yes  | yes  | yes | yes  | yes   |
+| php     | yes   | yes  | yes  | yes | yes  | —     |
 
 Cases are tagged `portable` (table/json/yaml — every runtime) or `extended`
-(csv/text — py/ts/go). rs and php report `unsupported` for the extended cases,
-which surfaces as a known gap rather than a pass.
+(csv/text/human). A runtime without a formatter reports `unsupported` for it,
+which surfaces as a known gap rather than a pass: py, ts and php have no
+`human` (`py-ts-php-no-human`). `human` is the table view of a payload without
+a bespoke renderer, so its column sequence is read the way table's is.
 
 ## What Go is excluded from, and why
 
@@ -266,8 +268,8 @@ them and does not fail on them.
   alphabetically. Go's rule-1/rule-2 guarantee is table/csv/text-only. Go also
   switches key *names* from the `json:`/`yaml:` tags to the `table:` headers
   once `cols` is non-empty.
-- **rs and php ship no csv/text formatter** (`rs-php-no-csv-text`). Both
-  document these as a follow-up phase.
+- **py, ts and php have no `human` formatter** (`py-ts-php-no-human`). Go and
+  rs register it; the extended cases report it `unsupported` elsewhere.
 - **`priority` is Go-only** (`priority-go-only`). Complete hide-on-overflow in
   Go (`renderer.go:301-364`); accepted-and-ignored in the payload SDKs per
   rule 5. No fixture asserts it — pinning it would pin a capability four
