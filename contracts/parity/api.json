@@ -100,7 +100,7 @@
       "bus_events": "SHIPPED",
       "openapi": "SHIPPED",
       "sse": "SHIPPED",
-      "websocket": "PENDING",
+      "websocket": "SHIPPED",
       "service_lifecycle": "SHIPPED",
       "command_projection": "SHIPPED",
       "tls": "SHIPPED",
