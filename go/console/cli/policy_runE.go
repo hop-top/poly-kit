@@ -141,8 +141,26 @@ func destructiveTokenSha(cmd *cobra.Command) string {
 // PolicyFlags returns the delegation policy flags visible to cmd: the
 // --policy name (empty when unset) and the --max-ops budget (0 when
 // unset or unparseable).
+//
+// --policy is read from the root's persistent flag only. A command that
+// defines its own local --policy (kit's uri leaves take a policy FILE
+// path) shadows the global one for that invocation, and its value is not
+// a delegation policy name; reading it here would hand a file path to
+// the policy loader.
 func PolicyFlags(cmd *cobra.Command) (name string, maxOps int) {
-	return flagValue(cmd, policyFlag), flagInt(cmd, maxOpsFlag)
+	return rootPolicyName(cmd), flagInt(cmd, maxOpsFlag)
+}
+
+// rootPolicyName returns the value of the root's persistent --policy
+// flag, ignoring any same-named local flag on cmd or its ancestors.
+func rootPolicyName(cmd *cobra.Command) string {
+	if cmd == nil {
+		return ""
+	}
+	if f := cmd.Root().PersistentFlags().Lookup(policyFlag); f != nil {
+		return f.Value.String()
+	}
+	return ""
 }
 
 // PolicyEngine builds the policy.Engine r enforces for cmd from the

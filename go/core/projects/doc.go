@@ -22,16 +22,20 @@
 //
 // # Schema
 //
-// File on disk is YAML v1:
+// File on disk is YAML, schema version 2 (SchemaVersion):
 //
-//	schema: 1
+//	schema: 2
 //	projects:
 //	  ops:
 //	    path: /Users/alice/src/ops
 //	    startup_cmd: zsh
 //	    source: wsm
+//	    stage:              # optional, owned by kit/core/stage
+//	      stage: maintenance
+//	      since: 2026-01-02T03:04:05Z
+//	      reason: freeze for release
 //
-// The schema version is intentionally tracked so future migrations can
+// Schema 1 files (no stage block) read transparently. The schema version is intentionally tracked so future migrations can
 // reject forward-incompatible files via ErrSchemaUnsupported.
 //
 // # Concurrency
@@ -43,13 +47,17 @@
 //
 // # Errors
 //
-// Read returns sentinel errors so callers can branch with errors.Is:
+// Read, Write and Delete return sentinel errors so callers can branch
+// with errors.Is:
 //
 //   - ErrMalformed         — file exists but YAML is unparseable.
 //   - ErrSchemaUnsupported — file's schema field is greater than the
 //     constant SchemaVersion supported by this build.
 //
-// A missing file is not an error: Read returns an empty File and nil.
+// A missing file is not an error: Read returns an empty File and nil, and
+// Write/Delete treat it as empty. Write and Delete never overwrite a
+// malformed or newer-schema file; they return the sentinel and leave the
+// file untouched.
 // kit core packages do not log; callers (rux command code) decide log
 // behavior on top of these sentinels.
 package projects

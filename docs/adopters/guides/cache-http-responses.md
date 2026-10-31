@@ -85,23 +85,35 @@ TTL is authoritative: `Cache-Control: max-age` is not read.
 |------|----------|
 | non-GET request | passes through, never cached |
 | request or response `Cache-Control: no-store` | not cached (token match, case-insensitive) |
+| response `Vary: *` | not stored |
+| response with `Vary: <fields>` | stored per variant: one entry per distinct set of request values for those fields |
+| request with `Authorization` | stored only if the response has `public`, `s-maxage` or `must-revalidate` (RFC 9111 section 3.5); otherwise returned, not stored |
 | non-2xx response | returned, not stored |
 | entry past TTL | miss; refetched and overwritten |
 | store read, decode or write error | degrades to a miss; caller never sees a cache error |
 | inner transport error | returned as-is |
 
-Key: prefix + `sha256(method + " " + url)`. Cached responses are
+Key: prefix + `sha256(method + " " + url)` for responses without `Vary`.
+A response with `Vary` is stored under a variant key derived from the
+request's values for the varied headers, and the URL's field list is
+recorded in an index entry (`varyidx:`); lookups read the index first.
+Cached responses are
 rebuilt as `HTTP/1.1` with the stored status, headers (framing headers
 `Connection`, `Content-Length`, `Transfer-Encoding` dropped) and body;
 `ContentLength` comes from the stored bytes.
 
 ## Limits to design around
 
-- No `Vary` keying: request headers other than the URL do not change the
-  key. Do not cache per-user or `Authorization`-dependent responses
-  through a shared transport and store; use a separate `WithPrefix`
-  and store per identity, or send `Cache-Control: no-store` on those
-  requests.
+- `Authorization` requests are not stored unless the response opts into
+  shared caching (`public`, `s-maxage`, `must-revalidate`). A response
+  that does is served to any later caller of that URL, whatever their
+  credentials: that is what those directives mean. For per-user data
+  that must be cached, use a separate `WithPrefix` and store per
+  identity, or send `Cache-Control: no-store`.
+- A response marked `Cache-Control: private` is never stored, even with
+  `public`, `s-maxage` or `must-revalidate` alongside it. Personalized
+  responses that are not marked private and lack `Vary` on the
+  distinguishing header can still be shared between users.
 - No ETag or `If-None-Match` revalidation.
 - Whole body is buffered in memory and stored in the kv value; avoid for
   large downloads (use [blob](store-files-with-blob.md)).
@@ -115,7 +127,9 @@ rebuilt as `HTTP/1.1` with the stored status, headers (framing headers
 The stored envelope (`status`, `headers`, base64 `body`) and key
 derivation are pinned by fixtures in `contracts/httpcache-v1/` so ports
 in other languages share a store. Change the fixtures first if you change
-keying or the envelope.
+keying or the envelope. The `Vary` variant keys and the `Authorization`/
+`Vary` storage gates are in the same fixtures; the Rust port does not
+implement them yet.
 
 ## See also
 

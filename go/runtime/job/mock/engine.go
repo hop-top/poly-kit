@@ -22,6 +22,7 @@ type Engine struct {
 	pub      domain.EventPublisher
 	nowFunc  func() time.Time
 	claimTTL time.Duration
+	ttls     map[string]time.Duration // per-job EnqueueOpts.ClaimTTL
 	seq      int
 }
 
@@ -34,11 +35,12 @@ func New(opts ...job.Option) *Engine {
 		pub:      cfg.Publisher,
 		nowFunc:  cfg.NowFunc,
 		claimTTL: 5 * time.Minute,
+		ttls:     make(map[string]time.Duration),
 	}
 }
 
 // Enqueue creates a new pending job.
-func (e *Engine) Enqueue(_ context.Context, opts job.EnqueueOpts) (string, error) {
+func (e *Engine) Enqueue(ctx context.Context, opts job.EnqueueOpts) (string, error) {
 	if opts.Queue == "" {
 		return "", fmt.Errorf("%w: queue is required", domain.ErrValidation)
 	}
@@ -82,6 +84,10 @@ func (e *Engine) Enqueue(_ context.Context, opts job.EnqueueOpts) (string, error
 		ScheduledAt: opts.ScheduledAt,
 	}
 	e.jobs[id] = j
+	if opts.ClaimTTL > 0 {
+		e.ttls[id] = opts.ClaimTTL
+	}
+	job.PublishEvent(ctx, e.pub, job.TopicCreated, *j, "")
 	return id, nil
 }
 
@@ -135,9 +141,10 @@ func (e *Engine) Claim(ctx context.Context, queue, workerID string) (*job.Job, e
 	j.UpdatedAt = now
 	j.Attempts++
 
-	exp := now.Add(e.claimTTL)
+	exp := now.Add(e.ttlFor(j.ID))
 	j.ExpiresAt = &exp
 
+	job.PublishEvent(ctx, e.pub, job.TopicClaimed, *j, "")
 	cp := *j
 	return &cp, nil
 }
@@ -172,6 +179,7 @@ func (e *Engine) Complete(ctx context.Context, id string, result any) error {
 		}
 		j.Result = b
 	}
+	job.PublishEvent(ctx, e.pub, job.TopicSucceeded, *j, "")
 	return nil
 }
 
@@ -213,6 +221,7 @@ func (e *Engine) Fail(ctx context.Context, id string, opts job.FailOpts) error {
 		backoff := bo.Compute(j.Attempts - 1)
 		nextRun := now.Add(backoff)
 		j.NextRunAt = &nextRun
+		job.PublishEvent(ctx, e.pub, job.TopicRetried, *j, opts.Error)
 		return nil
 	}
 
@@ -230,6 +239,10 @@ func (e *Engine) Fail(ctx context.Context, id string, opts job.FailOpts) error {
 	j.Error = opts.Error
 	j.UpdatedAt = now
 	j.CompletedAt = &now
+	job.PublishEvent(ctx, e.pub, job.TopicFailed, *j, opts.Error)
+	if opts.Retry {
+		job.PublishEvent(ctx, e.pub, job.TopicDeadLetter, *j, opts.Error)
+	}
 	return nil
 }
 
@@ -255,6 +268,7 @@ func (e *Engine) Timeout(ctx context.Context, id string) error {
 	j.Status = job.StatusTimeout
 	j.UpdatedAt = now
 	j.CompletedAt = &now
+	job.PublishEvent(ctx, e.pub, job.TopicTimeout, *j, "")
 	return nil
 }
 
@@ -280,11 +294,12 @@ func (e *Engine) Cancel(ctx context.Context, id string) error {
 	j.Status = job.StatusCancelled
 	j.UpdatedAt = now
 	j.CompletedAt = &now
+	job.PublishEvent(ctx, e.pub, job.TopicCancelled, *j, "")
 	return nil
 }
 
 // Heartbeat extends the expiry of an active job.
-func (e *Engine) Heartbeat(_ context.Context, id string) error {
+func (e *Engine) Heartbeat(ctx context.Context, id string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -299,9 +314,10 @@ func (e *Engine) Heartbeat(_ context.Context, id string) error {
 	}
 
 	now := e.nowFunc()
-	exp := now.Add(e.claimTTL)
+	exp := now.Add(e.ttlFor(id))
 	j.ExpiresAt = &exp
 	j.UpdatedAt = now
+	job.PublishEvent(ctx, e.pub, job.TopicHeartbeat, *j, "")
 	return nil
 }
 
@@ -377,7 +393,17 @@ func (e *Engine) ReleaseStaleClaims(ctx context.Context) (int, error) {
 		j.StartedAt = nil
 		j.ExpiresAt = nil
 		j.UpdatedAt = now
+		job.PublishEvent(ctx, e.pub, job.TopicStaleReleased, *j, "")
 		released++
 	}
 	return released, nil
+}
+
+// ttlFor returns the claim TTL for a job: the per-job EnqueueOpts.ClaimTTL
+// when set, else the engine default. Caller holds e.mu.
+func (e *Engine) ttlFor(id string) time.Duration {
+	if d, ok := e.ttls[id]; ok {
+		return d
+	}
+	return e.claimTTL
 }

@@ -25,6 +25,8 @@ const (
 //   - Env opt-out: if JOB_RUNONE_DISABLE is set, returns nil immediately.
 //   - Cooldown file: if a cooldown marker exists and is recent, returns nil.
 //   - Pre-check: if Claim returns nil, nothing to do.
+//   - A handler panic is recovered, fails the job and is returned as a
+//     *PanicError.
 func RunOne(
 	ctx context.Context,
 	svc Service,
@@ -67,7 +69,7 @@ func RunOne(
 		return nil
 	}
 
-	if herr := handler(ctx, *j); herr != nil {
+	if herr := runHandler(ctx, handler, *j); herr != nil {
 		_ = svc.Fail(ctx, j.ID, FailOpts{
 			Error: herr.Error(),
 			Retry: true,

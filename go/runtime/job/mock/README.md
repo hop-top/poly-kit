@@ -42,6 +42,8 @@ Verified by `example_test.go` in this directory.
 - IDs are `job_<n>`, sequential per engine instance.
 - Claim order: priority ascending, then `created_at` ascending.
 - `Fail` with `Retry: true` returns the job to `pending` with a backoff-computed `NextRunAt` while attempts remain.
+- `EnqueueOpts.ClaimTTL` sets the per-job claim lifetime (zero keeps the 5m default); `Heartbeat` extends by the same TTL.
+- Publishes `job.*` lifecycle events (`JobEvent` payload) when built with `job.WithPublisher`.
 - Safe for concurrent use; no persistence.
 
 ## Neighbours

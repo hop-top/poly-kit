@@ -64,7 +64,9 @@ Verified by `example_test.go` in this directory.
 - State machine: `pending → active | canceled`; `active → succeeded | failed | timeout | pending | canceled`; `failed | timeout → pending` (retry). Every backend enforces it through `domain.StateMachine`.
 - Claim order is priority ascending, then `created_at` ascending, within one queue.
 - `DefaultBackoff`: 30s initial, 15m max, factor 2, 25% jitter.
-- Lifecycle events publish on `job.*` topics (`TopicCreated`, `TopicFailed`, ...) through `domain.EventPublisher`; pass one with `job.WithPublisher`.
+- Lifecycle events publish on `job.*` topics (`TopicCreated`, `TopicFailed`, ...) with a `JobEvent` payload through `domain.EventPublisher`; pass one with `job.WithPublisher`. The `mock` and `durabletask` engines publish them; the server-backed engines do not.
+- `EnqueueOpts.ClaimTTL` (default 5m) sets the claim lifetime per job; `mock` and `durabletask` honor it.
+- `Poller` logs `Claim`/`Complete`/`Fail`/`ReleaseStaleClaims` errors on `Poller.Logger` (default `slog.Default()`) and recovers handler panics as `*PanicError`, failing the job. `RunOne` recovers the same way.
 - `RunOne` is disabled when `JOB_RUNONE_DISABLE` is set.
 
 ## Neighbours

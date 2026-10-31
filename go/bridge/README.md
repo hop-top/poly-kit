@@ -13,7 +13,7 @@ mirror.
 This package implements the wire, manifest and routing thirds of that
 picture:
 
-- `payload.go` — `Payload` and its `Text`/`URL`/`File`/`Blob` oneof.
+- `payload.go` — `Payload` and its `Text`/`URL`/`File`/`Blob` oneof; JSON marshal and unmarshal both enforce exactly one kind (`ErrInvalidOneof`).
 - `manifest.go` — `Manifest`, `Validate` and `Load`.
 - `match.go` — `Match`, selecting the manifest and accept rule that
   should handle a payload, and `reason.go`'s `NoMatchReason` for when
