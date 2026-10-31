@@ -423,7 +423,7 @@ test-parity-alias: ## alias-v1 conformance corpus (Go, Rust, TypeScript and Pyth
 	@echo "==> alias-v1 conformance: Go"
 	go test ./go/console/alias/ ./go/console/cli/ -run '^TestConformanceAlias' -count=1
 	@echo "==> alias-v1 conformance: Rust"
-	cd sdk/rs && cargo test --features cli --test cli_alias_conformance --locked
+	cd sdk/rs && cargo test --features cli --lib --locked cli::alias_conformance
 	@echo "==> alias-v1 conformance: TypeScript"
 	cd sdk/ts && pnpm vitest run src/alias.conformance.test.ts
 	@echo "==> alias-v1 conformance: Python"
