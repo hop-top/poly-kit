@@ -65,8 +65,8 @@ fn hmac_digests_match_the_corpus() {
         .collect();
     let mut checked = 0;
     for v in c["hmac_vectors"].as_array().unwrap() {
-        if s(v, "hash") == "sha1" {
-            continue; // not supported in this port, by design
+        if s(v, "hash") == "sha1" && !cfg!(feature = "webhook-sha1") {
+            continue; // opt-in only; see sha1_is_refused_without_the_opt_in
         }
         let ts = s(v, "timestamp");
         let cfg = hmac_cfg(
@@ -83,8 +83,25 @@ fn hmac_digests_match_the_corpus() {
         );
         checked += 1;
     }
-    assert!(checked >= 4);
-    assert!(sign_hmac(&hmac_cfg(&secret, "sha1", "", "", ""), "", b"x").is_err());
+    assert!(checked >= if cfg!(feature = "webhook-sha1") { 5 } else { 4 });
+}
+
+#[cfg(not(feature = "webhook-sha1"))]
+#[test]
+fn sha1_is_refused_without_the_opt_in() {
+    let e = sign_hmac(&hmac_cfg("k", "sha1", "", "", ""), "", b"x").unwrap_err();
+    assert!(e.to_string().contains("webhook-sha1"), "{e}");
+    // The default hash is untouched.
+    assert!(sign_hmac(&hmac_cfg("k", "", "", "", ""), "", b"x").is_ok());
+}
+
+#[cfg(feature = "webhook-sha1")]
+#[test]
+fn sha1_signs_distinctly_under_the_opt_in() {
+    let sig = sign_hmac(&hmac_cfg("k", "sha1", "", "sha1=", ""), "", b"x").unwrap();
+    assert!(sig.starts_with("sha1=") && sig.len() == 5 + 40, "{sig}");
+    let other = sign_hmac(&hmac_cfg("k", "sha256", "", "sha1=", ""), "", b"x").unwrap();
+    assert_ne!(sig, other);
 }
 
 #[tokio::test]

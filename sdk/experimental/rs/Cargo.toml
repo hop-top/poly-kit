@@ -241,9 +241,14 @@ rpc-server = [
 # Inbound webhook receiver on the api-server: HMAC signature, clientState
 # and basic-auth verifiers, subscription handshake, replay window,
 # idempotency claim in a kv store (TtlInserter), ack-fast publish to the
-# bus. A port of go/transport/webhook. Native only. sha1 senders are not
-# supported (no sha1 crate); sha256 and sha512 are.
+# bus. A port of go/transport/webhook. Native only. sha256 and sha512
+# senders are supported; sha1 senders (legacy X-Hub-Signature) only under
+# the explicit `webhook-sha1` opt-in below.
 webhook = ["api-server", "kv", "dep:hmac", "dep:subtle", "dep:sha2", "dep:base64"]
+# Legacy sha1 HMAC senders (GitHub-style `sha1=`). Never in `default` and
+# not implied by `webhook`: without it `hash: "sha1"` is refused at
+# construction. HMAC-SHA1 is still sound as a MAC; the opt-in is policy.
+webhook-sha1 = ["webhook", "dep:sha1"]
 
 # Per-capability consent grants, a port of go/core/consent: the grant
 # model, decision logic, prompter seam, audit records, refusals and the
@@ -655,6 +660,12 @@ buffa-types = { version = "=0.9.2", features = ["json"], optional = true }
 # `Mac::verify_slice` is constant time; ring::hmac was rejected (it would
 # drag ring into a pure feature). DECO D2/D3 (webhook secrets).
 hmac = { version = "=0.13.0", default-features = false, optional = true }
+# sha1 =0.11.0 (2026-03-27), RustCrypto/hashes, MIT OR Apache-2.0, no
+# advisories at this version; already in the lock (tungstenite) and on the
+# digest 0.11 generation with sha2 0.11 / hmac 0.13, so `Hmac<Sha1>`
+# resolves with no second digest stack. Only for the `webhook-sha1`
+# opt-in (legacy senders); 0.10.7 is digest 0.10 and would not.
+sha1 = { version = "=0.11.0", default-features = false, optional = true }
 
 # The OS RNG. Declared for native targets only: getrandom 0.4 has no
 # backend on wasm32-unknown-unknown, so the features naming it
