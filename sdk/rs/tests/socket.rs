@@ -794,3 +794,148 @@ async fn nonzero_exit_is_not_recorded() {
     assert_eq!(n.load(Ordering::SeqCst), 2);
     r.stop().await;
 }
+
+// ---- permission gate ----
+
+fn counted_write() -> (Handlers, Arc<AtomicUsize>) {
+    let n = Arc::new(AtomicUsize::new(0));
+    let n2 = n.clone();
+    let mut h = Handlers::new();
+    h.register(
+        &["widget", "add"],
+        move |_i: Invocation, _c: CancelToken| {
+            n2.fetch_add(1, Ordering::SeqCst);
+            async { Ok(CommandResult::stdout("added")) }
+        },
+    )
+    .unwrap();
+    h.annotate(&["widget", "add"], "write-local", "widgets:write")
+        .unwrap();
+    (h, n)
+}
+
+#[test]
+fn annotating_an_unregistered_path_is_refused() {
+    let mut h = Handlers::new();
+    assert_eq!(
+        h.annotate(&["nope"], "read", "").err(),
+        Some(RouteError::Unknown("nope".into()))
+    );
+}
+
+#[tokio::test]
+async fn a_permission_refusal_is_denied_reported_and_never_runs() {
+    let (h, ran) = counted_write();
+    let seen: Arc<Mutex<Vec<CommandMeta>>> = Arc::default();
+    let (s2, log) = (seen.clone(), Arc::new(Mutex::new(Vec::<String>::new())));
+    let l2 = log.clone();
+    let r = start(move |p| {
+        SocketService::new(p, h)
+            .permission(move |_inv, meta| {
+                s2.lock().unwrap().push(meta.clone());
+                Err("nope".into())
+            })
+            .on_refused(move |_, why| l2.lock().unwrap().push(why.to_string()))
+    })
+    .await;
+    let resp = call_on(&r.path, json!({"path":["widget","add"]})).await;
+    assert_eq!(resp["ok"], false, "{resp}");
+    assert_eq!(resp["error"]["code"], "DENIED");
+    assert_eq!(
+        resp["error"]["message"],
+        "cmdsurface: permission denied: widget add on socket: nope"
+    );
+    assert_eq!(ran.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        seen.lock().unwrap()[0],
+        CommandMeta {
+            side_effect: "write-local".into(),
+            permissions: "widgets:write".into()
+        }
+    );
+    assert_eq!(log.lock().unwrap().len(), 1);
+    // An unknown path is NOT_FOUND, not a permission question.
+    let resp = call_on(&r.path, json!({"path":["nope"]})).await;
+    assert_eq!(resp["error"]["code"], "NOT_FOUND");
+    assert_eq!(seen.lock().unwrap().len(), 1);
+    r.stop().await;
+}
+
+#[cfg(feature = "cli-permissions")]
+mod served {
+    use super::*;
+    use hop_top_kit::cli::policy::{CallerRule, PermissionRule, Policy};
+    use hop_top_kit::cli::ServedGate;
+    use std::collections::BTreeMap;
+
+    /// Writes refused to all but the rule's callers, who get `max_ops`.
+    fn policy(principal: &str, max_ops: i64) -> Policy {
+        Policy {
+            name: "team".into(),
+            allow: BTreeMap::from([("write".into(), Vec::new())]),
+            callers: vec![CallerRule {
+                principal: principal.into(),
+                allow: BTreeMap::from([("write".into(), vec!["*".into()])]),
+                max_ops,
+                ..CallerRule::default()
+            }],
+            permissions: vec![PermissionRule {
+                name: "surface".into(),
+                when: "context.surface == 'socket' && resource.tier == 'write-local' && 'x' in payload.args".into(),
+                effect: "deny".into(),
+                otherwise: "allow".into(),
+                message: "x is closed".into(),
+            }],
+            ..Policy::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn the_owner_matches_a_rule_without_a_principal_and_spends_its_budget() {
+        let (h, ran) = counted_write();
+        let gate = Arc::new(ServedGate::new(policy("", 1)).unwrap());
+        let r = start(move |p| SocketService::new(p, h).served_gate(gate)).await;
+        let add = |args: Value| json!({"path":["widget","add"],"args":args});
+        // The rules see surface, tier and payload; the refusal spends nothing.
+        let resp = call_on(&r.path, add(json!(["x"]))).await;
+        assert_eq!(resp["error"]["code"], "DENIED", "{resp}");
+        assert!(resp["error"]["message"]
+            .as_str()
+            .unwrap()
+            .ends_with(r#"permission rule "surface": x is closed"#));
+        assert_eq!(call_on(&r.path, add(json!(["y"]))).await["ok"], true);
+        let spent = call_on(&r.path, add(json!(["y"]))).await;
+        assert_eq!(spent["error"]["code"], "DENIED");
+        assert!(spent["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("policy: max_ops budget of 1 per 1h0m0s spent"));
+        assert_eq!(ran.load(Ordering::SeqCst), 1);
+        r.stop().await;
+    }
+
+    #[tokio::test]
+    async fn a_claimed_principal_is_not_a_caller_but_a_verified_one_is() {
+        // Transport-established: a claim of "alice" matches no rule naming her.
+        let (h, ran) = counted_write();
+        let gate = Arc::new(ServedGate::new(policy("alice", 0)).unwrap());
+        let g2 = gate.clone();
+        let r = start(move |p| SocketService::new(p, h).served_gate(g2)).await;
+        let resp = call_on(&r.path, json!({"path":["widget","add"],"caller":"alice"})).await;
+        assert_eq!(resp["error"]["code"], "DENIED", "{resp}");
+        assert_eq!(ran.load(Ordering::SeqCst), 0);
+        r.stop().await;
+        // The authenticator's verdict names her.
+        let (h, ran) = counted_write();
+        let r = start(move |p| {
+            SocketService::new(p, h)
+                .authenticator(Scoped)
+                .served_gate(gate)
+        })
+        .await;
+        let resp = call_on(&r.path, json!({"path":["widget","add"],"caller":"bob"})).await;
+        assert_eq!(resp["ok"], true, "{resp}");
+        assert_eq!(ran.load(Ordering::SeqCst), 1);
+        r.stop().await;
+    }
+}
