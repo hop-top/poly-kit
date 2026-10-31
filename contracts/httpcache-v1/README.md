@@ -20,11 +20,11 @@ cd sdk/experimental/rs && cargo test --features httpcache --test httpcache_contr
 
 | File | Pins |
 |------|------|
-| `cacheability.json` | `request_cacheable` (9) and `response_cacheable` (8) gate vectors |
-| `keying.json` | key = `default_prefix` + lowercase-hex sha256(`method + " " + url`); `derivation`, `normalization` rules, 22 `cases`, 2 `prefix_cases` |
+| `cacheability.json` | `request_cacheable` (9) and `response_cacheable` (8) gate vectors, plus `vary_response_cacheable` (3) and `authorization_response_cacheable` (9) |
+| `keying.json` | key = `default_prefix` + lowercase-hex sha256(`method + " " + url`); `derivation`, `normalization` rules, 22 `cases`, 2 `prefix_cases`, `vary` section (index, variant and field-list vectors) |
 | `entry.json` | the three-field envelope (`status`, `headers`, `body`) with `schema`, `porting_notes`, `framing_headers`, 11 `encode_cases`, 9 `decode_cases` |
 
-Method is used verbatim (no case folding); the URL is re-serialized by the language's URL type. Vary-aware keying is a v1 non-goal: the key depends on method and URL only. Ports MUST read and write byte-identical envelopes.
+Method is used verbatim (no case folding); the URL is re-serialized by the language's URL type. The primary key depends on method and URL only; responses with `Vary` use the variant keys in `keying.json` (`vary` section), and `cacheability.json` carries the `Vary: *` and `Authorization` storage vectors. Ports MUST read and write byte-identical envelopes.
 
 Consumers:
 
