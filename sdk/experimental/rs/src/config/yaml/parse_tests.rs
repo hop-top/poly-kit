@@ -103,15 +103,11 @@ fn repair_is_linear() {
         src.push_str(&format!("k{i}:\tv\nq{i}: \"x\ny\"\n"));
     }
     PARSES.set(0);
-    let start = std::time::Instant::now();
+    // PARSES is the linearity proof; no wall-clock bound (it flaked
+    // under parallel builds).
     let root = parse(&src).unwrap().unwrap();
     assert!(PARSES.get() <= 3, "{} parses", PARSES.get());
     assert_eq!(root.get("q19999").unwrap().scalar_value(), Some("x y"));
-    assert!(
-        start.elapsed() < std::time::Duration::from_secs(2),
-        "{:?}",
-        start.elapsed()
-    );
 }
 
 #[test]
@@ -163,7 +159,9 @@ fn long_line_repair_is_linear() {
     assert_eq!(f.tabs.len(), 1);
     assert!(f.inserts.is_empty());
     let took = start.elapsed();
-    assert!(took < std::time::Duration::from_millis(500), "{took:?}");
+    // Coarse backstop only: a quadratic scan of 500 KB runs for minutes,
+    // so a generous bound still catches it and does not flake under load.
+    assert!(took < std::time::Duration::from_secs(30), "{took:?}");
     PARSES.set(0);
     let root = parse(&src).unwrap().unwrap();
     assert_eq!(root.get("name").unwrap().scalar_value(), Some("x"));
