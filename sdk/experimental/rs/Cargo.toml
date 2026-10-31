@@ -441,6 +441,12 @@ tempfile = "3"
 uuid = { version = "1", features = ["v7", "serde"] }
 # Reads the YAML files the consent conformance runner asserts on.
 serde_norway = "0.9"
+# The notify-email STARTTLS test makes a self-signed certificate at run
+# time, so no key material is committed. Exact pin: 0.14.10 (published
+# 2026-08-28), rustls/rcgen, MIT OR Apache-2.0, no advisories. Default
+# features off; the `ring` backend is the provider rustls already runs on
+# here, so aws-lc-rs stays out of the tree.
+rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "ring"] }
 
 # The wasm32 smoke test (tests/bus_wasm.rs, `make test-rs-wasm`), run
 # under Node by wasm-bindgen-test-runner. Exact pins: each must match the
