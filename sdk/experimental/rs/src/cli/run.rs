@@ -7,16 +7,19 @@
 
 use std::collections::BTreeMap;
 use std::io::Write;
+use std::sync::{Arc, Mutex};
 
 use clap::{ArgMatches, Command};
 
 use crate::output::{render_error, CliError};
 
+use super::gate::Leaf;
 use super::root::Root;
 use super::usage::{
     classify, correct_args, correction_candidate, correction_notice, find_cmd, flag_candidates,
     AutocorrectMode,
 };
+use super::validate::{SignatureStrictness, ValidationFailureMode};
 
 /// The environment variable that sets the autocorrect policy.
 pub const AUTOCORRECT_ENV: &str = "KIT_AUTOCORRECT";
@@ -43,12 +46,19 @@ pub struct Globals {
     pub offline: bool,
     /// `--dry-run`.
     pub dry_run: bool,
-    /// `-C/--chdir`; carried, not applied (see [`Root::execute`]).
+    /// `-C/--chdir`, as typed; [`Root::execute`] applies it for the
+    /// duration of the run.
     pub chdir: Option<String>,
-    /// `-c/--config` tokens, in order.
+    /// `-c/--config` tokens, in order; see [`Invocation::config_args`].
     pub config: Vec<String>,
     /// `--autocorrect`, as typed.
     pub autocorrect: Option<String>,
+    /// `--confirm`, as typed (`auto|yes|no|prompt`; empty when unset).
+    pub confirm: String,
+    /// `--max-ops`: the cap on mutating operations (0 unlimited).
+    pub max_ops: i64,
+    /// `--policy`, as typed: the delegation policy name.
+    pub policy: String,
 }
 
 /// What a command was invoked with.
@@ -63,9 +73,43 @@ pub struct Invocation {
     pub args: Vec<String>,
     /// The persistent flags.
     pub globals: Globals,
+    /// Every flag given on the command line, the command's own and the
+    /// persistent ones, by long name, values in order.
+    pub given: BTreeMap<String, Vec<String>>,
+    /// Whether kit applied `--dry-run` to this run: the flag was given
+    /// and the command's tier honors it. A read command accepts the
+    /// flag and still runs for real.
+    pub dry_run: bool,
+    /// The root's aliases (alias to target path) as they stand.
+    pub aliases: BTreeMap<String, String>,
+    /// The root's config project marker (see
+    /// [`Config::project_marker`](super::Config)).
+    pub project_marker: String,
 }
 
 impl Invocation {
+    /// Renders `data` in the active `--format` (default `table`), the
+    /// way Go's `output.Dispatch` does for a handler's result. The
+    /// `--format-opt`, `--cols`, `--template` and `-o` refinements of
+    /// the full dispatcher are not applied.
+    #[allow(clippy::result_large_err)]
+    pub fn render(&self, out: &mut dyn Write, data: &serde_json::Value) -> Result<(), CliError> {
+        let format = if self.globals.format.is_empty() {
+            "table"
+        } else {
+            self.globals.format.as_str()
+        };
+        let registry = crate::output::default_registry();
+        let f = registry.lookup(format).ok_or_else(|| {
+            CliError::usage(format!(
+                "unknown output format '{format}' (valid: {})",
+                registry.keys().join(", ")
+            ))
+        })?;
+        f.render(out, data, &Default::default(), &[])
+            .map_err(|e| CliError::generic(e.to_string()))
+    }
+
     /// The last value of flag `name`, if given.
     pub fn flag(&self, name: &str) -> Option<&str> {
         self.flags
@@ -109,6 +153,9 @@ impl Root {
                 let _ = render_error(err, &active_format(argv), &ce);
                 ce
             });
+        }
+        if let Some(stop) = self.preflight(err, &active_format(argv)) {
+            return Err(stop);
         }
         let mut argv = argv.to_vec();
         let mut corrected = false;
@@ -217,15 +264,141 @@ impl Root {
             let _ = render_error(err, format, &ce);
             return Err(ce);
         };
-        let inv = invocation(cmd, cur, m, path);
+        let mut inv = invocation(cmd, cur, m, path.clone());
+        inv.aliases = self.aliases.clone();
+        if let Some(cfg) = &self.config {
+            inv.project_marker = cfg.project_marker.clone();
+        }
         let _ = args;
-        match handler(&inv, out, err) {
+        let result = self.run_leaf(handler, &mut inv, cmd, format, out, err);
+        match result {
             Ok(()) => Ok(()),
             Err(e) => {
                 let _ = render_error(err, format, &e);
                 Err(e)
             }
         }
+    }
+
+    /// The pre-run chain of a leaf: `-C`, then (on a kit root) the
+    /// delegation gates, the flag validators and the handler.
+    #[allow(clippy::result_large_err)]
+    fn run_leaf(
+        &self,
+        handler: &Arc<HandlerFn>,
+        inv: &mut Invocation,
+        cmd: &Command,
+        format: &str,
+        out: &mut dyn Write,
+        err: &mut dyn Write,
+    ) -> Result<(), CliError> {
+        let _cwd = self.apply_chdir(inv)?;
+        if self.config.is_none() {
+            return handler(inv, out, err);
+        }
+        let annotations = self.annotations_of(&inv.path);
+        let leaf = Leaf {
+            full_path: format!("{} {}", self.cmd.get_name(), inv.path)
+                .trim()
+                .to_string(),
+            verb: &inv.path.clone(),
+            annotations: &annotations,
+            format,
+            local_policy: local_arg(cmd, "policy"),
+            local_confirm_value: local_arg(cmd, "confirm")
+                .then(|| inv.flag("confirm").unwrap_or("").to_string()),
+        };
+        self.gated(&leaf, inv, err, |inv, err| {
+            for (name, validate) in &self.flag_validators {
+                if let Some(e) = inv
+                    .given
+                    .get(name)
+                    .and_then(|v| v.last())
+                    .and_then(|v| validate(v))
+                {
+                    return Err(e);
+                }
+            }
+            handler(inv, out, err)
+        })
+    }
+
+    /// Applies `-C/--chdir` for the duration of the run: the target is
+    /// used as is when it is a directory, else resolved by the
+    /// configured resolver. The returned guard restores the previous
+    /// directory, so `execute` leaves the process where it found it.
+    #[allow(clippy::result_large_err)]
+    fn apply_chdir(&self, inv: &Invocation) -> Result<Option<CwdGuard>, CliError> {
+        let Some(cfg) = &self.config else {
+            return Ok(None);
+        };
+        let target = match (&inv.globals.chdir, cfg.disable.chdir) {
+            (Some(t), false) if !t.is_empty() => t,
+            _ => return Ok(None),
+        };
+        let dir = if std::path::Path::new(target).is_dir() {
+            std::path::PathBuf::from(target)
+        } else if let Some(r) = &cfg.chdir_resolver {
+            r.resolve(target).map_err(CliError::generic)?
+        } else {
+            return Err(CliError::generic(format!(
+                "cannot chdir to {target:?}: not a directory"
+            )));
+        };
+        CwdGuard::enter(&dir)
+            .map(Some)
+            .map_err(|e| CliError::generic(e.to_string()))
+    }
+
+    /// The pre-flight of a kit root: `Root::validate` and the
+    /// signature validators, per their configured modes. `Some` is the
+    /// failure to stop with, already rendered.
+    fn preflight(&self, err: &mut dyn Write, format: &str) -> Option<CliError> {
+        let cfg = self.config.as_ref()?;
+        let fail = |e: CliError, render: bool, err: &mut dyn Write| {
+            if render {
+                let _ = render_error(err, format, &e);
+            }
+            Some(e)
+        };
+        if !cfg.disable_validate {
+            if let Err(ve) = self.validate() {
+                match cfg.validation_failure {
+                    ValidationFailureMode::Exit => return fail(ve.to_cli_error(), true, err),
+                    ValidationFailureMode::Error => return fail(ve.to_cli_error(), false, err),
+                    ValidationFailureMode::Silent => {
+                        let _ = writeln!(err, "[warn] cli validation failure (silent mode): {ve}");
+                    }
+                }
+            }
+        }
+        if cfg.signature_strictness != SignatureStrictness::Silent {
+            let report = self.validate_signature();
+            if report.has_violations() {
+                match cfg.signature_strictness {
+                    SignatureStrictness::Warn => {
+                        for v in &report.violations {
+                            let _ = writeln!(
+                                err,
+                                "[warn] cli signature violation: {} [{}] {}",
+                                v.path, v.check, v.detail
+                            );
+                        }
+                    }
+                    _ => {
+                        let e = CliError::usage(report.summary());
+                        match cfg.validation_failure {
+                            ValidationFailureMode::Exit => return fail(e, true, err),
+                            ValidationFailureMode::Error => return fail(e, false, err),
+                            ValidationFailureMode::Silent => {
+                                let _ = writeln!(err, "[warn] {}", e.message);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Replaces a leading alias word with its target path.
@@ -310,6 +483,25 @@ fn invocation(cmd: &Command, m: &ArgMatches, root: &ArgMatches, path: String) ->
         flags.insert(super::root::flag_name(a), vals);
     }
     let _ = root;
+    let mut given: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for a in cmd.get_arguments() {
+        let id = a.get_id().as_str();
+        if a.is_positional() || m.value_source(id) != Some(clap::parser::ValueSource::CommandLine) {
+            continue;
+        }
+        let vals: Vec<String> = match m.try_get_raw(id) {
+            Ok(Some(v)) => v.map(|v| v.to_string_lossy().into_owned()).collect(),
+            _ => Vec::new(),
+        };
+        given.insert(
+            super::root::flag_name(a),
+            if vals.is_empty() {
+                vec!["true".to_string()]
+            } else {
+                vals
+            },
+        );
+    }
     let s = |k: &str| m.try_get_one::<String>(k).ok().flatten().cloned();
     let b = |k: &str| {
         m.try_get_one::<bool>(k)
@@ -339,12 +531,97 @@ fn invocation(cmd: &Command, m: &ArgMatches, root: &ArgMatches, path: String) ->
             .map(|v| v.cloned().collect())
             .unwrap_or_default(),
         autocorrect: s("autocorrect"),
+        confirm: s("confirm").unwrap_or_default(),
+        max_ops: m
+            .try_get_one::<i64>("max-ops")
+            .ok()
+            .flatten()
+            .copied()
+            .unwrap_or(0),
+        policy: s("policy").unwrap_or_default(),
     };
     Invocation {
         path,
         flags,
         args,
         globals,
+        given,
+        ..Invocation::default()
+    }
+}
+
+/// Whether `cmd` declares its own (non-persistent) flag `name`, which
+/// shadows the root's persistent flag of that name.
+fn local_arg(cmd: &Command, name: &str) -> bool {
+    cmd.get_arguments()
+        .any(|a| a.get_id().as_str() == name && !a.is_global_set())
+}
+
+/// Restores the process directory when dropped. Directory changes are
+/// process-wide, so concurrent `-C` runs queue on one lock; a run
+/// without `-C` is not held back, and sees the changed directory while
+/// one is in flight.
+struct CwdGuard {
+    prev: std::path::PathBuf,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+impl CwdGuard {
+    fn enter(dir: &std::path::Path) -> std::io::Result<CwdGuard> {
+        static LOCK: Mutex<()> = Mutex::new(());
+        let lock = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::current_dir()?;
+        std::env::set_current_dir(dir)?;
+        Ok(CwdGuard { prev, _lock: lock })
+    }
+}
+
+impl Drop for CwdGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.prev);
+    }
+}
+
+#[cfg(feature = "config")]
+impl Invocation {
+    /// The `-c` tokens split into extra config files and dotted
+    /// `key=value` overrides, as Go's `Root.ConfigArgs`. A bare
+    /// directory resolves through the root's project marker; a token
+    /// that is neither a pair nor a file is an error.
+    pub fn config_args(
+        &self,
+    ) -> Result<(Vec<std::path::PathBuf>, Option<crate::config::Map>), crate::config::Error> {
+        let tokens: Vec<&str> = self
+            .globals
+            .config
+            .iter()
+            .map(|t| t.trim())
+            .filter(|t| !t.is_empty() && *t != "[]")
+            .collect();
+        let mut opts = Vec::new();
+        if !self.project_marker.is_empty() {
+            opts.push(crate::config::with_project_marker(
+                self.project_marker.clone(),
+            ));
+        }
+        crate::config::parse_config_args(&tokens, &opts)
+    }
+
+    /// Layers the `-c` tokens into a config load: files after the
+    /// discovered ones, overrides last, winning over every file.
+    pub fn layer_config(
+        &self,
+        mut opts: crate::config::Options,
+    ) -> Result<crate::config::Options, crate::config::Error> {
+        let (paths, overrides) = self.config_args()?;
+        opts.extra_config_paths.extend(paths);
+        if let Some(o) = overrides {
+            match opts.overrides.as_mut() {
+                Some(existing) => existing.extend(o),
+                None => opts.overrides = Some(o),
+            }
+        }
+        Ok(opts)
     }
 }
 

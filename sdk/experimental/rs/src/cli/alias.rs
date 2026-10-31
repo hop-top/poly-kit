@@ -18,6 +18,12 @@ pub const SHIM_ARGS: &str = "args";
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AliasError(String);
 
+impl AliasError {
+    pub(super) fn new(msg: impl Into<String>) -> AliasError {
+        AliasError(msg.into())
+    }
+}
+
 impl fmt::Display for AliasError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)

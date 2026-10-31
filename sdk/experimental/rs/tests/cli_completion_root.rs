@@ -131,7 +131,7 @@ fn deep_alias_shim_has_none_of_the_target_flags() {
     // Like Go's shim: positional arguments pass, the target's flags do not.
     let model = root.model();
     let shim = model.find("rs").unwrap();
-    assert!(shim.flags.is_empty(), "{shim:?}");
+    assert!(shim.flags.iter().all(|f| f.name == "help"), "{shim:?}");
     assert_eq!(shim.args.len(), 1);
     assert_eq!(shim.args[0].name, hop_top_kit::cli::SHIM_ARGS);
     assert!(shim.args[0].variadic);
@@ -143,12 +143,7 @@ fn alias_named_completion_replaces_the_builtin() {
     root.alias("completion", "deploy").unwrap();
     assert_eq!(root.command_group("completion"), None);
     let model = root.model();
-    assert!(
-        model
-            .find("completion")
-            .is_some_and(|c| c.aliases.is_empty() && c.commands.is_empty()),
-        "{model:?}"
-    );
+    assert!(model.find("completion").is_none(), "{model:?}");
     assert!(model
         .find("deploy")
         .unwrap()
