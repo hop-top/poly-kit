@@ -263,7 +263,9 @@ root applies:
   built in. A leaf's own `--policy` flag is not the delegation policy.
   `cli::policy::Engine` is the same engine, usable on its own.
 - `--dry-run`: refused on interactive, opted-out (`kit/dry-run:
-  opted-out`) and untagged commands; a write or destructive command
+  opted-out`) and untagged commands (an unannotated `delete`, `remove`,
+  `rm`, `destroy`, `purge` or `drop` leaf is not untagged: kit renders
+  its `Plan` and does not call the handler); a write or destructive command
   runs with `Invocation::dry_run` set and needs no confirmation (render
   a `Plan` with `Invocation::render_plan`); a read command ignores it.
 - `Root::with_flag_validator(name, f)`: refuses an ill-formed value of

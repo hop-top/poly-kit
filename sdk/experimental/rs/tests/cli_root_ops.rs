@@ -411,3 +411,51 @@ fn alias_delete_of_a_missing_alias_dry_run_warns() {
     assert_eq!(plan["warnings"][0], "no alias zz: delete is a no-op");
     assert_eq!(plan["effects"].as_array().unwrap().len(), 0);
 }
+
+// --- dry-run on an inferred-destructive leaf ---
+
+/// An unannotated `delete` whose handler ignores `--dry-run` and
+/// records a mutation. Under `--dry-run` with no `--confirm`, kit
+/// renders the preview and the handler never runs.
+#[test]
+fn dry_run_on_an_inferred_destructive_leaf_previews_without_the_handler() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let mutated = Arc::new(AtomicBool::new(false));
+    let m = mutated.clone();
+    let mut root = Root::with_config(cfg());
+    root.add_command(
+        CommandSpec::new("delete")
+            .about("delete things")
+            .handler(move |_, _, _| {
+                m.store(true, Ordering::SeqCst);
+                Ok(())
+            }),
+    );
+    let (code, out, _) = run(&root, &["--format", "json", "--dry-run", "delete"]);
+    assert_eq!(code, 0);
+    assert!(!mutated.load(Ordering::SeqCst), "handler mutated");
+    assert!(out.contains("\"command\": \"t delete\""), "{out}");
+    assert!(out.contains("inferred destructive-shared"), "{out}");
+
+    // Without --dry-run the confirm gate still refuses, so nothing runs.
+    let (code, _, _) = run(&root, &["delete"]);
+    assert_eq!(code, 5);
+    assert!(!mutated.load(Ordering::SeqCst));
+}
+
+/// A non-destructive unannotated name is still refused under `--dry-run`.
+#[test]
+fn dry_run_on_an_unannotated_other_name_is_refused() {
+    let mut root = Root::with_config(cfg());
+    root.add_command(
+        CommandSpec::new("frobnicate")
+            .about("x")
+            .handler(|_, _, _| Ok(())),
+    );
+    let (code, _, err) = run(&root, &["--dry-run", "frobnicate"]);
+    assert_eq!(code, 2);
+    assert!(
+        err.contains("missing the required kit/side-effect tag"),
+        "{err}"
+    );
+}

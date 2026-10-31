@@ -343,6 +343,8 @@ func installConfirmTokenFlag(cmd *cobra.Command) {
 //  2. Read the side-effect tag.
 //  0. Under kit's --dry-run: refuse when the leaf does not honor
 //     it (see resolveDryRunPolicy); otherwise the run is a preview.
+//     An inferred-destructive leaf is previewed by kit and its
+//     handler is not called (see kitRendersDryRun).
 //  3. If destructive: enforce the --confirm matrix; on prompt-mode,
 //     prompt; on rejection, abort UNAUTHORIZED. Skipped for a
 //     preview, which makes no real side-effect.
@@ -412,6 +414,13 @@ func (r *Root) wrapPolicyRunE(
 					return err
 				}
 			}
+		}
+
+		// An inferred-destructive leaf made no promise to honor
+		// --dry-run: kit renders the preview itself and never calls
+		// the handler, so nothing can mutate.
+		if dryRun && kitRendersDryRun(cmd) {
+			return renderInferredPreview(cmd, args)
 		}
 
 		// Run the inner chain (idempotency → error-render → adopter).

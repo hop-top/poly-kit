@@ -182,14 +182,24 @@ pub(super) enum DryRunPolicy {
 
 /// The dry-run table: opted-out refuses; legacy `supported` allows;
 /// write and destructive tiers allow; read is a silent no-op;
-/// interactive refuses; untagged and malformed values refuse.
-pub(super) fn resolve_dry_run_policy(a: &BTreeMap<String, String>) -> DryRunPolicy {
+/// interactive refuses; malformed values refuse. An untagged leaf
+/// refuses, unless its name is in the destructive-name table: that
+/// leaf is gated as `destructive-shared` and previews like one.
+/// `leaf_name` is the last word of the command path.
+pub(super) fn resolve_dry_run_policy(
+    leaf_name: &str,
+    a: &BTreeMap<String, String>,
+) -> DryRunPolicy {
     match a.get(DRY_RUN).map(String::as_str) {
         Some("opted-out") => return DryRunPolicy::RejectOptOut,
         Some("supported") => return DryRunPolicy::Allow,
         _ => {}
     }
-    match a.get(super::model::SIDE_EFFECT).map(String::as_str) {
+    let declared = a.get(super::model::SIDE_EFFECT).map(String::as_str);
+    if super::model::inferred_destructive(leaf_name, declared) {
+        return DryRunPolicy::Allow;
+    }
+    match declared {
         None | Some("") => DryRunPolicy::RejectUntagged,
         Some(s) if is_write_like(s) || is_destructive_like(s) => DryRunPolicy::Allow,
         Some("read") => DryRunPolicy::NoOp,
@@ -273,7 +283,8 @@ impl Root {
         if !inv.globals.dry_run || self.dry_run_disabled() {
             return Ok(false);
         }
-        let p = resolve_dry_run_policy(leaf.annotations);
+        let leaf_name = leaf.verb.rsplit(' ').next().unwrap_or("");
+        let p = resolve_dry_run_policy(leaf_name, leaf.annotations);
         if let Some(e) = dry_run_refusal(&leaf.full_path, leaf.annotations, p) {
             return Err(e);
         }
@@ -330,6 +341,12 @@ impl Root {
         };
         let dry_run = self.apply_dry_run(leaf, inv)?;
         inv.dry_run = dry_run;
+        // An inferred-destructive leaf made no promise to honor
+        // `--dry-run` (the legacy `supported` opt-in is one): kit renders
+        // the preview and the handler never runs.
+        inv.kit_preview = dry_run
+            && super::model::inferred_destructive(leaf_name, declared)
+            && leaf.annotations.get(DRY_RUN).map(String::as_str) != Some("supported");
 
         let policy_name = if leaf.local_policy {
             ""
@@ -494,7 +511,7 @@ mod tests {
 
     #[test]
     fn dry_run_table() {
-        let p = |pairs: &[(&str, &str)]| resolve_dry_run_policy(&ann(pairs));
+        let p = |pairs: &[(&str, &str)]| resolve_dry_run_policy("do", &ann(pairs));
         let se = |v| ("kit/side-effect", v);
         assert_eq!(p(&[se("write")]), DryRunPolicy::Allow);
         assert_eq!(p(&[se("destructive-shared")]), DryRunPolicy::Allow);
@@ -508,6 +525,45 @@ mod tests {
             DryRunPolicy::RejectOptOut
         );
         assert_eq!(p(&[("kit/dry-run", "supported")]), DryRunPolicy::Allow);
+    }
+
+    #[test]
+    fn dry_run_previews_an_inferred_destructive_name() {
+        let a = |pairs: &[(&str, &str)]| ann(pairs);
+        for name in super::super::model::DESTRUCTIVE_NAMES {
+            assert_eq!(
+                resolve_dry_run_policy(name, &a(&[])),
+                DryRunPolicy::Allow,
+                "{name}"
+            );
+            assert_eq!(
+                resolve_dry_run_policy(name, &a(&[("kit/side-effect", "")])),
+                DryRunPolicy::Allow,
+                "{name} empty tag"
+            );
+        }
+        // Non-destructive names keep the untagged refusal.
+        assert_eq!(
+            resolve_dry_run_policy("list", &a(&[])),
+            DryRunPolicy::RejectUntagged
+        );
+        assert_eq!(
+            resolve_dry_run_policy("delete-all", &a(&[])),
+            DryRunPolicy::RejectUntagged
+        );
+        // A declaration is never inferred over.
+        assert_eq!(
+            resolve_dry_run_policy("delete", &a(&[("kit/side-effect", "bogus")])),
+            DryRunPolicy::RejectMalformed
+        );
+        assert_eq!(
+            resolve_dry_run_policy("delete", &a(&[("kit/side-effect", "read")])),
+            DryRunPolicy::NoOp
+        );
+        assert_eq!(
+            resolve_dry_run_policy("delete", &a(&[("kit/dry-run", "opted-out")])),
+            DryRunPolicy::RejectOptOut
+        );
     }
 
     #[test]

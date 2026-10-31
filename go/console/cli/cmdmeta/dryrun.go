@@ -25,7 +25,9 @@ const (
 //  3. kit/side-effect = write-like or destructive-like → true.
 //  4. kit/side-effect = read → false (silent no-op).
 //  5. kit/side-effect = interactive → false (rejected).
-//  6. No tag → false (untagged-leaf backstop).
+//  6. No tag on a leaf named in the destructive-name table → true
+//     (inferred destructive-shared, see [InferredDestructive]).
+//  7. No tag otherwise → false (untagged-leaf backstop).
 //
 // This reads the side-effect tier as a raw string rather than
 // through cli's SideEffect type, which is what keeps cmdmeta a leaf
@@ -37,6 +39,9 @@ func IsDryRunSupported(cmd *cobra.Command) bool {
 	case DryRunOptedOut:
 		return false
 	case DryRunSupported:
+		return true
+	}
+	if InferredDestructive(cmd) {
 		return true
 	}
 	switch read(cmd, KeySideEffect) {
