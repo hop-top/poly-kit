@@ -164,10 +164,11 @@ dropped only when both its leaves are disabled.
 
 ## Pitfalls
 
-- Each leaf has its own `--policy <file>` flag for loading a policy from JSON or YAML, but a
-  kit root also owns a global `--policy` for delegation policy, and that one wins on a
-  `cli.New` root: the path is read as a policy name and fails with
-  `--policy is set but no policy loader is wired`. Set `Config.Policy` in code instead.
+- Each leaf has its own `--policy <file>` flag for loading a policy from JSON or YAML. A kit
+  root also owns a global `--policy <name>` for delegation policy. On a `uri` leaf the local
+  flag wins: the value is read as a file path and is never handed to the delegation policy
+  loader. The consequence is that the global `--policy <name>` cannot be given to `uri parse`,
+  `resolve` or `complete`; those invocations run with no delegation policy named.
 - A bare `parse` of a string with no scheme or no id errors (`cite: scheme is required`,
   `cite: id is required`).
 - `uri completion` prints a shell-completion script for the whole CLI. Disable it with
