@@ -1,6 +1,9 @@
 package api
 
-import "strings"
+import (
+	"strings"
+	"sync"
+)
 
 // Per-connection subscription bounds. They mirror the Rust hub and the
 // websocket constants of contracts/parity/api.json.
@@ -20,13 +23,18 @@ const (
 )
 
 // subscriptions is one connection's patterns and the bytes they hold.
+// The connection's read loop mutates it while the hub loop matches
+// broadcasts against it, so every access goes through mu.
 type subscriptions struct {
+	mu    sync.RWMutex
 	set   map[string]bool
 	bytes int
 }
 
 // add stores pattern unless a bound refuses it.
 func (s *subscriptions) add(pattern string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.set[pattern] {
 		return len(s.set) <= maxSubscriptions
 	}
@@ -46,6 +54,8 @@ func (s *subscriptions) add(pattern string) bool {
 
 // remove drops pattern and releases its bytes.
 func (s *subscriptions) remove(pattern string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.set[pattern] {
 		delete(s.set, pattern)
 		s.bytes -= len(pattern)
@@ -62,4 +72,11 @@ func overSegmentBounds(pattern string) bool {
 	}
 	segs := strings.Count(pattern, ".") + 1
 	return segs > maxPatternSegments || stars > maxPatternDoubleStars
+}
+
+// matches reports whether topic matches any held pattern.
+func (s *subscriptions) matches(topic string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return matchesAny(topic, s.set)
 }

@@ -132,7 +132,7 @@ func (h *Hub) Run(ctx context.Context) {
 				Payload: msg.payload,
 			})
 			for c := range h.clients {
-				if !matchesAny(msg.topic, c.topics.set) {
+				if !c.topics.matches(msg.topic) {
 					continue
 				}
 				select {
