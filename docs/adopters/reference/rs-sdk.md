@@ -605,7 +605,7 @@ value. Lookup reads the index first; a primary entry that itself names a
 `Vary` is a miss. Storage gates: `Vary: *` is never stored; `private` is
 never stored (the store is shared across identities) and wins over the
 exemptions below; a request carrying `Authorization` is stored only if the
-response has `public`, `s-maxage` or `must-revalidate`. The Rust entry
+response has `public`. The Rust entry
 points are `storable_for`, `vary_fields`, `Cache::vary_index_key` and
 `Cache::vary_key`; all three fixture families are replayed by
 `tests/httpcache_contract.rs`.

@@ -68,9 +68,9 @@ func hasDirective(h http.Header, name string) bool {
 //   - §5.2.2.7: a response marked private is never stored; the store is
 //     shared across identities. This wins over the §3.5 exemptions.
 //   - §3.5: a request carrying Authorization is only stored when the
-//     response explicitly permits shared caching (public, s-maxage or
-//     must-revalidate); otherwise one identity's response could be served
-//     to another.
+//     response says public; this store neither revalidates nor honors
+//     s-maxage, so those exemptions do not apply. Otherwise one
+//     identity's response could be served to another.
 func storableFor(req *http.Request, resp *http.Response) bool {
 	if !cacheableResponse(resp) {
 		return false
@@ -85,9 +85,10 @@ func storableFor(req *http.Request, resp *http.Response) bool {
 		return false
 	}
 	if req.Header.Get("Authorization") != "" {
-		return hasDirective(resp.Header, "public") ||
-			hasDirective(resp.Header, "s-maxage") ||
-			hasDirective(resp.Header, "must-revalidate")
+		// Only an explicit public opts an authenticated response into this
+		// shared store: it neither revalidates (must-revalidate) nor tracks
+		// s-maxage freshness, so those RFC 9111 §3.5 exemptions do not apply.
+		return hasDirective(resp.Header, "public")
 	}
 	return true
 }

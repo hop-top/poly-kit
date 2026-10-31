@@ -24,7 +24,7 @@
 //!   request's values for those fields. `Vary: *` is never stored.
 //! - A response marked `private` is never stored (the store is shared
 //!   across identities); a request carrying `Authorization` is stored
-//!   only if the response says `public`, `s-maxage` or `must-revalidate`.
+//!   only if the response says `public`.
 //! - An entry past its TTL is a miss.
 //!
 //! Cache-layer failures never surface to the caller: a read or decode
@@ -411,7 +411,7 @@ pub fn cacheable_response(resp: &Response) -> bool {
 /// - §5.2.2.7: a `private` response is never stored; the store is shared
 ///   across identities. This wins over the §3.5 exemptions.
 /// - §3.5: a request carrying `Authorization` is stored only when the
-///   response says `public`, `s-maxage` or `must-revalidate`.
+///   response says `public`.
 ///
 /// Mirrored by the `vary_*`, `authorization_*` and `private_*` sections of
 /// `contracts/httpcache-v1/cacheability.json`.
@@ -431,9 +431,10 @@ pub fn storable_for(req: &Request, resp: &Response) -> bool {
         .get("Authorization")
         .is_some_and(|v| !v.is_empty())
     {
-        return has_directive(&resp.headers, "public")
-            || has_directive(&resp.headers, "s-maxage")
-            || has_directive(&resp.headers, "must-revalidate");
+        // Only an explicit `public` opts an authenticated response into this
+        // shared store: it neither revalidates (`must-revalidate`) nor tracks
+        // `s-maxage` freshness, so those RFC 9111 §3.5 exemptions do not apply.
+        return has_directive(&resp.headers, "public");
     }
     true
 }

@@ -87,7 +87,7 @@ TTL is authoritative: `Cache-Control: max-age` is not read.
 | request or response `Cache-Control: no-store` | not cached (token match, case-insensitive) |
 | response `Vary: *` | not stored |
 | response with `Vary: <fields>` | stored per variant: one entry per distinct set of request values for those fields |
-| request with `Authorization` | stored only if the response has `public`, `s-maxage` or `must-revalidate` (RFC 9111 section 3.5); otherwise returned, not stored |
+| request with `Authorization` | stored only if the response has `public` (RFC 9111 section 3.5); otherwise returned, not stored |
 | non-2xx response | returned, not stored |
 | entry past TTL | miss; refetched and overwritten |
 | store read, decode or write error | degrades to a miss; caller never sees a cache error |
@@ -104,16 +104,17 @@ rebuilt as `HTTP/1.1` with the stored status, headers (framing headers
 
 ## Limits to design around
 
-- `Authorization` requests are not stored unless the response opts into
-  shared caching (`public`, `s-maxage`, `must-revalidate`). A response
-  that does is served to any later caller of that URL, whatever their
-  credentials: that is what those directives mean. For per-user data
+- `Authorization` requests are not stored unless the response says
+  `public`; `must-revalidate` and `s-maxage` do not qualify, because this
+  cache neither revalidates nor honors `s-maxage`. A `public` response is
+  served to any later caller of that URL, whatever their credentials:
+  that is what the directive means. For per-user data
   that must be cached, use a separate `WithPrefix` and store per
   identity, or send `Cache-Control: no-store`.
 - A response marked `Cache-Control: private` is never stored, even with
-  `public`, `s-maxage` or `must-revalidate` alongside it. Personalized
-  responses that are not marked private and lack `Vary` on the
-  distinguishing header can still be shared between users.
+  `public` alongside it. Personalized responses that are not marked
+  private and lack `Vary` on the distinguishing header can still be
+  shared between users.
 - No ETag or `If-None-Match` revalidation.
 - Whole body is buffered in memory and stored in the kv value; avoid for
   large downloads (use [blob](store-files-with-blob.md)).
