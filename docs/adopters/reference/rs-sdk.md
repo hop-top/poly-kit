@@ -297,8 +297,21 @@ A bare `Root::new(spec)` is the lower-level wrapper (completion, aliases,
 the model): it registers none of the above and runs no gate or
 validation. Parity is pinned by `contracts/cli-root-v1`.
 
-Not ported from Go: the `celpermission` expression rules of a policy
-(carried and shape-checked, not evaluated), per-caller budgets, the
+Feature `cli-permissions` ports `console/cli/celpermission`: `PermissionGate::new(&policy.permissions)`
+compiles the `permissions:` rules of a policy (CEL, over `cel =0.15.0`, default features off,
+`regex` on; the interpreter stays behind `cli::permission` and no `cel` type is in the API),
+and `gate.decide(&PermissionRequest)` answers one served invocation: deny overrides across
+rules, an expression that fails to evaluate denies, a rule that does not compile or reads a
+name that is not a binding fails construction naming the rule. The bindings (`principal`,
+`resource`, `context`, `payload`) and the refusal text match Go; `principal.scopes` is empty
+unless the caller is `CallerSource::Verified`. There is no static type check (cel-rust has
+none), so a mistyped operand denies at evaluation instead of failing at load. Parity is pinned
+by `contracts/celpermission-v1`. No Rust served surface calls the gate yet: an adopter runs it
+after its own scope check. Dependency choice follows the policy engine's (see
+[Policy / Dependency vetting](#dependency-vetting)); 76 normal crates with `cli-permissions`
+against 52 for `cli`.
+
+Not ported from Go: per-caller budgets for served surfaces, the
 `kit/idempotent`, `kit/cache-ttl` and `kit/output-schema` validate arms,
 themed help and the `help` subcommand.
 

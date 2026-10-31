@@ -2,10 +2,10 @@
 //! policy lets run, how many mutating operations one invocation may
 //! perform, and which commands always ask for confirmation. Ports Go
 //! `console/cli/policy` (policy, engine, loader, the shipped
-//! `kit-default`); `permissions:` rules are carried and validated but
-//! not evaluated (the expression evaluator is Go's `celpermission`,
-//! which Rust does not have), and the served per-caller budget windows
-//! are not ported (no Rust surface counts calls per principal).
+//! `kit-default`); `permissions:` rules are carried and validated here and
+//! evaluated by [`super::PermissionGate`] (feature `cli-permissions`; Go's
+//! `celpermission`), and the served per-caller budget windows are not
+//! ported (no Rust surface counts calls per principal).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -236,35 +236,7 @@ impl Policy {
     /// Shape checks on `permissions`, `unannotated` and `callers`: the
     /// only parts a load refuses on.
     pub fn validate(&self) -> Result<(), String> {
-        let mut seen = std::collections::BTreeSet::new();
-        for (i, r) in self.permissions.iter().enumerate() {
-            if r.name.is_empty() {
-                return Err(format!("permissions[{i}]: name required"));
-            }
-            if !seen.insert(r.name.clone()) {
-                return Err(format!("permission rule {:?}: duplicate name", r.name));
-            }
-            if r.when.is_empty() {
-                return Err(format!("permission rule {:?}: 'when' required", r.name));
-            }
-            for (field, v) in [("effect", &r.effect), ("otherwise", &r.otherwise)] {
-                match v.as_str() {
-                    "allow" | "deny" => {}
-                    "" => {
-                        return Err(format!(
-                            "permission rule {:?}: {field} required (allow|deny)",
-                            r.name
-                        ))
-                    }
-                    other => {
-                        return Err(format!(
-                            "permission rule {:?}: {field} {other:?} invalid (want allow|deny)",
-                            r.name
-                        ))
-                    }
-                }
-            }
-        }
+        validate_permission_rules(&self.permissions)?;
         let mut errs = Vec::new();
         if !self.unannotated.is_empty() && class_of(&self.unannotated).is_none() {
             errs.push(format!(
@@ -307,6 +279,42 @@ impl Policy {
             Err(errs.join("\n"))
         }
     }
+}
+
+/// Shape checks on a `permissions` block: names present and unique,
+/// `when` present, `effect` and `otherwise` each `allow` or `deny`.
+/// Go's `ValidatePermissionRules`.
+pub fn validate_permission_rules(rules: &[PermissionRule]) -> Result<(), String> {
+    let mut seen = std::collections::BTreeSet::new();
+    for (i, r) in rules.iter().enumerate() {
+        if r.name.is_empty() {
+            return Err(format!("permissions[{i}]: name required"));
+        }
+        if !seen.insert(r.name.clone()) {
+            return Err(format!("permission rule {:?}: duplicate name", r.name));
+        }
+        if r.when.is_empty() {
+            return Err(format!("permission rule {:?}: 'when' required", r.name));
+        }
+        for (field, v) in [("effect", &r.effect), ("otherwise", &r.otherwise)] {
+            match v.as_str() {
+                "allow" | "deny" => {}
+                "" => {
+                    return Err(format!(
+                        "permission rule {:?}: {field} required (allow|deny)",
+                        r.name
+                    ))
+                }
+                other => {
+                    return Err(format!(
+                        "permission rule {:?}: {field} {other:?} invalid (want allow|deny)",
+                        r.name
+                    ))
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// What the engine reads of a command: its path below the root, its

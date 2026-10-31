@@ -45,6 +45,10 @@ output = [
 # (sha256 of its command path, as Go does); already in the tree for
 # webhook, httpcache and redact.
 cli = ["output", "dep:clap", "dep:sha2"]
+# Evaluates the `permissions:` rules of a policy file for served
+# invocations (Go's console/cli/celpermission), over the same CEL
+# interpreter as the policy engine.
+cli-permissions = ["cli", "dep:cel", "dep:serde_json"]
 id = ["dep:type-safe-id", "dep:uuid", "dep:serde", "dep:thiserror"]
 bus = ["dep:serde", "dep:serde_json"]
 # The bus network adapter: Go's NetworkAdapter over a native WebSocket
@@ -528,8 +532,8 @@ regex = { version = "1", optional = true }
 # (0.8.11, published 2026-06-09).
 regex-syntax = { version = "=0.8.11", optional = true }
 thiserror = { version = "2", optional = true }
-# policy: CEL interpreter. Exact pin: expression semantics are the
-# policy contract. cel-rust/cel-rust, MIT, no advisories; 0.15.0 was
+# policy, cli-permissions: CEL interpreter. Exact pin: expression
+# semantics are the policy contract. cel-rust/cel-rust, MIT, no advisories; 0.15.0 was
 # published 2026-10-06. Default features off: `regex` backs the
 # `matches` function; chrono/chrono-tz (timestamp functions) and the
 # base64 encoders are not needed by guard rules.

@@ -25,6 +25,8 @@ mod enums;
 mod gate;
 pub mod model;
 mod paths_cmd;
+#[cfg(feature = "cli-permissions")]
+mod permission;
 mod plan;
 pub mod policy;
 mod root;
@@ -45,6 +47,8 @@ pub use model::{
     inferred_destructive, ArgInfo, CommandInfo, FlagInfo, FlagKind, DESTRUCTIVE_NAMES, SIDE_EFFECT,
 };
 pub use paths_cmd::{config_command, ConfigResolver, ResolvedPath};
+#[cfg(feature = "cli-permissions")]
+pub use permission::{CallerSource, PermissionDecision, PermissionGate, PermissionRequest};
 pub use plan::{Effect, Plan};
 pub use policy::{default_policy_loader, Policy, PolicyLoader};
 pub use root::Root;
