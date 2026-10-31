@@ -39,6 +39,9 @@ pub mod domain;
 #[cfg(feature = "breaker")]
 pub mod breaker;
 
+#[cfg(feature = "sync")]
+pub mod sync;
+
 #[cfg(feature = "config")]
 pub mod config;
 
