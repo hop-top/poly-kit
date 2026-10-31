@@ -2,6 +2,10 @@
 pub mod cli;
 #[cfg(feature = "output")]
 pub mod output;
+
+// Terminal UI primitives (a port of go/console/tui and go/console/progress):
+// std only, plain ANSI, no raw mode.
+#[cfg(feature = "tui")]
 pub mod tui;
 
 #[cfg(feature = "uri")]
