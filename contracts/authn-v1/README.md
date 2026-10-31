@@ -33,7 +33,7 @@ go test ./go/transport/authn/ -run '^TestAuthnContractVectors$' -update-authn-ve
 
 - `hash_domains`: a key under a branded prefix and/or hash domain verifies only with that prefix and domain named
 - `records`: stored JSON with `name`, `labels` and `last_used_at` keeps every field through a rewrite (revoke), and a record without them gains none
-- `last_used`: with last-used tracking on, a successful verify stores `last_used_at`; off, it does not rewrite the record
+- `last_used`: with last-used tracking on, a successful verify stamps last use in a separate kv entry (`apikey-last/<id>`), never rewriting the record, so it cannot undo a concurrent revoke; `Get` reads the merged value
 
 The keys are throwaway; their private halves are not kept.
 

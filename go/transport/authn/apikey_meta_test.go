@@ -119,7 +119,7 @@ func TestAPIKeyLastUsed(t *testing.T) {
 }
 
 // afterGet runs once after the first Get, so a test can land a write
-// between a verify's read and its last-used re-read.
+// between a verify's read and its last-used write.
 type afterGet struct {
 	*memory.Store
 	hook func()
@@ -134,7 +134,9 @@ func (s *afterGet) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	return data, ok, err
 }
 
-func TestAPIKeyLastUsedLeavesAConcurrentRevokeAlone(t *testing.T) {
+// A revoke landing between a verify's read and its last-used write
+// must survive: the stamp never rewrites the authorization record.
+func TestAPIKeyLastUsedCannotUndoAConcurrentRevoke(t *testing.T) {
 	inner := memory.New()
 	store := &afterGet{Store: inner}
 	keys := authn.NewAPIKeys(store, nil).WithLastUsed(true)
@@ -146,10 +148,12 @@ func TestAPIKeyLastUsedLeavesAConcurrentRevokeAlone(t *testing.T) {
 	}
 	_, err = keys.Verify(t.Context(), raw)
 	require.NoError(t, err, "the verdict was reached before the revoke landed")
+	_, err = keys.Verify(t.Context(), raw)
+	require.ErrorIs(t, err, authn.ErrInvalidToken, "the revoke survives the stamp")
 	got, err := keys.Get(t.Context(), rec.ID)
 	require.NoError(t, err)
-	assert.False(t, got.RevokedAt.IsZero(), "the revoke survives")
-	assert.True(t, got.LastUsedAt.IsZero(), "no last-used stamp over a revoked key")
+	assert.False(t, got.RevokedAt.IsZero())
+	assert.False(t, got.LastUsedAt.IsZero(), "the stamp is still readable")
 }
 
 type recordsFile struct {
@@ -256,7 +260,10 @@ func TestAuthnContractVectorsAPIKeyRecords(t *testing.T) {
 			_, err = keys.WithLastUsed(true).Verify(t.Context(), v.Key)
 			require.NoError(t, err)
 			data, _, _ = store.Get(t.Context(), "apikey/"+id)
-			assert.Equal(t, v.StoredLast, asValue(t, data)["last_used_at"])
+			assert.Equal(t, v.Record, asValue(t, data), "the record is not rewritten")
+			got, err := keys.Get(t.Context(), id)
+			require.NoError(t, err)
+			assert.True(t, mustTime(t, v.StoredLast).Equal(got.LastUsedAt))
 		})
 	}
 }

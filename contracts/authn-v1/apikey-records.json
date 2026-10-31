@@ -84,7 +84,7 @@
   "last_used": [
     {
       "name": "verify_stamps_last_used_when_tracking",
-      "note": "With last-used tracking on, a successful verify stores last_used_at as the verify time; without tracking the record is not rewritten.",
+      "note": "With last-used tracking on, a successful verify stamps last use in a separate kv entry, readable through Get as the verify time; the authorization record itself is never rewritten (a read-modify-write would undo a concurrent revoke).",
       "key": "acme_0123456789abcdef_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
       "prefix": "acme",
       "domain": "acme-apikey-v1",

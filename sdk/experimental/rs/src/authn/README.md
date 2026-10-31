@@ -51,7 +51,7 @@ fn authenticate(pem: &[u8], authorization: Option<&str>) {
 - The public API names no signature crate: keys are `VerifyKey` bytes and the crates live in `provider/`. `authn` is wasm-safe; with no clock (wasm32) `Options::now` is required and a verifier without it refuses every token.
 - RSA keys under 2048 or over 8192 bits are refused (ring's range). Without `authn-rsa` an RSA key joins a set but verifies nothing.
 - Not ported: remote JWKS and OIDC discovery (fetch and cache). Back a `KeySource` with a guarded fetch.
-- `ApiKeys` over a `kv::Store` serialises on one lock; last-used tracking (`with_last_used`) is a non-atomic read-modify-write and is off by default.
+- `ApiKeys` over a `kv::Store` serialises on one lock; last-used tracking (`with_last_used`) writes its own kv entry (never the record, so it cannot undo a revoke) and is off by default.
 
 ## Neighbours
 

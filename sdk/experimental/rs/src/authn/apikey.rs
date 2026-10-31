@@ -35,6 +35,9 @@ pub const API_KEY_HEADER: &str = "X-API-Key";
 pub const API_KEY_HASH_DOMAIN: &str = "kit-apikey-v1";
 
 const STORE_PREFIX: &str = "apikey/";
+/// Last-use stamps, apart from the records and outside the
+/// `apikey/` scan `list` makes.
+const LAST_USED_PREFIX: &str = "apikey-last/";
 const ID_BYTES: usize = 8;
 const SECRET_BYTES: usize = 32;
 
@@ -244,10 +247,10 @@ impl ApiKeys {
     }
 
     /// Records [`ApiKey::last_used_at`] on each successful
-    /// verification. Off by default: it turns every read into a write,
-    /// and the read-modify-write is not atomic against a concurrent
-    /// revoke from another process (the key is re-read first and left
-    /// alone when revoked, narrowing but not closing the window).
+    /// verification. Off by default: it turns every read into a write.
+    /// The stamp is its own kv entry (`apikey-last/<id>`), never a
+    /// rewrite of the record, so it cannot undo a concurrent revoke;
+    /// [`get`](Self::get) merges it in.
     pub fn with_last_used(mut self, on: bool) -> Self {
         self.track_last_used = on;
         self
@@ -300,8 +303,34 @@ impl ApiKeys {
         Ok((format!("{}_{id}_{sec}", self.prefix), rec))
     }
 
-    /// The stored key with `id`, `None` when the store lacks it.
+    /// The stored key with `id`, `None` when the store lacks it. Its
+    /// last-use stamp (see [`with_last_used`](Self::with_last_used)) is
+    /// merged in.
     pub fn get(&self, id: &str) -> Result<Option<ApiKey>, AuthnError> {
+        let Some(mut rec) = self.get_raw(id)? else {
+            return Ok(None);
+        };
+        let stamp = {
+            let store = self.lock();
+            store
+                .get(format!("{LAST_USED_PREFIX}{id}").as_bytes())
+                .map_err(|e| AuthnError::KeySetUnavailable(e.to_string()))?
+        };
+        let stamped = stamp
+            .and_then(|b| String::from_utf8(b).ok())
+            .and_then(|s| rfc3339::parse(&s))
+            .flatten();
+        if let Some(t) = stamped {
+            if rec.last_used_at.is_none_or(|old| t > old) {
+                rec.last_used_at = Some(t);
+            }
+        }
+        Ok(Some(rec))
+    }
+
+    /// The stored record alone; a write-back starts from it so the
+    /// merged stamp is not copied into the authorization record.
+    fn get_raw(&self, id: &str) -> Result<Option<ApiKey>, AuthnError> {
         let data = {
             let store = self.lock();
             store
@@ -342,7 +371,7 @@ impl ApiKeys {
     /// Revoking a revoked key is not an error.
     pub fn revoke(&self, id: &str) -> Result<ApiKey, AuthnError> {
         let mut rec = self
-            .get(id)?
+            .get_raw(id)?
             .ok_or_else(|| AuthnError::ApiKeyNotFound(id.to_string()))?;
         if rec.revoked_at.is_none() {
             rec.revoked_at = Some(self.now()?);
@@ -398,14 +427,15 @@ impl ApiKeys {
             check(&rec.token()).map_err(AuthnError::InvalidToken)?;
         }
         if self.track_last_used {
-            // Re-read so a revoke that landed since is not overwritten.
-            if let Some(mut fresh) = self.get(id)? {
-                if fresh.revoked_at.is_none() {
-                    fresh.last_used_at = Some(now);
-                    self.put(&fresh)?;
-                    rec.last_used_at = Some(now);
-                }
-            }
+            // Its own kv entry: rewriting the record (get, mutate, put)
+            // would overwrite a revoke landing between the two.
+            self.lock()
+                .put(
+                    format!("{LAST_USED_PREFIX}{id}").as_bytes(),
+                    rfc3339::format(now).as_bytes(),
+                )
+                .map_err(|e| AuthnError::KeySetUnavailable(e.to_string()))?;
+            rec.last_used_at = Some(now);
         }
         Ok(rec)
     }
