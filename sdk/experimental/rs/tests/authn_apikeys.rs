@@ -446,3 +446,120 @@ fn shared_corpus_hashes_match_go() {
             .unwrap_or_else(|e| panic!("{}: {e}", v["name"]));
     }
 }
+
+fn records_corpus() -> Value {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../contracts/authn-v1/apikey-records.json");
+    serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+}
+
+fn seed(store: &Mem, rec: &Value) {
+    store
+        .put(
+            format!("apikey/{}", rec["id"].as_str().unwrap()).as_bytes(),
+            rec.to_string().as_bytes(),
+        )
+        .unwrap();
+}
+
+fn stored(store: &Mem, id: &str) -> Value {
+    serde_json::from_slice(
+        &store
+            .get(format!("apikey/{id}").as_bytes())
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap()
+}
+
+fn secs(rfc3339: &str) -> u64 {
+    // The corpus is whole-second UTC; reuse the crate's own parser via a
+    // stored record so the test shares no second implementation.
+    let store = Mem::default();
+    let rec = format!(r#"{{"id":"x","principal":"p","created_at":"{rfc3339}","hash":""}}"#);
+    store.put(b"apikey/x", rec.as_bytes()).unwrap();
+    ApiKeys::new(store)
+        .get("x")
+        .unwrap()
+        .unwrap()
+        .created_at
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+#[test]
+fn apikey_records_corpus_hash_domains() {
+    let c = records_corpus();
+    for v in c["hash_domains"].as_array().unwrap() {
+        let key = v["key"].as_str().unwrap();
+        let id = key.split('_').nth(1).unwrap();
+        let store = Mem::default();
+        seed(
+            &store,
+            &serde_json::json!({"id": id, "principal": "p",
+                "created_at": "2026-09-28T12:00:00Z", "hash": v["hash"]}),
+        );
+        let keys = ApiKeys::new(store)
+            .with_prefix(v["prefix"].as_str().unwrap())
+            .unwrap();
+        keys.clone()
+            .with_hash_domain(v["domain"].as_str().unwrap())
+            .verify(key)
+            .unwrap_or_else(|e| panic!("{}: {e}", v["name"]));
+        let err = keys
+            .with_hash_domain("other-domain")
+            .verify(key)
+            .unwrap_err();
+        assert!(
+            matches!(err, AuthnError::InvalidToken(_)),
+            "{}: {err}",
+            v["name"]
+        );
+    }
+}
+
+#[test]
+fn apikey_records_corpus_write_back_keeps_every_field() {
+    let c = records_corpus();
+    for v in c["records"].as_array().unwrap() {
+        let store = Mem::default();
+        seed(&store, &v["record"]);
+        let at = secs(v["revoke_at"].as_str().unwrap());
+        let keys = ApiKeys::new(store.clone())
+            .with_clock(Arc::new(move || UNIX_EPOCH + Duration::from_secs(at)));
+        let id = v["record"]["id"].as_str().unwrap();
+        keys.revoke(id).unwrap();
+        assert_eq!(stored(&store, id), v["after_revoke"], "{}", v["name"]);
+    }
+}
+
+#[test]
+fn apikey_records_corpus_last_used() {
+    let c = records_corpus();
+    for v in c["last_used"].as_array().unwrap() {
+        let store = Mem::default();
+        seed(&store, &v["record"]);
+        let at = secs(v["verify_at"].as_str().unwrap());
+        let keys = ApiKeys::new(store.clone())
+            .with_prefix(v["prefix"].as_str().unwrap())
+            .unwrap()
+            .with_hash_domain(v["domain"].as_str().unwrap())
+            .with_clock(Arc::new(move || UNIX_EPOCH + Duration::from_secs(at)));
+        let key = v["key"].as_str().unwrap();
+        let id = v["record"]["id"].as_str().unwrap();
+        keys.verify(key).unwrap();
+        assert!(
+            stored(&store, id).get("last_used_at").is_none(),
+            "{}",
+            v["name"]
+        );
+        keys.with_last_used(true).verify(key).unwrap();
+        assert_eq!(
+            stored(&store, id)["last_used_at"],
+            v["stored_last_used_at"],
+            "{}",
+            v["name"]
+        );
+    }
+}

@@ -29,14 +29,20 @@ go test ./go/transport/authn/ -run '^TestAuthnContractVectors$' -update-authn-ve
 - `pem`: PKIX public keys and the kid they get (the identity fingerprint for Ed25519, the RFC 7638 thumbprint otherwise)
 - `api_keys`: a full key and the hash the store holds for it under the default hash domain
 
+`apikey-records.json` (hand-written, not regenerated with `vectors.json`) pins the API key store beyond the default hash:
+
+- `hash_domains`: a key under a branded prefix and/or hash domain verifies only with that prefix and domain named
+- `records`: stored JSON with `name`, `labels` and `last_used_at` keeps every field through a rewrite (revoke), and a record without them gains none
+- `last_used`: with last-used tracking on, a successful verify stores `last_used_at`; off, it does not rewrite the record
+
 The keys are throwaway; their private halves are not kept.
 
 Consumers:
 
 | Port | Loader |
 |------|--------|
-| Go | `go/transport/authn/contract_test.go` (`TestAuthnContractVectors`) |
-| Rust | `sdk/experimental/rs/tests/authn.rs` (feature `authn`; RSA vectors need `authn-rsa`), `tests/authn_apikeys.rs` (feature `authn-apikeys`), `tests/authn_wasm.rs` |
+| Go | `go/transport/authn/contract_test.go` (`TestAuthnContractVectors`), `apikey_meta_test.go` (`TestAuthnContractVectorsAPIKeyRecords`) |
+| Rust | `sdk/experimental/rs/tests/authn.rs` (feature `authn`; RSA vectors need `authn-rsa`), `tests/authn_apikeys.rs` (feature `authn-apikeys`; also `apikey-records.json`), `tests/authn_wasm.rs` |
 
 ## Neighbours
 
