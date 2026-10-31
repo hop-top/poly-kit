@@ -11,6 +11,7 @@ You're an **adopter**:
 - **[Concepts](adopters/concepts/)** — primitives and mental models
 - **[Guides](adopters/guides/)** — task-oriented how-tos
 - **[Reference](adopters/reference/)** — annotations, flags, exit codes, config shapes
+  - **[Capability index](adopters/reference/capability-index.md)** — what kit offers, with docs and per-SDK parity
 - **[Integrations](adopters/integrations/)** — connecting kit to specific tools
 
 ## I'm modifying kit itself

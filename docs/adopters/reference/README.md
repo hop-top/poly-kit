@@ -18,4 +18,4 @@ Exact details per API: signatures, flags, exit codes, config shapes, wire format
 - **Bus and events:** [`bus-api`](bus-api.md) · [`domain-events`](domain-events.md) · [`notify-sinks`](notify-sinks.md)
 - **Engine:** [`engine-protocol`](engine-protocol.md) · [`engine-security`](engine-security.md) · [`engine-sync`](engine-sync.md)
 - **SDK long-form (detail behind each SDK README):** [`py-sdk`](py-sdk.md) · [`rs-sdk`](rs-sdk.md) · [`php-sdk`](php-sdk.md)
-- **Catalogs:** [`go-primitives`](go-primitives.md) · [`qmochi-charts`](qmochi-charts.md)
+- **Catalogs:** [`capability-index`](capability-index.md) · [`capability-parity`](capability-parity.md) · [`go-primitives`](go-primitives.md) · [`qmochi-charts`](qmochi-charts.md)

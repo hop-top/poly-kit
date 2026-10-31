@@ -53,6 +53,7 @@ how kit itself is implemented.
 
 **Reference**
 
+- [`reference/capability-index.md`](reference/capability-index.md) — every kit capability by area, with usage docs and its status in each SDK ([parity matrix](reference/capability-parity.md))
 - [`reference/go-primitives.md`](reference/go-primitives.md) — index of every Go primitive kit ships, grouped by what you are trying to do
 - [`reference/cli-api-reference.md`](reference/cli-api-reference.md) — Go CLI factory
 - [`reference/ts-api-reference.md`](reference/ts-api-reference.md) — TypeScript CLI factory
