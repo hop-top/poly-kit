@@ -51,7 +51,11 @@
     "websocket": {
       "default_max_message_size": 65536,
       "send_buffer": 64,
-      "max_subscriptions": 1000
+      "max_subscriptions": 1000,
+      "max_pattern_len": 256,
+      "max_pattern_segments": 32,
+      "max_pattern_double_stars": 3,
+      "max_subscription_bytes": 65536
     }
   },
   "ports": {

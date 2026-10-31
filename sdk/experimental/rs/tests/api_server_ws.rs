@@ -532,6 +532,10 @@ fn constants_and_topics_match_the_corpus() {
     assert_eq!(k["default_max_message_size"], DEFAULT_MAX_MESSAGE_SIZE);
     assert_eq!(k["send_buffer"], DEFAULT_SEND_BUFFER);
     assert_eq!(k["max_subscriptions"], MAX_SUBSCRIPTIONS);
+    assert_eq!(k["max_pattern_len"], MAX_PATTERN_LEN);
+    assert_eq!(k["max_pattern_segments"], MAX_PATTERN_SEGMENTS);
+    assert_eq!(k["max_pattern_double_stars"], MAX_PATTERN_DOUBLE_STARS);
+    assert_eq!(k["max_subscription_bytes"], MAX_SUBSCRIPTION_BYTES);
 }
 
 #[tokio::test]

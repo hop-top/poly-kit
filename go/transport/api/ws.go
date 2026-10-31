@@ -41,7 +41,7 @@ type WSMessage struct {
 type client struct {
 	conn   *websocket.Conn
 	addr   string
-	topics map[string]bool
+	topics subscriptions
 	send   chan []byte
 	cancel context.CancelFunc
 }
@@ -132,7 +132,7 @@ func (h *Hub) Run(ctx context.Context) {
 				Payload: msg.payload,
 			})
 			for c := range h.clients {
-				if !matchesAny(msg.topic, c.topics) {
+				if !matchesAny(msg.topic, c.topics.set) {
 					continue
 				}
 				select {
@@ -179,7 +179,6 @@ func WSHandler(hub *Hub) http.HandlerFunc {
 		c := &client{
 			conn:   conn,
 			addr:   r.RemoteAddr,
-			topics: make(map[string]bool),
 			send:   make(chan []byte, 64),
 			cancel: cancel,
 		}
@@ -233,8 +232,7 @@ func readLoop(
 		}
 		switch msg.Type {
 		case "subscribe":
-			const maxSubscriptions = 1000
-			if len(c.topics) >= maxSubscriptions {
+			if !c.topics.add(msg.Topic) {
 				errMsg := mustMarshal(WSMessage{Type: "error", Topic: msg.Topic})
 				select {
 				case c.send <- errMsg:
@@ -242,14 +240,13 @@ func readLoop(
 				}
 				continue
 			}
-			c.topics[msg.Topic] = true
 			ack := mustMarshal(WSMessage{Type: "ack", Topic: msg.Topic})
 			select {
 			case c.send <- ack:
 			default:
 			}
 		case "unsubscribe":
-			delete(c.topics, msg.Topic)
+			c.topics.remove(msg.Topic)
 			ack := mustMarshal(WSMessage{Type: "ack", Topic: msg.Topic})
 			select {
 			case c.send <- ack:
