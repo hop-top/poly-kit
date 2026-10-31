@@ -17,9 +17,8 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 
 | Path | What it is | Start here when |
 |------|------------|-----------------|
-| [`serve/`](src/serve/README.md) | serve hierarchy and service lifecycle (feature `serve`, `serve-cli` for the clap command) | your CLI hosts long-running services |
-| [`output/`](src/output/README.md) | `--format` flag family, `Formatter` trait, registry, `CliError` (feature `output`) | a command renders one payload as table, json or yaml |
-| [`output/builtins/`](src/output/builtins/README.md) | the shipped formatters and their `--format-opt` keys | you need a formatter option or a custom formatter |
+| [`serve/`](src/serve/README.md), [`mcp/`](src/mcp/README.md) | serve hierarchy and service lifecycle (feature `serve`, `serve-cli` for the clap command); dual-spec MCP surface over a bridged command tree (feature `mcp`) | your CLI hosts long-running services, or MCP clients must call your commands as tools |
+| [`output/`](src/output/README.md) | `--format` flag family, `Formatter` trait, registry, `CliError` (feature `output`); shipped formatters in [`builtins/`](src/output/builtins/README.md) | a command renders one payload as table, json or yaml |
 | [`bus/`](src/bus/README.md) | in-process event bus with topic grammar (feature `bus`); peers over WebSocket in [`bus/network/`](src/bus/network/README.md) (feature `bus-network`) | components publish or subscribe to named events, across processes too |
 | [`domain/`](src/domain/README.md) | state machine with veto-able pre and fire-and-forget post transition events; the `Repository` port (feature `domain`) | an entity has a lifecycle others react to |
 | [`breaker/`](src/breaker/README.md) | circuit breaker, MaxOps/MaxBytes budgets, bursty rate limiter (feature `breaker`) | a tool must stop itself after failures, a budget or a rate |
@@ -28,23 +27,17 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`consent/`](src/consent/README.md) | per-capability consent grants: check, request through a prompter, use with audit, revoke; grants file, audit log and bus relay (feature `consent`; `consent-file` for the files) | a tool reads the screen, camera, mic, clipboard or files for the user |
 | [`notify/`](src/notify/README.md) | severity convention, filter and retry + dead-letter sink decorators, webhook, email (SMTP) and desktop sinks over the bus `Sink`, a port of `go/runtime/notify` (feature `notify`, wasm-safe core; `notify-webhook`, `notify-email`, `notify-os` for the sinks) | a bus event must reach Slack, a mailbox or the operator's screen |
 | [`sideeffect/`](src/sideeffect/README.md) | the `Fs`, `Http`, `Bus` and `Exec` seams with real, dryrun and testfake implementations, the dry-run flag on a context and a dry-run bus publisher, a port of `go/runtime/sideeffect` (feature `sideeffect`, wasm-safe; `sideeffect-real`, `sideeffect-http` for the production ones) | a command mutates files, calls an API, publishes or spawns and must preview or be tested |
-| [`mcp/`](src/mcp/README.md) | dual-spec MCP surface over a bridged command tree (feature `mcp`) | MCP clients must call your commands as tools |
-| [`sqlstore/`](src/sqlstore/README.md) | typed JSON store over `sqldb` with backup and encryption (feature `sqlstore`) | a CLI keeps typed records locally |
 | [`httpcache/`](src/httpcache/README.md) | HTTP response cache over a `kv` TTL store (feature `httpcache`) | responses must be reused across runs |
-| [`blob/`](src/blob/README.md) | object storage over a backend trait, local filesystem only (feature `blob`) | you store opaque files or artifacts |
-| [`id/`](src/id/README.md) | TypeID primitive (feature `id`) | you mint or parse prefixed identifiers |
+| [`blob/`](src/blob/README.md), [`sqlstore/`](src/sqlstore/README.md) | object storage over a backend trait, local filesystem only (feature `blob`); typed JSON store over `sqldb` with backup and encryption (feature `sqlstore`) | you store opaque files or artifacts, or a CLI keeps typed records locally |
+| [`id/`](src/id/README.md), [`timeutil/`](src/timeutil/README.md) | TypeID primitive (feature `id`); `since` and `until` relative-date parsing (feature `timeutil`) | you mint or parse prefixed identifiers, or a flag takes a human time expression |
 | [`policy/`](src/policy/README.md) | declarative CEL guard rules vetoing the state machine's pre-transition and the entity pre-events, deny-overrides, typed `PolicyDeniedError`, the stage ruleset, a port of `go/runtime/policy` (feature `policy`, wasm-safe) | who may do what is rules in a file, not code |
-| [`identity/`](src/identity/README.md) | local Ed25519 identity, a port of `go/core/identity`: keypair with PEM, EdDSA JWT sign/verify, HKDF key derivation, NaCl secretbox, on-disk store (feature `identity`; core wasm-safe, store native only) | a tool needs a local keypair, signed tokens or encryption at rest |
-| [`redact/`](src/redact/README.md) | secret and PII redaction with gitleaks rule semantics and the default corpus embedded, a port of `go/core/redact` (feature `redact`, wasm-safe) | text may carry credentials before it is logged, sent or shown |
+| [`identity/`](src/identity/README.md), [`redact/`](src/redact/README.md) | local Ed25519 identity, a port of `go/core/identity`: keypair with PEM, EdDSA JWT sign/verify, HKDF key derivation, NaCl secretbox, on-disk store (feature `identity`; core wasm-safe, store native only); secret and PII redaction with gitleaks rule semantics and the default corpus embedded, a port of `go/core/redact` (feature `redact`, wasm-safe) | a tool needs a local keypair, signed tokens or encryption at rest, or text may carry credentials before it is logged, sent or shown |
 | [`telemetry/`](src/telemetry/README.md) | consent-gated usage events, redaction, sinks (feature `telemetry`) | you record usage under user consent |
-| [`timeutil/`](src/timeutil/README.md) | `since` and `until` relative-date parsing (feature `timeutil`) | a flag takes a human time expression |
 | [`upgrade/`](src/upgrade/README.md) | versioned state migrations: semver-ordered steps per schema, backup, rollback, version files (feature `upgrade`) | stored data must move forward when a new build ships |
-| [`sqldb.rs`](src/sqldb.rs) | SQLite connection setup, pragmas, numbered migrations (feature `sqldb`) | you open a database directly |
-| [`kv.rs`](src/kv.rs) | byte-keyed `Store` / `TtlStore` traits over SQLite (feature `kv`) | you need small keyed values with expiry |
+| [`sqldb.rs`](src/sqldb.rs), [`kv.rs`](src/kv.rs) | SQLite connection setup, pragmas, numbered migrations (feature `sqldb`); byte-keyed `Store` / `TtlStore` traits over it (feature `kv`) | you open a database directly, or need small keyed values with expiry |
 | [`netpolicy/`](src/netpolicy/README.md) | `--offline` marker, loopback and dial checks (feature `netpolicy`, no deps, wasm-safe); the guarded reqwest client (feature `api`) | a request or a dial must honour `--offline` |
 | [`llm/`](src/llm/README.md) | provider-neutral LLM core: messages, tool calls and tool choice, streaming with opt-in tool-call and usage events, key resolution (sync or async secret store), hermetic resolve, registry, fallback client with metadata-only bus events (feature `llm`; content redaction with `redact`); adapters for Anthropic, OpenAI and compatible hosts, Gemini, Ollama, Triton and RouteLLM (features `llm-anthropic`, `llm-openai`, `llm-google`, `llm-ollama`, `llm-triton`, `llm-routellm`; see the [adapter table](src/llm/README.md)), the model picker with the llm.yaml pool (`llm-picker`, wasm-safe) and the router engine (`llm-router`) | your tool calls a model by `scheme://model` URI |
-| [`api.rs`](src/api.rs) | JSON API client over the guarded client (feature `api`) | you call an HTTP API from a kit CLI |
-| [`uri.rs`](src/uri.rs) | URI facade delegating to `hop-top-cite` (feature `uri`) | you parse or format kit URIs |
+| [`api.rs`](src/api.rs), [`uri.rs`](src/uri.rs) | JSON API client over the guarded client (feature `api`); URI facade delegating to `hop-top-cite` (feature `uri`) | you call an HTTP API from a kit CLI, or parse and format kit URIs |
 | [`cli/`](src/cli/README.md) | clap root with kit's shell completion: `completion bash\|zsh\|fish\|powershell`, `completion fig\|usage` specs, `__complete`, root aliases, flag enums, completers (feature `cli`) | your CLI must offer shell completion |
 | [`tui/`](src/tui/README.md) | progress events (JSONL or human), themed bar, spinner, status lines, confirm prompt with a non-interactive fallback, app shell frame; plain ANSI on std, a port of `go/console/progress` and `go/console/tui` (feature `tui`) | a command reports phases on stderr or asks yes/no |
 
@@ -54,8 +47,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 
 | Feature | Pulls in | Normal deps |
 |---------|----------|-------------|
-| `netpolicy` (`api`) | nothing (+ `reqwest`, `serde`, `serde_json`, `thiserror`) | 0 (113) |
-| `blob` | `thiserror` | 6 |
+| `netpolicy` (`api`); `blob` | nothing (+ `reqwest`, `serde`, `serde_json`, `thiserror`); `thiserror` | 0 (113); 6 |
 | `sqldb` (`kv`) | `rusqlite` (bundled SQLite), `thiserror` (`kv`: nothing of its own) | 12 (12) |
 | `bus` (`domain`, `breaker`, `bus-network`, `bus-network-axum`, `bus-network-webpki-roots`) | `serde`, `serde_json` (`domain`, `breaker`: nothing of their own, wasm-safe; + `netpolicy`, `tokio` rt/net/time/sync/macros, `tokio-tungstenite`, `futures-util`, `getrandom`, `rustls` (ring), `rustls-native-certs`; + `axum`, `hyper`, `hyper-util`; + `webpki-roots`) | 14 (14, 14, 60, 76, 61) |
 | `sync` (`sync-http`) | `domain` + `base64` (`sync-http`: `api`, `tokio` rt and time, nothing new beyond `api`; native only) | 15 (113) |
@@ -63,23 +55,19 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `notify` (`notify-webhook`, `notify-email`, `notify-os`) | `bus` — nothing of its own, wasm-safe core (+ `api`, `breaker`, `redact`, `tokio` rt/net/time/sync/macros; + `breaker`, `redact`, `netpolicy`, `base64`, `rustls` (ring), `rustls-native-certs`; + `breaker`, `redact`; sinks native only) | 13 (153, 47, 29) |
 | `sideeffect` (`sideeffect-real`, `sideeffect-http`) | `bus` — nothing of its own, wasm-safe (`sideeffect-real`: nothing of its own, native only; `sideeffect-http`: + `api`, the guarded HTTP client) | 13 (13, 138) |
 | `config` (`config-pkl`, `config-signal`) | `bus` + `saphyr-parser`, `thiserror` (+ `regex`; + `tokio` rt, signal, sync) | 18 (22, 25) |
-| `timeutil` | `chrono`, `interim`, `thiserror` | 19 |
-| `identity` | `ed25519-dalek`, `crypto_secretbox`, `hkdf`, `sha2`, `base64`, `serde`, `serde_json`, `thiserror` (+ `getrandom` on native targets; core wasm-safe) | 60 |
-| `redact` | `regex`, `regex-syntax`, `serde`, `serde_json`, `sha2` | 25 |
+| `identity`; `redact` | `ed25519-dalek`, `crypto_secretbox`, `hkdf`, `sha2`, `base64`, `serde`, `serde_json`, `thiserror` (+ `getrandom` on native targets; core wasm-safe); `regex`, `regex-syntax`, `serde`, `serde_json`, `sha2` | 60; 25 |
 | `output` | `serde`, `serde_json`, `serde_norway`, `comfy-table`, `thiserror` | 22 |
 | `sqlstore` (`sqlstore-blob`, `sqlstore-encrypt`) | `sqldb` + `serde`, `serde_json` (+ `blob`, nothing of its own; + `crypto_secretbox`, `hkdf`, `sha2`) | 22 (22, 50) |
-| `id` | `type-safe-id`, `uuid`, `serde`, `thiserror` | 25 |
+| `id`; `timeutil` | `type-safe-id`, `uuid`, `serde`, `thiserror`; `chrono`, `interim`, `thiserror` | 25; 19 |
 | `httpcache` | `kv` + `serde`, `serde_json`, `sha2`, `base64` | 33 |
-| `cli` | `output` + `clap` | 35 |
-| `tui` | nothing (std only) | 0 |
+| `cli`; `tui` | `output` + `clap`; nothing (std only) | 35; 0 |
 | `serve` (`serve-cli`) | `output` + `tokio`, `serde_json` (+ `cli`) | 37 (50) |
-| `mcp` | `rmcp` (default-features off) + `serde`, `serde_json` | 39 |
-| `uri` | `hop-top-cite` | 41 |
+| `mcp`; `uri` | `rmcp` (default-features off) + `serde`, `serde_json`; `hop-top-cite` | 39; 41 |
 | `policy` | `domain` + `cel`, `serde`, `serde_json`, `serde_norway` (`PolicyDeniedError::to_cli_error` with `output`) | 48 |
 | `llm` (`llm-anthropic`, `llm-openai`, `llm-google`, `llm-ollama`, `llm-triton`, `llm-routellm`; `llm-picker`; `llm-router`) | `config` + `netpolicy` + `url`, `sha2` (+ `api`, `base64`, `tokio` time via `llm-http`; native only; `llm-routellm` adds `llm-openai`; `llm-picker`: nothing of its own, wasm-safe; `llm-router`: `llm-triton` + `llm-picker`) | 53 (114) |
 | `telemetry` | `api` + `serde_norway`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
 
-Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`. `api` and `telemetry` are heaviest (`reqwest` brings `tokio` and TLS); bundled `rusqlite` builds SQLite from source (needs a C compiler). The `notify` sinks are native only: `notify-webhook` goes through the guarded `api` client and runs on a current-thread tokio runtime on a helper thread; `notify-email` speaks SMTP itself over a policy-checked dial and needs `ring`'s C compiler for STARTTLS; `notify-os` shells out to `osascript` or `notify-send`. The `llm` HTTP adapters are native only and retry on tokio's timer unless given a `Sleeper`. `bus-network` runs one shared current-thread tokio runtime on its own thread, where its blocking methods panic (use the `_async` variants); `ring` needs a C compiler for the target; `wss://` on Android needs `NetworkOptions::tls_config` or `bus-network-webpki-roots`.
+Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`. `api` and `telemetry` are heaviest; bundled `rusqlite` needs a C compiler. Native-only sinks and adapters, runtime and C-compiler needs: [build notes](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#build-notes).
 
 ## Contract
 

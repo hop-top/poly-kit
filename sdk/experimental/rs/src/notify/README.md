@@ -40,51 +40,30 @@ event out to them. The runnable form is `tests/notify_e2e.rs`.
 
 ## Contract
 
-- Features: `notify` is the wasm-safe core (`bus` and nothing else): `Severity`, `severity_of`, `FilterSink`,
-  `RetrySink`, `exponential_backoff`, `Template`, `TextTemplate`, `LiteralTemplate`. The sinks are native only, one
-  feature each: `notify-webhook` (`api`, `breaker`, `redact`, tokio), `notify-email` (`breaker`, `redact`, `netpolicy`,
-  `base64`, `rustls`, `rustls-native-certs`), `notify-os` (`breaker`, `redact`). Authority: the crate
+- Features: `notify` is the wasm-safe core (`bus` only): `Severity`, `FilterSink`, `RetrySink`, templates. Sinks are
+  native only, one feature each: `notify-webhook`, `notify-email`, `notify-os`. Authority: the crate
   [feature table](../../README.md#features).
 - Every decorator is a `Sink`; compose outermost first: `RetrySink` → `FilterSink` → reference sink. Stacked filters AND.
-- Filter rejection is silent: `drain` returns `Ok`, no I/O. Checks run topic, severity, predicate.
-- Severity: a JSON object payload with a `severity` member, a lowercase keyword or a number `0..=4` (a float must have
-  no fraction); anything else is `Info`. There is no typed `WithSeverity`: a Rust payload is a `serde_json::Value`, so
-  a typed payload advertises severity by serializing the key. Go's `Severity(99).String()` = `unknown` has no
-  counterpart, the enum has five values.
-- Retry counts as Go does: attempt 0 is the first try, the wait before attempt `n` is `backoff(n - 1)`, `max_attempts`
-  below 1 is 1, a context that ends during a wait returns `BusError::Context`. On exhaustion: the dead-letter sink's
-  result, else the last inner error as it came.
-- A breaker refusal is terminal for `RetrySink`: no more attempts, straight to the dead letter or the error. A `Sink`
-  reports errors as `BusError::Handler(message)`, so the refusal is recognized by its text, `BROKEN_CIRCUIT`, anywhere
-  in the message (`is_broken_circuit`); the sinks' own wrapping ("webhook: post: ...") still matches. A sink of yours
-  that gates on a breaker reports `BusError::handler(BrokenCircuit.to_string())`.
-- The default retry wait parks the thread and wakes early on cancellation or the deadline; it is not compiled for wasm32,
-  where it does not wait: give `RetrySink::sleeper` one.
-- Outbound pipeline on every sink: `template render → redactor → breaker → egress`. Redactor (`Arc<Redactor>`) and
-  breaker (`Arc<Breaker>`) are opt-in. The breaker records the transport's outcome, as Go's wrappers do.
-- Templates are Go's `text/template` reduced to literal text and `{{.Field}}` actions (`.Topic`, `.Source`,
-  `.Timestamp`, `.ID`, `.WorkspaceID`, `.Subject`, `.DataContentType`, `.DataSchema`, `.Payload` and `.Payload.a.b`
-  into a JSON object). Bad syntax fails at construction, an unknown field at render. A string renders raw, `null` as
-  `<nil>`, a missing member as `<no value>`, any other value as compact JSON.
-- Webhook: POST through the guarded `api` client, so an offline `NetPolicy` (`.policy(..)`) refuses a remote endpoint
-  and allows loopback. A non-2xx is an error carrying the status and at most 512 bytes of the body. Default timeout 5s;
-  `.header` accumulates and repeats; `.auth_bearer`. Redirects are not followed (Go follows up to ten): a 3xx is a
-  non-2xx. `drain` is synchronous: it runs the request on a current-thread runtime on a helper thread, so it is safe
-  inside an async task, and it honors the `Context`'s cancellation and deadline.
-- Email: `EmailSink` renders subject and body, redacts each, then `Mailer::send` through the breaker. Recipients and both
-  templates are checked at drain time. `SmtpMailer` dials per send over a std `TcpStream`, after `NetPolicy::check_dial`
-  (so `--offline` applies; loopback stays reachable). No mail crate: a crate's own dial would sidestep the policy. EHLO,
-  STARTTLS (`.starttls(true)`, rustls on the ring provider, platform roots, or `.tls_config(..)`), AUTH PLAIN only when
-  advertised and only over TLS or to a loopback host (Go's rule), MAIL/RCPT/DATA with dot-stuffing. Unlike Go, an
-  address, subject or content type with a line break is refused. A send past the dial does not poll for cancellation;
-  its socket reads and writes time out instead.
-- OS: macOS `osascript -e 'on run argv' ... -- <text> <title>` (title and text are the script's argv, never
-  interpolated into its source), Linux `notify-send -- <title> <text>` (probed on `PATH` in `OsNotifySink::new`), Windows
-  an error. `--` keeps a leading `-` from being read as an option. Spawned directly, never
-  through a shell; `Runner` is the test seam (`.runner(..)`, `for_platform(..)`). `ExecRunner` kills the child when the
-  context ends.
-- Not ported: the typed-payload `WithSeverity` path. No `contracts/` corpus covers notify; the Go tests are ported (see
-  `tests/notify_*.rs`).
+  Filter rejection is silent: `drain` returns `Ok`, no I/O.
+- Severity: a JSON object payload's `severity` member, a lowercase keyword or a number `0..=4`; anything else is
+  `Info`. No typed `WithSeverity`: a typed payload serializes the key.
+- Retry counts as Go does: attempt 0 is the first try, the wait before attempt `n` is `backoff(n - 1)`. On
+  exhaustion: the dead-letter sink's result, else the last inner error. A context ending during a wait returns
+  `BusError::Context`.
+- A breaker refusal is terminal for `RetrySink`: no more attempts, straight to the dead letter or the error. It is
+  recognized by its text, `BROKEN_CIRCUIT` (`is_broken_circuit`), as a `Sink` reports `BusError::Handler(message)`.
+- Outbound pipeline on every sink: `template render → redactor → breaker → egress`. Redactor and breaker are opt-in.
+- Templates are Go's `text/template` cut to literal text and `{{.Field}}` actions. Bad syntax fails at construction,
+  an unknown field at render.
+- Webhook: POST through the guarded `api` client, so `--offline` refuses a remote endpoint and allows loopback.
+  Non-2xx is an error with the status and at most 512 bytes of body; redirects are not followed (Go follows ten).
+  `drain` is synchronous, safe inside an async task, and honors the `Context`.
+- Email: see [`email/`](email/README.md). `SmtpMailer` dials through `NetPolicy`; AUTH PLAIN only over TLS or to
+  loopback; line breaks in address or subject are refused.
+- OS: macOS `osascript` (title and text are argv, never script source), Linux `notify-send --`, Windows an error.
+  Spawned directly, never through a shell; `Runner` is the test seam.
+- No `contracts/` corpus covers notify; the Go tests are ported (`tests/notify_*.rs`). Retry-wait defaults, template
+  rendering rules and the rest: [Rust SDK reference, Notify](../../../../../docs/adopters/reference/rs-sdk.md#notify).
 
 ## Neighbours
 
@@ -92,6 +71,7 @@ event out to them. The runnable form is `tests/notify_e2e.rs`.
 - `hop_top_kit::redact` and `hop_top_kit::breaker`: the guardrails every sink takes
 - `hop_top_kit::netpolicy`: `NetPolicy` and the guarded client behind the webhook
 - `hop_top_kit::util::retry`: the `Rng` and `SplitMix64` the jitter reuses
+- [`email/`](email/README.md): the email sink and its SMTP client
 
 ## See also
 
