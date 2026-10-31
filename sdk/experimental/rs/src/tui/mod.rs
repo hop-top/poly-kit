@@ -19,6 +19,7 @@ mod bar;
 mod confirm;
 mod parity;
 pub mod progress;
+mod sanitize;
 mod spinner;
 mod status;
 mod style;

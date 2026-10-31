@@ -1,6 +1,7 @@
 //! Prefixed status lines (`tui.InfoMsg` rendering in Go).
 
 use super::parity::{SYMBOL_ERROR, SYMBOL_INFO, SYMBOL_SUCCESS, SYMBOL_WARN};
+use super::sanitize::clean;
 use super::style::Styler;
 
 /// Classifies a status line.
@@ -33,7 +34,7 @@ pub fn status_line(styler: &Styler, kind: InfoType, text: &str) -> String {
         InfoType::Warn => styler.secondary(t),
         InfoType::Success => styler.success(t),
     };
-    format!("{} {}", paint(kind.symbol()), paint(text))
+    format!("{} {}", paint(kind.symbol()), paint(&clean(text)))
 }
 
 #[cfg(test)]
@@ -48,6 +49,20 @@ mod tests {
         assert_eq!(status_line(&s, InfoType::Error, "boom"), "● boom");
         assert_eq!(status_line(&s, InfoType::Warn, "hmm"), "▲ hmm");
         assert_eq!(status_line(&s, InfoType::Info, "fyi"), "ℹ fyi");
+    }
+
+    #[test]
+    fn text_is_stripped_of_controls() {
+        use crate::tui::sanitize::{assert_inert, HOSTILE};
+        let s = Styler::resolve(Theme::default(), ColorMode::Always, false, false, false);
+        for h in HOSTILE {
+            assert_inert(&status_line(&Styler::plain(), InfoType::Error, h));
+            let out = status_line(&s, InfoType::Error, h);
+            assert!(
+                !out.contains(h) && !out.contains('\r') && !out.contains('\u{9b}'),
+                "{out:?}"
+            );
+        }
     }
 
     #[test]
