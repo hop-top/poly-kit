@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hop.top/kit/contracts/blob-v1/blob.json",
   "version": "v1",
-  "description": "Local blob store (Go `storage/blob/local`): put/get/delete/list/exists scenarios. Each scenario runs `steps` in order against a fresh store rooted at an empty directory. `put` (key, data utf8 or data_hex, content_type; the type is not stored by the local backend), `get` (want_data utf8 or want_hex), `delete`, `exists` (want_bool), `list` (prefix, want_objects: key and size in the order the backend returns them: per directory, entries in ascending name order, subdirectories descended in place, so `a/b` precedes `a.txt`), `raw_write` (path relative to the root, data: plants a file without going through `put`, e.g. a crash-orphaned staging file). A step with `error` must fail: `kind` is `not_found` or `escapes_root`; for `escapes_root`, `text` is the exact message. `not_found` text embeds an OS path and is not pinned. Keys are slash-separated logical strings; `list` never surfaces dot-prefixed `.tmp` staging names.",
+  "description": "Local blob store (Go `storage/blob/local`): put/get/delete/list/exists scenarios. Each scenario runs `steps` in order against a fresh store rooted at an empty directory. `put` (key, data utf8 or data_hex, content_type; the type is not stored by the local backend), `get` (want_data utf8 or want_hex), `delete` (idempotent: a missing key succeeds, as in S3), `exists` (want_bool), `list` (prefix, want_objects: key and size in the order the backend returns them: per directory, entries in ascending name order, subdirectories descended in place, so `a/b` precedes `a.txt`), `raw_write` (path relative to the root, data: plants a file without going through `put`, e.g. a crash-orphaned staging file). A step with `error` must fail: `kind` is `not_found` or `escapes_root`; for `escapes_root`, `text` is the exact message. `not_found` text embeds an OS path and is not pinned. Keys are slash-separated logical strings; `list` never surfaces dot-prefixed `.tmp` staging names.",
   "source": "storage.blob",
   "scenarios": [
     {
@@ -72,7 +72,7 @@
         {"op": "delete", "key": "gone"},
         {"op": "exists", "key": "gone", "want_bool": false},
         {"op": "get", "key": "gone", "error": {"kind": "not_found"}},
-        {"op": "delete", "key": "gone", "error": {"kind": "not_found"}}
+        {"op": "delete", "key": "gone"}
       ]
     },
     {
