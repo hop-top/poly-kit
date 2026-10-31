@@ -974,75 +974,130 @@ fn a_bad_trusted_proxy_or_origin_fails_the_build() {
     let _ = StatusCode::OK.into_response();
 }
 
-#[tokio::test]
-async fn a_full_table_still_gives_a_new_client_its_own_budget() {
-    let clock = Arc::new(Fake(Mutex::new(
-        SystemTime::UNIX_EPOCH + Duration::from_secs(1000),
-    )));
-    let mut c = cfg(hello());
-    let mut rl = RateLimit::new(1, Duration::from_secs(30));
-    rl.max_clients = 2;
-    rl.clock = Some(clock.clone());
-    c.rate_limit = Some(rl);
-    let a = app(c);
-    let from = |ip: &str| {
-        let a = a.clone();
-        let sa: SocketAddr = format!("{ip}:1").parse().unwrap();
-        async move {
-            let mut r = get_req("/hello");
-            r.extensions_mut().insert(ConnectInfo(sa));
-            a.oneshot(r).await.unwrap().status()
+struct Rig {
+    app: Router,
+    clock: Arc<Fake>,
+    sweeps: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl Rig {
+    fn new(max: u32, cap: usize) -> Self {
+        let clock = Arc::new(Fake(Mutex::new(
+            SystemTime::UNIX_EPOCH + Duration::from_secs(1000),
+        )));
+        let sweeps = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let s = sweeps.clone();
+        let mut rl = RateLimit::new(max, Duration::from_secs(40));
+        rl.max_clients = cap;
+        rl.clock = Some(clock.clone());
+        rl.on_sweep = Some(Arc::new(move || {
+            s.fetch_add(1, Ordering::SeqCst);
+        }));
+        let mut c = cfg(hello());
+        c.rate_limit = Some(rl);
+        Rig {
+            app: app(c),
+            clock,
+            sweeps,
         }
-    };
-    assert_eq!(from("192.0.2.1").await, 200);
-    *clock.0.lock().unwrap() += Duration::from_secs(1);
-    assert_eq!(from("192.0.2.2").await, 200);
-    // At the cap: a third client is served from its own bucket, and an
-    // attacker's churn cannot drain a shared one.
-    *clock.0.lock().unwrap() += Duration::from_secs(1);
-    assert_eq!(from("192.0.2.3").await, 200);
-    assert_eq!(from("192.0.2.4").await, 200);
-    assert_eq!(from("192.0.2.4").await, 429);
+    }
+    fn advance(&self, secs: u64) {
+        *self.clock.0.lock().unwrap() += Duration::from_secs(secs);
+    }
+    async fn from(&self, ip: &str) -> u16 {
+        let sa: SocketAddr = if ip.contains(':') {
+            format!("[{ip}]:1")
+        } else {
+            format!("{ip}:1")
+        }
+        .parse()
+        .unwrap();
+        let mut r = get_req("/hello");
+        r.extensions_mut().insert(ConnectInfo(sa));
+        self.app.clone().oneshot(r).await.unwrap().status().as_u16()
+    }
 }
 
 #[tokio::test]
-async fn idle_buckets_expire_and_ipv6_shares_a_64() {
-    let clock = Arc::new(Fake(Mutex::new(
-        SystemTime::UNIX_EPOCH + Duration::from_secs(1000),
-    )));
-    let mut c = cfg(hello());
-    let mut rl = RateLimit::new(1, Duration::from_secs(30));
-    rl.max_clients = 1;
-    rl.clock = Some(clock.clone());
-    c.rate_limit = Some(rl);
-    let a = app(c);
-    let from = |ip: &str| {
-        let a = a.clone();
-        let sa: SocketAddr = format!("[{ip}]:1").parse().unwrap();
-        async move {
-            let mut r = get_req("/hello");
-            r.extensions_mut().insert(ConnectInfo(sa));
-            a.oneshot(r).await.unwrap().status()
+async fn rotating_keys_past_the_cap_cannot_beat_the_prefix_budget() {
+    let r = Rig::new(1, 8); // 8 exact clients, 2 aggregate buckets
+    for i in 1..=8 {
+        assert_eq!(r.from(&format!("198.51.100.{i}")).await, 200);
+    }
+    // Table full, nothing idle: 50 new keys in one /24 share one budget.
+    let mut ok = 0;
+    for i in 1..=50 {
+        if r.from(&format!("192.0.2.{i}")).await == 200 {
+            ok += 1;
         }
-    };
-    assert_eq!(from("2001:db8:1:1::1").await, 200);
+    }
+    assert_eq!(ok, 1, "the whole /24 gets one budget");
+    // A second /24 gets the second aggregate bucket; a third shares overflow.
+    assert_eq!(r.from("203.0.113.1").await, 200);
+    assert_eq!(r.from("203.0.113.2").await, 429);
+    assert_eq!(r.from("100.64.0.1").await, 200, "the shared last resort");
+    assert_eq!(r.from("100.65.0.1").await, 429);
+}
+
+#[tokio::test]
+async fn new_keys_never_reset_an_active_clients_budget() {
+    let r = Rig::new(1, 4);
+    assert_eq!(r.from("198.51.100.1").await, 200);
+    assert_eq!(r.from("198.51.100.1").await, 429);
+    for i in 2..=4 {
+        r.from(&format!("198.51.100.{i}")).await;
+    }
+    for i in 1..=100 {
+        r.from(&format!("10.{}.0.1", i)).await;
+    }
+    assert_eq!(r.from("198.51.100.1").await, 429, "still limited");
+}
+
+#[tokio::test]
+async fn idle_buckets_are_reclaimed_and_the_sweep_is_rate_limited() {
+    let r = Rig::new(1, 2);
+    for i in 0..30 {
+        r.from(&format!("198.51.100.{}", i % 2 + 1)).await;
+    }
     assert_eq!(
-        from("2001:db8:1:1:ffff::2").await,
+        r.sweeps.load(Ordering::SeqCst),
+        1,
+        "one sweep for a burst of requests"
+    );
+    r.advance(9); // past per/4 = 10s? no: 9 < 10
+    r.from("198.51.100.1").await;
+    assert_eq!(r.sweeps.load(Ordering::SeqCst), 1);
+    r.advance(1);
+    r.from("198.51.100.1").await;
+    assert_eq!(r.sweeps.load(Ordering::SeqCst), 2, "the interval passed");
+
+    // Reclaim: .2 goes idle for a full period, so a newcomer takes an
+    // exact slot instead of an aggregate one.
+    let r = Rig::new(1, 2);
+    assert_eq!(r.from("198.51.100.1").await, 200);
+    assert_eq!(r.from("198.51.100.2").await, 200);
+    r.advance(41);
+    assert_eq!(r.from("192.0.2.5").await, 200);
+    assert_eq!(
+        r.from("192.0.2.6").await,
+        200,
+        "own exact bucket, not a shared /24"
+    );
+    // Both slots are live now; the next newcomer is aggregated.
+    assert_eq!(r.from("192.0.2.7").await, 200);
+    assert_eq!(r.from("192.0.2.8").await, 429);
+}
+
+#[tokio::test]
+async fn ipv6_shares_a_64() {
+    let r = Rig::new(1, 100);
+    assert_eq!(r.from("2001:db8:1:1::1").await, 200);
+    assert_eq!(
+        r.from("2001:db8:1:1:ffff::2").await,
         429,
         "same /64, same bucket"
     );
-    assert_eq!(
-        from("2001:db8:1:2::1").await,
-        200,
-        "another /64 evicts, gets its own"
-    );
-    assert_eq!(
-        from("2001:db8:1:1::1").await,
-        200,
-        "the least recently seen was evicted at the cap"
-    );
-    *clock.0.lock().unwrap() += Duration::from_secs(31);
-    assert_eq!(from("2001:db8:1:1::1").await, 200, "idle entry expired");
+    assert_eq!(r.from("2001:db8:1:2::1").await, 200);
 }
 
 #[tokio::test]

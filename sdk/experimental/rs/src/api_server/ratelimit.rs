@@ -21,12 +21,16 @@ pub struct RateLimit {
     pub max: u32,
     /// The period.
     pub per: Duration,
-    /// Clients tracked at once; at the cap, idle buckets go first, then
-    /// the least recently seen, so a new client always has its own
-    /// budget. IPv6 clients are keyed by /64. Zero means 10,000.
+    /// Clients tracked individually (IPv6 by /64). At the cap, buckets
+    /// idle for a full period are reclaimed (at most once per quarter
+    /// period); a live bucket is never evicted. Newcomers beyond that
+    /// share an aggregate bucket per /24 (IPv4) or /48 (IPv6), at most
+    /// cap/4 of them, then one shared overflow bucket. Zero means 10,000.
     pub max_clients: usize,
     /// The clock, for tests. Default the system clock.
     pub clock: Option<Arc<dyn Clock>>,
+    /// Called each time the idle sweep runs; a test hook.
+    pub on_sweep: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl RateLimit {
@@ -37,6 +41,7 @@ impl RateLimit {
             per,
             max_clients: 0,
             clock: None,
+            on_sweep: None,
         }
     }
 }
@@ -49,15 +54,26 @@ enum Key {
     V6(u64),
 }
 
-impl Key {
-    fn of(ip: IpAddr) -> Key {
-        match ip {
-            IpAddr::V4(a) => Key::V4(u32::from(a)),
-            IpAddr::V6(a) => match a.to_ipv4_mapped() {
-                Some(v4) => Key::V4(u32::from(v4)),
-                None => Key::V6((u128::from(a) >> 64) as u64),
-            },
+/// The coarser key the aggregate buckets use: IPv4 /24, IPv6 /48.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Coarse {
+    V4(u32),
+    V6(u64),
+}
+
+fn parts(ip: IpAddr) -> (Key, Coarse) {
+    match ip {
+        IpAddr::V4(a) => {
+            let v = u32::from(a);
+            (Key::V4(v), Coarse::V4(v >> 8))
         }
+        IpAddr::V6(a) => match a.to_ipv4_mapped() {
+            Some(v4) => parts(IpAddr::V4(v4)),
+            None => {
+                let v = u128::from(a);
+                (Key::V6((v >> 64) as u64), Coarse::V6((v >> 80) as u64))
+            }
+        },
     }
 }
 
@@ -66,19 +82,29 @@ struct Entry {
     last_seen: SystemTime,
 }
 
+struct Table {
+    exact: HashMap<Key, Entry>,
+    coarse: HashMap<Coarse, Entry>,
+    last_sweep: Option<SystemTime>,
+}
+
 pub(crate) struct Limiter {
     cfg: RateLimit,
-    by_client: Mutex<HashMap<Key, Entry>>,
-    unknown: Arc<Breaker>,
+    state: Mutex<Table>,
+    overflow: Arc<Breaker>,
 }
 
 impl Limiter {
     pub(crate) fn new(cfg: RateLimit) -> Self {
-        let unknown = Self::bucket(&cfg);
+        let overflow = Self::bucket(&cfg);
         Self {
             cfg,
-            by_client: Mutex::new(HashMap::new()),
-            unknown,
+            state: Mutex::new(Table {
+                exact: HashMap::new(),
+                coarse: HashMap::new(),
+                last_sweep: None,
+            }),
+            overflow,
         }
     }
 
@@ -99,42 +125,70 @@ impl Limiter {
         }
     }
 
+    fn idle(&self, now: SystemTime, e: &Entry) -> bool {
+        now.duration_since(e.last_seen).unwrap_or_default() >= self.cfg.per
+    }
+
+    /// Drops buckets idle for a full period: they have refilled, so
+    /// dropping one is the same as keeping it. At most once per quarter
+    /// period, so a flood of new keys cannot make every insert a scan.
+    fn sweep(&self, st: &mut Table, now: SystemTime) {
+        let every = self.cfg.per / 4;
+        if st
+            .last_sweep
+            .is_some_and(|t| now.duration_since(t).unwrap_or_default() < every)
+        {
+            return;
+        }
+        st.last_sweep = Some(now);
+        st.exact.retain(|_, e| !self.idle(now, e));
+        st.coarse.retain(|_, e| !self.idle(now, e));
+        if let Some(f) = &self.cfg.on_sweep {
+            f();
+        }
+    }
+
     fn breaker_for(&self, ip: Option<IpAddr>) -> Arc<Breaker> {
         let Some(ip) = ip else {
-            return self.unknown.clone();
+            return self.overflow.clone();
         };
-        let key = Key::of(ip);
+        let (key, coarse) = parts(ip);
         let cap = if self.cfg.max_clients == 0 {
             10_000
         } else {
             self.cfg.max_clients
         };
+        let coarse_cap = (cap / 4).max(2);
         let now = self.now();
-        let mut map = self.by_client.lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(e) = map.get_mut(&key) {
+        let mut st = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        self.sweep(&mut st, now);
+        if let Some(e) = st.exact.get_mut(&key) {
             e.last_seen = now;
             return e.breaker.clone();
         }
-        if map.len() >= cap {
-            // A bucket idle for a full period has refilled: dropping it
-            // loses nothing. If none is, drop the least recently seen,
-            // so a new client always gets its own budget.
-            map.retain(|_, e| now.duration_since(e.last_seen).unwrap_or_default() < self.cfg.per);
-            if map.len() >= cap {
-                if let Some(oldest) = map.iter().min_by_key(|(_, e)| e.last_seen).map(|(k, _)| *k) {
-                    map.remove(&oldest);
-                }
-            }
+        let fresh = |b: Arc<Breaker>| Entry {
+            breaker: b,
+            last_seen: now,
+        };
+        if st.exact.len() < cap {
+            let b = Self::bucket(&self.cfg);
+            st.exact.insert(key, fresh(b.clone()));
+            return b;
         }
-        let breaker = Self::bucket(&self.cfg);
-        map.insert(
-            key,
-            Entry {
-                breaker: breaker.clone(),
-                last_seen: now,
-            },
-        );
-        breaker
+        // At the cap with nothing idle to reclaim. Evicting a live
+        // bucket would hand its owner a fresh budget, so the newcomer
+        // shares its /24 (/48) with the others that arrived under
+        // pressure, and past that, one last bucket.
+        if let Some(e) = st.coarse.get_mut(&coarse) {
+            e.last_seen = now;
+            return e.breaker.clone();
+        }
+        if st.coarse.len() < coarse_cap {
+            let b = Self::bucket(&self.cfg);
+            st.coarse.insert(coarse, fresh(b.clone()));
+            return b;
+        }
+        self.overflow.clone()
     }
 
     /// Admits one request from `ip`, or the seconds to wait.
