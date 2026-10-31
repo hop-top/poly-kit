@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hop.top/kit/contracts/parity/api.json",
-  "description": "Cross-language conformance record for the kit REST server (go/transport/api and the Go api service's middleware plane). Go is the authority. Tables: client_address, trusted_proxies, hosts, listener_hosts, origin, and openapi_cases (expected documents rendered by huma from a language-neutral model; regenerate with go test ./go/transport/api -run TestAPIContractOpenAPI -update-api-contract). `ports` records which behaviors each port has shipped; PENDING passes.",
+  "description": "Cross-language conformance record for the kit REST server (go/transport/api and the Go api service's middleware plane). Go is the authority. Tables: client_address, trusted_proxies, hosts, listener_hosts, origin, and openapi_cases (expected documents rendered by huma from a language-neutral model; regenerate with go test ./go/transport/api -run TestAPIContractOpenAPI -update-api-contract). `ports` records which behaviors each port has shipped; PENDING passes. Also websocket_topics, metrics, client_cert and idempotency tables.",
   "version": 1,
   "constants": {
     "health": {
@@ -29,7 +29,30 @@
       "method_not_allowed": 405
     },
     "request_id_pattern": "^[A-Za-z0-9._-]{1,128}$",
-    "minted_request_id_pattern": "^[0-9a-f]{32}$"
+    "minted_request_id_pattern": "^[0-9a-f]{32}$",
+    "timeouts": {
+      "read_header_ms": 5000,
+      "read_ms": 5000,
+      "write_ms": 10000
+    },
+    "metrics": {
+      "default_path": "/metrics",
+      "not_allowed_message": "the metrics endpoint answers GET and HEAD"
+    },
+    "idempotency": {
+      "key_header": "Idempotency-Key",
+      "replayed_header": "Idempotent-Replayed",
+      "codes": {
+        "idempotency_conflict": 409,
+        "idempotency_key_reused": 422
+      },
+      "default_ttl_seconds": 86400
+    },
+    "websocket": {
+      "default_max_message_size": 65536,
+      "send_buffer": 64,
+      "max_subscriptions": 1000
+    }
   },
   "ports": {
     "go": {
@@ -52,7 +75,12 @@
       "sse": "SHIPPED",
       "websocket": "SHIPPED",
       "service_lifecycle": "SHIPPED",
-      "command_projection": "SHIPPED"
+      "command_projection": "SHIPPED",
+      "tls": "SHIPPED",
+      "mtls": "SHIPPED",
+      "server_timeouts": "SHIPPED",
+      "metrics": "SHIPPED",
+      "idempotency": "SHIPPED"
     },
     "rs": {
       "implementation": "sdk/experimental/rs/src/api_server, feature api-server",
@@ -74,7 +102,12 @@
       "sse": "SHIPPED",
       "websocket": "PENDING",
       "service_lifecycle": "SHIPPED",
-      "command_projection": "SHIPPED"
+      "command_projection": "SHIPPED",
+      "tls": "SHIPPED",
+      "mtls": "SHIPPED",
+      "server_timeouts": "SHIPPED",
+      "metrics": "SHIPPED",
+      "idempotency": "SHIPPED"
     },
     "ts": {
       "implementation": "none",
@@ -2237,5 +2270,571 @@
         "exit_code": 99
       }
     ]
-  }
+  },
+  "websocket_topics": [
+    {
+      "pattern": "a.b",
+      "topic": "a.b",
+      "match": true
+    },
+    {
+      "pattern": "a.*",
+      "topic": "a.b",
+      "match": true
+    },
+    {
+      "pattern": "a.*",
+      "topic": "a.b.c",
+      "match": false
+    },
+    {
+      "pattern": "*",
+      "topic": "a.b",
+      "match": false
+    },
+    {
+      "pattern": "*",
+      "topic": "a",
+      "match": true
+    },
+    {
+      "pattern": "a.**",
+      "topic": "a.b",
+      "match": true
+    },
+    {
+      "pattern": "a.**",
+      "topic": "a.b.c.d",
+      "match": true
+    },
+    {
+      "pattern": "a.**",
+      "topic": "a",
+      "match": false
+    },
+    {
+      "pattern": "**",
+      "topic": "a.b",
+      "match": true
+    },
+    {
+      "pattern": "a.**.z",
+      "topic": "a.b.c.z",
+      "match": true
+    },
+    {
+      "pattern": "a.**.z",
+      "topic": "a.z",
+      "match": true
+    },
+    {
+      "pattern": "a.**.z",
+      "topic": "a.b.c",
+      "match": false
+    },
+    {
+      "pattern": "a.*.c",
+      "topic": "a.b.c",
+      "match": true
+    },
+    {
+      "pattern": "a.*.c",
+      "topic": "a.c",
+      "match": false
+    },
+    {
+      "pattern": "a.b",
+      "topic": "a.c",
+      "match": false
+    },
+    {
+      "pattern": "",
+      "topic": "",
+      "match": true
+    },
+    {
+      "pattern": "a",
+      "topic": "a.b",
+      "match": false
+    }
+  ],
+  "metrics": [
+    {
+      "name": "GET answers",
+      "method": "GET",
+      "path": "/metrics",
+      "status": 200,
+      "cache_control": "no-store",
+      "passes_through": false
+    },
+    {
+      "name": "HEAD answers",
+      "method": "HEAD",
+      "path": "/metrics",
+      "status": 200,
+      "cache_control": "no-store",
+      "passes_through": false
+    },
+    {
+      "name": "POST refused",
+      "method": "POST",
+      "path": "/metrics",
+      "status": 405,
+      "allow": "GET, HEAD",
+      "code": "method_not_allowed",
+      "passes_through": false
+    },
+    {
+      "name": "DELETE refused",
+      "method": "DELETE",
+      "path": "/metrics",
+      "status": 405,
+      "allow": "GET, HEAD",
+      "code": "method_not_allowed",
+      "passes_through": false
+    },
+    {
+      "name": "another path is next's",
+      "method": "GET",
+      "path": "/other",
+      "passes_through": true
+    },
+    {
+      "name": "a trailing slash is another path",
+      "method": "GET",
+      "path": "/metrics/",
+      "passes_through": true
+    },
+    {
+      "name": "a prefix is another path",
+      "method": "GET",
+      "path": "/metricsx",
+      "passes_through": true
+    },
+    {
+      "name": "a custom path",
+      "config_path": "/_/prom",
+      "method": "GET",
+      "path": "/_/prom",
+      "status": 200,
+      "cache_control": "no-store",
+      "passes_through": false
+    },
+    {
+      "name": "a custom path leaves the default to next",
+      "config_path": "/_/prom",
+      "method": "GET",
+      "path": "/metrics",
+      "passes_through": true
+    }
+  ],
+  "client_cert": [
+    {
+      "name": "san prefers the URI",
+      "principal": "san",
+      "uris": [
+        "spiffe://t/a"
+      ],
+      "dns": [
+        "a.t"
+      ],
+      "emails": [
+        "a@t"
+      ],
+      "want": {
+        "subject": "spiffe://t/a",
+        "tenant": ""
+      }
+    },
+    {
+      "name": "san falls to DNS",
+      "principal": "san",
+      "dns": [
+        "a.t",
+        "b.t"
+      ],
+      "emails": [
+        "a@t"
+      ],
+      "want": {
+        "subject": "a.t",
+        "tenant": ""
+      }
+    },
+    {
+      "name": "san falls to email",
+      "principal": "",
+      "emails": [
+        "a@t"
+      ],
+      "want": {
+        "subject": "a@t",
+        "tenant": ""
+      }
+    },
+    {
+      "name": "san_uri takes the first URI",
+      "principal": "san_uri",
+      "uris": [
+        "spiffe://t/a",
+        "spiffe://t/b"
+      ],
+      "dns": [
+        "a.t"
+      ],
+      "want": {
+        "subject": "spiffe://t/a",
+        "tenant": ""
+      }
+    },
+    {
+      "name": "san_uri with no URI has no principal",
+      "principal": "san_uri",
+      "dns": [
+        "a.t"
+      ],
+      "error": true
+    },
+    {
+      "name": "san_dns",
+      "principal": "san_dns",
+      "uris": [
+        "spiffe://t/a"
+      ],
+      "dns": [
+        "a.t"
+      ],
+      "want": {
+        "subject": "a.t",
+        "tenant": ""
+      }
+    },
+    {
+      "name": "san_email",
+      "principal": "san_email",
+      "dns": [
+        "a.t"
+      ],
+      "emails": [
+        "a@t"
+      ],
+      "want": {
+        "subject": "a@t",
+        "tenant": ""
+      }
+    },
+    {
+      "name": "cn",
+      "principal": "cn",
+      "cn": "alice",
+      "dns": [
+        "a.t"
+      ],
+      "want": {
+        "subject": "alice",
+        "tenant": ""
+      }
+    },
+    {
+      "name": "cn absent has no principal",
+      "principal": "cn",
+      "dns": [
+        "a.t"
+      ],
+      "error": true
+    },
+    {
+      "name": "no SAN and no CN has no principal",
+      "principal": "san",
+      "cn": "alice",
+      "error": true
+    },
+    {
+      "name": "unknown source is refused",
+      "principal": "serial",
+      "dns": [
+        "a.t"
+      ],
+      "error": true
+    },
+    {
+      "name": "tenant from the O attribute",
+      "principal": "san_dns",
+      "dns": [
+        "a.t"
+      ],
+      "org": [
+        "acme"
+      ],
+      "tenant_oid": "2.5.4.10",
+      "want": {
+        "subject": "a.t",
+        "tenant": "acme"
+      }
+    },
+    {
+      "name": "tenant from the OU attribute",
+      "principal": "san_dns",
+      "dns": [
+        "a.t"
+      ],
+      "org_unit": [
+        "eng"
+      ],
+      "tenant_oid": "2.5.4.11",
+      "want": {
+        "subject": "a.t",
+        "tenant": "eng"
+      }
+    },
+    {
+      "name": "tenant from a string extension",
+      "principal": "san_dns",
+      "dns": [
+        "a.t"
+      ],
+      "extension": {
+        "oid": "1.3.6.1.4.1.99999.1",
+        "value": "globex"
+      },
+      "tenant_oid": "1.3.6.1.4.1.99999.1",
+      "want": {
+        "subject": "a.t",
+        "tenant": "globex"
+      }
+    },
+    {
+      "name": "tenant OID that is absent is empty",
+      "principal": "san_dns",
+      "dns": [
+        "a.t"
+      ],
+      "tenant_oid": "2.5.4.10",
+      "want": {
+        "subject": "a.t",
+        "tenant": ""
+      }
+    },
+    {
+      "name": "tenant from a SAN capture group",
+      "principal": "san_dns",
+      "dns": [
+        "a.t",
+        "svc.globex.example"
+      ],
+      "tenant_san_pattern": "^svc\\.([a-z]+)\\.example$",
+      "want": {
+        "subject": "a.t",
+        "tenant": "globex"
+      }
+    },
+    {
+      "name": "tenant from a SAN pattern without a group is the whole match",
+      "principal": "san_dns",
+      "dns": [
+        "a.t",
+        "globex.example"
+      ],
+      "tenant_san_pattern": "globex",
+      "want": {
+        "subject": "a.t",
+        "tenant": "globex"
+      }
+    },
+    {
+      "name": "tenant pattern tries URIs first",
+      "principal": "san_dns",
+      "uris": [
+        "spiffe://acme/x"
+      ],
+      "dns": [
+        "a.t"
+      ],
+      "tenant_san_pattern": "^spiffe://([a-z]+)/",
+      "want": {
+        "subject": "a.t",
+        "tenant": "acme"
+      }
+    }
+  ],
+  "idempotency": [
+    {
+      "name": "a first call runs, the same call replays",
+      "steps": [
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k1",
+          "call": "A",
+          "want": "run"
+        },
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k1",
+          "call": "A",
+          "want": "replay"
+        }
+      ]
+    },
+    {
+      "name": "a key reused for another call is refused",
+      "steps": [
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k1",
+          "call": "A",
+          "want": "run"
+        },
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k1",
+          "call": "B",
+          "want": "key_reused"
+        }
+      ]
+    },
+    {
+      "name": "a key belongs to its principal",
+      "steps": [
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k1",
+          "call": "A",
+          "want": "run"
+        },
+        {
+          "op": "call",
+          "principal": "bob",
+          "key": "k1",
+          "call": "A",
+          "want": "run"
+        },
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k1",
+          "call": "A",
+          "want": "replay"
+        }
+      ]
+    },
+    {
+      "name": "a different key runs again",
+      "steps": [
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k1",
+          "call": "A",
+          "want": "run"
+        },
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k2",
+          "call": "A",
+          "want": "run"
+        }
+      ]
+    },
+    {
+      "name": "a failed call is not recorded",
+      "steps": [
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k1",
+          "call": "A",
+          "fail": true,
+          "want": "run"
+        },
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k1",
+          "call": "A",
+          "want": "run"
+        },
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k1",
+          "call": "A",
+          "want": "replay"
+        }
+      ]
+    },
+    {
+      "name": "the same call while it runs is a conflict",
+      "steps": [
+        {
+          "op": "hold",
+          "principal": "alice",
+          "key": "k1",
+          "call": "A"
+        },
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k1",
+          "call": "A",
+          "want": "conflict"
+        },
+        {
+          "op": "release"
+        },
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k1",
+          "call": "A",
+          "want": "replay"
+        }
+      ]
+    },
+    {
+      "name": "another call under a running key is key reused",
+      "steps": [
+        {
+          "op": "hold",
+          "principal": "alice",
+          "key": "k1",
+          "call": "A"
+        },
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "k1",
+          "call": "B",
+          "want": "key_reused"
+        },
+        {
+          "op": "release"
+        }
+      ]
+    },
+    {
+      "name": "a call without a key is never touched",
+      "steps": [
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "",
+          "call": "A",
+          "want": "run"
+        },
+        {
+          "op": "call",
+          "principal": "alice",
+          "key": "",
+          "call": "A",
+          "want": "run"
+        }
+      ]
+    }
+  ]
 }

@@ -1,4 +1,3 @@
-use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -18,7 +17,7 @@ use tower_http::request_id::{
 use tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer;
 
 use super::accesslog::{access_log, panic_line, stderr_sink, LogSink};
-use super::auth::{auth, AuthState, OnAuthRefused};
+use super::auth::{auth, AuthState, CertAuth, OnAuthRefused};
 use super::clientaddr::{client_address, parse_trusted_proxies};
 use super::cors::CorsConfig;
 use super::error::{json_response, ApiError, ApiServerError, RefusalWriter, CODE_BODY_TOO_LARGE};
@@ -26,9 +25,12 @@ use super::events::{events, EventPublisher, EventState, Topics};
 use super::headers::{hsts, hsts_value, static_layers, SecurityHeadersConfig};
 use super::health::{health, HealthState, ReadinessCheck};
 use super::hosts::{host_check, listener_hosts, HostAllowlist, HostCheckConfig};
+use super::metrics::{metrics, MetricsConfig, MetricsState};
 use super::openapi::{OpenApi, OPENAPI_PATH};
 use super::origin::{origin_check, OriginCheckConfig, OriginPolicy};
 use super::ratelimit::{rate_limit, Limiter, RateLimit};
+use super::serve_loop::{serve, Acceptor};
+use super::timeouts::ServerTimeouts;
 use crate::authn::AuthFunc;
 use crate::serve::{CancelToken, ReadySignal, ServeFuture, Service};
 
@@ -95,6 +97,19 @@ pub struct ApiServerConfig {
     pub refuse: Option<RefusalWriter>,
     /// Services whose readiness `/readyz` includes, by name.
     pub depends_on: Vec<String>,
+    /// Read, header and write timeouts; default
+    /// [`ServerTimeouts::default`] (5s, 5s, 10s). Streams are exempt
+    /// from the write deadline, see [`LiftWriteDeadline`](super::LiftWriteDeadline).
+    pub timeouts: ServerTimeouts,
+    /// The metrics scrape endpoint; `None` serves none.
+    pub metrics: Option<MetricsConfig>,
+    /// Serve TLS (and, with a client CA, mTLS). `None` serves plaintext.
+    #[cfg(feature = "api-server-tls")]
+    pub tls: Option<super::tls::TlsConfig>,
+    /// Idempotency keys: replay a recorded response for a repeated
+    /// `Idempotency-Key`. `None` leaves the header alone.
+    #[cfg(feature = "api-server-idempotency")]
+    pub idempotency: Option<super::idempotency::IdempotencyConfig>,
 }
 
 impl ApiServerConfig {
@@ -126,6 +141,12 @@ impl ApiServerConfig {
             openapi: None,
             refuse: None,
             depends_on: Vec::new(),
+            timeouts: ServerTimeouts::default(),
+            metrics: None,
+            #[cfg(feature = "api-server-tls")]
+            tls: None,
+            #[cfg(feature = "api-server-idempotency")]
+            idempotency: None,
         }
     }
 }
@@ -246,6 +267,8 @@ pub struct ApiService {
     done: CancelToken,
     depends_on: Vec<String>,
     validation: Option<String>,
+    timeouts: ServerTimeouts,
+    acceptor: Option<Acceptor>,
 }
 
 impl ApiService {
@@ -253,8 +276,9 @@ impl ApiService {
     /// allowed origin or CORS configuration.
     pub fn build(cfg: ApiServerConfig) -> Result<Self, ApiServerError> {
         let up = Arc::new(AtomicBool::new(false));
-        let validation = Self::validate_exposure(&cfg);
-        let app = Self::layered(&cfg, up.clone())?;
+        let (acceptor, cert_auth) = Self::tls(&cfg)?;
+        let validation = Self::validate_exposure(&cfg, cert_auth.is_some());
+        let app = Self::layered(&cfg, up.clone(), cert_auth)?;
         Ok(Self {
             addr: cfg.addr,
             app,
@@ -264,7 +288,37 @@ impl ApiService {
             done: CancelToken::new(),
             depends_on: cfg.depends_on,
             validation,
+            timeouts: cfg.timeouts,
+            acceptor,
         })
+    }
+
+    /// The TLS acceptor, and the mTLS identity reader when the setting
+    /// asks for client certificates.
+    #[allow(clippy::type_complexity)]
+    fn tls(cfg: &ApiServerConfig) -> Result<(Option<Acceptor>, Option<CertAuth>), ApiServerError> {
+        #[cfg(feature = "api-server-tls")]
+        if let Some(t) = &cfg.tls {
+            let setup = super::tls::build(t)?;
+            let cert_auth = setup
+                .identity
+                .map(|id| -> CertAuth { Arc::new(move |der| id.claims(der)) });
+            return Ok((
+                Some(tokio_rustls::TlsAcceptor::from(setup.server)),
+                cert_auth,
+            ));
+        }
+        let _ = cfg;
+        Ok((None, None))
+    }
+
+    /// `https` when the listener terminates TLS, else `http`.
+    pub fn scheme(&self) -> &'static str {
+        if self.acceptor.is_some() {
+            "https"
+        } else {
+            "http"
+        }
     }
 
     /// The router with the whole stack, for tests and custom hosting.
@@ -279,8 +333,8 @@ impl ApiService {
         self.bound.lock().ok().and_then(|g| g.clone())
     }
 
-    fn validate_exposure(cfg: &ApiServerConfig) -> Option<String> {
-        if is_loopback_addr(&cfg.addr) || cfg.auth.is_some() || cfg.insecure_remote {
+    fn validate_exposure(cfg: &ApiServerConfig, mtls: bool) -> Option<String> {
+        if is_loopback_addr(&cfg.addr) || cfg.auth.is_some() || mtls || cfg.insecure_remote {
             return None;
         }
         Some(format!(
@@ -290,7 +344,11 @@ impl ApiService {
         ))
     }
 
-    fn layered(cfg: &ApiServerConfig, up: Arc<AtomicBool>) -> Result<Router, ApiServerError> {
+    fn layered(
+        cfg: &ApiServerConfig,
+        up: Arc<AtomicBool>,
+        cert_auth: Option<CertAuth>,
+    ) -> Result<Router, ApiServerError> {
         let mut app = cfg.router.clone();
 
         if let Some(doc) = &cfg.openapi {
@@ -316,8 +374,16 @@ impl ApiService {
         }
         // Whole router, inner to outer: auth, rate limit, gzip, body
         // limit, CORS.
-        if let Some(f) = &cfg.auth {
-            let mut st = AuthState::new(f.clone());
+        #[cfg(feature = "api-server-idempotency")]
+        if let Some(c) = &cfg.idempotency {
+            // Inside authentication: the key is scoped to the verified caller.
+            app = app.layer(from_fn_with_state(
+                super::idempotency::IdemState::new(c),
+                super::idempotency::idempotency,
+            ));
+        }
+        if cfg.auth.is_some() || cert_auth.is_some() {
+            let mut st = AuthState::new(cfg.auth.clone(), cert_auth);
             if let Some(c) = &cfg.auth_challenge {
                 st.challenge = c.clone();
             }
@@ -361,6 +427,13 @@ impl ApiService {
             if let Some(layer) = c.layer() {
                 app = app.layer(layer);
             }
+        }
+
+        // The scrape endpoint: inside the Host and Origin checks, ahead of
+        // everything above (body limit, rate limit, authentication).
+        if let Some(m) = &cfg.metrics {
+            m.validate(is_loopback_addr(&cfg.addr), &cfg.addr)?;
+            app = app.layer(from_fn_with_state(MetricsState::new(m), metrics));
         }
 
         // Host and Origin checks.
@@ -503,17 +576,17 @@ impl Service for ApiService {
                     () = stop.cancelled() => {}
                 }
             };
-            let res = axum::serve(
+            let res = serve(
                 listener,
-                self.app
-                    .clone()
-                    .into_make_service_with_connect_info::<SocketAddr>(),
+                self.app.clone(),
+                self.timeouts,
+                self.acceptor.clone(),
+                shutdown,
             )
-            .with_graceful_shutdown(shutdown)
             .await;
             self.up.store(false, Ordering::SeqCst);
             self.done.cancel();
-            res.map_err(|e| e.to_string())
+            res
         })
     }
 

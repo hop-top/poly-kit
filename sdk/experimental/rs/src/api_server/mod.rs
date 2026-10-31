@@ -51,11 +51,16 @@ mod events;
 mod headers;
 mod health;
 mod hosts;
+#[cfg(feature = "api-server-idempotency")]
+pub mod idempotency;
+mod metrics;
 mod openapi;
 mod origin;
 mod ratelimit;
+mod serve_loop;
 mod server;
 mod sse;
+mod timeouts;
 #[cfg(feature = "webhook")]
 pub mod webhook;
 
@@ -63,7 +68,9 @@ pub use accesslog::{access_line, stderr_sink, LogSink};
 pub use auth::OnAuthRefused;
 pub use clientaddr::{parse_trusted_proxies, Prefix};
 pub use cors::{parse_origin, CorsConfig};
-pub use ctx::{is_https, Authenticated, ClientIp, ForwardedProto, PeerAddr};
+pub use ctx::{
+    is_https, Authenticated, ClientIp, ForwardedProto, PeerAddr, PeerCertificate, TlsConnection,
+};
 pub use error::{
     json_response, unauthenticated, ApiError, ApiServerError, RefusalWriter, CODE_BODY_TOO_LARGE,
     CODE_HOST_REJECTED, CODE_METHOD_NOT_ALLOWED, CODE_ORIGIN_REJECTED, CODE_RATE_LIMITED,
@@ -75,6 +82,7 @@ pub use health::{
     HealthStatus, ReadinessCheck, LIVENESS_PATH, READINESS_PATH, STATUS_OK, STATUS_UNAVAILABLE,
 };
 pub use hosts::{host_permits, listener_hosts, split_host, HostCheckConfig, LOOPBACK_HOSTS};
+pub use metrics::{MetricsConfig, DEFAULT_METRICS_PATH};
 pub use openapi::{
     OpenApi, Operation, Param, RequestBody, Response, Server, OPENAPI_PATH, OPENAPI_VERSION,
 };
@@ -84,3 +92,7 @@ pub use server::{
     ApiServerConfig, ApiService, COMPRESS_MIN_BYTES, DEFAULT_MAX_BODY_BYTES, SERVICE_NAME,
 };
 pub use sse::{sse, KEEP_ALIVE};
+pub use timeouts::{
+    lift_write_deadline, LiftWriteDeadline, ServerTimeouts, DEFAULT_READ_HEADER_TIMEOUT,
+    DEFAULT_READ_TIMEOUT, DEFAULT_WRITE_TIMEOUT,
+};

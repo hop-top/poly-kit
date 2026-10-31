@@ -51,6 +51,8 @@ bus = ["dep:serde", "dep:serde_json"]
 bus-network = [
     "bus",
     "netpolicy",
+    "tokio-tungstenite/connect",
+    "tokio-tungstenite/rustls-tls-native-roots",
     "dep:tokio",
     "tokio/rt",
     "tokio/net",
@@ -225,8 +227,33 @@ api-server = [
     "dep:tower-http",
     "dep:futures-util",
     "dep:getrandom",
+    "dep:hyper",
+    "dep:hyper-util",
     "tokio/net",
 ]
+# TLS and mTLS serving on the api-server: the listener's accept loop
+# terminates TLS with rustls on the ring provider (no aws-lc-rs C
+# build), offers h2 and http/1.1, and with a client CA verifies client
+# certificates, whose subject becomes the caller. tokio-rustls adapts
+# rustls to tokio sockets; both sit on the one rustls pin.
+api-server-tls = [
+    "api-server",
+    "dep:rustls",
+    "dep:tokio-rustls",
+]
+# The websocket hub on the api-server: a port of the hub in
+# go/transport/api. hyper's upgrade and the pinned tokio-tungstenite, as
+# `bus-network-axum` does; never axum's `ws`, which would pull a second
+# tungstenite.
+api-server-ws = [
+    "api-server",
+    "dep:tokio-tungstenite",
+]
+
+# Idempotency keys on the api-server: replay a recorded response for a
+# repeated `Idempotency-Key`, claim and record in a kv store
+# (TtlInserter).
+api-server-idempotency = ["api-server", "kv", "dep:base64"]
 
 # The RPC server: Connect, gRPC and gRPC-Web on one port (HTTP/1.1 and
 # h2c), a port of go/transport/rpc. `connectrpc` serves the three
@@ -519,14 +546,13 @@ uuid = { version = "1", features = ["v7", "serde"], optional = true }
 rusqlite = { version = "0.40", default-features = false, features = [
     "bundled",
 ], optional = true }
-# bus-network. Exact pins: the transport depends on their close, timeout
-# and capacity semantics. Default features off: `connect` dials over
-# tokio, `handshake` brings the HTTP upgrade, `rustls-tls-native-roots`
-# the rustls connector (handed our own ring-backed config).
+# bus-network and api-server-ws. Exact pins: both depend on their close,
+# timeout and capacity semantics. Default features off, `handshake`
+# (the HTTP upgrade) only here; `bus-network` adds `connect` (dials over
+# tokio) and `rustls-tls-native-roots` (the rustls connector, handed our
+# own ring-backed config), so the server side compiles neither.
 tokio-tungstenite = { version = "=0.30.0", default-features = false, features = [
-    "connect",
     "handshake",
-    "rustls-tls-native-roots",
 ], optional = true }
 futures-util = { version = "=0.3.34", default-features = false, features = [
     "sink",
@@ -541,6 +567,15 @@ rustls = { version = "=0.23.46", default-features = false, features = [
     "tls12",
 ], optional = true }
 rustls-native-certs = { version = "=0.8.5", optional = true }
+# api-server-tls: the server side of rustls over tokio. =0.26.6
+# (2026-09-28, rustls/tokio-rustls, MIT OR Apache-2.0, no advisories),
+# already locked through hyper-rustls and past the age gate. Default
+# features off: the default provider is aws-lc-rs; `ring` and `tls12`
+# match the rustls pin above.
+tokio-rustls = { version = "=0.26.6", default-features = false, features = [
+    "ring",
+    "tls12",
+], optional = true }
 webpki-roots = { version = "=1.0.10", optional = true }
 # bus-network-axum: the router adapter and hyper's upgrade. axum's
 # `tokio` feature supplies `ConnectInfo`, the peer address a link is
@@ -556,10 +591,19 @@ axum = { version = "=0.8.9", default-features = false, features = [
 ], optional = true }
 hyper = { version = "=1.12.0", default-features = false, features = [
     "http1",
+    "http2",
     "server",
 ], optional = true }
+# api-server serves its own accept loop on hyper-util: the auto
+# (http/1 + h2) connection builder, graceful drain and the tower bridge.
 hyper-util = { version = "=0.1.21", default-features = false, features = [
     "tokio",
+    "http1",
+    "http2",
+    "server",
+    "server-auto",
+    "server-graceful",
+    "service",
 ], optional = true }
 
 # authn: own JWS verifier on RustCrypto, no JWT crate. p256/p384/p521
@@ -705,12 +749,26 @@ connectrpc = { version = "=0.9.1", default-features = false, features = [
 uuid = { version = "1", features = ["v7", "serde"] }
 # Reads the YAML files the consent conformance runner asserts on.
 serde_norway = "0.9"
-# The notify-email STARTTLS test makes a self-signed certificate at run
-# time, so no key material is committed. Exact pin: 0.14.10 (published
-# 2026-08-28), rustls/rcgen, MIT OR Apache-2.0, no advisories. Default
-# features off; the `ring` backend is the provider rustls already runs on
-# here, so aws-lc-rs stays out of the tree.
-rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "ring"] }
+# Certificates generated at test run time (notify-email STARTTLS,
+# api-server-tls CAs, server and client certs), so no key material is
+# committed. Exact pin: 0.14.10 (published 2026-08-28), rustls/rcgen,
+# MIT OR Apache-2.0, no advisories; dev only. Default features off: the
+# `ring` backend is the provider rustls already runs on here, so
+# aws-lc-rs stays out of the tree; `pem` writes the PEM the server
+# loads. Brings yasna, pem and time (with their deps).
+rcgen = { version = "=0.14.10", default-features = false, features = [
+    "crypto",
+    "ring",
+    "pem",
+] }
+# api-server-tls tests: an HTTP/2 client over the TLS stream. The same
+# pin as the optional dependency; only `client` is added, so the shipped
+# crate still compiles no client half of hyper.
+hyper = { version = "=1.12.0", default-features = false, features = [
+    "client",
+    "http1",
+    "http2",
+] }
 
 # The wasm32 smoke test (tests/bus_wasm.rs, `make test-rs-wasm`), run
 # under Node by wasm-bindgen-test-runner. Exact pins: each must match the

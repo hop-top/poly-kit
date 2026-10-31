@@ -446,12 +446,16 @@ test-parity-config: ## config-v1 conformance corpus (Go and Rust runners)
 	@echo "==> config-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --features config --test config_conformance --locked
 
-test-parity-api: ## api.json conformance corpus: client address, Host, Origin, OpenAPI documents (Go and Rust runners)
+test-parity-api: ## api.json conformance corpus: client address, Host, Origin, OpenAPI, timeouts, metrics, client certificates, idempotency, websocket topics (Go and Rust runners)
 	@echo "==> api conformance: Go"
 	go test ./go/transport/api/ -run '^TestAPIContract' -count=1
+	go test ./go/transport/cmdsurface/ -run '^TestIdempotencyContract$$' -count=1
 	cd contracts && go test ./parity/ -run '^TestAPIContractRegistered' -count=1
 	@echo "==> api conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features api-server --test api_server_conformance --locked
+	cd sdk/experimental/rs && cargo test --features api-server --test api_server_conformance --test api_server_limits --locked
+	cd sdk/experimental/rs && cargo test --features api-server-idempotency --test api_server_idempotency --locked
+	cd sdk/experimental/rs && cargo test --features api-server-tls --test api_server_tls --locked
+	cd sdk/experimental/rs && cargo test --features api-server-ws --test api_server_ws --locked
 	cd sdk/experimental/rs && cargo test --features api-server,cli --test api_server_commands --locked
 
 test-parity-webhook: ## webhook-v1 conformance corpus: Graph, Pipedrive v2, generic HMAC (Go and Rust runners)
