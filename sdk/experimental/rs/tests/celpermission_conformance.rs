@@ -4,8 +4,6 @@
 
 #![cfg(feature = "cli-permissions")]
 
-use std::collections::BTreeMap;
-
 use hop_top_kit::cli::policy::PermissionRule;
 use hop_top_kit::cli::{CallerSource, PermissionGate, PermissionRequest};
 use serde_json::Value;
@@ -67,7 +65,7 @@ fn request(tree: &Value, r: &Value) -> PermissionRequest {
             .get("flags")
             .and_then(Value::as_object)
             .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-            .unwrap_or_else(BTreeMap::new),
+            .unwrap_or_default(),
     }
 }
 

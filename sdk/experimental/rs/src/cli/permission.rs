@@ -176,7 +176,7 @@ impl PermissionGate {
         for (k, v) in &activation {
             if let Err(e) = ctx.add_variable(k.as_str(), v) {
                 return refuse(
-                    &self.rules.first().map_or("", |r| &r.name),
+                    self.rules.first().map_or("", |r| &r.name),
                     &format!("evaluation error: binding {k}: {e}"),
                 );
             }
