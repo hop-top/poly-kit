@@ -27,6 +27,6 @@ only.
 
 ## See also
 
-- [`go/ai/llm/router`](../../../../../../go/ai/llm/router), the Go reference
+- [`go/ai/llm/router`](../../../../../go/ai/llm/router), the Go reference
 - [`picker`](../picker/README.md): the classifier seam
 - [`triton`](../triton/README.md): the scorer

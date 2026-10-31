@@ -28,4 +28,4 @@ optionally steered by a prompt classifier. A port of Go `PickProvider`,
 
 ## See also
 
-- [`go/ai/llm`](../../../../../../go/ai/llm), the Go reference (`picker*.go`, `pool_filter.go`)
+- [`go/ai/llm`](../../../../../go/ai/llm), the Go reference (`picker*.go`, `pool_filter.go`)

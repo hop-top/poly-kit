@@ -287,7 +287,7 @@ per matching event), so the per-payload cost amortises easily.
 Go is the reference. The Rust SDK ports the whole package: severity,
 filter, retry + dead-letter, backoff and the webhook, email and OS
 sinks, over its own `bus` `Sink` and `TeeBus`
-([`sdk/experimental/rs/src/notify`](../../../sdk/experimental/rs/src/notify/README.md),
+([`sdk/rs/src/notify`](../../../sdk/rs/src/notify/README.md),
 features `notify`, `notify-webhook`, `notify-email`, `notify-os`). What
 differs there: a payload is JSON, so severity comes only from the
 `severity` key; templates are literal text plus `{{.Field}}`; the

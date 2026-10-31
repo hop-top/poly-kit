@@ -33,7 +33,7 @@ rep.sync_once(&ctx, "origin").unwrap();      // one round now, as a loop would
 
 - Feature `sync` is `domain` plus `base64`; wasm-safe given a caller `WallClock`. `sync-http` adds the HTTP
   transport and is native only. Authority: the crate [feature table](../../README.md#features).
-- Go is canonical ([go/runtime/sync](../../../../../go/runtime/sync)); no shared conformance corpus exists for it.
+- Go is canonical ([go/runtime/sync](../../../../go/runtime/sync)); no shared conformance corpus exists for it.
   The wire is pinned by `tests/sync_core.rs`: `Timestamp` keys `physical`, `logical`, `node_id`; `Diff` keys
   `entity_id`, `entity_type`, `operation` (0 create, 1 update, 2 delete), `before`, `after`, `timestamp`,
   `node_id`; `SyncMode` 0 bidirectional, 1 push only, 2 pull only.
@@ -70,5 +70,5 @@ rep.sync_once(&ctx, "origin").unwrap();      // one round now, as a loop would
 
 ## See also
 
-- Go reference: [go/runtime/sync](../../../../../go/runtime/sync/README.md)
-- Wire and cross-language scenario: [engine sync guide](../../../../../docs/adopters/reference/engine-sync.md)
+- Go reference: [go/runtime/sync](../../../../go/runtime/sync/README.md)
+- Wire and cross-language scenario: [engine sync guide](../../../../docs/adopters/reference/engine-sync.md)

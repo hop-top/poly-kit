@@ -50,4 +50,4 @@ assert_eq!(l.max_event_bytes, 8 << 20);
 ## See also
 
 - [llm core](../README.md)
-- [`contracts/llm-v1`](../../../../../../contracts/llm-v1/README.md): the shared corpus
+- [`contracts/llm-v1`](../../../../../contracts/llm-v1/README.md): the shared corpus

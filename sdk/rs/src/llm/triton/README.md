@@ -21,4 +21,4 @@ Server: the KServe v2 inference protocol over HTTP REST (as Go
 
 ## See also
 
-- [`go/ai/llm/triton`](../../../../../../go/ai/llm/triton), the Go reference
+- [`go/ai/llm/triton`](../../../../../go/ai/llm/triton), the Go reference

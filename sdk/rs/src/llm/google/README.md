@@ -27,5 +27,5 @@ How the llm core reaches Gemini: the `generateContent` and
 
 ## See also
 
-- [`go/ai/llm/google`](../../../../../../go/ai/llm/google), the Go reference
-- [`contracts/llm-v1`](../../../../../../contracts/llm-v1/README.md): `gemini_stream_events`
+- [`go/ai/llm/google`](../../../../../go/ai/llm/google), the Go reference
+- [`contracts/llm-v1`](../../../../../contracts/llm-v1/README.md): `gemini_stream_events`
