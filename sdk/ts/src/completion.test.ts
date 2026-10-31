@@ -192,6 +192,18 @@ describe('bindFlag / bindArgs', () => {
   });
 });
 
+describe('root flags below the root', () => {
+  it('a subcommand inherits persistent root flags but not the local version flag', async () => {
+    const { program } = createCLI({ name: 'tool', version: '1.0.0', description: 'd' });
+    program.command('deploy').description('Deploy');
+    const sub = (await request(program, ['deploy', '--'], true)).out.split('\n');
+    expect(sub).toContain('--quiet');
+    expect(sub).not.toContain('--version');
+    const root = (await request(program, ['--ver'], true)).out.split('\n');
+    expect(root).toContain('--version');
+  });
+});
+
 describe('__complete requests', () => {
   afterEach(() => {
     vi.restoreAllMocks();

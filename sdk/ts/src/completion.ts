@@ -461,8 +461,9 @@ function toFlag(o: Option, owner: Command, root: Command, inherited: boolean): F
 /**
  * The flags of the last command of `chain`, as commander accepts them:
  * ancestors' options (unless an ancestor has positional options), then
- * its own plus its help option. A root-alias shim takes no flags of its
- * own, only help.
+ * its own plus its help option (a root's version flag stays local to it).
+ * A root-alias shim takes no flags of its own, only help, plus the
+ * root's persistent flags like any child.
  */
 function flagsOf(root: Command, chain: Command[]): Flag[] {
   const cmd = chain[chain.length - 1]!;
@@ -470,7 +471,11 @@ function flagsOf(root: Command, chain: Command[]): Flag[] {
   for (let i = chain.length - 2; i >= 0; i--) {
     const anc = chain[i]!;
     if (internals(anc)._enablePositionalOptions) break;
-    for (const o of anc.options) out.push(toFlag(o, anc, root, true));
+    // cobra's version flag is local to the root: never inherited.
+    for (const o of anc.options) {
+      if (internals(anc)._versionOptionName === o.attributeName()) continue;
+      out.push(toFlag(o, anc, root, true));
+    }
   }
   if (isShim(root, cmd)) {
     out.push({
