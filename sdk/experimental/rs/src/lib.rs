@@ -45,6 +45,12 @@ pub mod config;
 #[cfg(feature = "consent")]
 pub mod consent;
 
+// The FS, HTTP, bus and subprocess seams with dryrun and testfake
+// implementations (a port of go/runtime/sideeffect). The real ones are
+// native only.
+#[cfg(feature = "sideeffect")]
+pub mod sideeffect;
+
 // Secret and PII redaction (a port of go/core/redact). No I/O.
 #[cfg(feature = "redact")]
 pub mod redact;

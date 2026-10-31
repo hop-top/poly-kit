@@ -665,6 +665,14 @@ jobs:
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features upgrade --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
+      # The seams, dryrun and testfake need the bus alone and no clock.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features sideeffect
+        if: steps.scope.outputs.run == 'true'
+      - name: clippy (wasm32, sideeffect)
+        if: steps.scope.outputs.run == 'true'
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features sideeffect --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
       # The breaker builds on domain alone; it reads only the clock its
       # caller gives it, so the clock-read lint holds it to that here.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features breaker
