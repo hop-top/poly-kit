@@ -32,6 +32,8 @@ fn root(ran: &Ran) -> Root {
                 .about(name)
                 .side_effect(tier)
                 .flag(FlagSpec::string("kind"))
+                .flag(FlagSpec::bool("force"))
+                .flag(FlagSpec::strings("tags"))
                 .annotate("kit/permissions", "widgets:write")
                 .handler(move |_, out, _| {
                     ran.lock().unwrap().push(name.to_string());
@@ -245,4 +247,113 @@ async fn without_a_served_gate_nothing_changes() {
         call(&proj, None, "POST", "/v1/commands/add", "{}").await.0,
         200
     );
+}
+
+/// A policy whose rules deny what the diverging payload used to hide.
+fn closed_to_prod_and_force() -> Policy {
+    Policy {
+        permissions: vec![PermissionRule {
+            name: "closed".into(),
+            when: "(has(payload.flags.force) && payload.flags.force == true) || \
+                   (has(payload.flags.tags) && payload.flags.tags.exists(t, t == 'prod'))"
+                .into(),
+            effect: "deny".into(),
+            otherwise: "allow".into(),
+            message: "closed".into(),
+        }],
+        ..Policy::default()
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn body_replaces_query_in_the_one_map_and_a_repeated_scalar_is_refused() {
+    let ran: Ran = Arc::default();
+    let proj = projection(closed_to_prod_and_force(), &ran);
+    // The body replaces the query, in the one map both the rules and
+    // the command read: query false + body true is denied...
+    let (s, out) = call(
+        &proj,
+        ALICE,
+        "POST",
+        "/v1/commands/add?force=false",
+        r#"{"flags":{"force":true}}"#,
+    )
+    .await;
+    assert_eq!(
+        (s, out["code"].as_str()),
+        (403, Some("permission_denied")),
+        "{out}"
+    );
+    // ...and query true + body false runs with force false, as seen.
+    let (s, out) = call(
+        &proj,
+        ALICE,
+        "POST",
+        "/v1/commands/add?force=true",
+        r#"{"flags":{"force":false}}"#,
+    )
+    .await;
+    assert_eq!(s, 200, "{out}");
+    ran.lock().unwrap().clear();
+    // Repeated scalar query key.
+    let (s, _) = call(&proj, ALICE, "POST", "/v1/commands/add?kind=a&kind=b", "{}").await;
+    assert_eq!(s, 400);
+    assert!(ran.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_null_cannot_hide_an_earlier_true() {
+    let ran: Ran = Arc::default();
+    let proj = projection(closed_to_prod_and_force(), &ran);
+    for (path, body) in [
+        ("/v1/commands/add?force=true", r#"{"flags":{"force":null}}"#),
+        ("/v1/commands/add", r#"{"flags":{"force":null}}"#),
+    ] {
+        let (s, out) = call(&proj, ALICE, "POST", path, body).await;
+        assert_eq!(s, 400, "{path}: {out}");
+    }
+    assert!(ran.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_array_for_a_scalar_flag_is_refused() {
+    let ran: Ran = Arc::default();
+    let proj = projection(closed_to_prod_and_force(), &ran);
+    for body in [
+        r#"{"flags":{"kind":["a","b"]}}"#,
+        r#"{"flags":{"force":[true]}}"#,
+        r#"{"flags":{"force":"true"}}"#,
+    ] {
+        let (s, out) = call(&proj, ALICE, "POST", "/v1/commands/add", body).await;
+        assert_eq!(s, 400, "{body}: {out}");
+    }
+    assert!(ran.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_repeatable_flag_reaches_the_rules_with_every_value_the_command_gets() {
+    let ran: Ran = Arc::default();
+    let proj = projection(closed_to_prod_and_force(), &ran);
+    for (path, body) in [
+        ("/v1/commands/add?tags=dev&tags=prod", "{}"),
+        ("/v1/commands/add?tags=dev,prod", "{}"),
+        ("/v1/commands/add", r#"{"flags":{"tags":["dev","prod"]}}"#),
+    ] {
+        let (s, out) = call(&proj, ALICE, "POST", path, body).await;
+        assert_eq!(
+            (s, out["code"].as_str()),
+            (403, Some("permission_denied")),
+            "{path}"
+        );
+    }
+    let (s, _) = call(
+        &proj,
+        ALICE,
+        "POST",
+        "/v1/commands/add?tags=dev&tags=qa",
+        "{}",
+    )
+    .await;
+    assert_eq!(s, 200);
+    assert_eq!(ran.lock().unwrap().len(), 1);
 }
