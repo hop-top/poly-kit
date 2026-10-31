@@ -27,7 +27,7 @@ mod wire;
 
 use std::sync::Arc;
 
-use crate::llm::wirehttp::{scrubber, Http, Limits};
+use crate::llm::wirehttp::{self, scrubber, Http, Limits};
 use crate::llm::{
     BoxFuture, Capability, Declaration, LlmError, Provider, ProviderKey, Registry, Request,
     ResolvedConfig, Response, TokenStream, ToolDef, ToolNameMode, ToolNames, ToolResponse,
@@ -66,9 +66,18 @@ pub struct Builder {
     cfg: ResolvedConfig,
     env: EnvFn,
     client: Option<GuardedClient>,
+    file: Option<crate::llm::ConfigFile>,
 }
 
 impl Builder {
+    /// The llm.yaml whose `base_url` for `gemini` or `google` counts as a
+    /// trusted endpoint for an environment key; the default reads it
+    /// from disk when it is needed.
+    pub fn config_file(mut self, file: crate::llm::ConfigFile) -> Self {
+        self.file = Some(file);
+        self
+    }
+
     /// Read no key from the environment: only the config's.
     pub fn hermetic(mut self) -> Self {
         self.cfg.hermetic = true;
@@ -99,27 +108,52 @@ impl Builder {
             return Err(LlmError::invalid("gemini: model is required"));
         }
         let mut key = p.api_key.clone();
+        let mut from_env = false;
         if key.trim().is_empty() && !self.cfg.hermetic {
             key = ["GOOGLE_API_KEY", "GEMINI_API_KEY", "LLM_API_KEY"]
                 .iter()
                 .filter_map(|n| (self.env)(n))
                 .find(|v| !v.trim().is_empty())
                 .unwrap_or_default();
+            from_env = true;
         }
         if key.trim().is_empty() {
             return Err(LlmError::invalid(
                 "gemini: API key is required (set via config, URI param, GOOGLE_API_KEY, GEMINI_API_KEY, or LLM_API_KEY)",
             ));
         }
-        let tool_names = ToolNameMode::from_params(&p.params)
-            .map_err(|e| LlmError::invalid(format!("gemini: {e}")))?;
-        let probe = reqwest::Url::parse(&format!("{base}/models/{}:generateContent", p.model))
+        let probe = wirehttp::push_segments(&base, &["models", "m:generateContent"], None)
             .map_err(|e| {
                 LlmError::invalid(format!(
                     "gemini: invalid base URL: parse {:?}: {e}",
                     crate::llm::redact_uri(&base)
                 ))
             })?;
+        // No key goes over plain http to a remote host or to a malformed
+        // endpoint; a key found in the environment goes only where kit
+        // trusts it.
+        crate::llm::check_endpoint_url("gemini", &key, &base, &probe)?;
+        if from_env {
+            let file = match &self.file {
+                Some(f) => f.clone(),
+                None => crate::llm::ConfigFile::load(),
+            };
+            if !wirehttp::env_key_trusted(
+                &probe,
+                DEFAULT_BASE_URL,
+                (self.env)("LLM_BASE_URL"),
+                &file,
+                SCHEMES,
+            ) {
+                return Err(LlmError::KeyEndpoint {
+                    scheme: "gemini".into(),
+                    endpoint: crate::llm::redact_uri(&base),
+                    reason: crate::llm::KeyEndpointReason::Untrusted,
+                });
+            }
+        }
+        let tool_names = ToolNameMode::from_params(&p.params)
+            .map_err(|e| LlmError::invalid(format!("gemini: {e}")))?;
         let mut limits = Limits::from_params("gemini", &p.params)?;
         if !p.params.contains_key("max_event_bytes") {
             limits.max_event_bytes = DEFAULT_MAX_LINE;
@@ -160,6 +194,7 @@ impl Adapter {
             cfg,
             env: Box::new(crate::llm::process_env),
             client: None,
+            file: None,
         }
     }
 
@@ -171,8 +206,20 @@ impl Adapter {
         }
     }
 
-    fn url(&self, model: &str, method: &str) -> Result<reqwest::Url, LlmError> {
-        reqwest::Url::parse(&format!("{}/models/{model}:{method}", self.base_url)).map_err(|e| {
+    /// `<base>/models/<model>:<method>` with the model one encoded
+    /// path segment.
+    fn url(
+        &self,
+        model: &str,
+        method: &str,
+        query: Option<&str>,
+    ) -> Result<reqwest::Url, LlmError> {
+        wirehttp::push_segments(
+            &self.base_url,
+            &["models", &format!("{model}:{method}")],
+            query,
+        )
+        .map_err(|e| {
             LlmError::invalid(format!(
                 "gemini: invalid base URL: parse {:?}: {e}",
                 crate::llm::redact_uri(&self.base_url)
@@ -196,10 +243,11 @@ impl Adapter {
         req: &Request,
         body: &serde_json::Value,
         method: &str,
+        query: Option<&str>,
         stream: bool,
     ) -> Result<reqwest::Response, LlmError> {
         let model = self.model_for(req);
-        let url = self.url(model, method)?;
+        let url = self.url(model, method, query)?;
         let headers = [("x-goog-api-key".to_string(), self.key.clone())];
         let map = |status, _after, text: &str| errors::map_status(status, text, model);
         self.http.post(&url, &headers, body, stream, &map).await
@@ -211,11 +259,17 @@ impl Adapter {
         tools: Option<&[ToolDef]>,
     ) -> Result<wire::Parsed, LlmError> {
         let (body, names) = self.prepare(req, tools)?;
-        let resp = self.send(req, &body, "generateContent", false).await?;
+        let resp = self
+            .send(req, &body, "generateContent", None, false)
+            .await?;
         let bytes = self.http.read_body(resp).await?;
         let v: serde_json::Value = serde_json::from_slice(&bytes)
             .map_err(|e| LlmError::Protocol(format!("gemini: decode response: {e}")))?;
         if v["error"].is_object() {
+            // Scrub the raw body before the message is truncated: a key
+            // cut in two would match neither half.
+            let text = (self.http.scrub)(&String::from_utf8_lossy(&bytes));
+            let v: serde_json::Value = serde_json::from_str(&text).unwrap_or(v);
             return Err(errors::map_api_error(&v["error"], self.model_for(req)));
         }
         Ok(wire::parse(&v, &names))
@@ -229,7 +283,7 @@ impl Adapter {
     ) -> Result<Box<dyn TokenStream>, LlmError> {
         let (body, names) = self.prepare(req, tools)?;
         let resp = self
-            .send(req, &body, "streamGenerateContent?alt=sse", true)
+            .send(req, &body, "streamGenerateContent", Some("alt=sse"), true)
             .await?;
         let destination = self.http.destination.clone();
         let parts = stream::StreamParts {

@@ -244,3 +244,41 @@ pub(crate) fn redirect(provider: &str, status: u16) -> LlmError {
         message: format!("{provider}: redirect not followed"),
     }
 }
+
+/// Whether a credential the adapter found in the environment may go to
+/// `url`: loopback, or the same origin as the scheme's default, the
+/// ambient `LLM_BASE_URL`, or the `base_url` of the scheme's llm.yaml
+/// block (any of `schemes`).
+pub(crate) fn env_key_trusted(
+    url: &reqwest::Url,
+    default: &str,
+    llm_base_url: Option<String>,
+    file: &super::ConfigFile,
+    schemes: &[&str],
+) -> bool {
+    let mut trusted = vec![default.to_string()];
+    trusted.extend(llm_base_url);
+    if let Some((_, b)) = file.block(schemes) {
+        trusted.push(b.base_url.clone());
+    }
+    super::credentials_trusted(url, &trusted)
+}
+
+/// `base` with `segments` appended to its path, each as one encoded
+/// segment: a `/`, `?` or `#` in an untrusted name cannot reach another
+/// path or the query.
+pub(crate) fn push_segments(
+    base: &str,
+    segments: &[&str],
+    query: Option<&str>,
+) -> Result<reqwest::Url, url::ParseError> {
+    let mut u = reqwest::Url::parse(base)?;
+    {
+        let mut p = u
+            .path_segments_mut()
+            .map_err(|()| url::ParseError::RelativeUrlWithCannotBeABaseBase)?;
+        p.pop_if_empty().extend(segments);
+    }
+    u.set_query(query);
+    Ok(u)
+}
