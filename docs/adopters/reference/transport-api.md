@@ -557,7 +557,7 @@ executor on `CommandRequest.Meta`:
 |---|---|
 | `Authenticated` | `Authenticated(ctx)`: `Auth` verified the request |
 | `Principal`, `Tenant`, `Scopes` | the stored claims |
-| `RequestID` | the `RequestID` middleware (`X-Request-ID`, issued when absent, echoed) |
+| `RequestID` | the `RequestID` middleware (`X-Request-ID`, kept only as 1 to 128 of `[A-Za-z0-9._-]`, else issued fresh, echoed) |
 | `TraceID` | the trace-id field of `traceparent`, else `X-Trace-ID` |
 | `Traceparent`, `Tracestate` | the W3C headers, when `traceparent` is well-formed (`TraceContextFromHeader`) |
 | `IdempotencyKey` | `Idempotency-Key`; see replay above |
