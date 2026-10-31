@@ -34,7 +34,7 @@
 //!   no type is stored as S3's default and reported as such by `stat`.
 //! - `delete` of a missing key succeeds; `exists` is `false` without error
 //!   for a missing key; `get` and `stat` of one are
-//!   [`BlobError::NotFound`](crate::blob::BlobError::NotFound).
+//!   [`BlobError::NotFound`].
 //!
 //! # Differences from Go
 //!
@@ -45,11 +45,11 @@
 //!   from the AWS SDK; here a caller needing it resolves the credentials
 //!   itself and passes them in.
 //! - `put` and `get` buffer the whole object in memory (SigV4 needs the
-//!   payload hash up front, and [`Store::get`](crate::blob::Store::get)
+//!   payload hash up front, and [`Store::get`]
 //!   returns an owned reader). A single `PutObject` is capped by S3 at
 //!   5 GiB; there is no multipart upload.
 //! - A key whose `..` segments climb out of the prefix is rejected with
-//!   [`BlobError::KeyEscapesRoot`](crate::blob::BlobError::KeyEscapesRoot);
+//!   [`BlobError::KeyEscapesRoot`];
 //!   Go's `path.Join` would silently address a sibling key.
 //!
 //! The backend is synchronous like the rest of [`crate::blob`]; see
@@ -408,7 +408,7 @@ impl S3Store {
 
 /// A non-2xx S3 answer: status plus the `Code` and `Message` of its error
 /// body when it has one. Reachable as the source of
-/// [`BlobError::Remote`](crate::blob::BlobError::Remote).
+/// [`BlobError::Remote`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResponseError {
     /// HTTP status code.
