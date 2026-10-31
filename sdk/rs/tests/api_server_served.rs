@@ -357,3 +357,49 @@ async fn a_repeatable_flag_reaches_the_rules_with_every_value_the_command_gets()
     assert_eq!(s, 200);
     assert_eq!(ran.lock().unwrap().len(), 1);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_spelling_of_the_route_never_reaches_a_command_the_rules_deny() {
+    let ran: Ran = Arc::default();
+    let mut cfg = Config::new("fix", "1.0.0", "Fixture");
+    cfg.disable_validate = true;
+    let mut r = Root::with_config(cfg);
+    let ran2 = ran.clone();
+    r.add_command(
+        CommandSpec::new("item").subcommand(
+            CommandSpec::new("delete")
+                .side_effect("write")
+                .handler(move |_, _, _| {
+                    ran2.lock().unwrap().push("item delete".into());
+                    Ok(())
+                }),
+        ),
+    );
+    let p = Policy {
+        permissions: vec![PermissionRule {
+            name: "closed".into(),
+            when: "resource.path == ['item', 'delete']".into(),
+            effect: "deny".into(),
+            otherwise: "allow".into(),
+            message: "closed".into(),
+        }],
+        ..Policy::default()
+    };
+    let proj = CommandProjection::new(Arc::new(r), "fix", "1.0.0")
+        .with_served_gate(Arc::new(ServedGate::new(p).unwrap()));
+    let (s, _) = call(&proj, ALICE, "POST", "/v1/commands/item/delete", "{}").await;
+    assert_eq!(s, 403);
+    for path in [
+        "/v1/commands/item//delete",
+        "/v1/commands/item/delete/",
+        "/v1/commands/item%2Fdelete",
+        "/v1/commands/item%20delete",
+        "/v1/commands/item/delete%20",
+        "/v1/commands/Item/delete",
+        "/v1/commands/item/./delete",
+    ] {
+        let (s, _) = call(&proj, ALICE, "POST", path, "{}").await;
+        assert_ne!(s, 200, "{path}");
+    }
+    assert!(ran.lock().unwrap().is_empty());
+}

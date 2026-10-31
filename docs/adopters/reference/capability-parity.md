@@ -111,7 +111,7 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | Breaker | done | none | none | done | none | make test-parity-breaker (Go/Rs); rs:breaker/ |
 | Network policy | done | unverified | unverified | done | unverified | make test-parity-netpolicy (Go/Rs); ts:netpolicy.ts py:netpolicy.py php:Net/ |
 | Redaction | done | partial | partial | done | partial | make test-parity-redact (Go/Rs); ts:telemetry/redact.ts py:telemetry/redact.py php:Telemetry/Redactor.php cover telemetry only |
-| Delegation safety | done | unverified | unverified | unverified | partial | ts:safety.ts py:safety.py rs:cli/safety.rs; php:Cli/Delegation/ is pinned by the cli-root-v1 delegation and `infer` vectors (make test-parity-cli-root); no php `permissions:` or `callers:` evaluation |
+| Delegation safety | done | unverified | unverified | unverified | partial | ts:safety.ts py:safety.py rs:cli/safety.rs (+ cli/served.rs: served `callers:`, `permissions:` and `max_ops` on api_server, mcp and socket); php:Cli/Delegation/ is pinned by the cli-root-v1 delegation and `infer` vectors (make test-parity-cli-root); no php `permissions:` or `callers:` evaluation |
 | Event policy engine | done | none | none | none | none | no module in any SDK |
 | Operating mode | done | none | none | none | none | no module in any SDK |
 | Consent grants | done | partial | partial | done | partial | make test-parity-consent (Go/Rs, contracts/consent-v1); ts:telemetry/consent.ts py:telemetry/consent.py php:Telemetry/Consent.php are telemetry consent only |

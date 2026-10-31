@@ -16,6 +16,8 @@ line, one response object per line, answered in order. The local-only transport,
 - retry a request without running it twice → `.idempotency(ttl)`, then the client sets `idempotency_key`; a repeat answers `"replayed":true`
 - branch on a refusal → the `CODE_*` constants (`NOT_FOUND`, `UNAUTHENTICATED`, `RATE_LIMITED` with `retry_after_ms`, `CONFLICT`, `INVALID`, `INTERNAL`, ...)
 
+- gate commands by the caller → `.permission(|inv, meta| ...)`, or with `cli-permissions` `.served_gate(Arc<ServedGate>)` and `Handlers::annotate` for a command's tier and scopes; a refusal is `DENIED`
+
 ## Quick start
 
 ```json
@@ -46,6 +48,8 @@ Verified by `tests/socket.rs`.
 - Requests are read ahead (16) while a command runs; a client that hangs up cancels the invocation in flight (the handler's `CancelToken` fires and it gets 2 s to return). As in Go, a client that half-closes its write side after sending is a hang-up too.
 - Without an authenticator, `caller` and `tenant` are recorded, never verified; the identity counts as transport-established (the owner). With one, its verdict replaces the claim and the identity is verified. The peer authenticator's principal is `uid:<n>` (no user-name resolution: the standard library has no passwd lookup); it records `peer_uid`, `peer_gid`, `peer_pid` in `Meta::extra`, on refusals too.
 - Idempotency is opt-in and in memory (24 h when the ttl is zero, 10 000 records): a key is scoped to its caller (verified tenant + principal, else the transport); same key + same command replays, a key in flight refuses `CONFLICT` (`idempotency_conflict`), a key for another command refuses `CONFLICT` (`idempotency_key_reused`); only a run with no error and exit code zero is recorded. Records do not survive a restart.
+- A route segment is a plain word (no empty, no whitespace: `RouteError::BadSegment`), and a request path must equal the registered segments byte for byte, else `INVALID`: the gate and the handler see the command that runs.
+- Permission gate: asked after the path resolves, before idempotency and the handler; `DENIED` `cmdsurface: permission denied: <path> on socket: <reason>`, also sent to `on_refused`. Without an authenticator the caller is the owner (a claimed principal matches no rule); with one, its verified identity.
 - A panicking handler answers `INTERNAL` and does not take the connection or service down.
 - Handlers are an explicit map; projecting a command tree onto it waits for the kit-rs CLI root.
 

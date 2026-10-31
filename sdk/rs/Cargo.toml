@@ -89,6 +89,8 @@ cli = ["output", "dep:clap", "dep:sha2"]
 # Evaluates the `permissions:` rules of a policy file for served
 # invocations (Go's console/cli/celpermission), over the same CEL
 # interpreter as the policy engine.
+# Also the served-call gate (`cli::ServedGate`: callers rules, rules and
+# max_ops budgets) that api_server, mcp and socket take when it is on.
 cli-permissions = ["cli", "dep:cel", "dep:serde_json"]
 id = ["dep:type-safe-id", "dep:uuid", "dep:serde", "dep:thiserror"]
 bus = ["dep:serde", "dep:serde_json"]
