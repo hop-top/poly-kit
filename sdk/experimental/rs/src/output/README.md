@@ -2,7 +2,7 @@
 
 ## What it answers
 
-How does a command render one payload as table, json or yaml under the standard `--format` flag family,
+How does a command render one payload as table, json, yaml (or csv, text, human) under the standard `--format` flag family,
 with the same column order in every port? Terminal styling belongs to `hop_top_kit::tui`; mounting flags
 on a clap root is `hop_top_kit::cli`.
 

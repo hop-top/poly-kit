@@ -78,9 +78,10 @@ generation. `hop-top-cite` is published on crates.io.
 
 ## Output formatting
 
-`hop_top_kit::output` ships the `table`, `json` and `yaml` built-in
-formatters. `csv` and `text` are **not implemented in Rust** — see
-*Conformance status* below.
+`hop_top_kit::output` ships the `table`, `json`, `yaml`, `csv`, `text` and
+`human` built-in formatters. `human` is Go's fallback: the table view of
+the payload (a `serde_json::Value` has no per-type `RenderHuman` hook; a
+command with its own layout overrides the `human` key).
 
 ### Column ordering
 
@@ -175,7 +176,7 @@ collapse is sound only because `header == key`.
 | `header != key` | inexpressible via `table:""` | panics in `ColumnSpec::new` | rejected at construction | rejected at construction |
 | json/yaml key order | follows resolved order | follows resolved order (`preserve_order`) | follows resolved order | follows resolved order |
 | `--cols` reorders | yes | yes | yes | yes |
-| Built-in formats | `table`, `json`, `yaml`, `csv`, `text` (+ `human`) | `table`, `json`, `yaml` | all five | `table`, `json`, `yaml` |
+| Built-in formats | `table`, `json`, `yaml`, `csv`, `text` (+ `human`) | same five (+ `human`) | all five | `table`, `json`, `yaml` |
 | Ordered columns on the template path | `.Cols` | **none** | `cols` | `{*}` |
 
 Go's inability to express `header != key` is the *reason* rule 3 is
@@ -185,8 +186,8 @@ universal: no SDK may carry a capability the reference cannot mirror.
 
 Rust satisfies all five ordering rules on the formatter path, as does Go
 across all five formats. The cross-runtime fixtures under
-`sdk/tests/cross-lang/` execute the contract against every runtime. Two
-gaps are open:
+`sdk/tests/cross-lang/` execute the contract against every runtime. One
+gap is open:
 
 - **`--template` has no ordered-column affordance in Rust.** The minimal
   `{key}` substituter (`dispatch.rs:264`) receives the row and not the
@@ -199,10 +200,6 @@ gaps are open:
   and an iterable `cols` are not the same affordance, and neither
   minimal substituter can offer an iterable without a real template
   engine.
-- **`csv` and `text` are not implemented** in Rust or PHP. Only `table`,
-  `json` and `yaml` are portable across all five runtimes, so a caller
-  writing against the kit output contract cannot assume `--format csv`
-  exists. The fixtures record this as `rs-php-no-csv-text`.
 
 The fixtures compare the **column order re-parsed from each runtime's own
 output**, never raw bytes — comfy-table pads cells and PHP's YAML puts
@@ -285,8 +282,7 @@ validation. Parity is pinned by `contracts/cli-root-v1`.
 Not ported from Go: the `celpermission` expression rules of a policy
 (carried and shape-checked, not evaluated), per-caller budgets, the
 `kit/idempotent`, `kit/cache-ttl` and `kit/output-schema` validate arms,
-themed help, the `help` subcommand and the
-`human` format; the `serve-cli` command still mounts on a clap root.
+themed help and the `help` subcommand; the `serve-cli` command still mounts on a clap root.
 
 ## MCP surface
 
