@@ -55,7 +55,10 @@ impl Client {
     }
 
     /// [`Client::new`] sending through `client` (timeouts, proxies).
-    pub fn with_client(cfg: ResolvedConfig, client: Option<GuardedClient>) -> Result<Self, LlmError> {
+    pub fn with_client(
+        cfg: ResolvedConfig,
+        client: Option<GuardedClient>,
+    ) -> Result<Self, LlmError> {
         let p = &cfg.provider;
         let base = if p.base_url.is_empty() {
             DEFAULT_BASE_URL.to_string()

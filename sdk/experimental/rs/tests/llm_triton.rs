@@ -32,15 +32,27 @@ fn validation_and_defaults() {
     let e = client("", "", "").unwrap_err().to_string();
     assert!(e.contains("model name is required"), "{e}");
     let c = client("", "mf", "").unwrap();
-    assert_eq!((c.model_name(), c.base_url().as_str()), ("mf", "http://localhost:8000"));
-    assert_eq!(client("http://triton:9000/", "bert", "").unwrap().base_url(), "http://triton:9000");
+    assert_eq!(
+        (c.model_name(), c.base_url().as_str()),
+        ("mf", "http://localhost:8000")
+    );
+    assert_eq!(
+        client("http://triton:9000/", "bert", "")
+            .unwrap()
+            .base_url(),
+        "http://triton:9000"
+    );
     assert!(client("", "mf", "").unwrap().capabilities().is_empty());
 }
 
 #[tokio::test]
 async fn score_success() {
     let srv = serve(vec![Canned::json(200, &out(json!([0.75])))]).await;
-    let s = client(&srv.url, "mf", "").unwrap().score(&[1.0, 2.0, 3.0]).await.unwrap();
+    let s = client(&srv.url, "mf", "")
+        .unwrap()
+        .score(&[1.0, 2.0, 3.0])
+        .await
+        .unwrap();
     assert!((s - 0.75).abs() < 1e-3);
     let got = srv.only();
     assert_eq!(got.path, "/v2/models/mf/infer");
@@ -55,32 +67,60 @@ async fn score_success() {
 #[tokio::test]
 async fn f32_inputs_keep_their_short_form() {
     let srv = serve(vec![Canned::json(200, &out(json!([0.5])))]).await;
-    client(&srv.url, "mf", "").unwrap().score(&[1.1]).await.unwrap();
+    client(&srv.url, "mf", "")
+        .unwrap()
+        .score(&[1.1])
+        .await
+        .unwrap();
     assert_eq!(srv.only().json()["inputs"][0]["data"], json!([[1.1]]));
 }
 
 #[tokio::test]
 async fn failures() {
     let srv = serve(vec![Canned::json(500, "internal error")]).await;
-    let e = client(&srv.url, "mf", "").unwrap().score(&[1.0]).await.unwrap_err();
+    let e = client(&srv.url, "mf", "")
+        .unwrap()
+        .score(&[1.0])
+        .await
+        .unwrap_err();
     assert!(e.to_string().contains("HTTP 500"), "{e}");
     assert!(e.is_fallbackable());
     assert_eq!(srv.attempts(), 1);
     let srv = serve(vec![Canned::json(200, r#"{"outputs":[]}"#)]).await;
-    let e = client(&srv.url, "mf", "").unwrap().score(&[1.0]).await.unwrap_err();
+    let e = client(&srv.url, "mf", "")
+        .unwrap()
+        .score(&[1.0])
+        .await
+        .unwrap_err();
     assert!(e.to_string().contains("no outputs"), "{e}");
     let srv = serve(vec![Canned::json(200, &out(json!([])))]).await;
-    let e = client(&srv.url, "mf", "").unwrap().score(&[1.0]).await.unwrap_err();
+    let e = client(&srv.url, "mf", "")
+        .unwrap()
+        .score(&[1.0])
+        .await
+        .unwrap_err();
     assert!(e.to_string().contains("empty output data"), "{e}");
-    let e = client("http://127.0.0.1:1", "mf", "").unwrap().score(&[f32::NAN]).await.unwrap_err();
+    let e = client("http://127.0.0.1:1", "mf", "")
+        .unwrap()
+        .score(&[f32::NAN])
+        .await
+        .unwrap_err();
     assert!(e.to_string().contains("non-finite"), "{e}");
 }
 
 #[tokio::test]
 async fn key_is_sent_when_set() {
-    for (key, want) in [("", None), ("  ", None), ("fake-triton-key", Some("Bearer fake-triton-key"))] {
+    for (key, want) in [
+        ("", None),
+        ("  ", None),
+        ("fake-triton-key", Some("Bearer fake-triton-key")),
+    ] {
         let srv = serve(vec![Canned::json(200, &out(json!([1.0])))]).await;
-        client(&srv.url, "mf", key).unwrap().score(&[1.0]).await.unwrap();
+        client(&srv.url, "mf", key)
+            .unwrap()
+            .score(&[1.0])
+            .await
+            .unwrap();
         assert_eq!(srv.only().header("authorization"), want, "{key:?}");
     }
 }
@@ -101,7 +141,9 @@ async fn base_url_credentials_never_surface() {
             Err(e) => assert!(!e.to_string().contains(SECRET), "{e}"),
         }
     }
-    let e = client(&format!("http://h\x7f?key={SECRET}"), "mf", "").unwrap_err().to_string();
+    let e = client(&format!("http://h\x7f?key={SECRET}"), "mf", "")
+        .unwrap_err()
+        .to_string();
     assert!(!e.contains(SECRET), "{e}");
 }
 

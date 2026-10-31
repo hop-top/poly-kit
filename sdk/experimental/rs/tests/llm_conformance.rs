@@ -582,10 +582,11 @@ fn media_fetch_vectors_not_applicable() {
     }
 }
 
-/// Gemini stream-event vectors pin the gemini adapter, which this port
-/// does not have; the section must still be present and well formed.
+/// Gemini stream-event vectors pin the gemini adapter; llm_google_conformance
+/// runs them (feature `llm-google`). Here they must still be present and
+/// well formed.
 #[test]
-fn gemini_stream_events_vectors_not_applicable() {
+fn gemini_stream_events_vectors_present() {
     let c = load();
     assert!(!c.gemini_stream_events.is_empty());
     for v in &c.gemini_stream_events {
@@ -594,7 +595,7 @@ fn gemini_stream_events_vectors_not_applicable() {
             !name.is_empty(),
             "gemini_stream_events vector without a name"
         );
-        eprintln!("gemini_stream_events/{name}: not applicable (no gemini adapter in this port)");
+        eprintln!("gemini_stream_events/{name}: run by llm_google_conformance");
     }
 }
 

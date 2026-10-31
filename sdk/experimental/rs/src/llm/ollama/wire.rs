@@ -15,11 +15,7 @@ fn invalid(msg: String) -> LlmError {
 
 /// The JSON body for `req` against `default_model`. Ollama's chat call
 /// here sends no tools, so a tool choice fails the request.
-pub(crate) fn body(
-    default_model: &str,
-    req: &Request,
-    stream: bool,
-) -> Result<Value, LlmError> {
+pub(crate) fn body(default_model: &str, req: &Request, stream: bool) -> Result<Value, LlmError> {
     check_tool_choice(req.tool_choice.as_ref(), &[])
         .map_err(|e| invalid(format!("ollama: {e}")))?;
     // Resolves a tool result's ToolCallID to the tool_name Ollama also
@@ -125,9 +121,9 @@ fn message(m: &Message) -> Result<Map<String, Value>, LlmError> {
     for p in &m.parts {
         match p {
             Part::Text(t) => text.push_str(t),
-            Part::Media(media) if media.kind == crate::llm::MediaKind::Image => images.push(
-                base64::engine::general_purpose::STANDARD.encode(&media.data),
-            ),
+            Part::Media(media) if media.kind == crate::llm::MediaKind::Image => {
+                images.push(base64::engine::general_purpose::STANDARD.encode(&media.data))
+            }
             Part::Media(media) => {
                 return Err(LlmError::UnsupportedModality {
                     modality: media.kind.as_str().into(),

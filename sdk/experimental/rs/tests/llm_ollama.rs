@@ -52,7 +52,11 @@ async fn complete_happy_path() {
     assert_eq!(resp.content, "Hello! How can I help?");
     assert_eq!(resp.role, Role::Assistant);
     assert_eq!(
-        (resp.usage.prompt_tokens, resp.usage.completion_tokens, resp.usage.total_tokens),
+        (
+            resp.usage.prompt_tokens,
+            resp.usage.completion_tokens,
+            resp.usage.total_tokens
+        ),
         (8, 15, 23)
     );
     assert_eq!(resp.finish_reason, "stop");
@@ -157,7 +161,10 @@ async fn errors_map_to_the_taxonomy() {
         assert_eq!(srv.attempts(), 1, "{status}: Ollama is not retried");
         // The stream path maps the same.
         let e = a.stream(&hi()).await.err().unwrap();
-        assert_eq!(std::mem::discriminant(&e), std::mem::discriminant(&a.complete(&hi()).await.unwrap_err()));
+        assert_eq!(
+            std::mem::discriminant(&e),
+            std::mem::discriminant(&a.complete(&hi()).await.unwrap_err())
+        );
     }
     let srv = serve(vec![Canned::json(418, "teapot")]).await;
     let e = adapter(&srv.url, "").complete(&hi()).await.unwrap_err();
@@ -167,7 +174,10 @@ async fn errors_map_to_the_taxonomy() {
 
 #[tokio::test]
 async fn connection_refused_is_a_transport_error() {
-    let e = adapter("http://127.0.0.1:1", "").complete(&hi()).await.unwrap_err();
+    let e = adapter("http://127.0.0.1:1", "")
+        .complete(&hi())
+        .await
+        .unwrap_err();
     assert!(matches!(e, LlmError::Transport { .. }), "{e}");
     assert!(e.is_fallbackable());
 }
@@ -240,7 +250,10 @@ async fn audio_parts_are_unsupported() {
         }],
         ..Request::default()
     };
-    let e = adapter("http://127.0.0.1:1", "").complete(&req).await.unwrap_err();
+    let e = adapter("http://127.0.0.1:1", "")
+        .complete(&req)
+        .await
+        .unwrap_err();
     assert!(matches!(e, LlmError::UnsupportedModality { .. }), "{e}");
 }
 
@@ -261,7 +274,10 @@ async fn tool_linkage_wire_shape() {
             Message::user("Weather in NYC and LA?"),
             Message::assistant_calls(
                 "Checking.",
-                vec![call("call_1", "get_weather", r#"{"city":"NYC"}"#), call("call_2", "get_weather", "")],
+                vec![
+                    call("call_1", "get_weather", r#"{"city":"NYC"}"#),
+                    call("call_2", "get_weather", ""),
+                ],
             ),
             Message::tool_result("call_1", "sunny"),
             Message::tool_result("call_2", "rainy"),
@@ -271,9 +287,15 @@ async fn tool_linkage_wire_shape() {
     };
     adapter(&srv.url, "").complete(&req).await.unwrap();
     let m = srv.only().json()["messages"].clone();
-    assert_eq!(m[1]["tool_calls"][0], json!({"id":"call_1","function":{"name":"get_weather","arguments":{"city":"NYC"}}}));
+    assert_eq!(
+        m[1]["tool_calls"][0],
+        json!({"id":"call_1","function":{"name":"get_weather","arguments":{"city":"NYC"}}})
+    );
     assert_eq!(m[1]["tool_calls"][1]["function"]["arguments"], json!({}));
-    assert_eq!(m[2], json!({"role":"tool","content":"sunny","tool_call_id":"call_1","tool_name":"get_weather"}));
+    assert_eq!(
+        m[2],
+        json!({"role":"tool","content":"sunny","tool_call_id":"call_1","tool_name":"get_weather"})
+    );
     assert_eq!(m[3]["tool_name"], "get_weather");
     assert_eq!(m[4], json!({"role":"tool","content":"stray"}));
     assert!(m[0].get("tool_calls").is_none() && m[0].get("tool_call_id").is_none());
@@ -282,14 +304,47 @@ async fn tool_linkage_wire_shape() {
 #[tokio::test]
 async fn tool_linkage_rejects() {
     let cases: Vec<(&str, Message)> = vec![
-        ("tool result with Parts", Message { role: Role::Tool, tool_call_id: "c".into(), parts: vec![Part::Text("x".into())], ..Message::default() }),
-        ("ToolCalls on user", Message { role: Role::User, tool_calls: vec![call("c", "f", "")], ..Message::default() }),
-        ("ToolCallID on user", Message { role: Role::User, content: "x".into(), tool_call_id: "c".into(), ..Message::default() }),
-        ("tool call with invalid JSON", Message { role: Role::Assistant, tool_calls: vec![call("c", "f", "{")], ..Message::default() }),
+        (
+            "tool result with Parts",
+            Message {
+                role: Role::Tool,
+                tool_call_id: "c".into(),
+                parts: vec![Part::Text("x".into())],
+                ..Message::default()
+            },
+        ),
+        (
+            "ToolCalls on user",
+            Message {
+                role: Role::User,
+                tool_calls: vec![call("c", "f", "")],
+                ..Message::default()
+            },
+        ),
+        (
+            "ToolCallID on user",
+            Message {
+                role: Role::User,
+                content: "x".into(),
+                tool_call_id: "c".into(),
+                ..Message::default()
+            },
+        ),
+        (
+            "tool call with invalid JSON",
+            Message {
+                role: Role::Assistant,
+                tool_calls: vec![call("c", "f", "{")],
+                ..Message::default()
+            },
+        ),
     ];
     let srv = ok().await;
     for (name, m) in cases {
-        let req = Request { messages: vec![m], ..Request::default() };
+        let req = Request {
+            messages: vec![m],
+            ..Request::default()
+        };
         let e = adapter(&srv.url, "").complete(&req).await.unwrap_err();
         assert!(e.to_string().starts_with("ollama:"), "{name}: {e}");
     }
@@ -301,7 +356,10 @@ async fn tool_choice_is_rejected_without_tools() {
     let srv = ok().await;
     let a = adapter(&srv.url, "");
     let mut req = hi();
-    req.tool_choice = Some(ToolChoice { mode: ToolChoiceMode::ANY, name: String::new() });
+    req.tool_choice = Some(ToolChoice {
+        mode: ToolChoiceMode::ANY,
+        name: String::new(),
+    });
     let want = r#"ollama: tool_choice "any" needs tools"#;
     assert_eq!(a.complete(&req).await.unwrap_err().to_string(), want);
     assert_eq!(a.stream(&req).await.err().unwrap().to_string(), want);
@@ -338,8 +396,13 @@ async fn base_url_credentials_never_surface() {
 async fn default_registry_resolves_ollama() {
     let srv = ok().await;
     let host = srv.url.trim_start_matches("http://");
-    let p = default_registry().resolve(&format!("ollama://{host}/llama3")).unwrap();
-    assert_eq!(p.capabilities(), &[Capability::Complete, Capability::Stream]);
+    let p = default_registry()
+        .resolve(&format!("ollama://{host}/llama3"))
+        .unwrap();
+    assert_eq!(
+        p.capabilities(),
+        &[Capability::Complete, Capability::Stream]
+    );
     p.complete(&hi()).await.unwrap();
     assert_eq!(srv.only().path, "/api/chat");
     assert!(default_registry().schemes().contains(&"ollama".to_string()));
