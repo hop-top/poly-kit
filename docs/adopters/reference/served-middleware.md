@@ -193,7 +193,7 @@ one in force keeps serving. There is no reload signal. Rules:
 | `rate_limit.read.per_minute`, `.burst` | `600`, `60` | commands declaring `kit/side-effect: read` |
 | `rate_limit.write.per_minute`, `.burst` | `120`, `20` | write tiers, and commands that declare none |
 | `rate_limit.destructive.per_minute`, `.burst` | `12`, `3` | destructive tiers |
-| `quota.enabled` | on when `ops` or `bytes` is set | per-caller totals per window, kept across restarts |
+| `quota.enabled` | on when `ops` or `bytes` is set | per-caller totals per window; in memory unless `WithUsageFile`/`WithUsageStore` |
 | `quota.ops` | unset | calls per window |
 | `quota.bytes` | unset | output bytes per window (stdout, stderr, data) |
 | `quota.window` | `1h` | the window, aligned to the epoch (`24h` is a UTC day) |
@@ -366,7 +366,7 @@ configuration:
 | `cli.WithIdentity`, `service.WithAPIKeys` | the keypair `jwt` trusts and `token create` signs with; the `token key` verbs |
 | `service.WithAuditSinks`, `service.WithAuditCommand` | sinks beside `audit.sinks`; `audit verify` |
 | `service.WithObservability(p)` | the tracing and metrics provider |
-| `service.WithServeIdempotencyStore`, `service.WithUsageStore` | the replay store; the quota and budget store |
+| `service.WithServeIdempotencyStore`, `service.WithUsageStore`, `service.WithUsageFile` | the replay store; the quota and budget store |
 | `kit/timeout`, `kit/cache-ttl` annotations | one command's deadline; one read's cache lifetime |
 
 ## Related pages

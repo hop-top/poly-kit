@@ -14,9 +14,9 @@ import (
 
 // The quota block bounds how much one caller may use a service over a
 // window: invocation-plane slot 9, counted after each successful run
-// (slot 13). Counts persist in the usage store — the one policy
-// budgets use, $XDG_STATE_HOME/<tool>/usage.db unless WithUsageStore
-// names another — so a restart resets nothing. A refused call is
+// (slot 13). Counts live in the usage store — the one policy
+// budgets use: memory by default, so a restart resets them, unless
+// WithUsageStore or WithUsageFile names one that persists. A refused call is
 // quota_exceeded: HTTP 429 with Retry-After at the window's reset,
 // Connect ResourceExhausted, an MCP isError result, the socket's
 // QUOTA_EXCEEDED; exit class 64.
