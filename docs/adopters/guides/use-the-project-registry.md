@@ -94,6 +94,9 @@ manual entry therefore survives any number of `wsm` rewrites. An empty `Source` 
 
 `Delete(name)` removes one entry and ignores a name that is not there.
 
+Both return `ErrMalformed` or `ErrSchemaUnsupported`, without modifying the file, when the existing
+registry cannot be read or is newer than this build.
+
 Both calls take an exclusive `flock` on `projects.yaml.lock` for the whole read-modify-write and
 publish the result by writing a temp file and renaming it. Concurrent processes and goroutines
 are safe, and a crash cannot leave a half-written file.
@@ -118,10 +121,10 @@ func TestResolve(t *testing.T) {
 
 ## Pitfalls
 
-- `Write` and `Delete` do not stop at a bad file. If the existing file is malformed, or its
-  `schema` is newer than your build understands, they treat it as empty and replace it, losing
-  the other entries (a newer file is also rewritten as schema 2). Only `Read` reports the two
-  sentinels. Call `Read` first and refuse to write when it returns either error.
+- `Write` and `Delete` refuse to touch a bad file. If the existing file is malformed, or its
+  `schema` is newer than your build understands, they return `ErrMalformed` or
+  `ErrSchemaUnsupported` and leave the file as it was, so no entries are lost. Handle those errors
+  like `Read`'s; a missing file is still treated as empty.
 - Unknown YAML fields are not preserved on rewrite. Only `path`, `startup_cmd`, `source` and
   `stage` survive a `Write`.
 - Do not hand-edit the `stage` block. The `stage` package (`go/core/stage`) owns it, and `stage`
