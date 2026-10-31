@@ -65,6 +65,8 @@ func hasDirective(h http.Header, name string) bool {
 //
 //   - §4.1: a response with "Vary: *" can never be matched, so it is not
 //     stored.
+//   - §5.2.2.7: a response marked private is never stored; the store is
+//     shared across identities. This wins over the §3.5 exemptions.
 //   - §3.5: a request carrying Authorization is only stored when the
 //     response explicitly permits shared caching (public, s-maxage or
 //     must-revalidate); otherwise one identity's response could be served
@@ -74,6 +76,12 @@ func storableFor(req *http.Request, resp *http.Response) bool {
 		return false
 	}
 	if vf := varyFields(resp.Header); len(vf) == 1 && vf[0] == "*" {
+		return false
+	}
+	// §5.2.2.7: the store is shared across identities, so a private
+	// response is never stored. Checked before the Authorization
+	// exemptions: "private, must-revalidate" must not slip through.
+	if hasDirective(resp.Header, "private") {
 		return false
 	}
 	if req.Header.Get("Authorization") != "" {

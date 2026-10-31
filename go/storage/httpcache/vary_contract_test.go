@@ -79,9 +79,15 @@ func TestContract_VaryAuthCacheability(t *testing.T) {
 			ResponseHeaders map[string]string `json:"response_headers"`
 			Want            bool
 		} `json:"authorization_response_cacheable"`
+		Private []struct {
+			Name    string
+			Status  int
+			Headers map[string]string
+			Want    bool
+		} `json:"private_response_cacheable"`
 	}
 	readContract(t, "cacheability.json", &v)
-	if len(v.Vary) == 0 || len(v.Auth) == 0 {
+	if len(v.Vary) == 0 || len(v.Auth) == 0 || len(v.Private) == 0 {
 		t.Fatal("cacheability.json extension sections are empty")
 	}
 	plain, _ := http.NewRequest(http.MethodGet, "https://example.com/a", nil)
@@ -102,6 +108,11 @@ func TestContract_VaryAuthCacheability(t *testing.T) {
 	for _, c := range v.Auth {
 		if got := storableFor(authed, mk(200, c.ResponseHeaders)); got != c.Want {
 			t.Errorf("auth/%s: storable = %v, want %v", c.Name, got, c.Want)
+		}
+	}
+	for _, c := range v.Private {
+		if got := storableFor(plain, mk(c.Status, c.Headers)); got != c.Want {
+			t.Errorf("private/%s: storable = %v, want %v", c.Name, got, c.Want)
 		}
 	}
 }
