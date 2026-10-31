@@ -26,7 +26,7 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 
 | File | Cases | Pins |
 |------|-------|------|
-| `blob.json` | `scenarios[]` `{name, steps[]}` | each scenario runs on a fresh store: round trip, empty and binary payloads, overwrite, nested keys, `//` `.` `..` and leading-`/` normalisation, missing-key errors, delete, prefix listing, list order (per directory ascending by name, so `a/b` precedes `a.txt`), staging files hidden from `list`, `..` escapes |
+| `blob.json` | `scenarios[]` `{name, steps[]}` | each scenario runs on a fresh store: round trip, empty and binary payloads, overwrite, nested keys, `//` `.` `..` and leading-`/` normalisation, missing-key errors on get, idempotent delete (a missing key succeeds), prefix listing, list order (per directory ascending by name, so `a/b` precedes `a.txt`), staging files hidden from `list`, `..` escapes |
 
 Conventions:
 
