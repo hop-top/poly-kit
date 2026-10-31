@@ -9,7 +9,7 @@ Experimental Rust client SDK for hop-top kit.
 hop-top-kit = { version = "0.5.0-alpha.6", features = ["cli", "output"] }
 ```
 
-Nothing is on by default: name the features you use. The version names a prerelease on purpose: a bare `"0.5"` cannot resolve one. Runnable crate examples live in [`examples/`](examples/).
+Nothing is on by default: name the features you use. The version names a prerelease on purpose: a bare `"0.5"` cannot resolve one. Runnable crate examples live in [`examples/`](examples/): [`cli`](examples/cli.rs) (a kit root with output and the logger; `--features cli,config`), [`mcp`](examples/mcp.rs) (commands as MCP tools over stdio; `--features mcp`) and [`serve`](examples/serve.rs) (`--features serve-cli`); `tests/examples_smoke.rs` runs the first two.
 
 ## Modules
 
