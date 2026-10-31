@@ -104,7 +104,7 @@ same keys they wrote. `List("logs/")` matches only keys that start with
 | `Put` | atomic: synced temp file renamed into place | single `PutObject` with the content type |
 | `Delete` of missing key | succeeds | succeeds |
 | `Get` of missing key | error wrapping the OS not-exist error | error from `GetObject` |
-| content type | accepted, discarded; empty on `List` | sent on `Put`; empty on `List` |
+| content type | kept in a `.blob-meta/` sidecar; returned by `List` | sent on `Put`; empty on `List` (`ListObjectsV2` omits it) |
 | key escaping root | `../` keys rejected before I/O | n/a |
 
 Practical consequences:
@@ -113,9 +113,11 @@ Practical consequences:
   error, so no `Exists` guard is needed.
 - For missing-key checks on `local`, use `errors.Is(err, fs.ErrNotExist)`
   on the `Get` error. Prefer `Exists` for backend-neutral code.
-- Do not read content type back from `List` on any backend (S3
-  `ListObjectsV2` returns none and `local` keeps none); store it in your
-  own metadata if you need it.
+- `local` returns the content type from `List`; S3 does not (empty).
+  Treat empty as "unknown" in backend-neutral code, or store the type in
+  your own metadata. `local` reserves the top-level `.blob-meta/`
+  directory for sidecars: do not use it as a key prefix (rejected).
+  Stores written before sidecars existed report an empty type.
 - `local` hides in-flight `.tmp` staging files from `List`, and a
   failed `Put` leaves the previous value intact. Concurrent readers see
   the old or new blob, never a partial one.

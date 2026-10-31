@@ -28,8 +28,10 @@ type Factory func(t *testing.T) blob.Store
 //   - List returns every key with the prefix (a string-prefix match, so
 //     "logs/" excludes "logs-old/x"), with its Size, as the keys the
 //     caller wrote.
-//
-// Not pinned: Object.ContentType from List (providers differ).
+//   - Object.ContentType from List is never wrong: empty (the provider
+//     cannot report it, e.g. S3 ListObjectsV2) or exactly the type of the
+//     latest Put. A stale type from an overwritten or deleted key never
+//     leaks. Providers that can report it also run RunContentType.
 func Run(t *testing.T, newStore Factory) {
 	t.Helper()
 	ctx := context.Background()
@@ -87,6 +89,25 @@ func Run(t *testing.T, newStore Factory) {
 		}
 	})
 
+	t.Run("ListContentTypeNeverWrong", func(t *testing.T) {
+		s := newStore(t)
+		putCT(t, s, "ct/a.json", "{}", "application/json")
+		putCT(t, s, "ct/b.bin", "x", "")
+		putCT(t, s, "ct/over", "1", "text/plain")
+		putCT(t, s, "ct/over", "2", "text/csv")
+		putCT(t, s, "ct/gone", "1", "image/png")
+		if err := s.Delete(ctx, "ct/gone"); err != nil {
+			t.Fatal(err)
+		}
+		putCT(t, s, "ct/gone", "1", "")
+		for k, want := range wantTypes {
+			got := listTypes(t, s)[k]
+			if got != "" && got != want {
+				t.Fatalf("List ContentType[%s] = %q, want %q or empty", k, got, want)
+			}
+		}
+	})
+
 	t.Run("ListPrefixKeysAndSizes", func(t *testing.T) {
 		s := newStore(t)
 		put(t, s, "logs/a.log", "1")
@@ -118,4 +139,83 @@ func put(t *testing.T, s blob.Store, key, body string) {
 	if err := s.Put(context.Background(), key, bytes.NewReader([]byte(body)), "text/plain"); err != nil {
 		t.Fatalf("Put %s: %v", key, err)
 	}
+}
+
+var wantTypes = map[string]string{
+	"ct/a.json": "application/json",
+	"ct/b.bin":  "",
+	"ct/over":   "text/csv",
+	"ct/gone":   "",
+}
+
+// RunContentType pins the strict contract for providers that persist the
+// content type: List reports exactly the type of the latest Put, empty
+// when none was given, and the type does not outlive its key.
+func RunContentType(t *testing.T, newStore Factory) {
+	t.Helper()
+	ctx := context.Background()
+
+	t.Run("ContentTypeRoundTrip", func(t *testing.T) {
+		s := newStore(t)
+		putCT(t, s, "ct/a.json", "{}", "application/json")
+		putCT(t, s, "ct/b.bin", "x", "")
+		putCT(t, s, "ct/over", "1", "text/plain")
+		putCT(t, s, "ct/over", "2", "text/csv")
+		putCT(t, s, "ct/gone", "1", "image/png")
+		if err := s.Delete(ctx, "ct/gone"); err != nil {
+			t.Fatal(err)
+		}
+		putCT(t, s, "ct/gone", "1", "")
+		got := listTypes(t, s)
+		for k, want := range wantTypes {
+			if got[k] != want {
+				t.Errorf("ContentType[%s] = %q, want %q", k, got[k], want)
+			}
+		}
+	})
+
+	t.Run("ContentTypeBytesUnchanged", func(t *testing.T) {
+		s := newStore(t)
+		putCT(t, s, "k", "payload", "text/plain")
+		rc, err := s.Get(ctx, "k")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rc.Close()
+		if b, _ := io.ReadAll(rc); string(b) != "payload" {
+			t.Fatalf("Get = %q", b)
+		}
+	})
+
+	t.Run("ContentTypeNotListedAsKey", func(t *testing.T) {
+		s := newStore(t)
+		putCT(t, s, "k", "p", "text/plain")
+		objs, err := s.List(ctx, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(objs) != 1 || objs[0].Key != "k" {
+			t.Fatalf("List = %+v, want only k", objs)
+		}
+	})
+}
+
+func putCT(t *testing.T, s blob.Store, key, body, ct string) {
+	t.Helper()
+	if err := s.Put(context.Background(), key, bytes.NewReader([]byte(body)), ct); err != nil {
+		t.Fatalf("Put %s: %v", key, err)
+	}
+}
+
+func listTypes(t *testing.T, s blob.Store) map[string]string {
+	t.Helper()
+	objs, err := s.List(context.Background(), "ct/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := map[string]string{}
+	for _, o := range objs {
+		m[o.Key] = o.ContentType
+	}
+	return m
 }

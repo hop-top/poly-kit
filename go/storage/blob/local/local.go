@@ -2,10 +2,18 @@
 //
 // Keys may contain path separators (e.g. "a/b/c"); intermediate
 // directories are created automatically on Put.
+//
+// The content type given to Put is kept in a sidecar file under the
+// reserved top-level directory ".blob-meta" (see metaDir), mirroring the
+// key path with a ".json" suffix, and reported as Object.ContentType by
+// List. Keys whose first path segment is ".blob-meta" are rejected, so the
+// sidecar namespace cannot collide with user keys. Stores written before
+// sidecars existed have none: their ContentType is empty.
 package local
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +24,15 @@ import (
 
 	"hop.top/kit/go/storage/blob"
 )
+
+// metaDir is the reserved top-level directory holding content-type
+// sidecars. It is never a valid key prefix and never listed.
+const metaDir = ".blob-meta"
+
+// sidecar is the on-disk metadata record for one key.
+type sidecar struct {
+	ContentType string `json:"content_type"`
+}
 
 // Store is a filesystem-backed blob store rooted at a directory.
 type Store struct {
@@ -45,7 +62,67 @@ func (s *Store) resolve(key string) (string, error) {
 	if !strings.HasPrefix(resolved, s.root+string(os.PathSeparator)) && resolved != s.root {
 		return "", fmt.Errorf("blob/local: key %q escapes store root", key)
 	}
+	if rel, err := filepath.Rel(s.root, resolved); err == nil &&
+		(rel == metaDir || strings.HasPrefix(rel, metaDir+string(os.PathSeparator))) {
+		return "", fmt.Errorf("blob/local: key %q uses reserved namespace %q", key, metaDir)
+	}
 	return resolved, nil
+}
+
+// metaPath returns the sidecar path for a resolved content path p.
+func (s *Store) metaPath(p string) string {
+	rel, _ := filepath.Rel(s.root, p)
+	return filepath.Join(s.root, metaDir, rel+".json")
+}
+
+// writeAtomic writes data to dst via a synced sibling temp file + rename.
+func writeAtomic(dst string, data []byte) error {
+	dir := filepath.Dir(dst)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, "."+filepath.Base(dst)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Chmod(tmp, 0o640); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// readContentType returns the stored type for p, or "" when the sidecar
+// is missing or unreadable (metadata is advisory; old stores have none).
+func (s *Store) readContentType(p string) string {
+	b, err := os.ReadFile(s.metaPath(p))
+	if err != nil {
+		return ""
+	}
+	var sc sidecar
+	if json.Unmarshal(b, &sc) != nil {
+		return ""
+	}
+	return sc.ContentType
 }
 
 // Put writes the contents of r to key, creating subdirectories as needed.
@@ -54,7 +131,11 @@ func (s *Store) resolve(key string) (string, error) {
 // and then renamed over the destination. A concurrent Get therefore never
 // observes a partial blob, and an interrupted write leaves any previous
 // value intact.
-func (s *Store) Put(_ context.Context, key string, r io.Reader, _ string) error {
+//
+// contentType is persisted in a sidecar written (atomically) after the
+// content lands; an empty type removes any previous sidecar. A crash
+// between the two renames leaves the new content with the previous type.
+func (s *Store) Put(_ context.Context, key string, r io.Reader, contentType string) error {
 	p, err := s.resolve(key)
 	if err != nil {
 		return err
@@ -92,6 +173,18 @@ func (s *Store) Put(_ context.Context, key string, r io.Reader, _ string) error 
 		os.Remove(tmp)
 		return fmt.Errorf("blob/local: rename: %w", err)
 	}
+
+	mp := s.metaPath(p)
+	if contentType == "" {
+		if err := os.Remove(mp); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("blob/local: remove meta: %w", err)
+		}
+		return nil
+	}
+	b, _ := json.Marshal(sidecar{ContentType: contentType})
+	if err := writeAtomic(mp, b); err != nil {
+		return fmt.Errorf("blob/local: write meta: %w", err)
+	}
 	return nil
 }
 
@@ -118,6 +211,9 @@ func (s *Store) Delete(_ context.Context, key string) error {
 	if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("blob/local: remove: %w", err)
 	}
+	if err := os.Remove(s.metaPath(p)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("blob/local: remove meta: %w", err)
+	}
 	return nil
 }
 
@@ -130,6 +226,9 @@ func (s *Store) List(_ context.Context, prefix string) ([]blob.Object, error) {
 			return err
 		}
 		if d.IsDir() {
+			if p == filepath.Join(root, metaDir) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if isTempName(d.Name()) {
@@ -145,8 +244,9 @@ func (s *Store) List(_ context.Context, prefix string) ([]blob.Object, error) {
 			return err
 		}
 		objects = append(objects, blob.Object{
-			Key:  key,
-			Size: info.Size(),
+			Key:         key,
+			Size:        info.Size(),
+			ContentType: s.readContentType(p),
 		})
 		return nil
 	})
