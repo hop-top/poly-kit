@@ -49,8 +49,8 @@ id, err := svc.Enqueue(ctx, job.EnqueueOpts{
 - `ScheduledAt` in the future delays the claim until then.
 - Lower `Priority` number is claimed first; ties go oldest first.
 - `ClaimTTL` (default 5m) is how long a claim lasts before it is stale.
-  The `durabletask` engine honors the per-job value; `mock` always uses
-  5m.
+  Both `durabletask` and `mock` honor the per-job value; zero keeps the
+  5m default. `Heartbeat` extends by the same per-job TTL.
 
 ## Process: Poller
 
@@ -84,10 +84,14 @@ default 30s), claim, route by `Type`, then `Complete` or `Fail`.
 | handler returns nil | `Complete` with no result |
 | handler returns error | `Fail` with `Retry: true` (retried while attempts remain) |
 | no handler for `j.Type` | `Fail` with `Retry: false`: terminal |
+| handler panics | recovered; `Fail` with `Retry: true` and a `*job.PanicError` message (`panic: <value>`) |
 | claim error or empty queue | sleeps `Interval`, tries again |
 
-Notes: errors from `Claim`, `Complete`, `Fail` are swallowed by the
-loop. A handler panic is not recovered. Handlers that run longer than
+Notes: errors from `ReleaseStaleClaims`, `Claim`, `Complete` and `Fail`
+do not stop the loop; they are logged on `Poller.Logger` (nil uses
+`slog.Default()`). A handler panic is recovered and logged with its
+stack; the poller keeps running. `RunOne` recovers the same way and
+returns the `*job.PanicError`. Handlers that run longer than
 `ClaimTTL` should call `svc.Heartbeat(ctx, j.ID)` or the job is released
 and may run twice, so make handlers idempotent. The handler's return
 value cannot carry a result; call `svc.Complete(ctx, id, result)`
@@ -143,13 +147,32 @@ ready.
 ## Events
 
 Pass `job.WithPublisher(pub)` to an engine constructor with any
-`domain.EventPublisher`. The engines route transitions through
-`job.NewStateMachine`, so the publisher receives the state machine's
-`kit.runtime.state.pre_transitioned` (synchronous, a returned error
-vetoes the transition) and `post_transitioned` (fire-and-forget) events
-with a `From`/`To` payload. The `job.Topic*` constants and `JobEvent`
-type are defined, but the `mock` and `durabletask` engines do not publish
-them. Topic grammar and catalog: [domain events](../reference/domain-events.md).
+`domain.EventPublisher`. The `mock` and `durabletask` engines publish
+two families of events:
+
+- Lifecycle events on the `job.*` topics, source `kit.runtime.job`,
+  payload `job.JobEvent` (`JobID`, `Queue`, `Type`, `Status`,
+  `WorkerID`, `Error`). Fire-and-forget: a publisher error never fails
+  the operation.
+- The state machine's `kit.runtime.state.pre_transitioned` (synchronous,
+  a returned error vetoes the transition) and `post_transitioned`
+  events with a `From`/`To` payload.
+
+| Call | Topic |
+|------|-------|
+| `Enqueue` | `job.created` |
+| `Claim` | `job.claimed` |
+| `Heartbeat` | `job.heartbeat` |
+| `Complete` | `job.succeeded` |
+| `Fail`, retry scheduled | `job.retried` |
+| `Fail`, terminal | `job.failed`; also `job.dead_letter` when `Retry` was requested but attempts ran out |
+| `Timeout` | `job.timeout` |
+| `Cancel` | `job.cancelled` |
+| `ReleaseStaleClaims` | `job.stale_released`, once per released job |
+
+The `temporal`, `hatchet` and `restate` engines do not publish the
+`job.*` lifecycle events. Topic grammar and catalog:
+[domain events](../reference/domain-events.md).
 
 ## Testing
 
@@ -158,7 +181,8 @@ svc := mock.New(job.WithNowFunc(func() time.Time { return fixed }))
 ```
 
 `mock.New` accepts `WithNowFunc` to control backoff and stale-claim
-timing and `WithPublisher` to observe events. IDs are `job_<n>`.
+timing and `WithPublisher` to observe events; it honors
+`EnqueueOpts.ClaimTTL`, so stale-claim tests can use short TTLs. IDs are `job_<n>`.
 
 ## See also
 

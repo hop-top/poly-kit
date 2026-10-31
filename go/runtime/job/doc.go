@@ -23,11 +23,15 @@
 // # Polling
 //
 // Poller provides a long-running poll loop that claims, routes, and
-// completes jobs. RunOne offers single-shot opportunistic execution
+// completes jobs. Service errors are logged on Poller.Logger and a
+// handler panic is recovered as a *PanicError that fails the job; the
+// loop keeps running. RunOne offers single-shot opportunistic execution
 // with cooldown guards.
 //
 // # Events
 //
 // Job lifecycle events are published via domain.EventPublisher using
-// the Topic* constants (e.g. TopicCreated, TopicFailed).
+// the Topic* constants (e.g. TopicCreated, TopicFailed) with a JobEvent
+// payload and EventSource as source. The mock and durabletask engines
+// publish them; see PublishEvent.
 package job

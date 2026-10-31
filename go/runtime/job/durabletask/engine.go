@@ -127,6 +127,7 @@ func (e *Engine) Enqueue(
 		return "", fmt.Errorf("durabletask: insert job: %w", err)
 	}
 
+	e.emit(ctx, job.TopicCreated, id, "")
 	return id, nil
 }
 
@@ -191,6 +192,7 @@ func (e *Engine) Claim(
 		return nil, fmt.Errorf("durabletask: update claim: %w", err)
 	}
 
+	e.emit(ctx, job.TopicClaimed, id, "")
 	return e.getUnlocked(ctx, id)
 }
 
@@ -228,6 +230,9 @@ func (e *Engine) Complete(
 		string(job.StatusSucceeded), res,
 		now.UnixNano(), now.UnixNano(), id,
 	)
+	if err == nil {
+		e.emit(ctx, job.TopicSucceeded, id, "")
+	}
 	return err
 }
 
@@ -269,6 +274,9 @@ func (e *Engine) Fail(
 			string(job.StatusPending), opts.Error,
 			nextRun.UnixNano(), now.UnixNano(), id,
 		)
+		if err == nil {
+			e.emit(ctx, job.TopicRetried, id, opts.Error)
+		}
 		return err
 	}
 
@@ -288,6 +296,12 @@ func (e *Engine) Fail(
 		string(job.StatusFailed), opts.Error,
 		now.UnixNano(), now.UnixNano(), id,
 	)
+	if err == nil {
+		e.emit(ctx, job.TopicFailed, id, opts.Error)
+		if opts.Retry {
+			e.emit(ctx, job.TopicDeadLetter, id, opts.Error)
+		}
+	}
 	return err
 }
 
@@ -312,6 +326,9 @@ func (e *Engine) Timeout(ctx context.Context, id string) error {
 		 WHERE id = ?`,
 		string(job.StatusTimeout), now.UnixNano(), now.UnixNano(), id,
 	)
+	if err == nil {
+		e.emit(ctx, job.TopicTimeout, id, "")
+	}
 	return err
 }
 
@@ -336,6 +353,9 @@ func (e *Engine) Cancel(ctx context.Context, id string) error {
 		 WHERE id = ?`,
 		string(job.StatusCancelled), now.UnixNano(), now.UnixNano(), id,
 	)
+	if err == nil {
+		e.emit(ctx, job.TopicCancelled, id, "")
+	}
 	return err
 }
 
@@ -359,6 +379,9 @@ func (e *Engine) Heartbeat(ctx context.Context, id string) error {
 		`UPDATE jobs SET expires_at = ?, updated_at = ? WHERE id = ?`,
 		exp.UnixNano(), now.UnixNano(), id,
 	)
+	if err == nil {
+		e.emit(ctx, job.TopicHeartbeat, id, "")
+	}
 	return err
 }
 
@@ -465,6 +488,7 @@ func (e *Engine) ReleaseStaleClaims(ctx context.Context) (int, error) {
 			string(job.StatusPending), nowNano, id,
 		)
 		if err == nil {
+			e.emit(ctx, job.TopicStaleReleased, id, "")
 			released++
 		}
 	}
@@ -495,4 +519,18 @@ func (e *Engine) getUnlocked(ctx context.Context, id string) (*job.Job, error) {
 			completed_at, expires_at, scheduled_at, next_run_at
 		 FROM jobs WHERE id = ?`, id,
 	))
+}
+
+// emit loads the job and publishes a lifecycle event for it. It is a
+// no-op without a publisher; a reload failure drops the event (events
+// are fire-and-forget and must not fail the operation).
+func (e *Engine) emit(ctx context.Context, topic, id, errMsg string) {
+	if e.pub == nil {
+		return
+	}
+	j, err := e.getUnlocked(ctx, id)
+	if err != nil {
+		return
+	}
+	job.PublishEvent(ctx, e.pub, topic, *j, errMsg)
 }
