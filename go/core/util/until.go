@@ -27,7 +27,9 @@ func ParseUntil(s string) (time.Time, error) {
 }
 
 // ParseUntilAt parses a forward-looking date string relative to the
-// given reference time. Supported formats:
+// given reference time. Day, week and "tomorrow" offsets are calendar
+// offsets (same wall clock, reference zone), so across a DST change they
+// span 23h or 25h. Supported formats:
 //
 //   - "tomorrow"
 //   - "in N day(s)/week(s)/month(s)/year(s)/hour(s)/minute(s)/second(s)"

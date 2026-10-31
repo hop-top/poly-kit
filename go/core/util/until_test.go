@@ -224,18 +224,10 @@ func TestParseUntil_Convenience(t *testing.T) {
 func TestParseUntil_Integration(t *testing.T) {
 	now := time.Now()
 
-	// "tomorrow" should be ~24h from now
-	got, err := ParseUntil("tomorrow")
+	// "+1h" is an absolute duration: ~1h from now in any zone.
+	got, err := ParseUntil("+1h")
 	require.NoError(t, err)
-	diff := got.Sub(now)
-	assert.InDelta(t, 24*time.Hour, diff, float64(time.Minute),
-		"tomorrow should be ~24h from now")
-
-	// "+1h" should be ~1h from now
-	got, err = ParseUntil("+1h")
-	require.NoError(t, err)
-	diff = got.Sub(now)
-	assert.InDelta(t, time.Hour, diff, float64(time.Minute),
+	assert.InDelta(t, time.Hour, got.Sub(now), float64(time.Minute),
 		"+1h should be ~1h from now")
 
 	// ISO roundtrip: future date parses to itself
@@ -243,15 +235,65 @@ func TestParseUntil_Integration(t *testing.T) {
 	got, err = ParseUntil(future)
 	require.NoError(t, err)
 	assert.Equal(t, future, got.Format("2006-01-02"))
+}
 
-	// ParseSince and ParseUntil are symmetric:
-	// ParseSince("1 day ago") ≈ now - 24h
-	// ParseUntil("in 1 day") ≈ now + 24h
-	since, err := ParseSince("1 day ago")
+// Day-based units are calendar days (same wall clock, local zone), not
+// 24h durations: across a DST transition the elapsed time is 23h or 25h.
+func TestParseUntilAt_CalendarDaysAcrossDST(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
 	require.NoError(t, err)
-	until, err := ParseUntil("in 1 day")
+
+	tests := []struct {
+		name  string
+		now   time.Time
+		input string
+		want  time.Time
+		elaps time.Duration
+	}{
+		{
+			name:  "tomorrow fall-back (25h day)",
+			now:   time.Date(2026, 10, 31, 12, 0, 0, 0, ny),
+			input: "tomorrow",
+			want:  time.Date(2026, 11, 1, 12, 0, 0, 0, ny),
+			elaps: 25 * time.Hour,
+		},
+		{
+			name:  "tomorrow spring-forward (23h day)",
+			now:   time.Date(2026, 3, 7, 12, 0, 0, 0, ny),
+			input: "tomorrow",
+			want:  time.Date(2026, 3, 8, 12, 0, 0, 0, ny),
+			elaps: 23 * time.Hour,
+		},
+		{
+			name:  "in 1 day fall-back",
+			now:   time.Date(2026, 10, 31, 12, 0, 0, 0, ny),
+			input: "in 1 day",
+			want:  time.Date(2026, 11, 1, 12, 0, 0, 0, ny),
+			elaps: 25 * time.Hour,
+		},
+		{
+			name:  "+1d spring-forward",
+			now:   time.Date(2026, 3, 7, 12, 0, 0, 0, ny),
+			input: "+1d",
+			want:  time.Date(2026, 3, 8, 12, 0, 0, 0, ny),
+			elaps: 23 * time.Hour,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseUntilAt(tt.input, tt.now)
+			require.NoError(t, err)
+			assert.True(t, got.Equal(tt.want), "got %v want %v", got, tt.want)
+			assert.Equal(t, tt.elaps, got.Sub(tt.now))
+		})
+	}
+
+	// Symmetric with ParseSinceAt: calendar days both ways.
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, ny)
+	since, err := ParseSinceAt("1 day ago", now)
 	require.NoError(t, err)
-	span := until.Sub(since)
-	assert.InDelta(t, 48*time.Hour, span, float64(time.Minute),
-		"since(-1d) to until(+1d) should span ~48h")
+	until, err := ParseUntilAt("in 1 day", now)
+	require.NoError(t, err)
+	assert.True(t, since.Equal(time.Date(2026, 10, 31, 12, 0, 0, 0, ny)))
+	assert.True(t, until.Equal(time.Date(2026, 11, 2, 12, 0, 0, 0, ny)))
 }
