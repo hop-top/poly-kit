@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"charm.land/glamour/v2/ansi"
+	"github.com/charmbracelet/colorprofile"
 	"hop.top/kit/go/console/markdown"
 )
 
@@ -34,6 +35,7 @@ func TestRender_NoColor(t *testing.T) {
 }
 
 func TestRenderWith_CustomStyle(t *testing.T) {
+	t.Cleanup(markdown.SetProfileForTest(colorprofile.TrueColor))
 	accent := "#FF5F87"
 	bold := true
 	style := ansi.StyleConfig{
@@ -75,5 +77,49 @@ func TestRenderWith_NoColor(t *testing.T) {
 	}
 	if strings.Contains(out, "\033[") {
 		t.Errorf("RenderWith noColor output contains ANSI escapes:\n%s", out)
+	}
+}
+
+func TestRender_AutoPlainWhenNotTerminal(t *testing.T) {
+	for _, p := range []colorprofile.Profile{colorprofile.NoTTY, colorprofile.ASCII} {
+		t.Run(p.String(), func(t *testing.T) {
+			t.Cleanup(markdown.SetProfileForTest(p))
+			out, err := markdown.Render(testInput, false)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			if strings.Contains(out, "\033[") {
+				t.Errorf("Render emitted ANSI on non-color stdout:\n%q", out)
+			}
+			out, err = markdown.RenderWith(testInput, ansi.StyleConfig{}, false)
+			if err != nil {
+				t.Fatalf("RenderWith: %v", err)
+			}
+			if strings.Contains(out, "\033[") {
+				t.Errorf("RenderWith emitted ANSI on non-color stdout:\n%q", out)
+			}
+		})
+	}
+}
+
+func TestRender_AutoStyledOnColorTerminal(t *testing.T) {
+	t.Cleanup(markdown.SetProfileForTest(colorprofile.TrueColor))
+	out, err := markdown.Render(testInput, false)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(out, "\033[") {
+		t.Error("Render did not style on a color terminal")
+	}
+}
+
+func TestRender_ExplicitNoColorForcesPlain(t *testing.T) {
+	t.Cleanup(markdown.SetProfileForTest(colorprofile.TrueColor))
+	out, err := markdown.Render(testInput, true)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if strings.Contains(out, "\033[") {
+		t.Errorf("noColor=true emitted ANSI:\n%q", out)
 	}
 }
