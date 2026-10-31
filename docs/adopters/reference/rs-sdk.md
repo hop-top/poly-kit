@@ -285,7 +285,7 @@ validation. Parity is pinned by `contracts/cli-root-v1`.
 Not ported from Go: the `celpermission` expression rules of a policy
 (carried and shape-checked, not evaluated), per-caller budgets, the
 `kit/idempotent`, `kit/cache-ttl` and `kit/output-schema` validate arms,
-themed help, the `help` subcommand, `prompt`-mode autocorrect and the
+themed help, the `help` subcommand and the
 `human` format; the `serve-cli` command still mounts on a clap root.
 
 ## MCP surface

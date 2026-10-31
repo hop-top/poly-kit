@@ -24,8 +24,7 @@ const AUTOCORRECT_MAX_DISTANCE: usize = 1;
 pub enum AutocorrectMode {
     /// Suggest, never apply: the default.
     Off,
-    /// Ask on a terminal. This port has no terminal prompt yet, so it
-    /// behaves as `Off`.
+    /// Ask on the controlling terminal; suggest-only where there is none.
     Prompt,
     /// Apply on read-only commands.
     Read,

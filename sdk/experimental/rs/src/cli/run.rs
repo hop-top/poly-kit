@@ -13,6 +13,7 @@ use clap::{ArgMatches, Command};
 
 use crate::output::{render_error, CliError};
 
+use super::autocorrect_prompt::{autocorrect_allowed, prompt_autocorrect};
 use super::gate::Leaf;
 use super::root::Root;
 use super::usage::{
@@ -202,19 +203,28 @@ impl Root {
         format: &str,
     ) -> Option<Vec<String>> {
         let typed = fail.typed_flag.as_deref()?;
-        if autocorrect_mode(args) != AutocorrectMode::Read {
-            return None;
-        }
-        if self
-            .annotations_of(&fail.path.join(" "))
-            .get(super::model::SIDE_EFFECT)
-            .map(String::as_str)
-            != Some("read")
-        {
+        let mode = autocorrect_mode(args);
+        let side_effect = self.annotations_of(&fail.path.join(" "));
+        let (allowed, default_yes) = autocorrect_allowed(
+            side_effect
+                .get(super::model::SIDE_EFFECT)
+                .map(String::as_str),
+            mode,
+        );
+        if !allowed {
             return None;
         }
         let leaf = find_cmd(built, &fail.path)?;
         let hit = correction_candidate(typed, &flag_candidates(leaf))?;
+        if mode == AutocorrectMode::Prompt {
+            // No terminal, or a decline: suggest-only stands, and the
+            // envelope the caller renders is the uncorrected one.
+            let (applied, _asked) =
+                prompt_autocorrect(&self.prompt_source, typed, &hit, default_yes);
+            if !applied {
+                return None;
+            }
+        }
         let next = correct_args(args, typed, &hit)?;
         let _ = render_error(err, format, &correction_notice(typed, &hit));
         Some(next)
