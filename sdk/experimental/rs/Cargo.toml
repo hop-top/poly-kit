@@ -148,6 +148,19 @@ consent = ["bus"]
 # audit log and its relay onto the bus. Native only: builds on the
 # config YAML model and on `id` for the audit log id.
 consent-file = ["consent", "config", "id"]
+# The four mutating-effect seams (file system, HTTP, bus, subprocess), a
+# port of go/runtime/sideeffect: the traits, the dry-run flag on a
+# context, the dryrun and testfake implementations and the dry-run bus
+# publisher. Nothing of its own beyond the bus (payloads are
+# serde_json values, qualifiers come from `bus`); wasm-safe. The
+# --dry-run flag itself waits on the CLI root port.
+sideeffect = ["bus"]
+# The production FS, Exec and Bus implementations. Native only: they
+# touch the file system and spawn processes.
+sideeffect-real = ["sideeffect"]
+# The production HTTP implementation, through the netpolicy-guarded
+# client, so `--offline` refuses it like every other user request.
+sideeffect-http = ["sideeffect-real", "api"]
 # Secret and PII redaction, a port of go/core/redact: gitleaks rule
 # semantics over Go RE2 patterns, with the default policy embedded.
 # regex-syntax rewrites Go-only pattern meanings before compiling;
