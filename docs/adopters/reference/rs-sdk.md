@@ -1,6 +1,6 @@
 # Rust SDK Reference
 
-> Every long-form surface of the experimental `hop-top-kit` crate
+> Every long-form surface of the `hop-top-kit` crate
 > (`sdk/rs`): serve, the URI facade, output formatting
 > rules, the MCP mount, storage, the httpcache wire contract, offline
 > enforcement, telemetry and the bus. The crate front page is
@@ -83,7 +83,7 @@ wire format: [socket wire reference](socket-wire.md).
 
 ## URI facade
 
-The Rust URI facade is experimental and feature-gated:
+The Rust URI facade is feature-gated:
 
 ```toml
 [dependencies]
@@ -1296,10 +1296,20 @@ carries the rule and activation contract.
 - wasm: `cargo build --target wasm32-unknown-unknown --features policy`
   builds; the smoke test runs under Node. 48 normal crates in the tree.
 
+## Feature notes
+
+Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`. `api` and `telemetry` are heaviest (`reqwest` brings `tokio` and TLS); bundled `rusqlite` builds SQLite from source (needs a C compiler). `llm-anthropic` is native only and retries on tokio's timer unless given a `Sleeper`. `bus-network` runs one shared current-thread tokio runtime on its own thread, where its blocking methods panic (use the `_async` variants); `ring` needs a C compiler for the target; `wss://` on Android needs `NetworkOptions::tls_config` or `bus-network-webpki-roots`.
+
+## Rust versions
+
+The minimum supported Rust version (MSRV) is **1.89**, declared as `rust-version` in `Cargo.toml` and tested in CI with `cargo test --all-features` on that exact toolchain, next to the pinned development toolchain (`rust-toolchain.toml`) and current stable.
+
+Policy: the MSRV is the lowest version the crate and its locked dependencies compile on, not a promise to trail stable. Raising it is a breaking change: it ships in a minor release (a major one from 1.0) and is called out in the changelog. A dependency bump that raises the floor either waits for such a release or is held back. After a bump, set `rust-version` to the highest `rust-version` in `cargo metadata --all-features` and confirm the MSRV job passes.
+
 ## Crate-wide contract
 
 - `serve <service>` runs a named service even when disabled; a `serve` the root already owned is replaced by `mount`, never doubled.
-- `output` ships `table`, `json` and `yaml` only (no `csv`, `text`); column order comes from an explicit `ColumnSpec` list; `--cols` reorders as well as selects; `header` must equal `key`.
+- `output` ships `table`, `json`, `yaml`, `csv`, `text` and `human`; column order comes from an explicit `ColumnSpec` list; `--cols` reorders as well as selects; `header` must equal `key`.
 - MCP exposure is default-closed: the default policy blocks every destructive leaf on every remote surface. Telemetry is default-denied: nothing emits without both a granted consent decision and a non-`off` mode. Consent grants fail closed: no prompter, an unreadable store or a failed audit is a refusal.
 
 ## Authentication

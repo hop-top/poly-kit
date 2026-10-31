@@ -6,7 +6,8 @@ language-specific client libraries.
 
 - [py/](py/README.md): Python implementation.
 - [ts/](ts/README.md): TypeScript implementation.
-- [experimental/](experimental/README.md): pre-alpha SDKs (PHP, Rust).
+- [rs/](rs/README.md): Rust implementation (prerelease).
+- [experimental/](experimental/README.md): pre-alpha SDKs (PHP).
 
 ## Contract
 

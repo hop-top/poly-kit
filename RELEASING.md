@@ -297,11 +297,11 @@ line while the family is before 1.0** (on `next`). Then:
   takes its promotion for that line), any other starts the line on alpha;
   members on the same channel share one counter;
 - on `main` a linked cut (a major, or a minor while pre-1.0) holds the whole
-  family, the experimental kit-php and kit-rs included: every member must be
+  family, kit-php and kit-rs included: every member must be
   at an rc of the target, then all are cut together in one release PR. kit
   `0.5.0` (and later `1.0.0`) is not cut until kit-php, kit-py, kit-rs and
   kit-ts are all at an rc of it; one member still on alpha or beta blocks
-  the group. **An experimental SDK must reach rc (promote it via beta to rc
+  the group. **kit-php and kit-rs must reach rc (promote it via beta to rc
   on `next`) before the family's next stable minor (pre-1.0) or major ships.**
 - pre-1.0 stable patches (hotfixes on `main`) and post-1.0 minors stay
   unlinked: each member is cut on its own.
@@ -364,7 +364,7 @@ last change you want in.
 | kit | `.` | Go | linked family |
 | kit-php | `sdk/experimental/php` | PHP | linked family, experimental |
 | kit-py | `sdk/py` | Python | linked family |
-| kit-rs | `sdk/rs` | Rust | linked family, experimental |
+| kit-rs | `sdk/rs` | Rust | linked family, alpha -> beta -> rc |
 | kit-ts | `sdk/ts` | Node | linked family |
 | mcp-tasks | `extensions/mcp-tasks` | Go | independent |
 | qmochi | `incubator/qmochi` | Go | independent |

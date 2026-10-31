@@ -1,8 +1,8 @@
 # Capability parity
 
 > Per-SDK parity for every capability in [`capability-index`](capability-index.md).
-> Go is the reference; TypeScript and Python are the other first-class SDKs;
-> Rust and PHP are experimental. Every SDK is expected to reach `done` as more
+> Go is the reference; TypeScript, Python and Rust are the other first-class
+> SDKs (Rust ships prerelease versions); PHP is experimental. Every SDK is expected to reach `done` as more
 > apps adopt it.
 
 ## Status vocabulary

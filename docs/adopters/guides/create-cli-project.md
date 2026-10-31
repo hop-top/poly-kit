@@ -85,11 +85,12 @@ kit init mytool --from cli-go \
 `github.com/acme/mytool`. Branch protection on `main` is enabled
 automatically.
 
-### TS or Python scaffolds
+### TS, Python or Rust scaffolds
 
 ```bash
 kit init mytool --from cli-ts --hop=false -y
 kit init mytool --from cli-py --hop=false -y
+kit init mytool --from cli-rs --hop=false -y
 ```
 
 ### Augment an existing project
