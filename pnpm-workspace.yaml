@@ -22,3 +22,10 @@ overrides:
   # bounds check is in v3/v5/v6, and typeid-js calls only v7 and stringify.
   # 11.1.1 is the first release carrying the fix and keeps the CommonJS entry.
   typeid-js>uuid: 11.1.1
+  # eslint, @eslint/config-array and @typescript-eslint/typescript-estree
+  # (all latest) declare minimatch ^10; every 10.x allows a CPU-amplification
+  # DoS through `**/../` patterns (GHSA-g3hv-75wg-m249, fixed 11.0.1, no 10.x
+  # fix). They call only minimatch(), new Minimatch() and .match(), which 11
+  # keeps; dev-only lint tooling matching repo-owned patterns. 11.0.3 is the
+  # latest 11.0 patch and keeps the CommonJS entry.
+  minimatch@<11.0.1: 11.0.3
