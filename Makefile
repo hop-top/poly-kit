@@ -308,7 +308,7 @@ test-rs-wasm: ## Rust: bus, domain, breaker, policy, notify, sideeffect, sync an
 # scripts/test-scope.sh maps each prerequisite to its Go packages and
 # SDKs (PARITY_TABLE) so a pull request runs only the targets it
 # reaches; a prerequisite missing from that table always runs.
-test-parity: test-parity-typeid test-parity-api test-parity-webhook test-parity-authn test-parity-consent test-parity-breaker test-parity-blob test-parity-bus test-parity-blob test-parity-bus-network test-parity-config test-parity-retry test-parity-cli-root test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-rpc test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-api test-parity-webhook test-parity-authn test-parity-consent test-parity-breaker test-parity-blob test-parity-bus test-parity-blob test-parity-bus-network test-parity-config test-parity-retry test-parity-cli-root test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-rpc test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias test-parity-cross-lang ## Cross-language parity tests
 test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-identity test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
 
 test-parity-cli: ## spaced CLI parity: Go, TypeScript and Python builds of the example agree
@@ -405,6 +405,12 @@ test-parity-taxonomy: ## exit-code taxonomy across Go + 4 SDKs
 
 # Alias bridge corpus over contracts/alias-v1: bridge options, standalone
 # name validation and cycle detection, one runner per port.
+# Telemetry envelope and column-ordering harnesses, Rust legs. Strict:
+# a skipped leg fails, since an unrun leg is not a passing one.
+test-parity-cross-lang: ## cross-lang envelope and ordering harnesses (Rust legs)
+	KIT_CROSS_LANG_STRICT=1 sdk/tests/cross-lang/run.sh rs
+	KIT_CROSS_LANG_STRICT=1 sdk/tests/cross-lang/run-order.sh rs
+
 test-parity-alias: ## alias-v1 conformance corpus (Go, Rust, TypeScript and Python runners)
 	@echo "==> alias-v1 conformance: Go"
 	go test ./go/console/alias/ ./go/console/cli/ -run '^TestConformanceAlias' -count=1

@@ -77,7 +77,9 @@ Per-language skips when prerequisites are missing:
 | php  | `php`, `sdk/experimental/php/vendor/autoload.php` (composer)    |
 
 The harness exits 0 when every language that ran passed; skips do NOT
-fail. CI runs with all four toolchains installed.
+fail, unless `KIT_CROSS_LANG_STRICT=1`, which turns any skip into a failure.
+CI's parity job runs the rs legs of both harnesses through
+`make test-parity-cross-lang`, strict.
 
 ## Normalisation
 
