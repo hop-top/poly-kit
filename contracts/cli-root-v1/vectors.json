@@ -1,0 +1,475 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://hop.top/kit/contracts/cli-root-v1/vectors.json",
+ "version": "v1",
+ "description": "The kit CLI root, independent of language: persistent root flags, -v/--version, help groups and --help-all, root aliases, flag-error surfaces (USAGE envelope text, json and yaml), and opt-in flag autocorrect. Each case builds the named tree under a kit root, runs `args` with `env` set and pins the exit code and the stream contents. Runnable leaves echo what they were invoked with as one line of JSON (`path`, the leaf's own `flags` that were set, positional `args`, and the resolved `globals`), so the vectors pin parsing and resolution, not a leaf's behavior. Help is pinned by what it lists (`stdout_contains` / `stdout_omits`), never byte for byte: layout belongs to each port's renderer. `stderr_contains` entries are substrings of the text-format envelope; `stderr_json` keys are compared to the same-named keys of the structured envelope. The tree's `side_effect` is the `kit/side-effect` annotation; a flag's `enum` is its declared value set; a flag's `type` is bool, int or string (the default).",
+ "trees": {
+  "main": {
+   "program": "kitapp",
+   "version": "1.2.3",
+   "about": "Kit app",
+   "commands": [
+    {
+     "name": "deploy",
+     "about": "Deploy a target",
+     "side_effect": "write",
+     "flags": [
+      {
+       "long": "env",
+       "short": "e",
+       "help": "Target env",
+       "type": "string"
+      },
+      {
+       "long": "mode",
+       "help": "Mode",
+       "type": "string",
+       "enum": [
+        "fast",
+        "slow"
+       ]
+      },
+      {
+       "long": "count",
+       "help": "Count",
+       "type": "int"
+      },
+      {
+       "long": "force",
+       "help": "Skip checks",
+       "type": "bool"
+      }
+     ]
+    },
+    {
+     "name": "ls",
+     "about": "List things",
+     "side_effect": "read",
+     "flags": [
+      {
+       "long": "limit",
+       "help": "Max rows",
+       "type": "int"
+      },
+      {
+       "long": "kind",
+       "help": "Kind",
+       "type": "string"
+      }
+     ]
+    },
+    {
+     "name": "router",
+     "about": "Router ops",
+     "commands": [
+      {
+       "name": "start",
+       "about": "Start router",
+       "side_effect": "write"
+      }
+     ]
+    }
+   ],
+   "aliases": {
+    "d": "deploy",
+    "rs": "router start"
+   }
+  }
+ },
+ "cases": [
+  {
+   "name": "defaults",
+   "tree": "main",
+   "args": [
+    "deploy"
+   ],
+   "exit": 0,
+   "stdout": "{\"args\":[],\"flags\":{},\"globals\":{\"format\":\"table\",\"no-color\":\"false\",\"no-hints\":\"false\",\"offline\":\"false\",\"quiet\":\"false\",\"verbose\":0},\"path\":\"deploy\"}\n"
+  },
+  {
+   "name": "persistent flags parse on a leaf",
+   "tree": "main",
+   "args": [
+    "deploy",
+    "prod",
+    "--quiet",
+    "-VV",
+    "--format",
+    "json",
+    "--no-color",
+    "--offline",
+    "--no-hints",
+    "-e",
+    "x",
+    "--count",
+    "3"
+   ],
+   "exit": 0,
+   "stdout": "{\"args\":[\"prod\"],\"flags\":{\"count\":\"3\",\"env\":\"x\"},\"globals\":{\"format\":\"json\",\"no-color\":\"true\",\"no-hints\":\"true\",\"offline\":\"true\",\"quiet\":\"true\",\"verbose\":2},\"path\":\"deploy\"}\n"
+  },
+  {
+   "name": "flags before the command",
+   "tree": "main",
+   "args": [
+    "--quiet",
+    "-V",
+    "deploy"
+   ],
+   "exit": 0,
+   "stdout": "{\"args\":[],\"flags\":{},\"globals\":{\"format\":\"table\",\"no-color\":\"false\",\"no-hints\":\"false\",\"offline\":\"false\",\"quiet\":\"true\",\"verbose\":1},\"path\":\"deploy\"}\n"
+  },
+  {
+   "name": "version long",
+   "tree": "main",
+   "args": [
+    "--version"
+   ],
+   "exit": 0,
+   "stdout": "kitapp v1.2.3\n"
+  },
+  {
+   "name": "version short",
+   "tree": "main",
+   "args": [
+    "-v"
+   ],
+   "exit": 0,
+   "stdout": "kitapp v1.2.3\n"
+  },
+  {
+   "name": "end of options",
+   "tree": "main",
+   "args": [
+    "deploy",
+    "--",
+    "--force"
+   ],
+   "exit": 0,
+   "stdout": "{\"args\":[\"--force\"],\"flags\":{},\"globals\":{\"format\":\"table\",\"no-color\":\"false\",\"no-hints\":\"false\",\"offline\":\"false\",\"quiet\":\"false\",\"verbose\":0},\"path\":\"deploy\"}\n"
+  },
+  {
+   "name": "unknown flag",
+   "tree": "main",
+   "args": [
+    "deploy",
+    "--nosuch"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE: unknown flag --nosuch",
+    "Cause: no flag named --nosuch on kitapp deploy",
+    "Fix: run 'kitapp deploy --help' for usage"
+   ]
+  },
+  {
+   "name": "near flag suggests the fix",
+   "tree": "main",
+   "args": [
+    "deploy",
+    "--evn",
+    "prod"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE: unknown flag --evn",
+    "Cause: no flag named --evn on kitapp deploy",
+    "Fix: --env"
+   ]
+  },
+  {
+   "name": "missing value names the type",
+   "tree": "main",
+   "args": [
+    "deploy",
+    "--env"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE: missing value for --env",
+    "Cause: --env requires a value: Target env",
+    "Fix: --env <string>"
+   ]
+  },
+  {
+   "name": "missing enum value lists alternatives",
+   "tree": "main",
+   "args": [
+    "deploy",
+    "--mode"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE: missing value for --mode",
+    "Cause: --mode requires a value",
+    "Fix: --mode fast",
+    "Alternative: --mode fast",
+    "Alternative: --mode slow"
+   ]
+  },
+  {
+   "name": "invalid int value",
+   "tree": "main",
+   "args": [
+    "deploy",
+    "--count",
+    "x"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE: invalid argument \"x\" for \"--count\" flag",
+    "Fix: run 'kitapp deploy --help' for usage"
+   ]
+  },
+  {
+   "name": "unknown command",
+   "tree": "main",
+   "args": [
+    "ghost"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE: unknown command \"ghost\" for \"kitapp\"",
+    "Fix: run 'kitapp --help' for usage"
+   ]
+  },
+  {
+   "name": "unknown subcommand",
+   "tree": "main",
+   "args": [
+    "router",
+    "ghost"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE: unknown command \"ghost\" for \"kitapp router\""
+   ]
+  },
+  {
+   "name": "near command is suggested",
+   "tree": "main",
+   "args": [
+    "deplyo"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE: unknown command \"deplyo\" for \"kitapp\"",
+    "Did you mean this?",
+    "\tdeploy"
+   ]
+  },
+  {
+   "name": "json envelope for an unknown flag",
+   "tree": "main",
+   "args": [
+    "--format",
+    "json",
+    "deploy",
+    "--evn",
+    "prod"
+   ],
+   "exit": 2,
+   "stderr_json": {
+    "code": "USAGE",
+    "message": "unknown flag --evn",
+    "cause": "no flag named --evn on kitapp deploy",
+    "suggested_fix": "--env",
+    "exit_code": 2,
+    "transience": "permanent"
+   }
+  },
+  {
+   "name": "json envelope for a missing value",
+   "tree": "main",
+   "args": [
+    "--format",
+    "json",
+    "deploy",
+    "--env"
+   ],
+   "exit": 2,
+   "stderr_json": {
+    "code": "USAGE",
+    "message": "missing value for --env",
+    "suggested_fix": "--env <string>",
+    "exit_code": 2
+   }
+  },
+  {
+   "name": "yaml envelope for an unknown flag",
+   "tree": "main",
+   "args": [
+    "--format",
+    "yaml",
+    "deploy",
+    "--nosuch"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "code: USAGE",
+    "message: unknown flag --nosuch",
+    "exit_code: 2"
+   ]
+  },
+  {
+   "name": "direct alias",
+   "tree": "main",
+   "args": [
+    "d",
+    "prod",
+    "--force"
+   ],
+   "exit": 0,
+   "stdout": "{\"args\":[\"prod\"],\"flags\":{\"force\":\"true\"},\"globals\":{\"format\":\"table\",\"no-color\":\"false\",\"no-hints\":\"false\",\"offline\":\"false\",\"quiet\":\"false\",\"verbose\":0},\"path\":\"deploy\"}\n"
+  },
+  {
+   "name": "deep alias",
+   "tree": "main",
+   "args": [
+    "rs"
+   ],
+   "exit": 0,
+   "stdout": "{\"args\":[],\"flags\":{},\"globals\":{\"format\":\"table\",\"no-color\":\"false\",\"no-hints\":\"false\",\"offline\":\"false\",\"quiet\":\"false\",\"verbose\":0},\"path\":\"router start\"}\n"
+  },
+  {
+   "name": "autocorrect read applies on a read leaf",
+   "tree": "main",
+   "args": [
+    "--autocorrect",
+    "read",
+    "ls",
+    "--limt",
+    "5"
+   ],
+   "exit": 0,
+   "stdout": "{\"args\":[],\"flags\":{\"limit\":\"5\"},\"globals\":{\"format\":\"table\",\"no-color\":\"false\",\"no-hints\":\"false\",\"offline\":\"false\",\"quiet\":\"false\",\"verbose\":0},\"path\":\"ls\"}\n",
+   "stderr_contains": [
+    "OK: applied flag correction: --limt -> --limit",
+    "Corrected from: --limt",
+    "Fix: --limit"
+   ]
+  },
+  {
+   "name": "autocorrect read leaves a write leaf alone",
+   "tree": "main",
+   "args": [
+    "--autocorrect",
+    "read",
+    "deploy",
+    "--envv",
+    "p"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE: unknown flag --envv",
+    "Fix: --env"
+   ]
+  },
+  {
+   "name": "autocorrect from the environment",
+   "tree": "main",
+   "args": [
+    "ls",
+    "--limt",
+    "5"
+   ],
+   "exit": 0,
+   "env": {
+    "KIT_AUTOCORRECT": "read"
+   },
+   "stdout": "{\"args\":[],\"flags\":{\"limit\":\"5\"},\"globals\":{\"format\":\"table\",\"no-color\":\"false\",\"no-hints\":\"false\",\"offline\":\"false\",\"quiet\":\"false\",\"verbose\":0},\"path\":\"ls\"}\n",
+   "stderr_contains": [
+    "Corrected from: --limt"
+   ]
+  },
+  {
+   "name": "autocorrect flag beats the environment",
+   "tree": "main",
+   "args": [
+    "--autocorrect",
+    "off",
+    "ls",
+    "--limt",
+    "5"
+   ],
+   "exit": 2,
+   "env": {
+    "KIT_AUTOCORRECT": "read"
+   },
+   "stderr_contains": [
+    "USAGE: unknown flag --limt",
+    "Fix: --limit"
+   ]
+  },
+  {
+   "name": "autocorrect off by default",
+   "tree": "main",
+   "args": [
+    "ls",
+    "--limt",
+    "5"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE: unknown flag --limt"
+   ]
+  },
+  {
+   "name": "help hides the management group",
+   "tree": "main",
+   "args": [
+    "--help"
+   ],
+   "exit": 0,
+   "stdout_contains": [
+    "deploy",
+    "ls",
+    "router",
+    "--help-all"
+   ],
+   "stdout_omits": [
+    "completion"
+   ]
+  },
+  {
+   "name": "help-all shows the management group",
+   "tree": "main",
+   "args": [
+    "--help-all"
+   ],
+   "exit": 0,
+   "stdout_contains": [
+    "deploy",
+    "completion"
+   ]
+  },
+  {
+   "name": "help-management shows only that group",
+   "tree": "main",
+   "args": [
+    "--help-management"
+   ],
+   "exit": 0,
+   "stdout_contains": [
+    "completion"
+   ],
+   "stdout_omits": [
+    "deploy",
+    "router"
+   ]
+  },
+  {
+   "name": "bare root prints help",
+   "tree": "main",
+   "args": [],
+   "exit": 0,
+   "stdout_contains": [
+    "deploy",
+    "ls",
+    "router"
+   ],
+   "stdout_omits": [
+    "completion"
+   ]
+  }
+ ]
+}

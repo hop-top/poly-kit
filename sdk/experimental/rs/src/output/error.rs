@@ -179,6 +179,10 @@ pub struct CliError {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub alternatives: Vec<String>,
     pub exit_code: i32,
+    /// The token the caller typed when kit's opt-in flag autocorrect
+    /// rewrote it; absent on every invocation nothing was corrected on.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub corrected_from: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub transience: String,
 }
@@ -378,6 +382,9 @@ fn render_error_plain(out: &mut dyn Write, err: &CliError) -> std::io::Result<()
     }
     if !err.cause.is_empty() {
         writeln!(out, "Cause: {}", err.cause)?;
+    }
+    if !err.corrected_from.is_empty() {
+        writeln!(out, "Corrected from: {}", err.corrected_from)?;
     }
     if !err.suggested_fix.is_empty() {
         writeln!(out, "Fix: {}", err.suggested_fix)?;

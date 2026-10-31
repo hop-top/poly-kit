@@ -611,28 +611,23 @@
       "tree": "main"
     },
     {
-      "name": "deep alias shim offers none of the target's flags",
+      "name": "deep alias shim offers the root flags and its own help",
       "tree": "main",
+      "no_desc": true,
       "args": [
         "rs",
-        "--l"
+        "--"
       ],
       "stdout": [
+        "--format",
+        "--no-color",
+        "--no-hints",
+        "--offline",
+        "--quiet",
+        "--verbose",
+        "--help",
         ":4"
       ]
-    },
-    {
-      "name": "deep alias shim offers its own help flag",
-      "tree": "main",
-      "args": [
-        "rs",
-        "--h"
-      ],
-      "stdout": [
-        "--help\thelp for rs",
-        ":4"
-      ],
-      "stderr_contains": "Completion ended with directive: ShellCompDirectiveNoFileComp"
     },
     {
       "name": "a local flag stops subcommand listing",

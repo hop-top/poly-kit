@@ -9,14 +9,16 @@ use std::fmt;
 use std::io::{self, Write};
 use std::sync::Arc;
 
-use clap::{Arg, Command};
+use clap::{Arg, ArgAction, Command};
 
 use super::completion::{
     self, completion_command, func, resolve, Completer, Context, Directive, Shell, COMPLETION,
     NO_DESC_FLAG, NO_DESC_REQUEST_CMD, REQUEST_CMD,
 };
 use super::completion_spec::{write_export, FIG, USAGE};
+use super::config::{Config, GlobalKind};
 use super::enums::apply_enum_help;
+use super::run::HandlerFn;
 
 const MANAGEMENT: &str = "management";
 
@@ -49,6 +51,10 @@ pub struct Root {
     flag_completers: HashMap<(String, String), Arc<dyn Completer>>,
     args_completers: HashMap<String, Arc<dyn Completer>>,
     completion_disabled: bool,
+    pub(super) config: Option<Config>,
+    pub(super) annotations: HashMap<String, BTreeMap<String, String>>,
+    pub(super) handlers: HashMap<String, Arc<HandlerFn>>,
+    pub(super) groups: HashMap<String, String>,
 }
 
 impl fmt::Debug for Root {
@@ -70,7 +76,100 @@ impl Root {
             flag_completers: HashMap::new(),
             args_completers: HashMap::new(),
             completion_disabled: false,
+            config: None,
+            annotations: HashMap::new(),
+            handlers: HashMap::new(),
+            groups: HashMap::new(),
         }
+    }
+
+    /// A kit root: the persistent flags (`--format`, `--quiet`,
+    /// `-V/--verbose`, `--no-color`, `--no-hints`, `--offline`, the
+    /// hidden `-C/--chdir`, `-c/--config`, `--dry-run`, `--autocorrect`),
+    /// the tool's own globals, `-v/--version` and the `--help-all` /
+    /// `--help-<group>` flags, as Go's `cli.New` registers them. Add
+    /// the CLI's commands with [`Root::add_command`].
+    pub fn with_config(cfg: Config) -> Root {
+        let mut root = Root::new(base_command(&cfg));
+        root.config = Some(cfg);
+        root
+    }
+
+    /// Adds a command (with its subtree) to the root.
+    pub fn add_command(&mut self, cmd: Command) -> &mut Root {
+        let c = std::mem::take(&mut self.cmd);
+        self.cmd = c.subcommand(cmd);
+        self
+    }
+
+    /// Puts the root subcommand `name` in help group `id`; a hidden
+    /// group (`management`, or one declared hidden in [`Config`]) keeps
+    /// it out of default help.
+    pub fn set_group(&mut self, name: &str, id: &str) -> &mut Root {
+        self.groups.insert(name.to_string(), id.to_string());
+        self
+    }
+
+    /// Sets a `kit/*` annotation on the command at `path`
+    /// (space-separated), as Go's `cmd.Annotations`.
+    pub fn annotate(&mut self, path: &str, key: &str, value: &str) -> &mut Root {
+        self.annotations
+            .entry(normalize(path))
+            .or_default()
+            .insert(key.to_string(), value.to_string());
+        self
+    }
+
+    /// Declares the `kit/side-effect` tier of the command at `path`
+    /// (`read`, `write`, `destructive`, ...).
+    pub fn set_side_effect(&mut self, path: &str, tier: &str) -> &mut Root {
+        self.annotate(path, super::model::SIDE_EFFECT, tier)
+    }
+
+    /// Registers the handler [`Root::execute`] runs for the command at
+    /// `path`: a command with a handler is invocable, one without is
+    /// only a group.
+    pub fn handle<F>(&mut self, path: &str, f: F) -> &mut Root
+    where
+        F: Fn(
+                &super::run::Invocation,
+                &mut dyn Write,
+                &mut dyn Write,
+            ) -> Result<(), crate::output::CliError>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.handlers.insert(normalize(path), Arc::new(f));
+        self
+    }
+
+    pub(super) fn group_of(&self, path: &[String]) -> Option<String> {
+        match path {
+            [name] => self
+                .groups
+                .get(name)
+                .cloned()
+                .or_else(|| self.command_group(name).map(str::to_string)),
+            _ => None,
+        }
+    }
+
+    pub(super) fn annotations_of(&self, path: &str) -> BTreeMap<String, String> {
+        self.annotations.get(path).cloned().unwrap_or_default()
+    }
+
+    pub(super) fn is_alias_shim(&self, path: &str) -> bool {
+        self.aliases.contains_key(path)
+    }
+
+    /// The ids of the hidden help groups.
+    fn hidden_groups(&self) -> Vec<String> {
+        let mut out = vec![MANAGEMENT.to_string()];
+        if let Some(cfg) = &self.config {
+            out.extend(cfg.groups.iter().filter(|g| g.hidden).map(|g| g.id.clone()));
+        }
+        out
     }
 
     /// Drops the built-in `completion` command, its spec exports
@@ -106,15 +205,42 @@ impl Root {
         if self.has_builtin_completion() {
             cmd = cmd.subcommand(completion_command(self.cmd.get_name()));
         }
+        let hidden = self.hidden_groups();
+        for (name, id) in &self.groups {
+            if hidden.contains(id) {
+                cmd = cmd.mut_subcommand(name, |c| c.hide(true));
+            }
+        }
         apply_enum_help(cmd, "", &self.enums)
     }
 
     /// [`Root::command`] with the management group shown, the analogue
     /// of Go's `--help-all`.
     pub fn help_all_command(&self) -> Command {
-        let cmd = self.command();
+        let mut cmd = self.command();
         if self.has_builtin_completion() {
-            return cmd.mut_subcommand(COMPLETION, |c| c.hide(false));
+            cmd = cmd.mut_subcommand(COMPLETION, |c| c.hide(false));
+        }
+        for (name, id) in &self.groups {
+            if self.hidden_groups().contains(id) {
+                cmd = cmd.mut_subcommand(name, |c| c.hide(false));
+            }
+        }
+        cmd
+    }
+
+    /// [`Root::command`] showing only the commands of group `id`
+    /// (`--help-<id>`): the other root subcommands are hidden.
+    pub fn help_group_command(&self, id: &str) -> Command {
+        let mut cmd = self.help_all_command();
+        let names: Vec<String> = cmd
+            .get_subcommands()
+            .map(|c| c.get_name().to_string())
+            .collect();
+        for n in names {
+            if self.command_group(&n) != Some(id) {
+                cmd = cmd.mut_subcommand(&n, |c| c.hide(true));
+            }
         }
         cmd
     }
@@ -122,6 +248,9 @@ impl Root {
     /// The help group of a root subcommand: `management` for the
     /// built-in `completion`; `None` for the default group.
     pub fn command_group(&self, name: &str) -> Option<&str> {
+        if let Some(id) = self.groups.get(name) {
+            return Some(id.as_str());
+        }
         (name == COMPLETION && self.has_builtin_completion()).then_some(MANAGEMENT)
     }
 
@@ -388,4 +517,151 @@ pub(super) fn find_path<'a>(root: &'a Command, words: &[String]) -> Option<&'a C
     words.iter().try_fold(root, |cur, w| {
         cur.get_subcommands().find(|c| c.get_name() == w)
     })
+}
+
+/// The root command of a kit config: persistent flags, version, help
+/// group flags.
+fn base_command(cfg: &Config) -> Command {
+    let version = cfg.version.trim_start_matches('v').to_string();
+    let mut cmd = Command::new(cfg.name.clone())
+        .about(cfg.short.clone())
+        .version(format!("v{version}"))
+        .disable_version_flag(true)
+        .arg(
+            Arg::new("version")
+                .short('v')
+                .long("version")
+                .action(ArgAction::Version)
+                .help(format!("Version for {}", cfg.name)),
+        );
+    let d = cfg.disable;
+    if !d.quiet {
+        cmd = cmd.arg(
+            Arg::new("quiet")
+                .long("quiet")
+                .action(ArgAction::SetTrue)
+                .global(true)
+                .help("Suppress non-essential output"),
+        );
+    }
+    cmd = cmd.arg(
+        Arg::new("verbose")
+            .long("verbose")
+            .short('V')
+            .action(ArgAction::Count)
+            .global(true)
+            .help("Increase log verbosity (-V=debug, -VV=trace)"),
+    );
+    if !d.no_color {
+        cmd = cmd.arg(
+            Arg::new("no-color")
+                .long("no-color")
+                .action(ArgAction::SetTrue)
+                .global(true)
+                .help("Disable ANSI color"),
+        );
+    }
+    if !d.chdir {
+        cmd = cmd.arg(
+            Arg::new("chdir")
+                .long("chdir")
+                .short('C')
+                .global(true)
+                .hide(true)
+                .help("Change directory before running (path or tool-specific target)"),
+        );
+    }
+    if !d.config {
+        cmd = cmd.arg(
+            Arg::new("config")
+                .long("config")
+                .short('c')
+                .action(ArgAction::Append)
+                .global(true)
+                .hide(true)
+                .help(
+                    "Layer extra config (repeatable). key=value overrides a single value \
+                     (dotted keys for nesting; value parses as YAML, falls back to literal). \
+                     A bare path loads an additional config file after the discovered ones. \
+                     -c tokens win over file layers.",
+                ),
+        );
+    }
+    if !d.format {
+        let (c, _) = crate::output::register_output_flags(cmd, Default::default());
+        cmd = c;
+    }
+    if !d.hints {
+        cmd = cmd.arg(
+            Arg::new("no-hints")
+                .long("no-hints")
+                .action(ArgAction::SetTrue)
+                .global(true)
+                .help("Suppress next-step hints after command output"),
+        );
+    }
+    if !d.dry_run {
+        cmd = cmd.arg(
+            Arg::new("dry-run")
+                .long("dry-run")
+                .action(ArgAction::SetTrue)
+                .global(true)
+                .hide(true)
+                .help("Preview side effects without applying them (must be supported by the command)."),
+        );
+    }
+    cmd = cmd
+        .arg(
+            Arg::new("autocorrect")
+                .long("autocorrect")
+                .global(true)
+                .hide(true)
+                .help(
+                    "Act on a mistyped flag's correction (off|prompt|read). Default: off \
+                     (suggest only). read applies it on read-only commands; prompt asks on a TTY.",
+                ),
+        )
+        .arg(
+            Arg::new("offline")
+                .long("offline")
+                .action(ArgAction::SetTrue)
+                .global(true)
+                .help("Disable network access"),
+        );
+    for g in &cfg.globals {
+        let mut a = Arg::new(g.name.clone())
+            .long(g.name.clone())
+            .global(true)
+            .help(g.usage.clone());
+        if let Some(s) = g.short {
+            a = a.short(s);
+        }
+        a = match g.kind {
+            GlobalKind::Bool => a.action(ArgAction::SetTrue),
+            GlobalKind::Int => a.value_parser(clap::value_parser!(i64)),
+            GlobalKind::String => a,
+        };
+        if let Some(def) = &g.default {
+            a = a.default_value(def.clone());
+        }
+        cmd = cmd.arg(a);
+    }
+    // Help group flags: root-local switches `--help-all` and one per group.
+    cmd = cmd.arg(
+        Arg::new("help-all")
+            .long("help-all")
+            .action(ArgAction::SetTrue)
+            .help("Show all commands and global flags"),
+    );
+    let mut ids = vec![MANAGEMENT.to_string()];
+    ids.extend(cfg.groups.iter().map(|g| g.id.clone()));
+    for id in ids {
+        cmd = cmd.arg(
+            Arg::new(format!("help-{id}"))
+                .long(format!("help-{id}"))
+                .action(ArgAction::SetTrue)
+                .help(format!("Show only {id} commands")),
+        );
+    }
+    cmd
 }

@@ -184,6 +184,7 @@ fn golden_error_envelope_full() {
         suggested_fix: "try --all".to_string(),
         alternatives: vec!["other".to_string(), "yes".to_string(), "123".to_string()],
         exit_code: 3,
+        corrected_from: String::new(),
         transience: "permanent".to_string(),
     };
     assert_eq!(error_yaml(&err), "code: NOT_FOUND\nmessage: 'missing: thing'\ncause: |-\n  root\n  cause\nsuggested_fix: try --all\nalternatives:\n- other\n- yes\n- '123'\nexit_code: 3\ntransience: permanent\n");

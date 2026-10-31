@@ -10,11 +10,19 @@
 mod alias;
 pub mod completion;
 pub mod completion_spec;
+pub mod config;
 mod enums;
+pub mod model;
 mod root;
+mod run;
+mod usage;
 
 pub use alias::{
     detect_cycles, validate_alias_name, AliasError, AliasHelp, AliasNameError, AliasNameErrorKind,
     AliasNameRules, AliasOptions, SHIM_ARGS,
 };
+pub use config::{Config, Disable, GlobalFlag, GlobalKind, GroupConfig};
+pub use model::{ArgInfo, CommandInfo, FlagInfo, FlagKind, SIDE_EFFECT};
 pub use root::Root;
+pub use run::{Globals, HandlerFn, Invocation, AUTOCORRECT_ENV};
+pub use usage::AutocorrectMode;
