@@ -1,0 +1,822 @@
+{
+  "version": "v1",
+  "now": "2026-10-31T12:00:00Z",
+  "secret_parts": [
+    "kit-",
+    "fixture-",
+    "secret"
+  ],
+  "hmac_vectors": [
+    {
+      "hash": "sha256",
+      "encoding": "hex",
+      "prefix": "sha256=",
+      "timestamp": "",
+      "body": "{\"a\":1}",
+      "expected": "sha256=4a4c260a5cf3f560078b84bf1ff339fb89f10e70e73b3933cfaf21a51c9c6dbb"
+    },
+    {
+      "hash": "sha256",
+      "encoding": "hex",
+      "prefix": "",
+      "timestamp": "",
+      "body": "payload",
+      "expected": "d9381904dbfac03c7b40fbfaa7cc36cbd5ed2ad6786e7e1f6b79085d816cdec7"
+    },
+    {
+      "hash": "sha1",
+      "encoding": "hex",
+      "prefix": "sha1=",
+      "timestamp": "",
+      "body": "{\"a\":1}",
+      "expected": "sha1=f50ce7eaf1448cba62d70b2ece1ed93f608f9c0c"
+    },
+    {
+      "hash": "sha512",
+      "encoding": "base64",
+      "prefix": "",
+      "timestamp": "",
+      "body": "{\"a\":1}",
+      "expected": "p7eOaev7PCpy+qlRC32+ahibB2e22vJ6GZQneNMkKISBU/UXb5rTgGsFCWh31Z2wuNnlWOYeBuCyi5nw4kuT5g=="
+    },
+    {
+      "hash": "sha256",
+      "encoding": "hex",
+      "prefix": "sha256=",
+      "timestamp": "1793448000",
+      "body": "{\"a\":1}",
+      "expected": "sha256=56aa0ce22f708e8b25fd0d93ce579a11e8fc26428446a0030130202d23a0e763"
+    }
+  ],
+  "cases": [
+    {
+      "name": "graph: validationToken handshake (GET) echoes the decoded token",
+      "preset": "graph",
+      "config": {
+        "client_state": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "target": "/hook?validationToken=abc%20123%2B%3D",
+          "want": {
+            "status": 200,
+            "content_type": "text/plain; charset=utf-8",
+            "body": "abc 123+=",
+            "published": 0
+          },
+          "headers": {},
+          "body": ""
+        }
+      ]
+    },
+    {
+      "name": "graph: validationToken handshake (POST) needs no signature",
+      "preset": "graph",
+      "config": {
+        "client_state": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "target": "/hook?validationToken=tok",
+          "want": {
+            "status": 200,
+            "body": "tok",
+            "published": 0
+          },
+          "method": "POST",
+          "headers": {},
+          "body": ""
+        }
+      ]
+    },
+    {
+      "name": "graph: change notification is published, a repeat is acknowledged once",
+      "preset": "graph",
+      "config": {
+        "client_state": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"value\":[{\"subscriptionId\":\"s1\",\"changeType\":\"created\",\"resource\":\"users/u/messages/m1\",\"clientState\":\"{{SECRET}}\",\"tenantId\":\"t\"}]}",
+          "want": {
+            "status": 202,
+            "published": 1,
+            "topic": "kit.webhook.notification.received",
+            "encoding": "json",
+            "kind": "notification"
+          },
+          "method": "POST",
+          "target": "/hook"
+        },
+        {
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"value\":[{\"subscriptionId\":\"s1\",\"changeType\":\"created\",\"resource\":\"users/u/messages/m1\",\"clientState\":\"{{SECRET}}\",\"tenantId\":\"t\"}]}",
+          "want": {
+            "status": 200,
+            "body_json": {
+              "status": "duplicate"
+            },
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook"
+        }
+      ]
+    },
+    {
+      "name": "graph: wrong clientState is refused without detail",
+      "preset": "graph",
+      "config": {
+        "client_state": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "body": "{\"value\":[{\"subscriptionId\":\"s1\",\"changeType\":\"created\",\"resource\":\"users/u/messages/m1\",\"clientState\":\"nope\",\"tenantId\":\"t\"}]}",
+          "want": {
+            "status": 401,
+            "code": "webhook_unverified",
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        }
+      ]
+    },
+    {
+      "name": "graph: one bad clientState among good ones refuses the delivery",
+      "preset": "graph",
+      "config": {
+        "client_state": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "body": "{\"value\": [{\"clientState\": \"{{SECRET}}\"}, {\"clientState\": \"x\"}]}",
+          "want": {
+            "status": 401,
+            "code": "webhook_unverified",
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        }
+      ]
+    },
+    {
+      "name": "graph: no notifications is refused",
+      "preset": "graph",
+      "config": {
+        "client_state": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "body": "{\"value\":[]}",
+          "want": {
+            "status": 401,
+            "code": "webhook_unverified",
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        },
+        {
+          "body": "not json",
+          "want": {
+            "status": 401,
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        }
+      ]
+    },
+    {
+      "name": "graph: lifecycle notice goes to the lifecycle topic",
+      "preset": "graph",
+      "config": {
+        "client_state": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "body": "{\"value\": [{\"lifecycleEvent\": \"reauthorizationRequired\", \"subscriptionId\": \"s1\", \"clientState\": \"{{SECRET}}\"}]}",
+          "want": {
+            "status": 202,
+            "published": 1,
+            "topic": "kit.webhook.lifecycle.received",
+            "kind": "lifecycle"
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        }
+      ]
+    },
+    {
+      "name": "graph: a plain GET is not a webhook",
+      "preset": "graph",
+      "config": {
+        "client_state": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "method": "GET",
+          "want": {
+            "status": 405,
+            "published": 0
+          },
+          "target": "/hook",
+          "headers": {},
+          "body": ""
+        }
+      ]
+    },
+    {
+      "name": "pipedrive: v2 event keyed by meta.id, a redelivery with another body is a repeat",
+      "preset": "pipedrive",
+      "config": {
+        "user": "hook",
+        "password": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "basic": {
+            "user": "hook",
+            "password": "{{SECRET}}"
+          },
+          "body": "{\"meta\":{\"id\":\"evt-1\",\"action\":\"change\",\"entity\":\"deal\",\"entity_id\":\"1\"},\"data\":{\"id\":1,\"title\":\"Deal\"},\"previous\":{\"title\":\"Old\"}}",
+          "want": {
+            "status": 202,
+            "published": 1,
+            "key": "evt-1",
+            "topic": "kit.webhook.notification.received"
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        },
+        {
+          "basic": {
+            "user": "hook",
+            "password": "{{SECRET}}"
+          },
+          "body": "{\"meta\":{\"id\":\"evt-1\",\"action\":\"change\",\"entity\":\"deal\",\"entity_id\":\"1\"},\"data\":{\"id\":1,\"title\":\"Deal!\"},\"previous\":{\"title\":\"Old\"}}",
+          "want": {
+            "status": 200,
+            "body_json": {
+              "status": "duplicate"
+            },
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        },
+        {
+          "basic": {
+            "user": "hook",
+            "password": "{{SECRET}}"
+          },
+          "body": "{\"meta\":{\"id\":\"evt-2\",\"action\":\"change\",\"entity\":\"deal\",\"entity_id\":\"1\"},\"data\":{\"id\":1,\"title\":\"Deal\"},\"previous\":{\"title\":\"Old\"}}",
+          "want": {
+            "status": 202,
+            "published": 2,
+            "key": "evt-2"
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        }
+      ]
+    },
+    {
+      "name": "pipedrive: wrong or missing credentials are refused",
+      "preset": "pipedrive",
+      "config": {
+        "user": "hook",
+        "password": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "basic": {
+            "user": "hook",
+            "password": "wrong"
+          },
+          "body": "{\"meta\":{\"id\":\"e\",\"action\":\"change\",\"entity\":\"deal\",\"entity_id\":\"1\"},\"data\":{\"id\":1,\"title\":\"Deal\"},\"previous\":{\"title\":\"Old\"}}",
+          "want": {
+            "status": 401,
+            "code": "webhook_unverified",
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        },
+        {
+          "body": "{\"meta\":{\"id\":\"e\",\"action\":\"change\",\"entity\":\"deal\",\"entity_id\":\"1\"},\"data\":{\"id\":1,\"title\":\"Deal\"},\"previous\":{\"title\":\"Old\"}}",
+          "want": {
+            "status": 401,
+            "code": "webhook_unverified",
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        },
+        {
+          "basic": {
+            "user": "other",
+            "password": "{{SECRET}}"
+          },
+          "body": "{\"meta\":{\"id\":\"e\",\"action\":\"change\",\"entity\":\"deal\",\"entity_id\":\"1\"},\"data\":{\"id\":1,\"title\":\"Deal\"},\"previous\":{\"title\":\"Old\"}}",
+          "want": {
+            "status": 401,
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        }
+      ]
+    },
+    {
+      "name": "pipedrive: replay window on meta.timestamp",
+      "preset": "pipedrive",
+      "config": {
+        "user": "hook",
+        "password": "{{SECRET}}",
+        "replay_window_seconds": 300
+      },
+      "requests": [
+        {
+          "basic": {
+            "user": "hook",
+            "password": "{{SECRET}}"
+          },
+          "body": "{\"meta\":{\"id\":\"a\",\"action\":\"change\",\"entity\":\"deal\",\"entity_id\":\"1\",\"timestamp\":\"2026-10-31T11:58:00.000Z\"},\"data\":{\"id\":1,\"title\":\"Deal\"},\"previous\":{\"title\":\"Old\"}}",
+          "want": {
+            "status": 202,
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        },
+        {
+          "basic": {
+            "user": "hook",
+            "password": "{{SECRET}}"
+          },
+          "body": "{\"meta\":{\"id\":\"b\",\"action\":\"change\",\"entity\":\"deal\",\"entity_id\":\"1\",\"timestamp\":\"2026-10-31T11:50:00Z\"},\"data\":{\"id\":1,\"title\":\"Deal\"},\"previous\":{\"title\":\"Old\"}}",
+          "want": {
+            "status": 401,
+            "code": "webhook_stale",
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        },
+        {
+          "basic": {
+            "user": "hook",
+            "password": "{{SECRET}}"
+          },
+          "body": "{\"meta\":{\"id\":\"c\",\"action\":\"change\",\"entity\":\"deal\",\"entity_id\":\"1\",\"timestamp\":\"2026-10-31T12:10:00Z\"},\"data\":{\"id\":1,\"title\":\"Deal\"},\"previous\":{\"title\":\"Old\"}}",
+          "want": {
+            "status": 401,
+            "code": "webhook_stale",
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        },
+        {
+          "basic": {
+            "user": "hook",
+            "password": "{{SECRET}}"
+          },
+          "body": "{\"meta\":{\"id\":\"d\",\"action\":\"change\",\"entity\":\"deal\",\"entity_id\":\"1\"},\"data\":{\"id\":1,\"title\":\"Deal\"},\"previous\":{\"title\":\"Old\"}}",
+          "want": {
+            "status": 401,
+            "code": "webhook_stale",
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        }
+      ]
+    },
+    {
+      "name": "pipedrive: no meta.id falls back to the body hash",
+      "preset": "pipedrive",
+      "config": {
+        "user": "hook",
+        "password": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "basic": {
+            "user": "hook",
+            "password": "{{SECRET}}"
+          },
+          "body": "{\"data\":{\"id\":1}}",
+          "want": {
+            "status": 202,
+            "published": 1,
+            "key": "5536b3e7d68e0454901bff2b9f745180d5908fe104906c0b551bc27a5ba6af2b"
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        },
+        {
+          "basic": {
+            "user": "hook",
+            "password": "{{SECRET}}"
+          },
+          "body": "{\"data\":{\"id\":1}}",
+          "want": {
+            "status": 200,
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        }
+      ]
+    },
+    {
+      "name": "hmac: valid signature is published as JSON",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Signature",
+        "hash": "sha256",
+        "encoding": "hex",
+        "prefix": "sha256=",
+        "secret": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256="
+          },
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"event\":\"ping\"}",
+          "want": {
+            "status": 202,
+            "published": 1,
+            "encoding": "json"
+          },
+          "method": "POST",
+          "target": "/hook"
+        }
+      ]
+    },
+    {
+      "name": "hmac: bad, missing and tampered signatures are refused",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Signature",
+        "hash": "sha256",
+        "encoding": "hex",
+        "prefix": "sha256=",
+        "secret": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "headers": {
+            "X-Signature": "sha256=00"
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 401,
+            "code": "webhook_unverified",
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook"
+        },
+        {
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 401,
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        },
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256="
+          },
+          "tamper": true,
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 401,
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        }
+      ]
+    },
+    {
+      "name": "hmac: base64 sha512 variant",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Hub",
+        "hash": "sha512",
+        "encoding": "base64",
+        "prefix": "",
+        "secret": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "sign": {
+            "header": "X-Hub",
+            "hash": "sha512",
+            "encoding": "base64",
+            "prefix": ""
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 202,
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        }
+      ]
+    },
+    {
+      "name": "hmac: non-JSON body is published base64",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Signature",
+        "hash": "sha256",
+        "encoding": "hex",
+        "prefix": "sha256=",
+        "secret": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256="
+          },
+          "headers": {
+            "Content-Type": "text/plain"
+          },
+          "body": "plain text",
+          "want": {
+            "status": 202,
+            "published": 1,
+            "encoding": "base64"
+          },
+          "method": "POST",
+          "target": "/hook"
+        }
+      ]
+    },
+    {
+      "name": "hmac: signed timestamp, replay window and key header",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Signature",
+        "hash": "sha256",
+        "encoding": "hex",
+        "prefix": "sha256=",
+        "secret": "{{SECRET}}",
+        "timestamp_header": "X-Timestamp",
+        "replay_window_seconds": 300,
+        "key_header": "X-Delivery-Id"
+      },
+      "requests": [
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256=",
+            "timestamp_header": "X-Timestamp"
+          },
+          "headers": {
+            "X-Timestamp": "1793447990",
+            "X-Delivery-Id": "d--10"
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 202,
+            "published": 1,
+            "key": "d--10"
+          },
+          "method": "POST",
+          "target": "/hook"
+        },
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256=",
+            "timestamp_header": "X-Timestamp"
+          },
+          "headers": {
+            "X-Timestamp": "1793447990",
+            "X-Delivery-Id": "d--10"
+          },
+          "body": "{\"a\":2}",
+          "want": {
+            "status": 200,
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook"
+        },
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256=",
+            "timestamp_header": "X-Timestamp"
+          },
+          "headers": {
+            "X-Timestamp": "1793447699",
+            "X-Delivery-Id": "d--301"
+          },
+          "body": "{\"a\":3}",
+          "want": {
+            "status": 401,
+            "code": "webhook_stale",
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook"
+        },
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256=",
+            "timestamp_header": "X-Timestamp"
+          },
+          "headers": {
+            "X-Timestamp": "1793448301",
+            "X-Delivery-Id": "d-301"
+          },
+          "body": "{\"a\":3}",
+          "want": {
+            "status": 401,
+            "code": "webhook_stale",
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook"
+        },
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256=",
+            "timestamp_header": "X-Timestamp"
+          },
+          "headers": {
+            "X-Timestamp": "1793448300",
+            "X-Delivery-Id": "d-300"
+          },
+          "body": "{\"a\":4}",
+          "want": {
+            "status": 202,
+            "published": 2
+          },
+          "method": "POST",
+          "target": "/hook"
+        },
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256="
+          },
+          "headers": {
+            "X-Timestamp": "1793447995",
+            "X-Delivery-Id": "d--5"
+          },
+          "body": "{\"a\":5}",
+          "want": {
+            "status": 401,
+            "code": "webhook_unverified",
+            "published": 2
+          },
+          "method": "POST",
+          "target": "/hook"
+        }
+      ]
+    },
+    {
+      "name": "hmac: body over the limit is refused 413",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Signature",
+        "hash": "sha256",
+        "encoding": "hex",
+        "prefix": "sha256=",
+        "secret": "{{SECRET}}",
+        "max_body": 16
+      },
+      "requests": [
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256="
+          },
+          "body": "{\"a\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}",
+          "want": {
+            "status": 413,
+            "code": "body_too_large",
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        }
+      ]
+    },
+    {
+      "name": "hmac: publish failure releases the claim so the retry is processed",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Signature",
+        "hash": "sha256",
+        "encoding": "hex",
+        "prefix": "sha256=",
+        "secret": "{{SECRET}}",
+        "publish_failures": 1
+      },
+      "requests": [
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256="
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 503,
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        },
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256="
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 202,
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        }
+      ]
+    }
+  ]
+}

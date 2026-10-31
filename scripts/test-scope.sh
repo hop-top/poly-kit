@@ -68,6 +68,7 @@ test-parity-typeid go/core/id/... $RS,$TS,$PY,$PHP
 test-parity-consent go/core/consent $RS
 test-parity-authn go/transport/authn $RS
 test-parity-api go/transport/api $RS
+test-parity-webhook go/transport/webhook $RS
 test-parity-breaker go/core/breaker $RS
 test-parity-bus go/runtime/bus $RS
 test-parity-bus-network sdk/tests/cross-lang/bus-network/gonode $RS
