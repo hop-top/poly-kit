@@ -2,9 +2,9 @@
 	clients-php clients-rs clients-test clients-ts job-integration-hatchet job-integration-restate \
 	job-integration-temporal job-test lint lint-all lint-config lint-docs lint-go lint-links lint-lock-php \
 	check-toolchain-parity lint-actions-pinned lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-sdk-paths-all lint-templates lint-ts openapi \
-	preflight promote promote-beta promote-rc promote-open-line proto proto-check refresh-pii-rules \
+	preflight promote promote-beta promote-rc promote-open-line proto proto-check proto-rs proto-rs-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	completion-regen test-parity test-parity-api test-parity-webhook test-parity-authn test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
+	completion-regen test-parity test-parity-api test-parity-webhook test-parity-authn test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-rpc test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-identity test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	test-php test-py test-py-sdk test-py-engine \
 	test-release test-rs test-rs-wasm test-templates test-ts test-ts-sdk test-ts-engine \
@@ -308,7 +308,7 @@ test-rs-wasm: ## Rust: bus, domain, breaker, policy, notify, sideeffect, sync an
 # scripts/test-scope.sh maps each prerequisite to its Go packages and
 # SDKs (PARITY_TABLE) so a pull request runs only the targets it
 # reaches; a prerequisite missing from that table always runs.
-test-parity: test-parity-typeid test-parity-api test-parity-webhook test-parity-authn test-parity-consent test-parity-breaker test-parity-blob test-parity-bus test-parity-blob test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-api test-parity-webhook test-parity-authn test-parity-consent test-parity-breaker test-parity-blob test-parity-bus test-parity-blob test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-rpc test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
 test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-identity test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
 
 test-parity-cli: ## spaced CLI parity: Go, TypeScript and Python builds of the example agree
@@ -539,6 +539,12 @@ test-parity-completion: ## completion-v1 conformance corpus (Go, Rust and TS run
 	cd sdk/experimental/rs && cargo test --features cli,config --test cli_completion_conformance --locked
 	@echo "==> completion-v1 conformance: TS"
 	cd sdk/ts && pnpm vitest run src/completion.conformance.test.ts
+
+test-parity-rpc: ## rpc-v1 conformance corpus (Go and Rust runners)
+	@echo "==> rpc-v1 conformance: Go"
+	go test ./go/transport/rpc/ -run '^TestConformanceRPC' -count=1
+	@echo "==> rpc-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features rpc-server --test rpc_conformance --locked
 
 test-parity-netpolicy: ## netpolicy-v1 conformance corpus (Go and Rust runners)
 	@echo "==> netpolicy-v1 conformance: Go"
@@ -907,6 +913,24 @@ proto-check: ## Lint pinned protos, regenerate their stubs, fail on drift
 		exit 1; \
 	fi
 	@echo "Generated protobuf stubs match their .proto sources."
+
+# kit-rs stubs come from LOCAL plugins pinned in buf.gen.rs.yaml (built
+# from crates.io; install commands are in that file), so they are not part
+# of `proto` / `proto-check`, which need only buf and the remote plugins.
+PROTO_RS_OUT := sdk/experimental/rs/src/rpc/gen
+
+proto-rs: ## Generate the kit-rs RPC stubs (needs the pinned local plugins on PATH)
+	cd contracts/proto/crud/v1 && buf generate --template buf.gen.rs.yaml
+
+proto-rs-check: ## Regenerate the kit-rs RPC stubs, fail on drift
+	$(MAKE) proto-rs
+	@if ! git diff --exit-code --stat -- $(PROTO_RS_OUT) \
+		|| [ -n "$$(git status --porcelain --untracked-files=all -- $(PROTO_RS_OUT))" ]; then \
+		git status --short -- $(PROTO_RS_OUT); \
+		echo "kit-rs RPC stubs are stale: run 'make proto-rs' and commit the result."; \
+		exit 1; \
+	fi
+	@echo "kit-rs RPC stubs match their .proto source."
 
 openapi: ## Print OpenAPI extraction instructions (requires running server)
 	@echo "Start server, then: curl http://localhost:8080/openapi.json > openapi.json"

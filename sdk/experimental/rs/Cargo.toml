@@ -220,6 +220,24 @@ api-server = [
     "tokio/net",
 ]
 
+# The RPC server: Connect, gRPC and gRPC-Web on one port (HTTP/1.1 and
+# h2c), a port of go/transport/rpc. `connectrpc` serves the three
+# protocols as a tower service mounted on the `api-server` axum stack
+# (axum's `http2` feature, which connectrpc's `axum` feature enables, is
+# what answers h2c); request body limit and panic recovery are
+# tower-http layers; authentication is `authn`. `buffa` is connectrpc's
+# protobuf runtime and `buffa-types` the well-known types the committed
+# generated code names (crud.v1 payloads are google.protobuf.Struct).
+# Native only.
+rpc-server = [
+    "api-server",
+    "dep:connectrpc",
+    "dep:buffa",
+    "dep:buffa-types",
+    "dep:serde",
+    "dep:futures-util",
+]
+
 # Inbound webhook receiver on the api-server: HMAC signature, clientState
 # and basic-auth verifiers, subscription handshake, replay window,
 # idempotency claim in a kv store (TtlInserter), ack-fast publish to the
@@ -603,6 +621,33 @@ tower = { version = "0.5", default-features = false, features = [
     "util",
 ], optional = true }
 
+# rpc-server: connectrpc =0.9.1 (connectrpc/connect-rust, Apache-2.0,
+# 2026-09-21, passes the ConnectRPC conformance suite) with default
+# features off (no gzip/zstd C build, no standalone server, no client,
+# no TLS) and `axum` + `json` on. 0.9.1 is the floor: RUSTSEC-2026-0304
+# is fixed there. Pre-1.0: exact pin, re-vet each bump. `buffa` is its
+# protobuf runtime (anthropics/buffa, Apache-2.0, 2026-09-03; 0.9.2 is
+# the floor, the GHSA use-after-free/DoS is fixed from 0.8.0) and
+# `buffa-types` its well-known types, same repo and release. Class D2
+# (transport), D3 for the authn interceptor. Rejected: tonic and
+# tonic-web (no Connect protocol), axum-connect (stale, Connect only),
+# connectrpc-axum (single maintainer), prost (runtime mismatch).
+# Transitive additions to the lock (all published >14 days before the
+# pin, none yanked; no existing pin moved): buffa pulls foldhash 0.1.5,
+# hashbrown 0.15.5, smoothutf8 0.2.3, base64 0.22.1; buffa-types pulls
+# jiff 0.2.38 (+ jiff-core, jiff-static) and portable-atomic 1.15.0 /
+# portable-atomic-util 0.2.8 / defmt 1.2.0 (2026-10-15, 15 days old at
+# the pin: hold, do not bump); connectrpc pulls pin-project 1.1.13 and
+# bitflags 1.3.2. No aws-lc-rs, no tokio `full`, no second hyper/axum.
+# Generated code is committed (src/rpc/gen), produced by the pinned
+# plugins in contracts/proto/crud/v1/buf.gen.rs.yaml; no build.rs.
+connectrpc = { version = "=0.9.1", default-features = false, features = [
+    "axum",
+    "json",
+], optional = true }
+buffa = { version = "=0.9.2", optional = true }
+buffa-types = { version = "=0.9.2", features = ["json"], optional = true }
+
 # hmac =0.13.0 (2026-03-29), RustCrypto/MACs, MIT OR Apache-2.0, no
 # advisories at this version; already in the lock (rfc6979, hkdf) on the
 # digest 0.11 generation with sha2 0.11. `Hmac<Sha256>` with
@@ -630,6 +675,13 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 mockito = "1"
 tempfile = "3"
+# The rpc-server tests drive the server with connectrpc's own client over
+# all three protocols; `client` is test-only, the server needs none of it.
+connectrpc = { version = "=0.9.1", default-features = false, features = [
+    "axum",
+    "json",
+    "client",
+] }
 uuid = { version = "1", features = ["v7", "serde"] }
 # Reads the YAML files the consent conformance runner asserts on.
 serde_norway = "0.9"

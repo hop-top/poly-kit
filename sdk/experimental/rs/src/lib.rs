@@ -123,6 +123,8 @@ pub mod mcp;
 #[cfg(feature = "notify")]
 pub mod notify;
 
+#[cfg(feature = "rpc-server")]
+pub mod rpc;
 #[cfg(feature = "serve")]
 pub mod serve;
 #[cfg(all(feature = "socket", unix))]
