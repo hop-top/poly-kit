@@ -256,6 +256,27 @@ fn render_error_plain_lists_each_field() {
     assert_eq!(render("", &bare), "just text\n");
 }
 
+#[test]
+fn corrective_builders_fill_the_envelope() {
+    let err = CliError::not_found("mission not found")
+        .with_cause("no mission matches \"bogux\"")
+        .with_fix("spaced mission list")
+        .with_alternatives(["spaced mission search bogux", "spaced mission new"]);
+    assert_eq!(
+        render("table", &err),
+        "NOT_FOUND: mission not found\nCause: no mission matches \"bogux\"\n\
+         Fix: spaced mission list\n\
+         Alternative: spaced mission search bogux\nAlternative: spaced mission new\n"
+    );
+    let wire: serde_json::Value = serde_json::from_str(&render("json", &err)).unwrap();
+    assert_eq!(wire["suggested_fix"], "spaced mission list");
+    assert_eq!(wire["alternatives"][1], "spaced mission new");
+    // Absent fields stay off the wire.
+    let bare: serde_json::Value =
+        serde_json::from_str(&render("json", &CliError::not_found("x"))).unwrap();
+    assert!(bare.get("cause").is_none() && bare.get("alternatives").is_none());
+}
+
 // --- Display / Error ----------------------------------------------------
 
 #[test]
