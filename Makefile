@@ -463,7 +463,7 @@ test-parity-authn: ## authn-v1 conformance corpus: signed tokens, PEM key ids, A
 	@echo "==> authn-v1 conformance: Go"
 	go test ./go/transport/authn/ -run '^TestAuthnContractVectors' -count=1
 	@echo "==> authn-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features authn-apikeys,authn-rsa --test authn --test authn_apikeys --locked
+	cd sdk/experimental/rs && cargo test --features authn-apikeys,authn-rsa,authn-remote --test authn --test authn_apikeys --test authn_remote --locked
 
 test-parity-redact: ## redact-v1 conformance corpus: rules dump, spans and output (Go and Rust runners)
 	@echo "==> redact-v1 conformance: Go"

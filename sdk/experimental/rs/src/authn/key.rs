@@ -298,23 +298,32 @@ pub fn keys_from_jwks(doc: &[u8]) -> Result<Vec<Key>, AuthnError> {
             "jwks: document larger than {MAX_DOCUMENT_BYTES} bytes"
         )));
     }
-    #[derive(Deserialize)]
-    struct Set {
-        keys: Vec<serde_json::Value>,
-    }
-    let set: Set =
-        serde_json::from_slice(doc).map_err(|e| AuthnError::Config(format!("jwks: {e}")))?;
-    let keys: Vec<Key> = set
-        .keys
-        .into_iter()
-        .filter_map(|v| serde_json::from_value::<Jwk>(v).ok())
-        .filter(|j| j.use_.is_empty() || j.use_ == "sig")
-        .filter_map(|j| j.to_key().ok())
-        .collect();
+    let keys =
+        signing_keys(jwks_members(doc).map_err(|e| AuthnError::Config(format!("jwks: {e}")))?);
     if keys.is_empty() {
         return Err(AuthnError::Config("jwks: holds no signing key".into()));
     }
     Ok(keys)
+}
+
+/// The `keys` members of a JWKS document, unread.
+pub(crate) fn jwks_members(doc: &[u8]) -> Result<Vec<serde_json::Value>, serde_json::Error> {
+    #[derive(Deserialize)]
+    struct Set {
+        keys: Vec<serde_json::Value>,
+    }
+    Ok(serde_json::from_slice::<Set>(doc)?.keys)
+}
+
+/// The usable signing keys among JWKS members: an encryption key or
+/// one of an unsupported type is skipped.
+pub(crate) fn signing_keys(members: Vec<serde_json::Value>) -> Vec<Key> {
+    members
+        .into_iter()
+        .filter_map(|v| serde_json::from_value::<Jwk>(v).ok())
+        .filter(|j| j.use_.is_empty() || j.use_ == "sig")
+        .filter_map(|j| j.to_key().ok())
+        .collect()
 }
 
 fn strip_zeros(mut v: Vec<u8>) -> Vec<u8> {

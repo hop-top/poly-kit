@@ -37,6 +37,8 @@ go test ./go/transport/authn/ -run '^TestAuthnContractVectors$' -update-authn-ve
 
 The keys are throwaway; their private halves are not kept.
 
+Remote JWKS and OIDC discovery are not in the corpus: fetch, cache and refresh rules are pinned by each port's own tests, which share the recorded Google exchanges in `go/transport/authn/testdata/cassettes` (Rust: `tests/authn_remote.rs`).
+
 Consumers:
 
 | Port | Loader |

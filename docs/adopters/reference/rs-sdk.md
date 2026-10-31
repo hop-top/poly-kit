@@ -1189,8 +1189,13 @@ carries the contract; the points that differ from Go:
 - The token and API-key corpus in
   [`contracts/authn-v1`](../../../contracts/authn-v1/README.md) runs in
   both ports (`make test-parity-authn`).
-- Not ported: fetching and caching a remote JWKS or OIDC discovery
-  document. Back a `KeySource` with a guarded fetch.
+- Feature `authn-remote` adds `new_jwks` / `new_oidc`: a JWKS or OIDC
+  discovery document fetched through the netpolicy `GuardedClient`
+  (redirects never followed, 10s timeout, 1 MiB cap) and cached with
+  Go's rules (1h refresh, 1m `min_refresh`, unknown-kid refetch, last
+  good set kept). `lookup` is synchronous, so a fetch blocks its caller
+  as in Go; the request runs on a private runtime on a helper thread.
+  Inject a `Fetch` to use another transport.
 
 
 ## REST server
