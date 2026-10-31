@@ -21,7 +21,7 @@ mod tests {
     fn contract() -> serde_json::Value {
         let path = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../contracts/parity/parity.json"
+            "/../../contracts/parity/parity.json"
         );
         serde_json::from_str(&std::fs::read_to_string(path).expect("parity.json")).unwrap()
     }

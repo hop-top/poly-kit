@@ -11,7 +11,7 @@ use serde_json::Value;
 fn vectors() -> Value {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../../contracts/celpermission-v1/vectors.json"
+        "/../../contracts/celpermission-v1/vectors.json"
     );
     serde_json::from_str(&std::fs::read_to_string(path).expect("vectors")).expect("json")
 }
