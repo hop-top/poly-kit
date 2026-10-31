@@ -88,3 +88,39 @@ jobs:
       RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
     with:
       go-version: '1.27.3'
+
+  # Proves the published crate builds from the registry, not from the
+  # checkout: a fresh crate depends on the released version with the
+  # features a CLI uses and compiles it. A failing build turns the
+  # publish run red. `kit-rs/v` holds the `/` boundary like the
+  # goreleaser gate above.
+  rs-install-smoke:
+    needs: publish
+    if: startsWith(github.ref_name, 'kit-rs/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Build a fresh crate against the registry release
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#kit-rs/v}"
+          dir=$(mktemp -d)
+          cd "$dir"
+          cargo new --bin smoke
+          cd smoke
+          cat >>Cargo.toml <<EOF
+          hop-top-kit = { version = "=${version}", features = ["cli", "output", "serve-cli"] }
+          EOF
+          # The sparse index can trail `cargo publish` by a minute or so.
+          for attempt in 1 2 3 4 5 6; do
+            if cargo build; then
+              exit 0
+            fi
+            echo "attempt ${attempt} failed; retrying in 30s"
+            sleep 30
+          done
+          echo "::error::hop-top-kit ${version} did not build from the registry"
+          exit 1
