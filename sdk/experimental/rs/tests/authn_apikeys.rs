@@ -549,17 +549,62 @@ fn apikey_records_corpus_last_used() {
         let key = v["key"].as_str().unwrap();
         let id = v["record"]["id"].as_str().unwrap();
         keys.verify(key).unwrap();
-        assert!(
-            stored(&store, id).get("last_used_at").is_none(),
-            "{}",
-            v["name"]
-        );
-        keys.with_last_used(true).verify(key).unwrap();
-        assert_eq!(
-            stored(&store, id)["last_used_at"],
-            v["stored_last_used_at"],
-            "{}",
-            v["name"]
-        );
+        assert!(keys.get(id).unwrap().unwrap().last_used_at.is_none());
+        keys.clone().with_last_used(true).verify(key).unwrap();
+        assert_eq!(stored(&store, id), v["record"], "record not rewritten");
+        let want = secs(v["stored_last_used_at"].as_str().unwrap());
+        let got = keys.get(id).unwrap().unwrap().last_used_at.unwrap();
+        assert_eq!(got.duration_since(UNIX_EPOCH).unwrap().as_secs(), want);
     }
+}
+
+type Hook = Arc<Mutex<Option<Box<dyn FnOnce() + Send>>>>;
+
+/// A store that runs a hook once, after the first read of a key.
+#[derive(Clone)]
+struct AfterGet {
+    inner: Mem,
+    hook: Hook,
+}
+
+impl Store for AfterGet {
+    fn put(&self, k: &[u8], v: &[u8]) -> Result<(), KvError> {
+        self.inner.put(k, v)
+    }
+    fn get(&self, k: &[u8]) -> Result<Option<Vec<u8>>, KvError> {
+        let out = self.inner.get(k);
+        let hook = self.hook.lock().unwrap().take();
+        if let Some(h) = hook {
+            h();
+        }
+        out
+    }
+    fn delete(&self, k: &[u8]) -> Result<(), KvError> {
+        self.inner.delete(k)
+    }
+    fn list(&self, p: &[u8]) -> Result<Vec<Vec<u8>>, KvError> {
+        self.inner.list(p)
+    }
+}
+
+#[test]
+fn last_used_cannot_undo_a_concurrent_revoke() {
+    let inner = Mem::default();
+    let store = AfterGet {
+        inner: inner.clone(),
+        hook: Arc::default(),
+    };
+    let keys = ApiKeys::new(store.clone()).with_last_used(true);
+    let (raw, rec) = keys.create(spec("p")).unwrap();
+    let id = rec.id.clone();
+    let other = ApiKeys::new(inner);
+    *store.hook.lock().unwrap() = Some(Box::new(move || {
+        other.revoke(&id).unwrap();
+    }));
+    keys.verify(&raw)
+        .expect("the verdict was reached before the revoke landed");
+    assert!(keys.verify(&raw).is_err(), "the revoke survives the stamp");
+    let got = keys.get(&rec.id).unwrap().unwrap();
+    assert!(got.revoked_at.is_some());
+    assert!(got.last_used_at.is_some());
 }

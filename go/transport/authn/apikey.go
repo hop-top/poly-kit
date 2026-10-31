@@ -40,9 +40,12 @@ const (
 	APIKeyHeader = "X-API-Key"
 	// apiKeyStorePrefix namespaces the records in the kv store.
 	apiKeyStorePrefix = "apikey/"
-	apiKeyHashDomain  = "kit-apikey-v1"
-	apiKeyIDBytes     = 8
-	apiKeySecretBytes = 32
+	// apiKeyLastUsedPrefix holds last-use stamps apart from the
+	// records (and outside the "apikey/" scan List makes).
+	apiKeyLastUsedPrefix = "apikey-last/"
+	apiKeyHashDomain     = "kit-apikey-v1"
+	apiKeyIDBytes        = 8
+	apiKeySecretBytes    = 32
 )
 
 // ErrAPIKeyNotFound is a revoke or lookup of an id the store lacks.
@@ -253,7 +256,7 @@ func (k *APIKeys) List(ctx context.Context) ([]APIKey, error) {
 // record stays, so the audit trail still names whose key it was.
 // Revoking a revoked key is not an error.
 func (k *APIKeys) Revoke(ctx context.Context, id string) (*APIKey, error) {
-	rec, err := k.get(ctx, id)
+	rec, err := k.getRaw(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -311,18 +314,14 @@ func (k *APIKeys) Verify(ctx context.Context, raw string) (*APIKey, error) {
 		}
 	}
 	if k.trackLastUsed {
-		// Re-read so a revoke that landed since is not overwritten.
-		fresh, err := k.get(ctx, id)
-		if err != nil {
+		// The stamp is its own kv entry: rewriting the record here
+		// (get, mutate, put) would overwrite a revoke landing between
+		// the two.
+		at := now.UTC()
+		if err := k.store.Put(ctx, apiKeyLastUsedPrefix+id, []byte(at.Format(time.RFC3339Nano))); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrKeySetUnavailable, err)
 		}
-		if fresh != nil && fresh.RevokedAt.IsZero() {
-			fresh.LastUsedAt = now.UTC()
-			if err := k.put(ctx, fresh); err != nil {
-				return nil, fmt.Errorf("%w: %v", ErrKeySetUnavailable, err)
-			}
-			rec.LastUsedAt = fresh.LastUsedAt
-		}
+		rec.LastUsedAt = at
 	}
 	return rec, nil
 }
@@ -347,7 +346,27 @@ func (k *APIKeys) AuthFunc() api.AuthFunc {
 	}
 }
 
+// get is the record with its last-used stamp merged in.
 func (k *APIKeys) get(ctx context.Context, id string) (*APIKey, error) {
+	rec, err := k.getRaw(ctx, id)
+	if err != nil || rec == nil {
+		return rec, err
+	}
+	data, ok, err := k.store.Get(ctx, apiKeyLastUsedPrefix+id)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		if t, perr := time.Parse(time.RFC3339Nano, string(data)); perr == nil && t.After(rec.LastUsedAt) {
+			rec.LastUsedAt = t
+		}
+	}
+	return rec, nil
+}
+
+// getRaw is the stored record alone; a write-back starts from it so
+// the merged stamp is not copied into the authorization record.
+func (k *APIKeys) getRaw(ctx context.Context, id string) (*APIKey, error) {
 	data, ok, err := k.store.Get(ctx, apiKeyStorePrefix+id)
 	if err != nil || !ok {
 		return nil, err
