@@ -13,7 +13,7 @@ err := util.Retry(ctx, util.RetryConfig{
     MaxAttempts: 5,                      // 0 = retry forever
     BaseDelay:   100 * time.Millisecond, // default 100ms
     MaxDelay:    30 * time.Second,       // default 30s
-    Jitter:      true,
+    Jitter:      true,                   // zero value = off
 }, func() error { return call() })
 ```
 
