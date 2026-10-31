@@ -67,14 +67,15 @@ func (s *Store) Put(ctx context.Context, key string, r io.Reader, contentType st
 	return nil
 }
 
-// Get returns a reader for the object at key.
+// Get returns a reader for the object at key. A missing key returns an
+// error matching blob.ErrNotFound and wrapping the SDK's NoSuchKey.
 func (s *Store) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: &s.bucket,
 		Key:    aws.String(s.key(key)),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("s3 get %s: %w", key, err)
+		return nil, wrapErr("get", key, err)
 	}
 	return out.Body, nil
 }
@@ -93,15 +94,15 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 }
 
 // Stat returns the metadata of the object at key via HeadObject: size
-// (ContentLength) and ContentType. A missing key returns an error wrapping
-// the SDK's NotFound, as Get wraps NoSuchKey. Implements blob.Stater.
+// (ContentLength) and ContentType. A missing key returns an error matching
+// blob.ErrNotFound and wrapping the SDK's NotFound, as Get does NoSuchKey. Implements blob.Stater.
 func (s *Store) Stat(ctx context.Context, key string) (blob.Object, error) {
 	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: &s.bucket,
 		Key:    aws.String(s.key(key)),
 	})
 	if err != nil {
-		return blob.Object{}, fmt.Errorf("s3 stat %s: %w", key, err)
+		return blob.Object{}, wrapErr("stat", key, err)
 	}
 	return blob.Object{
 		Key:         key,
@@ -152,4 +153,27 @@ func (s *Store) Exists(ctx context.Context, key string) (bool, error) {
 		return false, fmt.Errorf("s3 exists %s: %w", key, err)
 	}
 	return true, nil
+}
+
+// notFoundError is a missing-key error: it matches blob.ErrNotFound and
+// keeps the SDK error (NoSuchKey or NotFound) in the chain.
+type notFoundError struct {
+	msg string
+	err error
+}
+
+func (e *notFoundError) Error() string   { return e.msg }
+func (e *notFoundError) Unwrap() []error { return []error{blob.ErrNotFound, e.err} }
+
+// wrapErr wraps an SDK error from op on key: types.NoSuchKey (GetObject)
+// and types.NotFound (HeadObject) become a notFoundError, anything else
+// a plain wrapped error.
+func wrapErr(op, key string, err error) error {
+	msg := fmt.Sprintf("s3 %s %s: %v", op, key, err)
+	var nk *types.NoSuchKey
+	var nf *types.NotFound
+	if errors.As(err, &nk) || errors.As(err, &nf) {
+		return &notFoundError{msg: msg, err: err}
+	}
+	return fmt.Errorf("s3 %s %s: %w", op, key, err)
 }

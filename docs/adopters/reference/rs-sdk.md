@@ -609,7 +609,10 @@ ported; see [Not ported](#not-ported).
 `{"content_type":"..."}`, written after the content (both via temp +
 rename); an empty type removes the old sidecar and `delete` removes both.
 `list` and the optional `blob::Stater::stat` report it; a missing or
-corrupt sidecar reads as empty. The layout is shared with the Go local
+corrupt sidecar reads as empty. `BlobError::NotFound` is the
+cross-backend missing-key sentinel (Go: `blob.ErrNotFound`): `get`,
+`stat` and `stat_by_list` of a missing key return it, as does a key
+below a file; `exists` is `Ok(false)` and `delete` is `Ok(())`. The layout is shared with the Go local
 backend, so a store written by one is readable by the other. Keys under
 `.blob-meta` are rejected (`BlobError::ReservedKey`). `Stater` is a separate
 trait, not part of `Store`; Rust cannot probe it at runtime, so there is no

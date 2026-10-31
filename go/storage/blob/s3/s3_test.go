@@ -94,4 +94,33 @@ func TestStatMissingErrors(t *testing.T) {
 	if !errors.As(err, &nf) {
 		t.Fatalf("err = %v, want wrapped *types.NotFound", err)
 	}
+	if !errors.Is(err, blob.ErrNotFound) {
+		t.Fatalf("err = %v, want blob.ErrNotFound", err)
+	}
+}
+
+func TestGetMissingIsErrNotFound(t *testing.T) {
+	s := fakeS3(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`<?xml version="1.0"?><Error><Code>NoSuchKey</Code><Message>gone</Message></Error>`))
+	})
+	_, err := s.Get(context.Background(), "nope")
+	if !errors.Is(err, blob.ErrNotFound) {
+		t.Fatalf("err = %v, want blob.ErrNotFound", err)
+	}
+	var nk *types.NoSuchKey
+	if !errors.As(err, &nk) {
+		t.Fatalf("err = %v, want SDK *types.NoSuchKey kept in the chain", err)
+	}
+}
+
+func TestOtherErrorsAreNotErrNotFound(t *testing.T) {
+	s := fakeS3(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusForbidden) })
+	if _, err := s.Get(context.Background(), "k"); err == nil || errors.Is(err, blob.ErrNotFound) {
+		t.Fatalf("Get 403 = %v, want non-NotFound error", err)
+	}
+	if _, err := s.Stat(context.Background(), "k"); err == nil || errors.Is(err, blob.ErrNotFound) {
+		t.Fatalf("Stat 403 = %v, want non-NotFound error", err)
+	}
 }

@@ -559,3 +559,31 @@ fn a_key_merely_starting_with_the_reserved_name_is_ordinary() {
     s.put(".blob-metadata/x", "x".as_bytes(), "")
         .expect("ordinary key");
 }
+
+/// `BlobError::NotFound` is the cross-backend missing-key sentinel:
+/// every path that reports a missing key returns it, carrying the key.
+#[test]
+fn every_missing_key_path_is_not_found() {
+    let (_dir, s) = setup();
+    s.put("file", "x".as_bytes(), "").expect("put");
+    // A key whose parent is a file cannot exist either.
+    for key in ["nope", "file/child", "a/b/c"] {
+        assert!(
+            matches!(s.get(key), Err(BlobError::NotFound(ref k)) if k == key),
+            "get {key:?}"
+        );
+        assert!(
+            matches!(s.stat(key), Err(BlobError::NotFound(ref k)) if k == key),
+            "stat {key:?}"
+        );
+        assert!(
+            matches!(stat_by_list(&s, key), Err(BlobError::NotFound(ref k)) if k == key),
+            "stat_by_list {key:?}"
+        );
+        // exists and delete treat a missing key as a result, not an error.
+        assert!(!s.exists(key).expect("exists"), "exists {key:?}");
+        s.delete(key).expect("delete");
+    }
+    // list over an empty prefix match is empty, not NotFound.
+    assert!(s.list("zzz").expect("list").is_empty());
+}

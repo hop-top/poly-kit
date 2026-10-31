@@ -43,7 +43,7 @@ forced to implement it. `local` and `s3` do; check with a type assertion:
 if s, ok := store.(blob.Stater); ok {
     obj, err := s.Stat(ctx, "reports/q1.txt")
     if err != nil {
-        return err // missing key errors, like Get
+        return err // missing key: errors.Is(err, blob.ErrNotFound), like Get
     }
     fmt.Println(obj.ContentType, obj.Size)
 }
@@ -128,7 +128,7 @@ same keys they wrote. `List("logs/")` matches only keys that start with
 |----------|---------|------|
 | `Put` | atomic: synced temp file renamed into place | single `PutObject` with the content type |
 | `Delete` of missing key | succeeds | succeeds |
-| `Get` of missing key | error wrapping the OS not-exist error | error from `GetObject` |
+| `Get` / `Stat` of missing key | error matching `blob.ErrNotFound` (and `fs.ErrNotExist`) | error matching `blob.ErrNotFound` (wraps the SDK `NoSuchKey` / `NotFound`) |
 | content type | kept in a `.blob-meta/` sidecar; returned by `List` and `Stat` | sent on `Put`; empty on `List` (`ListObjectsV2` omits it); `Stat` (HEAD) returns it |
 | key escaping root | `../` keys rejected before I/O | n/a |
 
@@ -136,8 +136,11 @@ Practical consequences:
 
 - `Delete` is idempotent on every backend: a missing key is not an
   error, so no `Exists` guard is needed.
-- For missing-key checks on `local`, use `errors.Is(err, fs.ErrNotExist)`
-  on the `Get` error. Prefer `Exists` for backend-neutral code.
+- For backend-neutral missing-key checks, use
+  `errors.Is(err, blob.ErrNotFound)` on the `Get` or `Stat` error. It
+  holds on every backend; `local` also keeps `fs.ErrNotExist` for older
+  callers. Rust: match `BlobError::NotFound`. Prefer `Exists` when you
+  only need presence.
 - `local` returns the content type from `List`; S3 does not (empty).
   Treat empty as "unknown" in backend-neutral code, or read it with
   `Stat` (`blob.Stater`) on stores that implement it. `local` reserves the top-level `.blob-meta/`

@@ -48,7 +48,9 @@ pub enum BlobError {
     #[error("blob/local: key {0:?} uses reserved namespace \".blob-meta\"")]
     ReservedKey(String),
 
-    /// The requested key does not exist.
+    /// The requested key does not exist. The cross-backend missing-key
+    /// sentinel (Go: `blob.ErrNotFound`): `get`, `stat` and
+    /// [`stat_by_list`] return it for every missing key.
     #[error("blob/local: key {0:?} not found")]
     NotFound(String),
 

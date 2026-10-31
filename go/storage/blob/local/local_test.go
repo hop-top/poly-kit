@@ -432,6 +432,39 @@ func TestStatMissingIsNotExist(t *testing.T) {
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("Stat(missing) = %v, want fs.ErrNotExist like Get", err)
 	}
+	if !errors.Is(err, blob.ErrNotFound) {
+		t.Fatalf("Stat(missing) = %v, want blob.ErrNotFound", err)
+	}
+}
+
+// A missing key matches the shared sentinel and, for compat, the
+// filesystem one, from Get, Stat, and Stat of a directory key.
+func TestMissingKeyMatchesBothSentinels(t *testing.T) {
+	ctx := context.Background()
+	s := setup(t)
+	if err := s.Put(ctx, "dir/leaf", strings.NewReader("x"), ""); err != nil {
+		t.Fatal(err)
+	}
+	_, getErr := s.Get(ctx, "nope")
+	_, statErr := s.Stat(ctx, "nope")
+	_, dirErr := s.Stat(ctx, "dir")
+	for name, err := range map[string]error{"Get": getErr, "Stat": statErr, "Stat(dir)": dirErr} {
+		if !errors.Is(err, blob.ErrNotFound) {
+			t.Errorf("%s: %v, want blob.ErrNotFound", name, err)
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("%s: %v, want fs.ErrNotExist", name, err)
+		}
+	}
+}
+
+// Errors that are not "missing" must not claim to be.
+func TestInvalidKeyIsNotNotFound(t *testing.T) {
+	s := setup(t)
+	_, err := s.Get(context.Background(), "../escape")
+	if err == nil || errors.Is(err, blob.ErrNotFound) {
+		t.Fatalf("Get(../escape) = %v, want non-NotFound error", err)
+	}
 }
 
 func TestStatReadsSidecar(t *testing.T) {
@@ -460,5 +493,28 @@ func TestStatNoSidecarEmptyType(t *testing.T) {
 	o, err := s.Stat(context.Background(), "old")
 	if err != nil || o.ContentType != "" || o.Size != 2 {
 		t.Fatalf("Stat = %+v, %v", o, err)
+	}
+}
+
+// A key below a file cannot exist: it is missing, not an I/O failure,
+// for every operation.
+func TestKeyBelowAFileIsMissing(t *testing.T) {
+	ctx := context.Background()
+	s := setup(t)
+	if err := s.Put(ctx, "file", strings.NewReader("x"), ""); err != nil {
+		t.Fatal(err)
+	}
+	_, getErr := s.Get(ctx, "file/child")
+	_, statErr := s.Stat(ctx, "file/child")
+	for name, err := range map[string]error{"Get": getErr, "Stat": statErr} {
+		if !errors.Is(err, blob.ErrNotFound) || !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("%s: %v, want blob.ErrNotFound and fs.ErrNotExist", name, err)
+		}
+	}
+	if ok, err := s.Exists(ctx, "file/child"); err != nil || ok {
+		t.Errorf("Exists = %v, %v; want false, nil", ok, err)
+	}
+	if err := s.Delete(ctx, "file/child"); err != nil {
+		t.Errorf("Delete = %v, want nil", err)
 	}
 }
