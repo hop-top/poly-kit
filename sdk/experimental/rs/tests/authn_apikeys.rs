@@ -1,5 +1,5 @@
 //! API keys over a kv store: the Go `apikey_test.go` suite ported, the
-//! T-1670 additions (Get, branded prefix and hash domain, metadata),
+//! record-shape additions (Get, branded prefix and hash domain, metadata),
 //! and the cross-language corpus in `contracts/authn-v1`.
 #![cfg(feature = "authn-apikeys")]
 
@@ -291,7 +291,7 @@ fn with_check_is_the_revocation_hook() {
     assert!(e.to_string().contains("denied"));
 }
 
-// --- T-1670 shape: Get, prefix, hash domain, metadata --------------------
+// --- Record shape: Get, prefix, hash domain, metadata ----------------------
 
 #[test]
 fn get_returns_the_record_or_none() {
