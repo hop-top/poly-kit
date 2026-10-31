@@ -12,7 +12,7 @@ type RetryConfig struct {
 	MaxAttempts int           // 0 = infinite
 	BaseDelay   time.Duration // default 100ms
 	MaxDelay    time.Duration // default 30s
-	Jitter      bool          // default true
+	Jitter      bool          // zero value is false (no jitter); RetryWithBackoff sets it true
 }
 
 func (c RetryConfig) baseDelay() time.Duration {
