@@ -61,6 +61,8 @@ mod serve_loop;
 mod server;
 mod sse;
 mod timeouts;
+#[cfg(feature = "api-server-tls")]
+pub mod tls;
 #[cfg(feature = "webhook")]
 pub mod webhook;
 
