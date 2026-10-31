@@ -1682,7 +1682,7 @@
     }
   ],
   "projection": {
-    "description": "The command-tree projection under /v1/commands. Go runs the rows against api.MountCommandProjection with these descriptors and a stub executor; Rust projects the equivalent tree of a kit CLI root. A `run` command exits with its `exit` flag; every other command exits 0 and prints `ran <path>`. `call` is what the command saw (flag values as strings). `discovery` pins the listing; `openapi` pins the operations per invocable command.",
+    "description": "The command-tree projection under /v1/commands. Go runs the rows against api.MountCommandProjection with these descriptors and a stub executor; Rust projects the equivalent tree of a kit CLI root. A `run` command exits with its `exit` flag; every other command exits 0 and prints `ran <path>`. `call` is what the command saw (flag values as strings). `discovery` pins the listing; `openapi` pins the operations per invocable command. A gated command (`requires_confirmation`, and `requires_confirm_token` for a typed token) additionally accepts `confirm` and `confirm-token` from a caller, which reach the command's own gate; any other command rejects them as undeclared. The token and refusal rows need a real gate and are Rust-side tests.",
     "exit_status": [
       {
         "exit_code": 0,
@@ -1793,7 +1793,8 @@
         "source": "inferred",
         "flags": [],
         "args": [],
-        "invocable": true
+        "invocable": true,
+        "requires_confirmation": true
       },
       {
         "path": [
@@ -1845,6 +1846,19 @@
         "args": [],
         "invocable": false,
         "reason": "hidden-internal"
+      },
+      {
+        "path": [
+          "wipe"
+        ],
+        "summary": "wipe with a typed token",
+        "side_effect": "destructive",
+        "source": "declared",
+        "flags": [],
+        "args": [],
+        "invocable": true,
+        "requires_confirmation": true,
+        "requires_confirm_token": true
       }
     ],
     "discovery": {
@@ -1853,7 +1867,8 @@
         "widget add",
         "widget delete",
         "run",
-        "tidy"
+        "tidy",
+        "wipe"
       ],
       "withheld": [
         {
@@ -1889,7 +1904,8 @@
           "route": "/v1/commands/widget/delete",
           "stream_route": "/v1/commands/widget/delete/stream",
           "side_effect": "destructive",
-          "side_effect_source": "inferred"
+          "side_effect_source": "inferred",
+          "requires_confirmation": true
         },
         "tidy": {
           "method": "POST",
@@ -1897,6 +1913,14 @@
           "stream_route": "/v1/commands/tidy/stream",
           "side_effect": "write",
           "side_effect_source": "unannotated"
+        },
+        "wipe": {
+          "method": "POST",
+          "route": "/v1/commands/wipe",
+          "stream_route": "/v1/commands/wipe/stream",
+          "side_effect": "destructive",
+          "side_effect_source": "declared",
+          "requires_confirmation": true
         }
       }
     },
@@ -1940,7 +1964,9 @@
         "path": "/v1/commands/widget/delete",
         "method": "post",
         "operation_id": "commands_widget_delete",
-        "body_flags": [],
+        "body_flags": [
+          "confirm"
+        ],
         "side_effect": "destructive",
         "side_effect_source": "inferred",
         "responses": [
@@ -1954,6 +1980,23 @@
         "path": "/v1/commands",
         "method": "get",
         "operation_id": "commands_discover"
+      },
+      {
+        "path": "/v1/commands/wipe",
+        "method": "post",
+        "operation_id": "commands_wipe",
+        "body_flags": [
+          "confirm",
+          "confirm-token"
+        ],
+        "side_effect": "destructive",
+        "side_effect_source": "declared",
+        "responses": [
+          "200",
+          "400",
+          "403",
+          "500"
+        ]
       }
     ],
     "openapi_absent": [
@@ -2090,13 +2133,101 @@
         "error_code": "bad_request"
       },
       {
-        "name": "a caller cannot approve its own destructive call",
+        "name": "a caller cannot pass confirm to an ungated command",
         "method": "POST",
         "path": "/v1/commands/widget/add",
         "status": 400,
         "body": {
           "flags": {
             "confirm": "yes"
+          },
+          "args": [
+            "g"
+          ]
+        },
+        "error_code": "bad_request"
+      },
+      {
+        "name": "a caller may confirm a gated destructive call",
+        "method": "POST",
+        "path": "/v1/commands/widget/delete",
+        "status": 200,
+        "body": {
+          "flags": {
+            "confirm": "yes"
+          },
+          "args": []
+        },
+        "call": {
+          "path": [
+            "widget",
+            "delete"
+          ],
+          "flags": {
+            "confirm": "yes"
+          },
+          "args": []
+        }
+      },
+      {
+        "name": "a caller may confirm a gated call from the query",
+        "method": "POST",
+        "path": "/v1/commands/widget/delete?confirm=yes",
+        "status": 200,
+        "call": {
+          "path": [
+            "widget",
+            "delete"
+          ],
+          "flags": {
+            "confirm": "yes"
+          },
+          "args": []
+        }
+      },
+      {
+        "name": "a typed token reaches the gate of a token command",
+        "method": "POST",
+        "path": "/v1/commands/wipe",
+        "status": 200,
+        "body": {
+          "flags": {
+            "confirm": "yes",
+            "confirm-token": "8f305f184243"
+          }
+        },
+        "call": {
+          "path": [
+            "wipe"
+          ],
+          "flags": {
+            "confirm": "yes",
+            "confirm-token": "8f305f184243"
+          },
+          "args": []
+        }
+      },
+      {
+        "name": "a token is refused by a gated command without a typed token",
+        "method": "POST",
+        "path": "/v1/commands/widget/delete",
+        "status": 400,
+        "body": {
+          "flags": {
+            "confirm-token": "x"
+          },
+          "args": []
+        },
+        "error_code": "bad_request"
+      },
+      {
+        "name": "a token is refused by an ungated command",
+        "method": "POST",
+        "path": "/v1/commands/widget/add",
+        "status": 400,
+        "body": {
+          "flags": {
+            "confirm-token": "x"
           },
           "args": [
             "g"

@@ -199,6 +199,12 @@ pub struct CommandDescriptor {
     pub invocable: bool,
     /// Why it is not, empty when it is.
     pub reason: String,
+    /// The command is gated on confirmation (destructive, declared or
+    /// inferred, or annotated `kit/requires-confirmation`); a caller
+    /// may then pass `confirm`.
+    pub requires_confirmation: bool,
+    /// The command also needs a typed `confirm-token`.
+    pub requires_confirm_token: bool,
 }
 
 impl CommandDescriptor {
@@ -218,6 +224,44 @@ impl CommandDescriptor {
     pub fn name(&self) -> String {
         self.path.join(" ")
     }
+}
+
+/// The confirmation flag a gated command accepts from a caller.
+pub const CONFIRM_FLAG: &str = "confirm";
+/// The typed-token flag a `kit/destructive-token` command also accepts.
+pub const CONFIRM_TOKEN_FLAG: &str = "confirm-token";
+/// The values `confirm` documents.
+pub const CONFIRM_VALUES: [&str; 4] = ["yes", "no", "auto", "prompt"];
+
+/// The confirmation flags a caller may pass to `d`, empty when it is
+/// not gated. They are policy plumbing, not declared command flags, so
+/// the projection adds them for gated commands only; every other
+/// command keeps rejecting them as undeclared.
+pub fn confirm_flags_for(d: &CommandDescriptor) -> Vec<CommandFlag> {
+    if !d.requires_confirmation && !d.requires_confirm_token {
+        return Vec::new();
+    }
+    let mut out = vec![CommandFlag {
+        name: CONFIRM_FLAG.into(),
+        ty: "string".into(),
+        description: "Confirmation for this gated command: one of yes, no, auto, prompt.".into(),
+        default: String::new(),
+        required: false,
+        enum_values: CONFIRM_VALUES.iter().map(|v| v.to_string()).collect(),
+    }];
+    if d.requires_confirm_token {
+        out.push(CommandFlag {
+            name: CONFIRM_TOKEN_FLAG.into(),
+            ty: "string".into(),
+            description: "Typed confirmation token. The refusal message for a call without it \
+                          names the expected value."
+                .into(),
+            default: String::new(),
+            required: false,
+            enum_values: Vec::new(),
+        });
+    }
+    out
 }
 
 const DESTRUCTIVE_NAMES: [&str; 6] = ["delete", "remove", "rm", "destroy", "purge", "drop"];
@@ -269,10 +313,24 @@ fn describe(root: &Root, c: &CommandInfo) -> CommandDescriptor {
     } else {
         ""
     };
+    let requires_token = matches!(
+        c.annotations
+            .get("kit/destructive-token")
+            .map(String::as_str),
+        Some("required" | "true")
+    );
+    let requires_confirmation = class == SideEffectClass::Destructive
+        || c.annotations
+            .get("kit/requires-confirmation")
+            .map(String::as_str)
+            == Some("true");
     let mut flags: Vec<CommandFlag> = c
         .flags
         .iter()
         .filter(|f| !f.hidden && !f.persistent && f.name != "help")
+        // The auto-registered token flag is advertised through
+        // confirm_flags_for, once.
+        .filter(|f| !(requires_token && f.name == CONFIRM_TOKEN_FLAG))
         .map(flag_of)
         .collect();
     flags.sort_by(|a, b| a.name.cmp(&b.name));
@@ -293,6 +351,8 @@ fn describe(root: &Root, c: &CommandInfo) -> CommandDescriptor {
             .collect(),
         invocable: reason.is_empty(),
         reason: reason.to_string(),
+        requires_confirmation,
+        requires_confirm_token: requires_token,
     }
 }
 
@@ -393,6 +453,9 @@ impl CommandProjection {
             }
             if !d.flags.is_empty() {
                 e.insert("flags".into(), json!(d.flags));
+            }
+            if d.requires_confirmation {
+                e.insert("requires_confirmation".into(), json!(true));
             }
             if !d.args.is_empty() {
                 e.insert("args".into(), json!(d.args));
@@ -497,14 +560,25 @@ impl CommandProjection {
             Ok(b) => b,
             Err(e) => return bad_request(e.to_string()),
         };
-        let (mut argv, caller_max) = match decode(d, &parts.method, parts.uri.query(), &bytes) {
+        let Decoded {
+            mut argv,
+            max_ops: caller_max,
+            confirm,
+        } = match decode(d, &parts.method, parts.uri.query(), &bytes) {
             Ok(a) => a,
             Err(m) => return bad_request(m),
         };
-        // Operator controls, ahead of the command's own flags. A call
-        // never prompts (the server's terminal is not the caller's) and
-        // never approves itself: --confirm is fixed at no.
-        let mut ops = vec!["--confirm=no".to_string()];
+        // Controls, ahead of the command's own flags. `--confirm` is an
+        // intent guard, not an authorization (authn, scopes and the
+        // projection's gate are): a caller of a gated command may pass
+        // it, as in Go. A call never prompts, though: the server's
+        // terminal is not the caller's, so only yes and auto approve and
+        // everything else (no, prompt, unrecognised, absent) is no.
+        let confirm = match confirm.as_deref().map(|c| c.trim().to_ascii_lowercase()) {
+            Some(c) if c == "yes" || c == "auto" => c,
+            _ => "no".to_string(),
+        };
+        let mut ops = vec![format!("--confirm={confirm}")];
         if let Some(p) = &self.policy {
             ops.push(format!("--policy={p}"));
         }
@@ -666,15 +740,18 @@ fn rfc3339_now() -> String {
 
 /// The root's delegation controls, by what a caller may do with them.
 /// `dry-run` only makes a call safer and is the caller's; `max-ops` may
-/// only tighten the operator's ceiling; `policy` and `confirm` are the
-/// operator's and a caller naming either is refused (a call never
-/// approves itself: an unconfirmed destructive command is the command's
-/// own refusal, exit 5, status 403).
+/// only tighten the operator's ceiling; `policy` is the operator's and
+/// a caller naming it is refused; `confirm` is an intent guard the
+/// caller of a gated command may pass (it binds to the root's flag,
+/// never a leaf-local one), and is refused on any other command.
 const CONTROL_FLAGS: &[&str] = &["confirm", "max-ops", "policy", "dry-run"];
 
-/// The typed confirmation token flag (the CLI gate's `confirm-token`);
-/// never accepted from a caller.
-const CONFIRM_TOKEN: &str = "confirm-token";
+/// A decoded request: the argv tail and the caller's root controls.
+struct Decoded {
+    argv: Vec<String>,
+    max_ops: Option<i64>,
+    confirm: Option<String>,
+}
 
 /// Builds the argv tail for a request, or the refusal text.
 fn decode(
@@ -682,9 +759,15 @@ fn decode(
     method: &Method,
     query: Option<&str>,
     body: &[u8],
-) -> Result<(Vec<String>, Option<i64>), String> {
-    let by_name: BTreeMap<&str, &CommandFlag> =
+) -> Result<Decoded, String> {
+    // A gated command additionally accepts its confirmation flags (the
+    // declared set of every other command stays closed).
+    let gate_flags = confirm_flags_for(d);
+    let mut by_name: BTreeMap<&str, &CommandFlag> =
         d.flags.iter().map(|f| (f.name.as_str(), f)).collect();
+    for f in &gate_flags {
+        by_name.insert(f.name.as_str(), f);
+    }
     let mut flags: Vec<(String, Value)> = Vec::new();
     let mut args: Vec<String> = Vec::new();
     for (k, v) in parse_query(query.unwrap_or("")) {
@@ -726,14 +809,23 @@ fn decode(
     }
     let mut argv: Vec<String> = d.path.clone();
     let mut caller_max = None;
+    let mut confirm = None;
     for (k, v) in flags {
-        // Delegation controls belong to the operator whether or not the
-        // leaf also declares a flag of that name: a leaf-local `--confirm`
-        // would otherwise shadow the root's and let a caller approve
-        // itself, and the typed token is derivable from the path.
+        // Delegation controls are the root's whether or not the leaf
+        // also declares a flag of that name: a leaf-local `--confirm`
+        // must not shadow the root's gate, so a caller's confirm is
+        // carried to the root's flag, never to the leaf's.
         match k.as_str() {
-            "policy" | "confirm" | CONFIRM_TOKEN => {
-                return Err(format!("{k} is set by the operator, not the caller"))
+            "policy" => return Err(format!("{k} is set by the operator, not the caller")),
+            "confirm" => {
+                if gate_flags.is_empty() {
+                    return Err(
+                        "confirm is accepted only by a command that requires confirmation"
+                            .to_string(),
+                    );
+                }
+                confirm = Some(scalar(&v));
+                continue;
             }
             "max-ops" => {
                 caller_max = Some(
@@ -760,7 +852,11 @@ fn decode(
         argv.push("--".into());
         argv.extend(args);
     }
-    Ok((argv, caller_max))
+    Ok(Decoded {
+        argv,
+        max_ops: caller_max,
+        confirm,
+    })
 }
 
 /// A control flag's value from the query: `dry-run` is a switch, the
@@ -872,8 +968,18 @@ fn command_operation(d: &CommandDescriptor, stream: bool) -> Operation {
         ]),
         ..Operation::default()
     };
+    // Declared flags, then a gated command's confirmation flags (which
+    // replace a leaf-local flag of the same name: the call binds to the
+    // root's).
+    let gate = confirm_flags_for(d);
+    let flags: Vec<&CommandFlag> = d
+        .flags
+        .iter()
+        .filter(|f| !gate.iter().any(|g| g.name == f.name))
+        .chain(gate.iter())
+        .collect();
     if d.method() == "GET" {
-        for f in &d.flags {
+        for f in flags.iter().copied() {
             op.parameters.push(Param {
                 name: f.name.clone(),
                 location: "query".into(),
@@ -892,13 +998,11 @@ fn command_operation(d: &CommandDescriptor, stream: bool) -> Operation {
             });
         }
     } else {
-        let props: Map<String, Value> = d
-            .flags
+        let props: Map<String, Value> = flags
             .iter()
             .map(|f| (f.name.clone(), flag_schema(f)))
             .collect();
-        let required: Vec<&str> = d
-            .flags
+        let required: Vec<&str> = flags
             .iter()
             .filter(|f| f.required)
             .map(|f| f.name.as_str())
