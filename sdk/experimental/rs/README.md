@@ -62,6 +62,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `config` (`config-pkl`, `config-signal`) | `bus` + `saphyr-parser`, `thiserror` (+ `regex`; + `tokio` rt, signal, sync) | 18 (22, 25) |
 | `authn` (`authn-rsa`, `authn-apikeys`) | `serde`, `serde_json`, `sha2`, `subtle`, `base64`, `p256`, `p384`, `p521`, `ed25519-dalek` (+ `ring`; + `kv` and `getrandom`; wasm-safe core) | 49 (52, 58) |
 | `identity`; `redact` | `ed25519-dalek`, `crypto_secretbox`, `hkdf`, `sha2`, `base64`, `serde`, `serde_json`, `thiserror` (+ `getrandom` on native targets; core wasm-safe); `regex`, `regex-syntax`, `serde`, `serde_json`, `sha2` | 60; 25 |
+| `authn-remote` | `authn` + `api` + `url`, `tokio` (rt) (native only) | 186 |
 | `api-server` | `serve` + `authn` + `bus` + `breaker` + `redact` + `axum`, `tower`, `tower-http`, `futures-util`, `getrandom` (native only) | 111 |
 | `webhook` (`webhook-sha1`) | `api-server` + `kv` + `hmac`, `subtle`, `sha2`, `base64` (native only; + `sha1`, legacy senders opt-in) | 115 (116) |
 | `output` | `serde`, `serde_json`, `serde_norway`, `comfy-table`, `thiserror` | 22 |

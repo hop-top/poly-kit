@@ -191,6 +191,14 @@ authn = [
 # ring does not build for wasm32-unknown-unknown. Opt-in so the pure
 # `authn` core stays wasm-safe.
 authn-rsa = ["authn", "dep:ring"]
+# Remote JWKS and OIDC discovery (`authn::new_jwks`, `new_oidc`), a port of
+# go/transport/authn/remote.go. Native only. The fetch goes through the
+# netpolicy `GuardedClient` (feature `api`) with redirects off and a 10s
+# timeout; the cache, refresh and discovery rules are pure and take a
+# `Fetch`. `url` parses the issuer and jwks_uri (the parser reqwest sends
+# with); `tokio/rt` is the private runtime a synchronous `lookup` blocks
+# on. No HTTP in the pure `authn` core.
+authn-remote = ["authn", "api", "dep:url", "dep:tokio", "tokio/rt"]
 # Kit-issued API keys held hashed in a `kv` store (`authn::ApiKeys`).
 # Native only: the store is SQLite.
 authn-apikeys = ["authn", "kv", "dep:getrandom"]

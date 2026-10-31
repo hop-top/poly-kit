@@ -7,7 +7,7 @@ Who is calling, from the credential a request carries: a signed bearer token (JW
 ## Use it when
 
 - a service must accept tokens from an issuer or from another kit tool → `Verifier::new(keys, Options { .. })`, then `verify(token)` or `auth_func()`
-- the issuer publishes a JWKS → `Verifier::from_jwks(bytes, opts)`, or `keys_from_jwks` and rotate the set yourself
+- the issuer publishes a JWKS → `Verifier::from_jwks(bytes, opts)`, or `keys_from_jwks` and rotate the set yourself; or fetch and cache it → `new_jwks(url, Remote::default(), opts)`, `new_oidc(issuer, ..)` (feature `authn-remote`)
 - a key file is on disk → `Key::from_public_key_pem`
 - a tool issues its own long-lived credentials → `ApiKeys::new(store)`, `create`, `revoke`, `auth_func` (feature `authn-apikeys`)
 - a deny list must be consulted → `Options::check`, `ApiKeys::with_check`
@@ -50,7 +50,8 @@ fn authenticate(pem: &[u8], authorization: Option<&str>) {
 - API keys are `kit_<id>_<secret>`; the store record is the JSON Go writes, so one store serves both ports. `with_prefix` and `with_hash_domain` keep a branded deployment's existing keys. `X-API-Key` wins over `Authorization: Bearer`.
 - The public API names no signature crate: keys are `VerifyKey` bytes and the crates live in `provider/`. `authn` is wasm-safe; with no clock (wasm32) `Options::now` is required and a verifier without it refuses every token.
 - RSA keys under 2048 or over 8192 bits are refused (ring's range). Without `authn-rsa` an RSA key joins a set but verifies nothing.
-- Not ported: remote JWKS and OIDC discovery (fetch and cache). Back a `KeySource` with a guarded fetch.
+- Remote key sets (feature `authn-remote`): `new_jwks(url, Remote, opts)`, `new_oidc(issuer, Remote, opts)`. Fetched on first use, refetched after `refresh` (1h) and on an unknown `kid`, at most once per `min_refresh` (1m); a failed refetch or an empty set keeps the last good set; no signing key at first fetch is `KeySetUnavailable`. URLs are `https`, or `http` to a loopback host (`check_url`). OIDC: the discovery document must name the issuer exactly and its `jwks_uri` passes `check_url`; `opts.issuer` is set to the issuer.
+- The fetch is `HttpFetch`: the netpolicy `GuardedClient` (honours `--offline`), redirects never followed (Go follows them), 10s timeout, 1 MiB cap. `lookup` is synchronous, so a fetch blocks its caller as Go's does; the request runs on a private current-thread runtime driven from a helper thread, which works inside any tokio runtime. `Remote::fetch` swaps in another `Fetch` (tests, other transports); the 1 MiB cap is enforced on whatever it returns.
 - `ApiKeys` over a `kv::Store` serialises on one lock; last-used tracking (`with_last_used`) writes its own kv entry (never the record, so it cannot undo a revoke) and is off by default.
 
 ## Neighbours

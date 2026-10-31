@@ -26,9 +26,10 @@
 //! No signature crate appears in this API: keys are [`VerifyKey`]
 //! bytes, and the crates live in `provider/`.
 //!
-//! Not ported: fetching a remote JWKS or OIDC discovery document. The
-//! pure core takes the document bytes ([`Verifier::from_jwks`]) or any
-//! [`KeySource`] a caller backs with its own guarded fetch.
+//! A remote JWKS or OIDC discovery document is fetched only under
+//! feature `authn-remote` ([`new_jwks`], [`new_oidc`], through the
+//! guarded client); the pure core takes the document bytes
+//! ([`Verifier::from_jwks`]) or any [`KeySource`].
 //!
 //! # Example
 //!
@@ -57,6 +58,9 @@ mod provider;
 pub(crate) mod rfc3339;
 mod verifier;
 
+#[cfg(feature = "authn-remote")]
+mod remote;
+
 #[cfg(feature = "authn-apikeys")]
 mod apikey;
 
@@ -69,6 +73,12 @@ pub use key::{keys_from_jwks, Alg, Jwk, Key, VerifyKey, MAX_DOCUMENT_BYTES};
 pub use verifier::{
     select, CheckFn, KeySource, NowFn, Options, Token, Verifier, DEFAULT_CLOCK_SKEW,
     DEFAULT_TENANT_CLAIM,
+};
+
+#[cfg(feature = "authn-remote")]
+pub use remote::{
+    check_url, new_jwks, new_oidc, Fetch, HttpFetch, Remote, DEFAULT_FETCH_TIMEOUT,
+    DEFAULT_MIN_REFRESH, DEFAULT_REFRESH,
 };
 
 #[cfg(feature = "authn-apikeys")]
