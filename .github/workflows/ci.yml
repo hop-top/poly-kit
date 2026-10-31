@@ -725,6 +725,14 @@ jobs:
       - name: clippy (wasm32, notify core)
         if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features notify --lib -- -D warnings
+      # identity: seeds, nonces and the verification clock come from the
+      # caller; OS-RNG generation, the system clock and the store are
+      # compiled off this target (getrandom has no backend here).
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features identity
+        if: steps.scope.outputs.run == 'true'
+      - name: clippy (wasm32, identity)
+        if: steps.scope.outputs.run == 'true'
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features identity --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       - name: netpolicy pulls no reqwest or tokio

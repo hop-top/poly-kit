@@ -33,6 +33,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`blob/`](src/blob/README.md) | object storage over a backend trait, local filesystem only (feature `blob`) | you store opaque files or artifacts |
 | [`id/`](src/id/README.md) | TypeID primitive (feature `id`) | you mint or parse prefixed identifiers |
 | [`policy/`](src/policy/README.md) | declarative CEL guard rules vetoing the state machine's pre-transition and the entity pre-events, deny-overrides, typed `PolicyDeniedError`, the stage ruleset, a port of `go/runtime/policy` (feature `policy`, wasm-safe) | who may do what is rules in a file, not code |
+| [`identity/`](src/identity/README.md) | local Ed25519 identity, a port of `go/core/identity`: keypair with PEM, EdDSA JWT sign/verify, HKDF key derivation, NaCl secretbox, on-disk store (feature `identity`; core wasm-safe, store native only) | a tool needs a local keypair, signed tokens or encryption at rest |
 | [`redact/`](src/redact/README.md) | secret and PII redaction with gitleaks rule semantics and the default corpus embedded, a port of `go/core/redact` (feature `redact`, wasm-safe) | text may carry credentials before it is logged, sent or shown |
 | [`telemetry/`](src/telemetry/README.md) | consent-gated usage events, redaction, sinks (feature `telemetry`) | you record usage under user consent |
 | [`timeutil/`](src/timeutil/README.md) | `since` and `until` relative-date parsing (feature `timeutil`) | a flag takes a human time expression |
@@ -61,6 +62,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `sideeffect` (`sideeffect-real`, `sideeffect-http`) | `bus` — nothing of its own, wasm-safe (`sideeffect-real`: nothing of its own, native only; `sideeffect-http`: + `api`, the guarded HTTP client) | 13 (13, 138) |
 | `config` (`config-pkl`, `config-signal`) | `bus` + `saphyr-parser`, `thiserror` (+ `regex`; + `tokio` rt, signal, sync) | 18 (22, 25) |
 | `timeutil` | `chrono`, `interim`, `thiserror` | 19 |
+| `identity` | `ed25519-dalek`, `crypto_secretbox`, `hkdf`, `sha2`, `base64`, `serde`, `serde_json`, `thiserror` (+ `getrandom` on native targets; core wasm-safe) | 60 |
 | `redact` | `regex`, `regex-syntax`, `serde`, `serde_json`, `sha2` | 25 |
 | `output` | `serde`, `serde_json`, `serde_norway`, `comfy-table`, `thiserror` | 22 |
 | `sqlstore` (`sqlstore-blob`, `sqlstore-encrypt`) | `sqldb` + `serde`, `serde_json` (+ `blob`, nothing of its own; + `crypto_secretbox`, `hkdf`, `sha2`) | 22 (22, 50) |

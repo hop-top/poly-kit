@@ -80,6 +80,7 @@ test-parity-mcp go/transport/cmdsurface $RS,$TS,$PY,$PHP
 test-parity-taxonomy go/console/output/envelope $RS,$TS,$PY,$PHP
 test-parity-statemachine go/runtime/domain $RS
 test-parity-redact go/core/redact $RS
+test-parity-identity go/core/identity $RS
 test-parity-upgrade go/core/upgrade $RS
 test-parity-cli go/console/cli/... $TS,$PY
 test-parity-engine engine/sdk/parity/... engine/sdk/ts-kit-engine,engine/sdk/py-kit-engine

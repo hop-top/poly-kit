@@ -13,7 +13,9 @@ The exact bytes `DeriveKey` must produce from an Ed25519 seed and a domain-separ
 
 ```sh
 go test ./go/core/identity/ -run '^TestDeriveKeyContract$' -count=1
-cd sdk/experimental/rs && cargo test --features sqlstore --test sqlstore --locked
+make test-parity-identity
+cd sdk/experimental/rs && cargo test --features identity --test identity_conformance --locked
+cd sdk/experimental/rs && cargo test --features sqlstore-encrypt --test sqlstore --locked
 ```
 
 ## Contract
@@ -28,13 +30,14 @@ Consumers:
 | Port | Loader |
 |------|--------|
 | Go | `go/core/identity/derivekey_contract_test.go` (`TestDeriveKeyContract`) |
-| Rust | `sdk/experimental/rs/tests/sqlstore.rs` (feature `sqlstore`), implementation in `src/sqlstore/crypto.rs` |
+| Rust | `sdk/experimental/rs/tests/identity_conformance.rs` (feature `identity`, implementation in `src/identity/encrypt.rs`); `sdk/experimental/rs/tests/sqlstore.rs` (feature `sqlstore-encrypt`, `src/sqlstore/crypto.rs`) |
 
 The fixture is edited by hand; `make lint-config` checks it parses.
 
 ## Neighbours
 
 - `go/core/identity/`: Go implementation
+- `sdk/experimental/rs/src/identity/`: Rust port
 - `../kv-v1/`, `../httpcache-v1/`: what the derived key ends up protecting
 
 ## See also

@@ -413,6 +413,21 @@ support it.
 - [Expose your CLI over MCP](../guides/expose-cli-over-mcp.md)
   — the Go reference surface, in depth
 
+## Identity
+
+Feature `identity` ports `go/core/identity`: an Ed25519 `Keypair` (PKCS#8/SPKI PEM byte-identical to
+Go's), EdDSA JWT sign and verify with Go's claims checks, `derive_key` (HKDF-SHA256) and NaCl
+secretbox `encrypt`/`decrypt`, and a filesystem `Store`. The key-derivation bytes are pinned by
+`contracts/identity-v1` (`make test-parity-identity`).
+
+The core builds for `wasm32-unknown-unknown`, which has no OS random source and no clock: there,
+build keys with `Keypair::from_seed`, seal with `encrypt_with_nonce` and verify with
+`verify_jwt_at` / `verify_jwt_with_options_at` (unix seconds). `Keypair::generate`, `encrypt`,
+`verify_jwt` and `verify_jwt_with_options` are compiled off that target; `Store` and
+`default_store` (`<data home>/kit/identity`) off wasm32 altogether. See
+[`src/identity/README.md`](../../../sdk/experimental/rs/src/identity/README.md) for the contract and
+the differences from Go.
+
 ## Storage
 
 Four storage modules port the cores of the Go `go/storage/*` packages.
