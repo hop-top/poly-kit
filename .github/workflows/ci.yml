@@ -583,6 +583,54 @@ jobs:
       - run: scripts/test-affected.sh rs
         if: steps.scope.outputs.run == 'true'
 
+  # rs-test runs the toolchain pinned in mise.toml. Two more legs bracket
+  # it: the MSRV (`rust-version` in Cargo.toml), so a newer-std API or
+  # language feature cannot slip past the floor consumers build on, and
+  # current stable, which is what publish compiles on, so a release does
+  # not find the breakage first. Same scope as rs-test; fmt and clippy
+  # stay on the pin (rs-lint), their output is version-sensitive.
+  rs-toolchains:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [msrv, stable]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+      - id: scope
+        run: scripts/test-affected.sh --gate rs
+      - id: toolchain
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          if [ "$LEG" = msrv ]; then
+            v=$(sed -n 's/^rust-version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' sdk/experimental/rs/Cargo.toml)
+            [ -n "$v" ] || { echo "no rust-version in sdk/experimental/rs/Cargo.toml" >&2; exit 1; }
+          else
+            v=stable
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+        env:
+          LEG: ${{ matrix.leg }}
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        if: steps.scope.outputs.run == 'true'
+        with:
+          toolchain: ${{ steps.toolchain.outputs.version }}  # toolchain-parity: allow (MSRV and stable legs, not the dev pin)
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: steps.scope.outputs.run == 'true'
+        with:
+          workspaces: sdk/experimental/rs
+          key: ${{ matrix.leg }}
+      # sdk/experimental/rs/rust-toolchain.toml would override the
+      # toolchain installed above; RUSTUP_TOOLCHAIN wins over it.
+      - run: cd sdk/experimental/rs && cargo --version && cargo test --all-features --locked
+        if: steps.scope.outputs.run == 'true'
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.toolchain.outputs.version }}
+
   # The bus feature is embedded in multi-threaded and browser consumers.
   # Holds it to what they build: wasm32-unknown-unknown with no default
   # features, and no serde_json/preserve_order leaking out of `output`
@@ -1053,7 +1101,7 @@ jobs:
   # The failed jobs carry the red; this job fails only when it cannot
   # report.
   nightly-report:
-    needs: [go-lint, ts-lint, py-lint, rs-lint, docs-lint, sdk-paths-lint, adr-refs-lint, internal-refs-lint, actions-pinned-lint, toolchain-parity, bats-tests, templates-e2e, proto-check, template-kit-pin, go-test, go-race, ts-test, ts-node-floor, py-test, py-floor, rs-test, rs-wasm, rs-mobile, rs-features, php-test, parity, compliance]
+    needs: [go-lint, ts-lint, py-lint, rs-lint, docs-lint, sdk-paths-lint, adr-refs-lint, internal-refs-lint, actions-pinned-lint, toolchain-parity, bats-tests, templates-e2e, proto-check, template-kit-pin, go-test, go-race, ts-test, ts-node-floor, py-test, py-floor, rs-test, rs-toolchains, rs-wasm, rs-mobile, rs-features, php-test, parity, compliance]
     if: ${{ github.event_name == 'schedule' && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
