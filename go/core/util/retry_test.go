@@ -124,3 +124,16 @@ func TestBackoff_JitterAddsRandomness(t *testing.T) {
 		t.Fatal("jitter produced identical values across 20 calls")
 	}
 }
+
+// Zero-value RetryConfig has jitter off: Backoff is deterministic.
+func TestRetryConfigZeroValueNoJitter(t *testing.T) {
+	var c RetryConfig
+	if c.Jitter {
+		t.Fatal("zero RetryConfig must have Jitter=false")
+	}
+	for i := 0; i < 20; i++ {
+		if got := c.Backoff(0); got != 100*time.Millisecond {
+			t.Fatalf("Backoff(0) = %v, want 100ms (no jitter)", got)
+		}
+	}
+}
