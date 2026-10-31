@@ -5,11 +5,16 @@ package s3
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+
+	"hop.top/kit/go/storage/blob"
+	"hop.top/kit/go/storage/blob/blobtest"
 )
 
 func testStore(t *testing.T) *Store {
@@ -93,4 +98,23 @@ func TestList(t *testing.T) {
 	if len(objs) < 2 {
 		t.Fatalf("expected >=2 objects, got %d", len(objs))
 	}
+}
+
+// TestConformance runs the shared provider suite; each subtest gets its own
+// key prefix so runs never collide.
+func TestConformance(t *testing.T) {
+	base := testStore(t)
+	n := 0
+	blobtest.Run(t, func(t *testing.T) blob.Store {
+		n++
+		st := New(base.client, base.bucket, fmt.Sprintf("blob-test/conformance-%d-%d", time.Now().UnixNano(), n))
+		t.Cleanup(func() {
+			ctx := context.Background()
+			objs, _ := st.List(ctx, "")
+			for _, o := range objs {
+				_ = st.Delete(ctx, o.Key)
+			}
+		})
+		return st
+	})
 }

@@ -25,11 +25,30 @@ type Store struct {
 var _ blob.Store = (*Store)(nil)
 
 // New returns a Store that reads/writes objects under prefix in bucket.
+// Trailing slashes on prefix are ignored, so "tool-data" and "tool-data/"
+// address the same objects.
 func New(client *s3.Client, bucket, prefix string) *Store {
-	return &Store{client: client, bucket: bucket, prefix: prefix}
+	return &Store{client: client, bucket: bucket, prefix: strings.TrimRight(prefix, "/")}
 }
 
 func (s *Store) key(k string) string { return path.Join(s.prefix, k) }
+
+// listPrefix returns the S3 key prefix for a caller-side List prefix. Unlike
+// key it keeps a trailing slash: "logs/" must not match "logs-old/x".
+func (s *Store) listPrefix(prefix string) string {
+	if s.prefix == "" {
+		return prefix
+	}
+	return s.prefix + "/" + prefix
+}
+
+// callerKey strips the store prefix from a full object key.
+func (s *Store) callerKey(full string) string {
+	if s.prefix == "" {
+		return full
+	}
+	return strings.TrimPrefix(full, s.prefix+"/")
+}
 
 // Put writes r to the object at key with the given content type.
 func (s *Store) Put(ctx context.Context, key string, r io.Reader, contentType string) error {
@@ -57,7 +76,8 @@ func (s *Store) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 	return out.Body, nil
 }
 
-// Delete removes the object at key.
+// Delete removes the object at key. Deleting a missing key succeeds (S3
+// DeleteObject is idempotent).
 func (s *Store) Delete(ctx context.Context, key string) error {
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: &s.bucket,
@@ -70,8 +90,10 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 }
 
 // List returns metadata for all objects whose key starts with prefix.
+// ListObjectsV2 carries no content type, so Object.ContentType is empty;
+// issue a HEAD per object if you need it.
 func (s *Store) List(ctx context.Context, prefix string) ([]blob.Object, error) {
-	full := s.key(prefix)
+	full := s.listPrefix(prefix)
 	var objects []blob.Object
 
 	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
@@ -85,10 +107,7 @@ func (s *Store) List(ctx context.Context, prefix string) ([]blob.Object, error) 
 			return nil, fmt.Errorf("s3 list %s: %w", prefix, err)
 		}
 		for _, obj := range page.Contents {
-			key := aws.ToString(obj.Key)
-			if s.prefix != "" {
-				key = strings.TrimPrefix(key, s.prefix+"/")
-			}
+			key := s.callerKey(aws.ToString(obj.Key))
 			objects = append(objects, blob.Object{
 				Key:  key,
 				Size: aws.ToInt64(obj.Size),

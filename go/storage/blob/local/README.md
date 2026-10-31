@@ -33,6 +33,7 @@ fmt.Println(objs[0].Key, objs[0].Size)
 - Keys that escape the root (`../`) are rejected before any I/O.
 - Temp files are dot-prefixed with a `.tmp` suffix; `List` filters them; a failed `Put` removes its own temp file and leaves the previous value. The Rust SDK's local blob backend mirrors this.
 - `List` order: per directory ascending by name, subdirectories in place (`a/b` before `a.txt`). The shared corpus `contracts/blob-v1` pins it; `make test-parity-blob` runs the Go and Rust runners.
+- `Delete` of a missing key succeeds.
 - Content type is accepted and discarded; `Object.ContentType` is empty on `List`. Tests: embedded, `t.TempDir`, including partial-write and crash-orphan cases.
 
 ## Neighbours
