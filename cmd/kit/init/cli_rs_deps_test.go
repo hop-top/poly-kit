@@ -36,7 +36,9 @@ var rsDocPinFiles = []string{
 
 // releasedKitRSVersion reads sdk/rs's version from the
 // release-please manifest: the kit-rs release this checkout is, or the
-// one its release PR is cutting.
+// one its release PR is cutting. Only release PRs write the manifest, so
+// after the move from sdk/experimental/rs the entry keeps its old key until
+// the next kit-rs release PR rewrites it under sdk/rs.
 func releasedKitRSVersion(t *testing.T) string {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(kitRepoRoot(t), ".github", ".release-please-manifest.json"))
@@ -44,7 +46,10 @@ func releasedKitRSVersion(t *testing.T) string {
 	var manifest map[string]string
 	require.NoError(t, json.Unmarshal(raw, &manifest))
 	v := manifest["sdk/rs"]
-	require.NotEmpty(t, v, "the manifest carries sdk/rs's version")
+	if v == "" {
+		v = manifest["sdk/experimental/rs"]
+	}
+	require.NotEmpty(t, v, "the manifest carries kit-rs's version")
 	return v
 }
 
