@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/rpc-v1/vectors.json",
+  "version": "v1",
+  "description": "Connect (JSON, unary, HTTP/1.1) wire exchanges against crud.v1.EntityService on the rpc server. `groups[]` each run against a fresh server whose handler is an in-memory store: Create assigns `w-<n>` as `id`, Get/Update of an unknown id fails not_found `entity <id> not found`, List returns entities sorted by id, a Create named `panic` panics in the handler. A group with `auth` sits behind the authenticate interceptor: the token `good` is admitted, anything else, or nothing, is refused. A step POSTs `request` (a JSON value, or `raw` text) to `/crud.v1.EntityService/<procedure>` with `headers`, and expects HTTP `status`, a JSON `content_type` response and either the exact JSON `response` or, when `code_only`, just that Connect error `code` (message text is each implementation's own).",
+  "groups": [
+    {
+      "name": "open",
+      "steps": [
+        { "name": "create", "procedure": "Create", "request": { "entity": { "name": "bolt" } }, "status": 200, "response": { "entity": { "id": "w-1", "name": "bolt" } } },
+        { "name": "get", "procedure": "Get", "request": { "id": "w-1" }, "status": 200, "response": { "entity": { "id": "w-1", "name": "bolt" } } },
+        { "name": "get unknown", "procedure": "Get", "request": { "id": "zz" }, "status": 404, "response": { "code": "not_found", "message": "entity zz not found" } },
+        { "name": "create second", "procedure": "Create", "request": { "entity": { "name": "nut" } }, "status": 200, "response": { "entity": { "id": "w-2", "name": "nut" } } },
+        { "name": "list sorted by id", "procedure": "List", "request": {}, "status": 200, "response": { "entities": [ { "id": "w-1", "name": "bolt" }, { "id": "w-2", "name": "nut" } ] } },
+        { "name": "update", "procedure": "Update", "request": { "entity": { "id": "w-1", "name": "bolt2" } }, "status": 200, "response": { "entity": { "id": "w-1", "name": "bolt2" } } },
+        { "name": "update unknown", "procedure": "Update", "request": { "entity": { "id": "zz", "name": "x" } }, "status": 404, "response": { "code": "not_found", "message": "entity zz not found" } },
+        { "name": "delete", "procedure": "Delete", "request": { "id": "w-1" }, "status": 200, "response": {} },
+        { "name": "get after delete", "procedure": "Get", "request": { "id": "w-1" }, "status": 404, "response": { "code": "not_found", "message": "entity w-1 not found" } },
+        { "name": "malformed body", "procedure": "Get", "raw": "{", "status": 400, "code_only": "invalid_argument" },
+        { "name": "handler panic", "procedure": "Create", "request": { "entity": { "name": "panic" } }, "status": 500, "code_only": "internal" },
+        { "name": "server survives the panic", "procedure": "Get", "request": { "id": "w-2" }, "status": 200, "response": { "entity": { "id": "w-2", "name": "nut" } } }
+      ]
+    },
+    {
+      "name": "authenticated",
+      "auth": { "token": "good" },
+      "steps": [
+        { "name": "no credentials", "procedure": "List", "request": {}, "status": 401, "code_only": "unauthenticated" },
+        { "name": "wrong token", "procedure": "List", "request": {}, "headers": { "Authorization": "Bearer nope" }, "status": 401, "code_only": "unauthenticated" },
+        { "name": "right token", "procedure": "List", "request": {}, "headers": { "Authorization": "Bearer good" }, "status": 200, "response": {} },
+        { "name": "refused call ran nothing", "procedure": "Create", "request": { "entity": { "name": "bolt" } }, "status": 401, "code_only": "unauthenticated" },
+        { "name": "admitted create", "procedure": "Create", "request": { "entity": { "name": "bolt" } }, "headers": { "Authorization": "Bearer good" }, "status": 200, "response": { "entity": { "id": "w-1", "name": "bolt" } } }
+      ]
+    }
+  ]
+}

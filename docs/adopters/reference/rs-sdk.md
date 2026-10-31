@@ -46,6 +46,15 @@ A `serve` the root already owned is replaced, never doubled. See
 [`examples/serve.rs`](../../../sdk/experimental/rs/examples/serve.rs) for a service that binds a real
 listener, and `docs/contracts/serve-lifecycle.md` for the contract.
 
+### RPC server
+
+Feature `rpc-server` (native) adds `RpcServer`, a port of `go/transport/rpc`:
+Connect, gRPC and gRPC-Web on one listener (HTTP/1.1 and h2c) as a `serve`
+service named `rpc`, with `request_id`, `log` and `authenticate` interceptors
+(kit-rs authn) for unary and streaming calls, panic recovery and a body limit.
+Contract and limits: [`src/rpc/README.md`](../../../sdk/experimental/rs/src/rpc/README.md);
+wire parity with Go: [`contracts/rpc-v1`](../../../contracts/rpc-v1/README.md).
+
 ### Socket service
 
 Feature `socket` (unix) adds `SocketService`, a port of `go/transport/socket`: a

@@ -54,6 +54,8 @@ buf curl --schema contracts/proto/crud/v1 \
 - `rpc/client` returns every Connect error as an `*api.APIError` whose code is the Connect code (`not_found`, …) and whose status is the code's HTTP mapping. A `resource_exhausted` carrying `Retry-After` — a rate-limit refusal — is a `*client.RateLimitedError`: status 429, code `rate_limited`, `errors.Is(err, api.ErrRateLimited)`, and the wait in `RetryAfter`.
 - Importing this package registers the `crud.v1` protobuf types at init. `go/console/cli` does not import it, so a CLI that serves no RPC does not carry them.
 
+- the wire answers the shared corpus [`contracts/rpc-v1`](../../../contracts/rpc-v1/README.md), also run against the Rust server (`TestConformanceRPC`)
+
 ## Neighbours
 
 - `go/transport/cmdsurface`: `MountRPC`, the command tree as `cmdsurface.v1.Commands`.
