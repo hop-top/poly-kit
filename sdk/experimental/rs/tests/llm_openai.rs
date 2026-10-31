@@ -578,7 +578,7 @@ async fn base_url_credentials_not_in_api_errors() {
             "http://user:{BASE_URL_SECRET}@{}",
             srv.url.trim_start_matches("http://")
         );
-        let e = Adapter::new(cfg("openai", &base, "gpt-4o", "k"))
+        let e = Adapter::new(cfg("openai", &base, "gpt-4o", ""))
             .unwrap()
             .complete(&hi())
             .await
@@ -594,7 +594,7 @@ async fn base_url_credentials_not_in_api_errors() {
 #[tokio::test]
 async fn transport_errors_do_not_name_base_url_credentials() {
     let base = format!("http://user:{BASE_URL_SECRET}@127.0.0.1:1");
-    let e = Adapter::builder(cfg("openai", &base, "gpt-4o", "k"))
+    let e = Adapter::builder(cfg("openai", &base, "gpt-4o", ""))
         .max_retries(0)
         .build()
         .unwrap()
@@ -692,4 +692,47 @@ async fn stream_error_key_straddling_the_cap_is_scrubbed() {
             }
         }
     }
+}
+
+#[test]
+fn key_is_checked_against_the_endpoint() {
+    for base in ["http://remote.example/v1", "https://user:pw@h.example/v1"] {
+        let e = Adapter::new(cfg("openai", base, "m", &fake_key())).unwrap_err();
+        assert!(matches!(e, LlmError::KeyEndpoint { .. }), "{base}: {e}");
+        assert!(!e.to_string().contains("pw@"), "{e}");
+    }
+    assert!(Adapter::new(cfg(
+        "openai",
+        "https://anywhere.example/v1",
+        "m",
+        &fake_key()
+    ))
+    .is_ok());
+    assert!(Adapter::new(cfg("openai", "http://127.0.0.1:1", "m", &fake_key())).is_ok());
+    // A blank key sends nothing, so any endpoint will do.
+    assert!(Adapter::new(cfg("lmstudio", "http://gpu-box:1234/v1", "m", "")).is_ok());
+}
+
+#[test]
+fn org_and_project_headers_go_only_to_trusted_endpoints() {
+    let env = |k: &str| match k {
+        "OPENAI_ORG_ID" => Some("org-env".to_string()),
+        "OPENAI_PROJECT_ID" => Some("proj-env".to_string()),
+        _ => None,
+    };
+    let headers = |base: &str| {
+        Adapter::builder(cfg("openai", base, "m", "k"))
+            .env(env)
+            .config_file(hop_top_kit::llm::ConfigFile::default())
+            .build()
+            .unwrap()
+            .credential_headers()
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
+    };
+    assert!(headers("").contains(&"openai-organization".to_string()));
+    assert!(headers("http://127.0.0.1:9").contains(&"openai-project".to_string()));
+    let remote = headers("https://gateway.example/v1");
+    assert_eq!(remote, ["authorization"], "{remote:?}");
 }

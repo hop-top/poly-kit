@@ -886,10 +886,7 @@ async fn model_is_encoded_into_the_path() {
             "{model}: {got}"
         );
         assert!(!got.contains("..") || got.contains("%2F"), "{model}: {got}");
-        assert!(
-            !got.contains('?') && !got.contains('#'),
-            "{model}: {got}"
-        );
+        assert!(!got.contains('?') && !got.contains('#'), "{model}: {got}");
         assert_eq!(got.matches('/').count(), 2, "{model}: {got}");
     }
 }

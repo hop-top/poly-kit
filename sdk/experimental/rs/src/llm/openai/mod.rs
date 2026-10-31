@@ -109,9 +109,18 @@ pub struct Builder {
     sleeper: Option<Sleeper>,
     max_retries: u32,
     limits: Option<Limits>,
+    file: Option<crate::llm::ConfigFile>,
 }
 
 impl Builder {
+    /// The llm.yaml whose `base_url` counts as a trusted endpoint for
+    /// the organization and project headers; the default reads it from
+    /// disk when it is needed.
+    pub fn config_file(mut self, file: crate::llm::ConfigFile) -> Self {
+        self.file = Some(file);
+        self
+    }
+
     /// Read nothing ambient (Go `ResolvedConfig.Hermetic`): no
     /// `OPENAI_ORG_ID` or `OPENAI_PROJECT_ID`, from the process or from
     /// [`Builder::env`]. Same as [`ResolvedConfig::hermetic`]. Proxy
@@ -196,7 +205,23 @@ impl Builder {
             credentials.push(("authorization".to_string(), format!("Bearer {}", p.api_key)));
             secrets.push(p.api_key.clone());
         }
-        if scheme == SCHEME && !cfg.hermetic {
+        // No key goes over plain http to a remote host or to a malformed
+        // endpoint.
+        crate::llm::check_endpoint_url(&scheme, &p.api_key, &base, &url)?;
+        let ids_trusted = || {
+            let file = match &self.file {
+                Some(f) => f.clone(),
+                None => crate::llm::ConfigFile::load(),
+            };
+            crate::llm::wirehttp::env_key_trusted(
+                &url,
+                DEFAULT_BASE_URL,
+                (self.env)("LLM_BASE_URL"),
+                &file,
+                &[SCHEME],
+            )
+        };
+        if scheme == SCHEME && !cfg.hermetic && ids_trusted() {
             for (var, header) in [
                 ("OPENAI_ORG_ID", "openai-organization"),
                 ("OPENAI_PROJECT_ID", "openai-project"),
@@ -275,6 +300,7 @@ impl Adapter {
             sleeper: Some(tokio_sleeper()),
             max_retries: DEFAULT_MAX_RETRIES,
             limits: None,
+            file: None,
         }
     }
 

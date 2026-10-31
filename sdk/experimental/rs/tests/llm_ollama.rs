@@ -407,3 +407,21 @@ async fn default_registry_resolves_ollama() {
     assert_eq!(srv.only().path, "/api/chat");
     assert!(default_registry().schemes().contains(&"ollama".to_string()));
 }
+
+#[test]
+fn key_is_checked_against_the_endpoint() {
+    for base in ["http://remote.example", "https://user:pw@h.example"] {
+        let r = Adapter::new(ResolvedConfig {
+            provider: ProviderConfig {
+                api_key: "fake-ollama-key".into(),
+                base_url: base.into(),
+                model: "m".into(),
+                ..ProviderConfig::default()
+            },
+            ..ResolvedConfig::default()
+        });
+        let e = r.unwrap_err();
+        assert!(matches!(e, LlmError::KeyEndpoint { .. }), "{base}: {e}");
+        assert!(!e.to_string().contains("pw@"), "{e}");
+    }
+}
