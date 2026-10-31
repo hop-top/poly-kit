@@ -264,7 +264,9 @@ func main() {
 			var seq []string
 			var empty bool
 			switch fmtName {
-			case "table":
+			case "table", "human":
+				// human is the table view of a payload without a bespoke
+				// renderer, so it is read the way table is.
 				seq, empty = seqFromTable(buf.String())
 			case "json":
 				seq, empty = seqFromJSON(buf.String())

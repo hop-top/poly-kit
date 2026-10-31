@@ -54,11 +54,13 @@
     },
     "cols-reorder-extended": {
       "csv":  { "sequence": ["zeta", "alpha"] },
-      "text": { "sequence": ["zeta", "alpha"] }
+      "text": { "sequence": ["zeta", "alpha"] },
+      "human": { "sequence": ["zeta", "alpha"] }
     },
     "spec-order-extended": {
       "csv":  { "sequence": ["zeta", "alpha", "mid"] },
-      "text": { "sequence": ["zeta", "alpha", "mid"] }
+      "text": { "sequence": ["zeta", "alpha", "mid"] },
+      "human": { "sequence": ["zeta", "alpha", "mid"] }
     }
   },
 
@@ -94,7 +96,7 @@
         "no-spec-cols-reorder",
         "cols-reorder-extended"
       ],
-      "formats": ["table", "json", "yaml", "csv", "text"],
+      "formats": ["table", "json", "yaml", "csv", "text", "human"],
       "detail": [
         "Go SELECTS the requested columns but never REORDERS them: it emits",
         "them in struct-field declaration order regardless of the --cols",
@@ -125,14 +127,13 @@
       ]
     },
 
-    "rs-php-no-csv-text": {
-      "runtime": ["rs", "php"],
-      "formats": ["csv", "text"],
+    "py-ts-php-no-human": {
+      "runtime": ["py", "ts", "php"],
+      "formats": ["human"],
       "detail": [
-        "Neither SDK registers a csv or text formatter — rs builtins.rs and",
-        "php Builtins.php both say csv/text land in a follow-up phase. The",
-        "extended cases therefore run on py/ts/go only. Reported as skipped,",
-        "never as passed."
+        "Only Go and rs register a human formatter. py, ts and php have no",
+        "human key in their registries, so the extended cases report it as",
+        "unsupported on those runtimes. Reported as skipped, never as passed."
       ]
     },
 

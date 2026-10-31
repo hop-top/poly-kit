@@ -17,14 +17,14 @@
     "            deliberately NOT the spec order in several cases.",
     "  cols    — the user's --cols override. [] means 'not supplied'.",
     "  formats — which formatters to exercise. 'portable' expands to the set",
-    "            every runtime implements; 'extended' adds csv/text, which rs",
+    "            every runtime implements; 'extended' adds csv/text/human, which rs",
     "            and php do not ship.",
     "",
     "header == key universally (contract rule 3), so a spec entry is one name."
   ],
 
   "portable_formats": ["table", "json", "yaml"],
-  "extended_formats": ["csv", "text"],
+  "extended_formats": ["csv", "text", "human"],
 
   "cases": [
     {

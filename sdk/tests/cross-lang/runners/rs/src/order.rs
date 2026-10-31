@@ -10,9 +10,8 @@
 //! crate enables serde_json's `preserve_order` so that re-parsing a rendered
 //! JSON document yields the emitted order rather than an alphabetical one.
 //!
-//! The Rust SDK ships table/json/yaml only — csv and text land in a follow-up
-//! phase — so extended-format cases report "unsupported" rather than passing
-//! silently.
+//! A format the registry does not hold is reported "unsupported" rather than
+//! passing silently.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -41,6 +40,28 @@ fn seq_from_table(text: &str) -> (Vec<String>, bool) {
         return (Vec::new(), true);
     }
     (cols, false)
+}
+
+/// Column sequence from the header line of a csv document.
+fn seq_from_csv(text: &str) -> (Vec<String>, bool) {
+    match text.lines().find(|l| !l.trim().is_empty()) {
+        Some(first) => (
+            first.split(',').map(|c| c.trim().to_string()).collect(),
+            false,
+        ),
+        None => (Vec::new(), true),
+    }
+}
+
+/// Column sequence from the `key=value` lines of the first text record.
+fn seq_from_text(text: &str) -> (Vec<String>, bool) {
+    let keys: Vec<String> = text
+        .lines()
+        .take_while(|l| !l.trim().is_empty())
+        .filter_map(|l| l.split_once('=').map(|(k, _)| k.trim().to_string()))
+        .collect();
+    let empty = keys.is_empty();
+    (keys, empty)
 }
 
 fn seq_from_json(text: &str) -> (Vec<String>, bool) {
@@ -199,7 +220,11 @@ fn main() {
             let rendered = String::from_utf8(buf).expect("utf8 output");
 
             let (sequence, empty) = match fmt.as_str() {
-                "table" => seq_from_table(&rendered),
+                // human is the table view of a payload without a bespoke
+                // renderer, so it is read the way table is.
+                "table" | "human" => seq_from_table(&rendered),
+                "csv" => seq_from_csv(&rendered),
+                "text" => seq_from_text(&rendered),
                 "json" => seq_from_json(&rendered),
                 "yaml" => seq_from_yaml(&rendered),
                 other => panic!("no extractor for format {other}"),

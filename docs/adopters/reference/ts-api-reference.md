@@ -532,9 +532,8 @@ All five built-in formats ship in every runtime: rs registers `csv` and
 `text` in `src/output/builtins/` and php ships `CsvFormatter` and
 `TextFormatter` under `src/Output/Formatter/Builtin/`. The
 cross-language fixture set `sdk/tests/cross-lang/expected/ordering.json`
-still carries the `rs-php-no-csv-text` skip entry, which predates those
-formatters; until the fixtures are refreshed the extended csv/text cases
-run on go/py/ts only and are reported as skipped for rs and php.
+records one skip: the extended `human` case runs on go and rs only
+(`py-ts-php-no-human`) and is reported as skipped for ts, py and php.
 
 One difference matters when writing portable templates: on the
 `--template` path Go exposes `.Cols` and py and ts expose `cols`, an
