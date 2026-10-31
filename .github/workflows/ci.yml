@@ -147,6 +147,7 @@ jobs:
         with:
           workspaces: sdk/experimental/rs
       - run: make lint-rs
+      - run: make doc-rs
 
   docs-lint:
     runs-on: ubuntu-latest
