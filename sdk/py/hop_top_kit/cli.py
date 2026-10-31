@@ -53,8 +53,8 @@ import typer
 
 from hop_top_kit import delegation, netpolicy, parity
 from hop_top_kit.gate import Gate, PolicyLoader, PromptSource
-from hop_top_kit.sideeffect import annotate, is_dry_run  # noqa: F401 - re-exported
 from hop_top_kit.parity import HELP_SECTION_ORDER, HELP_SECTIONS
+from hop_top_kit.sideeffect import annotate, is_dry_run  # noqa: F401 - re-exported
 
 # Click layer typer drives: vendored ``typer._click`` on typer>=0.26, the
 # ``click`` package before that. Bind to it through typer's public
