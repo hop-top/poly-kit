@@ -5,7 +5,7 @@
 // features. The policy core's tables are in tests/netpolicy_core.rs.
 #![cfg(feature = "api")]
 
-use hop_top_kit::netpolicy::{GuardedClient, NetError, NetPolicy, OfflineError};
+use hop_top_kit::netpolicy::{GuardedClient, NetError, NetPolicy, OfflineError, Redirects};
 
 // A policy-marked client must stop an external request before it opens
 // a socket. The destination is deliberately unroutable: loopback is
@@ -526,4 +526,127 @@ async fn redirect_between_permitted_hosts_is_followed() {
         .await
         .expect("loopback redirect refused");
     assert_eq!(resp.status().as_u16(), 204);
+}
+
+// A caller that opts out of redirects (the llm adapter does, so a
+// credential never moves to a host the server names) gets the 3xx back,
+// not a followed hop and not a refusal.
+#[tokio::test]
+async fn none_mode_returns_the_redirect_unfollowed() {
+    let mut server = mockito::Server::new_async().await;
+    let _m = server
+        .mock("GET", "/hop")
+        .with_status(302)
+        .with_header("location", "https://evil.example.invalid/x")
+        .create_async()
+        .await;
+    let client = GuardedClient::build(
+        NetPolicy::online().with_allow_hosts(["graph.microsoft.com"]),
+        reqwest::Client::builder(),
+        Redirects::None,
+    )
+    .expect("build client");
+    let resp = client
+        .get(format!("{}/hop", server.url()))
+        .send()
+        .await
+        .expect("a 3xx is a response, not an error");
+    assert_eq!(resp.status().as_u16(), 302);
+}
+
+// Follow mode: a hop to another origin is refused when the request
+// carries a credential, and nothing is sent to that origin. Without a
+// credential the hop is followed.
+#[tokio::test]
+async fn cross_origin_hop_with_credentials_is_refused() {
+    for (name, value) in [
+        ("authorization", "Bearer t-secret"),
+        ("x-api-key", "k-secret"),
+        ("cookie", "s=1-secret"),
+    ] {
+        let mut a = mockito::Server::new_async().await;
+        let mut b = mockito::Server::new_async().await;
+        let _m = a
+            .mock("GET", "/hop")
+            .with_status(302)
+            .with_header("location", &format!("{}/final", b.url()))
+            .expect_at_least(1)
+            .create_async()
+            .await;
+        let hit = b
+            .mock("GET", "/final")
+            .with_status(204)
+            .expect(0)
+            .create_async()
+            .await;
+
+        let client = GuardedClient::new(NetPolicy::online()).expect("build client");
+        let err = client
+            .get(format!("{}/hop", a.url()))
+            .header(name, value)
+            .send()
+            .await
+            .expect_err(name);
+        assert!(
+            matches!(err, NetError::Redirect(_)),
+            "{name}: not the redirect refusal: {err}"
+        );
+        assert!(!err.to_string().contains("secret"), "{name}: leaked: {err}");
+        hit.assert_async().await;
+        hit.remove_async().await;
+
+        // No credential: followed.
+        let ok = b
+            .mock("GET", "/final")
+            .with_status(204)
+            .expect(1)
+            .create_async()
+            .await;
+        let resp = client
+            .get(format!("{}/hop", a.url()))
+            .send()
+            .await
+            .expect("credential-free hop followed");
+        assert_eq!(resp.status().as_u16(), 204);
+        ok.assert_async().await;
+    }
+}
+
+// A same-origin hop keeps the credential and is followed; a loop stops.
+#[tokio::test]
+async fn same_origin_hop_is_followed_and_loops_are_bounded() {
+    let mut s = mockito::Server::new_async().await;
+    let _a = s
+        .mock("GET", "/a")
+        .with_status(302)
+        .with_header("location", "/b")
+        .create_async()
+        .await;
+    let _b = s
+        .mock("GET", "/b")
+        .match_header("authorization", "Bearer t")
+        .with_status(204)
+        .create_async()
+        .await;
+    let _l = s
+        .mock("GET", "/loop")
+        .with_status(302)
+        .with_header("location", "/loop")
+        .expect_at_least(1)
+        .create_async()
+        .await;
+    let client = GuardedClient::new(NetPolicy::online()).expect("build client");
+    let resp = client
+        .get(format!("{}/a", s.url()))
+        .bearer_auth("t")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 204);
+    let err = client
+        .get(format!("{}/loop", s.url()))
+        .send()
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("too many redirects"), "{err}");
 }
