@@ -2,7 +2,7 @@
 
 ## What it answers
 
-How a kit tool serves HTTP: the adopter's axum routes inside the middleware stack every kit listener shares, run as a service the supervisor starts, probes and stops. Wrong place for the command-tree projection and RPC transports: those sit on top of this listener, and are not ported here.
+How a kit tool serves HTTP: the adopter's axum routes inside the middleware stack every kit listener shares, run as a service the supervisor starts, probes and stops. The command-tree projection (`commands`, features `api-server` + `cli`) sits on this listener; RPC transports are not here.
 
 ## Use it when
 
@@ -12,6 +12,7 @@ How a kit tool serves HTTP: the adopter's axum routes inside the middleware stac
 - clients are browsers on another origin → `cors`, and the same origins are trusted by the Origin check
 - ops needs probes and a spec → `/healthz`, `/readyz` come with the stack; `openapi` serves `/openapi.json` from an `OpenApi` model
 - a handler streams → `sse(stream)`
+- a kit CLI must be callable over HTTP → `commands::CommandProjection::new(Arc::new(root), name, version)`; merge `.router()` into the routes, and `.openapi(..)` into the spec
 
 ## Quick start
 
@@ -23,6 +24,10 @@ let routes = axum::Router::new().route("/ping", get(|| async { "pong" }));
 let svc = ApiService::build(ApiServerConfig::new("127.0.0.1:8080", routes))?;
 // Register `Arc::new(svc)` in a serve::ServiceRegistry.
 ```
+
+## Command projection
+
+`commands` projects the tree a kit CLI root defines (`cli::Root::model`), as Go's `go/transport/api` projection does for the Go root: `GET /v1/commands` lists every command (invocable first, withheld ones with their reason); a `read` command is `GET /v1/commands/<path>` with flags as query parameters, any other tier `POST` with `{"flags":{},"args":[]}`; `<route>/stream` answers as `text/event-stream` (`event` frames, then one `result`). The command's exit class selects the status (`status_for_exit_code`: USAGE 400, NOT_FOUND 404, CONFLICT 409, UNAUTHORIZED and CONSENT_REFUSED 403, TRANSIENT and PREREQUISITE 503, RATE_LIMITED 429, PROVENANCE_MISSING 422, else 500). Only declared flags are accepted, so persistent plumbing (`--dry-run`, `-C`) is never reachable. A command with no handler, hidden, interactive or in a management group is listed and not mounted. `with_gate` is the per-command policy hook; authentication, body limit and rate limit are this listener's. Not ported: `--confirm` gating, idempotency replay, result caching, personalised listings. Pinned by the `projection` table of `contracts/parity/api.json`, run by `go/transport/api/projection_contract_test.go` and `tests/api_server_commands.rs`.
 
 ## Contract
 

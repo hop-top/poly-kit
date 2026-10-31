@@ -51,7 +51,8 @@
       "openapi": "SHIPPED",
       "sse": "SHIPPED",
       "websocket": "SHIPPED",
-      "service_lifecycle": "SHIPPED"
+      "service_lifecycle": "SHIPPED",
+      "command_projection": "SHIPPED"
     },
     "rs": {
       "implementation": "sdk/experimental/rs/src/api_server, feature api-server",
@@ -72,7 +73,8 @@
       "openapi": "SHIPPED",
       "sse": "SHIPPED",
       "websocket": "PENDING",
-      "service_lifecycle": "SHIPPED"
+      "service_lifecycle": "SHIPPED",
+      "command_projection": "SHIPPED"
     },
     "ts": {
       "implementation": "none",
@@ -1641,5 +1643,599 @@
       "header": "ok status=200 request_id=forged",
       "kept": false
     }
-  ]
+  ],
+  "projection": {
+    "description": "The command-tree projection under /v1/commands. Go runs the rows against api.MountCommandProjection with these descriptors and a stub executor; Rust projects the equivalent tree of a kit CLI root. A `run` command exits with its `exit` flag; every other command exits 0 and prints `ran <path>`. `call` is what the command saw (flag values as strings). `discovery` pins the listing; `openapi` pins the operations per invocable command.",
+    "exit_status": [
+      {
+        "exit_code": 0,
+        "status": 200
+      },
+      {
+        "exit_code": 1,
+        "status": 500
+      },
+      {
+        "exit_code": 2,
+        "status": 400
+      },
+      {
+        "exit_code": 3,
+        "status": 404
+      },
+      {
+        "exit_code": 4,
+        "status": 409
+      },
+      {
+        "exit_code": 5,
+        "status": 403
+      },
+      {
+        "exit_code": 6,
+        "status": 503
+      },
+      {
+        "exit_code": 7,
+        "status": 403
+      },
+      {
+        "exit_code": 64,
+        "status": 429
+      },
+      {
+        "exit_code": 65,
+        "status": 422
+      },
+      {
+        "exit_code": 70,
+        "status": 503
+      }
+    ],
+    "tree": [
+      {
+        "path": [
+          "list"
+        ],
+        "summary": "list things",
+        "side_effect": "read",
+        "source": "declared",
+        "flags": [
+          {
+            "name": "all",
+            "type": "bool"
+          },
+          {
+            "name": "filter",
+            "type": "string"
+          },
+          {
+            "name": "limit",
+            "type": "int"
+          }
+        ],
+        "args": [
+          {
+            "name": "item"
+          }
+        ],
+        "invocable": true
+      },
+      {
+        "path": [
+          "widget",
+          "add"
+        ],
+        "summary": "add a widget",
+        "side_effect": "write",
+        "source": "declared",
+        "flags": [
+          {
+            "name": "force",
+            "type": "bool"
+          }
+        ],
+        "args": [
+          {
+            "name": "name",
+            "required": true
+          },
+          {
+            "name": "note"
+          }
+        ],
+        "invocable": true
+      },
+      {
+        "path": [
+          "widget",
+          "delete"
+        ],
+        "summary": "delete a widget",
+        "side_effect": "destructive",
+        "source": "inferred",
+        "flags": [],
+        "args": [],
+        "invocable": true
+      },
+      {
+        "path": [
+          "run"
+        ],
+        "summary": "run and exit as asked",
+        "side_effect": "write",
+        "source": "declared",
+        "flags": [
+          {
+            "name": "exit",
+            "type": "int"
+          }
+        ],
+        "args": [],
+        "invocable": true
+      },
+      {
+        "path": [
+          "tidy"
+        ],
+        "summary": "tidy up",
+        "side_effect": "write",
+        "source": "unannotated",
+        "flags": [],
+        "args": [],
+        "invocable": true
+      },
+      {
+        "path": [
+          "shell"
+        ],
+        "summary": "interactive shell",
+        "side_effect": "interactive",
+        "source": "declared",
+        "flags": [],
+        "args": [],
+        "invocable": false,
+        "reason": "interactive"
+      },
+      {
+        "path": [
+          "secret"
+        ],
+        "summary": "internal",
+        "side_effect": "read",
+        "source": "declared",
+        "flags": [],
+        "args": [],
+        "invocable": false,
+        "reason": "hidden-internal"
+      }
+    ],
+    "discovery": {
+      "invocable_first": [
+        "list",
+        "widget add",
+        "widget delete",
+        "run",
+        "tidy"
+      ],
+      "withheld": [
+        {
+          "name": "shell",
+          "reason": "interactive"
+        },
+        {
+          "name": "secret",
+          "reason": "hidden-internal"
+        }
+      ],
+      "reasons": [
+        "hidden-internal",
+        "interactive"
+      ],
+      "entries": {
+        "list": {
+          "method": "GET",
+          "route": "/v1/commands/list",
+          "stream_route": "/v1/commands/list/stream",
+          "side_effect": "read",
+          "side_effect_source": "declared"
+        },
+        "widget add": {
+          "method": "POST",
+          "route": "/v1/commands/widget/add",
+          "stream_route": "/v1/commands/widget/add/stream",
+          "side_effect": "write",
+          "side_effect_source": "declared"
+        },
+        "widget delete": {
+          "method": "POST",
+          "route": "/v1/commands/widget/delete",
+          "stream_route": "/v1/commands/widget/delete/stream",
+          "side_effect": "destructive",
+          "side_effect_source": "inferred"
+        },
+        "tidy": {
+          "method": "POST",
+          "route": "/v1/commands/tidy",
+          "stream_route": "/v1/commands/tidy/stream",
+          "side_effect": "write",
+          "side_effect_source": "unannotated"
+        }
+      }
+    },
+    "openapi": [
+      {
+        "path": "/v1/commands/list",
+        "method": "get",
+        "operation_id": "commands_list",
+        "query": [
+          "all",
+          "arg",
+          "filter",
+          "limit"
+        ],
+        "side_effect": "read",
+        "side_effect_source": "declared",
+        "responses": [
+          "200",
+          "400",
+          "403",
+          "500"
+        ]
+      },
+      {
+        "path": "/v1/commands/widget/add",
+        "method": "post",
+        "operation_id": "commands_widget_add",
+        "body_flags": [
+          "force"
+        ],
+        "side_effect": "write",
+        "side_effect_source": "declared",
+        "responses": [
+          "200",
+          "400",
+          "403",
+          "500"
+        ]
+      },
+      {
+        "path": "/v1/commands/widget/delete",
+        "method": "post",
+        "operation_id": "commands_widget_delete",
+        "body_flags": [],
+        "side_effect": "destructive",
+        "side_effect_source": "inferred",
+        "responses": [
+          "200",
+          "400",
+          "403",
+          "500"
+        ]
+      },
+      {
+        "path": "/v1/commands",
+        "method": "get",
+        "operation_id": "commands_discover"
+      }
+    ],
+    "openapi_absent": [
+      "/v1/commands/shell",
+      "/v1/commands/secret"
+    ],
+    "cases": [
+      {
+        "name": "get flags come from the query",
+        "method": "GET",
+        "path": "/v1/commands/list?limit=25&all=true&filter=name&arg=one&arg=two",
+        "status": 200,
+        "call": {
+          "path": [
+            "list"
+          ],
+          "flags": {
+            "limit": "25",
+            "all": "true",
+            "filter": "name"
+          },
+          "args": [
+            "one",
+            "two"
+          ]
+        }
+      },
+      {
+        "name": "a bare switch in the query is true",
+        "method": "GET",
+        "path": "/v1/commands/list?all&filter=x",
+        "status": 200,
+        "call": {
+          "path": [
+            "list"
+          ],
+          "flags": {
+            "all": "true",
+            "filter": "x"
+          },
+          "args": []
+        }
+      },
+      {
+        "name": "post flags come from the body",
+        "method": "POST",
+        "path": "/v1/commands/widget/add",
+        "status": 200,
+        "body": {
+          "flags": {
+            "force": true
+          },
+          "args": [
+            "gadget",
+            "a note"
+          ]
+        },
+        "call": {
+          "path": [
+            "widget",
+            "add"
+          ],
+          "flags": {
+            "force": "true"
+          },
+          "args": [
+            "gadget",
+            "a note"
+          ]
+        }
+      },
+      {
+        "name": "the body wins over the query",
+        "method": "POST",
+        "path": "/v1/commands/widget/add?force=false",
+        "status": 200,
+        "body": {
+          "flags": {
+            "force": true
+          },
+          "args": [
+            "g"
+          ]
+        },
+        "call": {
+          "path": [
+            "widget",
+            "add"
+          ],
+          "flags": {
+            "force": "true"
+          },
+          "args": [
+            "g"
+          ]
+        }
+      },
+      {
+        "name": "a missing required argument is a bad request",
+        "method": "POST",
+        "path": "/v1/commands/widget/add",
+        "status": 400,
+        "body": {},
+        "error_code": "bad_request"
+      },
+      {
+        "name": "an undeclared body flag is a bad request",
+        "method": "POST",
+        "path": "/v1/commands/widget/add",
+        "status": 400,
+        "body": {
+          "flags": {
+            "nope": true
+          },
+          "args": [
+            "g"
+          ]
+        },
+        "error_code": "bad_request"
+      },
+      {
+        "name": "an ill-typed query flag is a bad request",
+        "method": "GET",
+        "path": "/v1/commands/list?limit=x",
+        "status": 400,
+        "error_code": "bad_request"
+      },
+      {
+        "name": "a read command rejects post",
+        "method": "POST",
+        "path": "/v1/commands/list",
+        "status": 405
+      },
+      {
+        "name": "a non-invocable interactive command is not mounted",
+        "method": "POST",
+        "path": "/v1/commands/shell",
+        "status": 404
+      },
+      {
+        "name": "a hidden command is not mounted",
+        "method": "GET",
+        "path": "/v1/commands/secret",
+        "status": 404
+      },
+      {
+        "name": "an unannotated command is a post",
+        "method": "POST",
+        "path": "/v1/commands/tidy",
+        "status": 200,
+        "call": {
+          "path": [
+            "tidy"
+          ],
+          "flags": {},
+          "args": []
+        }
+      },
+      {
+        "name": "an inferred destructive command is a post",
+        "method": "POST",
+        "path": "/v1/commands/widget/delete",
+        "status": 200,
+        "body": {
+          "args": []
+        },
+        "call": {
+          "path": [
+            "widget",
+            "delete"
+          ],
+          "flags": {},
+          "args": []
+        }
+      },
+      {
+        "name": "exit 0 answers 200",
+        "method": "POST",
+        "path": "/v1/commands/run",
+        "status": 200,
+        "body": {
+          "flags": {
+            "exit": 0
+          }
+        },
+        "exit_code": 0
+      },
+      {
+        "name": "exit 1 answers 500",
+        "method": "POST",
+        "path": "/v1/commands/run",
+        "status": 500,
+        "body": {
+          "flags": {
+            "exit": 1
+          }
+        },
+        "exit_code": 1
+      },
+      {
+        "name": "exit 2 answers 400",
+        "method": "POST",
+        "path": "/v1/commands/run",
+        "status": 400,
+        "body": {
+          "flags": {
+            "exit": 2
+          }
+        },
+        "exit_code": 2
+      },
+      {
+        "name": "exit 3 answers 404",
+        "method": "POST",
+        "path": "/v1/commands/run",
+        "status": 404,
+        "body": {
+          "flags": {
+            "exit": 3
+          }
+        },
+        "exit_code": 3
+      },
+      {
+        "name": "exit 4 answers 409",
+        "method": "POST",
+        "path": "/v1/commands/run",
+        "status": 409,
+        "body": {
+          "flags": {
+            "exit": 4
+          }
+        },
+        "exit_code": 4
+      },
+      {
+        "name": "exit 5 answers 403",
+        "method": "POST",
+        "path": "/v1/commands/run",
+        "status": 403,
+        "body": {
+          "flags": {
+            "exit": 5
+          }
+        },
+        "exit_code": 5
+      },
+      {
+        "name": "exit 6 answers 503",
+        "method": "POST",
+        "path": "/v1/commands/run",
+        "status": 503,
+        "body": {
+          "flags": {
+            "exit": 6
+          }
+        },
+        "exit_code": 6
+      },
+      {
+        "name": "exit 7 answers 403",
+        "method": "POST",
+        "path": "/v1/commands/run",
+        "status": 403,
+        "body": {
+          "flags": {
+            "exit": 7
+          }
+        },
+        "exit_code": 7
+      },
+      {
+        "name": "exit 64 answers 429",
+        "method": "POST",
+        "path": "/v1/commands/run",
+        "status": 429,
+        "body": {
+          "flags": {
+            "exit": 64
+          }
+        },
+        "exit_code": 64
+      },
+      {
+        "name": "exit 65 answers 422",
+        "method": "POST",
+        "path": "/v1/commands/run",
+        "status": 422,
+        "body": {
+          "flags": {
+            "exit": 65
+          }
+        },
+        "exit_code": 65
+      },
+      {
+        "name": "exit 70 answers 503",
+        "method": "POST",
+        "path": "/v1/commands/run",
+        "status": 503,
+        "body": {
+          "flags": {
+            "exit": 70
+          }
+        },
+        "exit_code": 70
+      },
+      {
+        "name": "exit 99 answers 500",
+        "method": "POST",
+        "path": "/v1/commands/run",
+        "status": 500,
+        "body": {
+          "flags": {
+            "exit": 99
+          }
+        },
+        "exit_code": 99
+      }
+    ]
+  }
 }

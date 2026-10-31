@@ -269,6 +269,12 @@ Full diff: [kit-rs/v0.5.0-alpha.0...kit-rs/v0.5.0-alpha.1](https://github.com/ho
   registered handlers, answer flag errors with USAGE envelopes and apply
   opt-in `read` autocorrect; `Root::model()` is the kit-owned command model.
   Pinned by `contracts/cli-root-v1`.
+- **`api_server::commands`: the command-tree projection** (features
+  `api-server` + `cli`). `CommandProjection` serves `GET /v1/commands`,
+  one route per invocable command (GET for `read`, POST otherwise), a
+  `/stream` SSE twin and per-command OpenAPI operations, projected from
+  `Root::model()`; the exit class selects the HTTP status. Pinned by the
+  `projection` table of `contracts/parity/api.json`.
 
 ### Changed
 
