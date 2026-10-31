@@ -422,3 +422,79 @@ async fn gate_refuses_before_the_command_runs() {
     );
     assert!(seen.lock().unwrap().is_none());
 }
+
+/// A kit root with one command per tier, each recording that it ran.
+fn gated_root(ran: &Arc<Mutex<Vec<String>>>) -> Root {
+    let mut cfg = Config::new("fix", "1.0.0", "Fixture");
+    cfg.disable_validate = true;
+    let mut root = Root::with_config(cfg);
+    root.with_prompt_source(hop_top_kit::cli::PromptSource::none());
+    for (name, tier) in [("purge", "destructive"), ("add", "write")] {
+        let ran = ran.clone();
+        root.add_command(
+            CommandSpec::new(name)
+                .about(name)
+                .side_effect(tier)
+                .handler(move |inv, out, _| {
+                    ran.lock().unwrap().push(format!(
+                        "{name} dry_run={} confirm={}",
+                        inv.dry_run, inv.globals.confirm
+                    ));
+                    write!(out, "ran {name}").unwrap();
+                    Ok(())
+                }),
+        );
+    }
+    root
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unconfirmed_destructive_call_is_refused_by_the_command() {
+    let ran: Arc<Mutex<Vec<String>>> = Arc::default();
+    let proj = CommandProjection::new(Arc::new(gated_root(&ran)), "fix", "1.0.0");
+    // No terminal and no --confirm: the command's own refusal, exit 5.
+    let (status, out) = send(proj.router(), "POST", "/v1/commands/purge", None).await;
+    assert_eq!((status, &out["exit_code"]), (403, &Value::from(5)), "{out}");
+    assert!(
+        out["stderr"]
+            .as_str()
+            .unwrap()
+            .contains("refused: --confirm=no"),
+        "{out}"
+    );
+    assert!(
+        ran.lock().unwrap().is_empty(),
+        "a refused call must not run"
+    );
+    // The caller answers it the way a CLI user does.
+    let body = serde_json::json!({"flags": {"confirm": "yes"}});
+    let (status, out) = send(proj.router(), "POST", "/v1/commands/purge", Some(&body)).await;
+    assert_eq!((status, &out["exit_code"]), (200, &Value::from(0)), "{out}");
+    assert_eq!(
+        ran.lock().unwrap().as_slice(),
+        ["purge dry_run=false confirm=yes"]
+    );
+    // A write needs no confirmation.
+    let (status, _) = send(proj.router(), "POST", "/v1/commands/add", None).await;
+    assert_eq!(status, 200);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn dry_run_and_max_ops_ride_the_call() {
+    let ran: Arc<Mutex<Vec<String>>> = Arc::default();
+    let proj = CommandProjection::new(Arc::new(gated_root(&ran)), "fix", "1.0.0");
+    // A previewed destructive call needs no confirmation and acts on nothing.
+    let (status, _) = send(proj.router(), "POST", "/v1/commands/purge?dry-run", None).await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        ran.lock().unwrap().as_slice(),
+        ["purge dry_run=true confirm="]
+    );
+    // A budget that fits the one operation lets it through.
+    let (status, _) = send(proj.router(), "POST", "/v1/commands/add?max-ops=1", None).await;
+    assert_eq!(status, 200);
+    // A flag that is neither the command's nor a control is still refused.
+    let body = serde_json::json!({"flags": {"nosuch": "x"}});
+    let (status, _) = send(proj.router(), "POST", "/v1/commands/add", Some(&body)).await;
+    assert_eq!(status, 400);
+}

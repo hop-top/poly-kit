@@ -210,6 +210,82 @@ the dash on its own line, so byte comparison was never viable.
 Byte-level formatting parity is pinned by each SDK's own unit tests
 instead.
 
+## CLI root
+
+`hop_top_kit::cli` (feature `cli`; `config` adds `-c` layering) is the
+Rust port of Go `console/cli`. You describe the tree with kit's own
+builder and never name the parsing provider (clap stays inside the
+crate):
+
+```rust
+use hop_top_kit::cli::{CommandSpec, Config, FlagSpec, Root};
+
+let mut root = Root::with_config(Config::new("tool", "1.2.3", "My tool"));
+root.add_command(
+    CommandSpec::new("purge")
+        .about("Delete everything")
+        .long_about("Delete everything the tool manages.")
+        .side_effect("destructive")
+        .flag(FlagSpec::string("env").short('e').help("Target env"))
+        .handler(|inv, out, _err| {
+            if inv.is_dry_run() {
+                writeln!(out, "would purge {:?}", inv.flag("env")).ok();
+                return Ok(());
+            }
+            writeln!(out, "purged {:?}", inv.flag("env")).ok();
+            Ok(())
+        }),
+);
+let code = root.run(std::env::args(), &mut std::io::stdout(), &mut std::io::stderr());
+std::process::exit(code);
+```
+
+A kit root registers the persistent flags (`--format`, `--quiet`,
+`-V/--verbose`, `--no-color`, `--no-hints`, `--offline`, and hidden
+`-C/--chdir`, `-c/--config`, `--dry-run`, `--autocorrect`, `--confirm`,
+`--max-ops`, `--policy`) and, before a command runs, applies what Go's
+root applies:
+
+- `-C/--chdir`: used when it is a directory, else handed to
+  `Config::chdir_resolver`; applied for the duration of the run and
+  restored after, so `execute` stays re-entrant.
+- `-c/--config`: `Invocation::config_args()` splits the tokens into
+  files and dotted `key=value` overrides; `Invocation::layer_config(opts)`
+  adds them to a `config::Options` (files after the discovered ones,
+  overrides last).
+- `--confirm yes|no|prompt|auto`, `--max-ops`, `--policy <name>`: a
+  `destructive` command is refused (UNAUTHORIZED, exit 5) unless
+  confirmed; unset, it prompts when `PromptSource` (default `/dev/tty`)
+  has a terminal and refuses otherwise. A `kit/destructive-token:
+  required` command also wants `--confirm-token`. `--policy` loads
+  `$XDG_CONFIG_HOME/<tool>/policies/<name>.yaml` through
+  `Root::with_policy(default_policy_loader("tool"))`; `kit-default` is
+  built in. A leaf's own `--policy` flag is not the delegation policy.
+  `cli::policy::Engine` is the same engine, usable on its own.
+- `--dry-run`: refused on interactive, opted-out (`kit/dry-run:
+  opted-out`) and untagged commands; a write or destructive command
+  runs with `Invocation::dry_run` set and needs no confirmation (render
+  a `Plan` with `Invocation::render_plan`); a read command ignores it.
+- `Root::with_flag_validator(name, f)`: refuses an ill-formed value of
+  a flag the user set, before the handler.
+- `Root::validate()` (run by `execute` unless `Config::disable_validate`)
+  and `Root::validate_signature()` (acted on per
+  `Config::signature_strictness`); the failure mode is
+  `Config::validation_failure`.
+- `alias_command(store)` / `aliases_command()` over an `AliasStore`,
+  `Root::load_alias_store`, and `config_command(tool, resolver)`
+  (`config path|paths`) mount as ordinary commands.
+
+A bare `Root::new(spec)` is the lower-level wrapper (completion, aliases,
+the model): it registers none of the above and runs no gate or
+validation. Parity is pinned by `contracts/cli-root-v1`.
+
+Not ported from Go: the `celpermission` expression rules of a policy
+(carried and shape-checked, not evaluated), per-caller budgets, the
+`kit/idempotent`, `kit/cache-ttl` and `kit/output-schema` validate arms,
+themed help, the `help` subcommand, `prompt`-mode autocorrect and the
+`human` format; the `serve-cli` command still mounts on a clap root.
+
 ## MCP surface
 
 Serves the Model Context Protocol over a bridged command tree, one MCP
@@ -764,9 +840,9 @@ is emitted.
 
 ### CLI flag
 
-Not yet wired. This crate's `cli` module is an empty placeholder, so
-nothing registers `--offline` for you. Declare it on your clap root and
-pass `NetPolicy::new(offline)` to every `GuardedClient` and
+A kit root (`Root::with_config`, feature `cli`) registers `--offline`
+for you and carries it in `Invocation::globals.offline`. Pass
+`NetPolicy::new(inv.globals.offline)` to every `GuardedClient` and
 `ApiClient::with_policy` you build.
 
 ## Telemetry

@@ -628,6 +628,14 @@ fn rfc3339_now() -> String {
     )
 }
 
+/// The root's delegation controls a caller may set on a call, as it
+/// would on the command line: the `--confirm` answer, the `--max-ops`
+/// budget, the named `--policy` and `--dry-run`. Confirmation is not a
+/// gate of the projection: it is the command's own refusal, the same
+/// on every surface, and it reaches the caller as the exit class
+/// (403 for an unconfirmed destructive command).
+const CONTROL_FLAGS: &[&str] = &["confirm", "max-ops", "policy", "dry-run"];
+
 /// Builds the argv tail for a request, or the refusal text.
 fn decode(
     d: &CommandDescriptor,
@@ -645,6 +653,9 @@ fn decode(
             continue;
         }
         let Some(f) = by_name.get(k.as_str()) else {
+            if CONTROL_FLAGS.contains(&k.as_str()) {
+                flags.push((k.clone(), control_value(&k, &v)));
+            }
             continue;
         };
         flags.push((k, coerce(f, &v)?));
@@ -653,7 +664,7 @@ fn decode(
         let parsed: Value = serde_json::from_slice(body).map_err(|e| e.to_string())?;
         if let Some(fm) = parsed.get("flags").and_then(Value::as_object) {
             for (k, v) in fm {
-                if !by_name.contains_key(k.as_str()) {
+                if !by_name.contains_key(k.as_str()) && !CONTROL_FLAGS.contains(&k.as_str()) {
                     return Err(format!("unknown flag: {k}"));
                 }
                 flags.push((k.clone(), v.clone()));
@@ -691,6 +702,15 @@ fn decode(
         argv.extend(args);
     }
     Ok(argv)
+}
+
+/// A control flag's value from the query: `dry-run` is a switch, the
+/// rest take their text.
+fn control_value(name: &str, raw: &str) -> Value {
+    if name == "dry-run" {
+        return Value::Bool(raw != "false");
+    }
+    Value::String(raw.to_string())
 }
 
 fn scalar(v: &Value) -> String {
