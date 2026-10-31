@@ -15,7 +15,7 @@
 #   ./run.sh py ts            # restrict to a subset
 #
 # Exits non-zero if any runner that actually ran produced a diff. Skipped
-# languages do NOT fail the harness.
+# languages do NOT fail the harness unless KIT_CROSS_LANG_STRICT=1 (CI).
 
 set -euo pipefail
 
@@ -315,6 +315,12 @@ if [[ ${#SKIPPED[@]} -gt 0 ]]; then
   done
 fi
 
+# KIT_CROSS_LANG_STRICT=1 (set by CI) turns a skipped runtime into a failure,
+# so a missing toolchain cannot pass as green.
+if [[ "${KIT_CROSS_LANG_STRICT:-}" == "1" && ${#SKIPPED[@]} -gt 0 ]]; then
+  fail "strict mode: skipped runtimes count as failures"
+  exit 1
+fi
 # Harness fails iff at least one runner ran AND any runner failed.
 if [[ ${#FAILED[@]} -gt 0 ]]; then
   exit 1
