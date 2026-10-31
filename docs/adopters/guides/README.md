@@ -12,3 +12,5 @@ Task-oriented how-tos for adopters: one outcome per page, with the audience name
 - **Engine (sidecar, encryption, sync, inspection):** [`run-the-engine`](run-the-engine.md) · [`encrypt-engine-data`](encrypt-engine-data.md) · [`trust-a-peer`](trust-a-peer.md) · [`inspect-with-datasette`](inspect-with-datasette.md)
 - **CLI experience (completion, config, secrets, telemetry):** [`completion-user-guide`](completion-user-guide.md) · [`inspect-config-paths`](inspect-config-paths.md) · [`secret-management-guide`](secret-management-guide.md) · [`telemetry`](telemetry.md)
 - **TUI (app shell, component catalog):** [`migrate-to-appshell`](migrate-to-appshell.md) · [`tui-component-gallery`](tui-component-gallery.md)
+- **Storage and caching (blobs, JSON store, HTTP cache):** [`store-files-with-blob`](store-files-with-blob.md) · [`use-the-sqlite-json-store`](use-the-sqlite-json-store.md) · [`cache-http-responses`](cache-http-responses.md)
+- **Jobs and bridge (background work, OS-shell payloads):** [`route-bridge-payloads`](route-bridge-payloads.md)
