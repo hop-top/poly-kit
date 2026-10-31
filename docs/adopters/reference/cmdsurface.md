@@ -1468,8 +1468,9 @@ services install it from `services.<svc>.rate_limit`.
 `WithQuota(q, ledger)` adds the quota gate (slot 9), after any idempotency replay
 or result cache hit: `q.Ops` calls and `q.Bytes` output bytes per caller per
 fixed `q.Window`, counted `q.Per` principal or tenant in a
-`UsageLedger` over a `kv.Store` (`NewUsageLedger`), so counts survive
-a restart. A run that completes without error is counted afterwards;
+`UsageLedger` over a `kv.Store` (`NewUsageLedger`); the counts survive a
+restart only when that store does (the kit-shipped services count in memory
+unless `service.WithUsageFile` or `WithUsageStore` says otherwise). A run that completes without error is counted afterwards;
 a replay or a cache hit is not. The refusal is a `*QuotaExceededError` wrapping
 `ErrQuotaExceeded`, which wraps `ErrRateLimited`; `RetryAfter(err)`
 reads the time to the window's reset, and `QuotaKey(q, meta)` names

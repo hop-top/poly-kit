@@ -24,137 +24,25 @@
 //! socket) holds the owner's authority and matches no principal rule;
 //! `None` is nobody, which no caller rule matches and no budget counts.
 //!
-//! The counts are in memory ([`UsageLedger`]): they do not survive a
-//! restart and are not shared between processes, where Go keeps them in
-//! a `kv` store.
+//! The counts are kept in a [`UsageStore`]: in memory by default, so
+//! they start over with the process; opt in to persistence with
+//! [`ServedGate::with_usage_file`] (feature `kv`), or share a store with
+//! [`ServedGate::with_usage_store`] or [`ServedGate::with_ledger`].
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+mod ledger;
+
+#[cfg(feature = "kv")]
+pub use ledger::KvUsageStore;
+pub use ledger::{MemoryUsageStore, Usage, UsageLedger, UsageStore, UsageStoreKind};
 
 use super::permission::{CallerSource, PermissionGate, PermissionRequest};
 use super::policy::{Caller, CommandRef, Engine, Policy};
 
 /// The window a `callers:` budget counts over when its rule names none.
 pub const DEFAULT_BUDGET_WINDOW: Duration = Duration::from_secs(3600);
-
-/// Seconds between the zero time Go aligns windows to (year 1) and the
-/// Unix epoch.
-const GO_ZERO_TO_UNIX_SECS: u128 = 62_135_596_800;
-
-/// What a call has used in one window of a [`UsageLedger`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Usage {
-    /// Calls counted.
-    pub ops: i64,
-    /// When the window ends and the count starts over.
-    pub reset: SystemTime,
-}
-
-type Clock = Arc<dyn Fn() -> SystemTime + Send + Sync>;
-
-/// Counts calls per key over fixed windows, in memory. Windows are
-/// aligned as Go's `time.Truncate` aligns them (a one-hour window runs
-/// from the top of one hour to the next, a day from midnight UTC); a
-/// count belongs to the window it was made in and is never carried into
-/// the next. Check and count are atomic.
-#[derive(Clone)]
-pub struct UsageLedger {
-    now: Clock,
-    counts: Arc<Mutex<HashMap<String, (u128, i64)>>>,
-}
-
-impl Default for UsageLedger {
-    fn default() -> Self {
-        UsageLedger::new()
-    }
-}
-
-impl std::fmt::Debug for UsageLedger {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("UsageLedger")
-    }
-}
-
-impl UsageLedger {
-    /// A ledger on the system clock.
-    pub fn new() -> UsageLedger {
-        UsageLedger::with_clock(SystemTime::now)
-    }
-
-    /// A ledger on `now`; for tests that cross a window boundary.
-    pub fn with_clock<F>(now: F) -> UsageLedger
-    where
-        F: Fn() -> SystemTime + Send + Sync + 'static,
-    {
-        UsageLedger {
-            now: Arc::new(now),
-            counts: Arc::default(),
-        }
-    }
-
-    /// The window of length `w_ns` holding now: its start, as
-    /// nanoseconds since Go's zero time.
-    fn window(&self, w: Duration) -> Result<u128, String> {
-        if w < Duration::from_secs(1) {
-            return Err(format!("window {} is under a second", go_duration(w)));
-        }
-        let since_unix = (self.now)()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|_| "clock is before 1970".to_string())?
-            .as_nanos();
-        let t = since_unix + GO_ZERO_TO_UNIX_SECS * 1_000_000_000;
-        let w_ns = w.as_nanos();
-        Ok(t - t % w_ns)
-    }
-
-    fn reset_of(start: u128, w: Duration) -> SystemTime {
-        let end = start + w.as_nanos();
-        let unix_ns = end - GO_ZERO_TO_UNIX_SECS * 1_000_000_000;
-        UNIX_EPOCH
-            + Duration::new(
-                (unix_ns / 1_000_000_000) as u64,
-                (unix_ns % 1_000_000_000) as u32,
-            )
-    }
-
-    /// What `key` has used in the current window of length `w`.
-    pub fn usage(&self, key: &str, w: Duration) -> Result<Usage, String> {
-        let start = self.window(w)?;
-        let counts = self.counts.lock().unwrap_or_else(PoisonError::into_inner);
-        let ops = match counts.get(key) {
-            Some(&(s, ops)) if s == start => ops,
-            _ => 0,
-        };
-        Ok(Usage {
-            ops,
-            reset: Self::reset_of(start, w),
-        })
-    }
-
-    /// Counts one call against `key` in the current window when the
-    /// window has counted fewer than `max_ops`; reports whether it did,
-    /// with the window's usage after.
-    pub fn take(&self, key: &str, w: Duration, max_ops: i64) -> Result<(Usage, bool), String> {
-        let start = self.window(w)?;
-        let mut counts = self.counts.lock().unwrap_or_else(PoisonError::into_inner);
-        let entry = counts.entry(key.to_string()).or_insert((start, 0));
-        if entry.0 != start {
-            *entry = (start, 0);
-        }
-        let took = entry.1 < max_ops;
-        if took {
-            entry.1 += 1;
-        }
-        Ok((
-            Usage {
-                ops: entry.1,
-                reset: Self::reset_of(start, w),
-            },
-            took,
-        ))
-    }
-}
 
 /// One served call as the gate sees it: the request the rules read, the
 /// command's `kit/permissions` annotation and whether it is only a
@@ -225,6 +113,20 @@ impl ServedGate {
     {
         self.adopter = Some(Arc::new(f));
         self
+    }
+
+    /// Counts budgets in `store` instead of memory.
+    #[must_use]
+    pub fn with_usage_store(self, store: Arc<dyn UsageStore>) -> ServedGate {
+        self.with_ledger(UsageLedger::with_store(store))
+    }
+
+    /// Counts budgets in `$XDG_STATE_HOME/<tool>/usage.db`, so a
+    /// restart keeps them (Go's `service.WithUsageFile`).
+    #[cfg(all(feature = "kv", not(target_arch = "wasm32")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "kv")))]
+    pub fn with_usage_file(self, tool: &str) -> Result<ServedGate, String> {
+        Ok(self.with_ledger(UsageLedger::open_file(tool)?))
     }
 
     /// The ledger the budgets are counted in.
