@@ -564,8 +564,9 @@ hyper-util = { version = "=0.1.21", default-features = false, features = [
 # elliptic-curve, is younger than 14 days and carries no security fix;
 # every other crypto-bigint 0.7 release is yanked or younger still
 # (0.7.10 is 2026-10-26), and ctutils 0.4.5 (2026-10-23) follows from
-# it. Held to those versions in Cargo.lock until a release passes the
-# gate.
+# it. Age-gate exception accepted by the maintainer (2026-10-31): no
+# older non-yanked 0.7 release exists. Held to those versions in
+# Cargo.lock; re-vet on the next elliptic-curve or crypto-bigint bump.
 p256 = { version = "=0.14.0", default-features = false, features = [
     "ecdsa",
 ], optional = true }
