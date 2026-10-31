@@ -125,6 +125,8 @@ pub mod notify;
 
 #[cfg(feature = "serve")]
 pub mod serve;
+#[cfg(all(feature = "socket", unix))]
+pub mod socket;
 
 // Retry/backoff policy. Pure std: no feature gate, wasm32-safe.
 pub mod util;
