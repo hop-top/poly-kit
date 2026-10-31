@@ -206,6 +206,13 @@ api-server = [
     "tokio/net",
 ]
 
+# Inbound webhook receiver on the api-server: HMAC signature, clientState
+# and basic-auth verifiers, subscription handshake, replay window,
+# idempotency claim in a kv store (TtlInserter), ack-fast publish to the
+# bus. A port of go/transport/webhook. Native only. sha1 senders are not
+# supported (no sha1 crate); sha256 and sha512 are.
+webhook = ["api-server", "kv", "dep:hmac", "dep:subtle", "dep:sha2", "dep:base64"]
+
 # Per-capability consent grants, a port of go/core/consent: the grant
 # model, decision logic, prompter seam, audit records, refusals and the
 # in-memory store. Wasm-safe: nothing of its own beyond the bus, and no
@@ -580,6 +587,13 @@ tower-http = { version = "=0.6.11", default-features = false, features = [
 tower = { version = "0.5", default-features = false, features = [
     "util",
 ], optional = true }
+
+# hmac =0.13.0 (2026-03-29), RustCrypto/MACs, MIT OR Apache-2.0, no
+# advisories at this version; already in the lock (rfc6979, hkdf) on the
+# digest 0.11 generation with sha2 0.11. `Hmac<Sha256>` with
+# `Mac::verify_slice` is constant time; ring::hmac was rejected (it would
+# drag ring into a pure feature). DECO D2/D3 (webhook secrets).
+hmac = { version = "=0.13.0", default-features = false, optional = true }
 
 # The OS RNG. Declared for native targets only: getrandom 0.4 has no
 # backend on wasm32-unknown-unknown, so the features naming it

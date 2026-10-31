@@ -54,6 +54,8 @@ mod origin;
 mod ratelimit;
 mod server;
 mod sse;
+#[cfg(feature = "webhook")]
+pub mod webhook;
 
 pub use accesslog::{access_line, stderr_sink, LogSink};
 pub use auth::OnAuthRefused;

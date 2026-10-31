@@ -1182,6 +1182,11 @@ differ from Go:
   same path does not override them.
 - Not ported: websocket hub, the command-tree projection, TLS and mTLS
   serving, read and write timeouts, idempotency keys, metrics.
+- Feature `webhook` mounts an inbound webhook receiver on the router
+  (`api_server::webhook`): Graph, Pipedrive v2 and HMAC senders, replay
+  window, dedupe through `kv::TtlInserter` (atomic put-if-absent, new in
+  Go and Rust), publish to the bus. Corpus:
+  [`contracts/webhook-v1`](../../../contracts/webhook-v1/README.md).
 
 ## Build notes
 

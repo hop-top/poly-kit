@@ -60,6 +60,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `authn` (`authn-rsa`, `authn-apikeys`) | `serde`, `serde_json`, `sha2`, `subtle`, `base64`, `p256`, `p384`, `p521`, `ed25519-dalek` (+ `ring`; + `kv` and `getrandom`; wasm-safe core) | 49 (52, 58) |
 | `identity`; `redact` | `ed25519-dalek`, `crypto_secretbox`, `hkdf`, `sha2`, `base64`, `serde`, `serde_json`, `thiserror` (+ `getrandom` on native targets; core wasm-safe); `regex`, `regex-syntax`, `serde`, `serde_json`, `sha2` | 60; 25 |
 | `api-server` | `serve` + `authn` + `bus` + `breaker` + `redact` + `axum`, `tower`, `tower-http`, `futures-util`, `getrandom` (native only) | 111 |
+| `webhook` | `api-server` + `kv` + `hmac`, `subtle`, `sha2`, `base64` (native only) | 115 |
 | `output` | `serde`, `serde_json`, `serde_norway`, `comfy-table`, `thiserror` | 22 |
 | `sqlstore` (`sqlstore-blob`, `sqlstore-encrypt`) | `sqldb` + `serde`, `serde_json` (+ `blob`, nothing of its own; + `crypto_secretbox`, `hkdf`, `sha2`) | 22 (22, 50) |
 | `id`; `timeutil` | `type-safe-id`, `uuid`, `serde`, `thiserror`; `chrono`, `interim`, `thiserror` | 25; 19 |
