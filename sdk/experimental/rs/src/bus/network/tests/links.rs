@@ -35,8 +35,16 @@ fn three_write_failures_evict_and_reconnect_an_outbound_link() {
     *b.0.write_fault
         .lock()
         .unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(move |_: &str| {
-        f.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-            .is_ok()
+        // Decrement-if-positive as a CAS loop: `fetch_update` is deprecated
+        // on the pinned toolchain and `try_update` is newer than the MSRV.
+        let mut n = f.load(Ordering::SeqCst);
+        while n > 0 {
+            match f.compare_exchange(n, n - 1, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(_) => return true,
+                Err(cur) => n = cur,
+            }
+        }
+        false
     }));
 
     // Two failures, then a success: the counter resets, the link stays.
