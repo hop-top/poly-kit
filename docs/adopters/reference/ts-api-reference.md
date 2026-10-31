@@ -152,6 +152,9 @@ reporting the declared annotation only, as Go's does. Under `--dry-run`
 an inferred leaf never promised to honor it, so kit renders the plan
 itself and does not invoke the handler.
 
+A non-empty `kit/side-effect` outside the tier set is refused before the
+handler runs (USAGE, exit 2, naming the value); there is no opt-out.
+
 **Breaking:** unannotated destructive-named leaves now require
 confirmation on the CLI and are blocked on MCP under the default policy;
 `--dry-run`, `--confirm`, `--max-ops` and `--policy` are reserved root
