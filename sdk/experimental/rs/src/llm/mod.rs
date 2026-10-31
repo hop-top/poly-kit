@@ -41,13 +41,17 @@ mod toolnames;
 pub mod types;
 mod uri;
 
+// Each adapter uses the part of this it needs; none uses all of it.
 #[cfg(feature = "llm-http")]
+#[allow(dead_code)]
 mod wirehttp;
 
 #[cfg(feature = "llm-anthropic")]
 pub mod anthropic;
 #[cfg(feature = "llm-openai")]
 pub mod openai;
+#[cfg(feature = "llm-ollama")]
+pub mod ollama;
 
 #[cfg(feature = "redact")]
 pub use buscontent::{redact_request, redact_response};
