@@ -249,7 +249,8 @@ async fn request_id_corpus() {
     );
     let rows = c["request_id"].as_array().unwrap();
     assert!(!rows.is_empty());
-    let minted = |id: &str| id.len() == 32 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    let minted =
+        |id: &str| id.len() == 32 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
     for case in rows {
         let name = case["name"].as_str().unwrap();
         let mut cfg = ApiServerConfig::new(

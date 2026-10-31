@@ -276,10 +276,7 @@ async fn redirect_header_vectors() {
     for c in v.redirect_headers {
         let mut a = mockito::Server::new_async().await;
         let mut b = mockito::Server::new_async().await;
-        let to = format!(
-            "{}/final",
-            if c.cross_origin { b.url() } else { a.url() }
-        );
+        let to = format!("{}/final", if c.cross_origin { b.url() } else { a.url() });
         let _hop = a
             .mock("GET", "/hop")
             .with_status(302)
@@ -298,7 +295,10 @@ async fn redirect_header_vectors() {
                 fin = fin.match_header(k.to_ascii_lowercase().as_str(), val.as_str());
             }
         }
-        let fin = fin.expect(if c.refused { 0 } else { 1 }).create_async().await;
+        let fin = fin
+            .expect(if c.refused { 0 } else { 1 })
+            .create_async()
+            .await;
 
         let client = GuardedClient::new(NetPolicy::online()).expect("build client");
         let mut rb = client.get(format!("{}/hop", a.url()));
