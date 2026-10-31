@@ -80,7 +80,7 @@ pub trait Store {
     /// Open the blob at `key` for reading.
     fn get(&self, key: &str) -> Result<Self::Reader, BlobError>;
 
-    /// Remove the blob at `key`.
+    /// Remove the blob at `key`. Idempotent: a missing key is `Ok(())`.
     fn delete(&self, key: &str) -> Result<(), BlobError>;
 
     /// Return every object whose key starts with `prefix`.

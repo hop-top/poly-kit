@@ -297,10 +297,12 @@ impl Store for LocalStore {
 
     fn delete(&self, key: &str) -> Result<(), BlobError> {
         let p = self.resolve(key)?;
-        let removed = fs::remove_file(&p).map_err(|e| match e.kind() {
-            io::ErrorKind::NotFound => BlobError::NotFound(key.to_string()),
-            _ => BlobError::io("remove", e),
-        });
+        // Idempotent like Go's local.Delete: a missing key is success.
+        let removed = match fs::remove_file(&p) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(BlobError::io("remove", e)),
+        };
         // Drop the sidecar even when the content was already gone, so a
         // stray one never outlives its key.
         match fs::remove_file(self.meta_path(&p)) {
