@@ -1,6 +1,6 @@
 # rs
 
-Experimental Rust client SDK for hop-top kit.
+Rust SDK for hop-top kit: the `hop-top-kit` crate, released as kit-rs. Versions are prereleases (`0.5.0-alpha.N`).
 
 ## Install
 
@@ -23,8 +23,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`socket/`](src/socket/README.md) | unix-socket JSON-lines transport with peer-uid auth and idempotency replay, a `serve` service (feature `socket`, unix only) | a tool must answer a local client over a `0600` socket |
 | [`parity/`](src/parity/mod.rs) | typed loader for `contracts/parity/parity.json` (status symbols, spinner, anim, help sections, verbosity, streams) with a drift guard (feature `output`) | a CLI needs the cross-language TUI constants |
 | [`bus/`](src/bus/README.md) | in-process event bus with topic grammar (feature `bus`); peers over WebSocket in [`bus/network/`](src/bus/network/README.md) (feature `bus-network`) | components publish or subscribe to named events, across processes too |
-| [`domain/`](src/domain/README.md) | state machine with veto-able pre and fire-and-forget post transition events; the `Repository` port (feature `domain`) | an entity has a lifecycle others react to |
-| [`breaker/`](src/breaker/README.md) | circuit breaker, MaxOps/MaxBytes budgets, bursty rate limiter (feature `breaker`) | a tool must stop itself after failures, a budget or a rate |
+| [`domain/`](src/domain/README.md), [`breaker/`](src/breaker/README.md) | state machine with veto-able pre and fire-and-forget post transition events; the `Repository` port (feature `domain`); circuit breaker, MaxOps/MaxBytes budgets, bursty rate limiter (feature `breaker`) | an entity has a lifecycle others react to, or a tool must stop itself after failures, a budget or a rate |
 | [`sync/`](src/sync/README.md) | local-first replication: hybrid logical clock, diffs, named remotes with sync modes and filters, last-write-wins and custom merges, memory transport and replicator with status (feature `sync`; `sync-http` for the HTTP transport) | two stores of the same entities must converge without a server |
 | [`config/`](src/config/README.md) | layered YAML config: load, get/set/unset keeping comments, hot reload (feature `config`; `config-signal`, `config-pkl`) | a CLI reads or writes its config files |
 | [`consent/`](src/consent/README.md) | per-capability consent grants: check, request through a prompter, use with audit, revoke; grants file, audit log and bus relay (feature `consent`; `consent-file` for the files) | a tool reads the screen, camera, mic, clipboard or files for the user |
@@ -83,14 +82,5 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `llm` (`llm-anthropic`, `llm-openai`, `llm-google`, `llm-ollama`, `llm-triton`, `llm-routellm`; `llm-picker`; `llm-router`) | `config` + `netpolicy` + `url`, `sha2` (+ `api`, `base64`, `tokio` time via `llm-http`; native only; `llm-routellm` adds `llm-openai`; `llm-picker`: nothing of its own, wasm-safe; `llm-router`: `llm-triton` + `llm-picker`) | 53 (114) |
 | `telemetry` | `api` + `serde_norway`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
 
-Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`. `api` and `telemetry` are heaviest; bundled `rusqlite` needs a C compiler. Native-only sinks and adapters, runtime and C-compiler needs: [build notes](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#build-notes).
-
-## Rust versions
-
-The minimum supported Rust version (MSRV) is **1.89**, declared as `rust-version` in `Cargo.toml` and tested in CI with `cargo test --all-features` on that exact toolchain, next to the pinned development toolchain (`rust-toolchain.toml`) and current stable.
-
-Policy: the MSRV is the lowest version the crate and its locked dependencies compile on, not a promise to trail stable. Raising it is a breaking change: it ships in a minor release (a major one from 1.0) and is called out in the changelog. A dependency bump that raises the floor either waits for such a release or is held back. After a bump, set `rust-version` to the highest `rust-version` in `cargo metadata --all-features` and confirm the MSRV job passes.
-
-## See also
-
-- [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md): [crate-wide contract](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#crate-wide-contract), serve, URI facade, output, MCP mount, storage and the cross-process gate, httpcache, offline, telemetry, bus, config, authentication, REST server; [Serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md), [Serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md)
+Counts are non-dev crates from `cargo tree -e normal`; heavy features and platform limits are in the [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#feature-notes). The minimum supported Rust version is **1.89** (`rust-version` in `Cargo.toml`, tested in CI); raising it ships in a minor release ([policy](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#rust-versions)).
+See also: [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md): [crate-wide contract](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#crate-wide-contract), serve, URI facade, output, MCP mount, storage and the cross-process gate, httpcache, offline, telemetry, bus, config, authentication, REST server; [Serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md), [Serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md)
