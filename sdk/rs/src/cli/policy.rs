@@ -4,8 +4,8 @@
 //! `console/cli/policy` (policy, engine, loader, the shipped
 //! `kit-default`); `permissions:` rules are carried and validated here and
 //! evaluated by [`super::PermissionGate`] (feature `cli-permissions`; Go's
-//! `celpermission`), and the served per-caller budget windows are not
-//! ported (no Rust surface counts calls per principal).
+//! `celpermission`), and the served per-caller budget windows are counted
+//! by [`super::ServedGate`] (same feature).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -87,7 +87,7 @@ pub struct CallerRule {
     pub scope: String,
     /// Answers the classes it declares.
     pub allow: BTreeMap<String, Vec<String>>,
-    /// Mutating calls per window; carried, not counted here.
+    /// Mutating calls per window on served surfaces; 0 is no budget.
     pub max_ops: i64,
     /// The budget window, as a duration string (`24h`).
     #[serde(deserialize_with = "de_duration")]
@@ -468,6 +468,14 @@ impl Engine {
             Some(patterns) => match_any(patterns, verb),
             None => true,
         }
+    }
+
+    /// Whether `cmd` counts against a served per-caller budget: its
+    /// tier, or the policy's `unannotated` class when it declares none,
+    /// is a write or destructive one.
+    pub fn mutating(&self, cmd: &CommandRef<'_>) -> bool {
+        self.side_effect(cmd)
+            .is_some_and(|se| matches!(class_of(se), Some("write" | "destructive")))
     }
 
     /// Accounts one successful mutating operation; errors once the

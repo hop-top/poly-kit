@@ -37,6 +37,8 @@ pub mod policy;
 mod root;
 mod run;
 pub mod safety;
+#[cfg(feature = "cli-permissions")]
+mod served;
 mod spec;
 mod usage;
 mod validate;
@@ -60,6 +62,10 @@ pub use plan::{Effect, Plan};
 pub use policy::{default_policy_loader, Policy, PolicyLoader};
 pub use root::Root;
 pub use run::{Globals, HandlerFn, Invocation, AUTOCORRECT_ENV};
+#[cfg(feature = "cli-permissions")]
+pub use served::{
+    policy_caller, ServedCall, ServedGate, Usage, UsageLedger, DEFAULT_BUDGET_WINDOW,
+};
 pub use spec::{ArgSpec, CommandSpec, FlagSpec, ValueSpec};
 pub use usage::AutocorrectMode;
 pub use validate::{
