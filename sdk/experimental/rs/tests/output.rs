@@ -55,7 +55,7 @@ fn registry_register_lookup_duplicate_override() {
 fn registry_keys_sorted_and_extension_map() {
     let r = default_registry();
     let keys = r.keys();
-    assert_eq!(keys, vec!["csv", "json", "table", "text", "yaml"]);
+    assert_eq!(keys, vec!["csv", "human", "json", "table", "text", "yaml"]);
 
     let exts = r.extension_map();
     assert_eq!(exts.get("json").copied(), Some("json"));
@@ -1181,4 +1181,72 @@ fn dispatch_columnspec_drives_csv_column_order() {
         std::str::from_utf8(&buf).unwrap(),
         "status,name\nok,alpha\n"
     );
+}
+
+// --- human ----------------------------------------------------------------
+
+fn render_with(key: &str, data: &Value, cols: &[String]) -> String {
+    let f = default_registry().lookup(key).unwrap();
+    let mut buf = Vec::new();
+    f.render(&mut buf, data, &Options::new(), cols).unwrap();
+    String::from_utf8(buf).unwrap()
+}
+
+/// A payload with no bespoke human renderer falls back to the table view,
+/// byte for byte (Go `humanFormatter.Render`).
+#[test]
+fn human_formatter_renders_the_table_view() {
+    let data = json!([
+        {"id": "1", "name": "alpha", "score": 10},
+        {"id": "2", "name": "beta", "score": 20},
+    ]);
+    let human = render_with("human", &data, &[]);
+    assert!(human.contains("alpha") && human.contains("beta"), "{human}");
+    assert_eq!(human, render_with("table", &data, &[]));
+}
+
+#[test]
+fn human_formatter_honors_cols_projection_order() {
+    let data = json!([{"id": "1", "name": "alpha", "score": 10}]);
+    let cols = vec!["score".to_string(), "id".to_string()];
+    let human = render_with("human", &data, &cols);
+    assert_eq!(human, render_with("table", &data, &cols));
+    assert!(!human.contains("alpha"), "{human}");
+    assert!(
+        human.find("score").unwrap() < human.find("id").unwrap(),
+        "{human}"
+    );
+}
+
+#[test]
+fn human_formatter_zero_rows_emits_nothing() {
+    assert_eq!(render_with("human", &json!([]), &[]), "");
+}
+
+/// Go registers human with no extensions and no options: it never wins
+/// `--output` extension inference and accepts no `--format-opt`.
+#[test]
+fn human_formatter_declares_no_extensions_or_options() {
+    let f = default_registry().lookup("human").unwrap();
+    assert_eq!(f.key(), "human");
+    assert!(f.extensions().is_empty());
+    assert!(f.options().is_empty());
+}
+
+#[test]
+fn dispatch_format_human_renders() {
+    let (cmd, _) = register_output_flags(
+        Command::new("t").no_binary_name(true),
+        RegisterOutputFlagsOptions::default(),
+    );
+    let m = cmd.try_get_matches_from(["--format", "human"]).unwrap();
+    let mut buf = Vec::new();
+    dispatch(
+        &m,
+        &mut buf,
+        &json!([{"name": "alpha"}]),
+        DispatchOptions::default(),
+    )
+    .unwrap();
+    assert!(String::from_utf8(buf).unwrap().contains("alpha"));
 }

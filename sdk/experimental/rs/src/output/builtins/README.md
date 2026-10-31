@@ -18,6 +18,7 @@ registers beside them? Flag parsing and dispatch live in the parent `hop_top_kit
 | `json` | `.json` | `indent` int (2, 0 = compact) |
 | `yaml` | `.yaml`, `.yml` | none |
 | `csv` | `.csv` | `delimiter` string (`,`), `no-header` bool, `quote-all` bool, `crlf` bool |
+| `human` | none | none (the table view of the payload; override the key for a bespoke layout) |
 | `text` | `.txt` | `style` enum kv, lines, paragraph (kv), `separator` string (`=`, kv only) |
 
 ## Quick start
@@ -30,7 +31,7 @@ use serde_json::json;
 
 let registry = Registry::new();
 register_all(&registry);
-assert_eq!(registry.keys(), ["csv", "json", "table", "text", "yaml"]);
+assert_eq!(registry.keys(), ["csv", "human", "json", "table", "text", "yaml"]);
 assert!(registry.register(Arc::new(JsonFormatter)).is_err());
 
 let mut buf = Vec::new();
