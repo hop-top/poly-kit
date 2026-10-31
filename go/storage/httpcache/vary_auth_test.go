@@ -127,7 +127,7 @@ func TestAuthorization_UnauthenticatedRequestNeverSeesAuthenticatedResponse(t *t
 }
 
 func TestAuthorization_StoredWhenResponseAllowsSharedCaching(t *testing.T) {
-	for _, cc := range []string{"public", "s-maxage=60", "must-revalidate", "max-age=60, PUBLIC"} {
+	for _, cc := range []string{"public", "max-age=60, PUBLIC", "public, must-revalidate"} {
 		t.Run(cc, func(t *testing.T) {
 			srv, origin := echoServer(t, "Authorization", map[string]string{"Cache-Control": cc})
 			client := &http.Client{Transport: httpcache.New(newStore(t), http.DefaultTransport)}
@@ -155,4 +155,18 @@ func TestAuthorization_PublicButNoStoreStillNotStored(t *testing.T) {
 	getWith(t, client, srv.URL, h)
 	getWith(t, client, srv.URL, h)
 	assert.Equal(t, int64(2), origin.Load())
+}
+
+func TestAuthorization_NotStoredWithoutPublic(t *testing.T) {
+	// The store neither revalidates nor honors s-maxage, so neither directive
+	// alone may expose one identity's response to another.
+	for _, cc := range []string{"s-maxage=60", "must-revalidate", "max-age=60, must-revalidate"} {
+		t.Run(cc, func(t *testing.T) {
+			srv, origin := echoServer(t, "Authorization", map[string]string{"Cache-Control": cc})
+			client := &http.Client{Transport: httpcache.New(newStore(t), http.DefaultTransport)}
+			assert.Equal(t, "Authorization=Bearer alice", getWith(t, client, srv.URL, map[string]string{"Authorization": "Bearer alice"}))
+			assert.Equal(t, "Authorization=Bearer bob", getWith(t, client, srv.URL, map[string]string{"Authorization": "Bearer bob"}))
+			assert.Equal(t, int64(2), origin.Load(), "%q must not opt an authenticated response into the shared store", cc)
+		})
+	}
 }

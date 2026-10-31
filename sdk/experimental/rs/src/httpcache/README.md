@@ -53,7 +53,7 @@ assert_eq!(fetches, 1, "second call served from cache");
   to Go, and drop any stale index for the URL; a primary entry that names a `Vary` reads as a miss.
 - A `Cache-Control: private` response is never stored (the store is shared across identities), even
   with `must-revalidate`. A request with `Authorization` is stored only when the response carries
-  `public`, `s-maxage` or `must-revalidate`. `no-store` still wins over everything.
+  `public`. `no-store` still wins over everything.
 - Cache failures never reach the caller: a bad read decodes to a miss, a failed write is dropped.
 - The method is used verbatim in the key, never case-folded.
 - Parity: [`contracts/httpcache-v1/`](../../../../../contracts/httpcache-v1/) (`keying.json`,

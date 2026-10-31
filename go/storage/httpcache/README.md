@@ -17,8 +17,7 @@ client := &http.Client{Transport: httpcache.New(
 v1 caches GET + 2xx only, honors `Cache-Control: no-store`, keys on
 `sha256(method+" "+url)` and, per RFC 9111, stores `Vary` responses per
 variant (`Vary: *` is never stored) and stores responses to requests with
-`Authorization` only when the response has `public`, `s-maxage` or
-`must-revalidate`. Stores a language-neutral JSON envelope
+`Authorization` only when the response has `public`. Stores a language-neutral JSON envelope
 (status, headers, base64 body) per the cross-language contract in
 `contracts/httpcache-v1/`. Non-goals (v2 seams): ETag
 revalidation, max-age-derived TTL.

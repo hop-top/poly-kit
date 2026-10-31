@@ -34,8 +34,9 @@
 //   - A response with Vary is stored per variant (keyed on the request's
 //     values for the varied headers); Vary: * is never stored.
 //   - A response to a request with Authorization is stored only when it
-//     carries Cache-Control public, s-maxage or must-revalidate (RFC 9111
-//     section 3.5), so one identity's response is not replayed to another.
+//     carries Cache-Control public (RFC 9111 section 3.5; no revalidation,
+//     so must-revalidate and s-maxage do not qualify), so one identity's
+//     response is not replayed to another.
 //   - A stored entry past its TTL is a miss (the request is refetched).
 //
 // Entries are persisted as a language-neutral JSON envelope (status,
