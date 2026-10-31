@@ -982,6 +982,9 @@ struct Rig {
 
 impl Rig {
     fn new(max: u32, cap: usize) -> Self {
+        Self::with_quota(max, cap, 0)
+    }
+    fn with_quota(max: u32, cap: usize, quota: usize) -> Self {
         let clock = Arc::new(Fake(Mutex::new(
             SystemTime::UNIX_EPOCH + Duration::from_secs(1000),
         )));
@@ -989,6 +992,7 @@ impl Rig {
         let s = sweeps.clone();
         let mut rl = RateLimit::new(max, Duration::from_secs(40));
         rl.max_clients = cap;
+        rl.per_prefix = quota;
         rl.clock = Some(clock.clone());
         rl.on_sweep = Some(Arc::new(move || {
             s.fetch_add(1, Ordering::SeqCst);
@@ -1003,6 +1007,10 @@ impl Rig {
     }
     fn advance(&self, secs: u64) {
         *self.clock.0.lock().unwrap() += Duration::from_secs(secs);
+    }
+    async fn from_unknown(&self) -> u16 {
+        let r = get_req("/hello");
+        self.app.clone().oneshot(r).await.unwrap().status().as_u16()
     }
     async fn from(&self, ip: &str) -> u16 {
         let sa: SocketAddr = if ip.contains(':') {
@@ -1133,4 +1141,31 @@ async fn an_untidy_request_id_is_replaced_and_logs_stay_one_line() {
     assert!(lines
         .iter()
         .all(|l| !l.contains('\n') && l.contains("request_id=\"")));
+}
+
+#[tokio::test]
+async fn one_prefix_cannot_take_every_slot() {
+    let r = Rig::with_quota(1, 8, 4);
+    for i in 0..20 {
+        r.from(&format!("2001:db8:1:{i:x}::1")).await;
+    }
+    // The flooding /48 held at its quota; other prefixes still get
+    // individual buckets.
+    assert_eq!(r.from("192.0.2.1").await, 200);
+    assert_eq!(r.from("192.0.2.2").await, 200, "exact, not the shared /24");
+    assert_eq!(r.from("192.0.2.1").await, 429);
+}
+
+#[tokio::test]
+async fn unknown_clients_have_their_own_bucket() {
+    let r = Rig::with_quota(1, 4, 1);
+    for ip in ["10.0.0.1", "10.1.0.1", "10.2.0.1", "10.3.0.1"] {
+        assert_eq!(r.from(ip).await, 200); // exact slots
+    }
+    assert_eq!(r.from("10.4.0.1").await, 200); // aggregate 1
+    assert_eq!(r.from("10.5.0.1").await, 200); // aggregate 2
+    assert_eq!(r.from("10.6.0.1").await, 200); // overflow
+    assert_eq!(r.from("10.7.0.1").await, 429, "overflow is shared");
+    assert_eq!(r.from_unknown().await, 200, "unknown has its own");
+    assert_eq!(r.from_unknown().await, 429);
 }

@@ -29,6 +29,10 @@ pub struct RateLimit {
     pub max_clients: usize,
     /// The clock, for tests. Default the system clock.
     pub clock: Option<Arc<dyn Clock>>,
+    /// Individually tracked clients allowed per /24 (IPv4) or /48 (IPv6);
+    /// past it a prefix's newcomers use its aggregate bucket, so one
+    /// prefix cannot take every slot. Zero means 16.
+    pub per_prefix: usize,
     /// Called each time the idle sweep runs; a test hook.
     pub on_sweep: Option<Arc<dyn Fn() + Send + Sync>>,
 }
@@ -41,6 +45,7 @@ impl RateLimit {
             per,
             max_clients: 0,
             clock: None,
+            per_prefix: 0,
             on_sweep: None,
         }
     }
@@ -59,6 +64,15 @@ enum Key {
 enum Coarse {
     V4(u32),
     V6(u64),
+}
+
+impl Key {
+    fn coarse(self) -> Coarse {
+        match self {
+            Key::V4(v) => Coarse::V4(v >> 8),
+            Key::V6(v) => Coarse::V6(v >> 16),
+        }
+    }
 }
 
 fn parts(ip: IpAddr) -> (Key, Coarse) {
@@ -84,6 +98,7 @@ struct Entry {
 
 struct Table {
     exact: HashMap<Key, Entry>,
+    per_prefix: HashMap<Coarse, usize>,
     coarse: HashMap<Coarse, Entry>,
     last_sweep: Option<SystemTime>,
 }
@@ -92,19 +107,23 @@ pub(crate) struct Limiter {
     cfg: RateLimit,
     state: Mutex<Table>,
     overflow: Arc<Breaker>,
+    unknown: Arc<Breaker>,
 }
 
 impl Limiter {
     pub(crate) fn new(cfg: RateLimit) -> Self {
         let overflow = Self::bucket(&cfg);
+        let unknown = Self::bucket(&cfg);
         Self {
             cfg,
             state: Mutex::new(Table {
                 exact: HashMap::new(),
+                per_prefix: HashMap::new(),
                 coarse: HashMap::new(),
                 last_sweep: None,
             }),
             overflow,
+            unknown,
         }
     }
 
@@ -142,6 +161,10 @@ impl Limiter {
         }
         st.last_sweep = Some(now);
         st.exact.retain(|_, e| !self.idle(now, e));
+        st.per_prefix.clear();
+        for k in st.exact.keys() {
+            *st.per_prefix.entry(k.coarse()).or_insert(0) += 1;
+        }
         st.coarse.retain(|_, e| !self.idle(now, e));
         if let Some(f) = &self.cfg.on_sweep {
             f();
@@ -150,7 +173,7 @@ impl Limiter {
 
     fn breaker_for(&self, ip: Option<IpAddr>) -> Arc<Breaker> {
         let Some(ip) = ip else {
-            return self.overflow.clone();
+            return self.unknown.clone();
         };
         let (key, coarse) = parts(ip);
         let cap = if self.cfg.max_clients == 0 {
@@ -159,6 +182,11 @@ impl Limiter {
             self.cfg.max_clients
         };
         let coarse_cap = (cap / 4).max(2);
+        let quota = if self.cfg.per_prefix == 0 {
+            16
+        } else {
+            self.cfg.per_prefix
+        };
         let now = self.now();
         let mut st = self.state.lock().unwrap_or_else(|p| p.into_inner());
         self.sweep(&mut st, now);
@@ -170,9 +198,10 @@ impl Limiter {
             breaker: b,
             last_seen: now,
         };
-        if st.exact.len() < cap {
+        if st.exact.len() < cap && st.per_prefix.get(&coarse).copied().unwrap_or(0) < quota {
             let b = Self::bucket(&self.cfg);
             st.exact.insert(key, fresh(b.clone()));
+            *st.per_prefix.entry(coarse).or_insert(0) += 1;
             return b;
         }
         // At the cap with nothing idle to reclaim. Evicting a live
