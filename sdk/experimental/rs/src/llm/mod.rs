@@ -17,14 +17,19 @@
 //! - [`ToolNames`]: tool-name rules ([`ANTHROPIC_TOOL_NAMES`] and
 //!   friends) and the reversible sanitizer adapters run per request;
 //!   [`ToolNameMode`] is the `tool_names` provider param.
-//! - [`anthropic`] (feature `llm-anthropic`): the Messages API adapter.
+//! - [`anthropic`], [`openai`], [`google`], [`ollama`], [`triton`] and
+//!   [`routellm`] (features `llm-anthropic`, `llm-openai`, `llm-google`,
+//!   `llm-ollama`, `llm-triton`, `llm-routellm`): the HTTP adapters.
+//! - [`picker`] (`llm-picker`): model choice by profile, pool and
+//!   budget; [`router`] (`llm-router`): routing by prompt score.
+//! - [`PoolEntry`], [`load_pool`]: the llm.yaml model pool.
 //!
 //! Keys never reach `Debug` or error text: [`redact_uri`] masks URIs,
 //! and config types print `REDACTED` in a key's place.
 //!
-//! Not ported: Go's aim catalog routing (aliases, protocol claims),
-//! the model picker and router, media URL/file sources, and adapters
-//! other than Anthropic.
+//! Not ported: Go's aim catalog routing (aliases, protocol claims; the
+//! picker has a [`picker::ModelCatalog`] seam instead) and media
+//! URL/file sources.
 
 #[cfg(feature = "redact")]
 mod buscontent;

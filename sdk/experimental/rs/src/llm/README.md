@@ -5,8 +5,18 @@
 How a Rust tool talks to an LLM provider through one seam: completions,
 streaming, tool calls, selected by a `scheme://model` URI, with keys from
 the URI, llm.yaml, a secret store or the environment, a fallback chain and
-bus events. A port of Go `ai/llm` core; the only adapter is
-[`anthropic/`](anthropic/README.md).
+bus events. A port of Go `ai/llm` core, with the adapters below.
+
+| Scheme | Module | Feature |
+|--------|--------|---------|
+| `anthropic` | [`anthropic/`](anthropic/README.md) | `llm-anthropic` |
+| `openai`, `openrouter`, `xai`, `lmstudio`, `groq`, `together`, `fireworks`, `deepseek`, `mistral` | [`openai/`](openai/README.md) | `llm-openai` |
+| `gemini`, `google` | [`google/`](google/README.md) | `llm-google` |
+| `ollama` | [`ollama/`](ollama/README.md) | `llm-ollama` |
+| `triton` (a scorer, no completions) | [`triton/`](triton/README.md) | `llm-triton` |
+| `routellm` | [`routellm/`](routellm/README.md) | `llm-routellm` |
+
+Routing on top: the model [`picker/`](picker/README.md) with the llm.yaml pool (`llm-picker`, wasm-safe) and the native [`router/`](router/README.md) engine (`llm-router`).
 
 ## Use it when
 
@@ -20,6 +30,7 @@ bus events. A port of Go `ai/llm` core; the only adapter is
 - you enforce a budget or run tools mid-stream → `Request { stream_events: true, .. }`: `Token::usage` snapshots and `Token::tool_call` start/delta/end events (anthropic)
 - you force or forbid tool use → `Request::tool_choice = Some(ToolChoice::tool("pane.open"))` (`auto`, `any`, `none`)
 - you tell a bad key from a key without access → `LlmError::PermissionDenied` (403) before `LlmError::Auth` (401); `is_auth()` matches both
+- you pick a model by capability, size and budget → [`picker/`](picker/README.md); you route by prompt score → [`router/`](router/README.md)
 - you add a provider → implement `Provider`, then `Registry::register(scheme, factory, Declaration)`
 - you print a URI or base URL → `redact_uri(uri)`; config types and errors already mask keys
 - your tool ids are dotted or namespaced (`pane.open`) → nothing to do; adapters sanitize them and return your names. Already valid and want them checked, never rewritten → `?tool_names=strict`
@@ -45,7 +56,9 @@ let calls = &s.outcome().unwrap().tool_calls; // replay with Message::assistant_
 
 ## Contract
 
-- Feature `llm` builds on `config`, `netpolicy`, `url` (reqwest's parser) and `sha2`; wasm32-safe apart from `ConfigFile::load` and the process wrappers. `llm-anthropic` adds `api`, `base64` and tokio's timer.
+- Feature `llm` builds on `config`, `netpolicy`, `url` (reqwest's parser) and `sha2`; wasm32-safe apart from `ConfigFile::load` and the process wrappers. Every HTTP adapter feature (`llm-anthropic`, `llm-openai`, `llm-google`, `llm-ollama`, `llm-triton`) goes through `llm-http`: `api`, `base64` and tokio's timer, native only. Each takes no vendor SDK crate.
+- Key and endpoint guard in every adapter: a key goes through `check_endpoint_url` (no plain http to a remote host, no userinfo or malformed base), and a key an adapter finds in the environment (Gemini) or an environment-sourced ID (OpenAI organization) goes only to a trusted endpoint. Error text is scrubbed of credentials before it is truncated. A model name placed in a URL path is one encoded segment.
+- Pool: `PoolEntry`, `load_pool(&ConfigFile, env)`, `resolve_pool` (llm.yaml `pool:`, `LLM_POOL_DISABLE`) are in the core.
 - `TokenStream`: text tokens, one `done` token, then `None`; an error ends it the same way. Dropping a future or stream cancels it. `outcome()` (stream, tool calls, usage) is Rust-only.
 - `Request::stream_events`: tokens also carry `tool_call` (`ToolCallEvent`: start with `index`, `id`, original `name`; deltas of raw JSON; end with `call` = `outcome().tool_calls[index]`; parallel calls interleave by `index`; an open call gets no end after an error) and `usage` (cumulative; the last equals `outcome().usage`). Unset: the token sequence is unchanged.
 - `Request::tool_choice` (`ToolChoiceMode` `auto`, `any`, `none`, `tool` + `name`): sent on tool calls, the named tool by its wire name; `check_tool_choice` failures (unknown mode, no tools, missing, stray or unknown name) reject the request before sending.
@@ -59,7 +72,7 @@ let calls = &s.outcome().unwrap().tool_calls; // replay with Message::assistant_
 - Tool names ([`tool-names.md`](../../../../../contracts/llm-v1/tool-names.md)): rules `ANTHROPIC_TOOL_NAMES`, `OPENAI_TOOL_NAMES`, `GEMINI_TOOL_NAMES`. `ToolNameRule::sanitize` collapses each run of disallowed bytes to `_`, prefixes `_` where the rule needs a leading letter, and shortens an overlong (or letterless) result to `max_len - 9` bytes + `_` + 8 hex of SHA-256(name). Per request, `ToolNames::new` fails the first bad tool with `LlmError::ToolName` (`ToolNameReason`: empty, invalid in strict mode, duplicate, collision) before any network call; never fallbackable. Replayed history goes out under wire names; returned calls (whole or in a stream outcome) carry the original; unknown names pass through. Provider param `tool_names`: `sanitize` (default) or `strict`; anything else fails adapter construction.
 - Fallbackable: rate limits, transport failures, 5xx (529 included). Offline refusals are not.
 - Keys never reach `Debug` or error text. Parity: [`contracts/llm-v1`](../../../../../contracts/llm-v1/README.md).
-- Not ported: aim catalog routing and aliases, the picker and router, media URL/file sources, `On*` hook options (use the bus, or the content opt-in), adapters other than Anthropic.
+- Not ported: aim catalog routing and aliases (the picker has a `ModelCatalog` seam instead), media URL/file sources, `On*` hook options (use the bus, or the content opt-in), OpenAI image/speech/transcription and Ollama image generation, the RouteLLM `ConfigWatcher` and the router's HTTP server.
 
 ## See also
 
