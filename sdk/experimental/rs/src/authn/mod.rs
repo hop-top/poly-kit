@@ -53,8 +53,8 @@ mod claims;
 mod error;
 mod key;
 mod provider;
-#[cfg(feature = "authn-apikeys")]
-mod rfc3339;
+#[cfg(any(feature = "authn-apikeys", feature = "webhook"))]
+pub(crate) mod rfc3339;
 mod verifier;
 
 #[cfg(feature = "authn-apikeys")]
