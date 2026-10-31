@@ -42,6 +42,8 @@
 mod accesslog;
 mod auth;
 pub mod clientaddr;
+#[cfg(feature = "cli")]
+pub mod commands;
 mod cors;
 mod ctx;
 mod error;

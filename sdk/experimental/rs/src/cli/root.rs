@@ -159,10 +159,6 @@ impl Root {
         self.annotations.get(path).cloned().unwrap_or_default()
     }
 
-    pub(super) fn is_alias_shim(&self, path: &str) -> bool {
-        self.aliases.contains_key(path)
-    }
-
     /// The ids of the hidden help groups.
     fn hidden_groups(&self) -> Vec<String> {
         let mut out = vec![MANAGEMENT.to_string()];

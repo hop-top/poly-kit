@@ -224,11 +224,8 @@ impl Root {
         }
     }
 
-    fn is_invocable(&self, path: &str, c: &Command) -> bool {
+    fn is_invocable(&self, path: &str, _c: &Command) -> bool {
         self.handlers.contains_key(path)
-            || (!path.is_empty()
-                && c.get_subcommands().next().is_none()
-                && !self.is_alias_shim(path))
     }
 }
 

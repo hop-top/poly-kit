@@ -4,7 +4,7 @@
 	check-toolchain-parity lint-actions-pinned lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-sdk-paths-all lint-templates lint-ts openapi \
 	preflight promote promote-beta promote-rc promote-open-line proto proto-check proto-rs proto-rs-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	completion-regen test-parity test-parity-api test-parity-webhook test-parity-authn test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-rpc test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
+	completion-regen test-parity test-parity-api test-parity-webhook test-parity-authn test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-cli-root test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-rpc test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-identity test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	test-php test-py test-py-sdk test-py-engine \
 	test-release test-rs test-rs-wasm test-templates test-ts test-ts-sdk test-ts-engine \
@@ -308,7 +308,7 @@ test-rs-wasm: ## Rust: bus, domain, breaker, policy, notify, sideeffect, sync an
 # scripts/test-scope.sh maps each prerequisite to its Go packages and
 # SDKs (PARITY_TABLE) so a pull request runs only the targets it
 # reaches; a prerequisite missing from that table always runs.
-test-parity: test-parity-typeid test-parity-api test-parity-webhook test-parity-authn test-parity-consent test-parity-breaker test-parity-blob test-parity-bus test-parity-blob test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-rpc test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-api test-parity-webhook test-parity-authn test-parity-consent test-parity-breaker test-parity-blob test-parity-bus test-parity-blob test-parity-bus-network test-parity-config test-parity-retry test-parity-cli-root test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-rpc test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
 test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-identity test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
 
 test-parity-cli: ## spaced CLI parity: Go, TypeScript and Python builds of the example agree
@@ -452,6 +452,7 @@ test-parity-api: ## api.json conformance corpus: client address, Host, Origin, O
 	cd contracts && go test ./parity/ -run '^TestAPIContractRegistered' -count=1
 	@echo "==> api conformance: Rust"
 	cd sdk/experimental/rs && cargo test --features api-server --test api_server_conformance --locked
+	cd sdk/experimental/rs && cargo test --features api-server,cli --test api_server_commands --locked
 
 test-parity-webhook: ## webhook-v1 conformance corpus: Graph, Pipedrive v2, generic HMAC (Go and Rust runners)
 	@echo "==> webhook-v1 conformance: Go"
@@ -531,6 +532,12 @@ test-parity-upgrade: ## upgrade-v1 conformance corpus (Go and Rust runners)
 # test-parity-completion. Review the diff; the runners pin the result.
 completion-regen: ## Regenerate completion-v1 script goldens and the Rust and TS completion templates from cobra
 	go test ./go/console/cli/completion/ -run '^(TestConformanceCompletionScripts|TestCompletionTemplatesInSync)$$' -count=1 -update
+
+test-parity-cli-root: ## cli-root-v1 conformance corpus: root flags, version, help groups, flag errors, autocorrect (Go and Rust runners)
+	@echo "==> cli-root-v1 conformance: Go"
+	go test ./go/console/cli/ -run '^TestConformanceCLIRoot' -count=1
+	@echo "==> cli-root-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features cli --test cli_root_conformance --locked
 
 test-parity-completion: ## completion-v1 conformance corpus (Go, Rust and TS runners)
 	@echo "==> completion-v1 conformance: Go"
