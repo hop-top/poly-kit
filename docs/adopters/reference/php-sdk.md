@@ -2,7 +2,7 @@
 
 > Every long-form surface of the experimental `hop-top/kit` package
 > (`sdk/experimental/php`): the URI facade, output formatting rules, the
-> MCP mount over PSR-15 and stdio, offline enforcement and telemetry. The package
+> MCP mount over PSR-15 and stdio, the CLI root and delegation gate, offline enforcement and telemetry. The package
 > front page is
 > [`sdk/experimental/php/README.md`](../../../sdk/experimental/php/README.md),
 > which carries install, the namespace table and the contract.
@@ -437,6 +437,66 @@ unimplemented, matching the Go reference. Pagination, `tasks/*` and
   — the polyglot adopter guide
 - [Expose your CLI over MCP](../guides/expose-cli-over-mcp.md)
   — the Go reference surface, in depth
+
+## CLI root and delegation gate
+
+`HopTop\Kit\Cli\Root` is a minimal kit-owned CLI root: a command tree, the
+persistent delegation flags and the gate every leaf passes before its handler
+runs. Canonical: `go/console/cli`, pinned by the
+[`cli-root-v1`](../../../contracts/cli-root-v1/README.md) delegation and
+inference vectors. The argv parser is kit-owned (no new dependency):
+`--flag value`, `--flag=value`, `--` ending options; no short flags.
+
+```php
+use HopTop\Kit\Cli\CommandSpec;
+use HopTop\Kit\Cli\Delegation\PolicyLoader;
+use HopTop\Kit\Cli\Invocation;
+use HopTop\Kit\Cli\Root;
+
+$root = new Root('mytool', '1.0.0', 'About', policyLoader: PolicyLoader::xdg('mytool'));
+$root->add(new CommandSpec('rm', annotations: ['kit/side-effect' => 'destructive'],
+    handler: fn (Invocation $i): int => 0));                     // needs --confirm
+$root->add(new CommandSpec('purge', annotations: [
+    'kit/side-effect' => 'destructive', 'kit/destructive-token' => 'required',
+], handler: fn (Invocation $i): int => 0));                      // needs --confirm-token
+$root->add(new CommandSpec('add', annotations: ['kit/side-effect' => 'write'],
+    handler: function (Invocation $i): int {
+        return $i->isDryRun() ? preview($i) : apply($i);          // kit applied --dry-run
+    }));
+
+exit($root->run(array_slice($argv, 1)));
+```
+
+Root flags (accepted before or after the command):
+
+| Flag | Behavior |
+|------|----------|
+| `--confirm yes\|no\|prompt\|auto` | `yes`/`auto` proceed; `no` refuses; `prompt` asks on the controlling terminal (`/dev/tty`, never stdin). Unset or unknown: `prompt` when a terminal exists, else `no`. Applies to destructive tiers and to commands a policy lists under `require_confirm`. |
+| `--confirm-token <sha>` | Leaf flag on `kit/destructive-token: required` leaves. The token is the first 6 bytes (12 hex) of `sha256` of the command path (`mytool purge`); `--confirm=yes` alone never suffices. Under `--format json\|yaml` the envelope's `suggested_fix` carries the re-run instruction; otherwise the token is printed. |
+| `--max-ops N` | Budget of mutating operations (write and destructive tiers) per `Engine`; over budget is `RATE_LIMITED`, exit 64. One CLI invocation runs one command, so the refusal needs a host sharing a `Gate::engine()` across calls. |
+| `--policy <name>` | Loads `$XDG_CONFIG_HOME/<tool>/policies/<name>.yaml` (default `~/.config`) through `policyLoader`. The name must match `[A-Za-z0-9_-]{1,64}`, checked before any filesystem access. `kit-default` is reserved and needs no loader. An unreadable or invalid policy is `USAGE` (2), a refusal is `UNAUTHORIZED` (5) and not lifted by `--confirm=yes`. |
+| `--dry-run` | Honored by write and destructive tiers (the handler runs with `isDryRun()` true, confirm skipped, no budget spent); a no-op on `read`; refused (`USAGE`, 2) on `interactive`, `kit/dry-run: opted-out`, untagged or malformed leaves. |
+| `--format json\|yaml\|table` | Selects the refusal envelope's format and the dry-run plan's. |
+
+Precedence is Go's: a leaf that declares its own `--confirm` or `--max-ops`
+flag supplies the value the gate reads for that leaf, set or not.
+`--policy` and `--dry-run` are the root's only: a leaf-local `--policy` is
+never the delegation policy.
+
+The gate acts on the declared `kit/side-effect`, else `destructive-shared`
+for an unannotated leaf whose name is in the destructive table (explicit
+annotation always wins). A malformed tier fails closed at run time (`USAGE`,
+exit 2) before policy, confirm or the handler, since the port has no
+`Root.Validate`. `--dry-run` on an inferred leaf never invokes the handler:
+kit renders a plan (command, one irreversible effect, a warning) in the
+active `--format` and exits 0.
+
+Not ported: `-C/--chdir`, `-c/--config` layering, `-v`/`--version`, help
+layout, aliases and autocorrect, `Root.Validate`, signature and flag
+validators, the alias store commands, `config path|paths`, and evaluation of
+policy `permissions:` and `callers:` rules (carried and validated only). The
+conformance runner (`tests/Cli/CliRootConformanceTest.php`) replays the
+delegation and `infer` vectors and lists each skip with its reason.
 
 ## Offline enforcement
 

@@ -48,7 +48,7 @@ Every path is relative to `src/`; namespaces sit under `HopTop\Kit`.
 
 | Path | What it is | Start here when |
 |------|------------|-----------------|
-| [`Cli/`](src/Cli/README.md) | `KitCommand` base for Symfony Console commands | you write a kit-powered command |
+| [`Cli/`](src/Cli/README.md) | `KitCommand` base for Symfony Console commands; `Root` CLI root with the delegation gate | you write a kit-powered command, or gate a command tree with `--confirm`, `--policy`, `--max-ops`, `--dry-run` |
 | [`Serve/`](src/Serve/README.md) | serve hierarchy and service lifecycle | your CLI hosts long-running services |
 | [`Output/`](src/Output/README.md) | `--format` flag family, dispatcher, registry, `CliError` | a command renders one payload as table, json or yaml |
 | [`Output/Formatter/`](src/Output/Formatter/README.md) | `Formatter` interface, `ColumnSpec`, options, projection | you implement or configure a formatter |
