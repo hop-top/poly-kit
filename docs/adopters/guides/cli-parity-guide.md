@@ -47,6 +47,12 @@ GET https://api.example.com:8443/v1/models: network disabled by --offline
   errors, and any logger or retry wrapper that prints the URL leaks it
   the same way.
 
+`netpolicy.allow_hosts` (config key, no flag) narrows egress to the listed
+hosts instead of cutting it off: exact hosts and `*.suffix`, refused with
+`host not allowed by netpolicy.allow_hosts` and matched by type like the
+offline refusal (Go `ErrHostNotAllowed`, Rust `HostNotAllowedError`). Go
+and Rust ship it; loopback stays exempt.
+
 Per-port detail: [Go](../../../go/core/netpolicy/README.md#contract),
 [TypeScript](../reference/ts-api-reference.md#modules),
 [Python](../reference/py-sdk.md#offline-enforcement),

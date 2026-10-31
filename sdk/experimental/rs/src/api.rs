@@ -206,6 +206,11 @@ fn net_error(method: &Method, e: NetError) -> ApiError {
             code: OFFLINE_CODE.into(),
             message: o.to_string(),
         },
+        NetError::HostNotAllowed(h) => ApiError {
+            status: 0,
+            code: HOST_NOT_ALLOWED_CODE.into(),
+            message: h.to_string(),
+        },
         NetError::Transport(t) => transport_error(method, t),
     }
 }
@@ -213,6 +218,10 @@ fn net_error(method: &Method, e: NetError) -> ApiError {
 /// `ApiError::code` set when a request was refused by the `--offline`
 /// policy rather than attempted and failed.
 pub const OFFLINE_CODE: &str = "offline";
+
+/// `ApiError::code` set when a request was refused by the
+/// `netpolicy.allow_hosts` allowlist rather than attempted and failed.
+pub const HOST_NOT_ALLOWED_CODE: &str = "host_not_allowed";
 
 #[cfg(test)]
 mod tests {

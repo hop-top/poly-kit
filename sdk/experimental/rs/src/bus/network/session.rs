@@ -22,7 +22,7 @@ use crate::bus::context::Context;
 use crate::bus::stream::{
     LinkResume, LinkState, REASON_UNSUPPORTED, TOPIC_LINK_CONNECTED, TOPIC_STREAM_INVALIDATED,
 };
-use crate::netpolicy::OfflineError;
+use crate::netpolicy::PolicyError;
 use serde_json::json;
 
 /// How long the handshake waits for the peer's first frame: Go's
@@ -252,14 +252,20 @@ async fn dial(
     let host = uri.host().unwrap_or_default().to_string();
     let port = uri.port_u16().unwrap_or(if secure { 443 } else { 80 });
     let host_port = format!("{host}:{port}");
-    if policy(ctx).check_dial("tcp", &host_port).is_err() {
+    let policy = policy(ctx);
+    if let Some(reason) = policy.denial(&host_port) {
         // Go refuses through its guarded HTTP transport, so the refusal
         // names the upgrade request.
         let scheme = if secure { "https" } else { "http" };
-        return Err(NetworkError::Offline(OfflineError {
-            method: "GET".to_string(),
-            url: format!("{scheme}://{host_port}{}", uri.path()),
-        }));
+        let refused = policy.refuse(
+            reason,
+            "GET".to_string(),
+            format!("{scheme}://{host_port}{}", uri.path()),
+        );
+        return Err(match refused {
+            PolicyError::Offline(e) => NetworkError::Offline(e),
+            PolicyError::HostNotAllowed(e) => NetworkError::HostNotAllowed(e),
+        });
     }
     let connect = async {
         let bare = host.trim_start_matches('[').trim_end_matches(']');

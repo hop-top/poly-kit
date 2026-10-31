@@ -114,3 +114,38 @@ fn network_adapter_offline_allows_loopback_peer() {
     assert!(reached(), "loopback Connect never reached the listener");
     within(move || n.close()).unwrap();
 }
+
+#[test]
+fn network_adapter_allowlist_refuses_unlisted_peer_and_allows_loopback() {
+    let (port, reached) = bus_listener();
+    let n = adapter();
+    let (ctx, _) = Context::background()
+        .with_value(NetPolicy::online().with_allow_hosts(["graph.microsoft.com"]))
+        .with_timeout(CONNECT_TIMEOUT);
+
+    let addr = format!("ws://kit-allow-probe.invalid:{port}/bus");
+    let err = connect(&n, ctx.clone(), addr).expect_err("unlisted peer was dialed");
+    let h = err
+        .as_host_not_allowed()
+        .expect("refusal is the allowlist error");
+    assert_eq!(h.method, "GET");
+    assert_eq!(
+        err.to_string(),
+        format!(
+            "failed to WebSocket dial: GET http://kit-allow-probe.invalid:{port}/bus: \
+             host not allowed by netpolicy.allow_hosts"
+        )
+    );
+    assert!(
+        !reached(),
+        "Connect reached a listener despite the allowlist"
+    );
+
+    // Loopback is exempt: the dial reaches the listener (the handshake
+    // then fails, which is not the policy's business).
+    let loop_addr = format!("ws://127.0.0.1:{port}/bus");
+    let err = connect(&n, ctx, loop_addr).expect_err("listener speaks no websocket");
+    assert!(err.as_host_not_allowed().is_none(), "{err}");
+    assert!(reached(), "loopback peer was not dialed");
+    within(move || n.close()).unwrap();
+}

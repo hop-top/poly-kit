@@ -4,7 +4,7 @@
 
 use thiserror::Error;
 
-use super::core::{NetPolicy, OfflineError};
+use super::core::{HostNotAllowedError, NetPolicy, OfflineError, PolicyError, RefusalReason};
 
 impl NetPolicy {
     /// Whether a request to `url` is permitted under this policy.
@@ -15,11 +15,26 @@ impl NetPolicy {
     /// names one. The url crate drops a scheme's default port, so
     /// `http://[::1]:80/` is judged as `[::1]`; both are loopback.
     pub fn allows(&self, url: &reqwest::Url) -> bool {
-        !self.is_offline()
-            || url.host_str().is_some_and(|h| match url.port() {
-                Some(port) => self.allows_host(&format!("{h}:{port}")),
-                None => self.allows_host(h),
-            })
+        self.url_denial(url).is_none()
+    }
+
+    /// Why a request to `url` is refused, if it is.
+    fn url_denial(&self, url: &reqwest::Url) -> Option<RefusalReason> {
+        let Some(h) = url.host_str() else {
+            // No host: nothing to judge. Offline refuses it; an
+            // allowlist cannot match it either.
+            return (self.is_offline() || !self.allow_hosts().is_empty()).then_some(
+                if self.is_offline() {
+                    RefusalReason::Offline
+                } else {
+                    RefusalReason::HostNotAllowed
+                },
+            );
+        };
+        match url.port() {
+            Some(port) => self.denial(&format!("{h}:{port}")),
+            None => self.denial(h),
+        }
     }
 }
 
@@ -31,6 +46,9 @@ pub enum NetError {
     /// The request was refused by the offline policy.
     #[error(transparent)]
     Offline(#[from] OfflineError),
+    /// The request was refused by the host allowlist.
+    #[error(transparent)]
+    HostNotAllowed(#[from] HostNotAllowedError),
     /// The request was attempted and reqwest failed it (or rejected it
     /// while building, e.g. an unsupported scheme).
     ///
@@ -49,13 +67,36 @@ impl NetError {
     pub fn as_offline(&self) -> Option<&OfflineError> {
         match self {
             NetError::Offline(e) => Some(e),
-            NetError::Transport(_) => None,
+            _ => None,
+        }
+    }
+
+    /// The allowlist refusal, if this error is one. The analogue of
+    /// `errors.Is(err, netpolicy.ErrHostNotAllowed)`.
+    pub fn as_host_not_allowed(&self) -> Option<&HostNotAllowedError> {
+        match self {
+            NetError::HostNotAllowed(e) => Some(e),
+            _ => None,
         }
     }
 
     /// Whether this error is an offline refusal.
     pub fn is_offline(&self) -> bool {
         self.as_offline().is_some()
+    }
+
+    /// Whether this error is an allowlist refusal.
+    pub fn is_host_not_allowed(&self) -> bool {
+        self.as_host_not_allowed().is_some()
+    }
+}
+
+impl From<PolicyError> for NetError {
+    fn from(e: PolicyError) -> Self {
+        match e {
+            PolicyError::Offline(e) => NetError::Offline(e),
+            PolicyError::HostNotAllowed(e) => NetError::HostNotAllowed(e),
+        }
     }
 }
 
@@ -138,7 +179,7 @@ impl GuardedClient {
 
     /// The policy this client enforces.
     pub fn policy(&self) -> NetPolicy {
-        self.policy
+        self.policy.clone()
     }
 
     /// Start a request. The returned builder is reqwest's own, so the
@@ -167,12 +208,11 @@ impl GuardedClient {
     /// crate without passing through here. A failure's URL is stripped
     /// to scheme, host and path (see [`NetError::Transport`]).
     pub async fn execute(&self, req: reqwest::Request) -> Result<reqwest::Response, NetError> {
-        if !self.policy.allows(req.url()) {
-            return Err(OfflineError {
-                method: req.method().to_string(),
-                url: destination(req.url()),
-            }
-            .into());
+        if let Some(reason) = self.policy.url_denial(req.url()) {
+            return Err(self
+                .policy
+                .refuse(reason, req.method().to_string(), destination(req.url()))
+                .into());
         }
         self.inner
             .execute(req)

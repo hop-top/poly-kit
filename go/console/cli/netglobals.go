@@ -15,6 +15,9 @@
 // driver. A dependency that opens its own socket and exposes no dialer
 // hook is not covered; see the netpolicy package doc, "Scope", for the
 // exact boundary.
+// netpolicy.allow_hosts (config) narrows egress to the listed hosts;
+// see netpolicy.WithAllowHosts. Unset, nothing changes.
+//
 // The override only forces opt-outs ON — it never un-sets an
 // explicitly passed --no-* flag.
 
@@ -22,6 +25,8 @@ package cli
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -33,6 +38,11 @@ import (
 // globals (--confirm, --max-ops, --policy).
 const (
 	offlineFlag = "offline"
+
+	// allowHostsKey is the config key for the egress host allowlist
+	// (a list in the config file; there is deliberately no flag, so a
+	// command line cannot widen what the config narrowed).
+	allowHostsKey = "netpolicy.allow_hosts"
 )
 
 // WithOffline returns a context tagged with the offline marker.
@@ -61,6 +71,27 @@ func (r *Root) Offline() bool {
 	return r.Viper.GetBool(offlineFlag)
 }
 
+// AllowHosts returns the configured egress host allowlist
+// (netpolicy.allow_hosts), or nil when none is set. nil-safe.
+func (r *Root) AllowHosts() []string {
+	if r == nil || r.Viper == nil {
+		return nil
+	}
+	hosts := r.Viper.GetStringSlice(allowHostsKey)
+	if len(hosts) == 0 {
+		return nil
+	}
+	return hosts
+}
+
+// auditRefusal logs a netpolicy refusal. Destinations are already
+// stripped of query, fragment and userinfo.
+func auditRefusal(ctx context.Context) func(netpolicy.Refusal) {
+	return func(f netpolicy.Refusal) {
+		slog.WarnContext(ctx, "netpolicy refused", "reason", f.Reason.Error(), "op", f.Op, "dest", f.Dest)
+	}
+}
+
 // installNetGlobalsHook returns a PersistentPreRunE hook that stamps
 // the resolved --offline value onto the command context before RunE
 // dispatch. Composes into the kit chain in
@@ -71,6 +102,12 @@ func (r *Root) installNetGlobalsHook() func(*cobra.Command, []string) error {
 		ctx := cmd.Context()
 		if r.Offline() {
 			ctx = WithOffline(ctx, true)
+		}
+		if hosts := r.AllowHosts(); len(hosts) > 0 {
+			if err := netpolicy.ValidateAllowHosts(hosts); err != nil {
+				return fmt.Errorf("config: %w", err)
+			}
+			ctx = netpolicy.WithAudit(netpolicy.WithAllowHosts(ctx, hosts), auditRefusal(ctx))
 		}
 		cmd.SetContext(ctx)
 		return nil

@@ -18,6 +18,14 @@
 // backend on 127.0.0.1 and unix sockets stay reachable so offline
 // workflows remain usable.
 //
+// # Allowlist
+//
+// WithAllowHosts narrows egress to named hosts (config key
+// netpolicy.allow_hosts) instead of cutting it off: a non-loopback
+// destination that matches no entry is refused with ErrHostNotAllowed, at
+// both seams below. WithAudit reports every refusal. Offline wins when
+// both apply.
+//
 // # Scope
 //
 // Enforcement has two seams, because Go offers no single one.
@@ -179,8 +187,10 @@ func Guard(base http.RoundTripper) http.RoundTripper {
 // RoundTrip refuses the request when its context is marked offline and
 // the destination is not loopback.
 func (g *guard) RoundTrip(req *http.Request) (*http.Response, error) {
-	if IsOffline(req.Context()) && !isLoopback(req.URL.Host) {
-		return nil, fmt.Errorf("%s %s: %w", req.Method, destination(req.URL), ErrOffline)
+	if err := refuse(req.Context(), req.URL.Host); err != nil {
+		dest := destination(req.URL)
+		audit(req.Context(), err, req.Method, dest)
+		return nil, fmt.Errorf("%s %s: %w", req.Method, dest, err)
 	}
 	return g.base.RoundTrip(req)
 }

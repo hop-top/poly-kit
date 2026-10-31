@@ -681,6 +681,27 @@ Behind a `Box<dyn Error>`, downcast first:
 equal to `hop_top_kit::api::OFFLINE_CODE` (`"offline"`); an attempted
 request that failed gets `code` `"transport_error"`.
 
+### Host allowlist
+
+`--offline` is all or nothing. `netpolicy.allow_hosts` narrows egress to
+named hosts instead: exact (`graph.microsoft.com`) or `*.suffix`, which
+matches one or more labels below the suffix but not the suffix itself.
+Loopback and unix sockets stay exempt; `--offline` wins when both are set.
+
+```rust
+let policy = NetPolicy::online()
+    .with_allow_hosts(["graph.microsoft.com", "*.pipedrive.com"])
+    .with_audit(|r| tracing::warn!(op = %r.op, dest = %r.dest, "egress refused"));
+validate_allow_hosts(&entries)?; // fail loud on a config typo
+```
+
+The same policy governs `GuardedClient` and `check_dial`. A refusal reads
+`GET https://evil.example.com/x: host not allowed by netpolicy.allow_hosts`;
+match `NetError::as_host_not_allowed()` (`HostNotAllowedError`).
+`ApiClient` maps it to `ApiError` code `"host_not_allowed"`
+(`hop_top_kit::api::HOST_NOT_ALLOWED_CODE`). `NetPolicy` is `Clone`, not
+`Copy`.
+
 ### What other errors carry
 
 Every error `GuardedClient` returns names its destination the same way:

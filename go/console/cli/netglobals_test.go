@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/core/netpolicy"
 )
 
 // newNetGlobalsRoot builds a minimal root with a probe leaf whose RunE
@@ -95,4 +97,55 @@ func TestOffline_HelpUnaffected(t *testing.T) {
 	require.NoError(t, r.Execute(context.Background()))
 	assert.True(t, strings.Contains(buf.String(), "USAGE") || strings.Contains(buf.String(), "Usage"),
 		"help output must render under --offline:\n%s", buf.String())
+}
+
+func TestAllowHosts_TagsContextFromConfig(t *testing.T) {
+	r, captured := newNetGlobalsRoot(t)
+	r.Viper.Set("netpolicy.allow_hosts", []string{"graph.microsoft.com", "*.pipedrive.com"})
+	r.SetArgs([]string{"do"})
+	require.NoError(t, r.Execute(context.Background()))
+	assert.Equal(t, []string{"graph.microsoft.com", "*.pipedrive.com"}, netpolicy.AllowHosts(*captured))
+	assert.Equal(t, []string{"graph.microsoft.com", "*.pipedrive.com"}, r.AllowHosts())
+	assert.True(t, netpolicy.HostAllowed(*captured, "acme.pipedrive.com"))
+	assert.False(t, netpolicy.HostAllowed(*captured, "evil.example.com"))
+}
+
+func TestAllowHosts_DefaultUntagged(t *testing.T) {
+	r, captured := newNetGlobalsRoot(t)
+	r.SetArgs([]string{"do"})
+	require.NoError(t, r.Execute(context.Background()))
+	assert.Nil(t, netpolicy.AllowHosts(*captured))
+	assert.Nil(t, r.AllowHosts())
+}
+
+// A malformed entry would otherwise fail closed silently (it can never
+// match); the run refuses instead so the config error is seen.
+func TestAllowHosts_InvalidEntryFailsTheRun(t *testing.T) {
+	r, _ := newNetGlobalsRoot(t)
+	r.Viper.Set("netpolicy.allow_hosts", []string{"ok.example.com", "*"})
+	r.SetArgs([]string{"do"})
+	err := r.Execute(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "netpolicy.allow_hosts")
+}
+
+func TestAllowHosts_RefusalIsAudited(t *testing.T) {
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	r, captured := newNetGlobalsRoot(t)
+	r.Viper.Set("netpolicy.allow_hosts", []string{"ok.example.com"})
+	r.SetArgs([]string{"do"})
+	require.NoError(t, r.Execute(context.Background()))
+	err := netpolicy.CheckDial(*captured, "tcp", "evil.example.com:443")
+	require.ErrorIs(t, err, netpolicy.ErrHostNotAllowed)
+	assert.Contains(t, logs.String(), "netpolicy refused")
+	assert.Contains(t, logs.String(), "evil.example.com:443")
+}
+
+func TestAllowHosts_NilRoot(t *testing.T) {
+	var r *cli.Root
+	assert.Nil(t, r.AllowHosts())
 }

@@ -4,7 +4,12 @@
 // nor tokio.
 #![cfg(feature = "netpolicy")]
 
-use hop_top_kit::netpolicy::{is_loopback, NetPolicy, OfflineError, OFFLINE_MESSAGE};
+use std::sync::{Arc, Mutex};
+
+use hop_top_kit::netpolicy::{
+    is_loopback, validate_allow_hosts, HostNotAllowedError, NetPolicy, OfflineError, PolicyError,
+    Refusal, RefusalReason, HOST_NOT_ALLOWED_MESSAGE, OFFLINE_MESSAGE,
+};
 
 // Go's isLoopback, row for row: hosts with and without a port, every
 // loopback spelling net.ParseIP accepts, and the near misses it rejects.
@@ -163,7 +168,8 @@ fn offline_error_survives_boxing() {
         .expect_err("expected refusal");
     let boxed: Box<dyn std::error::Error + Send + Sync> = Box::new(err);
     let back = boxed
-        .downcast_ref::<OfflineError>()
+        .downcast_ref::<PolicyError>()
+        .and_then(PolicyError::as_offline)
         .expect("typed refusal lost through Box<dyn Error>");
     assert_eq!(back.method, "dial tcp");
     assert_eq!(back.url, "db.example.com:3306");
@@ -179,4 +185,134 @@ fn default_policy_is_online() {
     // The bool constructor mirrors Go's WithOffline(ctx, bool).
     assert!(NetPolicy::new(true).is_offline());
     assert!(!NetPolicy::new(false).is_offline());
+}
+
+fn mdx() -> NetPolicy {
+    NetPolicy::online().with_allow_hosts([
+        "graph.microsoft.com",
+        "login.microsoftonline.com",
+        "*.pipedrive.com",
+    ])
+}
+
+#[test]
+fn allowlist_refuses_unlisted_dials_with_the_typed_error() {
+    let err = mdx()
+        .check_dial("tcp", "evil.example.com:443")
+        .expect_err("unlisted dial was allowed");
+    let h = err
+        .as_host_not_allowed()
+        .expect("not the allowlist refusal");
+    assert_eq!(h.method, "dial tcp");
+    assert_eq!(h.url, "evil.example.com:443");
+    assert_eq!(
+        err.to_string(),
+        "dial tcp evil.example.com:443: host not allowed by netpolicy.allow_hosts"
+    );
+    assert!(err.as_offline().is_none());
+    assert_eq!(mdx().check_dial("tcp", "graph.microsoft.com:443"), Ok(()));
+    assert_eq!(mdx().check_dial("tcp", "acme.pipedrive.com:443"), Ok(()));
+    assert_eq!(mdx().check_dial("unix", "/tmp/x.sock"), Ok(()));
+    assert_eq!(mdx().check_dial("tcp", "127.0.0.1:5432"), Ok(()));
+}
+
+#[test]
+fn allowlist_message_is_the_contract_text() {
+    assert_eq!(
+        HOST_NOT_ALLOWED_MESSAGE,
+        "host not allowed by netpolicy.allow_hosts"
+    );
+    let e = HostNotAllowedError {
+        method: "GET".into(),
+        url: "https://x.invalid/".into(),
+    };
+    assert_eq!(
+        e.to_string(),
+        "GET https://x.invalid/: host not allowed by netpolicy.allow_hosts"
+    );
+}
+
+#[test]
+fn empty_allowlist_restricts_nothing() {
+    let p = NetPolicy::online().with_allow_hosts(Vec::<String>::new());
+    assert!(p.allow_hosts().is_empty());
+    assert!(p.allows_host("evil.example.com"));
+    assert_eq!(p, NetPolicy::online());
+}
+
+#[test]
+fn offline_wins_over_the_allowlist() {
+    let p = NetPolicy::offline().with_allow_hosts(["a.example.com"]);
+    let err = p.check_dial("tcp", "a.example.com:443").unwrap_err();
+    assert!(err.as_offline().is_some(), "{err}");
+    assert_eq!(p.check_dial("tcp", "127.0.0.1:1"), Ok(()));
+}
+
+#[test]
+fn validate_rejects_entries_that_never_match() {
+    assert_eq!(
+        validate_allow_hosts(&[
+            "a.example.com",
+            "*.b.example.com",
+            "203.0.113.5",
+            "[2001:db8::1]"
+        ]),
+        Ok(())
+    );
+    for bad in [
+        "",
+        "*",
+        "*.",
+        "a*.example.com",
+        "*.*.example.com",
+        "example.com/x",
+        "example.com:443",
+        "*.203.0.113.5",
+        " ",
+    ] {
+        let e = validate_allow_hosts(&["ok.example.com", bad]).unwrap_err();
+        assert_eq!(e.entry, bad);
+        assert!(e.to_string().contains("netpolicy.allow_hosts"));
+    }
+}
+
+#[test]
+fn policy_equality_ignores_the_audit_sink() {
+    let a = NetPolicy::online().with_allow_hosts(["a.example.com"]);
+    let b = a.clone().with_audit(|_| {});
+    assert_eq!(a, b);
+    assert_ne!(a, NetPolicy::online().with_allow_hosts(["b.example.com"]));
+}
+
+#[test]
+fn audit_records_every_refusal() {
+    let log: Arc<Mutex<Vec<Refusal>>> = Arc::default();
+    let sink = log.clone();
+    let p = NetPolicy::online()
+        .with_allow_hosts(["ok.example.com"])
+        .with_audit(move |r| sink.lock().unwrap().push(r.clone()));
+
+    let _ = p.check_dial("tcp", "evil.example.com:443");
+    assert_eq!(p.check_dial("tcp", "ok.example.com:443"), Ok(()));
+    let off = NetPolicy::offline().with_allow_hosts(["ok.example.com"]);
+    let _ = off.check_dial("tcp", "ok.example.com:443"); // no sink on `off`
+
+    let got = log.lock().unwrap().clone();
+    assert_eq!(
+        got,
+        vec![Refusal {
+            reason: RefusalReason::HostNotAllowed,
+            op: "dial tcp".into(),
+            dest: "evil.example.com:443".into(),
+        }]
+    );
+}
+
+#[test]
+fn audit_covers_offline_refusals_too() {
+    let log: Arc<Mutex<Vec<Refusal>>> = Arc::default();
+    let sink = log.clone();
+    let p = NetPolicy::offline().with_audit(move |r| sink.lock().unwrap().push(r.clone()));
+    let _ = p.check_dial("tcp", "ok.example.com:443");
+    assert_eq!(log.lock().unwrap()[0].reason, RefusalReason::Offline);
 }

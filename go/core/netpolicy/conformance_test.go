@@ -50,6 +50,27 @@ type netpolicyConfFile struct {
 		URL    string `json:"url"`
 		Error  string `json:"error"`
 	} `json:"refusal"`
+	AllowMessage string `json:"allow_message"`
+	HostAllowed  []struct {
+		Name       string   `json:"name"`
+		AllowHosts []string `json:"allow_hosts"`
+		Host       string   `json:"host"`
+		Allowed    bool     `json:"allowed"`
+	} `json:"host_allowed"`
+	AllowCheckDial []struct {
+		Name       string   `json:"name"`
+		AllowHosts []string `json:"allow_hosts"`
+		Network    string   `json:"network"`
+		Addr       string   `json:"addr"`
+		Error      string   `json:"error"`
+	} `json:"allow_check_dial"`
+	AllowURL []struct {
+		Name       string   `json:"name"`
+		AllowHosts []string `json:"allow_hosts"`
+		Method     string   `json:"method"`
+		URL        string   `json:"url"`
+		Error      string   `json:"error"`
+	} `json:"allow_url"`
 }
 
 func loadNetpolicyConf(t *testing.T) netpolicyConfFile {
@@ -161,6 +182,66 @@ func TestConformanceNetpolicyRefusal(t *testing.T) {
 		_, err := offlineTrip(t.Context(), t, c.Method, c.URL)
 		if err == nil || err.Error() != c.Error {
 			t.Errorf("%s: refusal = %v, want %q", c.Name, err, c.Error)
+		}
+	}
+}
+
+func TestConformanceNetpolicyAllowMessage(t *testing.T) {
+	if got, want := ErrHostNotAllowed.Error(), loadNetpolicyConf(t).AllowMessage; got != want {
+		t.Errorf("ErrHostNotAllowed = %q, want %q", got, want)
+	}
+}
+
+func TestConformanceNetpolicyHostAllowed(t *testing.T) {
+	cases := loadNetpolicyConf(t).HostAllowed
+	if len(cases) == 0 {
+		t.Fatal("host_allowed section is empty")
+	}
+	for _, c := range cases {
+		ctx := WithAllowHosts(t.Context(), c.AllowHosts)
+		if got := HostAllowed(ctx, c.Host); got != c.Allowed {
+			t.Errorf("%s: HostAllowed(%v, %q) = %v, want %v", c.Name, c.AllowHosts, c.Host, got, c.Allowed)
+		}
+	}
+}
+
+func TestConformanceNetpolicyAllowCheckDial(t *testing.T) {
+	cases := loadNetpolicyConf(t).AllowCheckDial
+	if len(cases) == 0 {
+		t.Fatal("allow_check_dial section is empty")
+	}
+	for _, c := range cases {
+		err := CheckDial(WithAllowHosts(t.Context(), c.AllowHosts), c.Network, c.Addr)
+		switch {
+		case c.Error == "" && err != nil:
+			t.Errorf("%s: CheckDial = %v, want nil", c.Name, err)
+		case c.Error != "" && !errors.Is(err, ErrHostNotAllowed):
+			t.Errorf("%s: CheckDial = %v, want ErrHostNotAllowed", c.Name, err)
+		case c.Error != "" && err.Error() != c.Error:
+			t.Errorf("%s: CheckDial = %q, want %q", c.Name, err.Error(), c.Error)
+		}
+	}
+}
+
+func TestConformanceNetpolicyAllowURL(t *testing.T) {
+	cases := loadNetpolicyConf(t).AllowURL
+	if len(cases) == 0 {
+		t.Fatal("allow_url section is empty")
+	}
+	for _, c := range cases {
+		req, err := http.NewRequestWithContext(WithAllowHosts(t.Context(), c.AllowHosts), c.Method, c.URL, nil)
+		if err != nil {
+			t.Fatalf("%s: %v", c.Name, err)
+		}
+		rec := &confRecorder{}
+		_, err = Guard(rec).RoundTrip(req)
+		switch {
+		case c.Error == "" && (err != nil || !rec.reached):
+			t.Errorf("%s: refused: %v", c.Name, err)
+		case c.Error != "" && (!errors.Is(err, ErrHostNotAllowed) || rec.reached):
+			t.Errorf("%s: err = %v reached=%v, want ErrHostNotAllowed", c.Name, err, rec.reached)
+		case c.Error != "" && err.Error() != c.Error:
+			t.Errorf("%s: err = %q, want %q", c.Name, err.Error(), c.Error)
 		}
 	}
 }
