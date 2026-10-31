@@ -162,6 +162,23 @@ whole of those trees, so there is no list to add yourself to. It runs
 alongside `test-go-integration` rather than after it; nothing is
 excluded, and the Makefile target says why it should stay that way.
 
+### Secrets in tests
+
+Unit and integration tests never need a real credential: network tests
+run against loopback mock servers, and fake keys, tokens and
+certificates are built at runtime (never written as literals). Real
+provider keys are only for opt-in live runs, declared in
+[`.env.schema`](.env.schema) and injected with
+[varlock](https://varlock.dev):
+
+```sh
+npx varlock@1.23.0 load            # show what resolves (values redacted)
+npx varlock@1.23.0 run -- cargo test --all-features -- --ignored
+```
+
+Keep values in the shell, a git-ignored `.env.local`, or a secret store
+wired into the schema locally. Never commit a `.env` file.
+
 ### Affected tests: pull requests and `make test-affected`
 
 Pull requests test **only what the change reaches**, the way lint does.
