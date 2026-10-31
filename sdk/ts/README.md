@@ -1,9 +1,8 @@
 # @hop-top/kit (TypeScript)
 
-Shared CLI utilities for hop-top tools, CommonJS edition. Mirrors the Go
-`kit` package surface: a Commander-based CLI factory, output formatting
-with a registry/Formatter contract, theming, hint plumbing, XDG paths,
-config files, an embedded SQLite store, upgrade checks, LLM helpers,
+Shared CLI utilities for hop-top tools, CommonJS edition. Mirrors the Go `kit` package surface:
+a Commander-based CLI factory, output formatting with a registry/Formatter contract, theming,
+hint plumbing, XDG paths, config files, an embedded SQLite store, upgrade checks, LLM helpers,
 alias resolution, and a TUI toolkit.
 
 ## Install

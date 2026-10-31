@@ -1,9 +1,8 @@
 # hop-top-kit (Python SDK)
 
-Python implementation of the hop-top kit library: a Typer-based CLI
-factory, output formatting with a `Formatter` Protocol and registry, XDG
-paths, config files, a dual-spec MCP surface, a serve lifecycle, a URI
-facade and consent-gated telemetry.
+Python implementation of the hop-top kit library: a Typer-based CLI factory, output formatting
+with a `Formatter` Protocol and registry, XDG paths, config files, a dual-spec MCP surface, a
+serve lifecycle, a URI facade and consent-gated telemetry.
 
 ## Install
 
