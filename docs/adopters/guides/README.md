@@ -23,3 +23,4 @@ Task-oriented how-tos for adopters: one outcome per page, with the audience name
 - **Delegation safety (confirmation, budgets, policy files):** [`guard-destructive-commands`](guard-destructive-commands.md)
 - **Audit (hash-chained, verifiable log):** [`keep-a-tamper-evident-audit-log`](keep-a-tamper-evident-audit-log.md)
 - **IDs (TypeID):** [`use-typeid-entity-ids`](use-typeid-entity-ids.md)
+- **Upgrade and migrations (self-update, versioned state):** [`upgrade-and-migrate`](upgrade-and-migrate.md)
