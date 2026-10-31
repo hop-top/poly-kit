@@ -181,6 +181,31 @@ authn-rsa = ["authn", "dep:ring"]
 # Native only: the store is SQLite.
 authn-apikeys = ["authn", "kv", "dep:getrandom"]
 
+# The REST server: an axum router wrapped in kit's middleware stack
+# (request id, client address behind trusted proxies, access log through
+# `redact`, panic recovery, security headers, Host and Origin checks on
+# by default, CORS, body limit, gzip, rate limit on `breaker`, bearer or
+# API-key auth through `authn`, one bus event pair per request), health
+# routes, a kit-owned OpenAPI 3.1 emitter, an SSE helper, and the
+# listener served as a `serve::Service` (Addressed, ready after bind,
+# graceful stop). A port of go/transport/api. Native only: tokio
+# sockets. No axum `ws`: it would pull a second tungstenite (and its
+# sha1/digest stack); websocket upgrades go through hyper and the pinned
+# tokio-tungstenite, as `bus-network-axum` does.
+api-server = [
+    "serve",
+    "authn",
+    "bus",
+    "breaker",
+    "redact",
+    "dep:axum",
+    "dep:tower",
+    "dep:tower-http",
+    "dep:futures-util",
+    "dep:getrandom",
+    "tokio/net",
+]
+
 # Per-capability consent grants, a port of go/core/consent: the grant
 # model, decision logic, prompter seam, audit records, refusals and the
 # in-memory store. Wasm-safe: nothing of its own beyond the bus, and no
@@ -466,9 +491,15 @@ rustls-native-certs = { version = "=0.8.5", optional = true }
 webpki-roots = { version = "=1.0.10", optional = true }
 # bus-network-axum: the router adapter and hyper's upgrade. axum's
 # `tokio` feature supplies `ConnectInfo`, the peer address a link is
-# keyed by; its deps are already in the bus-network tree.
+# keyed by; its deps are already in the bus-network tree. api-server
+# serves its router with `axum::serve`, which needs `http1`. axum 0.8.9
+# (2026-04-14), MIT, no advisories at this version. No `ws` (it would
+# pull tungstenite 0.29 beside the pinned 0.30 and a second sha1/digest
+# stack), `json`, `query` or `macros`: the server's handlers and
+# middleware read raw bodies, headers and extensions.
 axum = { version = "=0.8.9", default-features = false, features = [
     "tokio",
+    "http1",
 ], optional = true }
 hyper = { version = "=1.12.0", default-features = false, features = [
     "http1",
@@ -485,10 +516,16 @@ hyper-util = { version = "=0.1.21", default-features = false, features = [
 # p256 =0.14.0 (2026-07-03), p384 =0.14.0 (2026-07-06), p521 =0.14.0
 # (2026-07-08): RustCrypto/elliptic-curves, Apache-2.0 OR MIT, no
 # advisories at these versions. Their `ecdsa` feature brings the ecdsa
-# 0.17.0 (2026-07-02, RustCrypto/signatures) verifier they re-export
-# as `<curve>::ecdsa`, so authn names no direct ecdsa dependency. Chosen over
-# jsonwebtoken 11.1.0 (digest 0.10 duplicate stack, wasm32 fails,
-# leaks Validation/DecodingKey types).
+# 0.17.0 (2026-07-02, RustCrypto/signatures, Apache-2.0 OR MIT)
+# verifier they re-export as `<curve>::ecdsa`, so authn names no direct
+# ecdsa dependency. Chosen over jsonwebtoken 11.1.0 (digest 0.10
+# duplicate stack, wasm32 fails, leaks Validation/DecodingKey types).
+# Age gate: crypto-bigint 0.7.9 (2026-10-25), a transitive of
+# elliptic-curve, is younger than 14 days and carries no security fix;
+# every other crypto-bigint 0.7 release is yanked or younger still
+# (0.7.10 is 2026-10-26), and ctutils 0.4.5 (2026-10-23) follows from
+# it. Held to those versions in Cargo.lock until a release passes the
+# gate.
 p256 = { version = "=0.14.0", default-features = false, features = [
     "ecdsa",
 ], optional = true }
@@ -503,10 +540,46 @@ p521 = { version = "=0.14.0", default-features = false, features = [
 # secrets; already in the tree through RustCrypto, named explicitly
 # because authn calls it directly.
 subtle = { version = "=2.6.1", default-features = false, optional = true }
-# ring =0.17.14 (2025-03-11): ISC-style licence, already in the lock
-# through rustls; RSA verification only, behind `authn-rsa`. The `rsa`
+# ring =0.17.14 (2025-03-11): Apache-2.0 AND ISC, no advisories at this
+# version, already in the lock through rustls; RSA verification only,
+# behind `authn-rsa` (`alloc` enables its RSA verification). The `rsa`
 # crate is rejected: RUSTSEC-2023-0071 (Marvin) has no fixed release.
-ring = { version = "=0.17.14", default-features = false, features = ["alloc"], optional = true }
+ring = { version = "=0.17.14", default-features = false, features = [
+    "alloc",
+], optional = true }
+
+# api-server: tower-http =0.6.11 (2026-05-18), tokio-rs/tower-http, MIT,
+# no advisories at this version; already locked through reqwest (0.7.1,
+# 2026-08-31, would be a second copy). default-features off; each
+# feature is one layer the stack uses: request-id (X-Request-ID),
+# catch-panic (recovery), limit (chunked body cap), cors, set-header
+# (security headers), sensitive-headers (Authorization, X-API-Key and
+# Cookie marked sensitive for any header logging), compression-gzip
+# (gzip only). compression-gzip adds async-compression 0.4.51,
+# compression-codecs 0.4.46 and compression-core 0.4.34 (all
+# 2026-10-17, the age gate's cutoff), flate2 1.1.10 (2026-08-28),
+# miniz_oxide 0.9.1, zlib-rs 0.6.8, simd-adler32 0.3.10, crc32fast 1.5.2
+# (held below 1.5.3, 2026-10-20) and adler2 2.0.1; MIT or Apache-2.0
+# (miniz_oxide also Zlib, zlib-rs Zlib, adler2 also 0BSD), no
+# advisories at these versions.
+tower-http = { version = "=0.6.11", default-features = false, features = [
+    "request-id",
+    "catch-panic",
+    "limit",
+    "cors",
+    "set-header",
+    "sensitive-headers",
+    "compression-gzip",
+], optional = true }
+# tower 0.5.3 (2026-01-12), tokio-rs/tower, MIT, no advisories at this
+# version, already locked: `util` for ServiceBuilder and the test
+# oneshot. DECO class D2 for the server (the auth layer is kit code on
+# `authn`, D3); axum::Router, tower Layer and http types are the
+# documented framework platform boundary (DECO section 5), and no
+# tower-http or axum extractor type appears in kit's own contract.
+tower = { version = "0.5", default-features = false, features = [
+    "util",
+], optional = true }
 
 # The OS RNG. Declared for native targets only: getrandom 0.4 has no
 # backend on wasm32-unknown-unknown, so the features naming it

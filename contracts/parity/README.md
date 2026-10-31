@@ -13,8 +13,8 @@ symbols only one port has, so no other port can drift from them.
 - you add a constant all ports must agree on → add a `parity.json` block
   plus a loader field in every port (Go `parity.Data` + `parity.Blocks`,
   TS `ParityData` + `PARITY_BLOCKS`, Python accessor + `BLOCKS`)
-- you ship a `serve` behavior in a port → flip its row in `serve.json`
-  from `PENDING` to `SHIPPED`
+- you ship a `serve` or REST-server behavior in a port → flip its row in
+  `serve.json` or `api.json` from `PENDING` to `SHIPPED`
 - you change the Go MCP surface → regenerate
   `sdk/tests/cross-lang/fixtures/mcp-wire.json`
 - you add a sibling contract file with its own loader → register it in
@@ -40,12 +40,13 @@ in the fixture must be explainable as an intended Go-side change.
 | `sdk/tests/cross-lang/fixtures/toolspec-manifest*.json`, `toolspec-spec*.json` | manifest bytes and live `spec` / `spec coverage` stdout Go emits for `toolspec-manifest.tree.json` | `TestManifestCrossLangFixture`, `TestSpecCommandCrossLangFixture`, `sdk/ts/src/toolspec-manifest.test.ts`, `sdk/ts/src/toolspec-spec.test.ts` |
 | `contracts/toolspec-spec-v1/*.schema.json` | output schemas of `spec` and `spec coverage` | `TestSpecOutputSchemaContract`, `sdk/ts/src/toolspec-spec.test.ts` |
 | `serve.json` | serve lifecycle `constants`, `behaviors`, per-port `ports` status | `TestServeContractMatchesGo` (pinned against `go/console/serve`) |
+| `api.json` | REST server tables (client address, Host, Origin, OpenAPI documents), `constants`, per-port `ports` status | `TestAPIContract*` in `go/transport/api`, `TestAPIContractRegistered`, `make test-parity-api` |
 
 - All three ports read `parity.json` from this directory (Go `//go:embed`,
   TS bundler inlining, Python `hop_top_kit.parity`); there is no copy.
 - `extends` is a test-suite registry, not a loader directive: nothing
   merges a listed file into `parity.Values` at runtime.
-- `PENDING` in `serve.json` passes; `PENDING` under `go`, a missing
+- `PENDING` in `serve.json` or `api.json` passes; `PENDING` under `go`, a missing
   behavior key, or an unknown status fails.
 - MCP responses are compared as bytes (sorted keys, trailing newline), and
   both `cases` and `sequences` must run.

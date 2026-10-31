@@ -507,3 +507,62 @@ func TestServeContractGoIsShipped(t *testing.T) {
 		}
 	}
 }
+
+// --- api.json -----------------------------------------------------------
+//
+// api.json carries the tables go/transport/api and the Rust api-server
+// both run (client address, Host, Origin, OpenAPI) plus a per-port
+// status record. The tables are exercised where the code is; this file
+// pins the registry and the record's shape.
+
+// TestAPIContractRegistered asserts api.json appears in parity.json's
+// extends[] and that its port record is well formed: Go ships every
+// row, and a port row names a row Go has.
+func TestAPIContractRegistered(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "contracts", "parity", "parity.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reg struct {
+		Extends []string `json:"extends"`
+	}
+	if err := json.Unmarshal(raw, &reg); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(reg.Extends, "api.json") {
+		t.Fatal("contracts/parity/parity.json: extends[] missing api.json")
+	}
+
+	raw, err = os.ReadFile(filepath.Join(repoRoot(t), "contracts", "parity", "api.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c struct {
+		Ports map[string]map[string]string `json:"ports"`
+	}
+	if err := json.Unmarshal(raw, &c); err != nil {
+		t.Fatal(err)
+	}
+	gorows := c.Ports["go"]
+	for row, status := range gorows {
+		if row == "implementation" {
+			continue
+		}
+		if status != "SHIPPED" {
+			t.Errorf("api.json ports.go.%s = %q; Go is the authority and ships every row", row, status)
+		}
+	}
+	for lang, rows := range c.Ports {
+		for row, status := range rows {
+			if row == "implementation" || row == "note" {
+				continue
+			}
+			if _, ok := gorows[row]; !ok {
+				t.Errorf("api.json ports.%s.%s has no Go row", lang, row)
+			}
+			if !slices.Contains([]string{"SHIPPED", "PENDING", "N/A"}, status) {
+				t.Errorf("api.json ports.%s.%s = %q: want SHIPPED, PENDING or N/A", lang, row, status)
+			}
+		}
+	}
+}
