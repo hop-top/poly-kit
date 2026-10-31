@@ -280,3 +280,127 @@ func TestStreaming1MB(t *testing.T) {
 func TestConformance(t *testing.T) {
 	blobtest.Run(t, func(t *testing.T) blob.Store { return setup(t) })
 }
+
+func TestConformanceContentType(t *testing.T) {
+	blobtest.RunContentType(t, func(t *testing.T) blob.Store { return setup(t) })
+}
+
+func listCT(t *testing.T, s *local.Store, prefix string) map[string]string {
+	t.Helper()
+	objs, err := s.List(context.Background(), prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := map[string]string{}
+	for _, o := range objs {
+		m[o.Key] = o.ContentType
+	}
+	return m
+}
+
+func TestContentTypeSurvivesReopen(t *testing.T) {
+	dir := t.TempDir()
+	s1, _ := local.New(dir)
+	if err := s1.Put(context.Background(), "a/b.json", strings.NewReader("{}"), "application/json"); err != nil {
+		t.Fatal(err)
+	}
+	s2, _ := local.New(dir)
+	if got := listCT(t, s2, "")["a/b.json"]; got != "application/json" {
+		t.Fatalf("ContentType after reopen = %q", got)
+	}
+}
+
+func TestLegacyStoreWithoutSidecar(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "old"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "old", "f.txt"), []byte("hi"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := local.New(dir)
+	got := listCT(t, s, "")
+	if ct, ok := got["old/f.txt"]; !ok || ct != "" {
+		t.Fatalf("legacy key: ct=%q ok=%v, want empty, listed", ct, ok)
+	}
+}
+
+func TestDeleteRemovesSidecar(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := local.New(dir)
+	ctx := context.Background()
+	_ = s.Put(ctx, "a/b.txt", strings.NewReader("x"), "text/plain")
+	if err := s.Delete(ctx, "a/b.txt"); err != nil {
+		t.Fatal(err)
+	}
+	var left []string
+	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			left = append(left, p)
+		}
+		return nil
+	})
+	if len(left) != 0 {
+		t.Fatalf("files left after Delete: %v", left)
+	}
+}
+
+func TestPutWithoutTypeRemovesStaleSidecar(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	_ = s.Put(ctx, "k", strings.NewReader("1"), "text/plain")
+	_ = s.Put(ctx, "k", strings.NewReader("2"), "")
+	if got := listCT(t, s, "")["k"]; got != "" {
+		t.Fatalf("stale ContentType %q", got)
+	}
+}
+
+func TestCorruptSidecarIsEmptyNotError(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := local.New(dir)
+	ctx := context.Background()
+	_ = s.Put(ctx, "k", strings.NewReader("1"), "text/plain")
+	var side string
+	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && filepath.Base(p) != "k" {
+			side = p
+		}
+		return nil
+	})
+	if side == "" {
+		t.Fatal("no sidecar written")
+	}
+	if err := os.WriteFile(side, []byte("{not json"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if got := listCT(t, s, "")["k"]; got != "" {
+		t.Fatalf("ContentType = %q, want empty", got)
+	}
+}
+
+func TestSidecarNamespaceCannotCollideWithKeys(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	// Keys that look like sidecar paths of other keys must stay ordinary.
+	for _, k := range []string{"k.json", "k.json.json", "k"} {
+		if err := s.Put(ctx, k, strings.NewReader(k), "text/"+k); err != nil {
+			t.Fatalf("Put %s: %v", k, err)
+		}
+	}
+	got := listCT(t, s, "")
+	for _, k := range []string{"k.json", "k.json.json", "k"} {
+		if got[k] != "text/"+k {
+			t.Errorf("ContentType[%s] = %q", k, got[k])
+		}
+	}
+	if len(got) != 3 {
+		t.Fatalf("List = %v", got)
+	}
+	// The reserved metadata root is not a usable key.
+	if err := s.Put(ctx, ".blob-meta/x", strings.NewReader("x"), ""); err == nil {
+		t.Fatal("Put into reserved namespace: want error")
+	}
+	if _, err := s.Get(ctx, ".blob-meta/x"); err == nil {
+		t.Fatal("Get from reserved namespace: want error")
+	}
+}

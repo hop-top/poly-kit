@@ -44,9 +44,9 @@ fmt.Println(string(b))
 - Keys may contain `/`; backends create intermediate directories or key prefixes as needed.
 - `local.Put` is atomic: staged in a sibling dot-prefixed `.tmp` file, synced, renamed over the destination. A concurrent `Get` never sees a partial blob; a failed write leaves the previous value and removes its temp file; `List` never surfaces temp files. Ports must match this; the Rust SDK's local backend does.
 - `Delete` of a missing key succeeds on every backend (S3 semantics); `Exists` reports false, `Get` errors.
-- `List` returns caller-side keys; `Object.ContentType` is empty from every backend.
+- `List` returns caller-side keys; `Object.ContentType` is the type of the latest `Put` from `local` and empty from `s3` (`ListObjectsV2` omits it), never a stale or wrong one. Treat empty as unknown.
 - Callers close the `ReadCloser` from `Get`.
-- Every backend runs the shared suite in `blobtest` (`blobtest.Run`).
+- Every backend runs the shared suite in `blobtest` (`blobtest.Run`); backends that persist the type also run `blobtest.RunContentType`.
 - Tests: `local` runs embedded; `s3` needs `S3_TEST_BUCKET`, AWS credentials and `-tags s3`.
 
 ## Neighbours
