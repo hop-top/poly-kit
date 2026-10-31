@@ -60,18 +60,22 @@ uses.
 
 ## 2. Know what `noColor` does
 
-`noColor` is the only switch. Passing `true` selects glamour's plain "NoTTY" style: no ANSI
+`noColor` forces plain output. Passing `true` selects glamour's plain "NoTTY" style: no ANSI
 escapes at all, but still laid out (indented, bullets as `•`, links as text plus URL). Inline
 markers such as `**bold**` stay literal in that mode.
 
-`Render` does not look at the terminal. With `noColor == false` it emits escapes even when
-stdout is a pipe or a file. If your command can be piped, decide before calling:
+Passing `false` means auto. `Render` checks stdout the way kit's help output does
+(`colorprofile.Detect`): it styles only when stdout supports color. With `NO_COLOR` set,
+`TERM=dumb`, or stdout piped or redirected, it falls back to the plain style, so
+`mytool docs | less` and `mytool docs > out.txt` carry no escapes. `CLICOLOR_FORCE=1` keeps
+styling on a non-terminal. Detection looks at the process's `os.Stdout`, not at the writer you
+print to; if you print to something else, pass `noColor` yourself:
 
 ```go
-noColor := root.Viper.GetBool("no-color") || !isTerminal(cmd.OutOrStdout())
+noColor := root.Viper.GetBool("no-color")
 ```
 
-`isTerminal` is yours to write, for example over `github.com/mattn/go-isatty`.
+Pass your tool's `--no-color` value; leave the TTY and `NO_COLOR` checks to `Render`.
 
 ## 3. Use your own palette
 
@@ -94,8 +98,8 @@ func brand() ansi.StyleConfig {
 out, err := markdown.RenderWith(notes, brand(), noColor)
 ```
 
-When `noColor` is `true`, `RenderWith` ignores your style and uses the NoTTY style, the same as
-`Render`. You do not need a second code path for plain output.
+When `noColor` is `true`, or auto-detection finds stdout without color, `RenderWith` ignores your
+style and uses the NoTTY style, the same as `Render`. You do not need a second code path for plain output.
 
 ## Pitfalls
 
