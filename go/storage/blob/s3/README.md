@@ -9,13 +9,14 @@ Wrong package for a single host (`go/storage/blob/local`).
 
 - `s3.New(client, bucket, prefix)` with an `*s3.Client` you built from `config.LoadDefaultConfig`; credentials, region and endpoint stay in the AWS config chain, not in this package
 - `List(prefix)` returns key and size from `ListObjectsV2`; `Object.ContentType` is empty because that call does not return it
+- `Stat(key)` (optional `blob.Stater`, `store.(blob.Stater)`) is one `HeadObject` returning `ContentType`, size and key: the way to read a type reliably. A missing key wraps the SDK `NotFound`. An object stored without a type may come back as S3's default, `binary/octet-stream`.
 
 ## Contract
 
 - Keys are joined under `prefix` with `path.Join`; a missing object on `Get` or `Exists` is reported, not panicked.
 - `Put` sends the content type given; `Delete` of a missing key succeeds.
 - A trailing `/` on `prefix` is ignored; `List("logs/")` matches only keys starting `logs/`.
-- Tests: `s3_integration_test.go` (including the shared `blobtest` suite) is behind `//go:build s3` and needs `S3_TEST_BUCKET` plus AWS credentials in the environment; it writes under `blob-test/`. `s3_test.go` (interface assertion) always runs. No cassette.
+- Tests: `s3_integration_test.go` (including the shared `blobtest` suite) is behind `//go:build s3` and needs `S3_TEST_BUCKET` plus AWS credentials in the environment; it writes under `blob-test/`. `s3_test.go` (interface assertions, plus `Stat` against an `httptest` S3 endpoint) always runs; `TestConformanceStat` runs `blobtest.RunStat` under the same gate. No cassette.
 
 ## Neighbours
 

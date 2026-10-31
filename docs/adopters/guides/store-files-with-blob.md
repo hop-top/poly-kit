@@ -30,6 +30,31 @@ type Store interface {
 
 `Object` carries `Key`, `Size`, `ContentType`.
 
+`List`'s `ContentType` is best-effort: `local` fills it, `s3` leaves it empty
+(`ListObjectsV2` omits it). To read a content type reliably, use the optional
+`blob.Stater` (next section).
+
+## Read a content type: `Stater`
+
+`Stat` is not on `Store`, so adapters that cannot report metadata are not
+forced to implement it. `local` and `s3` do; check with a type assertion:
+
+```go
+if s, ok := store.(blob.Stater); ok {
+    obj, err := s.Stat(ctx, "reports/q1.txt")
+    if err != nil {
+        return err // missing key errors, like Get
+    }
+    fmt.Println(obj.ContentType, obj.Size)
+}
+```
+
+On s3 this is one `HeadObject`, so `List` stays cheap. For a store you do
+not control, `blob.Stat(ctx, store, key)` uses `Stater` when present and
+otherwise falls back to `List` with an exact-key match (type best-effort,
+possibly empty). A custom adapter opts in by adding
+`Stat(ctx, key) (blob.Object, error)` and running `blobtest.RunStat`.
+
 ## Write, read, list
 
 Code against `blob.Store`; choose the backend once at startup.
@@ -104,7 +129,7 @@ same keys they wrote. `List("logs/")` matches only keys that start with
 | `Put` | atomic: synced temp file renamed into place | single `PutObject` with the content type |
 | `Delete` of missing key | succeeds | succeeds |
 | `Get` of missing key | error wrapping the OS not-exist error | error from `GetObject` |
-| content type | kept in a `.blob-meta/` sidecar; returned by `List` | sent on `Put`; empty on `List` (`ListObjectsV2` omits it) |
+| content type | kept in a `.blob-meta/` sidecar; returned by `List` and `Stat` | sent on `Put`; empty on `List` (`ListObjectsV2` omits it); `Stat` (HEAD) returns it |
 | key escaping root | `../` keys rejected before I/O | n/a |
 
 Practical consequences:
@@ -114,8 +139,8 @@ Practical consequences:
 - For missing-key checks on `local`, use `errors.Is(err, fs.ErrNotExist)`
   on the `Get` error. Prefer `Exists` for backend-neutral code.
 - `local` returns the content type from `List`; S3 does not (empty).
-  Treat empty as "unknown" in backend-neutral code, or store the type in
-  your own metadata. `local` reserves the top-level `.blob-meta/`
+  Treat empty as "unknown" in backend-neutral code, or read it with
+  `Stat` (`blob.Stater`) on stores that implement it. `local` reserves the top-level `.blob-meta/`
   directory for sidecars: do not use it as a key prefix (rejected).
   Stores written before sidecars existed report an empty type.
 - `local` hides in-flight `.tmp` staging files from `List`, and a
@@ -133,7 +158,8 @@ store backs up to one; see
 `local` runs embedded: point `local.New` at `t.TempDir()`. The S3
 integration test needs `S3_TEST_BUCKET`, AWS credentials and `-tags s3`.
 Both backends run the shared suite `blob/blobtest`; a new backend passes
-it with `blobtest.Run(t, func(t *testing.T) blob.Store { ... })`.
+it with `blobtest.Run(t, func(t *testing.T) blob.Store { ... })`; a
+backend implementing `Stater` also passes `blobtest.RunStat`.
 
 ## See also
 

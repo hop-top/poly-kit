@@ -219,3 +219,92 @@ func listTypes(t *testing.T, s blob.Store) map[string]string {
 	}
 	return m
 }
+
+// untyped reports whether ct means "no type was given": empty, or the
+// default a provider substitutes (S3 serves binary/octet-stream).
+func untyped(ct string) bool {
+	return ct == "" || ct == "binary/octet-stream" || ct == "application/octet-stream"
+}
+
+// RunStat pins the optional blob.Stater contract. The store built by
+// newStore must implement blob.Stater (the test fails otherwise, so call
+// RunStat only for providers that opt in):
+//   - Stat returns Key, Size and the exact ContentType of the latest Put
+//     (empty, or the provider's default such as S3's binary/octet-stream,
+//     when none was given).
+//   - Stat of a missing key returns an error, as Get does.
+//   - Overwrite updates type and size; Delete makes Stat fail again.
+func RunStat(t *testing.T, newStore Factory) {
+	t.Helper()
+	ctx := context.Background()
+
+	stater := func(t *testing.T) (blob.Store, blob.Stater) {
+		t.Helper()
+		s := newStore(t)
+		st, ok := s.(blob.Stater)
+		if !ok {
+			t.Fatalf("%T does not implement blob.Stater", s)
+		}
+		return s, st
+	}
+
+	t.Run("StatRoundTrip", func(t *testing.T) {
+		s, st := stater(t)
+		putCT(t, s, "st/a.json", "{}", "application/json")
+		putCT(t, s, "st/b.bin", "xyz", "")
+		got, err := st.Stat(ctx, "st/a.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := blob.Object{Key: "st/a.json", Size: 2, ContentType: "application/json"}
+		if got != want {
+			t.Fatalf("Stat = %+v, want %+v", got, want)
+		}
+		got, err = st.Stat(ctx, "st/b.bin")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Key != "st/b.bin" || got.Size != 3 || !untyped(got.ContentType) {
+			t.Fatalf("Stat(no type) = %+v, want size 3 and no type", got)
+		}
+	})
+
+	t.Run("StatMissingErrors", func(t *testing.T) {
+		_, st := stater(t)
+		if _, err := st.Stat(ctx, "st/nope"); err == nil {
+			t.Fatal("Stat(missing): want error")
+		}
+	})
+
+	t.Run("StatOverwriteUpdates", func(t *testing.T) {
+		s, st := stater(t)
+		putCT(t, s, "st/over", "1", "text/plain")
+		putCT(t, s, "st/over", "22", "text/csv")
+		got, err := st.Stat(ctx, "st/over")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.ContentType != "text/csv" || got.Size != 2 {
+			t.Fatalf("Stat after overwrite = %+v", got)
+		}
+		putCT(t, s, "st/over", "333", "")
+		got, err = st.Stat(ctx, "st/over")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !untyped(got.ContentType) || got.Size != 3 {
+			t.Fatalf("Stat after typeless overwrite = %+v", got)
+		}
+	})
+
+	t.Run("StatAfterDeleteErrors", func(t *testing.T) {
+		s, st := stater(t)
+		putCT(t, s, "st/gone", "1", "image/png")
+		if err := s.Delete(ctx, "st/gone"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.Stat(ctx, "st/gone"); err == nil {
+			t.Fatal("Stat after Delete: want error")
+		}
+	})
+}

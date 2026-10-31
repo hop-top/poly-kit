@@ -22,7 +22,10 @@ type Store struct {
 	prefix string
 }
 
-var _ blob.Store = (*Store)(nil)
+var (
+	_ blob.Store  = (*Store)(nil)
+	_ blob.Stater = (*Store)(nil)
+)
 
 // New returns a Store that reads/writes objects under prefix in bucket.
 // Trailing slashes on prefix are ignored, so "tool-data" and "tool-data/"
@@ -89,9 +92,27 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// Stat returns the metadata of the object at key via HeadObject: size
+// (ContentLength) and ContentType. A missing key returns an error wrapping
+// the SDK's NotFound, as Get wraps NoSuchKey. Implements blob.Stater.
+func (s *Store) Stat(ctx context.Context, key string) (blob.Object, error) {
+	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: &s.bucket,
+		Key:    aws.String(s.key(key)),
+	})
+	if err != nil {
+		return blob.Object{}, fmt.Errorf("s3 stat %s: %w", key, err)
+	}
+	return blob.Object{
+		Key:         key,
+		Size:        aws.ToInt64(out.ContentLength),
+		ContentType: aws.ToString(out.ContentType),
+	}, nil
+}
+
 // List returns metadata for all objects whose key starts with prefix.
 // ListObjectsV2 carries no content type, so Object.ContentType is empty;
-// issue a HEAD per object if you need it.
+// use Stat (blob.Stater) to read a type, one HEAD per object.
 func (s *Store) List(ctx context.Context, prefix string) ([]blob.Object, error) {
 	full := s.listPrefix(prefix)
 	var objects []blob.Object

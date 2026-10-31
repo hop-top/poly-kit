@@ -34,6 +34,11 @@ type sidecar struct {
 	ContentType string `json:"content_type"`
 }
 
+var (
+	_ blob.Store  = (*Store)(nil)
+	_ blob.Stater = (*Store)(nil)
+)
+
 // Store is a filesystem-backed blob store rooted at a directory.
 type Store struct {
 	root string
@@ -254,6 +259,24 @@ func (s *Store) List(_ context.Context, prefix string) ([]blob.Object, error) {
 		return nil, fmt.Errorf("blob/local: walk: %w", err)
 	}
 	return objects, nil
+}
+
+// Stat returns the metadata of the blob at key: size from the file and
+// content type from the sidecar (empty when none). A missing key wraps
+// fs.ErrNotExist, as Get does. Implements blob.Stater.
+func (s *Store) Stat(_ context.Context, key string) (blob.Object, error) {
+	p, err := s.resolve(key)
+	if err != nil {
+		return blob.Object{}, err
+	}
+	info, err := os.Stat(p)
+	if err != nil {
+		return blob.Object{}, fmt.Errorf("blob/local: stat: %w", err)
+	}
+	if info.IsDir() {
+		return blob.Object{}, fmt.Errorf("blob/local: stat: %w", fs.ErrNotExist)
+	}
+	return blob.Object{Key: key, Size: info.Size(), ContentType: s.readContentType(p)}, nil
 }
 
 // Exists reports whether a blob exists at key.

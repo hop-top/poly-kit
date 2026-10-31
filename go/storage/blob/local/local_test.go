@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -402,5 +403,45 @@ func TestSidecarNamespaceCannotCollideWithKeys(t *testing.T) {
 	}
 	if _, err := s.Get(ctx, ".blob-meta/x"); err == nil {
 		t.Fatal("Get from reserved namespace: want error")
+	}
+}
+
+func TestConformanceStat(t *testing.T) {
+	blobtest.RunStat(t, func(t *testing.T) blob.Store { return setup(t) })
+}
+
+func TestStatMissingIsNotExist(t *testing.T) {
+	_, err := setup(t).Stat(context.Background(), "nope")
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("Stat(missing) = %v, want fs.ErrNotExist like Get", err)
+	}
+}
+
+func TestStatReadsSidecar(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := local.New(dir)
+	if err := s.Put(context.Background(), "k", strings.NewReader("abc"), "text/x-a"); err != nil {
+		t.Fatal(err)
+	}
+	// Rewrite the sidecar out of band: Stat must report what is on disk.
+	meta := filepath.Join(dir, ".blob-meta", "k.json")
+	if err := os.WriteFile(meta, []byte(`{"content_type":"text/x-b"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	o, err := s.Stat(context.Background(), "k")
+	if err != nil || o.ContentType != "text/x-b" {
+		t.Fatalf("Stat = %+v, %v; want sidecar type text/x-b", o, err)
+	}
+}
+
+func TestStatNoSidecarEmptyType(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "old"), []byte("12"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := local.New(dir)
+	o, err := s.Stat(context.Background(), "old")
+	if err != nil || o.ContentType != "" || o.Size != 2 {
+		t.Fatalf("Stat = %+v, %v", o, err)
 	}
 }
