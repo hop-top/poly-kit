@@ -22,3 +22,4 @@ Task-oriented how-tos for adopters: one outcome per page, with the audience name
 - **Terminal output and CLI behaviour (rendering, progress, annotations, autocorrect, URI handlers):** [`render-markdown-in-the-terminal`](render-markdown-in-the-terminal.md) · [`declare-and-read-command-annotations`](declare-and-read-command-annotations.md) · [`enable-flag-autocorrect`](enable-flag-autocorrect.md) · [`register-custom-uri-schemes`](register-custom-uri-schemes.md) · [`report-command-progress`](report-command-progress.md) · [`use-the-project-registry`](use-the-project-registry.md)
 - **Delegation safety (confirmation, budgets, policy files):** [`guard-destructive-commands`](guard-destructive-commands.md)
 - **Audit (hash-chained, verifiable log):** [`keep-a-tamper-evident-audit-log`](keep-a-tamper-evident-audit-log.md)
+- **IDs (TypeID):** [`use-typeid-entity-ids`](use-typeid-entity-ids.md)
