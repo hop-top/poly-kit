@@ -145,11 +145,13 @@ setup: preflight ## Initialize all sub-projects and dependencies
 	cd sdk/py && uv sync --all-extras
 	@echo "==> Initializing Python Engine SDK"
 	cd engine/sdk/py-kit-engine && uv sync --all-extras
+	@echo "==> Fetching Rust SDK dependencies"
+	cd sdk/experimental/rs && cargo fetch --locked
 	@echo "==> Setup complete."
 
 check: preflight lint test ## Run all linters and tests (full gate)
 
-test: preflight test-go test-ts test-py test-bats ## Run all tests
+test: preflight test-go test-ts test-py test-rs test-bats ## Run all tests
 
 # The tests a change needs (scripts/test-scope.sh; Testing in
 # CONTRIBUTING.md): changed Go packages and their reverse dependencies,
@@ -619,7 +621,7 @@ test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
 export LINT_ALL LINT_BASE LINT_HEAD LINT_BASE_REF
 LINT_CHANGED := scripts/lint-changed.sh
 
-lint: check-toolchain-parity lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths lint-adr-refs lint-internal-refs lint-actions-pinned ## Run all linters on changed files (lint-all: whole tree)
+lint: check-toolchain-parity lint-go lint-ts lint-py lint-php lint-rs lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths lint-adr-refs lint-internal-refs lint-actions-pinned ## Run all linters on changed files (lint-all: whole tree)
 
 lint-all: ## Run all linters on the whole tree
 	@$(MAKE) --no-print-directory lint LINT_ALL=1
