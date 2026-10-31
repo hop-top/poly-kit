@@ -14,3 +14,4 @@ Task-oriented how-tos for adopters: one outcome per page, with the audience name
 - **TUI (app shell, component catalog):** [`migrate-to-appshell`](migrate-to-appshell.md) · [`tui-component-gallery`](tui-component-gallery.md)
 - **Storage and caching (blobs, JSON store, HTTP cache):** [`store-files-with-blob`](store-files-with-blob.md) · [`use-the-sqlite-json-store`](use-the-sqlite-json-store.md) · [`cache-http-responses`](cache-http-responses.md)
 - **Jobs and bridge (background work, OS-shell payloads):** [`run-background-jobs`](run-background-jobs.md) · [`route-bridge-payloads`](route-bridge-payloads.md)
+- **Terminal output and CLI behaviour (rendering, progress, annotations, autocorrect, URI handlers):** [`render-markdown-in-the-terminal`](render-markdown-in-the-terminal.md)
