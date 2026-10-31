@@ -21,7 +21,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`output/`](src/output/README.md) | `--format` flag family, `Formatter` trait, registry, `CliError` (feature `output`) | a command renders one payload as table, json or yaml |
 | [`output/builtins/`](src/output/builtins/README.md) | the shipped formatters and their `--format-opt` keys | you need a formatter option or a custom formatter |
 | [`bus/`](src/bus/README.md) | in-process event bus with topic grammar (feature `bus`); peers over WebSocket in [`bus/network/`](src/bus/network/README.md) (feature `bus-network`) | components publish or subscribe to named events, across processes too |
-| [`domain/`](src/domain/README.md) | state machine with veto-able pre and fire-and-forget post transition events (feature `domain`) | an entity has a lifecycle others react to |
+| [`domain/`](src/domain/README.md) | state machine with veto-able pre and fire-and-forget post transition events; the `Repository` port (feature `domain`) | an entity has a lifecycle others react to |
 | [`breaker/`](src/breaker/README.md) | circuit breaker, MaxOps/MaxBytes budgets, bursty rate limiter (feature `breaker`) | a tool must stop itself after failures, a budget or a rate |
 | [`config/`](src/config/README.md) | layered YAML config: load, get/set/unset keeping comments, hot reload (feature `config`; `config-signal`, `config-pkl`) | a CLI reads or writes its config files |
 | [`consent/`](src/consent/README.md) | per-capability consent grants: check, request through a prompter, use with audit, revoke; grants file, audit log and bus relay (feature `consent`; `consent-file` for the files) | a tool reads the screen, camera, mic, clipboard or files for the user |
