@@ -279,7 +279,7 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 # async pool is uncapped and close reports NotDrained instead of
 # blocking. wasm-bindgen-test-runner comes from wasm-bindgen-cli, whose
 # version must equal the wasm-bindgen in Cargo.lock.
-test-rs-wasm: ## Rust: bus, domain, breaker and policy wasm32 smoke tests under Node (needs the matching wasm-bindgen-cli)
+test-rs-wasm: ## Rust: bus, domain, breaker, policy and notify wasm32 smoke tests under Node (needs the matching wasm-bindgen-cli)
 	@want=$$(awk '/^name = "wasm-bindgen"$$/ { getline; gsub(/version = |"/, ""); print }' sdk/experimental/rs/Cargo.lock); \
 	have=$$(wasm-bindgen --version 2>/dev/null | awk '{ print $$2 }'); \
 	if [ "$$want" != "$$have" ]; then \
@@ -295,6 +295,8 @@ test-rs-wasm: ## Rust: bus, domain, breaker and policy wasm32 smoke tests under 
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features breaker --test breaker_wasm
 	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features policy --test policy_wasm
+	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features notify --test notify_wasm
 
 # scripts/test-scope.sh maps each prerequisite to its Go packages and
 # SDKs (PARITY_TABLE) so a pull request runs only the targets it

@@ -86,6 +86,9 @@ pub mod llm;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 
+#[cfg(feature = "notify")]
+pub mod notify;
+
 #[cfg(feature = "serve")]
 pub mod serve;
 

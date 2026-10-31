@@ -52,7 +52,7 @@ the same file carries the end-to-end tee wiring.
 - Outbound pipeline on every sink:
   `template render → redactor → breaker → egress`
   ([`guardrails.go`](guardrails.go)).
-- Go-only MVP; ports wait on `bus.Sink` / `TeeBus` ports.
+- Ported to Rust: [`sdk/experimental/rs/src/notify`](../../../sdk/experimental/rs/src/notify/README.md). TS and Python wait on `bus.Sink` / `TeeBus` ports.
 
 ## Neighbours
 

@@ -20,9 +20,10 @@
 //     WithRedactor + WithBreaker convention every outbound sink
 //     adopts.
 //
-// Cross-language parity. The MVP is Go-only. bus.Sink and bus.TeeBus
-// themselves are still Go-only (TS/Python ports exist for pub/sub
-// only); notify ports are gated on those primitives porting first.
+// Cross-language parity. The Rust SDK ports this package
+// (sdk/experimental/rs/src/notify). bus.Sink and bus.TeeBus are still
+// Go and Rust only (TS/Python ports exist for pub/sub only); the TS and
+// Python notify ports are gated on those primitives porting first.
 package notify
 
 import (

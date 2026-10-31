@@ -710,6 +710,15 @@ jobs:
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features policy --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
+      # The notify core (severity, filter, retry, templates) is
+      # runtime-free; the webhook, email and desktop sinks are native.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features notify
+        if: steps.scope.outputs.run == 'true'
+      - name: clippy (wasm32, notify core)
+        if: steps.scope.outputs.run == 'true'
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features notify --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
       - name: netpolicy pulls no reqwest or tokio
         if: steps.scope.outputs.run == 'true'
         run: |
@@ -856,6 +865,14 @@ jobs:
         if: steps.scope.outputs.run == 'true'
       # llm-anthropic declares only tokio's timer; the retry wait needs it.
       - run: cargo check --locked --lib --no-default-features --features llm-anthropic
+        if: steps.scope.outputs.run == 'true'
+      # The notify sinks declare the tokio pieces they use; --lib leaves
+      # the dev-dependency `full` out so a missing one shows.
+      - run: cargo check --locked --lib --no-default-features --features notify-webhook
+        if: steps.scope.outputs.run == 'true'
+      - run: cargo check --locked --lib --no-default-features --features notify-email
+        if: steps.scope.outputs.run == 'true'
+      - run: cargo check --locked --lib --no-default-features --features notify-os
         if: steps.scope.outputs.run == 'true'
       # mcp without output: serde_json keeps sorted maps.
       - run: cargo test --locked --no-default-features --features mcp
