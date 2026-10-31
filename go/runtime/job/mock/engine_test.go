@@ -323,7 +323,8 @@ func TestRunOne(t *testing.T) {
 		},
 	}
 
-	err := job.RunOne(ctx, e, "q", "w", handlers)
+	err := job.RunOne(ctx, e, "q", "w", handlers,
+		job.WithCooldownDir(t.TempDir()))
 	require.NoError(t, err)
 	assert.True(t, handled)
 }

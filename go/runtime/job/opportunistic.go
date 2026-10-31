@@ -19,11 +19,24 @@ const (
 	cooldownTTL = 10 * time.Second
 )
 
+// RunOneOption configures RunOne.
+type RunOneOption func(*runOneConfig)
+
+type runOneConfig struct{ cooldownDir string }
+
+// WithCooldownDir sets the directory holding the cooldown marker.
+// Default: os.TempDir(). Use a private dir per process or test to
+// avoid sharing throttle state.
+func WithCooldownDir(dir string) RunOneOption {
+	return func(c *runOneConfig) { c.cooldownDir = dir }
+}
+
 // RunOne opportunistically claims and processes a single job.
 //
 // Guards:
 //   - Env opt-out: if JOB_RUNONE_DISABLE is set, returns nil immediately.
-//   - Cooldown file: if a cooldown marker exists and is recent, returns nil.
+//   - Cooldown file: if a cooldown marker (in os.TempDir(), or the dir
+//     from WithCooldownDir) exists and is recent, returns nil.
 //   - Pre-check: if Claim returns nil, nothing to do.
 //   - A handler panic is recovered, fails the job and is returned as a
 //     *PanicError.
@@ -32,14 +45,20 @@ func RunOne(
 	svc Service,
 	queue, workerID string,
 	handlers HandlerMap,
+	opts ...RunOneOption,
 ) error {
+	var cfg runOneConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
+
 	// Env opt-out.
 	if v := os.Getenv(EnvRunOneDisable); v != "" {
 		return nil
 	}
 
 	// Cooldown check.
-	cd := cooldownPath()
+	cd := cooldownPath(cfg.cooldownDir)
 	if info, err := os.Stat(cd); err == nil {
 		if time.Since(info.ModTime()) < cooldownTTL {
 			return nil
@@ -80,7 +99,9 @@ func RunOne(
 	return svc.Complete(ctx, j.ID, nil)
 }
 
-func cooldownPath() string {
-	dir := os.TempDir()
+func cooldownPath(dir string) string {
+	if dir == "" {
+		dir = os.TempDir()
+	}
 	return filepath.Join(dir, cooldownFile)
 }

@@ -121,14 +121,13 @@ func TestPanicErrorIsTyped(t *testing.T) {
 }
 
 func TestRunOneRecoversPanicWithTypedError(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir()) // isolate the cooldown marker
 	ctx := context.Background()
 	svc := mock.New()
 	id, _ := svc.Enqueue(ctx, job.EnqueueOpts{Queue: "q", Type: "boom", MaxAttempts: 1})
 
 	err := job.RunOne(ctx, svc, "q", "w", job.HandlerMap{
 		"boom": func(context.Context, job.Job) error { panic("kaboom") },
-	})
+	}, job.WithCooldownDir(t.TempDir()))
 	var pe *job.PanicError
 	require.ErrorAs(t, err, &pe)
 	got, _ := svc.Get(ctx, id)
