@@ -38,6 +38,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`blob/`](src/blob/README.md) | object storage over a backend trait with content-type sidecars and optional `Stater`, local filesystem only (feature `blob`) | you store opaque files or artifacts |
 | [`telemetry/`](src/telemetry/README.md) | consent-gated usage events, redaction, sinks (feature `telemetry`) | you record usage under user consent |
 | [`upgrade/`](src/upgrade/README.md) | versioned state migrations: semver-ordered steps per schema, backup, rollback, version files, and the offline-aware release check with cache and notice (feature `upgrade`) | stored data must move forward when a new build ships, or the tool should announce a newer release |
+| [`compliance/`](src/compliance/README.md) | the 12-factor AI CLI compliance check over a toolspec: YAML loader, factors 1 to 13 (static pass), text and JSON report (feature `compliance`) | a toolspec must be graded in CI or by a `doctor` command |
 | [`sqldb.rs`](src/sqldb.rs), [`kv.rs`](src/kv.rs) | SQLite connection setup, pragmas, numbered migrations (feature `sqldb`); byte-keyed `Store` / `TtlStore` traits over it (feature `kv`) | you open a database directly, or need small keyed values with expiry |
 | [`authn/`](src/authn/README.md) | bearer-token (JWT) and API-key authentication: own JWS verifier, key sets, claims, typed refusals, a port of `go/transport/authn` (feature `authn`, wasm-safe; `authn-rsa` for RS*/PS*, `authn-apikeys` for the kv-backed keys) | a service must say who is calling |
 | [`llm/`](src/llm/README.md) | provider-neutral LLM core: messages, tool calls and tool choice, streaming with opt-in tool-call and usage events, key resolution (sync or async secret store), hermetic resolve, registry, fallback client with metadata-only bus events (feature `llm`; content redaction with `redact`); adapters for Anthropic, OpenAI and compatible hosts, Gemini, Ollama, Triton and RouteLLM (features `llm-anthropic`, `llm-openai`, `llm-google`, `llm-ollama`, `llm-triton`, `llm-routellm`; see the [adapter table](src/llm/README.md)), the model picker with the llm.yaml pool (`llm-picker`, wasm-safe) and the router engine (`llm-router`) | your tool calls a model by `scheme://model` URI |
@@ -73,6 +74,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `id`; `timeutil` | `type-safe-id`, `uuid`, `serde`, `thiserror`; `chrono`, `interim`, `thiserror` | 25; 19 |
 | `httpcache` | `kv` + `serde`, `serde_json`, `sha2`, `base64` | 33 |
 | `cli` (`cli-permissions`); `tui` | `output` + `clap` (+ `cel`, `serde_json`); nothing (std only) | 35 (76); 0 |
+| `compliance` | `output` | 22 |
 | `rpc-server` | `api-server` + `connectrpc`, `buffa`, `buffa-types`, `serde` (native only) | `api-server` + 31 (171) |
 | `socket` | `serve` + `serde`, `getrandom`, tokio `net`/`io-util` (unix only) | 0 beyond `serve` |
 | `serve` (`serve-cli`) | `output` + `tokio`, `serde_json` (+ `cli`) | 37 (50) |

@@ -58,7 +58,7 @@ log "${C_DIM}temp dir: ${TMPDIR_HARNESS}${C_RESET}"
 export KIT_CROSS_LANG_COMPLIANCE_FIXTURE="${FIXTURE}"
 
 LANGS_REQUESTED=("$@")
-SUPPORTED_LANGS=(go ts py)
+SUPPORTED_LANGS=(go ts py rs)
 want() {
   local lang="$1"
   if [[ ${#LANGS_REQUESTED[@]} -eq 0 ]]; then
@@ -116,6 +116,11 @@ check_ts() {
   return 0
 }
 
+check_rs() {
+  command -v cargo >/dev/null 2>&1 || { echo "missing cargo"; return 1; }
+  return 0
+}
+
 check_go() {
   command -v go >/dev/null 2>&1 || { echo "missing go"; return 1; }
   return 0
@@ -144,6 +149,10 @@ run_lang() {
       ;;
     py)
       "${PY_INTERP:-python3}" "${RUNNERS}/py/compliance.py"
+      ;;
+    rs)
+      local real_cargo_home="${CARGO_HOME:-${REAL_HOME:-$HOME}/.cargo}"
+      ( cd "${RUNNERS}/rs" && CARGO_HOME="${real_cargo_home}" cargo run --quiet --bin compliance )
       ;;
   esac
 

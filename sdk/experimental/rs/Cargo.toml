@@ -401,6 +401,12 @@ config-signal = [
 # the runner, its version files and backups are compiled off wasm32.
 # Builds on `bus` for the step context and lifecycle events.
 upgrade = ["bus", "dep:thiserror"]
+# The 12-factor AI CLI compliance check, a port of the static pass of
+# go/core/compliance: the toolspec YAML loader, factors 1 to 13 and the
+# text/json report. Rides on `output` for serde, serde_json (reports),
+# serde_norway (the YAML) and thiserror. The runtime pass (it executes
+# the binary) is not ported.
+compliance = ["output"]
 # Provider-neutral LLM core, a port of go/ai/llm: messages, tool
 # calls, streaming tokens, the error taxonomy, provider URIs with their
 # redaction, llm.yaml < env < URI config and key resolution, the scheme
