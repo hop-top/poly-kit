@@ -133,12 +133,12 @@ func TestAuthnContractVectors(t *testing.T) {
 			store := memory.New()
 			rec := `{"id":"` + parts[1] + `","principal":"p","created_at":"2026-09-28T12:00:00Z","hash":"` + v.Hash + `"}`
 			require.NoError(t, store.Put(t.Context(), "apikey/"+parts[1], []byte(rec)))
-			if v.Domain == "" || v.Domain == "kit-apikey-v1" {
-				_, err := authn.NewAPIKeys(store, nil).Verify(t.Context(), v.Key)
-				require.NoError(t, err)
-				return
+			domain := v.Domain
+			if domain == "" {
+				domain = "kit-apikey-v1"
 			}
-			t.Skip("Go has no configurable hash domain yet")
+			_, err := authn.NewAPIKeys(store, nil).WithHashDomain(domain).Verify(t.Context(), v.Key)
+			require.NoError(t, err)
 		})
 	}
 }

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/authn-v1/apikey-records.json",
+  "version": "v1",
+  "note": "Hand-written API key store corpus, separate from vectors.json (which regenerates with fresh keys). `hash_domains`: a key under a branded prefix and/or hash domain verifies only when the store holds the hash for that domain and the verifier names that prefix and domain; the default prefix/domain refuses it. `records`: stored JSON as one port wrote it; after a revoke at `revoke_at` the stored JSON, compared as a value, must equal `after_revoke` - no field dropped, none invented. `last_used`: tracking stamps last_used_at. Whole-second UTC times only.",
+  "hash_domains": [
+    {
+      "name": "branded_prefix_and_domain",
+      "key": "acme_0123456789abcdef_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "prefix": "acme",
+      "domain": "acme-apikey-v1",
+      "hash": "d715fef5ccb504077f9fdc295335bcd08471a95b5170dbb0016f94f8600e7121"
+    },
+    {
+      "name": "default_prefix_custom_domain",
+      "key": "kit_fedcba9876543210_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "prefix": "kit",
+      "domain": "legacy-v0",
+      "hash": "42acedad812f05a2790f6f7de93a0ad945a4a010f7c565fc6e39e5040539ccb7"
+    }
+  ],
+  "records": [
+    {
+      "name": "metadata_survives_write_back",
+      "note": "A record with name, labels and last_used_at keeps every field when a port rewrites it (revoke).",
+      "record": {
+        "id": "0123456789abcdef",
+        "principal": "ci-bot",
+        "tenant": "acme",
+        "scopes": [
+          "items:read",
+          "items:write"
+        ],
+        "created_at": "2026-09-28T12:00:00Z",
+        "expires_at": "2027-09-28T12:00:00Z",
+        "name": "CI deploy key",
+        "labels": {
+          "env": "prod",
+          "team": "platform"
+        },
+        "last_used_at": "2026-10-01T08:30:00Z",
+        "hash": "d715fef5ccb504077f9fdc295335bcd08471a95b5170dbb0016f94f8600e7121"
+      },
+      "revoke_at": "2026-10-31T12:00:00Z",
+      "after_revoke": {
+        "id": "0123456789abcdef",
+        "principal": "ci-bot",
+        "tenant": "acme",
+        "scopes": [
+          "items:read",
+          "items:write"
+        ],
+        "created_at": "2026-09-28T12:00:00Z",
+        "expires_at": "2027-09-28T12:00:00Z",
+        "name": "CI deploy key",
+        "labels": {
+          "env": "prod",
+          "team": "platform"
+        },
+        "last_used_at": "2026-10-01T08:30:00Z",
+        "hash": "d715fef5ccb504077f9fdc295335bcd08471a95b5170dbb0016f94f8600e7121",
+        "revoked_at": "2026-10-31T12:00:00Z"
+      }
+    },
+    {
+      "name": "record_without_metadata_stays_without",
+      "note": "A record from before the metadata fields gains no empty name, labels or last_used_at keys.",
+      "record": {
+        "id": "fedcba9876543210",
+        "principal": "p",
+        "created_at": "2026-09-28T12:00:00Z",
+        "hash": "42acedad812f05a2790f6f7de93a0ad945a4a010f7c565fc6e39e5040539ccb7"
+      },
+      "revoke_at": "2026-10-31T12:00:00Z",
+      "after_revoke": {
+        "id": "fedcba9876543210",
+        "principal": "p",
+        "created_at": "2026-09-28T12:00:00Z",
+        "hash": "42acedad812f05a2790f6f7de93a0ad945a4a010f7c565fc6e39e5040539ccb7",
+        "revoked_at": "2026-10-31T12:00:00Z"
+      }
+    }
+  ],
+  "last_used": [
+    {
+      "name": "verify_stamps_last_used_when_tracking",
+      "note": "With last-used tracking on, a successful verify stores last_used_at as the verify time; without tracking the record is not rewritten.",
+      "key": "acme_0123456789abcdef_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "prefix": "acme",
+      "domain": "acme-apikey-v1",
+      "record": {
+        "id": "0123456789abcdef",
+        "principal": "ci-bot",
+        "created_at": "2026-09-28T12:00:00Z",
+        "hash": "d715fef5ccb504077f9fdc295335bcd08471a95b5170dbb0016f94f8600e7121"
+      },
+      "verify_at": "2026-10-31T12:00:00Z",
+      "stored_last_used_at": "2026-10-31T12:00:00Z"
+    }
+  ]
+}

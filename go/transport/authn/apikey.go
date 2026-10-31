@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"sort"
 	"strings"
@@ -61,6 +62,13 @@ type APIKey struct {
 	ExpiresAt time.Time `json:"expires_at,omitzero"`
 	// RevokedAt, when set, is when the key was revoked.
 	RevokedAt time.Time `json:"revoked_at,omitzero"`
+	// Name is a human label for the key.
+	Name string `json:"name,omitempty"`
+	// Labels is free-form key/value metadata.
+	Labels map[string]string `json:"labels,omitempty"`
+	// LastUsedAt, when set, is the last successful verification; it is
+	// recorded only when [APIKeys.WithLastUsed] is on.
+	LastUsedAt time.Time `json:"last_used_at,omitzero"`
 	// Hash is the hex SHA-256 of the domain-separated id and secret.
 	Hash string `json:"hash"`
 }
@@ -78,15 +86,22 @@ type NewAPIKey struct {
 	Scopes    []string
 	// TTL, when positive, sets the key's expiry; zero never expires.
 	TTL time.Duration
+	// Name is a human label for the key.
+	Name string
+	// Labels is free-form key/value metadata; it is copied.
+	Labels map[string]string
 }
 
 // APIKeys issues, lists, revokes and verifies API keys held in a kv
 // store. The store is shared with whatever else opened it: `token key
 // create` in one process, the serving process in another.
 type APIKeys struct {
-	store kv.Store
-	now   func() time.Time
-	check func(ctx context.Context, t *Token) error
+	store         kv.Store
+	now           func() time.Time
+	check         func(ctx context.Context, t *Token) error
+	prefix        string
+	domain        string
+	trackLastUsed bool
 }
 
 // NewAPIKeys returns API keys over store. now is the clock; nil means
@@ -95,7 +110,39 @@ func NewAPIKeys(store kv.Store, now func() time.Time) *APIKeys {
 	if now == nil {
 		now = time.Now
 	}
-	return &APIKeys{store: store, now: now}
+	return &APIKeys{store: store, now: now, prefix: APIKeyPrefix, domain: apiKeyHashDomain}
+}
+
+// WithPrefix returns the keys issuing and accepting prefix in place
+// of [APIKeyPrefix] ("acme" for "acme_<id>_<secret>"). It must be one
+// non-empty word without "_" or a space.
+func (k *APIKeys) WithPrefix(prefix string) (*APIKeys, error) {
+	if prefix == "" || strings.ContainsAny(prefix, "_ ") {
+		return nil, fmt.Errorf("authn: api key prefix %q: one non-empty word without '_'", prefix)
+	}
+	cp := *k
+	cp.prefix = prefix
+	return &cp, nil
+}
+
+// WithHashDomain returns the keys hashing secrets under domain in
+// place of the default, so hashes an existing deployment stored keep
+// verifying when it moves onto these keys.
+func (k *APIKeys) WithHashDomain(domain string) *APIKeys {
+	cp := *k
+	cp.domain = domain
+	return &cp
+}
+
+// WithLastUsed returns the keys recording [APIKey.LastUsedAt] on each
+// successful verification. Off by default: it turns every read into a
+// write, and the read-modify-write is not atomic against a concurrent
+// revoke from another process (the key is re-read first and left alone
+// when revoked, narrowing but not closing the window).
+func (k *APIKeys) WithLastUsed(on bool) *APIKeys {
+	cp := *k
+	cp.trackLastUsed = on
+	return &cp
 }
 
 // WithCheck returns the keys with check run on every key that passed
@@ -151,7 +198,9 @@ func (k *APIKeys) Create(ctx context.Context, spec NewAPIKey) (string, *APIKey, 
 		Tenant:    spec.Tenant,
 		Scopes:    spec.Scopes,
 		CreatedAt: now,
-		Hash:      apiKeyHash(id, sec),
+		Hash:      k.hash(id, sec),
+		Name:      spec.Name,
+		Labels:    maps.Clone(spec.Labels),
 	}
 	if spec.TTL > 0 {
 		rec.ExpiresAt = now.Add(spec.TTL)
@@ -159,7 +208,20 @@ func (k *APIKeys) Create(ctx context.Context, spec NewAPIKey) (string, *APIKey, 
 	if err := k.put(ctx, rec); err != nil {
 		return "", nil, err
 	}
-	return APIKeyPrefix + "_" + id + "_" + sec, rec, nil
+	return k.prefix + "_" + id + "_" + sec, rec, nil
+}
+
+// Get returns the stored key with id, wrapping [ErrAPIKeyNotFound]
+// when the store lacks it.
+func (k *APIKeys) Get(ctx context.Context, id string) (*APIKey, error) {
+	rec, err := k.get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if rec == nil {
+		return nil, fmt.Errorf("%w: %s", ErrAPIKeyNotFound, id)
+	}
+	return rec, nil
 }
 
 // List returns every stored key, newest first.
@@ -217,16 +279,16 @@ func (k *APIKeys) Verify(ctx context.Context, raw string) (*APIKey, error) {
 		return nil, ErrNoToken
 	}
 	parts := strings.Split(raw, "_")
-	if len(parts) != 3 || parts[0] != APIKeyPrefix || !isHex(parts[1], apiKeyIDBytes) ||
+	if len(parts) != 3 || parts[0] != k.prefix || !isHex(parts[1], apiKeyIDBytes) ||
 		!isHex(parts[2], apiKeySecretBytes) {
-		return nil, invalid("not a kit api key")
+		return nil, invalid("not a %s api key", k.prefix)
 	}
 	id, sec := parts[1], parts[2]
 	rec, err := k.get(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrKeySetUnavailable, err)
 	}
-	want := []byte(apiKeyHash(id, sec))
+	want := []byte(k.hash(id, sec))
 	if rec == nil {
 		// Spend the comparison anyway, so an unknown id and a wrong
 		// secret take the same time.
@@ -246,6 +308,20 @@ func (k *APIKeys) Verify(ctx context.Context, raw string) (*APIKey, error) {
 	if k.check != nil {
 		if err := k.check(ctx, rec.Token()); err != nil {
 			return nil, invalid("%v", err)
+		}
+	}
+	if k.trackLastUsed {
+		// Re-read so a revoke that landed since is not overwritten.
+		fresh, err := k.get(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrKeySetUnavailable, err)
+		}
+		if fresh != nil && fresh.RevokedAt.IsZero() {
+			fresh.LastUsedAt = now.UTC()
+			if err := k.put(ctx, fresh); err != nil {
+				return nil, fmt.Errorf("%w: %v", ErrKeySetUnavailable, err)
+			}
+			rec.LastUsedAt = fresh.LastUsedAt
 		}
 	}
 	return rec, nil
@@ -291,10 +367,10 @@ func (k *APIKeys) put(ctx context.Context, rec *APIKey) error {
 	return k.store.Put(ctx, apiKeyStorePrefix+rec.ID, data)
 }
 
-// apiKeyHash is the stored hash of a key's secret.
-func apiKeyHash(id, secret string) string {
+// hash is the stored hash of a key's secret.
+func (k *APIKeys) hash(id, secret string) string {
 	h := sha256.New()
-	h.Write([]byte(apiKeyHashDomain))
+	h.Write([]byte(k.domain))
 	h.Write([]byte{0})
 	h.Write([]byte(id))
 	h.Write([]byte{0})
