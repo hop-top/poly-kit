@@ -6,18 +6,12 @@ shared schemas and cross-language constants.
 
 Corpora bind every port, Go included; detail lives in each corpus README.
 
-- [httpcache-v1/](httpcache-v1/README.md): kit/storage/httpcache wire contract: cache keying, on-store
-  envelope, storage gate.
-- [bus-v1/](bus-v1/README.md): kit/runtime/bus topic matching, validator error texts, `PrefixTopics`,
-  qualifiers, enforcement modes, event envelope JSON. Go and Rust runners.
-- [blob-v1/](blob-v1/README.md): kit/storage/blob local store: put/get/delete/list/exists, key escapes,
-  list order. Go and Rust runners.
-- [cli-root-v1/](cli-root-v1/README.md): kit/console/cli root at the command line: persistent flags, version,
-  help groups, aliases, flag-error envelopes, autocorrect. Go, Rust; TS, Py, PHP replay delegation vectors.
-- [celpermission-v1/](celpermission-v1/README.md): kit/console/cli `permissions:` rule gate for served
-  invocations: bindings, deny-overrides, fail-closed evaluation, load-time refusals. Go and Rust runners.
-- [completion-v1/](completion-v1/README.md): kit/console/cli shell completion: completers, `__complete`
-  output, `completion <shell>` scripts byte for byte. Go and Rust runners.
+- [httpcache-v1/](httpcache-v1/README.md): kit/storage/httpcache wire contract: cache keying, on-store envelope, storage gate.
+- [bus-v1/](bus-v1/README.md): kit/runtime/bus topic matching, validator error texts, `PrefixTopics`, qualifiers, enforcement modes, event envelope JSON. Go and Rust runners.
+- [blob-v1/](blob-v1/README.md): kit/storage/blob local store: put/get/delete/list/exists, key escapes, list order. Go and Rust runners.
+- [cli-root-v1/](cli-root-v1/README.md): kit/console/cli root at the command line: persistent flags, version, help groups, aliases, flag-error envelopes, autocorrect. Go, Rust; TS, Py, PHP replay delegation vectors.
+- [celpermission-v1/](celpermission-v1/README.md): kit/console/cli `permissions:` rule gate for served invocations: bindings, deny-overrides, fail-closed evaluation, load-time refusals. Go and Rust runners.
+- [completion-v1/](completion-v1/README.md): kit/console/cli shell completion: completers, `__complete` output, `completion <shell>` scripts byte for byte. Go and Rust runners.
 - [consent-v1/](consent-v1/README.md): kit/core/consent grants: records, decisions, refusals, audit,
   telemetry migration. Go and Rust runners.
 - [config-v1/](config-v1/README.md): kit/core/config scalars, overrides, precedence, layered load. Go and Rust.
@@ -41,7 +35,6 @@ Corpora bind every port, Go included; detail lives in each corpus README.
 - [alias-v1/](alias-v1/README.md): kit alias bridge options, name validation, cycle detection; four runners.
 - [proto/](proto/README.md): shared protobuf definitions, incl. the cmdsurface RPC schema
   ([commands.proto](proto/cmdsurface/v1/commands.proto)).
-- [ts/](ts/README.md): TypeScript copy of the `crud.v1` protobuf and Connect stubs.
 - [ts/](ts/README.md): TypeScript copy of the `crud.v1` protobuf and Connect stubs; the SDK builds against `sdk/ts/src/gen/`.
 - [parity/](parity/README.md): TUI constants shared across Go/TS/Py.
 - [bridge.proto](bridge.proto): kit/bridge wire payload (JSON: `bridge.schema.json`).
