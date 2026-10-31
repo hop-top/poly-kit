@@ -377,3 +377,30 @@ fn contract_bus_accepts_empty_topic() {
             .unwrap();
     }
 }
+
+#[tokio::test]
+async fn dryrun_http_preview_redacts_credentials() {
+    let buf = SharedBuf::default();
+    let h = dryrun::Http::new(Arc::new(testfake::Http::new())).with_writer(buf.clone());
+    h.send(Request::new(
+        "POST",
+        "https://user:pw@example.test:8443/a/b?api=abc&flag&x=1#frag",
+    ))
+    .await
+    .unwrap();
+    let out = buf.contents();
+    assert!(
+        out.contains(
+            "would POST https://example.test:8443/a/b?api=REDACTED&flag&x=REDACTED (0-byte body)"
+        ),
+        "{out}"
+    );
+    for leak in ["user", "pw", "abc", "frag"] {
+        assert!(!out.contains(leak), "{leak} leaked: {out}");
+    }
+    // Unparseable input still never echoes a query value.
+    h.send(Request::new("PUT", "no-scheme/p?token=zzz"))
+        .await
+        .unwrap();
+    assert!(!buf.contents().contains("zzz"));
+}

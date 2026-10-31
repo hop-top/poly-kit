@@ -10,8 +10,9 @@
 //! HTTP: safe verbs (GET, HEAD, and the empty method) are forwarded to
 //! the wrapped client, because read-only requests are part of the preview
 //! and the call site needs the real response shape. Mutating verbs are
-//! intercepted and answered with a synthetic 201 Created. The URL is
-//! printed as given, query and userinfo included.
+//! intercepted and answered with a synthetic 201 Created. The printed
+//! URL drops userinfo and fragment and replaces every query value with
+//! `REDACTED`, as the output lands in terminals and CI logs.
 //!
 //! Bus: a payload that carries qualifiers is described with
 //! `mechanism=dry_run`; others are described plain, and the gap is
@@ -78,6 +79,38 @@ impl Write for SharedBuf {
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
+}
+
+/// `url` safe to print: userinfo and fragment dropped, each query value
+/// replaced by `REDACTED` (keys kept); scheme, host, port and path as
+/// given. Works on the text, so an unparseable URL is still never echoed
+/// with a value.
+fn preview_url(url: &str) -> String {
+    let url = url.split('#').next().unwrap_or("");
+    let (base, query) = match url.split_once('?') {
+        Some((b, q)) => (b, Some(q)),
+        None => (url, None),
+    };
+    let mut out = match base.split_once("://") {
+        Some((scheme, rest)) => {
+            let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+            let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+            format!("{scheme}://{host}{path}")
+        }
+        None => base.to_string(),
+    };
+    if let Some(q) = query {
+        let pairs: Vec<_> = q
+            .split('&')
+            .map(|kv| match kv.split_once('=') {
+                Some((k, _)) => format!("{k}=REDACTED"),
+                None => kv.to_string(),
+            })
+            .collect();
+        out.push('?');
+        out.push_str(&pairs.join("&"));
+    }
+    out
 }
 
 /// A Unix mode as Go's `%#o` prints it: a leading 0 (`0644`).
@@ -177,7 +210,7 @@ impl seams::Http for Http {
         self.out.line(format_args!(
             "[dry-run] would {} {} ({}-byte body)",
             req.method,
-            req.url,
+            preview_url(&req.url),
             req.body.len()
         ));
         Box::pin(std::future::ready(Ok(Response::empty_json(201))))
