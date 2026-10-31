@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 
@@ -109,5 +110,42 @@ func TestAudit_NilContextAndNoSinkAreSafe(t *testing.T) {
 	ctx = netpolicy.WithAllowHosts(t.Context(), []string{"a.example.com"})
 	if err := netpolicy.CheckDial(ctx, "tcp", "b.example.com:1"); !errors.Is(err, netpolicy.ErrHostNotAllowed) {
 		t.Errorf("err = %v", err)
+	}
+}
+
+// http.Client calls the transport once per hop, so Guard judges a
+// redirect target like any request: an allowed (loopback) host cannot
+// bounce the client to a refused one. Parity with the Rust client,
+// which needs an explicit redirect policy for the same guarantee.
+func TestGuard_RefusesRedirectToRefusedHost(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://evil.example.invalid/steal?k=q-secret", http.StatusFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	for name, tag := range map[string]func(context.Context) context.Context{
+		"offline": func(c context.Context) context.Context { return netpolicy.WithOffline(c, true) },
+		"allowlist": func(c context.Context) context.Context {
+			return netpolicy.WithAllowHosts(c, []string{"graph.microsoft.com"})
+		},
+	} {
+		log := &auditLog{}
+		ctx := netpolicy.WithAudit(tag(t.Context()), log.add)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/hop", nil)
+		c := &http.Client{Transport: netpolicy.Guard(http.DefaultTransport)}
+		resp, err := c.Do(req)
+		if resp != nil {
+			resp.Body.Close()
+		}
+		want := netpolicy.ErrHostNotAllowed
+		if name == "offline" {
+			want = netpolicy.ErrOffline
+		}
+		if !errors.Is(err, want) {
+			t.Fatalf("%s: err = %v, want %v", name, err, want)
+		}
+		if len(log.got) != 1 || log.got[0].Dest != "https://evil.example.invalid/steal" {
+			t.Errorf("%s: audit = %+v", name, log.got)
+		}
 	}
 }

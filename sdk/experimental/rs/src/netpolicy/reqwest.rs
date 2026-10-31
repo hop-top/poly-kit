@@ -137,6 +137,22 @@ fn scrub(e: reqwest::Error) -> reqwest::Error {
     }
 }
 
+/// reqwest's own default redirect limit.
+const MAX_REDIRECTS: usize = 10;
+
+/// The typed refusal a redirect hop raised, if `e` carries one in its
+/// source chain.
+fn redirect_refusal(e: &reqwest::Error) -> Option<PolicyError> {
+    let mut src: Option<&(dyn std::error::Error + 'static)> = Some(e);
+    while let Some(err) = src {
+        if let Some(p) = err.downcast_ref::<PolicyError>() {
+            return Some(p.clone());
+        }
+        src = err.source();
+    }
+    None
+}
+
 /// The port's shared HTTP client: the construction path through which
 /// every user-traffic reqwest request in this crate is issued (the
 /// telemetry sink's own client is the deliberate exception).
@@ -171,6 +187,28 @@ impl GuardedClient {
         policy: NetPolicy,
         builder: reqwest::ClientBuilder,
     ) -> Result<Self, reqwest::Error> {
+        // reqwest follows redirects by default, and the policy in
+        // `execute` sees only the first URL: without this an allowed
+        // host could bounce the request to a refused one. Every hop is
+        // judged by the same decision, and a refusal stops the chain
+        // with the typed error. The default limit of 10 is kept.
+        let hop_policy = policy.clone();
+        let builder = builder.redirect(reqwest::redirect::Policy::custom(move |attempt| {
+            if attempt.previous().len() >= MAX_REDIRECTS {
+                return attempt.error("too many redirects");
+            }
+            match hop_policy.url_denial(attempt.url()) {
+                None => attempt.follow(),
+                Some(reason) => {
+                    let err = hop_policy.refuse(
+                        reason,
+                        "redirect".to_string(),
+                        destination(attempt.url()),
+                    );
+                    attempt.error(err)
+                }
+            }
+        }));
         Ok(Self {
             inner: builder.build()?,
             policy,
@@ -217,7 +255,10 @@ impl GuardedClient {
         self.inner
             .execute(req)
             .await
-            .map_err(|e| NetError::Transport(scrub(e)))
+            .map_err(|e| match redirect_refusal(&e) {
+                Some(refusal) => refusal.into(),
+                None => NetError::Transport(scrub(e)),
+            })
     }
 }
 

@@ -455,3 +455,75 @@ async fn allowlist_refuses_unlisted_hosts_and_audits() {
     assert_eq!(resp.status().as_u16(), 204);
     mock.assert_async().await;
 }
+
+// reqwest follows redirects by default; a policy that judged only the
+// first URL would let an allowed (here: loopback) host bounce the
+// request to a disallowed one. Every hop is judged, the refusal is the
+// typed variant, and it is audited.
+#[tokio::test]
+async fn redirect_to_a_refused_host_is_refused_and_audited() {
+    use std::sync::{Arc, Mutex};
+
+    for offline in [false, true] {
+        let mut server = mockito::Server::new_async().await;
+        let _m = server
+            .mock("GET", "/hop")
+            .with_status(302)
+            .with_header("location", "https://evil.example.invalid/steal?k=q-secret")
+            .create_async()
+            .await;
+
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let sink = seen.clone();
+        let base = if offline {
+            NetPolicy::offline()
+        } else {
+            NetPolicy::online().with_allow_hosts(["graph.microsoft.com"])
+        };
+        let client = GuardedClient::new(base.with_audit(move |r| {
+            sink.lock().unwrap().push(r.dest.clone());
+        }))
+        .expect("build client");
+
+        let err = client
+            .get(format!("{}/hop", server.url()))
+            .send()
+            .await
+            .expect_err("redirect to a refused host was followed");
+        if offline {
+            assert!(err.is_offline(), "offline={offline}: {err}");
+        } else {
+            assert!(err.is_host_not_allowed(), "offline={offline}: {err}");
+        }
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec!["https://evil.example.invalid/steal".to_string()],
+            "offline={offline}"
+        );
+    }
+}
+
+// A redirect between permitted hosts still works.
+#[tokio::test]
+async fn redirect_between_permitted_hosts_is_followed() {
+    let mut server = mockito::Server::new_async().await;
+    let target = format!("{}/final", server.url());
+    let _a = server
+        .mock("GET", "/hop")
+        .with_status(302)
+        .with_header("location", &target)
+        .create_async()
+        .await;
+    let _b = server
+        .mock("GET", "/final")
+        .with_status(204)
+        .create_async()
+        .await;
+    let client = GuardedClient::new(NetPolicy::offline()).expect("build client");
+    let resp = client
+        .get(format!("{}/hop", server.url()))
+        .send()
+        .await
+        .expect("loopback redirect refused");
+    assert_eq!(resp.status().as_u16(), 204);
+}

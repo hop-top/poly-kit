@@ -46,6 +46,7 @@ assert_eq!(
   never match (`validate_allow_hosts` names them). Loopback and unix sockets pass; `--offline` wins
   when both apply. Refusal: `<method> <url>: host not allowed by netpolicy.allow_hosts`. `NetPolicy`
   is `Clone`, not `Copy`.
+- Redirects: `GuardedClient` judges every redirect hop with the same decision (reqwest follows up to 10 by default); a refused hop stops the chain with the typed refusal, audited as op `redirect`. It overrides any `redirect` policy on a builder passed to `build`.
 - Audit: `with_audit` sinks see every refusal, offline and allowlist, with the same stripped
   destination as the error.
 - A portless bracketed host is loopback only when the brackets hold a loopback IPv6 address.

@@ -38,6 +38,7 @@ websocket) are in `example_dialer_test.go`.
 - Refusals return `ErrOffline`; match with `errors.Is` (net/http wraps it in `*url.Error`).
 - A refusal names method, scheme, host and path only: query, fragment and userinfo never appear, as they may carry credentials. net/http's `*url.Error` still quotes the full URL around it, so keep credentials out of URLs (headers instead).
 - Allowlist refusals return `ErrHostNotAllowed` the same way. Entries are an exact host or `*.suffix` (one or more labels below the suffix, never the suffix itself, never an IP literal); hosts and entries compare lower case, no trailing dot, IDNA in ASCII form. An empty list is no list; invalid entries never match. `--offline` wins when both apply.
+- Redirects: `http.Client` calls the transport once per hop, so `Guard` judges every redirect target; a refused hop fails with the same error.
 - `WithAudit(ctx, fn)` reports every refusal (offline and allowlist) as a `Refusal{Reason, Op, Dest}` with the same stripped destination; `cli.New` logs them at warn.
 - Loopback addresses and unix sockets are exempt: `--offline` means no network, not no self.
 - Loopback is `localhost` (exact), 127.0.0.0/8, `::1` and v4-mapped loopback, with or without a port. A portless bracketed host (`[::1]`, the URL host of `http://[::1]/`) is loopback only when the brackets hold an IPv6 address; `[127.0.0.1]` is remote.
