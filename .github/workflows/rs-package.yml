@@ -1,0 +1,35 @@
+name: rs-package
+
+# Guards the shape of the published hop-top-kit crate: the file list must
+# stay inside the `include` allowlist (scripts/check-rs-package.sh).
+on:
+  pull_request:
+    paths:
+      - "sdk/experimental/rs/**"
+      - "scripts/check-rs-package.sh"
+      - ".github/workflows/rs-package.yml"
+  push:
+    branches: [main]
+    paths:
+      - "sdk/experimental/rs/**"
+      - "scripts/check-rs-package.sh"
+      - ".github/workflows/rs-package.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  package-list:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ steps.pins.outputs.rust }}
+      - run: scripts/check-rs-package.sh

@@ -4,6 +4,31 @@ version = "0.5.0-alpha.6"
 edition = "2021"
 license = "MIT AND Apache-2.0"
 description = "Cross-language CLI UX parity toolkit"
+readme = "README.md"
+repository = "https://github.com/hop-top/poly-kit"
+homepage = "https://github.com/hop-top/poly-kit"
+documentation = "https://docs.rs/hop-top-kit"
+keywords = ["cli", "toolkit", "output", "config", "telemetry"]
+categories = ["command-line-interface", "development-tools"]
+# Allowlist: the published crate carries what a consumer builds and reads,
+# never tests, fixtures or the pinned dev toolchain. NOTICE and the cobra
+# licence text (under src/) carry the third-party attributions.
+include = [
+    "src/**",
+    "examples/**",
+    "Cargo.toml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE",
+]
+
+# docs.rs builds with no features by default, which would leave the page
+# empty. Build every feature, with `docsrs` set so each gated module shows
+# its feature badge (see the `doc_cfg` attribute in lib.rs).
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
