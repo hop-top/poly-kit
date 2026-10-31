@@ -188,7 +188,7 @@ impl Root {
         self.describe(&built, &[], true)
     }
 
-    fn describe(&self, c: &Command, path: &[String], root: bool) -> CommandInfo {
+    pub(super) fn describe(&self, c: &Command, path: &[String], root: bool) -> CommandInfo {
         let path_str = path.join(" ");
         let mut flags = Vec::new();
         let mut args = Vec::new();
@@ -269,7 +269,9 @@ impl Root {
 /// parser.
 pub(crate) fn flag_kind(a: &Arg) -> FlagKind {
     match a.get_action() {
-        ArgAction::SetTrue | ArgAction::SetFalse => FlagKind::Bool,
+        ArgAction::SetTrue | ArgAction::SetFalse | ArgAction::Version | ArgAction::Help => {
+            FlagKind::Bool
+        }
         ArgAction::Count => FlagKind::Count,
         ArgAction::Append => FlagKind::Strings,
         _ => {

@@ -6,7 +6,10 @@
 //! API), with the persistent flags, help groups, flag-error surfaces,
 //! autocorrect, delegation gating, validators, aliases and the
 //! hidden `completion` command; [`completion`], the completer API; and
-//! [`completion_spec`], the `completion fig|usage` spec exports.
+//! [`completion_spec`], the `completion fig|usage` spec exports. Help is
+//! rendered by kit, not the parse provider: the `Usage:` /
+//! `COMMANDS:` / group / `FLAGS:` layout of the TypeScript and Python
+//! kits, colored by a [`Theme`] on a terminal.
 
 // `CliError` is the crate's one error envelope, returned by value across
 // the root; boxing it here would differ from every other module.
@@ -23,6 +26,7 @@ pub mod completion_spec;
 pub mod config;
 mod enums;
 mod gate;
+mod help;
 pub mod model;
 mod paths_cmd;
 #[cfg(feature = "cli-permissions")]
@@ -43,6 +47,7 @@ pub use alias::{
 pub use alias_store::{alias_command, aliases_command, AliasStore, SharedAliasStore};
 pub use config::{ChdirResolver, Config, Disable, GlobalFlag, GlobalKind, GroupConfig};
 pub use gate::{destructive_token, PromptSource, Prompter};
+pub use help::{Palette, Theme};
 pub use model::{
     inferred_destructive, ArgInfo, CommandInfo, FlagInfo, FlagKind, DESTRUCTIVE_NAMES, SIDE_EFFECT,
 };

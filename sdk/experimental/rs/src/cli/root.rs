@@ -21,6 +21,7 @@ use super::completion_spec::{write_export, FIG, USAGE};
 use super::config::{Config, GlobalKind};
 use super::enums::apply_enum_help;
 use super::gate::PromptSource;
+use super::help::{GroupDef, Help, Scope, Theme};
 use super::policy::PolicyLoader;
 use super::run::HandlerFn;
 use super::spec::CommandSpec;
@@ -62,6 +63,7 @@ pub struct Root {
     pub(super) policy_loader: Option<PolicyLoader>,
     pub(super) prompt_source: PromptSource,
     pub(super) flag_validators: Vec<(String, FlagValidator)>,
+    pub(super) help_theme: Option<Theme>,
 }
 
 impl fmt::Debug for Root {
@@ -103,6 +105,7 @@ impl Root {
             policy_loader: None,
             prompt_source: PromptSource::controlling_tty(),
             flag_validators: Vec::new(),
+            help_theme: None,
         }
     }
 
@@ -336,22 +339,29 @@ impl Root {
     }
 
     /// The default help, as `-h` prints it: management commands and
-    /// hidden flags left out.
+    /// hidden flags left out. Plain text; [`Root::render_help_styled`]
+    /// colors it.
     pub fn render_help(&self) -> String {
-        let mut c = self.command();
-        c.render_help().to_string()
+        self.help_text(Scope::Default, &[], None)
+            .unwrap_or_default()
     }
 
-    /// The `--help-all` help: the management group shown.
+    /// The default help colored by `theme`.
+    pub fn render_help_styled(&self, theme: &Theme) -> String {
+        self.help_text(Scope::Default, &[], Some(theme))
+            .unwrap_or_default()
+    }
+
+    /// The `--help-all` help: every group and the plumbing flags shown.
     pub fn render_help_all(&self) -> String {
-        let mut c = self.help_all_command();
-        c.render_help().to_string()
+        self.help_text(Scope::All { plumbing: true }, &[], None)
+            .unwrap_or_default()
     }
 
     /// The `--help-<id>` help: only the commands of group `id`.
     pub fn render_help_group(&self, id: &str) -> String {
-        let mut c = self.help_group_command(id);
-        c.render_help().to_string()
+        self.help_text(Scope::Group(id), &[], None)
+            .unwrap_or_default()
     }
 
     /// The help of the command at `path` (space-separated), `None`
@@ -360,8 +370,72 @@ impl Root {
         let mut built = self.command();
         built.build();
         let words = resolve_path_words(&built, path)?;
-        let mut cmd = find_path(&built, &words)?.clone();
-        Some(cmd.render_help().to_string())
+        self.help_text(Scope::Default, &words, None)
+    }
+
+    /// Colors help with `theme` instead of the Neon default when the
+    /// output is a terminal that takes color (`NO_COLOR`, `TERM=dumb`
+    /// and `--no-color` still win).
+    pub fn set_help_theme(&mut self, theme: Theme) -> &mut Root {
+        self.help_theme = Some(theme);
+        self
+    }
+
+    /// The help groups: the built-in hidden `management`, then the
+    /// configured ones (a configured group of the same id replaces it).
+    pub(super) fn group_defs(&self) -> Vec<GroupDef> {
+        let mut out = vec![GroupDef {
+            id: MANAGEMENT.into(),
+            title: "MANAGEMENT".into(),
+            hidden: true,
+        }];
+        if let Some(cfg) = &self.config {
+            for g in &cfg.groups {
+                let def = GroupDef {
+                    id: g.id.clone(),
+                    title: if g.title.is_empty() {
+                        g.id.to_uppercase()
+                    } else {
+                        g.title.clone()
+                    },
+                    hidden: g.hidden,
+                };
+                match out.iter_mut().find(|d| d.id == g.id) {
+                    Some(d) => *d = def,
+                    None => out.push(def),
+                }
+            }
+        }
+        out
+    }
+
+    /// The help screen for `scope` of the command at `path` (empty for
+    /// the root); `None` when `path` names no command.
+    pub(super) fn help_text(
+        &self,
+        scope: Scope<'_>,
+        path: &[String],
+        theme: Option<&Theme>,
+    ) -> Option<String> {
+        let mut cmd = match scope {
+            Scope::Default => self.command(),
+            Scope::All { .. } => self.help_all_command(),
+            Scope::Group(id) => self.help_group_command(id),
+        };
+        cmd.build();
+        let model = self.describe(&cmd, &[], true);
+        let target = model.find(&path.join(" "))?;
+        let groups = self.group_defs();
+        Some(
+            Help {
+                root_name: &model.name,
+                target,
+                scope,
+                groups: &groups,
+                theme,
+            }
+            .render(),
+        )
     }
 
     /// The help group of a root subcommand: `management` for the
