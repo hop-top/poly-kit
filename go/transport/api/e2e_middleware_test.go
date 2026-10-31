@@ -3,6 +3,7 @@ package api_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -283,4 +284,26 @@ func TestE2E_Middleware_GroupInheritsParent(t *testing.T) {
 	defer mu.Unlock()
 	assert.Equal(t, []string{"parent", "child"}, order,
 		"parent middleware should run before child")
+}
+
+func TestE2E_Middleware_RequestID_InjectionNeverReachesLogsOrHeaders(t *testing.T) {
+	var lines []string
+	logFn := func(msg any, kv ...any) { lines = append(lines, fmt.Sprint(append([]any{msg}, kv...)...)) }
+	h := api.Chain(api.RequestID(), api.Logger(logFn))(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	for _, bad := range []string{"a\r\nX-Evil: 1", "a\nstatus=200", "x\"y", "a b", strings.Repeat("z", 129)} {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header["X-Request-Id"] = []string{bad}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		got := rec.Header().Get("X-Request-ID")
+		assert.NotEqual(t, bad, got)
+		assert.Regexp(t, `^[0-9a-f]{32}$`, got)
+	}
+	require.Len(t, lines, 5)
+	for _, l := range lines {
+		assert.NotContains(t, l, "\n")
+		assert.NotContains(t, l, "X-Evil")
+		assert.Contains(t, l, "request_id")
+	}
 }

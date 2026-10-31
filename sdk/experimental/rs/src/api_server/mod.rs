@@ -11,7 +11,7 @@
 //!
 //! Outer to inner:
 //!
-//! 1. request id (`X-Request-ID`, kept if sent), then the client
+//! 1. request id (`X-Request-ID`, kept if sent and a plain token), then the client
 //!    address behind [trusted proxies](clientaddr::parse_trusted_proxies),
 //!    the access log through [`redact`](crate::redact), panic
 //!    recovery, security headers;

@@ -27,7 +27,9 @@
       "unauthenticated": 401,
       "rate_limited": 429,
       "method_not_allowed": 405
-    }
+    },
+    "request_id_pattern": "^[A-Za-z0-9._-]{1,128}$",
+    "minted_request_id_pattern": "^[0-9a-f]{32}$"
   },
   "ports": {
     "go": {
@@ -1577,6 +1579,67 @@
           }
         }
       }
+    }
+  ],
+  "request_id": [
+    {
+      "name": "absent token: minted",
+      "kept": false
+    },
+    {
+      "name": "plain token kept",
+      "header": "abc-123",
+      "kept": true
+    },
+    {
+      "name": "every allowed punctuation kept",
+      "header": "a.b_c-D9",
+      "kept": true
+    },
+    {
+      "name": "128 characters kept",
+      "header": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kept": true
+    },
+    {
+      "name": "129 characters replaced",
+      "header": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kept": false
+    },
+    {
+      "name": "empty replaced",
+      "header": "",
+      "kept": false
+    },
+    {
+      "name": "space replaced",
+      "header": "a b",
+      "kept": false
+    },
+    {
+      "name": "double quote replaced",
+      "header": "x\"y",
+      "kept": false
+    },
+    {
+      "name": "tab replaced",
+      "header": "a\tb",
+      "kept": false
+    },
+    {
+      "name": "slash replaced",
+      "header": "a/b",
+      "kept": false
+    },
+    {
+      "name": "non-ASCII replaced",
+      "header": "é",
+      "kept": false
+    },
+    {
+      "name": "log-forging text replaced",
+      "header": "ok status=200 request_id=forged",
+      "kept": false
     }
   ]
 }

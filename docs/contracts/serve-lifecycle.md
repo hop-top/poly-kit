@@ -1036,7 +1036,7 @@ of any of them.
 | `Tenant`         | tenant from the `Auth` claims                  | verified by the socket's authenticator (empty under `peer`), else the request's `tenant` as a claim |
 | `Established`    | `verified` when `Auth` verified the request, else empty | `verified` with an authenticator, else `transport` (the `0600` file) |
 | `Surface`        | `rest`, pinned                                 | `socket`, pinned by the seam                |
-| `RequestID`      | `X-Request-ID`, issued when absent, echoed     | `request_id`, issued when absent            |
+| `RequestID`      | `X-Request-ID`, issued when absent or invalid, echoed | `request_id`, issued when absent            |
 | `TraceID`        | `traceparent` trace-id, else `X-Trace-ID`      | `trace_id`                                  |
 | `Traceparent`, `Tracestate` | W3C `traceparent` when well-formed, and `tracestate` beside it | —                  |
 | `IdempotencyKey` | `Idempotency-Key`                              | `idempotency_key`                           |

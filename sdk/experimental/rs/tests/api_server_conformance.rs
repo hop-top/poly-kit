@@ -238,6 +238,49 @@ async fn origin_corpus() {
     }
 }
 
+// --- request id ----------------------------------------------------------
+
+#[tokio::test]
+async fn request_id_corpus() {
+    let c = corpus();
+    assert_eq!(
+        c["constants"]["request_id_pattern"],
+        "^[A-Za-z0-9._-]{1,128}$"
+    );
+    let rows = c["request_id"].as_array().unwrap();
+    assert!(!rows.is_empty());
+    let minted = |id: &str| id.len() == 32 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    for case in rows {
+        let name = case["name"].as_str().unwrap();
+        let mut cfg = ApiServerConfig::new(
+            "0.0.0.0:0",
+            Router::new().route("/", any(|| async { "ok" })),
+        );
+        cfg.host_check = false;
+        cfg.origin_check = false;
+        cfg.security_headers = false;
+        cfg.compress = false;
+        cfg.log = Some(std::sync::Arc::new(|_| {}));
+        let app = ApiService::build(cfg).unwrap().router();
+        let mut req = Request::builder().uri("/").header("host", "127.0.0.1");
+        let sent = case.get("header").and_then(Value::as_str);
+        if let Some(h) = sent {
+            req = req.header(
+                "x-request-id",
+                axum::http::HeaderValue::from_bytes(h.as_bytes()).unwrap(),
+            );
+        }
+        let resp = app.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        let got = resp.headers()["x-request-id"].to_str().unwrap().to_string();
+        if case["kept"].as_bool().unwrap() {
+            assert_eq!(Some(got.as_str()), sent, "{name}");
+        } else {
+            assert!(minted(&got), "{name}: {got}");
+            assert_ne!(Some(got.as_str()), sent, "{name}");
+        }
+    }
+}
+
 // --- OpenAPI -------------------------------------------------------------
 
 fn schema(v: &Value) -> Option<Value> {

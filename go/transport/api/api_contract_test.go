@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,6 +30,8 @@ type apiContract struct {
 		DefaultCSP           string            `json:"default_csp"`
 		DefaultHSTSSeconds   int64             `json:"default_hsts_max_age_seconds"`
 		DefaultAuthChallenge string            `json:"default_auth_challenge"`
+		RequestIDPattern     string            `json:"request_id_pattern"`
+		MintedIDPattern      string            `json:"minted_request_id_pattern"`
 		Codes                map[string]int    `json:"codes"`
 	} `json:"constants"`
 	ClientAddress []struct {
@@ -70,6 +73,11 @@ type apiContract struct {
 		Message   string            `json:"message"`
 	} `json:"origin"`
 	OriginInvalid []string `json:"origin_invalid"`
+	RequestID     []struct {
+		Name   string  `json:"name"`
+		Header *string `json:"header"`
+		Kept   bool    `json:"kept"`
+	} `json:"request_id"`
 }
 
 func readAPIContract(t *testing.T) apiContract {
@@ -203,5 +211,37 @@ func TestAPIContractOrigin(t *testing.T) {
 	for _, bad := range c.OriginInvalid {
 		_, err := api.OriginCheck(api.OriginCheckConfig{Allow: []string{bad}})
 		assert.Error(t, err, bad)
+	}
+}
+
+func TestAPIContractRequestID(t *testing.T) {
+	c := readAPIContract(t)
+	require.NotEmpty(t, c.RequestID)
+	accepted := regexp.MustCompile(c.Constants.RequestIDPattern)
+	minted := regexp.MustCompile(c.Constants.MintedIDPattern)
+	for _, tt := range c.RequestID {
+		t.Run(tt.Name, func(t *testing.T) {
+			var seen string
+			h := api.RequestID()(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				seen = api.GetRequestID(r)
+			}))
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tt.Header != nil {
+				req.Header["X-Request-Id"] = []string{*tt.Header}
+			}
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			echoed := rec.Header().Get("X-Request-ID")
+			assert.Equal(t, seen, echoed)
+			if tt.Kept {
+				assert.Equal(t, *tt.Header, echoed)
+				return
+			}
+			assert.Regexp(t, minted, echoed)
+			assert.Regexp(t, accepted, echoed)
+			if tt.Header != nil {
+				assert.NotEqual(t, *tt.Header, echoed)
+			}
+		})
 	}
 }

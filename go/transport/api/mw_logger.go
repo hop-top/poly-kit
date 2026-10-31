@@ -21,7 +21,7 @@ import (
 type LoggerFunc func(msg any, keyvals ...any)
 
 // Logger returns a middleware that logs each request using the provided
-// log function. It records method, path, status code, and duration.
+// log function. It records method, path, status code, and duration, plus the request id when [RequestID] ran.
 //
 // fn matches kit/log's bound Info method value
 // (`func(msg any, keyvals ...any)`). To capture this middleware's
@@ -33,12 +33,19 @@ func Logger(fn LoggerFunc) Middleware {
 			start := time.Now()
 			sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(sw, r)
-			fn("http request",
+			kv := []any{
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", sw.status,
 				"duration", fmt.Sprintf("%dms", time.Since(start).Milliseconds()),
-			)
+			}
+			// A structured value: the logger quotes it, so it can never
+			// run into the next field. RequestID has already confined
+			// it to a plain token.
+			if id := GetRequestID(r); id != "" {
+				kv = append(kv, "request_id", id)
+			}
+			fn("http request", kv...)
 		})
 	}
 }
