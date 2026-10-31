@@ -63,7 +63,7 @@ event out to them. The runnable form is `tests/notify_e2e.rs`.
 - OS: macOS `osascript` (title and text are argv, never script source), Linux `notify-send --`, Windows an error.
   Spawned directly, never through a shell; `Runner` is the test seam.
 - No `contracts/` corpus covers notify; the Go tests are ported (`tests/notify_*.rs`). Retry-wait defaults, template
-  rendering rules and the rest: [Rust SDK reference, Notify](../../../../../docs/adopters/reference/rs-sdk.md#notify).
+  rendering rules and the rest: [Rust SDK reference, Notify](../../../../docs/adopters/reference/rs-sdk.md#notify).
 
 ## Neighbours
 
@@ -75,6 +75,6 @@ event out to them. The runnable form is `tests/notify_e2e.rs`.
 
 ## See also
 
-- [Notifications overview](../../../../../docs/adopters/concepts/notifications-overview.md)
-- [Notify sink reference](../../../../../docs/adopters/reference/notify-sinks.md)
-- [`go/runtime/notify`](../../../../../go/runtime/notify/README.md), the Go reference
+- [Notifications overview](../../../../docs/adopters/concepts/notifications-overview.md)
+- [Notify sink reference](../../../../docs/adopters/reference/notify-sinks.md)
+- [`go/runtime/notify`](../../../../go/runtime/notify/README.md), the Go reference

@@ -8,7 +8,7 @@ severity convention and composition pattern see
 
 The Rust SDK carries the same three sinks (`WebhookSink`, `EmailSink` +
 `SmtpMailer`, `OsNotifySink`); see
-[its README](../../../sdk/experimental/rs/src/notify/README.md) for the
+[its README](../../../sdk/rs/src/notify/README.md) for the
 builder form and the differences.
 
 Every sink follows the package-wide guardrail convention in

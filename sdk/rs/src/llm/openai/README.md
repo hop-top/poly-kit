@@ -34,5 +34,5 @@ it. Registers `openai`, `openrouter`, `xai`, `lmstudio`, `groq`,
 
 ## See also
 
-- [`go/ai/llm/openai`](../../../../../../go/ai/llm/openai), the Go reference
-- [`contracts/llm-v1`](../../../../../../contracts/llm-v1/README.md): the shared corpus (`openai_*`)
+- [`go/ai/llm/openai`](../../../../../go/ai/llm/openai), the Go reference
+- [`contracts/llm-v1`](../../../../../contracts/llm-v1/README.md): the shared corpus (`openai_*`)

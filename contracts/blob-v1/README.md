@@ -15,7 +15,7 @@ What a local blob store must do, independent of language: put/get/delete/list/ex
 make test-parity-blob
 # or separately:
 go test ./go/storage/blob/local/ -run ConformanceBlob
-cargo test --features blob --test blob_conformance   # from sdk/experimental/rs
+cargo test --features blob --test blob_conformance   # from sdk/rs
 ```
 
 `make test-parity` includes it, so CI runs it with the rest of the parity gate.
@@ -43,10 +43,10 @@ Conventions:
 ## Neighbours
 
 - `go/storage/blob/local/conformance_test.go`: Go runner
-- `sdk/experimental/rs/tests/blob_conformance.rs`: Rust runner
+- `sdk/rs/tests/blob_conformance.rs`: Rust runner
 - `../bus-v1/`: event envelope vectors
 
 ## See also
 
 - [`go/storage/blob/README.md`](../../go/storage/blob/README.md)
-- [`sdk/experimental/rs/src/blob/README.md`](../../sdk/experimental/rs/src/blob/README.md)
+- [`sdk/rs/src/blob/README.md`](../../sdk/rs/src/blob/README.md)

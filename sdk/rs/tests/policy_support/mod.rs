@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 
 /// `go/runtime/policy`, the canonical rule files and ruleset.
 pub fn go_policy_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../go/runtime/policy")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../go/runtime/policy")
 }
 
 pub fn load_go(rel: &str) -> Config {

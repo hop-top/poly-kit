@@ -13,7 +13,7 @@ What the `permissions:` rules of a `--policy` file decide for one served invocat
 
 ```sh
 go test ./go/console/cli/celpermission/ -run '^TestConformanceCelPermission'
-cargo test --features cli-permissions --test celpermission_conformance   # from sdk/experimental/rs
+cargo test --features cli-permissions --test celpermission_conformance   # from sdk/rs
 ```
 
 ## Contract
@@ -31,7 +31,7 @@ Not pinned: the text of an interpreter's evaluation error (only its `evaluation 
 | Port | Runner |
 |------|--------|
 | Go | `go/console/cli/celpermission/conformance_test.go` |
-| Rust | `sdk/experimental/rs/tests/celpermission_conformance.rs` |
+| Rust | `sdk/rs/tests/celpermission_conformance.rs` |
 
 ## See also
 

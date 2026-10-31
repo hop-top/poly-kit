@@ -22,5 +22,5 @@ only.
 
 ## See also
 
-- [`go/ai/llm/routellm`](../../../../../../go/ai/llm/routellm), the Go reference
-- [`contracts/llm-v1`](../../../../../../contracts/llm-v1/README.md): `routellm_base_url`
+- [`go/ai/llm/routellm`](../../../../../go/ai/llm/routellm), the Go reference
+- [`contracts/llm-v1`](../../../../../contracts/llm-v1/README.md): `routellm_base_url`

@@ -65,4 +65,4 @@ pick_fs(&ctx).write_file("/tmp/x".as_ref(), b"hi", 0o644).unwrap(); // prints, w
 
 ## See also
 
-- [Side-effect reference](../../../../../docs/adopters/reference/sideeffect.md): the Go design, flag mechanics and policy tiers
+- [Side-effect reference](../../../../docs/adopters/reference/sideeffect.md): the Go design, flag mechanics and policy tiers

@@ -68,7 +68,7 @@ let unwire = wire(&bus, Arc::new(engine)); // vetoes ride the bus
 - No contract directory; the Go tests are ported and `stage.yaml` is pinned byte-for-byte to Go's.
 
 Full list and the `cel` vetting record (alternatives, licences, advisories, age, wasm build):
-[Rust SDK reference, Policy](../../../../../docs/adopters/reference/rs-sdk.md#policy).
+[Rust SDK reference, Policy](../../../../docs/adopters/reference/rs-sdk.md#policy).
 
 ## Neighbours
 
