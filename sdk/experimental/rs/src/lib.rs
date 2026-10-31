@@ -59,12 +59,23 @@ pub mod redact;
 // go/runtime/policy).
 #[cfg(feature = "policy")]
 pub mod policy;
+// Local-first cryptographic identity (a port of go/core/identity):
+// Ed25519 keypair, EdDSA JWT, key derivation and secretbox. The core is
+// wasm-safe; OS-RNG generation, the system clock and the store are
+// native only.
+#[cfg(feature = "identity")]
+pub mod identity;
 
 // Base directories for config, consent, telemetry and upgrade files (a
 // port of go/core/xdg's home, config-home, data-home and state-home
 // resolution). Filesystem-only: off wasm32.
 #[cfg(all(
-    any(feature = "config", feature = "telemetry", feature = "upgrade"),
+    any(
+        feature = "config",
+        feature = "telemetry",
+        feature = "upgrade",
+        feature = "identity"
+    ),
     not(target_arch = "wasm32")
 ))]
 pub mod xdg;
