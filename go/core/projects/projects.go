@@ -12,11 +12,11 @@ import (
 	"hop.top/kit/go/core/xdg"
 )
 
-// ErrMalformed is returned by Read when projects.yaml exists but its
+// ErrMalformed is returned by Read, Write and Delete when projects.yaml exists but its
 // content is not valid YAML or does not match the expected shape.
 var ErrMalformed = errors.New("projects: malformed file")
 
-// ErrSchemaUnsupported is returned by Read when projects.yaml has a
+// ErrSchemaUnsupported is returned by Read, Write and Delete when projects.yaml has a
 // schema version greater than the SchemaVersion this build understands.
 var ErrSchemaUnsupported = errors.New("projects: schema version unsupported")
 
@@ -82,7 +82,9 @@ func readFile(path string) (File, error) {
 
 // Write upserts entry under name, preserving every other entry verbatim
 // regardless of its Source. If entry.Source is empty it defaults to
-// SourceWSM.
+// SourceWSM. A missing file is treated as empty; a malformed or
+// newer-schema file is left untouched and Write returns ErrMalformed or
+// ErrSchemaUnsupported.
 //
 // Concurrency: Write acquires an exclusive flock on a sidecar
 // "<path>.lock" for the full read-modify-write cycle and publishes the
@@ -106,8 +108,11 @@ func Write(name string, entry Entry) error {
 	}
 	defer unlock()
 
+	// Refuse on any read error (including ErrMalformed and
+	// ErrSchemaUnsupported): overwriting an unreadable or newer-schema
+	// file would destroy entries this build cannot interpret.
 	file, err := readFile(path)
-	if err != nil && !errors.Is(err, ErrMalformed) && !errors.Is(err, ErrSchemaUnsupported) {
+	if err != nil {
 		return err
 	}
 	if file.Projects == nil {
@@ -120,7 +125,9 @@ func Write(name string, entry Entry) error {
 }
 
 // Delete removes name from the registry, preserving every other entry.
-// A missing key is not an error. Uses the same flock as Write.
+// A missing key is not an error. Like Write, it refuses (ErrMalformed /
+// ErrSchemaUnsupported) rather than rewrite an unreadable or newer-schema
+// file. Uses the same flock as Write.
 func Delete(name string) error {
 	path, err := DefaultPath()
 	if err != nil {
@@ -136,8 +143,11 @@ func Delete(name string) error {
 	}
 	defer unlock()
 
+	// Refuse on any read error (including ErrMalformed and
+	// ErrSchemaUnsupported): overwriting an unreadable or newer-schema
+	// file would destroy entries this build cannot interpret.
 	file, err := readFile(path)
-	if err != nil && !errors.Is(err, ErrMalformed) && !errors.Is(err, ErrSchemaUnsupported) {
+	if err != nil {
 		return err
 	}
 	if file.Projects == nil {
