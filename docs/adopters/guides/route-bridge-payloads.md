@@ -26,10 +26,11 @@ A `Payload` carries an `id`, optional `source`, `source_version`,
 | file | `*File` | `Path`, `Mime`, `Size` |
 | blob | `*Blob` | `Data` (inline, under 1 MiB per the type comment), `Mime`, `Filename` |
 
-Decode from JSON with `json.Unmarshal`. `Payload.UnmarshalJSON` rejects
-zero or several kinds with an error matching `bridge.ErrInvalidOneof`.
-Encoding does not validate: a Payload built in Go with two kinds set
-marshals fine, and `Match` then reports `ReasonInvalidPayload`.
+Encode and decode with `json.Marshal` and `json.Unmarshal`. Both
+`Payload.MarshalJSON` and `Payload.UnmarshalJSON` reject zero or several
+kinds with an error matching `bridge.ErrInvalidOneof`, so a producer
+cannot emit a message its receivers reject. `Match` on a Payload built in
+Go with zero or several kinds set still reports `ReasonInvalidPayload`.
 
 ```go
 var p bridge.Payload
