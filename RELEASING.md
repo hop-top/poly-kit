@@ -113,6 +113,18 @@ opens the line — see [LTS & backports](#lts--backports).
    `kit_<os>_<arch>.tar.gz` (`.zip` on windows) and `checksums.txt` to the
    `kit/v<version>` release. The engine SDKs download from there, see
    [The engine SDKs' kit pin](#the-engine-sdks-kit-pin).
+7. The Rust crate gets two extra checks around the publish. Before a release,
+   `.github/workflows/rs-package.yml` runs `scripts/check-rs-package.sh` on any
+   change under `sdk/experimental/rs`: `cargo package --list` must stay inside
+   the `include` allowlist in `Cargo.toml` (sources, examples, README,
+   CHANGELOG, LICENSE, NOTICE) and the manifest must carry registry metadata.
+   After a `kit-rs/v*` publish, the `rs-install-smoke` job in `publish.yml`
+   builds a fresh crate that depends on the released `hop-top-kit` with
+   `cli`, `output` and `serve-cli`; a failing build turns the run red.
+   docs.rs builds the crate with `all-features` and `--cfg docsrs`
+   (`[package.metadata.docs.rs]`), so check
+   `RUSTDOCFLAGS="--cfg docsrs -D warnings" cargo doc --all-features --no-deps`
+   (nightly, which docs.rs uses) before a release that adds modules.
 
 `release-please.yml` and `release-please-preflight.yml` pin hop-top/.github
 to the full commit SHA of a release that carries the extension (v0.15.0 or
