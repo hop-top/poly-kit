@@ -31,7 +31,7 @@ Consumers:
 | Port | Loader |
 |------|--------|
 | Go | `go/storage/httpcache/contract_test.go` (`TestContract_Keying`, `TestContract_Entry`), `httpcache_test.go` (`TestContract_Cacheability`) |
-| Rust | `sdk/experimental/rs/tests/httpcache_contract.rs` (feature `httpcache`) |
+| Rust | `sdk/experimental/rs/tests/httpcache_contract.rs` (feature `httpcache`): keying cases, the `vary` section (`contract_vary_keying`), the `vary_*` / `authorization_*` / `private_*` cacheability sections (`contract_vary_auth_private_storable`, `_end_to_end`), entry and cacheability vectors |
 
 The fixtures are edited by hand and are the contract of record for every port, Go included. `make lint-config` checks they parse.
 

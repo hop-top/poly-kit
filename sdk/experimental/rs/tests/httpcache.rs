@@ -331,3 +331,242 @@ fn method_case_is_significant() {
     cache.fetch(&lower, |r| origin.fetch(r)).expect("second");
     assert_eq!(origin.calls(), 2, "only GET is cacheable");
 }
+
+/// Fetch closure that echoes the named request header as the body and
+/// stamps the given response headers; counts calls in `hits`.
+fn echo<'a>(
+    hits: &'a Cell<u32>,
+    hdr: &'a str,
+    resp_headers: &'a [(&'a str, &'a str)],
+) -> impl FnMut(&Request) -> Result<Response, Infallible> + 'a {
+    move |req: &Request| {
+        hits.set(hits.get() + 1);
+        let mut resp = Response::new(
+            200,
+            format!("{hdr}={}", req.headers.get(hdr).unwrap_or_default()),
+        );
+        for (k, v) in resp_headers {
+            resp.headers.append(k, *v);
+        }
+        Ok(resp)
+    }
+}
+
+fn get_with(
+    cache: &Cache<'_, SqliteStore>,
+    hdrs: &[(&str, &str)],
+    f: impl FnMut(&Request) -> Result<Response, Infallible>,
+) -> String {
+    let mut req = Request::get("https://example.com/a").expect("request");
+    for (k, v) in hdrs {
+        req.headers.set(k, *v);
+    }
+    cache.fetch(&req, f).expect("fetch").body_string()
+}
+
+#[test]
+fn vary_separates_variants() {
+    let (_dir, store) = new_store();
+    let cache = Cache::new(&store);
+    let hits = Cell::new(0);
+    let vary = [("Vary", "Accept-Language")];
+    let fr = [("Accept-Language", "fr")];
+    let en = [("Accept-Language", "en")];
+
+    assert_eq!(
+        get_with(&cache, &fr, echo(&hits, "Accept-Language", &vary)),
+        "Accept-Language=fr"
+    );
+    assert_eq!(
+        get_with(&cache, &en, echo(&hits, "Accept-Language", &vary)),
+        "Accept-Language=en"
+    );
+    assert_eq!(
+        hits.get(),
+        2,
+        "different Vary value must not get the fr response"
+    );
+    assert_eq!(
+        get_with(&cache, &fr, echo(&hits, "Accept-Language", &vary)),
+        "Accept-Language=fr"
+    );
+    assert_eq!(
+        get_with(&cache, &en, echo(&hits, "Accept-Language", &vary)),
+        "Accept-Language=en"
+    );
+    assert_eq!(hits.get(), 2, "repeats served from their own variant");
+}
+
+#[test]
+fn vary_missing_header_is_its_own_variant() {
+    let (_dir, store) = new_store();
+    let cache = Cache::new(&store);
+    let hits = Cell::new(0);
+    let vary = [("Vary", "accept-language")];
+    let fr = [("Accept-Language", "fr")];
+
+    assert_eq!(
+        get_with(&cache, &[], echo(&hits, "Accept-Language", &vary)),
+        "Accept-Language="
+    );
+    assert_eq!(
+        get_with(&cache, &fr, echo(&hits, "Accept-Language", &vary)),
+        "Accept-Language=fr"
+    );
+    assert_eq!(
+        get_with(&cache, &[], echo(&hits, "Accept-Language", &vary)),
+        "Accept-Language="
+    );
+    assert_eq!(hits.get(), 2);
+}
+
+#[test]
+fn vary_star_never_stored() {
+    let (_dir, store) = new_store();
+    let cache = Cache::new(&store);
+    let hits = Cell::new(0);
+    let vary = [("Vary", "*")];
+    get_with(&cache, &[], echo(&hits, "X", &vary));
+    get_with(&cache, &[], echo(&hits, "X", &vary));
+    assert_eq!(hits.get(), 2, "Vary: * must not be cached");
+}
+
+#[test]
+fn vary_multiple_header_lines() {
+    let (_dir, store) = new_store();
+    let cache = Cache::new(&store);
+    let hits = Cell::new(0);
+    let vary = [("Vary", "Accept"), ("Vary", "Accept-Language")];
+    let a = [("Accept", "text/html"), ("Accept-Language", "en")];
+    let b = [("Accept", "text/html"), ("Accept-Language", "fr")];
+    get_with(&cache, &a, echo(&hits, "Accept", &vary));
+    get_with(&cache, &b, echo(&hits, "Accept", &vary));
+    get_with(&cache, &a, echo(&hits, "Accept", &vary));
+    assert_eq!(hits.get(), 2);
+}
+
+#[test]
+fn no_vary_hits_across_headers() {
+    let (_dir, store) = new_store();
+    let cache = Cache::new(&store);
+    let hits = Cell::new(0);
+    get_with(
+        &cache,
+        &[("Accept-Language", "fr")],
+        echo(&hits, "Accept-Language", &[]),
+    );
+    get_with(
+        &cache,
+        &[("Accept-Language", "en")],
+        echo(&hits, "Accept-Language", &[]),
+    );
+    assert_eq!(hits.get(), 1, "no Vary: key stays method+URL");
+}
+
+#[test]
+fn vary_less_save_clears_stale_index() {
+    let (_dir, store) = new_store();
+    let cache = Cache::new(&store);
+    let hits = Cell::new(0);
+    let x = |v: &'static str| [("X", v)];
+    // Vary response records an index for the URL.
+    get_with(&cache, &x("a"), echo(&hits, "X", &[("Vary", "X")]));
+    // A Vary-less response for another variant lands on the primary key
+    // and must drop the index.
+    get_with(&cache, &x("b"), echo(&hits, "X", &[]));
+    // With the index gone, any request is served from the primary entry.
+    assert_eq!(get_with(&cache, &x("c"), echo(&hits, "X", &[])), "X=b");
+    assert_eq!(hits.get(), 2);
+}
+
+#[test]
+fn authorization_not_stored_by_default() {
+    let (_dir, store) = new_store();
+    let cache = Cache::new(&store);
+    let hits = Cell::new(0);
+    let alice = [("Authorization", "Bearer alice")];
+    let bob = [("Authorization", "Bearer bob")];
+    assert_eq!(
+        get_with(&cache, &alice, echo(&hits, "Authorization", &[])),
+        "Authorization=Bearer alice"
+    );
+    assert_eq!(
+        get_with(&cache, &bob, echo(&hits, "Authorization", &[])),
+        "Authorization=Bearer bob"
+    );
+    assert_eq!(
+        get_with(&cache, &alice, echo(&hits, "Authorization", &[])),
+        "Authorization=Bearer alice"
+    );
+    assert_eq!(hits.get(), 3);
+}
+
+#[test]
+fn unauthenticated_never_sees_authenticated_response() {
+    let (_dir, store) = new_store();
+    let cache = Cache::new(&store);
+    let hits = Cell::new(0);
+    let cc = [("Cache-Control", "public")];
+    get_with(
+        &cache,
+        &[("Authorization", "Bearer alice")],
+        echo(&hits, "Authorization", &[]),
+    );
+    assert_eq!(
+        get_with(&cache, &[], echo(&hits, "Authorization", &cc)),
+        "Authorization="
+    );
+}
+
+#[test]
+fn authorization_with_public_is_stored() {
+    let (_dir, store) = new_store();
+    let cache = Cache::new(&store);
+    let hits = Cell::new(0);
+    let cc = [("Cache-Control", "public, max-age=60")];
+    let alice = [("Authorization", "Bearer alice")];
+    get_with(&cache, &alice, echo(&hits, "Authorization", &cc));
+    get_with(&cache, &alice, echo(&hits, "Authorization", &cc));
+    assert_eq!(hits.get(), 1);
+}
+
+#[test]
+fn private_never_stored_even_with_exemption() {
+    let (_dir, store) = new_store();
+    let cache = Cache::new(&store);
+    let hits = Cell::new(0);
+    let cc = [("Cache-Control", "private, must-revalidate")];
+    let alice = [("Authorization", "Bearer alice")];
+    get_with(&cache, &alice, echo(&hits, "Authorization", &cc));
+    get_with(&cache, &alice, echo(&hits, "Authorization", &cc));
+    get_with(
+        &cache,
+        &[],
+        echo(&hits, "Authorization", &[("Cache-Control", "private")]),
+    );
+    get_with(
+        &cache,
+        &[],
+        echo(&hits, "Authorization", &[("Cache-Control", "private")]),
+    );
+    assert_eq!(hits.get(), 4);
+}
+
+#[test]
+fn primary_entry_naming_vary_is_a_miss() {
+    use hop_top_kit::kv::Store as _;
+    let (_dir, store) = new_store();
+    let cache = Cache::new(&store);
+    let hits = Cell::new(0);
+    let req = Request::get("https://example.com/a").expect("request");
+    // A Vary-unaware writer sharing the store left a Vary response at the
+    // primary key; serving it would ignore the request headers.
+    store
+        .put(
+            cache.key(&req).as_bytes(),
+            br#"{"status":200,"headers":{"Vary":["X"]},"body":"aGk="}"#,
+        )
+        .expect("seed");
+    cache.fetch(&req, echo(&hits, "X", &[])).expect("fetch");
+    assert_eq!(hits.get(), 1);
+}

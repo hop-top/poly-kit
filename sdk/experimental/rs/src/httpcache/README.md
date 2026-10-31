@@ -11,7 +11,8 @@ deciding whether the network may be used at all is `hop_top_kit::netpolicy`.
 - repeated `GET`s against the same URL should hit disk after the first run → `Cache::new(&store).fetch(&req, fetch)`
 - several callers share one kv backend → `Config::default().with_prefix(..)`
 - a response should be served for longer or shorter than a day → `Config::default().with_ttl(..)`
-- you need the key a request maps to, for inspection or eviction → `Cache::key(&req)`
+- you need the key a request maps to, for inspection or eviction → `Cache::key(&req)` (primary), `Cache::vary_index_key(&req)` / `Cache::vary_key(&req, &fields)` (Vary variants)
+- you want to know whether a response would be stored for a request → `storable_for(&req, &resp)`; the Vary field list of a response → `vary_fields(&headers)`
 
 ## Quick start
 
@@ -45,10 +46,19 @@ assert_eq!(fetches, 1, "second call served from cache");
   and no async runtime. Go decorates an `http.RoundTripper` instead.
 - Only `GET` requests and 2xx responses are stored; `Cache-Control: no-store` on either side opts out;
   an entry past its TTL is a miss. Defaults: prefix `httpcache:`, TTL 24h.
+- `Vary` responses are stored per variant: the sorted, lowercased field list lives at the index key
+  (`prefix + "varyidx:" + digest`) and the body at the variant key (`prefix + "vary:" + digest` over
+  method, URL and the request's values for those fields; an absent header is an empty value, its own
+  variant). `Vary: *` is never stored. Responses without `Vary` keep the primary key, byte-identical
+  to Go, and drop any stale index for the URL; a primary entry that names a `Vary` reads as a miss.
+- A `Cache-Control: private` response is never stored (the store is shared across identities), even
+  with `must-revalidate`. A request with `Authorization` is stored only when the response carries
+  `public`, `s-maxage` or `must-revalidate`. `no-store` still wins over everything.
 - Cache failures never reach the caller: a bad read decodes to a miss, a failed write is dropped.
 - The method is used verbatim in the key, never case-folded.
 - Parity: [`contracts/httpcache-v1/`](../../../../../contracts/httpcache-v1/) (`keying.json`,
-  `entry.json`, `cacheability.json`), replayed by `tests/httpcache_contract.rs`.
+  `entry.json`, `cacheability.json`), replayed by `tests/httpcache_contract.rs`, including the
+  `vary` keying section and the `vary_*`, `authorization_*` and `private_*` cacheability sections.
 
 ## Neighbours
 

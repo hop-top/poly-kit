@@ -578,9 +578,9 @@ side the fixtures do not cover.
 
 | Fixture | Pins |
 |---------|------|
-| `keying.json` | `prefix + sha256(method + " " + url)`, plus which URL transforms are and are not applied |
+| `keying.json` | `prefix + sha256(method + " " + url)`, plus which URL transforms are and are not applied; the `vary` section pins the index key, the variant key and the Vary field-list rules |
 | `entry.json` | The on-store envelope: `status`, `headers`, `body`, and the framing-header strip/recompute rule |
-| `cacheability.json` | Which requests and responses may be stored |
+| `cacheability.json` | Which requests and responses may be stored, including the `Vary: *`, `Authorization` and `private` storage vectors |
 
 Three details diverge from what a serializer's defaults would produce:
 
@@ -596,6 +596,19 @@ Keying takes the method and URL **verbatim** — no method upper-casing, host
 lower-casing, default-port stripping, query sorting, dot-segment resolution,
 or fragment stripping. A URL type that normalizes on re-serialization will
 silently produce keys Go cannot read; `keying.json` has a case for each.
+
+Responses with `Vary` do not use the primary key. The URL's sorted,
+lowercased field list is stored at `prefix + "varyidx:" + digest` and the
+response at `prefix + "vary:" + sha256(method + " " + url + "\n" + field +
+":" + values ...)`, with a missing request header contributing an empty
+value. Lookup reads the index first; a primary entry that itself names a
+`Vary` is a miss. Storage gates: `Vary: *` is never stored; `private` is
+never stored (the store is shared across identities) and wins over the
+exemptions below; a request carrying `Authorization` is stored only if the
+response has `public`, `s-maxage` or `must-revalidate`. The Rust entry
+points are `storable_for`, `vary_fields`, `Cache::vary_index_key` and
+`Cache::vary_key`; all three fixture families are replayed by
+`tests/httpcache_contract.rs`.
 
 `serde` + `serde_json` + `base64` + `sha2` cover the whole contract; nothing
 exotic is needed.
