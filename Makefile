@@ -1,7 +1,7 @@
 .PHONY: api audit-php build builtins-sync check check-go-version check-mirror-sync check-template-sources clients \
 	clients-php clients-rs clients-test clients-ts job-integration-hatchet job-integration-restate \
 	job-integration-temporal job-test lint lint-all lint-config lint-docs lint-go lint-links lint-lock-php \
-	check-toolchain-parity lint-actions-pinned lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-sdk-paths-all lint-templates lint-ts openapi \
+	check-rs-features check-toolchain-parity lint-actions-pinned lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-sdk-paths-all lint-templates lint-ts openapi \
 	preflight promote promote-beta promote-rc promote-open-line proto proto-check proto-rs proto-rs-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
 	completion-regen test-parity test-parity-api test-parity-webhook test-parity-authn test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-cli-root test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-rpc test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
@@ -277,6 +277,9 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# All features ensures the api integration test (gated on feature=api)
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/experimental/rs && cargo test --all-features --locked
+
+check-rs-features: ## Rust: cargo check --all-targets once per feature, each alone (slow; CI rs-features)
+	@scripts/check-rs-features.sh
 
 # The bus on wasm32-unknown-unknown, run under Node: one thread, so the
 # async pool is uncapped and close reports NotDrained instead of
