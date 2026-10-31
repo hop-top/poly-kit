@@ -1,8 +1,11 @@
 //! TLS and mTLS serving, a port of Go's `mtls.go` and the listener half
 //! of `serve_tls_files.go`. Feature `api-server-tls`.
 //!
-//! rustls on the ring provider terminates TLS in the listener's accept
-//! loop; with a client CA, every client is asked for a certificate and
+//! rustls terminates TLS in the listener's accept loop, on the ring
+//! provider unless [`TlsConfig::crypto_provider`] names another (feature
+//! `api-server-tls-aws-lc-rs` compiles in `aws_lc_rs`); the one
+//! provider drives the handshake and the client-certificate verifier.
+//! With a client CA, every client is asked for a certificate and
 //! one that does not chain to the bundle ends the handshake. A client
 //! that presents none still reaches the HTTP plane, where the auth layer
 //! refuses it as `unauthenticated` (so health probes answer without a
@@ -22,6 +25,10 @@ use rustls::{RootCertStore, ServerConfig};
 
 use super::error::ApiServerError;
 use crate::authn::Claims;
+
+#[cfg(feature = "api-server-tls-aws-lc-rs")]
+pub use rustls::crypto::aws_lc_rs;
+pub use rustls::crypto::{ring, CryptoProvider};
 
 /// The lowest TLS version the listener accepts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -116,6 +123,7 @@ pub struct TlsConfig {
     /// The lowest version accepted.
     pub min_version: TlsVersion,
     mtls: Option<(Vec<u8>, ClientCertConfig)>,
+    crypto_provider: Option<Arc<CryptoProvider>>,
 }
 
 impl TlsConfig {
@@ -126,12 +134,21 @@ impl TlsConfig {
             key_pem: key_pem.into(),
             min_version: TlsVersion::default(),
             mtls: None,
+            crypto_provider: None,
         }
     }
 
     /// Sets the lowest TLS version.
     pub fn min_version(mut self, v: TlsVersion) -> Self {
         self.min_version = v;
+        self
+    }
+
+    /// Serves on `provider` rather than ring's default: its cipher
+    /// suites, key exchange groups and key loading for the handshake,
+    /// its signature algorithms for verifying client certificates.
+    pub fn crypto_provider(mut self, provider: Arc<CryptoProvider>) -> Self {
+        self.crypto_provider = Some(provider);
         self
     }
 
@@ -162,7 +179,10 @@ pub(crate) fn build(cfg: &TlsConfig) -> Result<TlsSetup, ApiServerError> {
     let key = PrivateKeyDer::from_pem_slice(&cfg.key_pem)
         .map_err(|e| ApiServerError(format!("tls key: {e}")))?;
 
-    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let provider = cfg
+        .crypto_provider
+        .clone()
+        .unwrap_or_else(|| Arc::new(ring::default_provider()));
     let versions: &[&'static rustls::SupportedProtocolVersion] = match cfg.min_version {
         TlsVersion::V1_2 => &[&rustls::version::TLS13, &rustls::version::TLS12],
         TlsVersion::V1_3 => &[&rustls::version::TLS13],
@@ -514,6 +534,38 @@ mod tests {
         assert!(encode_oid("1.40").is_none());
         assert!(encode_oid("2").is_none());
         assert!(encode_oid("a.b").is_none());
+    }
+
+    fn self_signed() -> TlsConfig {
+        let key = rcgen::KeyPair::generate().unwrap();
+        let cert = rcgen::CertificateParams::new(vec!["localhost".into()])
+            .unwrap()
+            .self_signed(&key)
+            .unwrap();
+        TlsConfig::from_pem(cert.pem(), key.serialize_pem())
+    }
+
+    fn shape(p: &CryptoProvider) -> (Vec<rustls::NamedGroup>, Vec<rustls::CipherSuite>) {
+        (
+            p.kx_groups.iter().map(|g| g.name()).collect(),
+            p.cipher_suites.iter().map(|s| s.suite()).collect(),
+        )
+    }
+
+    #[test]
+    fn an_unset_provider_is_ring() {
+        let setup = build(&self_signed()).unwrap();
+        assert_eq!(
+            shape(setup.server.crypto_provider()),
+            shape(&ring::default_provider())
+        );
+    }
+
+    #[test]
+    fn a_named_provider_is_the_one_served() {
+        let p = Arc::new(ring::default_provider());
+        let setup = build(&self_signed().crypto_provider(p.clone())).unwrap();
+        assert!(Arc::ptr_eq(setup.server.crypto_provider(), &p));
     }
 
     #[test]

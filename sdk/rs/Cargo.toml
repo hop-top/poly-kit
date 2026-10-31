@@ -281,14 +281,23 @@ api-server = [
     "tokio/net",
 ]
 # TLS and mTLS serving on the api-server: the listener's accept loop
-# terminates TLS with rustls on the ring provider (no aws-lc-rs C
-# build), offers h2 and http/1.1, and with a client CA verifies client
+# terminates TLS with rustls on the ring provider by default (no aws-lc-rs
+# C build; `TlsConfig::crypto_provider` names another), offers h2 and
+# http/1.1, and with a client CA verifies client
 # certificates, whose subject becomes the caller. tokio-rustls adapts
 # rustls to tokio sockets; both sit on the one rustls pin.
 api-server-tls = [
     "api-server",
     "dep:rustls",
     "dep:tokio-rustls",
+]
+# aws-lc-rs for the api-server's TLS, re-exported as `tls::aws_lc_rs` to
+# pass to `TlsConfig::crypto_provider`; ring stays the default. Opt-in:
+# aws-lc-sys is a C build. No new package: aws-lc-rs =1.18.2 is already
+# locked through reqwest.
+api-server-tls-aws-lc-rs = [
+    "api-server-tls",
+    "rustls/aws_lc_rs",
 ]
 # The websocket hub on the api-server: a port of the hub in
 # go/transport/api. hyper's upgrade and the pinned tokio-tungstenite, as
@@ -613,9 +622,10 @@ futures-util = { version = "=0.3.34", default-features = false, features = [
     "sink",
     "std",
 ], optional = true }
-# The ring provider only; no aws-lc-rs C build. Selected explicitly when
-# the client config is built, so another feature enabling aws-lc-rs in
-# the same graph does not make the provider ambiguous.
+# The ring provider; no aws-lc-rs C build unless `api-server-tls-aws-lc-rs`
+# asks for it. Selected explicitly when a config is built, so another
+# feature enabling aws-lc-rs in the same graph does not make the provider
+# ambiguous.
 rustls = { version = "=0.23.46", default-features = false, features = [
     "ring",
     "std",

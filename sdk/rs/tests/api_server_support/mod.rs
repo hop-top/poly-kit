@@ -3,6 +3,8 @@
 #![allow(dead_code)]
 
 pub mod pki;
+#[cfg(feature = "api-server-tls")]
+pub mod tls_client;
 
 use std::sync::Arc;
 use std::time::Duration;
