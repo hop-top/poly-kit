@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use hop_top_kit::blob::local::LocalStore;
-use hop_top_kit::blob::{BlobError, Store};
+use hop_top_kit::blob::{stat_by_list, BlobError, Object, Stater, Store};
 use tempfile::TempDir;
 
 fn setup() -> (TempDir, LocalStore) {
@@ -232,4 +232,266 @@ fn put_stores_blob_not_world_readable() {
         mode, 0o640,
         "got {mode:o}, want 640 to match the Go backend"
     );
+}
+
+// ---- content type (sidecar) + Stater ------------------------------------
+
+fn types(s: &LocalStore, prefix: &str) -> std::collections::BTreeMap<String, String> {
+    s.list(prefix)
+        .expect("list")
+        .into_iter()
+        .map(|o| (o.key, o.content_type))
+        .collect()
+}
+
+fn files_under(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    fn walk(d: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for e in fs::read_dir(d).expect("read_dir") {
+            let p = e.expect("entry").path();
+            if p.is_dir() {
+                walk(&p, out);
+            } else {
+                out.push(p);
+            }
+        }
+    }
+    let mut v = Vec::new();
+    walk(dir, &mut v);
+    v
+}
+
+#[test]
+fn content_type_round_trip() {
+    let (_dir, s) = setup();
+    s.put("ct/a.json", "{}".as_bytes(), "application/json")
+        .expect("put");
+    s.put("ct/b.bin", "x".as_bytes(), "").expect("put");
+    s.put("ct/over", "1".as_bytes(), "text/plain").expect("put");
+    s.put("ct/over", "2".as_bytes(), "text/csv").expect("put");
+    s.put("ct/gone", "1".as_bytes(), "image/png").expect("put");
+    s.delete("ct/gone").expect("delete");
+    s.put("ct/gone", "1".as_bytes(), "").expect("put");
+
+    let got = types(&s, "ct/");
+    assert_eq!(got["ct/a.json"], "application/json");
+    assert_eq!(got["ct/b.bin"], "");
+    assert_eq!(got["ct/over"], "text/csv");
+    assert_eq!(got["ct/gone"], "");
+    assert_eq!(got.len(), 4);
+}
+
+#[test]
+fn content_type_bytes_unchanged_and_not_listed_as_key() {
+    let (_dir, s) = setup();
+    s.put("k", "payload".as_bytes(), "text/plain").expect("put");
+    assert_eq!(read_key(&s, "k"), "payload");
+    let objs = s.list("").expect("list");
+    assert_eq!(objs.len(), 1);
+    assert_eq!(objs[0].key, "k");
+}
+
+#[test]
+fn content_type_survives_reopen() {
+    let (dir, s) = setup();
+    s.put("a/b.json", "{}".as_bytes(), "application/json")
+        .expect("put");
+    let s2 = LocalStore::new(dir.path()).expect("reopen");
+    assert_eq!(types(&s2, "")["a/b.json"], "application/json");
+}
+
+#[test]
+fn legacy_store_without_sidecar_lists_empty_type() {
+    let (dir, s) = setup();
+    fs::create_dir_all(dir.path().join("old")).expect("mkdir");
+    fs::write(dir.path().join("old/f.txt"), b"hi").expect("write");
+    let got = types(&s, "");
+    assert_eq!(got.get("old/f.txt").map(String::as_str), Some(""));
+}
+
+#[test]
+fn delete_removes_sidecar() {
+    let (dir, s) = setup();
+    s.put("a/b.txt", "x".as_bytes(), "text/plain").expect("put");
+    assert!(dir.path().join(".blob-meta/a/b.txt.json").exists());
+    s.delete("a/b.txt").expect("delete");
+    let left = files_under(dir.path());
+    assert!(left.is_empty(), "files left after delete: {left:?}");
+}
+
+#[test]
+fn put_without_type_removes_stale_sidecar() {
+    let (dir, s) = setup();
+    s.put("k", "1".as_bytes(), "text/plain").expect("put");
+    s.put("k", "2".as_bytes(), "").expect("put");
+    assert_eq!(types(&s, "")["k"], "");
+    assert!(!dir.path().join(".blob-meta/k.json").exists());
+}
+
+#[test]
+fn corrupt_sidecar_is_empty_type_not_error() {
+    let (dir, s) = setup();
+    s.put("k", "1".as_bytes(), "text/plain").expect("put");
+    fs::write(dir.path().join(".blob-meta/k.json"), b"{not json").expect("corrupt");
+    assert_eq!(types(&s, "")["k"], "");
+    assert_eq!(s.stat("k").expect("stat").content_type, "");
+}
+
+#[test]
+fn sidecar_namespace_cannot_collide_with_keys() {
+    let (_dir, s) = setup();
+    for k in ["k.json", "k.json.json", "k"] {
+        s.put(k, k.as_bytes(), &format!("text/{k}")).expect("put");
+    }
+    let got = types(&s, "");
+    for k in ["k.json", "k.json.json", "k"] {
+        assert_eq!(got[k], format!("text/{k}"));
+    }
+    assert_eq!(got.len(), 3);
+
+    for key in [".blob-meta/x", ".blob-meta", "a/../.blob-meta/x"] {
+        assert!(
+            matches!(
+                s.put(key, "x".as_bytes(), ""),
+                Err(BlobError::ReservedKey(_))
+            ),
+            "put {key:?} must be rejected"
+        );
+        assert!(matches!(s.get(key), Err(BlobError::ReservedKey(_))));
+        assert!(matches!(s.stat(key), Err(BlobError::ReservedKey(_))));
+    }
+    // Only the top-level segment is reserved.
+    s.put("a/.blob-meta/x", "x".as_bytes(), "")
+        .expect("nested ok");
+}
+
+/// Byte-compat with the Go backend: exact path, compact JSON shape.
+#[test]
+fn sidecar_layout_matches_go() {
+    let (dir, s) = setup();
+    s.put("a/b.txt", "x".as_bytes(), "text/plain").expect("put");
+    let raw = fs::read_to_string(dir.path().join(".blob-meta/a/b.txt.json")).expect("sidecar");
+    assert_eq!(raw, r#"{"content_type":"text/plain"}"#);
+}
+
+/// A sidecar written by the Go backend is readable here.
+#[test]
+fn reads_go_written_sidecar() {
+    let (dir, s) = setup();
+    fs::create_dir_all(dir.path().join("d")).expect("mkdir");
+    fs::write(dir.path().join("d/k"), b"abc").expect("write");
+    fs::create_dir_all(dir.path().join(".blob-meta/d")).expect("mkdir");
+    fs::write(
+        dir.path().join(".blob-meta/d/k.json"),
+        br#"{"content_type":"text/x-go"}"#,
+    )
+    .expect("write sidecar");
+    assert_eq!(types(&s, "")["d/k"], "text/x-go");
+    assert_eq!(
+        s.stat("d/k").expect("stat"),
+        Object {
+            key: "d/k".into(),
+            size: 3,
+            content_type: "text/x-go".into()
+        }
+    );
+}
+
+#[test]
+fn stat_round_trip() {
+    let (_dir, s) = setup();
+    s.put("st/a.json", "{}".as_bytes(), "application/json")
+        .expect("put");
+    s.put("st/b.bin", "xyz".as_bytes(), "").expect("put");
+    assert_eq!(
+        s.stat("st/a.json").expect("stat"),
+        Object {
+            key: "st/a.json".into(),
+            size: 2,
+            content_type: "application/json".into()
+        }
+    );
+    let b = s.stat("st/b.bin").expect("stat");
+    assert_eq!((b.size, b.content_type.as_str()), (3, ""));
+}
+
+#[test]
+fn stat_missing_and_after_delete_are_not_found() {
+    let (_dir, s) = setup();
+    assert!(matches!(s.stat("nope"), Err(BlobError::NotFound(_))));
+    s.put("gone", "1".as_bytes(), "image/png").expect("put");
+    s.delete("gone").expect("delete");
+    assert!(matches!(s.stat("gone"), Err(BlobError::NotFound(_))));
+    // A directory is not an object.
+    s.put("dir/x", "1".as_bytes(), "").expect("put");
+    assert!(matches!(s.stat("dir"), Err(BlobError::NotFound(_))));
+}
+
+#[test]
+fn stat_overwrite_updates() {
+    let (_dir, s) = setup();
+    s.put("o", "1".as_bytes(), "text/plain").expect("put");
+    s.put("o", "22".as_bytes(), "text/csv").expect("put");
+    let o = s.stat("o").expect("stat");
+    assert_eq!((o.size, o.content_type.as_str()), (2, "text/csv"));
+    s.put("o", "333".as_bytes(), "").expect("put");
+    let o = s.stat("o").expect("stat");
+    assert_eq!((o.size, o.content_type.as_str()), (3, ""));
+}
+
+#[test]
+fn stat_reads_sidecar_on_disk() {
+    let (dir, s) = setup();
+    s.put("k", "abc".as_bytes(), "text/x-a").expect("put");
+    fs::write(
+        dir.path().join(".blob-meta/k.json"),
+        br#"{"content_type":"text/x-b"}"#,
+    )
+    .expect("rewrite");
+    assert_eq!(s.stat("k").expect("stat").content_type, "text/x-b");
+}
+
+/// Minimal Store with no Stater.
+struct ListOnly(Vec<Object>);
+
+impl Store for ListOnly {
+    type Reader = std::io::Empty;
+    fn put<R: Read>(&self, _: &str, _: R, _: &str) -> Result<(), BlobError> {
+        Ok(())
+    }
+    fn get(&self, _: &str) -> Result<Self::Reader, BlobError> {
+        Ok(io::empty())
+    }
+    fn delete(&self, _: &str) -> Result<(), BlobError> {
+        Ok(())
+    }
+    fn list(&self, _: &str) -> Result<Vec<Object>, BlobError> {
+        Ok(self.0.clone())
+    }
+    fn exists(&self, _: &str) -> Result<bool, BlobError> {
+        Ok(false)
+    }
+}
+
+fn obj(key: &str, size: u64) -> Object {
+    Object {
+        key: key.into(),
+        size,
+        content_type: String::new(),
+    }
+}
+
+#[test]
+fn stat_by_list_picks_exact_key() {
+    let s = ListOnly(vec![obj("k2", 9), obj("k", 1)]);
+    let got = stat_by_list(&s, "k").expect("stat");
+    assert_eq!((got.key.as_str(), got.size), ("k", 1));
+}
+
+#[test]
+fn stat_by_list_missing_is_not_found() {
+    let s = ListOnly(vec![obj("k2", 9)]);
+    assert!(matches!(
+        stat_by_list(&s, "k"),
+        Err(BlobError::NotFound(k)) if k == "k"
+    ));
 }

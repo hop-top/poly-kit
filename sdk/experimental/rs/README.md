@@ -34,6 +34,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`id/`](src/id/README.md), [`timeutil/`](src/timeutil/README.md) | TypeID primitive (feature `id`); `since` and `until` relative-date parsing (feature `timeutil`) | you mint or parse prefixed identifiers, or a flag takes a human time expression |
 | [`policy/`](src/policy/README.md) | declarative CEL guard rules vetoing the state machine's pre-transition and the entity pre-events, deny-overrides, typed `PolicyDeniedError`, the stage ruleset, a port of `go/runtime/policy` (feature `policy`, wasm-safe) | who may do what is rules in a file, not code |
 | [`identity/`](src/identity/README.md), [`redact/`](src/redact/README.md) | local Ed25519 identity, a port of `go/core/identity`: keypair with PEM, EdDSA JWT sign/verify, HKDF key derivation, NaCl secretbox, on-disk store (feature `identity`; core wasm-safe, store native only); secret and PII redaction with gitleaks rule semantics and the default corpus embedded, a port of `go/core/redact` (feature `redact`, wasm-safe) | a tool needs a local keypair, signed tokens or encryption at rest, or text may carry credentials before it is logged, sent or shown |
+| [`blob/`](src/blob/README.md) | object storage over a backend trait with content-type sidecars and optional `Stater`, local filesystem only (feature `blob`) | you store opaque files or artifacts |
 | [`telemetry/`](src/telemetry/README.md) | consent-gated usage events, redaction, sinks (feature `telemetry`) | you record usage under user consent |
 | [`upgrade/`](src/upgrade/README.md) | versioned state migrations: semver-ordered steps per schema, backup, rollback, version files (feature `upgrade`) | stored data must move forward when a new build ships |
 | [`sqldb.rs`](src/sqldb.rs), [`kv.rs`](src/kv.rs) | SQLite connection setup, pragmas, numbered migrations (feature `sqldb`); byte-keyed `Store` / `TtlStore` traits over it (feature `kv`) | you open a database directly, or need small keyed values with expiry |
@@ -53,6 +54,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 |---------|----------|-------------|
 | `netpolicy` (`api`); `blob` | nothing (+ `reqwest`, `serde`, `serde_json`, `thiserror`); `thiserror` | 0 (113); 6 |
 | `netpolicy` (`api`) | `url` (+ `reqwest`, `serde`, `serde_json`, `thiserror`) | 44 (113) |
+| `blob` | `thiserror`, `serde_json` | 11 |
 | `sqldb` (`kv`) | `rusqlite` (bundled SQLite), `thiserror` (`kv`: nothing of its own) | 12 (12) |
 | `bus` (`domain`, `breaker`, `bus-network`, `bus-network-axum`, `bus-network-webpki-roots`) | `serde`, `serde_json` (`domain`, `breaker`: nothing of their own, wasm-safe; + `netpolicy`, `tokio` rt/net/time/sync/macros, `tokio-tungstenite`, `futures-util`, `getrandom`, `rustls` (ring), `rustls-native-certs`; + `axum`, `hyper`, `hyper-util`; + `webpki-roots`) | 14 (14, 14, 60, 76, 61) |
 | `sync` (`sync-http`) | `domain` + `base64` (`sync-http`: `api`, `tokio` rt and time, nothing new beyond `api`; native only) | 15 (113) |

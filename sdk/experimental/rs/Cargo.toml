@@ -24,7 +24,8 @@ netpolicy = ["dep:url"]
 # progress events, bar, spinner, status lines, confirm, app shell frame.
 # Plain ANSI on std: no dependencies of its own.
 tui = []
-blob = ["dep:thiserror"]
+# serde_json reads/writes the content-type sidecar (`.blob-meta/<key>.json`).
+blob = ["dep:thiserror", "dep:serde_json"]
 uri = ["dep:hop-top-cite"]
 # preserve_order backs serde_json::Map with indexmap instead of BTreeMap, so
 # object key order survives round-trips and projection at every nesting depth.
