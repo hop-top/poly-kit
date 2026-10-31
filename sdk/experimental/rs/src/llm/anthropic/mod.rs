@@ -225,6 +225,7 @@ impl Builder {
                 self.cfg.net_policy,
                 reqwest::Client::builder(),
                 crate::netpolicy::Redirects::None,
+                reqwest::header::HeaderMap::new(),
             )
             .map_err(|e| LlmError::invalid(format!("anthropic: http client: {e}")))?,
         };

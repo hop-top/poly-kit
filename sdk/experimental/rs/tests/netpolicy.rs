@@ -544,6 +544,7 @@ async fn none_mode_returns_the_redirect_unfollowed() {
         NetPolicy::online().with_allow_hosts(["graph.microsoft.com"]),
         reqwest::Client::builder(),
         Redirects::None,
+        reqwest::header::HeaderMap::new(),
     )
     .expect("build client");
     let resp = client
@@ -649,4 +650,73 @@ async fn same_origin_hop_is_followed_and_loops_are_bounded() {
         .await
         .unwrap_err();
     assert!(err.to_string().contains("too many redirects"), "{err}");
+}
+
+// Credentials set as client defaults are credentials too: the hop check
+// must know them although no request header names them.
+#[tokio::test]
+async fn default_header_credentials_block_cross_origin_hops() {
+    let mut a = mockito::Server::new_async().await;
+    let mut b = mockito::Server::new_async().await;
+    let _m = a
+        .mock("GET", "/hop")
+        .with_status(302)
+        .with_header("location", &format!("{}/final", b.url()))
+        .create_async()
+        .await;
+    let hit = b
+        .mock("GET", "/final")
+        .with_status(204)
+        .expect(0)
+        .create_async()
+        .await;
+
+    let mut defaults = reqwest::header::HeaderMap::new();
+    defaults.insert("authorization", "Bearer d-secret".parse().unwrap());
+    let client = GuardedClient::build(
+        NetPolicy::online(),
+        reqwest::Client::builder(),
+        Redirects::default(),
+        defaults,
+    )
+    .expect("build client");
+    let err = client
+        .get(format!("{}/hop", a.url()))
+        .send()
+        .await
+        .expect_err("default credential followed cross-origin");
+    assert!(matches!(err, NetError::Redirect(_)), "{err}");
+    hit.assert_async().await;
+}
+
+// A cross-origin hop without credentials forwards a small safe set only.
+#[tokio::test]
+async fn cross_origin_hop_forwards_only_safe_headers() {
+    use mockito::Matcher;
+    let mut a = mockito::Server::new_async().await;
+    let mut b = mockito::Server::new_async().await;
+    let _m = a
+        .mock("GET", "/hop")
+        .with_status(302)
+        .with_header("location", &format!("{}/final", b.url()))
+        .create_async()
+        .await;
+    let hit = b
+        .mock("GET", "/final")
+        .match_header("accept", "application/json")
+        .match_header("x-internal-trace", Matcher::Missing)
+        .with_status(204)
+        .expect(1)
+        .create_async()
+        .await;
+    let client = GuardedClient::new(NetPolicy::online()).expect("build client");
+    let resp = client
+        .get(format!("{}/hop", a.url()))
+        .header("accept", "application/json")
+        .header("x-internal-trace", "t-1")
+        .send()
+        .await
+        .expect("followed");
+    assert_eq!(resp.status().as_u16(), 204);
+    hit.assert_async().await;
 }
