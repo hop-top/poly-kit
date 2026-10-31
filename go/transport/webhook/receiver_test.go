@@ -104,3 +104,60 @@ func TestHandshakeBypassesVerificationOnlyForItsToken(t *testing.T) {
 	rc.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{}")))
 	assert.Equal(t, http.StatusUnauthorized, w.Code, "no token, no bypass")
 }
+
+func TestReceiverNamesCannotCollideClaims(t *testing.T) {
+	for _, bad := range []string{"a/b", "A", "a b", "a.b", ""} {
+		_, err := webhook.New(bad, webhook.WithPublisher(&recorder{}), webhook.WithVerifier(webhook.BasicAuth("u", "p")))
+		assert.Error(t, err, "%q", bad)
+	}
+	// "a" + key "b/c" and "a/b" + key "c" joined to the same string under
+	// the old scheme; the claim is now a hash of the key.
+	store := memory.New()
+	mk := func(name string) *webhook.Receiver {
+		rec := &recorder{}
+		rc, err := webhook.New(name, webhook.WithPublisher(rec), webhook.WithVerifier(webhook.BasicAuth("u", "p")),
+			webhook.WithIdempotency(store, time.Hour, func(*http.Request, []byte) string { return "b/c" }))
+		require.NoError(t, err)
+		return rc
+	}
+	a, ab := mk("a"), mk("a-b")
+	assert.Equal(t, http.StatusAccepted, post(a, "1").Code)
+	assert.Equal(t, http.StatusAccepted, post(ab, "1").Code, "another receiver, another claim")
+	keys, _ := store.List(context.Background(), "webhook/")
+	assert.Len(t, keys, 2)
+	for _, k := range keys {
+		assert.NotContains(t, k, "b/c")
+	}
+}
+
+func TestHeaderKeyAloneNeverClaims(t *testing.T) {
+	rec := &recorder{}
+	rc, err := webhook.New("t", webhook.WithPublisher(rec), webhook.WithVerifier(webhook.BasicAuth("u", "p")),
+		webhook.WithIdempotency(memory.New(), time.Hour, webhook.HeaderKey("X-Id")))
+	require.NoError(t, err)
+	send := func(id, body string) int {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		req.SetBasicAuth("u", "p")
+		req.Header.Set("X-Id", id)
+		w := httptest.NewRecorder()
+		rc.ServeHTTP(w, req)
+		return w.Code
+	}
+	assert.Equal(t, http.StatusAccepted, send("one", "body"))
+	assert.Equal(t, http.StatusOK, send("two", "body"), "a changed unsigned header is still the same delivery")
+	assert.Equal(t, http.StatusAccepted, send("one", "other body"))
+}
+
+func TestBadTimestampIsRefusedBeforeAnyMAC(t *testing.T) {
+	cfg := webhook.HMACConfig{Header: "S", Secret: []byte("k"), TimestampHeader: "T"}
+	v, err := webhook.HMAC(cfg)
+	require.NoError(t, err)
+	for _, ts := range []string{"123.abc", "12 3", "+12", "-5", "", "0012", strings.Repeat("9", 40)} {
+		req := httptest.NewRequest(http.MethodPost, "/", nil)
+		req.Header.Set("T", ts)
+		req.Header.Set("S", "anything")
+		err := v.Verify(req, nil)
+		require.ErrorIs(t, err, webhook.ErrUnverified, ts)
+		assert.Contains(t, err.Error(), "timestamp", ts)
+	}
+}

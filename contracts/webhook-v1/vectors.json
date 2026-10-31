@@ -649,10 +649,56 @@
             "X-Timestamp": "1793447990",
             "X-Delivery-Id": "d--10"
           },
-          "body": "{\"a\":2}",
+          "body": "{\"a\":1}",
           "want": {
             "status": 200,
+            "body_json": {
+              "status": "duplicate"
+            },
             "published": 1
+          },
+          "method": "POST",
+          "target": "/hook"
+        },
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256=",
+            "timestamp_header": "X-Timestamp"
+          },
+          "headers": {
+            "X-Timestamp": "1793447990",
+            "X-Delivery-Id": "other-id"
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 200,
+            "body_json": {
+              "status": "duplicate"
+            },
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook"
+        },
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256=",
+            "timestamp_header": "X-Timestamp"
+          },
+          "headers": {
+            "X-Timestamp": "1793447990",
+            "X-Delivery-Id": "d--10"
+          },
+          "body": "{\"a\":2}",
+          "want": {
+            "status": 202,
+            "published": 2
           },
           "method": "POST",
           "target": "/hook"
@@ -673,7 +719,7 @@
           "want": {
             "status": 401,
             "code": "webhook_stale",
-            "published": 1
+            "published": 2
           },
           "method": "POST",
           "target": "/hook"
@@ -694,7 +740,7 @@
           "want": {
             "status": 401,
             "code": "webhook_stale",
-            "published": 1
+            "published": 2
           },
           "method": "POST",
           "target": "/hook"
@@ -714,7 +760,7 @@
           "body": "{\"a\":4}",
           "want": {
             "status": 202,
-            "published": 2
+            "published": 3
           },
           "method": "POST",
           "target": "/hook"
@@ -734,10 +780,277 @@
           "want": {
             "status": 401,
             "code": "webhook_unverified",
-            "published": 2
+            "published": 3
           },
           "method": "POST",
           "target": "/hook"
+        }
+      ]
+    },
+    {
+      "name": "hmac: timestamp '123.abc' is refused before any MAC is computed",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Signature",
+        "hash": "sha256",
+        "encoding": "hex",
+        "prefix": "sha256=",
+        "secret": "{{SECRET}}",
+        "timestamp_header": "X-Timestamp",
+        "replay_window_seconds": 300,
+        "key_header": "X-Delivery-Id"
+      },
+      "requests": [
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256=",
+            "timestamp_header": "X-Timestamp"
+          },
+          "headers": {
+            "X-Timestamp": "123.abc",
+            "X-Delivery-Id": "x"
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 401,
+            "code": "webhook_unverified",
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook"
+        }
+      ]
+    },
+    {
+      "name": "hmac: timestamp '12 3' is refused before any MAC is computed",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Signature",
+        "hash": "sha256",
+        "encoding": "hex",
+        "prefix": "sha256=",
+        "secret": "{{SECRET}}",
+        "timestamp_header": "X-Timestamp",
+        "replay_window_seconds": 300,
+        "key_header": "X-Delivery-Id"
+      },
+      "requests": [
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256=",
+            "timestamp_header": "X-Timestamp"
+          },
+          "headers": {
+            "X-Timestamp": "12 3",
+            "X-Delivery-Id": "x"
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 401,
+            "code": "webhook_unverified",
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook"
+        }
+      ]
+    },
+    {
+      "name": "hmac: timestamp '+12' is refused before any MAC is computed",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Signature",
+        "hash": "sha256",
+        "encoding": "hex",
+        "prefix": "sha256=",
+        "secret": "{{SECRET}}",
+        "timestamp_header": "X-Timestamp",
+        "replay_window_seconds": 300,
+        "key_header": "X-Delivery-Id"
+      },
+      "requests": [
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256=",
+            "timestamp_header": "X-Timestamp"
+          },
+          "headers": {
+            "X-Timestamp": "+12",
+            "X-Delivery-Id": "x"
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 401,
+            "code": "webhook_unverified",
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook"
+        }
+      ]
+    },
+    {
+      "name": "hmac: timestamp '' is refused before any MAC is computed",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Signature",
+        "hash": "sha256",
+        "encoding": "hex",
+        "prefix": "sha256=",
+        "secret": "{{SECRET}}",
+        "timestamp_header": "X-Timestamp",
+        "replay_window_seconds": 300,
+        "key_header": "X-Delivery-Id"
+      },
+      "requests": [
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256=",
+            "timestamp_header": "X-Timestamp"
+          },
+          "headers": {
+            "X-Timestamp": "",
+            "X-Delivery-Id": "x"
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 401,
+            "code": "webhook_unverified",
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook"
+        }
+      ]
+    },
+    {
+      "name": "hmac: timestamp '0000000000000000000000000000000001' is refused before any MAC is computed",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Signature",
+        "hash": "sha256",
+        "encoding": "hex",
+        "prefix": "sha256=",
+        "secret": "{{SECRET}}",
+        "timestamp_header": "X-Timestamp",
+        "replay_window_seconds": 300,
+        "key_header": "X-Delivery-Id"
+      },
+      "requests": [
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256=",
+            "timestamp_header": "X-Timestamp"
+          },
+          "headers": {
+            "X-Timestamp": "0000000000000000000000000000000001",
+            "X-Delivery-Id": "x"
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 401,
+            "code": "webhook_unverified",
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook"
+        }
+      ]
+    },
+    {
+      "name": "hmac: timestamp '-5' is refused before any MAC is computed",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Signature",
+        "hash": "sha256",
+        "encoding": "hex",
+        "prefix": "sha256=",
+        "secret": "{{SECRET}}",
+        "timestamp_header": "X-Timestamp",
+        "replay_window_seconds": 300,
+        "key_header": "X-Delivery-Id"
+      },
+      "requests": [
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256=",
+            "timestamp_header": "X-Timestamp"
+          },
+          "headers": {
+            "X-Timestamp": "-5",
+            "X-Delivery-Id": "x"
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 401,
+            "code": "webhook_unverified",
+            "published": 0
+          },
+          "method": "POST",
+          "target": "/hook"
+        }
+      ]
+    },
+    {
+      "name": "hmac: a name that could collide is not needed: claims are per receiver and hashed",
+      "preset": "hmac",
+      "config": {
+        "header": "X-Signature",
+        "hash": "sha256",
+        "encoding": "hex",
+        "prefix": "sha256=",
+        "secret": "{{SECRET}}"
+      },
+      "requests": [
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256="
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 202,
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
+        },
+        {
+          "sign": {
+            "header": "X-Signature",
+            "hash": "sha256",
+            "encoding": "hex",
+            "prefix": "sha256="
+          },
+          "body": "{\"a\":1}",
+          "want": {
+            "status": 200,
+            "published": 1
+          },
+          "method": "POST",
+          "target": "/hook",
+          "headers": {}
         }
       ]
     },
