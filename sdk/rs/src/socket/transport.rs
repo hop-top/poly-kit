@@ -418,12 +418,22 @@ async fn dispatch(
     }
     let inv = invocation(&req, meta);
 
-    let Some(handler) = sh.handlers.get(&inv.path) else {
+    let Some((canonical, handler)) = sh.handlers.get(&inv.path) else {
         return Some(Response::error(
             CODE_NOT_FOUND,
             format!("unknown command: {}", inv.path.join(" ")),
         ));
     };
+    // The route key joins segments with a space, so a segment holding one
+    // resolves like two. The gate and the handler must see the command
+    // that will run, not a spelling of it: refuse anything but the
+    // registered segments.
+    if inv.path != canonical {
+        return Some(Response::error(
+            CODE_INVALID,
+            format!("non-canonical command path: {:?}", inv.path),
+        ));
+    }
 
     if let Some(permit) = &sh.permission {
         if let Err(reason) = permit(&inv, &sh.handlers.meta(&inv.path)) {

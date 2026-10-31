@@ -300,3 +300,40 @@ mod served {
         }
     }
 }
+
+#[test]
+fn a_spelling_of_the_tool_name_never_reaches_a_leaf_the_hook_denies() {
+    for era in ERAS {
+        let runs = Arc::new(AtomicUsize::new(0));
+        let asked: Arc<Mutex<Vec<Vec<String>>>> = Arc::default();
+        let a = asked.clone();
+        let (surface, _) = mount(
+            Arc::new(move |c| {
+                a.lock().unwrap().push(c.leaf.path.clone());
+                Err("closed".into())
+            }),
+            &runs,
+        );
+        for name in [
+            "widget add",
+            "widget. add",
+            "widget.add ",
+            " widget.add",
+            "widget..add",
+            "Widget.add",
+            "widget.add\u{0}",
+        ] {
+            let resp = surface.call(&call(era, name, "{}"));
+            assert!(
+                !resp.body_str().contains("added"),
+                "{era} {name:?}: {}",
+                resp.body_str()
+            );
+        }
+        // Whatever resolved was asked about as the leaf's registered path.
+        for p in asked.lock().unwrap().iter() {
+            assert_eq!(p, &["widget", "add"], "{era}");
+        }
+        assert_eq!(runs.load(Ordering::SeqCst), 0, "{era}");
+    }
+}

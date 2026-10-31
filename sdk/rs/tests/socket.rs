@@ -939,3 +939,61 @@ mod served {
         r.stop().await;
     }
 }
+
+#[tokio::test]
+async fn a_non_canonical_path_never_reaches_a_command_the_gate_denies() {
+    let ran = Arc::new(AtomicUsize::new(0));
+    let r2 = ran.clone();
+    let mut h = Handlers::new();
+    h.register(
+        &["item", "delete"],
+        move |_i: Invocation, _c: CancelToken| {
+            r2.fetch_add(1, Ordering::SeqCst);
+            async { Ok(CommandResult::stdout("deleted")) }
+        },
+    )
+    .unwrap();
+    let asked: Arc<Mutex<Vec<Vec<String>>>> = Arc::default();
+    let a2 = asked.clone();
+    let r = start(move |p| {
+        SocketService::new(p, h).permission(move |inv, _| {
+            a2.lock().unwrap().push(inv.path.clone());
+            // The rule a policy would write against the canonical path.
+            if inv.path == ["item", "delete"] {
+                Err("closed".into())
+            } else {
+                Ok(())
+            }
+        })
+    })
+    .await;
+    for path in [
+        json!(["item delete"]),
+        json!([" item", "delete"]),
+        json!(["item", "delete "]),
+        json!(["item", "", "delete"]),
+        json!(["item", "delete", ""]),
+    ] {
+        let resp = call_on(&r.path, json!({"path": path})).await;
+        assert_eq!(resp["ok"], false, "{path}: {resp}");
+        assert_ne!(resp["ok"], true);
+    }
+    assert_eq!(ran.load(Ordering::SeqCst), 0, "{:?}", asked.lock().unwrap());
+    // The canonical path is denied by the very rule.
+    let resp = call_on(&r.path, json!({"path":["item","delete"]})).await;
+    assert_eq!(resp["error"]["code"], "DENIED");
+    assert_eq!(ran.load(Ordering::SeqCst), 0);
+    r.stop().await;
+}
+
+#[test]
+fn a_route_segment_must_be_a_plain_word() {
+    let mut h = Handlers::new();
+    let noop = |_i: Invocation, _c: CancelToken| async { Ok(CommandResult::default()) };
+    for bad in [vec!["a b"], vec!["a", ""], vec![" a"], vec!["a\t"]] {
+        assert!(
+            matches!(h.register(&bad, noop), Err(RouteError::BadSegment(_))),
+            "{bad:?}"
+        );
+    }
+}

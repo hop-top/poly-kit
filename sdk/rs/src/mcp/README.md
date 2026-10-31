@@ -20,6 +20,8 @@ policy is `hop_top_kit::netpolicy`.
   per refusal (auth, confirmation required / declined / state rejected, destructive ceiling), both eras,
   stdio too; best-effort, never alters the response
 
+- a policy's `callers:`, `permissions:` and `max_ops` budgets should gate calls → `MountOptions::permission` = `permission::served_hook(Arc<ServedGate>)` (feature `cli-permissions`)
+
 ## Quick start
 
 ```rust
@@ -56,6 +58,7 @@ assert!(response.body_str().contains("pong"));
 - Tool names join the leaf path with `tool_name_separator` (default `.`). An empty separator, or any other
   than `.` inside a command name (`data_sync` under `_`), is a `MountError`. Names are not otherwise
   rewritten or length-checked.
+- Permission hook: asked after the destructive ceiling, before the leaf runs, both eras and stdio, for the verifier's caller (none over stdio); refusal is an `isError` result at 200, `cmdsurface: permission denied: <cmd> on mcp: <reason>`, audited.
 - `tools/list` re-reads the bridge per request: no caching, and `Leaf::with_flags_on_first_execution`
   reproduces cobra's lazy `--help`.
 - Naming trap: `mcp::Surface` is the mounted handler; the safety enum is `mcp::SurfaceKind`.

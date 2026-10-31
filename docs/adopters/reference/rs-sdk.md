@@ -306,12 +306,24 @@ name that is not a binding fails construction naming the rule. The bindings (`pr
 `resource`, `context`, `payload`) and the refusal text match Go; `principal.scopes` is empty
 unless the caller is `CallerSource::Verified`. There is no static type check (cel-rust has
 none), so a mistyped operand denies at evaluation instead of failing at load. Parity is pinned
-by `contracts/celpermission-v1`. No Rust served surface calls the gate yet: an adopter runs it
-after its own scope check. Dependency choice follows the policy engine's (see
+by `contracts/celpermission-v1`. Dependency choice follows the policy engine's (see
 [Policy / Dependency vetting](#dependency-vetting)); 76 normal crates with `cli-permissions`
 against 52 for `cli`.
 
-Not ported from Go: per-caller budgets for served surfaces, the
+`ServedGate::new(policy)` (same feature) is Go's served permission slot: the policy's
+`callers:` rules (principal, tenant, scope, `allow`), then its `permissions:` rules, then an
+optional `with_permission` check, then the charge of a rule's `max_ops` budget (write and
+destructive calls only, per policy rule, principal and tenant, over fixed epoch-aligned
+windows, default one hour); the first refusal stands, a refused call and a probe spend
+nothing. Wired in `api_server::commands::CommandProjection::with_served_gate` (403
+`permission_denied`, caller = the stack's `Claims`), `mcp::MountOptions::permission` with
+`mcp::permission::served_hook` (an `isError` result at HTTP 200; both eras and stdio) and
+`socket::SocketService::served_gate` (`DENIED`; owner via the socket file, or the
+authenticator's verdict). Counts are in memory (`UsageLedger`), not a shared `kv` store as in
+Go. The `rpc` module serves proto services, not a command tree, and has no gate.
+
+Not ported from Go: durable/shared budget storage, kit-default beyond loopback,
+withholding caller-independent refusals from discovery, the
 `kit/idempotent`, `kit/cache-ttl` and `kit/output-schema` validate arms,
 themed help and the `help` subcommand.
 

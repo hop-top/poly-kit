@@ -40,6 +40,9 @@ pub enum RouteError {
     Duplicate(String),
     /// Annotating a path no handler is registered for.
     Unknown(String),
+    /// A segment that is empty or holds whitespace: the joined key could
+    /// not tell it from two segments.
+    BadSegment(String),
 }
 
 impl fmt::Display for RouteError {
@@ -47,6 +50,12 @@ impl fmt::Display for RouteError {
         match self {
             RouteError::EmptyPath => f.write_str("socket: route path is empty"),
             RouteError::Duplicate(p) => write!(f, "socket: route {p:?} is already registered"),
+            RouteError::BadSegment(s) => {
+                write!(
+                    f,
+                    "socket: route segment {s:?} is empty or holds whitespace"
+                )
+            }
             RouteError::Unknown(p) => write!(f, "socket: route {p:?} is not registered"),
         }
     }
@@ -68,7 +77,7 @@ pub struct CommandMeta {
 /// spaces, the `name` discovery uses.
 #[derive(Clone, Default)]
 pub struct Handlers {
-    routes: HashMap<String, Arc<dyn Handler>>,
+    routes: HashMap<String, (Vec<String>, Arc<dyn Handler>)>,
     meta: HashMap<String, CommandMeta>,
 }
 
@@ -86,11 +95,18 @@ impl Handlers {
         if path.is_empty() {
             return Err(RouteError::EmptyPath);
         }
+        if let Some(bad) = path
+            .iter()
+            .find(|s| s.is_empty() || s.chars().any(char::is_whitespace))
+        {
+            return Err(RouteError::BadSegment((*bad).to_string()));
+        }
         let key = path.join(" ");
         if self.routes.contains_key(&key) {
             return Err(RouteError::Duplicate(key));
         }
-        self.routes.insert(key, Arc::new(handler));
+        let segs = path.iter().map(|s| s.to_string()).collect();
+        self.routes.insert(key, (segs, Arc::new(handler)));
         Ok(self)
     }
 
@@ -121,7 +137,10 @@ impl Handlers {
         self.meta.get(&path.join(" ")).cloned().unwrap_or_default()
     }
 
-    pub(crate) fn get(&self, path: &[String]) -> Option<Arc<dyn Handler>> {
+    /// The handler and its registered segments for `path`. The segments
+    /// are the command's canonical path: what a gate must evaluate, and
+    /// what the request's path must equal byte for byte.
+    pub(crate) fn get(&self, path: &[String]) -> Option<(Vec<String>, Arc<dyn Handler>)> {
         self.routes.get(&path.join(" ")).cloned()
     }
 }
