@@ -411,27 +411,13 @@ impl Client {
         ))
     }
 
-    /// Writes the message body as the DATA payload: lone `\n` becomes
-    /// CRLF, a leading `.` on a line is doubled, and `.` ends it.
+    /// Writes the message body as the DATA payload: every line break
+    /// (CRLF, a bare CR or a bare LF) becomes CRLF, a `.` at the start of
+    /// a line is doubled, and a lone `.` line ends it. A bare CR is a
+    /// line break here because lenient servers read it as one, and an
+    /// unnormalized `\r.\r` would otherwise end the message early.
     fn data(&mut self, body: &[u8]) -> io::Result<()> {
-        let mut out = Vec::with_capacity(body.len() + 8);
-        let mut at_line_start = true;
-        let mut prev = 0u8;
-        for &b in body {
-            if b == b'\n' && prev != b'\r' {
-                out.push(b'\r');
-            }
-            if at_line_start && b == b'.' {
-                out.push(b'.');
-            }
-            out.push(b);
-            at_line_start = b == b'\n';
-            prev = b;
-        }
-        if !out.ends_with(b"\r\n") {
-            out.extend_from_slice(b"\r\n");
-        }
-        out.extend_from_slice(b".\r\n");
+        let out = dot_stuff(body);
         let w = self.conn.get_mut();
         w.write_all(&out)?;
         w.flush()
@@ -451,4 +437,38 @@ impl Client {
         *self.conn.get_mut() = Conn::Tls(Box::new(rustls::StreamOwned::new(tls, tcp)));
         Ok(())
     }
+}
+
+/// The DATA payload for `body`: normalized to CRLF line breaks, dot-stuffed
+/// after every one, closed with `.` CRLF.
+fn dot_stuff(body: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(body.len() + 8);
+    let mut at_line_start = true;
+    let mut i = 0;
+    while i < body.len() {
+        let b = body[i];
+        match b {
+            b'\r' | b'\n' => {
+                // CRLF is one break; a bare CR or LF is one too.
+                if b == b'\r' && body.get(i + 1) == Some(&b'\n') {
+                    i += 1;
+                }
+                out.extend_from_slice(b"\r\n");
+                at_line_start = true;
+            }
+            _ => {
+                if at_line_start && b == b'.' {
+                    out.push(b'.');
+                }
+                out.push(b);
+                at_line_start = false;
+            }
+        }
+        i += 1;
+    }
+    if !at_line_start {
+        out.extend_from_slice(b"\r\n");
+    }
+    out.extend_from_slice(b".\r\n");
+    out
 }

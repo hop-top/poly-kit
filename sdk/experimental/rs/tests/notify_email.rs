@@ -398,3 +398,40 @@ fn canceled_context_fails_the_dial() {
     );
     assert!(srv.sessions().is_empty());
 }
+
+fn body_on_the_wire(body: &str) -> (String, Vec<String>) {
+    let srv = Server::start(Config::default());
+    let mut m = msg();
+    m.body = body.into();
+    mailer(srv.port).send_message(&Context::background(), &m).unwrap();
+    let s = srv.wait_sessions(1).remove(0);
+    let (_, wire) = s.data.split_once("\r\n\r\n").expect("header end");
+    (wire.to_string(), s.commands)
+}
+
+#[test]
+fn smtp_bare_cr_dot_cr_cannot_end_the_message() {
+    // "\r.\r\n" read as a terminator by a lenient server would smuggle
+    // the MAIL FROM after it.
+    let (wire, cmds) = body_on_the_wire("x\r.\r\nMAIL FROM:<evil@x.io>");
+    assert_eq!(wire, "x\r\n..\r\nMAIL FROM:<evil@x.io>\r\n");
+    assert_eq!(cmds.iter().filter(|c| c.starts_with("MAIL")).count(), 1, "{cmds:?}");
+}
+
+#[test]
+fn smtp_bare_lf_dot_lf_is_stuffed() {
+    let (wire, _) = body_on_the_wire("a\n.\nb");
+    assert_eq!(wire, "a\r\n..\r\nb\r\n");
+}
+
+#[test]
+fn smtp_bare_cr_is_a_line_break() {
+    let (wire, _) = body_on_the_wire("a\rb\r.c");
+    assert_eq!(wire, "a\r\nb\r\n..c\r\n");
+}
+
+#[test]
+fn smtp_crlf_is_not_doubled() {
+    let (wire, _) = body_on_the_wire("a\r\n.b\r\n\r\n.");
+    assert_eq!(wire, "a\r\n..b\r\n\r\n..\r\n");
+}
