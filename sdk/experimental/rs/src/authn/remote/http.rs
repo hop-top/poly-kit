@@ -38,6 +38,8 @@ impl HttpFetch {
                 // One fetch an hour: a pooled connection would sit idle
                 // on a runtime that is not running between fetches.
                 .pool_max_idle_per_host(0),
+            crate::netpolicy::Redirects::None,
+            reqwest::header::HeaderMap::new(),
         )
         .map_err(|e| AuthnError::Config(format!("http client: {e}")))?;
         let rt = tokio::runtime::Builder::new_current_thread()
