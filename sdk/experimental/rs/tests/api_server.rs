@@ -1008,7 +1008,7 @@ impl Rig {
     fn advance(&self, secs: u64) {
         *self.clock.0.lock().unwrap() += Duration::from_secs(secs);
     }
-    async fn from_unknown(&self) -> u16 {
+    async fn unknown_client(&self) -> u16 {
         let r = get_req("/hello");
         self.app.clone().oneshot(r).await.unwrap().status().as_u16()
     }
@@ -1166,6 +1166,6 @@ async fn unknown_clients_have_their_own_bucket() {
     assert_eq!(r.from("10.5.0.1").await, 200); // aggregate 2
     assert_eq!(r.from("10.6.0.1").await, 200); // overflow
     assert_eq!(r.from("10.7.0.1").await, 429, "overflow is shared");
-    assert_eq!(r.from_unknown().await, 200, "unknown has its own");
-    assert_eq!(r.from_unknown().await, 429);
+    assert_eq!(r.unknown_client().await, 200, "unknown has its own");
+    assert_eq!(r.unknown_client().await, 429);
 }
