@@ -38,6 +38,8 @@
 pub mod cli;
 #[cfg(feature = "output")]
 pub mod output;
+#[cfg(feature = "output")]
+pub mod parity;
 
 // Terminal UI primitives (a port of go/console/tui and go/console/progress):
 // std only, plain ANSI, no raw mode.
