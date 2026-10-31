@@ -21,7 +21,7 @@
 //! 5. per matched route, the request event pair on the bus.
 //!
 //! Every refusal is `{"status", "code", "message"}` JSON; see
-//! [`error`]. Authentication is an [`AuthFunc`](crate::authn::AuthFunc)
+//! `error`. Authentication is an [`AuthFunc`](crate::authn::AuthFunc)
 //! from `authn`; the verified [`Claims`](crate::authn::Claims) are in
 //! request extensions for handlers.
 //!

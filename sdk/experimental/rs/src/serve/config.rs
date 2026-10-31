@@ -323,7 +323,7 @@ pub fn worst_outcome(observed: &[LifecycleOutcome]) -> LifecycleOutcome {
 ///
 /// A failure wrapping a kit transient error keeps exit 6 unchanged, so
 /// an agent's retry branch behaves the same whichever language the tool
-/// it is driving was written in — see [`propagate_transient`].
+/// it is driving was written in — see `propagate_transient`.
 pub fn failure_error(outcome: LifecycleOutcome, failed: &HashMap<String, String>) -> CliError {
     let mut names: Vec<&String> = failed.keys().collect();
     names.sort();

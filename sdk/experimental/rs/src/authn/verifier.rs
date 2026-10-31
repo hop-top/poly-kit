@@ -17,7 +17,7 @@ use super::AuthFunc;
 /// `iat`.
 pub const DEFAULT_CLOCK_SKEW: Duration = Duration::from_secs(60);
 
-/// The claim the tenant is read from unless [`Options::tenant_claim`]
+/// The claim the tenant is read from unless `Options::tenant_claim`
 /// names another.
 pub const DEFAULT_TENANT_CLAIM: &str = "tenant";
 

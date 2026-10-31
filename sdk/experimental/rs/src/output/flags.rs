@@ -25,7 +25,7 @@ pub struct RegisterOutputFlagsOptions {
 /// Adds the output flag suite to `cmd` as global args, so every
 /// subcommand inherits them automatically.
 ///
-/// The active registry is stored on the returned [`OutputFlagsContext`]
+/// The active registry is stored on the returned `OutputFlagsContext`
 /// — pass it (or call [`default_registry`]) when invoking
 /// [`crate::output::dispatch`].
 pub fn register_output_flags(

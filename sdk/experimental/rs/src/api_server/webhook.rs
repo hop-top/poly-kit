@@ -80,7 +80,7 @@ pub type Clock = Arc<dyn Fn() -> SystemTime + Send + Sync>;
 
 type Store = Arc<Mutex<Box<dyn TtlInserter + Send>>>;
 
-/// [`hmac`] configuration.
+/// [`hmac()`] configuration.
 #[derive(Debug, Clone, Default)]
 pub struct HmacConfig {
     /// Header carrying the signature.
@@ -126,7 +126,7 @@ fn mac_bytes(hash: &str, secret: &[u8], msg: &[&[u8]]) -> Vec<u8> {
     }
 }
 
-/// The header value [`hmac`] expects, for tests and senders.
+/// The header value [`hmac()`] expects, for tests and senders.
 pub fn sign_hmac(cfg: &HmacConfig, timestamp: &str, body: &[u8]) -> Result<String, ApiServerError> {
     check_hmac(cfg)?;
     let dot = b".";

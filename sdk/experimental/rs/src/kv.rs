@@ -16,8 +16,8 @@
 //! blob-bound key never equals a text-bound one. A BLOB column would make
 //! every cross-language read a silent miss, turn `INSERT OR REPLACE` into
 //! a shadow row, and leave prefix ranges disjoint. Keys therefore bind
-//! through [`TextKey`], which hands SQLite the raw bytes as TEXT with no
-//! UTF-8 validation, and read back through [`key_bytes`].
+//! through `TextKey`, which hands SQLite the raw bytes as TEXT with no
+//! UTF-8 validation, and read back through `key_bytes`.
 //!
 //! TEXT keeps the ordering Go relies on: the default `BINARY` collation is
 //! `memcmp` over the stored bytes, identical to Go's string comparison, so

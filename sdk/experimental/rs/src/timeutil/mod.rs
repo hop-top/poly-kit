@@ -8,7 +8,7 @@
 //!   `"3 days ago"`, `"3d"`, `"last week"`).
 //!
 //! The `*_at` variants take an explicit reference instant; the bare ones use
-//! [`Utc::now`]. Keeping the split is what makes the test suite deterministic.
+//! `Utc::now`. Keeping the split is what makes the test suite deterministic.
 //!
 //! Natural-language phrases (`"next monday"`, `"last week"`, `"1 May 2026"`)
 //! are delegated to the [`interim`] crate — a maintained fork of
@@ -33,7 +33,7 @@
 //! by construction, not by coincidence. This is a behavioural change on the
 //! Go side, not a Rust-only divergence.
 //!
-//! The behaviour is pinned by [`tests::month_arithmetic_clamps_it_does_not_normalise`]
+//! The behaviour is pinned by `tests::month_arithmetic_clamps_it_does_not_normalise`
 //! so it cannot drift silently.
 //!
 //! # Supported formats

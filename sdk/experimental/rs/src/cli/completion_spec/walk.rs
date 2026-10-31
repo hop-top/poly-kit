@@ -37,7 +37,7 @@ pub(crate) fn export_commands() -> [ClapCommand; 2] {
 }
 
 impl Spec {
-    /// The spec of `root`'s tree as [`Root::command`] builds it, bound
+    /// The spec of `root`'s tree as `Root::command` builds it, bound
     /// completers and enums included.
     ///
     /// What it reads, and the rule each follows:
