@@ -54,6 +54,8 @@ pub mod google;
 pub mod ollama;
 #[cfg(feature = "llm-openai")]
 pub mod openai;
+#[cfg(feature = "llm-routellm")]
+pub mod routellm;
 #[cfg(feature = "llm-triton")]
 pub mod triton;
 
