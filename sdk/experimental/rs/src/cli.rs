@@ -27,6 +27,7 @@ pub mod config;
 mod enums;
 mod gate;
 mod help;
+pub mod log;
 pub mod model;
 mod paths_cmd;
 #[cfg(feature = "cli-permissions")]
@@ -35,6 +36,7 @@ mod plan;
 pub mod policy;
 mod root;
 mod run;
+pub mod safety;
 mod spec;
 mod usage;
 mod validate;
