@@ -42,7 +42,7 @@ final class Bridge
                     path: $childPath,
                     description: $child->description,
                     flags: $child->visibleFlags(),
-                    class: SafetyClass::classify($child->annotations),
+                    class: SafetyClass::classify($child->annotations, $child->name),
                     enabled: $this->defaultEnabled(),
                     runner: $child->runner,
                 );
