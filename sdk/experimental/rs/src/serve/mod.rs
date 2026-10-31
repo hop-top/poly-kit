@@ -28,12 +28,11 @@
 //!   routed onto the shared `output::CliError` codes.
 //! - `serve-cli` — the **command half**, [`command`]: `serve [SERVICE]`
 //!   with `--list`, `--enable`/`--disable`, `--ready-timeout`,
-//!   `--stop-timeout` and `--shutdown-timeout`, mounted on whatever
-//!   `clap::Command` the adopter already has by [`command::mount`], and
-//!   run from its `ArgMatches` to an exit code by [`command::run`]. It
-//!   does not wait for a kit-owned root: like the TypeScript port's
-//!   `registerServe(program)`, it mounts on *any* root, and the kit root
-//!   factory will mount the same command when it exists.
+//!   `--stop-timeout` and `--shutdown-timeout`, built as a kit
+//!   `CommandSpec` by [`command::serve_command`], mounted on a kit root
+//!   by [`command::mount`], and run from the handler's `Invocation` to
+//!   an exit code by [`command::run`]. No parsing-provider type is part
+//!   of the contract.
 //!
 //! What remains outside both, by the contract's own terms: the env-var
 //! spelling `<TOOL>_SERVICES_API_ENABLED`. The contract makes it

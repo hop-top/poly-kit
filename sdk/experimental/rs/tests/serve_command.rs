@@ -5,15 +5,16 @@
 //! reference port's semantics.
 
 #![cfg(feature = "serve-cli")]
+#![allow(clippy::result_large_err)] // handler closures return the crate envelope
 
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use clap::Command;
+use hop_top_kit::cli::{CommandSpec, Invocation, Root};
 use hop_top_kit::output::{CODE_NOT_FOUND, CODE_UNAUTHORIZED, CODE_USAGE};
 use hop_top_kit::serve::command::{
-    apply_flags, mount, mount_for, operands, parse_failure_policy, run, run_list, serve_command,
+    apply_flags, mount, operands, parse_failure_policy, run, run_list, serve_command,
     serve_command_for, ServeCommandOptions, SELECTOR_FLAGS_REFUSAL,
 };
 use hop_top_kit::serve::{
@@ -119,14 +120,41 @@ impl Write for Sink {
     }
 }
 
-fn parse(argv: &[&str]) -> clap::ArgMatches {
-    serve_command()
-        .try_get_matches_from(argv)
-        .unwrap_or_else(|e| panic!("{argv:?}: {e}"))
+/// Runs `argv` (program name first) through a kit root carrying
+/// `serve` and returns the exit code, the captured invocation (when the
+/// serve handler ran) and the stdout / stderr text.
+fn drive(
+    root: CommandSpec,
+    serve: CommandSpec,
+    argv: &[&str],
+) -> (i32, Option<Invocation>, String, String) {
+    let seen: Arc<Mutex<Option<Invocation>>> = Arc::default();
+    let sink = seen.clone();
+    let serve = serve.handler(move |inv, _, _| {
+        *sink.lock().unwrap() = Some(inv.clone());
+        Ok(())
+    });
+    let root = Root::new(mount(root, serve));
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let code = root.run(argv.iter().copied(), &mut out, &mut err);
+    let inv = seen.lock().unwrap().take();
+    (
+        code,
+        inv,
+        String::from_utf8(out).unwrap(),
+        String::from_utf8(err).unwrap(),
+    )
 }
 
-fn root_with_serve() -> Command {
-    mount(Command::new("tool").subcommand(Command::new("other")))
+fn parse(argv: &[&str]) -> Invocation {
+    let mut full = vec!["tool"];
+    full.extend_from_slice(argv);
+    let (code, inv, _, err) = drive(CommandSpec::new("tool"), serve_command(), &full);
+    inv.unwrap_or_else(|| panic!("{argv:?}: exit {code}: {err}"))
+}
+
+fn root_with_serve() -> CommandSpec {
+    CommandSpec::new("tool").subcommand(CommandSpec::new("other"))
 }
 
 // ---------------------------------------------------------------------------
@@ -152,75 +180,80 @@ fn every_flag_parses_with_its_contract_name() {
         "2h",
         "api",
     ]);
-    assert!(m.get_flag("list"));
-    let enable: Vec<&String> = m.get_many::<String>("enable").unwrap().collect();
-    assert_eq!(enable, ["a", "b"]);
-    let disable: Vec<&String> = m.get_many::<String>("disable").unwrap().collect();
-    assert_eq!(disable, ["c"]);
-    assert_eq!(
-        m.get_one::<Duration>("ready-timeout"),
-        Some(&Duration::from_secs(5))
-    );
-    assert_eq!(
-        m.get_one::<Duration>("stop-timeout"),
-        Some(&Duration::from_secs(90))
-    );
-    assert_eq!(
-        m.get_one::<Duration>("shutdown-timeout"),
-        Some(&Duration::from_secs(7200))
-    );
+    assert_eq!(m.flag("list"), Some("true"));
+    assert_eq!(m.flags["enable"], ["a", "b"]);
+    assert_eq!(m.flags["disable"], ["c"]);
+    assert_eq!(m.flag("ready-timeout"), Some("5s"));
+    assert_eq!(m.flag("stop-timeout"), Some("1m30s"));
+    assert_eq!(m.flag("shutdown-timeout"), Some("2h"));
     assert_eq!(operands(&m), ["api"]);
 }
 
 #[test]
 fn a_bare_invocation_has_no_operands_and_no_flags() {
     let m = parse(&["serve"]);
-    assert!(!m.get_flag("list"));
+    assert!(!m.flags.contains_key("list"));
     assert!(operands(&m).is_empty());
-    assert!(m.get_one::<Duration>("ready-timeout").is_none());
+    assert!(m.flag("ready-timeout").is_none());
 }
 
 #[test]
 fn the_help_is_the_contract_sentence() {
-    let cmd = serve_command();
-    assert_eq!(cmd.get_name(), "serve");
-    assert_eq!(
-        cmd.get_about().map(|s| s.to_string()).as_deref(),
-        Some("Run configured services under one lifecycle")
+    let (code, inv, out, err) = drive(
+        CommandSpec::new("tool"),
+        serve_command(),
+        &["tool", "serve", "--help"],
+    );
+    assert_eq!(code, 0, "{err}");
+    assert!(inv.is_none(), "help does not run the handler");
+    assert!(
+        out.contains("Run every configured and enabled service under one lifecycle"),
+        "{out}"
+    );
+    for flag in [
+        "--list",
+        "--enable",
+        "--disable",
+        "--ready-timeout",
+        "--stop-timeout",
+        "--shutdown-timeout",
+    ] {
+        assert!(out.contains(flag), "{flag} missing from help:\n{out}");
+    }
+    let (_, _, root_help, _) = drive(
+        CommandSpec::new("tool"),
+        serve_command(),
+        &["tool", "--help"],
+    );
+    assert!(
+        root_help.contains("Run configured services under one lifecycle"),
+        "{root_help}"
     );
 }
 
 #[test]
-fn a_malformed_duration_is_refused_by_the_parser_naming_the_token() {
-    let err = serve_command()
-        .try_get_matches_from(["serve", "--ready-timeout", "30"])
-        .unwrap_err();
-    let text = err.to_string();
-    assert!(text.contains("missing unit"), "{text}");
-    assert!(text.contains("\"30\""), "{text}");
-
-    let err = serve_command()
-        .try_get_matches_from(["serve", "--shutdown-timeout", "5d"])
-        .unwrap_err();
-    assert!(err.to_string().contains("unknown unit"), "{err}");
-}
-
-#[test]
 fn the_help_addendum_lists_registered_names_only_when_there_are_any() {
-    let with = serve_command_for(&registry(&["api", "web"]));
-    let mut buf = Vec::new();
-    with.clone().write_long_help(&mut buf).unwrap();
-    let help = String::from_utf8(buf).unwrap();
+    let help_of = |reg: &ServiceRegistry| {
+        drive(
+            CommandSpec::new("tool"),
+            serve_command_for(reg),
+            &["tool", "serve", "--help"],
+        )
+        .2
+    };
+    let help = help_of(&registry(&["api", "web"]));
     assert!(help.contains("Services: api, web"), "{help}");
-
-    let without = serve_command_for(&ServiceRegistry::new());
-    let mut buf = Vec::new();
-    without.clone().write_long_help(&mut buf).unwrap();
-    assert!(!String::from_utf8(buf).unwrap().contains("Services:"));
+    assert!(!help_of(&ServiceRegistry::new()).contains("Services:"));
 
     // Help text only: an unregistered name still parses, because the
     // NOT_FOUND refusal belongs to the registration gate.
-    with.try_get_matches_from(["serve", "nope"]).unwrap();
+    let (code, inv, _, err) = drive(
+        CommandSpec::new("tool"),
+        serve_command_for(&registry(&["api", "web"])),
+        &["tool", "serve", "nope"],
+    );
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(operands(&inv.unwrap()), ["nope"]);
 }
 
 // ---------------------------------------------------------------------------
@@ -540,62 +573,61 @@ fn zero_and_absent_timeouts_leave_configured_values_alone() {
 // Mounting: exactly one owner of the word
 // ---------------------------------------------------------------------------
 
-fn serve_count(root: &Command) -> usize {
-    root.get_subcommands()
-        .filter(|c| c.get_name() == "serve")
-        .count()
-}
-
 #[test]
 fn mount_adds_serve_beside_the_roots_own_commands() {
-    let root = root_with_serve();
-    assert_eq!(serve_count(&root), 1);
-    assert!(root.find_subcommand("other").is_some());
+    let ran = Arc::new(Mutex::new(false));
+    let flag = ran.clone();
+    let root = root_with_serve().subcommand(CommandSpec::new("other2").handler(move |_, _, _| {
+        *flag.lock().unwrap() = true;
+        Ok(())
+    }));
+    let (code, inv, _, err) = drive(root.clone(), serve_command(), &["tool", "serve", "--list"]);
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(inv.unwrap().flag("list"), Some("true"));
 
-    let m = root
-        .try_get_matches_from(["tool", "serve", "--list"])
-        .unwrap();
-    let (name, sub) = m.subcommand().unwrap();
-    assert_eq!(name, "serve");
-    assert!(sub.get_flag("list"));
+    let (code, inv, _, err) = drive(root, serve_command(), &["tool", "other2"]);
+    assert_eq!(code, 0, "{err}");
+    assert!(inv.is_none(), "the roots own command still routes");
+    assert!(*ran.lock().unwrap());
 }
 
 #[test]
 fn mount_replaces_a_serve_the_root_already_owned() {
-    let root = Command::new("tool")
-        .subcommand(Command::new("serve").about("a leaf from elsewhere"))
-        .subcommand(Command::new("other"));
-    let root = mount(root);
-    assert_eq!(serve_count(&root), 1, "never two owners of the word");
-    let serve = root.find_subcommand("serve").unwrap();
+    let root = CommandSpec::new("tool")
+        .subcommand(
+            CommandSpec::new("serve")
+                .about("a leaf from elsewhere")
+                .handler(|_, _, _| panic!("the displaced leaf must never run")),
+        )
+        .subcommand(CommandSpec::new("other"));
+    let (code, inv, _, err) = drive(root.clone(), serve_command(), &["tool", "serve", "--list"]);
+    assert_eq!(code, 0, "{err}");
+    assert!(inv.is_some(), "the kit-owned command wins");
+
+    let (_, _, help, _) = drive(root, serve_command(), &["tool", "--help"]);
     assert_eq!(
-        serve.get_about().map(|s| s.to_string()).as_deref(),
-        Some("Run configured services under one lifecycle"),
-        "the kit-owned command wins"
+        help.matches("serve").count(),
+        1,
+        "never two owners:\n{help}"
     );
-    assert!(serve.get_arguments().any(|a| a.get_id() == "list"));
-    assert!(root.find_subcommand("other").is_some());
+    assert!(!help.contains("a leaf from elsewhere"), "{help}");
+    assert!(help.contains("Run configured services under one lifecycle"));
 }
 
 #[test]
 fn mounting_twice_still_leaves_one() {
-    let root = mount(mount(Command::new("tool")));
-    assert_eq!(serve_count(&root), 1);
-}
-
-#[test]
-fn mount_for_carries_the_help_addendum() {
-    let root = mount_for(Command::new("tool"), &registry(&["api"]));
-    let serve = root.find_subcommand("serve").unwrap();
-    assert!(serve
-        .get_after_help()
-        .map(|s| s.to_string())
-        .unwrap()
-        .contains("api"));
+    let twice = mount(
+        mount(CommandSpec::new("tool"), serve_command()),
+        serve_command().handler(|_, _, _| Ok(())),
+    );
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    Root::new(twice).run(["tool", "--help"], &mut out, &mut err);
+    let help = String::from_utf8(out).unwrap();
+    assert_eq!(help.matches("serve").count(), 1, "{help}");
 }
 
 // ---------------------------------------------------------------------------
-// The run path: matches in, exit code out
+// The run path: invocation in, exit code out
 // ---------------------------------------------------------------------------
 
 /// A `#[tokio::test]` has no per-test timeout; a defect that never
@@ -618,6 +650,42 @@ fn enabled(names: &[&str]) -> ServiceConfigs {
         .iter()
         .map(|n| (n.to_string(), ServiceConfig::enabled()))
         .collect()
+}
+
+#[tokio::test]
+async fn a_malformed_duration_is_usage_2_naming_the_flag_and_the_token() {
+    for (argv, needle) in [
+        (&["serve", "--ready-timeout", "30"][..], "missing unit"),
+        (&["serve", "--shutdown-timeout", "5d"][..], "unknown unit"),
+        (
+            &["serve", "--list", "--stop-timeout", "x"][..],
+            "stop-timeout",
+        ),
+    ] {
+        let m = parse(argv);
+        let res = bounded(run(&m, opts_with(registry(&["a"]), enabled(&["a"])))).await;
+        assert_eq!(res.exit_code, 2, "{argv:?}");
+        assert_eq!(res.outcome, LifecycleOutcome::InvalidSelection);
+        let err = res.error.unwrap();
+        assert_eq!(err.code, CODE_USAGE);
+        assert!(err.message.contains(needle), "{argv:?}: {}", err.message);
+        assert!(
+            err.message.contains(argv[argv.len() - 2]),
+            "{}",
+            err.message
+        );
+        assert!(res.started.is_empty());
+    }
+}
+
+#[test]
+fn a_malformed_duration_mutates_nothing() {
+    let mut configs = enabled(&["a"]);
+    let before = configs.clone();
+    let m = parse(&["serve", "--enable", "b", "--ready-timeout", "30"]);
+    let err = apply_flags(&m, &mut configs, &mut SupervisorConfig::default(), false).unwrap_err();
+    assert_eq!(err.code, CODE_USAGE);
+    assert_eq!(configs, before, "a refused invocation mutates nothing");
 }
 
 #[tokio::test]
@@ -946,7 +1014,7 @@ mod real_process {
         assert!(stderr.contains("supervisor form"), "{stderr}");
 
         let (code, _, stderr) = output_of(&["serve", "--ready-timeout", "30"]).await;
-        assert_eq!(code, 2, "clap's own usage error is also 2:\n{stderr}");
+        assert_eq!(code, 2, "{stderr}");
         assert!(stderr.contains("missing unit"), "{stderr}");
     }
 }
