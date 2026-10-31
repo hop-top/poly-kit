@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -275,4 +276,80 @@ func TestMatchTopic(t *testing.T) {
 			assert.Equal(t, tt.want, matchTopic(tt.pattern, tt.topic))
 		})
 	}
+}
+
+func subscribeExpect(
+	t *testing.T, ctx context.Context, c *websocket.Conn, topic, want string,
+) {
+	t.Helper()
+	writeMsg(t, ctx, c, WSMessage{Type: "subscribe", Topic: topic})
+	got := readMsg(t, ctx, c)
+	assert.Equal(t, want, got.Type, "subscribe %.20q", topic)
+	assert.Equal(t, topic, got.Topic)
+}
+
+func TestHub_OversizedOrDeepPatternRefusedAndNotStored(t *testing.T) {
+	hub, cancel := startHub(t)
+	defer cancel()
+	srv := httptest.NewServer(WSHandler(hub))
+	defer srv.Close()
+	c, ctx := dialHub(t, "ws"+srv.URL[len("http"):])
+	readMsg(t, ctx, c) // welcome
+
+	long := strings.Repeat("a", maxPatternLen+1)
+	deep := strings.TrimSuffix(strings.Repeat("a.", maxPatternSegments+1), ".")
+	stars := strings.TrimSuffix(strings.Repeat("**.", maxPatternDoubleStars+1), ".")
+	for _, p := range []string{long, deep, stars} {
+		subscribeExpect(t, ctx, c, p, "error")
+	}
+
+	// Nothing stored: a publish those would match is silent.
+	require.NoError(t, hub.Publish(long, 1))
+	require.NoError(t, hub.Publish(deep, 1))
+	require.NoError(t, hub.Publish("x.y", 1))
+	// A held probe proves ordering: the ack is the next frame.
+	subscribeExpect(t, ctx, c, "probe", "ack")
+
+	// The bounds themselves are allowed.
+	subscribeExpect(t, ctx, c, strings.Repeat("a", maxPatternLen), "ack")
+	subscribeExpect(t, ctx, c,
+		strings.TrimSuffix(strings.Repeat("a.", maxPatternSegments), "."), "ack")
+	subscribeExpect(t, ctx, c,
+		strings.TrimSuffix(strings.Repeat("**.", maxPatternDoubleStars), "."), "ack")
+}
+
+func TestHub_SubscriptionBytesBudgetedAndReleased(t *testing.T) {
+	hub := NewHub(WithMaxMessageSize(1 << 20))
+	hctx, hcancel := context.WithCancel(context.Background())
+	defer hcancel()
+	go hub.Run(hctx)
+	<-hub.ready
+	srv := httptest.NewServer(WSHandler(hub))
+	defer srv.Close()
+	c, ctx := dialHub(t, "ws"+srv.URL[len("http"):])
+	readMsg(t, ctx, c) // welcome
+
+	fits := maxSubscriptionBytes / maxPatternLen
+	require.Less(t, fits, 1000, "byte budget bites before the count")
+	pat := func(i int) string { return fmt.Sprintf("%0*d", maxPatternLen, i) }
+	// One at a time: acks past the send buffer are dropped, not queued.
+	for i := range fits {
+		subscribeExpect(t, ctx, c, pat(i), "ack")
+	}
+	subscribeExpect(t, ctx, c, pat(fits), "error")
+	// A held pattern costs nothing.
+	subscribeExpect(t, ctx, c, pat(0), "ack")
+	// Unsubscribe frees budget.
+	writeMsg(t, ctx, c, WSMessage{Type: "unsubscribe", Topic: pat(0)})
+	require.Equal(t, "ack", readMsg(t, ctx, c).Type)
+	subscribeExpect(t, ctx, c, pat(fits), "ack")
+}
+
+func TestHub_ResubscribeAtCountCapAcks(t *testing.T) {
+	var s subscriptions
+	for i := range maxSubscriptions {
+		require.True(t, s.add(fmt.Sprintf("t.%d", i)))
+	}
+	assert.False(t, s.add("overflow"))
+	assert.True(t, s.add("t.0"), "held pattern costs nothing")
 }

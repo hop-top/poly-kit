@@ -19,7 +19,12 @@ func TestAPIContractWebSocket(t *testing.T) {
 	var c struct {
 		Constants struct {
 			WebSocket struct {
-				MaxMessageSize int64 `json:"default_max_message_size"`
+				MaxMessageSize   int64 `json:"default_max_message_size"`
+				MaxSubscriptions int   `json:"max_subscriptions"`
+				MaxPatternLen    int   `json:"max_pattern_len"`
+				MaxSegments      int   `json:"max_pattern_segments"`
+				MaxDoubleStars   int   `json:"max_pattern_double_stars"`
+				MaxBytes         int   `json:"max_subscription_bytes"`
 			} `json:"websocket"`
 		} `json:"constants"`
 		Topics []struct {
@@ -33,6 +38,12 @@ func TestAPIContractWebSocket(t *testing.T) {
 
 	h := NewHub()
 	assert.Equal(t, c.Constants.WebSocket.MaxMessageSize, h.maxMessageSize)
+	ws := c.Constants.WebSocket
+	assert.Equal(t, ws.MaxSubscriptions, maxSubscriptions)
+	assert.Equal(t, ws.MaxPatternLen, maxPatternLen)
+	assert.Equal(t, ws.MaxSegments, maxPatternSegments)
+	assert.Equal(t, ws.MaxDoubleStars, maxPatternDoubleStars)
+	assert.Equal(t, ws.MaxBytes, maxSubscriptionBytes)
 	for _, tt := range c.Topics {
 		t.Run(tt.Pattern+" vs "+tt.Topic, func(t *testing.T) {
 			assert.Equal(t, tt.Match, matchTopic(tt.Pattern, tt.Topic))
