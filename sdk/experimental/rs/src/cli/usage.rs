@@ -420,3 +420,59 @@ pub(super) fn levenshtein(a: &str, b: &str) -> usize {
 pub(super) fn kind_takes_value(k: FlagKind) -> bool {
     k.takes_value()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_prefix_match_shadows_distance_matches() {
+        // "verbos" is 1 edit from "verbose" and 2 from "verbs"; the
+        // prefix hit alone is offered.
+        let got = suggest_flags("verbos", &names(&["verbs", "verbose", "verboten"]));
+        assert_eq!(got, ["verbose"]);
+    }
+
+    #[test]
+    fn the_nearest_distance_tier_wins() {
+        let got = suggest_flags("forma", &names(&["format", "formal", "foo"]));
+        // Both prefix-match first.
+        assert_eq!(got, ["format", "formal"]);
+        let got = suggest_flags("fromat", &names(&["format", "forms", "fooooo"]));
+        assert_eq!(got, ["format"], "distance 2 beats nothing, 1 is not worse");
+        let tie = suggest_flags("xat", &names(&["cat", "hat", "chat"]));
+        assert_eq!(tie, ["cat", "hat"], "ties keep every best, in order");
+    }
+
+    #[test]
+    fn beyond_the_ceiling_nothing_is_offered() {
+        assert!(suggest_flags("zzzzzz", &names(&["format", "quiet"])).is_empty());
+        assert!(suggest_flags("", &names(&["format"])).is_empty());
+        assert!(suggest_flags("format", &[]).is_empty());
+    }
+
+    #[test]
+    fn matching_ignores_case_and_skips_the_exact_name() {
+        assert_eq!(suggest_flags("FORMA", &names(&["format"])), ["format"]);
+        assert!(suggest_flags("format", &names(&["format"])).is_empty());
+    }
+
+    #[test]
+    fn autocorrect_applies_only_within_one_edit() {
+        let c = names(&["format", "quiet"]);
+        assert_eq!(correction_candidate("fromat", &c), None, "two edits");
+        assert_eq!(correction_candidate("formt", &c).as_deref(), Some("format"));
+        assert_eq!(correction_candidate("zzz", &c), None);
+    }
+
+    #[test]
+    fn levenshtein_counts_runes() {
+        assert_eq!(levenshtein("kitten", "sitting"), 3);
+        assert_eq!(levenshtein("", "abc"), 3);
+        assert_eq!(levenshtein("héllo", "hello"), 1);
+    }
+}

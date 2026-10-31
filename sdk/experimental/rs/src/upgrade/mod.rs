@@ -1,5 +1,5 @@
-//! Versioned state migrations: the migration half of Go `core/upgrade`
-//! (self-update is not ported).
+//! Versioned state migrations and the release check: Go `core/upgrade`
+//! without the download and binary replace (self-update is not ported).
 //!
 //! A [`Migration`] moves one schema to a semver version. A [`Migrator`]
 //! runs the pending ones per [`SchemaDriver`] in version order, backs up
@@ -23,6 +23,8 @@ pub use version::compare_versions;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod backup;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod check;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod configfile;
 #[cfg(not(target_arch = "wasm32"))]

@@ -310,6 +310,29 @@ impl CliError {
         }
     }
 
+    /// Sets the likely root cause, shown as `Cause:` (Factor 4, the
+    /// corrective error model).
+    pub fn with_cause(mut self, cause: impl Into<String>) -> Self {
+        self.cause = cause.into();
+        self
+    }
+
+    /// Sets the suggested fix, shown as `Fix:`.
+    pub fn with_fix(mut self, fix: impl Into<String>) -> Self {
+        self.suggested_fix = fix.into();
+        self
+    }
+
+    /// Sets the alternative commands, each shown as `Alternative:`.
+    pub fn with_alternatives<I, S>(mut self, alternatives: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.alternatives = alternatives.into_iter().map(Into::into).collect();
+        self
+    }
+
     /// Returns the envelope with `transience` set, every other field
     /// untouched. Consuming builder — the Rust analogue of Go's
     /// copy-on-set `WithTransience` (clone first to keep the original).
