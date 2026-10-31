@@ -257,6 +257,9 @@ llm-openai = ["llm-http"]
 # The Ollama chat adapter (`/api/chat`, NDJSON streaming) over HTTP. Native
 # only.
 llm-ollama = ["llm-http"]
+# The Triton Inference Server scorer over its KServe v2 REST API (the same
+# HTTP transport as Go; no gRPC or protobuf). Native only.
+llm-triton = ["llm-http"]
 
 # Notification primitives over the bus `Sink`, a port of go/runtime/notify:
 # the severity convention, the filter and retry + dead-letter decorators,
