@@ -56,4 +56,4 @@ Verified by `tests/socket.rs`.
 
 ## See also
 
-- [serve lifecycle contract](../../../../../docs/contracts/serve-lifecycle.md)
+- [serve lifecycle contract](../../../../docs/contracts/serve-lifecycle.md)

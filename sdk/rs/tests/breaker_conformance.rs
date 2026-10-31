@@ -135,7 +135,7 @@ struct Corpus {
 }
 
 fn dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/breaker-v1")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/breaker-v1")
 }
 
 fn corpus() -> Corpus {

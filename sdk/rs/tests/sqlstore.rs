@@ -458,7 +458,7 @@ mod encryption {
     #[test]
     fn derive_key_matches_shared_contract() {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../contracts/identity-v1/derive-key.json");
+            .join("../../contracts/identity-v1/derive-key.json");
         let raw =
             fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         let fixture: serde_json::Value = serde_json::from_str(&raw).unwrap();

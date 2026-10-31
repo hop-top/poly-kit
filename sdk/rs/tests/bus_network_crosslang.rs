@@ -39,7 +39,7 @@ fn enabled() -> bool {
 }
 
 fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
 /// Builds the Go peer once per test binary.

@@ -27,7 +27,7 @@ make test-parity-webhook
 | Port | Runner |
 |------|--------|
 | Go | `go/transport/webhook/conformance_test.go` |
-| Rust | `sdk/experimental/rs/tests/webhook_conformance.rs` (feature `webhook`) |
+| Rust | `sdk/rs/tests/webhook_conformance.rs` (feature `webhook`) |
 
 ## Neighbours
 

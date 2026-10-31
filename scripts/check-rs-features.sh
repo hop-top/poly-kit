@@ -13,13 +13,13 @@
 # new feature is covered without editing this script. The empty set
 # (default features only) is checked first.
 #
-# Usage: scripts/check-rs-features.sh [crate-dir]   (default sdk/experimental/rs)
+# Usage: scripts/check-rs-features.sh [crate-dir]   (default sdk/rs)
 # Env:   CARGO_FLAGS  extra flags for every cargo invocation (default --locked)
 # Exit:  0 every feature compiles, 1 one or more failed, 2 usage error.
 set -euo pipefail
 
 cd "$(cd -- "$(dirname -- "$0")/.." && pwd)"
-dir="${1:-sdk/experimental/rs}"
+dir="${1:-sdk/rs}"
 manifest="$dir/Cargo.toml"
 [ -f "$manifest" ] || { echo "check-rs-features: no $manifest" >&2; exit 2; }
 

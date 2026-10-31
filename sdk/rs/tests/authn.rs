@@ -735,7 +735,7 @@ struct PemVector {
 
 pub fn corpus() -> Value {
     let path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/authn-v1/vectors.json");
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/authn-v1/vectors.json");
     serde_json::from_slice(&std::fs::read(path).expect("read corpus")).expect("corpus is JSON")
 }
 

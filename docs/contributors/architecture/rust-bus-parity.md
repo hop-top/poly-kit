@@ -173,4 +173,4 @@ vectors. Rust never defines wire behaviour that Go lacks.
 - Docs that said "core only; sync dispatch" or "network adapter not
   ported" are corrected as each piece lands.
 - The consumer-facing surface grows; it stays experimental under
-  `sdk/experimental/rs` until the parity work is complete.
+  `sdk/rs` until the parity work is complete.

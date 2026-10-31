@@ -56,7 +56,7 @@ assert_eq!(fetches, 1, "second call served from cache");
   `public`. `no-store` still wins over everything.
 - Cache failures never reach the caller: a bad read decodes to a miss, a failed write is dropped.
 - The method is used verbatim in the key, never case-folded.
-- Parity: [`contracts/httpcache-v1/`](../../../../../contracts/httpcache-v1/) (`keying.json`,
+- Parity: [`contracts/httpcache-v1/`](../../../../contracts/httpcache-v1/) (`keying.json`,
   `entry.json`, `cacheability.json`), replayed by `tests/httpcache_contract.rs`, including the
   `vary` keying section and the `vary_*`, `authorization_*` and `private_*` cacheability sections.
 
@@ -68,6 +68,6 @@ assert_eq!(fetches, 1, "second call served from cache");
 
 ## See also
 
-- Crate README, [httpcache wire contract](../../../../../docs/adopters/reference/rs-sdk.md#httpcache-wire-contract)
-- [`contracts/kv-v1/keys.json`](../../../../../contracts/kv-v1/keys.json), the key-binding contract underneath
-- [`go/storage/httpcache`](../../../../../go/storage/httpcache/README.md), the Go reference
+- Crate README, [httpcache wire contract](../../../../docs/adopters/reference/rs-sdk.md#httpcache-wire-contract)
+- [`contracts/kv-v1/keys.json`](../../../../contracts/kv-v1/keys.json), the key-binding contract underneath
+- [`go/storage/httpcache`](../../../../go/storage/httpcache/README.md), the Go reference

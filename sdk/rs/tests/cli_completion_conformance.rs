@@ -24,7 +24,7 @@ use serde::Deserialize;
 const FILES: &[&str] = &["completers.json", "requests.json", "scripts.json"];
 
 fn corpus() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/completion-v1")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/completion-v1")
 }
 
 fn load<T: for<'de> Deserialize<'de>>(name: &str) -> T {

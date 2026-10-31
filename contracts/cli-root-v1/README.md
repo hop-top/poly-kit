@@ -13,7 +13,7 @@ What a kit CLI root does at the command line, independent of language: which per
 
 ```sh
 go test ./go/console/cli/ -run '^TestConformanceCLIRoot'
-cargo test --features cli,config --test cli_root_conformance   # from sdk/experimental/rs
+cargo test --features cli,config --test cli_root_conformance   # from sdk/rs
 ```
 
 ## Contract
@@ -35,7 +35,7 @@ Not pinned: help layout and section titles, the `--format` flag's format list, a
 | Port | Runner |
 |------|--------|
 | Go | `go/console/cli/cli_root_conformance_test.go` |
-| Rust | `sdk/experimental/rs/tests/cli_root_conformance.rs` |
+| Rust | `sdk/rs/tests/cli_root_conformance.rs` |
 | TypeScript | `sdk/ts/src/cli.root.conformance.test.ts` (delegation + `infer` cases; the rest skipped with a stated reason) |
 | Python | `sdk/py/tests/test_cli_root_conformance.py` (delegation + `infer` cases; the rest skipped with a stated reason) |
 | PHP | `sdk/experimental/php/tests/Cli/CliRootConformanceTest.php` (delegation + `infer` cases; the rest skipped with a stated reason) |
@@ -45,4 +45,4 @@ The TypeScript, Python and PHP ports have no `Root.Validate`; they refuse a malf
 ## See also
 
 - [`completion-v1`](../completion-v1/README.md): the `rs --` request reads the same root flags
-- [`sdk/experimental/rs/src/cli/`](../../sdk/experimental/rs/src/cli/README.md)
+- [`sdk/rs/src/cli/`](../../sdk/rs/src/cli/README.md)

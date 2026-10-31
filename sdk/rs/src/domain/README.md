@@ -42,7 +42,7 @@ assert!(err.is_invalid_transition());
 - Feature `domain` is `bus` plus nothing of its own; wasm-safe. Authority: the crate
   [feature table](../../README.md#features).
 - Go is canonical: error texts, the veto wrap, payload JSON and topic panics are pinned by
-  [`contracts/statemachine-v1`](../../../../../contracts/statemachine-v1/README.md).
+  [`contracts/statemachine-v1`](../../../../contracts/statemachine-v1/README.md).
 - Two error forms: `no rules for state "x" (attempted "x" → "y")` when `allowed` is `None`, and
   `"x" → "y" (allowed: [a b])` otherwise, brackets kept when the list is empty. A veto is
   `pre-transition veto: <err>`, the publisher's error as its `source()`.
@@ -63,4 +63,4 @@ assert!(err.is_invalid_transition());
 
 ## See also
 
-- Go reference: [go/runtime/domain](../../../../../go/runtime/domain/README.md)
+- Go reference: [go/runtime/domain](../../../../go/runtime/domain/README.md)

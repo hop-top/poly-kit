@@ -5,7 +5,7 @@
 How do in-process components publish and subscribe to named events under a validated four-segment topic
 grammar? Service lifecycle events are emitted by `hop_top_kit::serve`; peers across processes link over
 WebSocket through `network/` (feature `bus-network`); the SQLite adapter is out of scope; see
-[rust-bus-parity.md](../../../../../docs/contributors/architecture/rust-bus-parity.md).
+[rust-bus-parity.md](../../../../docs/contributors/architecture/rust-bus-parity.md).
 
 ## Use it when
 
@@ -65,7 +65,7 @@ bus.publish(&event).unwrap();
   bad `KIT_BUS_SINK` → `set_env_sink_err_reporter`, skipped; none on wasm32. After close: subscribe no-ops, publish is `BusError::Closed`.
 - Re-entrancy: a handler may publish, subscribe, unsubscribe and close on the `SharedBus` dispatching to
   it; Go deadlocks on all but the nested publish. Two handlers closing at once deadlock, as in Go.
-- Parity: [event-topics.md](../../../../../docs/contracts/event-topics.md) (topic grammar).
+- Parity: [event-topics.md](../../../../docs/contracts/event-topics.md) (topic grammar).
 
 ## Neighbours
 
@@ -74,7 +74,7 @@ bus.publish(&event).unwrap();
 
 ## See also
 
-- [Hook a CLI into the bus](../../../../../docs/adopters/guides/hook-cli-into-bus.md)
-- [Configure bus enforcement](../../../../../docs/adopters/guides/configure-bus-enforcement.md)
-- [Crate README, Bus](../../../../../docs/adopters/reference/rs-sdk.md#bus)
-- Go reference: [go/runtime/bus](../../../../../go/runtime/bus/README.md)
+- [Hook a CLI into the bus](../../../../docs/adopters/guides/hook-cli-into-bus.md)
+- [Configure bus enforcement](../../../../docs/adopters/guides/configure-bus-enforcement.md)
+- [Crate README, Bus](../../../../docs/adopters/reference/rs-sdk.md#bus)
+- Go reference: [go/runtime/bus](../../../../go/runtime/bus/README.md)

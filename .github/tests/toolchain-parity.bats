@@ -44,7 +44,7 @@ go 1.26.1'
     write sub/go.mod 'module example.com/m/sub
 
 go 1.25.0'
-    write sdk/experimental/rs/rust-toolchain.toml '[toolchain]
+    write sdk/rs/rust-toolchain.toml '[toolchain]
 channel = "1.98.0"'
     write sdk/py/uv.lock '[[package]]
 name = "pytest"
@@ -221,7 +221,7 @@ run_pins() {
 }
 
 @test "rust-toolchain.toml channel differing from the rust pin fails" {
-    edit sdk/experimental/rs/rust-toolchain.toml 's/1.98.0/1.99.0/'
+    edit sdk/rs/rust-toolchain.toml 's/1.98.0/1.99.0/'
     run_check
     [ "$status" -eq 1 ]
     has "rust-toolchain.toml:2: rust 1.99.0"

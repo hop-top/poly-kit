@@ -68,9 +68,9 @@ A case's `skip` maps a port to the reason it does not run the case:
 | Go | `go/console/alias/conformance_test.go` (`TestConformanceAliasValidate`, `TestConformanceAliasCycles`), `go/console/cli/alias_conformance_test.go` (`TestConformanceAliasBridge`) |
 | TypeScript | `sdk/ts/src/alias.conformance.test.ts` |
 | Python | `sdk/py/tests/test_alias_conformance.py` |
-| Rust | `sdk/experimental/rs/tests/cli_alias_conformance.rs` (feature `cli`) |
+| Rust | `sdk/rs/tests/cli_alias_conformance.rs` (feature `cli`) |
 
 ## See also
 
 - [Alias API reference](../../docs/adopters/reference/alias-api.md)
-- [`go/console/cli/alias.go`](../../go/console/cli/alias.go), [`sdk/ts/src/alias.ts`](../../sdk/ts/src/alias.ts), [`sdk/py/hop_top_kit/alias.py`](../../sdk/py/hop_top_kit/alias.py), [`sdk/experimental/rs/src/cli/alias.rs`](../../sdk/experimental/rs/src/cli/alias.rs)
+- [`go/console/cli/alias.go`](../../go/console/cli/alias.go), [`sdk/ts/src/alias.ts`](../../sdk/ts/src/alias.ts), [`sdk/py/hop_top_kit/alias.py`](../../sdk/py/hop_top_kit/alias.py), [`sdk/rs/src/cli/alias.rs`](../../sdk/rs/src/cli/alias.rs)

@@ -21,7 +21,7 @@ name = "compliance"
 path = "src/compliance.rs"
 
 [dependencies]
-hop-top-kit = { path = "../../../../experimental/rs", features = ["telemetry", "output", "compliance"] }
+hop-top-kit = { path = "../../../../rs", features = ["telemetry", "output", "compliance"] }
 # preserve_order MUST match the SDK's own feature set: without it serde_json's
 # Map is a BTreeMap and every observed key order would come back alphabetical,
 # silently destroying the very thing these fixtures assert.

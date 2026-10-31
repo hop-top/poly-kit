@@ -25,7 +25,7 @@ use serde_json::Value;
 const FILES: &[&str] = &["document.json", "migrator.json", "versions.json"];
 
 fn corpus_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/upgrade-v1")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/upgrade-v1")
 }
 
 #[derive(Deserialize)]

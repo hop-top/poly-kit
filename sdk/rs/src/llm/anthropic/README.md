@@ -50,5 +50,5 @@ scheme in `default_registry()`. Feature `llm-anthropic`, native only.
 
 ## See also
 
-- [`go/ai/llm/anthropic`](../../../../../../go/ai/llm/anthropic/README.md), the Go reference
-- [`contracts/llm-v1`](../../../../../../contracts/llm-v1/README.md): the shared corpus
+- [`go/ai/llm/anthropic`](../../../../../go/ai/llm/anthropic/README.md), the Go reference
+- [`contracts/llm-v1`](../../../../../contracts/llm-v1/README.md): the shared corpus

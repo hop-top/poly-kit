@@ -238,7 +238,7 @@ fn command(c: &Cmd, root: &mut Root, prefix: &str) -> CommandSpec {
 
 #[test]
 fn cli_root_corpus() {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/cli-root-v1");
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/cli-root-v1");
     let raw = fs::read_to_string(dir.join("vectors.json")).unwrap();
     let f: File = serde_json::from_str(&raw).unwrap();
     assert_eq!(f.version, "v1");

@@ -19,7 +19,7 @@ runs; that depends on each runtime's executor and has no vectors.
 make test-parity-statemachine
 # or separately:
 go test -race ./go/runtime/domain/ -run '^TestConformanceStateMachine'
-cargo test --features domain --test domain_statemachine_conformance   # from sdk/experimental/rs
+cargo test --features domain --test domain_statemachine_conformance   # from sdk/rs
 ```
 
 ## Contract
@@ -46,9 +46,9 @@ the run.
 | Port | Runner |
 |------|--------|
 | Go | `go/runtime/domain/statemachine_conformance_test.go` (`TestConformanceStateMachine*`) |
-| Rust | `sdk/experimental/rs/tests/domain_statemachine_conformance.rs` |
+| Rust | `sdk/rs/tests/domain_statemachine_conformance.rs` |
 
 ## See also
 
 - [`go/runtime/domain/statemachine.go`](../../go/runtime/domain/statemachine.go)
-- [`sdk/experimental/rs/src/domain/statemachine.rs`](../../sdk/experimental/rs/src/domain/statemachine.rs)
+- [`sdk/rs/src/domain/statemachine.rs`](../../sdk/rs/src/domain/statemachine.rs)

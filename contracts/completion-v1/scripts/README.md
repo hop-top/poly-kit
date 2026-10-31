@@ -7,7 +7,7 @@ What `<program> completion <shell>` writes, byte for byte, for the program names
 ## Use it when
 
 - you port the `completion` command to an SDK: render each case and compare with its golden
-- you bump cobra in go.mod: run `make completion-regen`, which rewrites these goldens, the Rust templates (`sdk/experimental/rs/src/cli/completion/scripts/*.tmpl`) and the TS template module (`sdk/ts/src/completion-scripts.ts`) from the new cobra; review the diff, then `make test-parity-completion`
+- you bump cobra in go.mod: run `make completion-regen`, which rewrites these goldens, the Rust templates (`sdk/rs/src/cli/completion/scripts/*.tmpl`) and the TS template module (`sdk/ts/src/completion-scripts.ts`) from the new cobra; review the diff, then `make test-parity-completion`
 
 ## Quick start
 

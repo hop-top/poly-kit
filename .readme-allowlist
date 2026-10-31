@@ -38,7 +38,7 @@ go/runtime/provenance/wrap/sqlwrap   # no options of its own; the go/runtime/pro
 go/tools/provenancelint              # go/tools/README.md documents the analyzer and its driver
 go/transport/api/client              # client half of go/transport/api, documented there
 go/transport/rpc/client              # client half of go/transport/rpc, documented there
-sdk/experimental/rs/examples         # crate examples, documented by sdk/experimental/rs/README.md
+sdk/rs/examples         # crate examples, documented by sdk/rs/README.md
 
 # Test doubles
 go/console/cli/conformance/harness  # no Go source of its own; listed in cli/conformance/README.md table

@@ -20,7 +20,7 @@ use hop_top_kit::authn::{Jwk, Options, Verifier};
 use serde_json::Value;
 use wasm_bindgen_test::wasm_bindgen_test;
 
-const CORPUS: &str = include_str!("../../../../contracts/authn-v1/vectors.json");
+const CORPUS: &str = include_str!("../../../contracts/authn-v1/vectors.json");
 
 fn token(name: &str) -> (Verifier, String, Verifier) {
     let c: Value = serde_json::from_str(CORPUS).unwrap();

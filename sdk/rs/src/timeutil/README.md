@@ -50,5 +50,5 @@ assert_eq!(parse_until_at("in 0 days", now), Err(TimeError::InvalidCount("0".int
 
 ## See also
 
-- [`go/core/util/until.go`](../../../../../go/core/util/until.go) and
-  [`since.go`](../../../../../go/core/util/since.go), the Go references
+- [`go/core/util/until.go`](../../../../go/core/util/until.go) and
+  [`since.go`](../../../../go/core/util/since.go), the Go references

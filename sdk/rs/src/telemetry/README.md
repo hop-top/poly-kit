@@ -49,9 +49,9 @@ client.shutdown(Duration::from_millis(200)).await.unwrap();
 - `anon` strips `attrs` to null even after a custom redactor populated them.
 - `record` never blocks: a full queue increments `dropped_count()` and returns `Ok`.
 - Sink defaults to JSONL, so a misconfigured stack spools locally instead of posting to a wrong URL.
-- Parity: [`sdk/tests/cross-lang/fixtures/input.json`](../../../../../sdk/tests/cross-lang/fixtures/input.json)
+- Parity: [`sdk/tests/cross-lang/fixtures/input.json`](../../../tests/cross-lang/fixtures/input.json)
   and `consent.yaml`, `install_id.bytes` in the same directory, replayed by
-  [`sdk/tests/cross-lang/runners/rs`](../../../../../sdk/tests/cross-lang/runners/rs/).
+  [`sdk/tests/cross-lang/runners/rs`](../../../tests/cross-lang/runners/rs/).
 
 ## Neighbours
 
@@ -61,7 +61,7 @@ client.shutdown(Duration::from_millis(200)).await.unwrap();
 
 ## See also
 
-- Crate README, [Telemetry](../../../../../docs/adopters/reference/rs-sdk.md#telemetry)
-- [`docs/adopters/guides/telemetry.md`](../../../../../docs/adopters/guides/telemetry.md)
-- [`sdk/docs/telemetry-event-schema.md`](../../../../docs/telemetry-event-schema.md)
-- [`go/runtime/telemetry`](../../../../../go/runtime/telemetry/README.md), the Go reference
+- Crate README, [Telemetry](../../../../docs/adopters/reference/rs-sdk.md#telemetry)
+- [`docs/adopters/guides/telemetry.md`](../../../../docs/adopters/guides/telemetry.md)
+- [`sdk/docs/telemetry-event-schema.md`](../../../docs/telemetry-event-schema.md)
+- [`go/runtime/telemetry`](../../../../go/runtime/telemetry/README.md), the Go reference

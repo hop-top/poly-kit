@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use hop_top_kit::parity::{self, BLOCKS, RAW};
 
 fn canonical() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/parity/parity.json")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/parity/parity.json")
 }
 
 fn declared() -> BTreeSet<String> {
@@ -36,7 +36,7 @@ fn vendored_copy_matches_canonical_bytes() {
     assert!(
         fs::read_to_string(canonical()).unwrap() == RAW,
         "src/parity/parity.json drifted from contracts/parity/parity.json; \
-         cp contracts/parity/parity.json sdk/experimental/rs/src/parity/parity.json"
+         cp contracts/parity/parity.json sdk/rs/src/parity/parity.json"
     );
 }
 

@@ -20,7 +20,7 @@ const (
 	redactConfDir = "../../../contracts/redact-v1"
 	// redactRustRules is the kit-rs copy of rules.json, embedded by the
 	// Rust redactor; it must stay byte-identical.
-	redactRustRules = "../../../sdk/experimental/rs/src/redact/rules.json"
+	redactRustRules = "../../../sdk/rs/src/redact/rules.json"
 )
 
 var updateRedactRules = flag.Bool("update", false, "rewrite contracts/redact-v1/rules.json and the kit-rs copy from EmbeddedPolicy")

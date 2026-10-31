@@ -56,13 +56,13 @@ GO_MODULE_DIRS=(go cmd contracts engine examples incubator)
 GO_RACE_PREFIXES=(go cmd internal examples)
 TS_PKGS=(sdk/ts engine/sdk/ts-kit-engine)
 PY_PKGS=(sdk/py engine/sdk/py-kit-engine)
-RS_PKGS=(sdk/experimental/rs)
+RS_PKGS=(sdk/rs)
 PHP_PKGS=(sdk/experimental/php)
 
 # Parity targets: "<target> <go packages, comma-separated, /... for a
 # subtree> <SDK package dirs, comma-separated>". A test-parity
 # prerequisite missing here always runs.
-RS=sdk/experimental/rs TS=sdk/ts PY=sdk/py PHP=sdk/experimental/php
+RS=sdk/rs TS=sdk/ts PY=sdk/py PHP=sdk/experimental/php
 PARITY_TABLE="
 test-parity-typeid go/core/id/... $RS,$TS,$PY,$PHP
 test-parity-consent go/core/consent $RS

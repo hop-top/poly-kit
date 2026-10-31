@@ -70,7 +70,7 @@ struct Step {
 }
 
 fn wire_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/bus-v1/streams/wire")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/bus-v1/streams/wire")
 }
 
 fn event(v: &Value) -> Event {

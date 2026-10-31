@@ -74,7 +74,7 @@ specification.
 
 | Primitive | Purpose                                    | Spec                                                                        | Modules                                                                                                                                                                                                                                          |
 | --------- | ------------------------------------------ | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TypeID    | Self-describing entity IDs (`task_01j6…`). | Jetify TypeID v0.3.0 | go [`go/core/id`](go/core/id/), rs [`sdk/experimental/rs/src/id`](sdk/experimental/rs/src/id/), ts [`sdk/ts/src/id`](sdk/ts/src/id/), py [`sdk/py/hop_top_kit/id`](sdk/py/hop_top_kit/id/), php [`sdk/experimental/php/src/Id`](sdk/experimental/php/src/Id/) |
+| TypeID    | Self-describing entity IDs (`task_01j6…`). | Jetify TypeID v0.3.0 | go [`go/core/id`](go/core/id/), rs [`sdk/rs/src/id`](sdk/rs/src/id/), ts [`sdk/ts/src/id`](sdk/ts/src/id/), py [`sdk/py/hop_top_kit/id`](sdk/py/hop_top_kit/id/), php [`sdk/experimental/php/src/Id`](sdk/experimental/php/src/Id/) |
 | LLM routing | Deterministic provider picker + categorical budget tier + operator pool gating. | RequestProfile / BudgetTier / PickProvider | go [`go/ai/llm`](go/ai/llm/) (model metadata delegated to [`hop.top/aim`](https://hop.top/aim)) |
 
 URI composition (`<scheme>://<entity-type>/<typeid>`) is handled by

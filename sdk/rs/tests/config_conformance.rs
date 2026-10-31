@@ -29,7 +29,7 @@ const FILES: &[&str] = &[
 ];
 
 fn dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/config-v1")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/config-v1")
 }
 
 /// Reads a vector file: the header (`$schema`, `$id`, `version` = v1,
