@@ -34,6 +34,7 @@ mod endpoint;
 mod error;
 mod events;
 mod keys;
+mod pool;
 mod provider;
 mod registry;
 mod toolchoice;
@@ -54,6 +55,8 @@ pub mod google;
 pub mod ollama;
 #[cfg(feature = "llm-openai")]
 pub mod openai;
+#[cfg(feature = "llm-picker")]
+pub mod picker;
 #[cfg(feature = "llm-routellm")]
 pub mod routellm;
 #[cfg(feature = "llm-triton")]
@@ -71,6 +74,7 @@ pub use endpoint::{
 pub use error::{KeyEndpointReason, LlmError, MissingKeyError, ToolNameReason};
 pub use events::{RequestEndPayload, RequestStartPayload};
 pub use keys::{AsyncSecretStore, KeyResolution, KeySource, KeySourceKind, FALLBACK_ENV_KEY};
+pub use pool::{load_pool, resolve_pool, PoolEntry};
 pub use provider::{BoxFuture, Capability, Provider, TokenStream};
 pub use registry::{default_registry, Declaration, Factory, ProviderKey, Registry, ResolveOptions};
 pub use toolchoice::{check_tool_choice, ToolChoice, ToolChoiceMode};

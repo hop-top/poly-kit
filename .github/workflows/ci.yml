@@ -710,6 +710,15 @@ jobs:
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features llm --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
+      # The picker (catalog filter, pool, ranking, classifier stage) is
+      # pure.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features llm-picker
+        if: steps.scope.outputs.run == 'true'
+      - name: clippy (wasm32, llm picker)
+        if: steps.scope.outputs.run == 'true'
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features llm-picker --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
       # redact has no I/O: the default policy is embedded, so the
       # redactor runs in a browser or worker as it does natively.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features redact
@@ -899,6 +908,9 @@ jobs:
       - run: cargo check --locked --lib --no-default-features --features notify-email
         if: steps.scope.outputs.run == 'true'
       - run: cargo check --locked --lib --no-default-features --features notify-os
+        if: steps.scope.outputs.run == 'true'
+      # Every other adapter declares the same: llm-http carries tokio's timer.
+      - run: cargo check --locked --lib --no-default-features --features llm-openai,llm-google,llm-ollama,llm-triton,llm-routellm
         if: steps.scope.outputs.run == 'true'
       # mcp without output: serde_json keeps sorted maps.
       - run: cargo test --locked --no-default-features --features mcp

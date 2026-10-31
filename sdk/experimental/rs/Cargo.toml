@@ -267,6 +267,10 @@ llm-google = ["llm-http"]
 # The RouteLLM adapter: a RouteLLM server spoken to through the openai
 # adapter, with the router pair / tier model field. Native only.
 llm-routellm = ["llm-openai"]
+# The model picker: filters a model catalog by a request profile, narrows
+# it to the llm.yaml pool and ranks by budget tier, with the classifier
+# stage. Nothing of its own beyond `llm`; wasm-safe.
+llm-picker = ["llm"]
 
 # Notification primitives over the bus `Sink`, a port of go/runtime/notify:
 # the severity convention, the filter and retry + dead-letter decorators,
