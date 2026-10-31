@@ -1,3 +1,39 @@
+//! Rust port of the hop-top kit: the CLI building blocks every language port
+//! of the toolkit shares, with the same behaviour and wire formats.
+//!
+//! Nothing is on by default. Each module sits behind a Cargo feature of the
+//! same name, so a build pays only for the dependencies it names:
+//!
+//! ```toml
+//! [dependencies]
+//! hop-top-kit = { version = "0.5.0-alpha", features = ["cli", "output"] }
+//! ```
+//!
+//! The version names a prerelease on purpose: a bare `"0.5"` cannot resolve
+//! one.
+//!
+//! # Modules
+//!
+//! - CLI surface: [`cli`], [`output`], [`serve`], [`mcp`]
+//! - Configuration and state: [`config`], [`consent`], [`upgrade`], [`kv`],
+//!   [`sqldb`], [`sqlstore`], [`blob`], [`httpcache`]
+//! - Events and resilience: [`bus`], [`domain`], [`breaker`]
+//! - Networking and servers: [`netpolicy`], [`api`], [`api_server`], [`rpc`],
+//!   [`socket`], [`authn`]
+//! - Data helpers: [`id`], [`redact`], [`telemetry`], [`timeutil`], [`uri`],
+//!   [`llm`], [`util`]
+//!
+//! Every module page names the feature that enables it. The feature table in
+//! the crate README lists what each feature pulls in and which are wasm-safe.
+//!
+//! # Documentation features
+//!
+//! docs.rs builds this crate with `--all-features` and `--cfg docsrs`, so
+//! every module appears with its feature badge. A local build needs the
+//! features named explicitly, for example
+//! `cargo doc --features cli,output --open`.
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 #[cfg(feature = "cli")]
 pub mod cli;
 #[cfg(feature = "output")]
