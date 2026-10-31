@@ -58,6 +58,8 @@ mod openapi;
 mod origin;
 mod ratelimit;
 mod serve_loop;
+#[cfg(feature = "cli-permissions")]
+mod served;
 mod server;
 mod sse;
 mod timeouts;

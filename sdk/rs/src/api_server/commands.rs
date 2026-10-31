@@ -205,6 +205,12 @@ pub struct CommandDescriptor {
     pub requires_confirmation: bool,
     /// The command also needs a typed `confirm-token`.
     pub requires_confirm_token: bool,
+    /// The `kit/side-effect` tier the policy engine reads: the declared
+    /// value, kit's destructive tier for a destructive-looking name, and
+    /// empty for a command declaring nothing.
+    pub tier: String,
+    /// The `kit/permissions` annotation, empty when undeclared.
+    pub permissions: String,
 }
 
 impl CommandDescriptor {
@@ -351,6 +357,16 @@ fn describe(root: &Root, c: &CommandInfo) -> CommandDescriptor {
         reason: reason.to_string(),
         requires_confirmation,
         requires_confirm_token: requires_token,
+        tier: match source {
+            SideEffectSource::Declared => c.side_effect().unwrap_or_default().to_string(),
+            SideEffectSource::Inferred => crate::cli::model::INFERRED_TIER.to_string(),
+            SideEffectSource::Unannotated => String::new(),
+        },
+        permissions: c
+            .annotations
+            .get("kit/permissions")
+            .cloned()
+            .unwrap_or_default(),
     }
 }
 
@@ -377,6 +393,8 @@ pub struct CommandProjection {
     version: String,
     descriptors: Arc<Vec<CommandDescriptor>>,
     gate: Option<Arc<Gate>>,
+    #[cfg(feature = "cli-permissions")]
+    served: Option<Arc<crate::cli::ServedGate>>,
     policy: Option<String>,
     max_ops: i64,
 }
@@ -391,6 +409,8 @@ impl CommandProjection {
             version: version.into(),
             descriptors,
             gate: None,
+            #[cfg(feature = "cli-permissions")]
+            served: None,
             policy: None,
             max_ops: 0,
         }
@@ -417,6 +437,19 @@ impl CommandProjection {
         F: Fn(&CommandDescriptor, &HeaderMap) -> Result<(), ApiError> + Send + Sync + 'static,
     {
         self.gate = Some(Arc::new(f));
+        self
+    }
+
+    /// Evaluates a policy's served rules for every call, after the
+    /// command's decoded payload and before it runs (see
+    /// [`ServedGate`](crate::cli::ServedGate)): its `callers:` rules and
+    /// `max_ops` budgets, then its `permissions:` rules. The caller is
+    /// the one the stack's authentication established (`Claims` on the
+    /// request); an unauthenticated request is nobody. A refusal is 403
+    /// `permission_denied`, nothing run and nothing spent.
+    #[cfg(feature = "cli-permissions")]
+    pub fn with_served_gate(mut self, gate: Arc<crate::cli::ServedGate>) -> Self {
+        self.served = Some(gate);
         self
     }
 
@@ -553,6 +586,8 @@ impl CommandProjection {
                 return e.into_response();
             }
         }
+        #[cfg(feature = "cli-permissions")]
+        let who = self.served.as_ref().map(|_| super::served::caller_of(&req));
         let (parts, body) = req.into_parts();
         let bytes = match axum::body::to_bytes(body, 1 << 20).await {
             Ok(b) => b,
@@ -562,10 +597,20 @@ impl CommandProjection {
             mut argv,
             max_ops: caller_max,
             confirm,
+            args,
+            flags,
         } = match decode(d, &parts.method, parts.uri.query(), &bytes) {
             Ok(a) => a,
             Err(m) => return bad_request(m),
         };
+        #[cfg(feature = "cli-permissions")]
+        if let (Some(g), Some(who)) = (&self.served, who) {
+            if let Err(e) = super::served::admit(g, d, who, args, flags) {
+                return e.into_response();
+            }
+        }
+        #[cfg(not(feature = "cli-permissions"))]
+        let _ = (args, flags);
         // Controls, ahead of the command's own flags. `--confirm` is an
         // intent guard, not an authorization (authn, scopes and the
         // projection's gate are): a caller of a gated command may pass
@@ -749,6 +794,10 @@ struct Decoded {
     argv: Vec<String>,
     max_ops: Option<i64>,
     confirm: Option<String>,
+    /// The positionals the caller sent.
+    args: Vec<String>,
+    /// The command flags the caller set, by name.
+    flags: BTreeMap<String, Value>,
 }
 
 /// Builds the argv tail for a request, or the refusal text.
@@ -808,6 +857,7 @@ fn decode(
     let mut argv: Vec<String> = d.path.clone();
     let mut caller_max = None;
     let mut confirm = None;
+    let mut set: BTreeMap<String, Value> = BTreeMap::new();
     for (k, v) in flags {
         // Delegation controls are the root's whether or not the leaf
         // also declares a flag of that name: a leaf-local `--confirm`
@@ -835,6 +885,7 @@ fn decode(
             }
             _ => {}
         }
+        set.insert(k.clone(), v.clone());
         match v {
             Value::Bool(true) => argv.push(format!("--{k}")),
             Value::Bool(false) | Value::Null => {}
@@ -848,12 +899,14 @@ fn decode(
     }
     if !args.is_empty() {
         argv.push("--".into());
-        argv.extend(args);
+        argv.extend(args.iter().cloned());
     }
     Ok(Decoded {
         argv,
         max_ops: caller_max,
         confirm,
+        args,
+        flags: set,
     })
 }
 
