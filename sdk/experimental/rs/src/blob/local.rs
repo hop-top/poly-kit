@@ -10,11 +10,15 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::{BlobError, Object, Store};
+use super::{BlobError, Object, Stater, Store};
 
 /// Monotonic counter feeding staging-file names, so two concurrent puts to
 /// the same key never contend for the same temp path.
 static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Reserved top-level directory holding content-type sidecars. Never a valid
+/// key prefix and never listed.
+const META_DIR: &str = ".blob-meta";
 
 /// Buffer size used when streaming a blob into its staging file.
 const COPY_BUF: usize = 64 * 1024;
@@ -90,7 +94,30 @@ impl LocalStore {
         if resolved == self.root || !resolved.starts_with(&self.root) {
             return Err(BlobError::KeyEscapesRoot(key.to_string()));
         }
+        if resolved.starts_with(self.root.join(META_DIR)) {
+            return Err(BlobError::ReservedKey(key.to_string()));
+        }
         Ok(resolved)
+    }
+
+    /// Sidecar path for a resolved content path.
+    fn meta_path(&self, resolved: &Path) -> PathBuf {
+        let rel = resolved.strip_prefix(&self.root).unwrap_or(resolved);
+        let mut name = rel.as_os_str().to_os_string();
+        name.push(".json");
+        self.root.join(META_DIR).join(name)
+    }
+
+    /// Stored content type for a resolved path; empty when the sidecar is
+    /// missing or unreadable (metadata is advisory; old stores have none).
+    fn read_content_type(&self, resolved: &Path) -> String {
+        let Ok(bytes) = fs::read(self.meta_path(resolved)) else {
+            return String::new();
+        };
+        serde_json::from_slice::<serde_json::Value>(&bytes)
+            .ok()
+            .and_then(|v| v.get("content_type")?.as_str().map(str::to_owned))
+            .unwrap_or_default()
     }
 }
 
@@ -128,8 +155,35 @@ fn create_temp(dir: &Path, base: &str) -> io::Result<(File, PathBuf)> {
     ))
 }
 
-/// Collect every file under `dir`, recursing into subdirectories.
-fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> io::Result<()> {
+/// Write `data` to `dst` via a synced sibling temp file + rename, creating
+/// parent directories and applying the blob mode.
+fn write_atomic(dst: &Path, data: &[u8]) -> io::Result<()> {
+    let dir = dst
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no parent dir"))?;
+    fs::create_dir_all(dir)?;
+    let base = dst
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "bad file name"))?;
+    let (mut f, tmp) = create_temp(dir, base)?;
+    let staged = (|| -> io::Result<()> {
+        f.write_all(data)?;
+        f.sync_all()?;
+        #[cfg(unix)]
+        fs::set_permissions(&tmp, PermissionsExt::from_mode(BLOB_MODE))?;
+        Ok(())
+    })();
+    drop(f);
+    if let Err(e) = staged.and_then(|()| fs::rename(&tmp, dst)) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// Collect every file under `dir`, recursing into subdirectories except `skip`.
+fn walk(dir: &Path, out: &mut Vec<PathBuf>, skip: &Path) -> io::Result<()> {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -139,7 +193,10 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> io::Result<()> {
         let entry = entry?;
         let path = entry.path();
         if entry.file_type()?.is_dir() {
-            walk(&path, out)?;
+            if path == skip {
+                continue;
+            }
+            walk(&path, out, skip)?;
         } else {
             out.push(path);
         }
@@ -150,7 +207,7 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> io::Result<()> {
 impl Store for LocalStore {
     type Reader = File;
 
-    fn put<R: Read>(&self, key: &str, mut r: R, _content_type: &str) -> Result<(), BlobError> {
+    fn put<R: Read>(&self, key: &str, mut r: R, content_type: &str) -> Result<(), BlobError> {
         let dest = self.resolve(key)?;
         let dir = dest
             .parent()
@@ -200,7 +257,19 @@ impl Store for LocalStore {
             let _ = fs::remove_file(&tmp);
             return Err(BlobError::io("rename", e));
         }
-        Ok(())
+
+        // Sidecar lands after the content. A crash between the two renames
+        // leaves the new content with the previous type.
+        let mp = self.meta_path(&dest);
+        if content_type.is_empty() {
+            return match fs::remove_file(&mp) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(BlobError::io("remove meta", e)),
+            };
+        }
+        let body = serde_json::json!({ "content_type": content_type }).to_string();
+        write_atomic(&mp, body.as_bytes()).map_err(|e| BlobError::io("write meta", e))
     }
 
     fn get(&self, key: &str) -> Result<Self::Reader, BlobError> {
@@ -213,15 +282,24 @@ impl Store for LocalStore {
 
     fn delete(&self, key: &str) -> Result<(), BlobError> {
         let p = self.resolve(key)?;
-        fs::remove_file(&p).map_err(|e| match e.kind() {
+        let removed = fs::remove_file(&p).map_err(|e| match e.kind() {
             io::ErrorKind::NotFound => BlobError::NotFound(key.to_string()),
             _ => BlobError::io("remove", e),
-        })
+        });
+        // Drop the sidecar even when the content was already gone, so a
+        // stray one never outlives its key.
+        match fs::remove_file(self.meta_path(&p)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return removed.and(Err(BlobError::io("remove meta", e))),
+        }
+        removed
     }
 
     fn list(&self, prefix: &str) -> Result<Vec<Object>, BlobError> {
         let mut paths = Vec::new();
-        walk(&self.root, &mut paths).map_err(|e| BlobError::io("walk", e))?;
+        walk(&self.root, &mut paths, &self.root.join(META_DIR))
+            .map_err(|e| BlobError::io("walk", e))?;
         // Path order compares component by component, the order Go's
         // directory walk yields: `a/b` precedes `a.txt`. Sorting the
         // joined key strings instead would put `a.txt` first.
@@ -252,7 +330,7 @@ impl Store for LocalStore {
             objects.push(Object {
                 key,
                 size: meta.len(),
-                content_type: String::new(),
+                content_type: self.read_content_type(&path),
             });
         }
         Ok(objects)
@@ -265,6 +343,24 @@ impl Store for LocalStore {
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
             Err(e) => Err(BlobError::io("stat", e)),
         }
+    }
+}
+
+impl Stater for LocalStore {
+    fn stat(&self, key: &str) -> Result<Object, BlobError> {
+        let p = self.resolve(key)?;
+        let meta = fs::metadata(&p).map_err(|e| match e.kind() {
+            io::ErrorKind::NotFound => BlobError::NotFound(key.to_string()),
+            _ => BlobError::io("stat", e),
+        })?;
+        if meta.is_dir() {
+            return Err(BlobError::NotFound(key.to_string()));
+        }
+        Ok(Object {
+            key: key.to_string(),
+            size: meta.len(),
+            content_type: self.read_content_type(&p),
+        })
     }
 }
 

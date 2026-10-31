@@ -5,6 +5,8 @@
 //! - [`Object`] — key + size + content type metadata.
 //! - [`Store`] — the backend trait (`put` / `get` / `delete` / `list` /
 //!   `exists`).
+//! - [`Stater`] — optional single-object metadata lookup (`stat`), a
+//!   separate trait so [`Store`] is unchanged.
 //! - [`local::LocalStore`] — filesystem-backed backend rooted at a directory.
 //!
 //! Only the local backend is ported. The Go S3 backend is intentionally
@@ -41,6 +43,10 @@ pub enum BlobError {
     /// The key resolves outside the store root.
     #[error("blob/local: key {0:?} escapes store root")]
     KeyEscapesRoot(String),
+
+    /// The key falls in the store's reserved metadata namespace.
+    #[error("blob/local: key {0:?} uses reserved namespace \".blob-meta\"")]
+    ReservedKey(String),
 
     /// The requested key does not exist.
     #[error("blob/local: key {0:?} not found")]
@@ -82,4 +88,33 @@ pub trait Store {
 
     /// Report whether a blob exists at `key`.
     fn exists(&self, key: &str) -> Result<bool, BlobError>;
+}
+
+/// Optional capability of a [`Store`]: report the metadata of one object,
+/// including its content type, without listing.
+///
+/// Deliberately not part of [`Store`], so backends that cannot or need not
+/// support it are not forced to. The returned [`Object`] has the same shape
+/// [`Store::list`] yields, but `content_type` is the exact type of the
+/// latest `put` (empty when none was given). A missing key is
+/// [`BlobError::NotFound`], as with [`Store::get`].
+///
+/// Rust has no runtime trait probing, so there is no single helper that
+/// "uses `Stater` when present": bound on `S: Stater` when you need it, and
+/// call [`stat_by_list`] for a plain [`Store`].
+pub trait Stater {
+    /// Return the metadata of the blob at `key`.
+    fn stat(&self, key: &str) -> Result<Object, BlobError>;
+}
+
+/// Fallback for stores without [`Stater`]: `list(key)` and pick the exact
+/// match. `content_type` is only as reliable as the store's `list` (possibly
+/// empty), and the cost is a listing of every key sharing the prefix.
+/// A missing key is [`BlobError::NotFound`].
+pub fn stat_by_list<S: Store>(store: &S, key: &str) -> Result<Object, BlobError> {
+    store
+        .list(key)?
+        .into_iter()
+        .find(|o| o.key == key)
+        .ok_or_else(|| BlobError::NotFound(key.to_string()))
 }

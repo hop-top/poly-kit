@@ -601,6 +601,20 @@ observes a partial blob, and an interrupted write leaves any previous
 value intact. The Go local backend matches this. Only the local backend is
 ported; see [Not ported](#not-ported).
 
+### blob content type is a sidecar
+
+`put`'s content type is stored in `<root>/.blob-meta/<key>.json` as
+`{"content_type":"..."}`, written after the content (both via temp +
+rename); an empty type removes the old sidecar and `delete` removes both.
+`list` and the optional `blob::Stater::stat` report it; a missing or
+corrupt sidecar reads as empty. The layout is shared with the Go local
+backend, so a store written by one is readable by the other. Keys under
+`.blob-meta` are rejected (`BlobError::ReservedKey`). `Stater` is a separate
+trait, not part of `Store`; Rust cannot probe it at runtime, so there is no
+`Stat` helper that prefers it: bound on `Stater`, or use
+`blob::stat_by_list` on a plain `Store`. Enabling `blob` now also pulls in
+`serde_json`.
+
 ### sqlstore migrations differ from Go
 
 Go's `sqlstore` runs its own `CREATE TABLE IF NOT EXISTS` and concatenates
