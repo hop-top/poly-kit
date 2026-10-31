@@ -319,10 +319,12 @@ nothing. Wired in `api_server::commands::CommandProjection::with_served_gate` (4
 `permission_denied`, caller = the stack's `Claims`), `mcp::MountOptions::permission` with
 `mcp::permission::served_hook` (an `isError` result at HTTP 200; both eras and stdio) and
 `socket::SocketService::served_gate` (`DENIED`; owner via the socket file, or the
-authenticator's verdict). Counts are in memory (`UsageLedger`), not a shared `kv` store as in
-Go. The `rpc` module serves proto services, not a command tree, and has no gate.
+authenticator's verdict). Counts are in memory by default (`UsageLedger` over a `UsageStore`); opt in to a file with
+`ServedGate::with_usage_file(tool)` (feature `kv`: `$XDG_STATE_HOME/<tool>/usage.db`, entries as
+Go writes them, so either SDK reads the other's file) or any store via `with_usage_store`. The
+config value `services.usage_store: memory|file` is `UsageStoreKind::parse`. The `rpc` module serves proto services, not a command tree, and has no gate.
 
-Not ported from Go: durable/shared budget storage, kit-default beyond loopback,
+Not ported from Go: kit-default beyond loopback,
 withholding caller-independent refusals from discovery, the
 `kit/idempotent`, `kit/cache-ttl` and `kit/output-schema` validate arms,
 themed help and the `help` subcommand.

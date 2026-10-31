@@ -62,9 +62,12 @@ pub use plan::{Effect, Plan};
 pub use policy::{default_policy_loader, Policy, PolicyLoader};
 pub use root::Root;
 pub use run::{Globals, HandlerFn, Invocation, AUTOCORRECT_ENV};
+#[cfg(all(feature = "cli-permissions", feature = "kv"))]
+pub use served::KvUsageStore;
 #[cfg(feature = "cli-permissions")]
 pub use served::{
-    policy_caller, ServedCall, ServedGate, Usage, UsageLedger, DEFAULT_BUDGET_WINDOW,
+    policy_caller, MemoryUsageStore, ServedCall, ServedGate, Usage, UsageLedger, UsageStore,
+    UsageStoreKind, DEFAULT_BUDGET_WINDOW,
 };
 pub use spec::{ArgSpec, CommandSpec, FlagSpec, ValueSpec};
 pub use usage::AutocorrectMode;
