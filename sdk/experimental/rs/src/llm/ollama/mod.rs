@@ -132,11 +132,7 @@ impl Adapter {
         }
     }
 
-    async fn send(
-        &self,
-        req: &Request,
-        stream: bool,
-    ) -> Result<reqwest::Response, LlmError> {
+    async fn send(&self, req: &Request, stream: bool) -> Result<reqwest::Response, LlmError> {
         let body = wire::body(&self.model, req, stream)?;
         let model = self.model_for(req).to_string();
         let map = |status, _after, text: &str| map_status(status, text, &model);

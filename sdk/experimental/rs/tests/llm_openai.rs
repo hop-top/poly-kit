@@ -684,7 +684,11 @@ async fn stream_error_key_straddling_the_cap_is_scrubbed() {
         let text = format!("{e} {e:?}");
         for n in 4..=key.len() {
             for i in 0..=key.len() - n {
-                assert!(!text.contains(&key[i..i + n]), "pad {pad}: fragment {:?} leaked", &key[i..i + n]);
+                assert!(
+                    !text.contains(&key[i..i + n]),
+                    "pad {pad}: fragment {:?} leaked",
+                    &key[i..i + n]
+                );
             }
         }
     }

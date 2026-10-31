@@ -48,10 +48,12 @@ mod wirehttp;
 
 #[cfg(feature = "llm-anthropic")]
 pub mod anthropic;
-#[cfg(feature = "llm-openai")]
-pub mod openai;
+#[cfg(feature = "llm-google")]
+pub mod google;
 #[cfg(feature = "llm-ollama")]
 pub mod ollama;
+#[cfg(feature = "llm-openai")]
+pub mod openai;
 #[cfg(feature = "llm-triton")]
 pub mod triton;
 

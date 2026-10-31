@@ -260,6 +260,10 @@ llm-ollama = ["llm-http"]
 # The Triton Inference Server scorer over its KServe v2 REST API (the same
 # HTTP transport as Go; no gRPC or protobuf). Native only.
 llm-triton = ["llm-http"]
+# The Google Gemini adapter (`generateContent`, SSE streaming, tool calls
+# with thought signatures) over HTTP, for the gemini and google schemes.
+# Native only.
+llm-google = ["llm-http"]
 
 # Notification primitives over the bus `Sink`, a port of go/runtime/notify:
 # the severity convention, the filter and retry + dead-letter decorators,
