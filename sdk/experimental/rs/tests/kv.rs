@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use hop_top_kit::kv::{Backend, Config, KvError, SqliteStore, Store, TtlStore};
+use hop_top_kit::kv::{Backend, Config, KvError, SqliteStore, Store, TtlInserter, TtlStore};
 use tempfile::TempDir;
 
 /// Fresh file-backed store in a temp dir that outlives it.
@@ -355,4 +355,53 @@ fn regression_normal_prefix_boundary() {
         vec![b"abc".to_vec()],
         r#"list("abc") must return only "abc""#
     );
+}
+
+// --- put-if-absent (dedupe claim) -----------------------------------------
+
+#[test]
+fn put_if_absent_claims_once_until_expiry() {
+    let (_d, s) = new_store();
+    assert!(s.put_if_absent_with_ttl(b"k", b"first", LIVE_TTL).unwrap());
+    assert!(!s.put_if_absent_with_ttl(b"k", b"second", LIVE_TTL).unwrap());
+    assert_eq!(
+        s.get(b"k").unwrap(),
+        Some(b"first".to_vec()),
+        "a refusal leaves the value"
+    );
+
+    assert!(s.put_if_absent_with_ttl(b"dying", b"a", DYING_TTL).unwrap());
+    thread::sleep(PAST_DYING);
+    assert!(
+        s.put_if_absent_with_ttl(b"dying", b"b", LIVE_TTL).unwrap(),
+        "expired is absent"
+    );
+    assert_eq!(s.get(b"dying").unwrap(), Some(b"b".to_vec()));
+
+    s.put(b"forever", b"x").unwrap();
+    assert!(!s
+        .put_if_absent_with_ttl(b"forever", b"y", LIVE_TTL)
+        .unwrap());
+}
+
+#[test]
+fn put_if_absent_has_one_winner_across_connections() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = Arc::new(dir.path().join("race.db").to_str().unwrap().to_string());
+    let handles: Vec<_> = (0..8)
+        .map(|_| {
+            let path = path.clone();
+            thread::spawn(move || {
+                let s = SqliteStore::new(&path).unwrap();
+                s.put_if_absent_with_ttl(b"race", b"v", LIVE_TTL).unwrap()
+            })
+        })
+        .collect();
+    let wins = handles
+        .into_iter()
+        .filter(|_| true)
+        .map(|h| h.join().unwrap())
+        .filter(|w| *w)
+        .count();
+    assert_eq!(wins, 1);
 }
