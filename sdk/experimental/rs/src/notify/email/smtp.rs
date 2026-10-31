@@ -434,7 +434,13 @@ impl Client {
         let Conn::Plain(tcp) = plain else {
             return Err(other("already encrypted"));
         };
-        *self.conn.get_mut() = Conn::Tls(Box::new(rustls::StreamOwned::new(tls, tcp)));
+        let mut stream = rustls::StreamOwned::new(tls, tcp);
+        // Finish the handshake now, so an untrusted certificate fails the
+        // upgrade itself and not whichever command writes first.
+        while stream.conn.is_handshaking() {
+            stream.conn.complete_io(&mut stream.sock)?;
+        }
+        *self.conn.get_mut() = Conn::Tls(Box::new(stream));
         Ok(())
     }
 }
