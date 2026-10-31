@@ -75,11 +75,11 @@ func (n *NetworkAdapter) connect(ctx context.Context, addr string, fromLoop bool
 	}
 
 	// coder/websocket handshakes over an *http.Client, so the policy is
-	// applied through a guarded transport rather than a dialer. Naming
+	// applied through a guarded client rather than a dialer. Naming
 	// the client here rather than relying on http.DefaultClient keeps
 	// enforcement explicit and independent of netpolicy.Install order.
 	conn, _, err := websocket.Dial(ctx, addr, &websocket.DialOptions{
-		HTTPClient: &http.Client{Transport: netpolicy.Guard(http.DefaultTransport)},
+		HTTPClient: netpolicy.NewClient(http.DefaultTransport),
 	})
 	if err != nil {
 		return err
