@@ -71,7 +71,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `sqlstore` (`sqlstore-blob`, `sqlstore-encrypt`) | `sqldb` + `serde`, `serde_json` (+ `blob`, nothing of its own; + `crypto_secretbox`, `hkdf`, `sha2`) | 22 (22, 50) |
 | `id`; `timeutil` | `type-safe-id`, `uuid`, `serde`, `thiserror`; `chrono`, `interim`, `thiserror` | 25; 19 |
 | `httpcache` | `kv` + `serde`, `serde_json`, `sha2`, `base64` | 33 |
-| `cli`; `tui` | `output` + `clap`; nothing (std only) | 35; 0 |
+| `cli` (`cli-permissions`); `tui` | `output` + `clap` (+ `cel`, `serde_json`); nothing (std only) | 35 (76); 0 |
 | `rpc-server` | `api-server` + `connectrpc`, `buffa`, `buffa-types`, `serde` (native only) | `api-server` + 31 (171) |
 | `socket` | `serve` + `serde`, `getrandom`, tokio `net`/`io-util` (unix only) | 0 beyond `serve` |
 | `serve` (`serve-cli`) | `output` + `tokio`, `serde_json` (+ `cli`) | 37 (50) |

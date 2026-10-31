@@ -14,6 +14,8 @@ Corpora bind every port, Go included; detail lives in each corpus README.
   list order. Go and Rust runners.
 - [cli-root-v1/](cli-root-v1/README.md): kit/console/cli root at the command line: persistent flags, version,
   help groups, aliases, flag-error envelopes, autocorrect. Go and Rust runners.
+- [celpermission-v1/](celpermission-v1/README.md): kit/console/cli `permissions:` rule gate for served
+  invocations: bindings, deny-overrides, fail-closed evaluation, load-time refusals. Go and Rust runners.
 - [completion-v1/](completion-v1/README.md): kit/console/cli shell completion: completers, `__complete`
   output, `completion <shell>` scripts byte for byte. Go and Rust runners.
 - [consent-v1/](consent-v1/README.md): kit/core/consent grants: records, decisions, refusals, audit,

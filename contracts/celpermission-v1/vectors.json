@@ -1,0 +1,1438 @@
+{
+ "tree": {
+  "item add": "write-local",
+  "item list": "read"
+ },
+ "suites": [
+  {
+   "name": "bindings",
+   "cases": [
+    {
+     "name": "caller hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "principal.id == \"mallory\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "caller"
+      }
+     ],
+     "request": {
+      "caller": "mallory",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": caller"
+    },
+    {
+     "name": "caller miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "principal.id == \"mallory\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "caller"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "tenant hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "principal.tenant == \"globex\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "tenant"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "globex",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": tenant"
+    },
+    {
+     "name": "tenant miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "principal.tenant == \"globex\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "tenant"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "scopes hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "\"items:write\" in principal.scopes",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "scopes"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read",
+       "items:write"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": scopes"
+    },
+    {
+     "name": "scopes miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "\"items:write\" in principal.scopes",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "scopes"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "established hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "!principal.established",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "established"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "none",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": established"
+    },
+    {
+     "name": "established miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "!principal.established",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "established"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "source hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "principal.source == \"transport\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "source"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "transport",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": source"
+    },
+    {
+     "name": "source miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "principal.source == \"transport\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "source"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "surface hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "context.surface == \"mcp\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "surface"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "mcp",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": surface"
+    },
+    {
+     "name": "surface miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "context.surface == \"mcp\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "surface"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "client address hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "context.client_addr == \"192.168.0.9\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "client address"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "192.168.0.9:4000",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": client address"
+    },
+    {
+     "name": "client address miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "context.client_addr == \"192.168.0.9\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "client address"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "client address without port hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "context.client_addr == \"10.1.2.3\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "client address without port"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": client address without port"
+    },
+    {
+     "name": "client address without port miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "context.client_addr == \"10.1.2.3\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "client address without port"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "192.168.1.1:9",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "client address ipv6 hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "context.client_addr == \"::1\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "client address ipv6"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "[::1]:8080",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": client address ipv6"
+    },
+    {
+     "name": "client address ipv6 miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "context.client_addr == \"::1\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "client address ipv6"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "leaf path hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "resource.id == \"item add\" && resource.path[1] == \"add\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "leaf path"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "add"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": leaf path"
+    },
+    {
+     "name": "leaf path miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "resource.id == \"item add\" && resource.path[1] == \"add\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "leaf path"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "tier hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "resource.tier == \"write-local\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "tier"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "add"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": tier"
+    },
+    {
+     "name": "tier miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "resource.tier == \"write-local\"",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "tier"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "args hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "\"secret\" in payload.args",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "args"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [
+       "secret"
+      ],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": args"
+    },
+    {
+     "name": "args miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "\"secret\" in payload.args",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "args"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "flags hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "has(payload.flags.force) && payload.flags.force == true",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "flags"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {
+       "force": true
+      }
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": flags"
+    },
+    {
+     "name": "flags miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "has(payload.flags.force) && payload.flags.force == true",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "flags"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "numeric flag hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "has(payload.flags.count) && payload.flags.count > 5",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "numeric flag"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {
+       "count": 9
+      }
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": numeric flag"
+    },
+    {
+     "name": "numeric flag miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "has(payload.flags.count) && payload.flags.count > 5",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "numeric flag"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "string function hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "payload.args.exists(a, a.startsWith(\"rm-\"))",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "string function"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [
+       "rm-all"
+      ],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": string function"
+    },
+    {
+     "name": "string function miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "payload.args.exists(a, a.startsWith(\"rm-\"))",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "string function"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    },
+    {
+     "name": "matches hit",
+     "rules": [
+      {
+       "name": "r",
+       "when": "context.client_addr.matches(\"^10\\\\.\")",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "matches"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"r\": matches"
+    },
+    {
+     "name": "matches miss",
+     "rules": [
+      {
+       "name": "r",
+       "when": "context.client_addr.matches(\"^10\\\\.\")",
+       "effect": "deny",
+       "otherwise": "allow",
+       "message": "matches"
+      }
+     ],
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:read"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "192.168.1.1:9",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    }
+   ]
+  },
+  {
+   "name": "resource kind is command",
+   "rules": [
+    {
+     "name": "kind",
+     "when": "resource.kind == \"command\"",
+     "effect": "allow",
+     "otherwise": "deny",
+     "message": "commands only"
+    }
+   ],
+   "cases": [
+    {
+     "name": "served leaf",
+     "request": {
+      "caller": "mallory",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    }
+   ]
+  },
+  {
+   "name": "claimed scopes are not scopes",
+   "rules": [
+    {
+     "name": "needs-admin",
+     "when": "\"items:admin\" in principal.scopes",
+     "effect": "allow",
+     "otherwise": "deny",
+     "message": "admins only"
+    }
+   ],
+   "cases": [
+    {
+     "name": "claim without verification denies",
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:admin"
+      ],
+      "source": "none",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"needs-admin\": admins only"
+    },
+    {
+     "name": "transport-established claim denies",
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:admin"
+      ],
+      "source": "transport",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"needs-admin\": admins only"
+    },
+    {
+     "name": "verified scope admits",
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [
+       "items:admin"
+      ],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    }
+   ]
+  },
+  {
+   "name": "deny overrides",
+   "rules": [
+    {
+     "name": "everyone",
+     "when": "true",
+     "effect": "allow",
+     "otherwise": "allow"
+    },
+    {
+     "name": "no-globex",
+     "when": "principal.tenant == \"globex\"",
+     "effect": "deny",
+     "otherwise": "allow",
+     "message": "globex is offboarded"
+    },
+    {
+     "name": "also-everyone",
+     "when": "true",
+     "effect": "allow",
+     "otherwise": "allow"
+    }
+   ],
+   "cases": [
+    {
+     "name": "one deny refuses",
+     "request": {
+      "caller": "alice",
+      "tenant": "globex",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"no-globex\": globex is offboarded"
+    },
+    {
+     "name": "others admitted",
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    }
+   ]
+  },
+  {
+   "name": "first denying rule names the refusal",
+   "rules": [
+    {
+     "name": "first",
+     "when": "principal.id == \"x\"",
+     "effect": "deny",
+     "otherwise": "allow",
+     "message": "one"
+    },
+    {
+     "name": "second",
+     "when": "principal.id == \"x\"",
+     "effect": "deny",
+     "otherwise": "allow",
+     "message": "two"
+    }
+   ],
+   "cases": [
+    {
+     "name": "declaration order",
+     "request": {
+      "caller": "x",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"first\": one"
+    }
+   ]
+  },
+  {
+   "name": "otherwise denies",
+   "rules": [
+    {
+     "name": "members-only",
+     "when": "principal.tenant == \"acme\"",
+     "effect": "allow",
+     "otherwise": "deny",
+     "message": "members only"
+    }
+   ],
+   "cases": [
+    {
+     "name": "non member",
+     "request": {
+      "caller": "alice",
+      "tenant": "globex",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"members-only\": members only"
+    },
+    {
+     "name": "member",
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    }
+   ]
+  },
+  {
+   "name": "evaluation error denies",
+   "rules": [
+    {
+     "name": "force-needs-admin",
+     "when": "payload.flags.force && !(\"items:admin\" in principal.scopes)",
+     "effect": "deny",
+     "otherwise": "allow",
+     "message": "force needs admin"
+    }
+   ],
+   "cases": [
+    {
+     "name": "unset flag read without has() denies",
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason_prefix": "permission rule \"force-needs-admin\": evaluation error"
+    },
+    {
+     "name": "set flag evaluates",
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {
+       "force": false
+      }
+     },
+     "allowed": true
+    }
+   ]
+  },
+  {
+   "name": "non-boolean result denies",
+   "rules": [
+    {
+     "name": "not-a-bool",
+     "when": "principal.id",
+     "effect": "deny",
+     "otherwise": "allow",
+     "message": "m"
+    }
+   ],
+   "cases": [
+    {
+     "name": "string result",
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason_prefix": "permission rule \"not-a-bool\": evaluation error"
+    }
+   ]
+  },
+  {
+   "name": "reason without message",
+   "rules": [
+    {
+     "name": "quiet",
+     "when": "true",
+     "effect": "deny",
+     "otherwise": "allow"
+    }
+   ],
+   "cases": [
+    {
+     "name": "name alone",
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": false,
+     "reason": "permission rule \"quiet\""
+    }
+   ]
+  },
+  {
+   "name": "no rules permits all",
+   "rules": [],
+   "cases": [
+    {
+     "name": "empty block",
+     "request": {
+      "caller": "alice",
+      "tenant": "acme",
+      "scopes": [],
+      "source": "verified",
+      "surface": "rest",
+      "remote_addr": "10.1.2.3:51234",
+      "path": [
+       "item",
+       "list"
+      ],
+      "args": [],
+      "flags": {}
+     },
+     "allowed": true
+    }
+   ]
+  }
+ ],
+ "compile_errors": [
+  {
+   "name": "syntax error names the rule",
+   "rules": [
+    {
+     "name": "fine",
+     "when": "true",
+     "effect": "deny",
+     "otherwise": "allow"
+    },
+    {
+     "name": "typo",
+     "when": "principal.id ==",
+     "effect": "deny",
+     "otherwise": "allow"
+    }
+   ],
+   "error_prefix": "permission rule \"typo\" does not compile: "
+  },
+  {
+   "name": "undeclared binding is a compile error",
+   "rules": [
+    {
+     "name": "unknown",
+     "when": "caller == 1",
+     "effect": "deny",
+     "otherwise": "allow"
+    }
+   ],
+   "error_contains": "permission rule \"unknown\""
+  },
+  {
+   "name": "bad effect",
+   "rules": [
+    {
+     "name": "x",
+     "when": "true",
+     "effect": "block",
+     "otherwise": "allow"
+    }
+   ],
+   "error_contains": "permission rule \"x\": effect \"block\" invalid"
+  },
+  {
+   "name": "missing name",
+   "rules": [
+    {
+     "name": "",
+     "when": "true",
+     "effect": "deny",
+     "otherwise": "allow"
+    }
+   ],
+   "error_contains": "permissions[0]: name required"
+  },
+  {
+   "name": "duplicate name",
+   "rules": [
+    {
+     "name": "a",
+     "when": "true",
+     "effect": "deny",
+     "otherwise": "allow"
+    },
+    {
+     "name": "a",
+     "when": "false",
+     "effect": "deny",
+     "otherwise": "allow"
+    }
+   ],
+   "error_contains": "permission rule \"a\": duplicate name"
+  },
+  {
+   "name": "missing when",
+   "rules": [
+    {
+     "name": "w",
+     "when": "",
+     "effect": "deny",
+     "otherwise": "allow"
+    }
+   ],
+   "error_contains": "'when' required"
+  },
+  {
+   "name": "undeclared name inside a macro body",
+   "rules": [
+    {
+     "name": "m",
+     "when": "payload.args.exists(a, b == a)",
+     "effect": "deny",
+     "otherwise": "allow"
+    }
+   ],
+   "error_contains": "permission rule \"m\""
+  }
+ ]
+}
