@@ -5,7 +5,9 @@
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use axum::body::Body;
 use axum::extract::{ConnectInfo, Request};
@@ -30,7 +32,93 @@ struct ConnInfo {
     peer: SocketAddr,
     tls: bool,
     cert: Option<PeerCertificate>,
+    live: Arc<Liveness>,
 }
+
+/// h2 has no header or idle timeout of hyper's own (hyper's header
+/// deadline is HTTP/1 only), so the loop keeps one for every
+/// connection: no complete request in the header deadline after accept
+/// (a stalled preface or headers) or none in flight for that long
+/// (idle) ends it.
+struct Liveness {
+    since: Mutex<tokio::time::Instant>,
+    seen: std::sync::atomic::AtomicBool,
+    active: AtomicUsize,
+}
+
+impl Liveness {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            since: Mutex::new(tokio::time::Instant::now()),
+            seen: std::sync::atomic::AtomicBool::new(false),
+            active: AtomicUsize::new(0),
+        })
+    }
+
+    fn touch(&self) {
+        *self.since.lock().unwrap_or_else(PoisonError::into_inner) = tokio::time::Instant::now();
+    }
+
+    fn expired(&self, d: Duration) -> bool {
+        self.active.load(Ordering::SeqCst) == 0
+            && self
+                .since
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .elapsed()
+                > d
+    }
+}
+
+/// A request in flight, until its response (body included) is dropped.
+struct InFlight(Arc<Liveness>);
+
+impl InFlight {
+    fn begin(l: &Arc<Liveness>) -> Self {
+        l.seen.store(true, Ordering::SeqCst);
+        l.active.fetch_add(1, Ordering::SeqCst);
+        InFlight(l.clone())
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        self.0.touch();
+        self.0.active.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// A body that keeps its request counted in flight while it streams.
+struct Hold {
+    inner: Body,
+    _in_flight: InFlight,
+}
+
+impl axum::body::HttpBody for Hold {
+    type Data = axum::body::Bytes;
+    type Error = axum::Error;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<hyper::body::Frame<Self::Data>, Self::Error>>> {
+        std::pin::Pin::new(&mut self.inner).poll_frame(cx)
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.inner.is_end_stream()
+    }
+
+    fn size_hint(&self) -> hyper::body::SizeHint {
+        self.inner.size_hint()
+    }
+}
+
+/// h2 limits: concurrent streams (Go's default), header list size, and
+/// pending reset streams against rapid-reset floods.
+const H2_MAX_CONCURRENT_STREAMS: u32 = 250;
+const H2_MAX_HEADER_LIST_SIZE: u32 = 64 * 1024;
+const H2_MAX_PENDING_ACCEPT_RESET: usize = 20;
 
 #[cfg(feature = "api-server-tls")]
 pub(crate) type Acceptor = tokio_rustls::TlsAcceptor;
@@ -74,6 +162,7 @@ pub(crate) async fn serve(
                         peer,
                         tls: false,
                         cert: None,
+                        live: Liveness::new(),
                     };
                     run_conn(TokioIo::new(stream), info, app, timeouts, watcher).await;
                 }
@@ -97,6 +186,7 @@ pub(crate) async fn serve(
                         peer,
                         tls: true,
                         cert,
+                        live: Liveness::new(),
                     };
                     run_conn(TokioIo::new(tls_stream), info, app, timeouts, watcher).await;
                 }
@@ -128,6 +218,7 @@ async fn run_conn<I>(
 ) where
     I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
+    let live = info.live.clone();
     let svc = service_fn(move |req: hyper::Request<Incoming>| {
         let app = app.clone();
         let info = info.clone();
@@ -138,12 +229,30 @@ async fn run_conn<I>(
         .http1()
         .timer(TokioTimer::new())
         .header_read_timeout(timeouts.header_deadline());
-    builder.http2().timer(TokioTimer::new());
+    let probe = timeouts.write.max(Duration::from_secs(1));
+    builder
+        .http2()
+        .timer(TokioTimer::new())
+        .max_concurrent_streams(H2_MAX_CONCURRENT_STREAMS)
+        .max_header_list_size(H2_MAX_HEADER_LIST_SIZE)
+        .max_pending_accept_reset_streams(H2_MAX_PENDING_ACCEPT_RESET)
+        .keep_alive_interval(probe * 2)
+        .keep_alive_timeout(probe);
     // The result is the connection's end, clean or not: nothing to do
     // with either.
-    let _ = watcher
-        .watch(builder.serve_connection_with_upgrades(io, svc))
-        .await;
+    let conn = watcher.watch(builder.serve_connection_with_upgrades(io, svc));
+    let Some(d) = timeouts.header_deadline() else {
+        let _ = conn.await;
+        return;
+    };
+    tokio::pin!(conn);
+    let mut tick = tokio::time::interval((d / 4).max(Duration::from_millis(10)));
+    loop {
+        tokio::select! {
+            _ = &mut conn => return,
+            _ = tick.tick() => if live.expired(d) { return },
+        }
+    }
 }
 
 /// One request: the connection's facts in extensions, the read
@@ -155,6 +264,7 @@ async fn handle(
     timeouts: ServerTimeouts,
     req: hyper::Request<Incoming>,
 ) -> Result<Response, io::Error> {
+    let in_flight = InFlight::begin(&info.live);
     let mut req: Request = req.map(Body::new);
     let ext = req.extensions_mut();
     ext.insert(ConnectInfo(info.peer));
@@ -175,8 +285,18 @@ async fn handle(
             .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "write deadline exceeded"))?,
     };
     let Ok(resp) = resp;
-    Ok(match deadline {
+    let resp = match deadline {
         Some(d) => bound_response(resp, d),
         None => resp,
-    })
+    };
+    // Held until hyper drops the body: after it is streamed, not when
+    // the headers go out.
+    let (parts, body) = resp.into_parts();
+    Ok(Response::from_parts(
+        parts,
+        Body::new(Hold {
+            inner: body,
+            _in_flight: in_flight,
+        }),
+    ))
 }
