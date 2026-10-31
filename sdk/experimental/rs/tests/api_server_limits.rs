@@ -486,3 +486,109 @@ async fn metrics_corpus() {
         }
     }
 }
+
+// --- h2 connection deadlines ------------------------------------------
+
+fn short() -> ServerTimeouts {
+    ServerTimeouts {
+        read_header: ms(300),
+        read: Duration::from_secs(5),
+        write: Duration::from_secs(5),
+    }
+}
+
+const H2_PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+
+#[tokio::test]
+async fn a_connection_that_never_sends_a_request_is_dropped_after_the_header_deadline() {
+    let mut cfg = config(Router::new().route("/", get(|| async { "ok" })));
+    cfg.timeouts = short();
+    let run = start(cfg).await;
+    // Silent.
+    let mut silent = TcpStream::connect(&run.addr).await.unwrap();
+    // The h2 preface and then nothing: no SETTINGS, no HEADERS.
+    let mut stalled = TcpStream::connect(&run.addr).await.unwrap();
+    stalled.write_all(H2_PREFACE).await.unwrap();
+    let t = Instant::now();
+    for s in [&mut silent, &mut stalled] {
+        let (_, eof) = read_all(s, Duration::from_secs(3)).await;
+        assert!(eof, "closed");
+    }
+    assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+    run.stop().await;
+}
+
+async fn h2c(
+    addr: &str,
+) -> (
+    hyper::client::conn::http2::SendRequest<Body>,
+    tokio::task::JoinHandle<()>,
+) {
+    let tcp = TcpStream::connect(addr).await.unwrap();
+    let (send, conn) = hyper::client::conn::http2::handshake(
+        hyper_util::rt::TokioExecutor::new(),
+        hyper_util::rt::TokioIo::new(tcp),
+    )
+    .await
+    .unwrap();
+    let ended = tokio::spawn(async move {
+        let _ = conn.await;
+    });
+    (send, ended)
+}
+
+fn h2_req(path: &str) -> hyper::Request<Body> {
+    hyper::Request::builder()
+        .uri(format!("http://127.0.0.1{path}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn an_idle_h2_connection_is_closed_but_one_with_a_stream_in_flight_is_not() {
+    let app = stream_route().route_layer(from_fn(lift_write_deadline));
+    let mut cfg = config(app.route("/ok", get(|| async { "ok" })));
+    cfg.compress = false;
+    cfg.timeouts = short();
+    let run = start(cfg).await;
+
+    // A stream that outlives the deadline (900ms against 300ms) is not idle.
+    let (mut send, ended) = h2c(&run.addr).await;
+    let resp = send.send_request(h2_req("/stream")).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let mut body = resp.into_body();
+    let mut got = 0;
+    while let Some(f) = futures_util::future::poll_fn(|cx| {
+        hyper::body::Body::poll_frame(std::pin::Pin::new(&mut body), cx)
+    })
+    .await
+    {
+        got += f.unwrap().into_data().map_or(0, |d| d.len());
+    }
+    assert_eq!(got, "c0;c1;c2;c3;c4;c5;".len(), "the whole stream arrived");
+
+    // Then nothing in flight: closed.
+    let t = Instant::now();
+    tokio::time::timeout(Duration::from_secs(3), ended)
+        .await
+        .expect("the idle h2 connection is closed")
+        .unwrap();
+    assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+    run.stop().await;
+}
+
+#[tokio::test]
+async fn an_idle_keep_alive_connection_is_closed() {
+    let mut cfg = config(Router::new().route("/", get(|| async { "ok" })));
+    cfg.timeouts = short();
+    let run = start(cfg).await;
+    let mut s = TcpStream::connect(&run.addr).await.unwrap();
+    s.write_all(b"GET / HTTP/1.1\r\nhost: 127.0.0.1\r\n\r\n")
+        .await
+        .unwrap();
+    let t = Instant::now();
+    let (raw, eof) = read_all(&mut s, Duration::from_secs(3)).await;
+    assert!(raw.starts_with("HTTP/1.1 200") && eof, "{raw}");
+    assert!(t.elapsed() < Duration::from_secs(2));
+    run.stop().await;
+}
