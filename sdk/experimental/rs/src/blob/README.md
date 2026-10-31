@@ -60,7 +60,8 @@ assert_eq!(keys, vec!["reports/2026.txt".to_string()]);
 - Parity: Go `go/storage/blob` is the reference; `tests/blob_conformance.rs` runs the shared corpus in
   `contracts/blob-v1`, and `tests/blob.rs` pins the atomic-write semantics described in its README.
   Keys that reduce to the root or contain `\` are refused here and not by Go; not in the corpus.
-- Parity: `Delete` of a missing key is `NotFound` here and idempotent in Go; otherwise none recorded; Go `go/storage/blob` is the reference, and `tests/blob.rs` pins the
+- `delete` is idempotent: a missing key is `Ok(())`, as in Go. Reserved and escaping keys still error.
+- Parity: none recorded; Go `go/storage/blob` is the reference, and `tests/blob.rs` pins the
 
 ## Neighbours
 

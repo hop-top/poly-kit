@@ -71,6 +71,53 @@ fn delete_removes_key() {
 }
 
 #[test]
+fn delete_missing_key_succeeds() {
+    let (_dir, s) = setup();
+    s.delete("never/existed.txt").expect("delete missing");
+}
+
+#[test]
+fn delete_twice_succeeds() {
+    let (_dir, s) = setup();
+    s.put("d.txt", "x".as_bytes(), "").expect("put");
+    s.delete("d.txt").expect("first delete");
+    s.delete("d.txt").expect("second delete");
+    assert!(!s.exists("d.txt").expect("exists"));
+}
+
+#[test]
+fn delete_missing_key_still_drops_stray_sidecar() {
+    let (dir, s) = setup();
+    s.put("k", "x".as_bytes(), "text/plain").expect("put");
+    fs::remove_file(dir.path().join("k")).expect("remove content");
+    assert!(dir.path().join(".blob-meta/k.json").exists());
+    s.delete("k").expect("delete");
+    assert!(!dir.path().join(".blob-meta/k.json").exists());
+}
+
+#[test]
+fn delete_rejects_reserved_and_escaping_keys() {
+    let (_dir, s) = setup();
+    assert!(matches!(
+        s.delete(".blob-meta/x"),
+        Err(BlobError::ReservedKey(_))
+    ));
+    assert!(matches!(
+        s.delete("../outside"),
+        Err(BlobError::KeyEscapesRoot(_))
+    ));
+}
+
+#[test]
+fn delete_surfaces_non_notfound_io_errors() {
+    let (dir, s) = setup();
+    // A non-empty directory at the key path: remove_file fails with an
+    // error other than NotFound, which must not be swallowed.
+    fs::create_dir_all(dir.path().join("d/inner")).expect("mkdir");
+    assert!(matches!(s.delete("d"), Err(BlobError::Io { .. })));
+}
+
+#[test]
 fn list_prefix() {
     let (_dir, s) = setup();
     s.put("logs/a.log", "1".as_bytes(), "").expect("put");
