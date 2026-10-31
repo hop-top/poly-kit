@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace HopTop\Kit\Mcp;
 
+use HopTop\Kit\Cli\SideEffect;
+
 /**
  * The bridge's read of a leaf's safety annotations.
  *
@@ -34,14 +36,18 @@ final readonly class SafetyClass
      * An empty annotation map yields a zero-value class — a read-only,
      * no-auth command — matching Go's nil-cmd/nil-Annotations behaviour.
      *
+     * $name is the leaf name: an unannotated leaf whose name is in the
+     * shared destructive-name table classifies as destructive, matching
+     * Go's cmdreflect inference. An empty name never infers.
+     *
      * @param array<string, string> $annotations
      */
-    public static function classify(array $annotations): self
+    public static function classify(array $annotations, string $name = ''): self
     {
-        $sideEffect = $annotations['kit/side-effect'] ?? '';
+        $sideEffect = SideEffect::resolve($name, $annotations);
 
         return new self(
-            destructive: \in_array($sideEffect, ['destructive', 'destructive-local', 'destructive-shared'], true),
+            destructive: SideEffect::isDestructiveTier($sideEffect),
             authRequired: ($annotations['kit/auth-required'] ?? '') === 'true',
             requiresConfirmation: ($annotations['kit/requires-confirmation'] ?? '') === 'true',
             permissions: self::splitCsv($annotations['kit/permissions'] ?? ''),
