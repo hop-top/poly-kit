@@ -91,6 +91,10 @@ No advertised `help` subcommand; users discover help via the
 Cobra (Go) and Typer (Python) is suppressed and hidden in all
 three languages.
 
+Rust follows the same contract: `Root` registers no `help` command, and
+the hidden `help [all|<command path>|<group>]` form resolves in the order
+of [`help-rendering.md`](../reference/help-rendering.md) (an adopter's own `help` command wins).
+
 A hidden `help <topic>` form is recognized as a muscle-memory
 fallback. It is outside the parity contract itself — the
 contract's canonical surface is `-h`/`--help` plus the `--help-<id>`
