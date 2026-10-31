@@ -49,10 +49,6 @@ SKIP_TREES = {
 
 #: Vectors inside a replayed tree that are not replayed, with the reason.
 SKIPS = {
-    "dry-run still refuses an unannotated destructive-named leaf": (
-        "pending-T-2053: pins the old untagged refusal; the port previews an inferred "
-        "destructive leaf (kit renders the plan, handler never invoked)"
-    ),
     "a malformed annotation is not inferred over": (
         "divergence: Go runs the leaf unvalidated here; the port has no Root.Validate, so the "
         "gate fails closed (USAGE) on a malformed kit/side-effect"

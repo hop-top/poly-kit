@@ -524,7 +524,7 @@ function previewInferred(program: Command, cmd: Command, path: string): never {
     activeFormat(program),
     {
       command: path,
-      effects: [{ kind: cmd.name(), target: path, reversible: false, detail: 'destructive by name; handler not run' }],
+      effects: [{ kind: cmd.name(), target: path, reversible: false, detail: 'inferred destructive-shared; a real run requires --confirm' }],
       warnings: ['kit/side-effect is not declared: the handler was not invoked'],
     },
     path,
