@@ -26,7 +26,7 @@ pub const FILES: &[&str] = &[
 pub const TOOL: &str = "mytool";
 
 pub fn dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/consent-v1")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/consent-v1")
 }
 
 /// Decodes a corpus file strictly and checks `version` is `v1`.

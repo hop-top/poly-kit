@@ -47,7 +47,7 @@ assert_eq!(serde_json::from_slice::<serde_json::Value>(&buf).unwrap(), json!([{"
   json and yaml key order follows the same resolution.
 - `CliError` codes and exit codes are the cross-tool constants (`CODE_*`, `EXIT_*`); transience is derived
   per code by `transience_for_code`.
-- Parity: [ordering.json](../../../../tests/cross-lang/fixtures/ordering.json), replayed by
+- Parity: [ordering.json](../../../tests/cross-lang/fixtures/ordering.json), replayed by
   `sdk/tests/cross-lang/runners/rs`; the fixtures compare re-parsed column order, never bytes.
 
 ## Neighbours
@@ -58,6 +58,6 @@ assert_eq!(serde_json::from_slice::<serde_json::Value>(&buf).unwrap(), json!([{"
 
 ## See also
 
-- [CLI parity guide](../../../../../docs/adopters/guides/cli-parity-guide.md)
-- [Crate README, Output formatting](../../../../../docs/adopters/reference/rs-sdk.md#output-formatting)
-- Go reference: [go/console/output](../../../../../go/console/output/README.md)
+- [CLI parity guide](../../../../docs/adopters/guides/cli-parity-guide.md)
+- [Crate README, Output formatting](../../../../docs/adopters/reference/rs-sdk.md#output-formatting)
+- Go reference: [go/console/output](../../../../go/console/output/README.md)

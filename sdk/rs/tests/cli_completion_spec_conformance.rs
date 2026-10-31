@@ -45,7 +45,7 @@ const CASES: &[(&str, &str, &str)] = &[
 ];
 
 fn corpus() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/completion-spec-v1")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/completion-spec-v1")
 }
 
 #[derive(Deserialize)]

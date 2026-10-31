@@ -60,5 +60,5 @@ g.use_grant("io.screen.capture", "app:dek")?; // audited before the tap
 
 ## See also
 
-- [Consent grants reference](../../../../../docs/adopters/reference/consent-grants.md)
-- [`go/core/consent`](../../../../../go/core/consent/README.md), the Go reference
+- [Consent grants reference](../../../../docs/adopters/reference/consent-grants.md)
+- [`go/core/consent`](../../../../go/core/consent/README.md), the Go reference

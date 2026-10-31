@@ -51,7 +51,7 @@ return output.Dispatch(cmd, v, data)
   handler errors with `WrapError`, exposes `Root.TableStyle()`
 - [`sdk/ts/src/output`](../../../sdk/ts/src/output/README.md),
   [`sdk/py/hop_top_kit/output`](../../../sdk/py/hop_top_kit/output/README.md),
-  [`sdk/experimental/rs/src/output`](../../../sdk/experimental/rs/src/output/README.md),
+  [`sdk/rs/src/output`](../../../sdk/rs/src/output/README.md),
   [`sdk/experimental/php/src/Output`](../../../sdk/experimental/php/src/Output/README.md):
   the ports carrying a `ColumnSpec` list
 

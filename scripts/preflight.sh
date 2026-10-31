@@ -211,7 +211,7 @@ fi
 # Rust (cargo). No version pin; check presence only.
 # ---------------------------------------------------------------------------
 if ! command -v cargo >/dev/null 2>&1; then
-  fail "cargo" "not installed (sdk/experimental/rs uses cargo)" \
+  fail "cargo" "not installed (sdk/rs uses cargo)" \
        "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
 else
   cargo_have=$(cargo --version 2>/dev/null | awk '{ print $2 }')

@@ -159,7 +159,7 @@ order. This is a Go-only feature today.
 
 All five rules hold in Go across all five formats. All five built-in
 formats exist in all five runtimes: rs ships `csv.rs` and `text.rs`
-under `sdk/experimental/rs/src/output/builtins/` (registered in
+under `sdk/rs/src/output/builtins/` (registered in
 `builtins.rs`), php ships `CsvFormatter.php` and `TextFormatter.php`
 under `sdk/experimental/php/src/Output/Formatter/Builtin/`, and both
 SDKs test all five. The fixture set
@@ -302,4 +302,4 @@ from `AsCLIError` stays safe.
 - [`cli-api-reference.md`](cli-api-reference.md): the CLI factory that registers the output flags and wraps handler errors
 - [`go-primitives.md`](go-primitives.md): where `output` sits among the Go primitives
 - [`../guides/getting-started-cli.md`](../guides/getting-started-cli.md): output wiring in a first tool
-- Ports: [`sdk/ts/src/output`](../../../sdk/ts/src/output/README.md), [`sdk/py/hop_top_kit/output`](../../../sdk/py/hop_top_kit/output/README.md), [`sdk/experimental/rs/src/output`](../../../sdk/experimental/rs/src/output/README.md), [`sdk/experimental/php/src/Output`](../../../sdk/experimental/php/src/Output/README.md)
+- Ports: [`sdk/ts/src/output`](../../../sdk/ts/src/output/README.md), [`sdk/py/hop_top_kit/output`](../../../sdk/py/hop_top_kit/output/README.md), [`sdk/rs/src/output`](../../../sdk/rs/src/output/README.md), [`sdk/experimental/php/src/Output`](../../../sdk/experimental/php/src/Output/README.md)

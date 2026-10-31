@@ -146,7 +146,7 @@ setup: preflight ## Initialize all sub-projects and dependencies
 	@echo "==> Initializing Python Engine SDK"
 	cd engine/sdk/py-kit-engine && uv sync --all-extras
 	@echo "==> Fetching Rust SDK dependencies"
-	cd sdk/experimental/rs && cargo fetch --locked
+	cd sdk/rs && cargo fetch --locked
 	@echo "==> Setup complete."
 
 check: preflight lint test ## Run all linters and tests (full gate)
@@ -273,44 +273,44 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# Default features must compile and pass — that's what publish-rs.yml
 	# runs by default ('cargo test'). Without this, a source file gated on
 	# the api feature could break default build and only fail at publish.
-	cd sdk/experimental/rs && cargo test --locked
+	cd sdk/rs && cargo test --locked
 	# All features ensures the api integration test (gated on feature=api)
 	# is exercised at PR time, not deferred to manual runs.
-	cd sdk/experimental/rs && cargo test --all-features --locked
+	cd sdk/rs && cargo test --all-features --locked
 
 check-rs-features: ## Rust: cargo check --all-targets once per feature, each alone (slow; CI rs-features)
 	@scripts/check-rs-features.sh
 
 doc-rs: ## Rust: rustdoc with every feature, warnings (broken intra-doc links) as errors — what docs.rs renders
-	cd sdk/experimental/rs && RUSTDOCFLAGS="-D warnings" cargo doc --locked --all-features --no-deps
+	cd sdk/rs && RUSTDOCFLAGS="-D warnings" cargo doc --locked --all-features --no-deps
 
 # The bus on wasm32-unknown-unknown, run under Node: one thread, so the
 # async pool is uncapped and close reports NotDrained instead of
 # blocking. wasm-bindgen-test-runner comes from wasm-bindgen-cli, whose
 # version must equal the wasm-bindgen in Cargo.lock.
 test-rs-wasm: ## Rust: bus, domain, breaker, policy, notify, sideeffect, sync and authn wasm32 smoke tests under Node (needs the matching wasm-bindgen-cli)
-	@want=$$(awk '/^name = "wasm-bindgen"$$/ { getline; gsub(/version = |"/, ""); print }' sdk/experimental/rs/Cargo.lock); \
+	@want=$$(awk '/^name = "wasm-bindgen"$$/ { getline; gsub(/version = |"/, ""); print }' sdk/rs/Cargo.lock); \
 	have=$$(wasm-bindgen --version 2>/dev/null | awk '{ print $$2 }'); \
 	if [ "$$want" != "$$have" ]; then \
 		echo "wasm-bindgen-cli '$$have' does not match Cargo.lock wasm-bindgen $$want:"; \
 		echo "  cargo install wasm-bindgen-cli --version $$want --locked"; \
 		exit 1; \
 	fi
-	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+	cd sdk/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features bus --test bus_wasm
-	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+	cd sdk/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features domain --test domain_statemachine_wasm
-	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+	cd sdk/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features breaker --test breaker_wasm
-	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+	cd sdk/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features policy --test policy_wasm
-	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+	cd sdk/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features notify --test notify_wasm
-	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+	cd sdk/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features sideeffect --test sideeffect_wasm
-	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+	cd sdk/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features sync --test sync_wasm
-	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+	cd sdk/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features authn --test authn_wasm
 
 # scripts/test-scope.sh maps each prerequisite to its Go packages and
@@ -336,7 +336,7 @@ test-parity-typeid: ## TypeID v1 contract loaders across all 5 SDKs
 	@echo "==> typeid-v1 parity: Go"
 	go test ./go/core/id/... -run '^TestContract' -count=1 -timeout 60s
 	@echo "==> typeid-v1 parity: Rust"
-	cd sdk/experimental/rs && cargo test --features id --test contract --locked
+	cd sdk/rs && cargo test --features id --test contract --locked
 	@echo "==> typeid-v1 parity: TypeScript"
 	cd sdk/ts && pnpm vitest run src/id/contract.test.ts
 	@echo "==> typeid-v1 parity: Python"
@@ -366,7 +366,7 @@ test-parity-mcp: ## MCP dual-spec wire conformance across Go + 4 SDKs
 	@echo "==> mcp-wire parity: Go (fixture drift gate)"
 	go test ./go/transport/cmdsurface/ -run '^TestGenerateMCPWireFixtures$$' -count=1 -timeout 120s
 	@echo "==> mcp-wire parity: Rust"
-	cd sdk/experimental/rs && cargo test --features mcp --test mcp_wire_conformance --locked
+	cd sdk/rs && cargo test --features mcp --test mcp_wire_conformance --locked
 	@echo "==> mcp-wire parity: TypeScript"
 	cd sdk/ts && pnpm vitest run src/mcp/conformance.test.ts
 	@echo "==> mcp-wire parity: Python"
@@ -399,7 +399,7 @@ test-parity-taxonomy: ## exit-code taxonomy across Go + 4 SDKs
 	@echo "==> exit-taxonomy parity: Go (contract drift gate)"
 	go test ./go/console/output/envelope/ -run '^TestGenerateExitTaxonomyContract$$|^TestExitTaxonomyContractIsSelfConsistent$$' -count=1 -timeout 60s
 	@echo "==> exit-taxonomy parity: Rust"
-	cd sdk/experimental/rs && cargo test --features output --test taxonomy_contract --locked
+	cd sdk/rs && cargo test --features output --test taxonomy_contract --locked
 	@echo "==> exit-taxonomy parity: TypeScript"
 	cd sdk/ts && pnpm vitest run test/output/taxonomy-contract.test.ts
 	@echo "==> exit-taxonomy parity: Python"
@@ -423,7 +423,7 @@ test-parity-alias: ## alias-v1 conformance corpus (Go, Rust, TypeScript and Pyth
 	@echo "==> alias-v1 conformance: Go"
 	go test ./go/console/alias/ ./go/console/cli/ -run '^TestConformanceAlias' -count=1
 	@echo "==> alias-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features cli --test cli_alias_conformance --locked
+	cd sdk/rs && cargo test --features cli --test cli_alias_conformance --locked
 	@echo "==> alias-v1 conformance: TypeScript"
 	cd sdk/ts && pnpm vitest run src/alias.conformance.test.ts
 	@echo "==> alias-v1 conformance: Python"
@@ -435,7 +435,7 @@ test-parity-bus: ## bus-v1 conformance corpus, CloudEvents, streams and sinks in
 	@echo "==> bus-v1 conformance: Go"
 	go test ./go/runtime/bus/ -run '^(TestConformance|TestCloudEventsConformance|TestStreamConformance|TestSinkConformance)' -count=1
 	@echo "==> bus-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --test bus_conformance --test bus_cloudevents_conformance --test 'bus_stream_conformance*' --test bus_sinks_conformance --all-features --locked
+	cd sdk/rs && cargo test --test bus_conformance --test bus_cloudevents_conformance --test 'bus_stream_conformance*' --test bus_sinks_conformance --all-features --locked
 
 # Bus network across languages: Go hub <-> Rust client, Rust hub <-> Go
 # client and mixed three-node relays, with and without auth. The Go peer
@@ -443,7 +443,7 @@ test-parity-bus: ## bus-v1 conformance corpus, CloudEvents, streams and sinks in
 # the cases so a plain `cargo test` needs no Go toolchain.
 test-parity-bus-network: ## bus network cross-language e2e (Go <-> Rust hubs, clients, mixed relay)
 	@echo "==> bus network: Go <-> Rust over WebSocket"
-	cd sdk/experimental/rs && BUS_NETWORK_CROSSLANG=1 cargo test --locked --features bus-network --test bus_network_crosslang -- --test-threads=1
+	cd sdk/rs && BUS_NETWORK_CROSSLANG=1 cargo test --locked --features bus-network --test bus_network_crosslang -- --test-threads=1
 
 # Completion-spec exports (Fig module, Usage KDL) over one fixture tree.
 # Go runner only; a port adds its runner here.
@@ -451,14 +451,14 @@ test-parity-completion-spec: ## completion-spec-v1 corpus: Fig and Usage exports
 	@echo "==> completion-spec-v1 conformance: Go"
 	go test ./go/console/cli/completionspec/ -run '^TestConformanceCompletionSpec' -count=1
 	@echo "==> completion-spec-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features cli --test cli_completion_spec_conformance --locked
+	cd sdk/rs && cargo test --features cli --test cli_completion_spec_conformance --locked
 
 # Shared retry-v1 backoff corpus: Go and Rust runners read the same vectors.
 test-parity-config: ## config-v1 conformance corpus (Go and Rust runners)
 	@echo "==> config-v1 conformance: Go"
 	go test ./go/core/config/ -run '^TestConformance' -count=1
 	@echo "==> config-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features config --test config_conformance --locked
+	cd sdk/rs && cargo test --features config --test config_conformance --locked
 
 test-parity-api: ## api.json conformance corpus: client address, Host, Origin, OpenAPI, timeouts, metrics, client certificates, idempotency, websocket topics (Go and Rust runners)
 	@echo "==> api conformance: Go"
@@ -466,41 +466,41 @@ test-parity-api: ## api.json conformance corpus: client address, Host, Origin, O
 	go test ./go/transport/cmdsurface/ -run '^TestIdempotencyContract$$' -count=1
 	cd contracts && go test ./parity/ -run '^TestAPIContractRegistered' -count=1
 	@echo "==> api conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features api-server --test api_server_conformance --test api_server_limits --locked
-	cd sdk/experimental/rs && cargo test --features api-server-idempotency --test api_server_idempotency --locked
-	cd sdk/experimental/rs && cargo test --features api-server-tls --test api_server_tls --locked
-	cd sdk/experimental/rs && cargo test --features api-server-ws --test api_server_ws --locked
-	cd sdk/experimental/rs && cargo test --features api-server,cli --test api_server_commands --locked
+	cd sdk/rs && cargo test --features api-server --test api_server_conformance --test api_server_limits --locked
+	cd sdk/rs && cargo test --features api-server-idempotency --test api_server_idempotency --locked
+	cd sdk/rs && cargo test --features api-server-tls --test api_server_tls --locked
+	cd sdk/rs && cargo test --features api-server-ws --test api_server_ws --locked
+	cd sdk/rs && cargo test --features api-server,cli --test api_server_commands --locked
 
 test-parity-webhook: ## webhook-v1 conformance corpus: Graph, Pipedrive v2, generic HMAC (Go and Rust runners)
 	@echo "==> webhook-v1 conformance: Go"
 	go test ./go/transport/webhook/ -count=1
 	@echo "==> webhook-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features webhook --test webhook_conformance --locked
+	cd sdk/rs && cargo test --features webhook --test webhook_conformance --locked
 
 test-parity-authn: ## authn-v1 conformance corpus: signed tokens, PEM key ids, API key hashes (Go and Rust runners)
 	@echo "==> authn-v1 conformance: Go"
 	go test ./go/transport/authn/ -run '^TestAuthnContractVectors' -count=1
 	@echo "==> authn-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features authn-apikeys,authn-rsa,authn-remote --test authn --test authn_apikeys --test authn_remote --locked
+	cd sdk/rs && cargo test --features authn-apikeys,authn-rsa,authn-remote --test authn --test authn_apikeys --test authn_remote --locked
 
 test-parity-redact: ## redact-v1 conformance corpus: rules dump, spans and output (Go and Rust runners)
 	@echo "==> redact-v1 conformance: Go"
 	go test ./go/core/redact/ -run '^TestConformanceRedact' -count=1
 	@echo "==> redact-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features redact --test redact_conformance --locked
+	cd sdk/rs && cargo test --features redact --test redact_conformance --locked
 
 test-parity-identity: ## identity-v1 conformance corpus: DeriveKey vectors (Go and Rust runners)
 	@echo "==> identity-v1 conformance: Go"
 	go test ./go/core/identity/ -run '^TestDeriveKeyContract$$' -count=1
 	@echo "==> identity-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features identity --test identity_conformance --locked
+	cd sdk/rs && cargo test --features identity --test identity_conformance --locked
 
 test-parity-retry: ## retry-v1 conformance corpus (Go and Rust runners)
 	@echo "==> retry-v1 conformance: Go"
 	go test ./go/core/util/ -run '^TestConformanceRetry' -count=1
 	@echo "==> retry-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --test retry_conformance --locked
+	cd sdk/rs && cargo test --test retry_conformance --locked
 
 # Breaker corpus: circuit, budgets, rate limiter, OnTrip, logs and bus
 # events under a fake clock. Go's bus events publish on goroutines,
@@ -509,7 +509,7 @@ test-parity-breaker: ## breaker-v1 conformance corpus (Go and Rust runners)
 	@echo "==> breaker-v1 conformance: Go"
 	go test -race ./go/core/breaker/ -run '^TestConformanceBreaker' -count=1
 	@echo "==> breaker-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features breaker --test breaker_conformance --locked
+	cd sdk/rs && cargo test --features breaker --test breaker_conformance --locked
 
 # Blob corpus: local store put/get/delete/list/exists scenarios, key
 # escape errors, list order.
@@ -517,7 +517,7 @@ test-parity-blob: ## blob-v1 conformance corpus (Go and Rust runners)
 	@echo "==> blob-v1 conformance: Go"
 	go test ./go/storage/blob/local/ -run '^TestConformanceBlob' -count=1
 	@echo "==> blob-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features blob --test blob_conformance --locked
+	cd sdk/rs && cargo test --features blob --test blob_conformance --locked
 
 # Per-capability consent corpus: on-disk grant records, decision and
 # refusal semantics, audit records, delivery and the telemetry-consent
@@ -526,7 +526,7 @@ test-parity-consent: ## consent-v1 conformance corpus (Go and Rust runners)
 	@echo "==> consent-v1 conformance: Go"
 	go test ./go/core/consent/ -run '^TestConformanceConsent' -count=1
 	@echo "==> consent-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --locked --features consent-file,output --test consent_conformance --test consent_delivery_conformance
+	cd sdk/rs && cargo test --locked --features consent-file,output --test consent_conformance --test consent_delivery_conformance
 
 # Domain state machine corpus: transitions, error texts, the veto wrap,
 # payload JSON bytes and topic options. Go's post-transition event runs
@@ -535,7 +535,7 @@ test-parity-statemachine: ## statemachine-v1 conformance corpus (Go and Rust run
 	@echo "==> statemachine-v1 conformance: Go"
 	go test -race ./go/runtime/domain/ -run '^TestConformanceStateMachine' -count=1
 	@echo "==> statemachine-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features domain --test domain_statemachine_conformance --locked
+	cd sdk/rs && cargo test --features domain --test domain_statemachine_conformance --locked
 
 # Versioned state migrations: version order, pending selection, and the
 # runner's backup, apply, rollback and prune sequence on a recording driver.
@@ -543,7 +543,7 @@ test-parity-upgrade: ## upgrade-v1 conformance corpus (Go and Rust runners)
 	@echo "==> upgrade-v1 conformance: Go"
 	go test ./go/core/upgrade/ -run '^TestConformanceUpgrade' -count=1
 	@echo "==> upgrade-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features upgrade --test upgrade_conformance --locked
+	cd sdk/rs && cargo test --features upgrade --test upgrade_conformance --locked
 
 # After a cobra bump: rewrite the completion-v1 script goldens and the
 # Rust and TS script templates from the cobra version in go.mod, then run
@@ -555,7 +555,7 @@ test-parity-cli-root: ## cli-root-v1 conformance corpus: root flags, version, he
 	@echo "==> cli-root-v1 conformance: Go"
 	go test ./go/console/cli/ -run '^TestConformanceCLIRoot' -count=1
 	@echo "==> cli-root-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features cli --test cli_root_conformance --locked
+	cd sdk/rs && cargo test --features cli --test cli_root_conformance --locked
 	@echo "==> cli-root-v1 conformance: Python (delegation and inference vectors)"
 	cd sdk/py && uv sync --all-extras -q && uv run pytest tests/test_cli_root_conformance.py -q -rs
 	@echo "==> cli-root-v1 conformance: PHP (delegation and inference vectors)"
@@ -565,7 +565,7 @@ test-parity-completion: ## completion-v1 conformance corpus (Go, Rust and TS run
 	@echo "==> completion-v1 conformance: Go"
 	go test -race ./go/console/cli/completion/ -run '^TestConformanceCompletion' -count=1
 	@echo "==> completion-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features cli,config --test cli_completion_conformance --locked
+	cd sdk/rs && cargo test --features cli,config --test cli_completion_conformance --locked
 	@echo "==> completion-v1 conformance: TS"
 	cd sdk/ts && pnpm vitest run src/completion.conformance.test.ts
 
@@ -573,13 +573,13 @@ test-parity-rpc: ## rpc-v1 conformance corpus (Go and Rust runners)
 	@echo "==> rpc-v1 conformance: Go"
 	go test ./go/transport/rpc/ -run '^TestConformanceRPC' -count=1
 	@echo "==> rpc-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features rpc-server --test rpc_conformance --locked
+	cd sdk/rs && cargo test --features rpc-server --test rpc_conformance --locked
 
 test-parity-netpolicy: ## netpolicy-v1 conformance corpus (Go and Rust runners)
 	@echo "==> netpolicy-v1 conformance: Go"
 	go test ./go/core/netpolicy/ -run '^TestConformanceNetpolicy' -count=1
 	@echo "==> netpolicy-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features api --test netpolicy_conformance --locked
+	cd sdk/rs && cargo test --features api --test netpolicy_conformance --locked
 
 # llm core and anthropic adapter corpus: URI parsing and redaction,
 # credential endpoint guard, request bodies, headers, SSE tokens and
@@ -589,7 +589,7 @@ test-parity-llm: ## llm-v1 conformance corpus (Go, Rust, Python and TypeScript r
 	@echo "==> llm-v1 conformance: Go"
 	go test ./go/ai/llm/ ./go/ai/llm/anthropic/ ./go/ai/llm/google/ ./go/ai/llm/openai/ ./go/ai/llm/routellm/ -run '^TestConformance' -count=1
 	@echo "==> llm-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features llm-anthropic,llm-openai,llm-google,llm-routellm --test llm_conformance --test llm_openai_conformance --test llm_google_conformance --locked
+	cd sdk/rs && cargo test --features llm-anthropic,llm-openai,llm-google,llm-routellm --test llm_conformance --test llm_openai_conformance --test llm_google_conformance --locked
 	@echo "==> llm-v1 conformance: Python"
 	cd sdk/py && uv run pytest -q -rs tests/test_llm_conformance.py tests/test_llm_openai_conformance.py
 	@echo "==> llm-v1 conformance: TypeScript (every section)"
@@ -763,7 +763,7 @@ lint-php: ## PHP: phpstan static analysis when the PHP SDK changed (levels pinne
 	@$(LINT_CHANGED) lint-php --cd $(PHP_SDK) --gate --include-deleted $(PHP_SDK) ':(exclude)*.md' \
 		-- sh -c 'composer install --no-progress --quiet && composer analyse'
 
-RS_SDK := sdk/experimental/rs
+RS_SDK := sdk/rs
 
 lint-rs: ## Rust: cargo fmt --check + clippy (all features) when the Rust SDK changed
 	@$(LINT_CHANGED) lint-rs --cd $(RS_SDK) --gate --include-deleted --trigger mise.toml \
@@ -946,7 +946,7 @@ proto-check: ## Lint pinned protos, regenerate their stubs, fail on drift
 # kit-rs stubs come from LOCAL plugins pinned in buf.gen.rs.yaml (built
 # from crates.io; install commands are in that file), so they are not part
 # of `proto` / `proto-check`, which need only buf and the remote plugins.
-PROTO_RS_OUT := sdk/experimental/rs/src/rpc/gen
+PROTO_RS_OUT := sdk/rs/src/rpc/gen
 
 proto-rs: ## Generate the kit-rs RPC stubs (needs the pinned local plugins on PATH)
 	cd contracts/proto/crud/v1 && buf generate --template buf.gen.rs.yaml
@@ -973,12 +973,12 @@ clients-php: ## Install PHP client dependencies
 	cd sdk/experimental/php && composer install
 
 clients-rs: ## Build Rust client
-	cd sdk/experimental/rs && cargo build --features api
+	cd sdk/rs && cargo build --features api
 
 clients-test: ## Test all polyglot clients
 	cd sdk/ts && pnpm test
 	cd sdk/experimental/php && composer test
-	cd sdk/experimental/rs && cargo test --features api
+	cd sdk/rs && cargo test --features api
 
 api: proto clients ## Generate protos + build all clients
 

@@ -21,10 +21,10 @@ use hop_top_kit::kv::Config as KvConfig;
 use serde::Deserialize;
 
 /// Resolves `contracts/httpcache-v1/<name>` from the crate directory
-/// (`sdk/experimental/rs` → repo root is three levels up).
+/// (`sdk/rs` → repo root is two levels up).
 fn contract_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../contracts/httpcache-v1")
+        .join("../../contracts/httpcache-v1")
         .join(name)
 }
 

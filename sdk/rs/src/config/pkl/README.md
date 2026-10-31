@@ -33,4 +33,4 @@ assert!(validate_value(&s, "port", "80").is_err());
 
 ## See also
 
-- [`go/core/config/pkl`](../../../../../../go/core/config/pkl/README.md), the Go reference
+- [`go/core/config/pkl`](../../../../../go/core/config/pkl/README.md), the Go reference

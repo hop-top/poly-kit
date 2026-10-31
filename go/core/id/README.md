@@ -41,7 +41,7 @@ fmt.Println(parsed.UUID)
 ## Neighbours
 
 - `hop.top/cite`: URI composition around an ID.
-- `sdk/ts`, `sdk/py`, `sdk/experimental/rs`, `sdk/experimental/php`: the `id` ports.
+- `sdk/ts`, `sdk/py`, `sdk/rs`, `sdk/experimental/php`: the `id` ports.
 
 ## See also
 

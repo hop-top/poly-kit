@@ -13,7 +13,7 @@ What every kit SDK must accept, reject and emit when it shapes bus events as Clo
 
 ```sh
 go test ./go/runtime/bus/ -run CloudEventsConformance
-cd sdk/experimental/rs && cargo test --features bus --test bus_cloudevents_conformance
+cd sdk/rs && cargo test --features bus --test bus_cloudevents_conformance
 ```
 
 ## Contract
@@ -39,7 +39,7 @@ Conventions:
 | Port | Runner |
 |------|--------|
 | Go | `go/runtime/bus/cloudevents_conformance_test.go` (`TestCloudEventsConformance*`) |
-| Rust | `sdk/experimental/rs/tests/bus_cloudevents_conformance.rs` |
+| Rust | `sdk/rs/tests/bus_cloudevents_conformance.rs` |
 
 ## See also
 

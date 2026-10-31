@@ -38,7 +38,7 @@ if b.allow().is_ok() {
 - Feature `breaker` is `domain` plus nothing of its own; wasm-safe with a caller `Clock` (no `SystemClock` there).
   Authority: the crate [feature table](../../README.md#features).
 - Go is canonical: the circuit, budgets, rate limiter, `OnTrip`, log records and events are pinned by
-  [`contracts/breaker-v1`](../../../../../contracts/breaker-v1/README.md).
+  [`contracts/breaker-v1`](../../../../contracts/breaker-v1/README.md).
 - `allow` checks circuit, rate, bytes, ops in that order and records nothing; follow each `Ok` with one `record`.
 - Closed opens after `failure_threshold` consecutive failures (default 5). Open turns half-open once `delay`
   has elapsed (default 30s, boundary inclusive), seen by `state` too. Half-open admits `success_threshold`
@@ -60,4 +60,4 @@ if b.allow().is_ok() {
 
 ## See also
 
-- Go reference: [go/core/breaker](../../../../../go/core/breaker/README.md)
+- Go reference: [go/core/breaker](../../../../go/core/breaker/README.md)

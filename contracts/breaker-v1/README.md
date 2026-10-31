@@ -19,7 +19,7 @@ bulkhead, timeout, fallback, YAML config, registry and wrap helpers; Go's own te
 make test-parity-breaker
 # or separately:
 go test -race ./go/core/breaker/ -run '^TestConformanceBreaker'
-cargo test --features breaker --test breaker_conformance   # from sdk/experimental/rs
+cargo test --features breaker --test breaker_conformance   # from sdk/rs
 ```
 
 ## Contract
@@ -54,9 +54,9 @@ are strict: unknown fields, a `version` other than `v1` and a corpus file no run
 | Port | Runner |
 |------|--------|
 | Go | `go/core/breaker/conformance_test.go` (`TestConformanceBreaker*`) |
-| Rust | `sdk/experimental/rs/tests/breaker_conformance.rs` |
+| Rust | `sdk/rs/tests/breaker_conformance.rs` |
 
 ## See also
 
 - [`go/core/breaker/README.md`](../../go/core/breaker/README.md)
-- [`sdk/experimental/rs/src/breaker/README.md`](../../sdk/experimental/rs/src/breaker/README.md)
+- [`sdk/rs/src/breaker/README.md`](../../sdk/rs/src/breaker/README.md)

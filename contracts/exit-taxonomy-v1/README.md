@@ -40,7 +40,7 @@ Loaders, one per port, all run by `make test-parity-taxonomy`:
 | Go | `go/console/output/envelope/taxonomy_contract_gen_test.go` (drift gate, not a replay) |
 | TypeScript | `sdk/ts/test/output/taxonomy-contract.test.ts` |
 | Python | `sdk/py/tests/test_taxonomy_contract.py` |
-| Rust | `sdk/experimental/rs/tests/taxonomy_contract.rs` (feature `output`) |
+| Rust | `sdk/rs/tests/taxonomy_contract.rs` (feature `output`) |
 | PHP | `sdk/experimental/php/tests/Output/TaxonomyContractTest.php`, run only when `php` and `composer` are on PATH |
 
 The two halves compose: a class added to Go turns the Go gate red, and regenerating turns all four SDK loaders red until they carry it too.

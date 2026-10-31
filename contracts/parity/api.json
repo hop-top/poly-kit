@@ -87,7 +87,7 @@
       "idempotency": "SHIPPED"
     },
     "rs": {
-      "implementation": "sdk/experimental/rs/src/api_server, feature api-server",
+      "implementation": "sdk/rs/src/api_server, feature api-server",
       "request_id": "SHIPPED",
       "client_address": "SHIPPED",
       "access_log": "SHIPPED",

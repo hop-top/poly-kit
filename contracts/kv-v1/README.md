@@ -15,7 +15,7 @@ How a key/value pair written by one SDK's `kv` SQLite backend must bind so that 
 make test-parity-kv
 ```
 
-Runs `TestCrossLang*` in `go/storage/kv/sqlite` with `KV_CROSSLANG=1`; the Go test drives the Rust half (`sdk/experimental/rs/tests/kv_crosslang.rs`, feature `kv`) as a `cargo test` subprocess, so both toolchains are required.
+Runs `TestCrossLang*` in `go/storage/kv/sqlite` with `KV_CROSSLANG=1`; the Go test drives the Rust half (`sdk/rs/tests/kv_crosslang.rs`, feature `kv`) as a `cargo test` subprocess, so both toolchains are required.
 
 ## Contract
 
@@ -34,11 +34,11 @@ The fixtures are edited by hand. `make lint-config` checks it parses; `make test
 ## Neighbours
 
 - `go/storage/kv/sqlite/crosslang_test.go`: Go loader and the cross-process driver
-- `sdk/experimental/rs/tests/kv_crosslang.rs`: Rust loader
-- `go/storage/kv/internal/ttlcorpus`, `sdk/experimental/rs/tests/kv_ttl_corpus.rs`: `ttl.json` replayers
+- `sdk/rs/tests/kv_crosslang.rs`: Rust loader
+- `go/storage/kv/internal/ttlcorpus`, `sdk/rs/tests/kv_ttl_corpus.rs`: `ttl.json` replayers
 - `../httpcache-v1/`: on-store envelope layered on top of `kv`
 
 ## See also
 
 - [`go/storage/kv/README.md`](../../go/storage/kv/README.md)
-- [`sdk/experimental/rs/README.md`](../../sdk/experimental/rs/README.md)
+- [`sdk/rs/README.md`](../../sdk/rs/README.md)

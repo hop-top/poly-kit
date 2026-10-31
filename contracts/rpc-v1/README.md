@@ -15,7 +15,7 @@ What the rpc server must put on the wire for the shared `crud.v1.EntityService`,
 make test-parity-rpc
 # or separately:
 go test ./go/transport/rpc/ -run '^TestConformanceRPC'
-cargo test --features rpc-server --test rpc_conformance   # from sdk/experimental/rs
+cargo test --features rpc-server --test rpc_conformance   # from sdk/rs
 ```
 
 ## Contract
@@ -36,7 +36,7 @@ Known divergence, not vectored: a handler panic. Go's recovery interceptor answe
 | Port | Runner |
 |------|--------|
 | Go | `go/transport/rpc/conformance_test.go` (`TestConformanceRPC*`) |
-| Rust | `sdk/experimental/rs/tests/rpc_conformance.rs` |
+| Rust | `sdk/rs/tests/rpc_conformance.rs` |
 
 ## See also
 

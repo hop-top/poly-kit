@@ -15,7 +15,7 @@ What `kit/runtime/bus` must accept, reject and emit, independent of language: to
 make test-parity-bus
 # or separately:
 go test ./go/runtime/bus/ -run Conformance
-cargo test --test bus_conformance --all-features   # from sdk/experimental/rs
+cargo test --test bus_conformance --all-features   # from sdk/rs
 ```
 
 ## Contract
@@ -67,11 +67,11 @@ Not in the corpus, because the languages cannot agree by construction: an embedd
 | Port | Runner |
 |------|--------|
 | Go | `go/runtime/bus/conformance_test.go` (`TestConformance*`, including `TestConformanceEvent*`) |
-| Rust | `sdk/experimental/rs/tests/bus_conformance.rs` (feature `bus`) |
+| Rust | `sdk/rs/tests/bus_conformance.rs` (feature `bus`) |
 
 A runner skips a section only for a capability the port lacks. Rust names each one in its `PENDING` constant (file, section), prints a skip line, and fails once the section would pass, so landing the capability forces the entry to be removed and the section asserted. Rust has none pending now.
 
 ## See also
 
 - [`go/runtime/bus/`](../../go/runtime/bus/)
-- [`sdk/experimental/rs/src/bus/`](../../sdk/experimental/rs/src/bus/)
+- [`sdk/rs/src/bus/`](../../sdk/rs/src/bus/)

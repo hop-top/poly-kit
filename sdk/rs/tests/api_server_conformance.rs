@@ -25,7 +25,7 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 
 fn corpus() -> Value {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/parity/api.json");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/parity/api.json");
     serde_json::from_slice(&std::fs::read(path).expect("read api.json")).expect("api.json is JSON")
 }
 

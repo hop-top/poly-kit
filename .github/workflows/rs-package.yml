@@ -5,13 +5,13 @@ name: rs-package
 on:
   pull_request:
     paths:
-      - "sdk/experimental/rs/**"
+      - "sdk/rs/**"
       - "scripts/check-rs-package.sh"
       - ".github/workflows/rs-package.yml"
   push:
     branches: [main]
     paths:
-      - "sdk/experimental/rs/**"
+      - "sdk/rs/**"
       - "scripts/check-rs-package.sh"
       - ".github/workflows/rs-package.yml"
   workflow_dispatch: {}

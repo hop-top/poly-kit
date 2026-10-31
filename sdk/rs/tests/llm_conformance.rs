@@ -16,7 +16,7 @@ use serde_json::Value;
 mod llm_support;
 
 fn corpus_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/llm-v1")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/llm-v1")
 }
 
 #[derive(Deserialize)]

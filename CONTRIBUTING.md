@@ -49,7 +49,7 @@ the repo root gives you what CI runs.
 - CI picks up either file; no workflow edit needed.
 - A few files carry their own copy and must move with it: the `go`
   directive in `go.mod`, `channel` in
-  `sdk/experimental/rs/rust-toolchain.toml`, the locked `ruff` in the
+  `sdk/rs/rust-toolchain.toml`, the locked `ruff` in the
   `uv.lock` files, the devcontainer's Nix attributes, and its
   Dockerfile's `NODE_VERSION`, `PNPM_VERSION`, `PYTHON_VERSION` and uv
   image tag.

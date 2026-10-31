@@ -45,7 +45,7 @@ resp, err := llmClient.Complete(clean)
 
 - `go/core/scope`: FS path guardrails, and the shared home of `rules/gitleaks-content.toml`.
 - `go/core/breaker`: egress volume and rate control.
-- `contracts/redact-v1`: cross-SDK vectors; the Rust port is `sdk/experimental/rs/src/redact`.
+- `contracts/redact-v1`: cross-SDK vectors; the Rust port is `sdk/rs/src/redact`.
 - `internal/tools/vendor-presidio`: the vendoring tool behind `make refresh-pii-rules`.
 - Network host filtering (`kit/netscope`) is future work and does not live here.
 

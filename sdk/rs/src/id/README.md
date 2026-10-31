@@ -38,7 +38,7 @@ assert!(matches!(new("Task"), Err(IdError::InvalidPrefix(_))));
 - Three error kinds, the same in every port: `InvalidPrefix`, `InvalidSuffix`, `PrefixMismatch`.
 - URI composition (`<scheme>://<entity-type>/<typeid>`) is not part of this module; compose with
   `hop-top-cite` (feature `uri`) instead.
-- Parity: [`contracts/typeid-v1/fixtures.json`](../../../../../contracts/typeid-v1/fixtures.json),
+- Parity: [`contracts/typeid-v1/fixtures.json`](../../../../contracts/typeid-v1/fixtures.json),
   replayed by `tests/contract.rs`.
 
 ## Neighbours
@@ -49,4 +49,4 @@ assert!(matches!(new("Task"), Err(IdError::InvalidPrefix(_))));
 ## See also
 
 - Crate README, [Modules](../../README.md#modules)
-- [`go/core/id`](../../../../../go/core/id/), the Go reference
+- [`go/core/id`](../../../../go/core/id/), the Go reference

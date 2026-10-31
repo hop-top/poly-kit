@@ -42,7 +42,7 @@ pub const WIRE: &[&str] = &[
 ];
 
 pub fn dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/bus-v1/streams")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/bus-v1/streams")
 }
 
 /// Loads `name` strictly: a registered file, `version` v1, a description,

@@ -73,7 +73,7 @@ Walker and emitter rules:
 | Port | Runner |
 |------|--------|
 | Go | `go/console/cli/completionspec/conformance_test.go` |
-| Rust | `sdk/experimental/rs/tests/cli_completion_spec_conformance.rs` |
+| Rust | `sdk/rs/tests/cli_completion_spec_conformance.rs` |
 
 ## See also
 

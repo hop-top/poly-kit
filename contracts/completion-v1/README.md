@@ -15,7 +15,7 @@ What shell completion in a kit CLI must produce, independent of language: what e
 make test-parity-completion
 # or separately:
 go test ./go/console/cli/completion/ -run '^TestConformanceCompletion'
-cargo test --features cli,config --test cli_completion_conformance   # from sdk/experimental/rs
+cargo test --features cli,config --test cli_completion_conformance   # from sdk/rs
 pnpm vitest run src/completion.conformance.test.ts                  # from sdk/ts
 ```
 
@@ -42,10 +42,10 @@ Runners are strict: unknown fields, a `version` other than `v1`, a corpus file n
 | Port | Runner |
 |------|--------|
 | Go | `go/console/cli/completion/completion_conformance_test.go` (`TestConformanceCompletion*`); template derivation in `completion_templates_test.go` |
-| Rust | `sdk/experimental/rs/tests/cli_completion_conformance.rs` |
+| Rust | `sdk/rs/tests/cli_completion_conformance.rs` |
 | TS | `sdk/ts/src/completion.conformance.test.ts`; known gap, skipped with its reason: `completion fig\|usage` (no TS completion-spec exporter yet) |
 
 ## See also
 
 - [`go/console/cli/completion/`](../../go/console/cli/completion/README.md)
-- [`sdk/experimental/rs/src/cli/`](../../sdk/experimental/rs/src/cli/README.md)
+- [`sdk/rs/src/cli/`](../../sdk/rs/src/cli/README.md)

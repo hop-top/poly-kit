@@ -60,7 +60,7 @@ m.run(&Context::background()).unwrap(); // nothing pending
 - A prune failure goes to `on_warning` (default stderr, Go's `log.Printf` text); never fatal.
 - Registration is per `Migrator`; Go's process-wide default registry has no Rust counterpart, since
   Rust has no `init()` to fill it from. Only the `configfile` driver is ported.
-- Parity: [`contracts/upgrade-v1`](../../../../../contracts/upgrade-v1/README.md), run by
+- Parity: [`contracts/upgrade-v1`](../../../../contracts/upgrade-v1/README.md), run by
   `tests/upgrade_conformance.rs` (`make test-parity-upgrade`).
 
 ## Neighbours
@@ -70,4 +70,4 @@ m.run(&Context::background()).unwrap(); // nothing pending
 
 ## See also
 
-- [`go/core/upgrade`](../../../../../go/core/upgrade/README.md), the Go reference
+- [`go/core/upgrade`](../../../../go/core/upgrade/README.md), the Go reference

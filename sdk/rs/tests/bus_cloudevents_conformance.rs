@@ -32,7 +32,7 @@ use bus_cloudevents_support::{is_evt_typeid, json_eq, parse_json, VEvent};
 const FILES: &[&str] = &["decode.json", "encode.json", "frames.json"];
 
 fn dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/bus-v1/cloudevents")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/bus-v1/cloudevents")
 }
 
 fn load<T: DeserializeOwned>(name: &str) -> T {

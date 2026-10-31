@@ -49,7 +49,7 @@ assert_eq!(String::from_utf8(buf).unwrap(), "{\n  \"name\": \"alpha\"\n}\n");
   the resolved list or, without one, the first row's key order; zero rows emit nothing.
 - `csv` quoting is byte-for-byte Go's `encoding/csv` on output; `crlf` changes only the record terminator.
 - Option `default` fields are `None` in the static specs and merged at render time.
-- Parity: [ordering.json](../../../../../tests/cross-lang/fixtures/ordering.json), replayed by
+- Parity: [ordering.json](../../../../tests/cross-lang/fixtures/ordering.json), replayed by
   `sdk/tests/cross-lang/runners/rs`.
 
 ## Neighbours
@@ -59,5 +59,5 @@ assert_eq!(String::from_utf8(buf).unwrap(), "{\n  \"name\": \"alpha\"\n}\n");
 
 ## See also
 
-- [Crate README, Output formatting](../../../../../../docs/adopters/reference/rs-sdk.md#output-formatting)
-- Go reference: [go/console/output](../../../../../../go/console/output/README.md)
+- [Crate README, Output formatting](../../../../../docs/adopters/reference/rs-sdk.md#output-formatting)
+- Go reference: [go/console/output](../../../../../go/console/output/README.md)

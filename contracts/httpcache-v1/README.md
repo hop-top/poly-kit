@@ -13,7 +13,7 @@ What `kit/storage/httpcache` ports must agree on so they can share one `kv` back
 
 ```sh
 go test ./go/storage/httpcache/ -run '^TestContract_' -count=1
-cd sdk/experimental/rs && cargo test --features httpcache --test httpcache_contract --locked
+cd sdk/rs && cargo test --features httpcache --test httpcache_contract --locked
 ```
 
 ## Contract
@@ -31,7 +31,7 @@ Consumers:
 | Port | Loader |
 |------|--------|
 | Go | `go/storage/httpcache/contract_test.go` (`TestContract_Keying`, `TestContract_Entry`), `httpcache_test.go` (`TestContract_Cacheability`) |
-| Rust | `sdk/experimental/rs/tests/httpcache_contract.rs` (feature `httpcache`): keying cases, the `vary` section (`contract_vary_keying`), the `vary_*` / `authorization_*` / `private_*` cacheability sections (`contract_vary_auth_private_storable`, `_end_to_end`), entry and cacheability vectors |
+| Rust | `sdk/rs/tests/httpcache_contract.rs` (feature `httpcache`): keying cases, the `vary` section (`contract_vary_keying`), the `vary_*` / `authorization_*` / `private_*` cacheability sections (`contract_vary_auth_private_storable`, `_end_to_end`), entry and cacheability vectors |
 
 The fixtures are edited by hand and are the contract of record for every port, Go included. `make lint-config` checks they parse.
 
@@ -43,4 +43,4 @@ The fixtures are edited by hand and are the contract of record for every port, G
 ## See also
 
 - [`go/storage/httpcache/README.md`](../../go/storage/httpcache/README.md)
-- [`sdk/experimental/rs/README.md`](../../sdk/experimental/rs/README.md)
+- [`sdk/rs/README.md`](../../sdk/rs/README.md)

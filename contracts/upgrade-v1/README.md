@@ -19,7 +19,7 @@ that half of the package is Go-only and has no vectors.
 make test-parity-upgrade
 # or separately:
 go test ./go/core/upgrade/ -run '^TestConformanceUpgrade'
-cargo test --features upgrade --test upgrade_conformance   # from sdk/experimental/rs
+cargo test --features upgrade --test upgrade_conformance   # from sdk/rs
 ```
 
 ## Contract
@@ -55,9 +55,9 @@ unknown fields, a `version` other than `v1` and a corpus file no runner consumes
 | Port | Runner |
 |------|--------|
 | Go | `go/core/upgrade/upgrade_conformance_test.go` (`TestConformanceUpgrade*`) |
-| Rust | `sdk/experimental/rs/tests/upgrade_conformance.rs` |
+| Rust | `sdk/rs/tests/upgrade_conformance.rs` |
 
 ## See also
 
 - [`go/core/upgrade`](../../go/core/upgrade/README.md)
-- [`sdk/experimental/rs/src/upgrade`](../../sdk/experimental/rs/src/upgrade/README.md)
+- [`sdk/rs/src/upgrade`](../../sdk/rs/src/upgrade/README.md)

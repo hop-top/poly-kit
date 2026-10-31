@@ -12,7 +12,7 @@ use hop_top_kit::config::{Map, SchemaError, Value};
 
 fn go_testdata(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../go/core/config/pkl/testdata")
+        .join("../../go/core/config/pkl/testdata")
         .join(name)
 }
 

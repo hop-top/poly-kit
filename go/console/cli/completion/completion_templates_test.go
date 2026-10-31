@@ -21,7 +21,7 @@ import (
 // rewrites them: one .tmpl file per shell for Rust, one generated
 // module holding every shell for TS.
 
-const rsTemplateDir = "../../../../sdk/experimental/rs/src/cli/completion/scripts"
+const rsTemplateDir = "../../../../sdk/rs/src/cli/completion/scripts"
 
 const tsTemplateModule = "../../../../sdk/ts/src/completion-scripts.ts"
 

@@ -35,4 +35,4 @@ cargo test --features bus --lib bus::cloudevents
 ## See also
 
 - [bus README](../README.md)
-- [CloudEvents vectors](../../../../../../contracts/bus-v1/cloudevents/README.md)
+- [CloudEvents vectors](../../../../../contracts/bus-v1/cloudevents/README.md)

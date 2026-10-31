@@ -498,7 +498,7 @@ fn build_refuses_what_cannot_serve() {
 #[test]
 fn client_cert_corpus() {
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../contracts/parity/api.json");
+        .join("../../contracts/parity/api.json");
     let corpus: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     let strs = |v: &Value| -> Vec<String> {
         v.as_array()

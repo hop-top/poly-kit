@@ -15,7 +15,7 @@ the short entry point; this page carries the full record.
 | `sdk/tests/cross-lang/fixtures/toolspec-manifest*.json`, `toolspec-spec*.json` | `BuildManifest` bytes and live `<tool> spec` / `spec coverage` stdout for a shared command tree (`toolspec-manifest.tree.json`) | Go (generates), TypeScript | `TestManifestCrossLangFixture`, `TestSpecCommandCrossLangFixture` (`-update-manifest-fixture` regenerates), `sdk/ts/src/toolspec-manifest.test.ts`, `sdk/ts/src/toolspec-spec.test.ts` |
 | `contracts/toolspec-spec-v1/*.schema.json` | output schemas Go reflects for `spec` and `spec coverage` | Go (generates), TypeScript (embeds) | `TestSpecOutputSchemaContract` (`-update-spec-schema-contract`), `sdk/ts/src/toolspec-spec.test.ts` |
 | `serve.json` | serve lifecycle conformance record | Go reference; others `SHIPPED`/`PENDING`/`N/A` | `TestServeContractMatchesGo` |
-| `api.json` | REST server conformance: client address behind proxies, trusted-proxy parsing, Host and Origin decisions, listener hosts, constants, OpenAPI documents rendered by huma, per-port status | Go (authority), Rust; others none | `TestAPIContract*` (`go/transport/api`), `sdk/experimental/rs/tests/api_server_conformance.rs`, `make test-parity-api` |
+| `api.json` | REST server conformance: client address behind proxies, trusted-proxy parsing, Host and Origin decisions, listener hosts, constants, OpenAPI documents rendered by huma, per-port status | Go (authority), Rust; others none | `TestAPIContract*` (`go/transport/api`), `sdk/rs/tests/api_server_conformance.rs`, `make test-parity-api` |
 | `contracts/exit-taxonomy-v1/taxonomy.json` | the exit-code taxonomy: class, exit number, default transience | Go, TypeScript, Python, Rust, PHP | `make test-parity-taxonomy` |
 | `contracts/config-v1/*.json` | config conformance: scalar typing, overrides, precedence, load merge, edits | Go, Rust | `make test-parity-config` ([README](../../../contracts/config-v1/README.md)) |
 | `contracts/alias-v1/*.json` | alias bridge: native vs proxy, proxy options, name validation, cycle detection | Go, TypeScript, Python, Rust | `make test-parity-alias` ([README](../../../contracts/alias-v1/README.md)) |
@@ -32,7 +32,7 @@ only when both hold:
    property on `ParityData` plus an entry in `PARITY_BLOCKS`
    (`sdk/ts/src/tui/parity.ts`); in Python an accessor plus an entry in
    `BLOCKS` (`sdk/py/hop_top_kit/parity.py`); in Rust a field on `Parity` plus
-   an entry in `BLOCKS` (`sdk/experimental/rs/src/parity/mod.rs`). Each port carries its own
+   an entry in `BLOCKS` (`sdk/rs/src/parity/mod.rs`). Each port carries its own
    block-registry guard, so a block declared without a loader fails in all
    four:
 
@@ -41,7 +41,7 @@ only when both hold:
    | Go | `TestParityNoUnloadedBlocks`, `TestParityLoadedBlocksNonZero` |
    | TypeScript | `sdk/ts/src/tui/parity.test.ts` |
    | Python | `sdk/py/tests/test_parity.py` |
-| Rust | `sdk/experimental/rs/tests/parity.rs` |
+   | Rust | `sdk/rs/tests/parity.rs` |
 
    The guards assert two separate things, and both matter: that the block is
    *known*, and that it *loaded a non-empty value*. A block wired up under a
@@ -127,7 +127,7 @@ Five implementations serve it:
 | Go | `go/transport/cmdsurface/surface_mcp*.go` | `TestGenerateMCPWireFixtures` (drift gate) |
 | TypeScript | `sdk/ts/src/mcp/` | `src/mcp/conformance.test.ts` |
 | Python | `sdk/py/hop_top_kit/mcp/` | `tests/test_mcp_conformance.py` |
-| Rust | `sdk/experimental/rs/src/mcp/` | `tests/mcp_wire_conformance.rs` (feature `mcp`) |
+| Rust | `sdk/rs/src/mcp/` | `tests/mcp_wire_conformance.rs` (feature `mcp`) |
 | PHP | `sdk/experimental/php/src/Mcp/` | `tests/Mcp/WireConformanceTest.php` |
 
 `make test-parity-mcp` runs all five. PHP is optional — it runs only when
@@ -300,7 +300,7 @@ allocation cannot silently double-book a slot.
 | Go | `go/console/output/envelope/taxonomy_contract_gen_test.go` (drift gate) |
 | TypeScript | `sdk/ts/test/output/taxonomy-contract.test.ts` |
 | Python | `sdk/py/tests/test_taxonomy_contract.py` |
-| Rust | `sdk/experimental/rs/tests/taxonomy_contract.rs` (feature `output`) |
+| Rust | `sdk/rs/tests/taxonomy_contract.rs` (feature `output`) |
 | PHP | `sdk/experimental/php/tests/Output/TaxonomyContractTest.php`, run only when `php` and `composer` are on PATH |
 
 `make test-parity-taxonomy` runs all five. As with the MCP fixture, Go's
