@@ -217,7 +217,7 @@
         }
       ],
       "retryable": false,
-      "dry_run_supported": false
+      "dry_run_supported": true
     },
     {
       "path": [

@@ -26,6 +26,7 @@ import {
   walkCommands,
   type Annotations,
 } from "./toolspec-internal.js";
+import { inferredDestructive } from "./sideeffect.js";
 
 /** Env var a harness sets to request a manifest schema version. */
 export const SCHEMA_VERSION_ENV = "KIT_TOOLSPEC_SCHEMA";
@@ -233,13 +234,17 @@ const DRY_RUN_SIDE_EFFECTS = new Set([
   "destructive-shared",
 ]);
 
-function dryRunSupported(ann: Annotations): boolean {
+// Go cmdmeta.IsDryRunSupported: an explicit kit/dry-run wins, then an
+// unannotated destructive-named leaf (inferred destructive) is supported,
+// then the declared side-effect tier decides.
+function dryRunSupported(name: string, ann: Annotations): boolean {
   switch (ann["kit/dry-run"]) {
     case "opted-out":
       return false;
     case "supported":
       return true;
   }
+  if (inferredDestructive(name, ann)) return true;
   return DRY_RUN_SIDE_EFFECTS.has(ann["kit/side-effect"] ?? "");
 }
 
@@ -362,7 +367,7 @@ function manifestCommand(
   if (ann["kit/passthrough"] === "true") out.passthrough = true;
   const token = ann["kit/destructive-token"];
   if (token === "required" || token === "true") out.destructive_token_required = true;
-  out.dry_run_supported = dryRunSupported(ann);
+  out.dry_run_supported = dryRunSupported(cmd.name(), ann);
   if (ann["kit/dry-run-rationale"]) out.dry_run_rationale = ann["kit/dry-run-rationale"];
   if (reserved) out.reserved = true;
   if (hidden) out.hidden = true;
