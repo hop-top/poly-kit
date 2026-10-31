@@ -32,6 +32,21 @@ import { EXIT_USAGE } from './output/error.js';
 import { install as installNetPolicy, setProcessOffline } from './netpolicy.js';
 import { installCompletionRequest } from './completion.js';
 import './output/builtins.js';
+import { installDelegation, type PromptSource } from './delegation.js';
+import type { PolicyLoader } from './policy.js';
+export { controllingTTY, destructiveToken, dryRunApplied, installConfirmTokenFlag,
+         isDryRun, noPrompt, resolveConfirmMode, resolveDryRunPolicy,
+         scriptedPrompt } from './delegation.js';
+export type { ConfirmMode, DryRunPolicy, PromptSource, Prompter } from './delegation.js';
+export { Engine, KIT_DEFAULT_NAME, MaxOpsExceededError, defaultPolicyLoader,
+         kitDefault, loadNamedPolicy, loadPolicy, resolvePolicyPath } from './policy.js';
+export type { Policy, PolicyLoader, Verdict } from './policy.js';
+export { INFERRED_TIER, SIDE_EFFECT_TIERS, destructiveNames, gateSideEffect,
+         inferredDestructive, isDestructiveLike, isDestructiveName,
+         isWriteLike } from './sideeffect.js';
+export type { SideEffect } from './sideeffect.js';
+export { renderPlan } from './plan.js';
+export type { Effect, Plan } from './plan.js';
 export { ErrOffline, OfflineError, guardFetch, isOffline, isOfflineError,
          withOffline } from './netpolicy.js';
 export { HintSet, hintsEnabled, renderHints, active,
@@ -333,7 +348,23 @@ export interface CLIConfig {
     noColor?: boolean;
     hints?: boolean;
     offline?: boolean;
+    /** Drop the root `--dry-run` flag; it is then never applied. */
+    dryRun?: boolean;
   };
+
+  /**
+   * Resolves a named root `--policy <name>`; see {@link defaultPolicyLoader}
+   * for the `$XDG_CONFIG_HOME/<name>/policies/<policy>.yaml` loader. Unset
+   * wires none: only the reserved `kit-default` policy resolves.
+   */
+  policy?: PolicyLoader;
+
+  /**
+   * The terminal the `--confirm` prompt asks on. Defaults to the
+   * controlling terminal (`/dev/tty`); with none, an unset `--confirm`
+   * resolves to `no`.
+   */
+  promptSource?: PromptSource;
 
   /** Command groups for partitioned help (e.g. COMMANDS vs MANAGEMENT). */
   groups?: Array<{
@@ -812,6 +843,14 @@ export function createCLI(cfg: CLIConfig): CLIResult {
     program.hook('preSubcommand', (thisCmd) => stamp(thisCmd));
     program.hook('preAction', (thisCmd) => stamp(thisCmd));
   }
+
+  // Delegation gates: --dry-run, --confirm, --max-ops, --policy and the
+  // hooks enforcing them on every runnable leaf.
+  installDelegation(program, {
+    policy: cfg.policy,
+    promptSource: cfg.promptSource,
+    disableDryRun: cfg.disable?.dryRun === true,
+  });
 
   // Stackable verbosity count flag (-VV = 2). The shorthand comes from the
   // parity contract's verbosity block; commander takes the option spec as a

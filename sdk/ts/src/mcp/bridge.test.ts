@@ -220,3 +220,31 @@ describe('commanderBridge', () => {
     );
   });
 });
+
+describe('classify: destructive-name inference', () => {
+  const leafOf = (name: string, ann?: Record<string, string>) => {
+    const root = new Command('root');
+    const c = new Command(name).description(name);
+    if (ann) annotate(c, ann);
+    root.addCommand(c);
+    return commanderBridge(root, { run }).leaves()[0]!;
+  };
+
+  it('treats an unannotated destructive-named leaf as destructive and blocks it', async () => {
+    const root = new Command('root');
+    root.addCommand(new Command('delete').description('d'));
+    const bridge = commanderBridge(root, { run });
+    expect(bridge.leaves()[0]!.class?.destructive).toBe(true);
+    await expect(
+      bridge.invoke({ path: ['delete'], args: [], flags: {}, meta: { surface: SURFACE_MCP } } as never),
+    ).rejects.toThrow(/destructive command blocked on this surface/);
+  });
+
+  it('an explicit annotation wins, valid or malformed; empty infers; other names do not', () => {
+    expect(leafOf('delete', { 'kit/side-effect': 'read' }).class?.destructive).toBeUndefined();
+    expect(leafOf('delete', { 'kit/side-effect': 'bogus' }).class?.destructive).toBeUndefined();
+    expect(leafOf('delete', { 'kit/side-effect': '' }).class?.destructive).toBe(true);
+    expect(leafOf('delete-all').class?.destructive).toBeUndefined();
+    expect(leafOf('rm').class?.destructive).toBe(true);
+  });
+});
