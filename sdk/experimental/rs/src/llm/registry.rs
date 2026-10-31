@@ -92,6 +92,8 @@ impl Registry {
         super::triton::register(&r).expect("empty registry");
         #[cfg(feature = "llm-google")]
         super::google::register(&r).expect("empty registry");
+        #[cfg(feature = "llm-routellm")]
+        super::routellm::register(&r).expect("empty registry");
         r
     }
 
