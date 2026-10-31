@@ -5,12 +5,12 @@ and Python — the three languages with a CLI layer. Every tool
 built with kit/cli (or its TS/Py equivalents) must satisfy the
 same contract.
 
-The experimental Rust and PHP SDKs do not wire the global-flag
-layer yet (PHP's minimal `Root` carries only the delegation flags and
-`--format`; see the [PHP reference](../reference/php-sdk.md#cli-root-and-delegation-gate)).
-Where a section names them, it says what each port
-ships today; elsewhere "all three languages" means Go,
-TypeScript and Python.
+The experimental PHP SDK does not wire the global-flag layer yet (PHP's
+minimal `Root` carries only the delegation flags and `--format`; see the
+[PHP reference](../reference/php-sdk.md#cli-root-and-delegation-gate)),
+and the Rust SDK's `cli` module (feature `cli`) ports the Go root.
+Where a section names them, it says what each port ships today;
+elsewhere "all three languages" means Go, TypeScript and Python.
 
 ## Global Flags
 
@@ -59,9 +59,10 @@ Per-port detail: [Go](../../../go/core/netpolicy/README.md#contract),
 [TypeScript](../reference/ts-api-reference.md#modules),
 [Python](../reference/py-sdk.md#offline-enforcement),
 [PHP](../reference/php-sdk.md#offline-enforcement),
-[Rust](../reference/rs-sdk.md#offline-enforcement). Rust and PHP do not
-register `--offline` yet, having no global-flag layer: set the marker
-from your own flag, as each page's "CLI flag" section shows.
+[Rust](../reference/rs-sdk.md#offline-enforcement). Rust registers
+`--offline` and carries it in `Globals::offline`: build the `NetPolicy`
+from it. PHP does not register it yet, having no global-flag layer: set
+the marker from your own flag, as its page's "CLI flag" section shows.
 
 ## Reading `-V` and `--quiet`
 
@@ -75,14 +76,14 @@ the parser's context. `--quiet` and `-V` combine without error and
 | Go | `root.VerboseCount()` | `root.IsQuiet()` |
 | TypeScript | `verboseCount(cmd)` | `isQuiet(cmd)` |
 | Python | `verbose_count()` | `is_quiet()` |
-| Rust | none | none |
+| Rust | `inv.verbose_count()` | `inv.is_quiet()` |
 | PHP | none | none |
 
 Go's `VerboseCount` keeps the raw count under `--quiet`, and the logger
 applies the override. The TypeScript and Python counts read 0 under
-`--quiet`. Rust and PHP have no accessor: neither port wires the global
-flag layer yet (Rust's `cli` module is empty; PHP's `Cli` class is a
-placeholder; `Root` has no verbosity flag).
+`--quiet`. PHP has no accessor: its `Cli` class is a placeholder and
+`Root` has no verbosity flag. Rust's `Invocation::logger()` applies the
+same floor.
 
 ## Help Subcommand
 
