@@ -215,14 +215,47 @@ def test_leaf_local_policy_flag_is_not_the_delegation_policy() -> None:
     assert calls == ["import:/tmp/some.yaml"]
 
 
-def test_leaf_local_confirm_never_satisfies_the_root_gate() -> None:
-    """A leaf's own --confirm is the leaf's: it cannot approve its own run."""
+def test_leaf_local_confirm_is_the_value_the_gate_reads() -> None:
+    """Go's flagValue: the leaf's own --confirm shadows the root's."""
     calls: list[str] = []
     r = _run(_app(calls), "danger", "--confirm", "yes")
-    assert r.exit_code == 5
-    assert calls == []
+    assert r.exit_code == 0, r.stderr
+    assert calls == ["danger:yes"]
+    # leaf-local no refuses even under a root --confirm yes
     r = _run(_app(calls), "--confirm", "yes", "danger", "--confirm", "no")
-    assert r.exit_code == 0 and calls == ["danger:no"]
+    assert r.exit_code == 5 and "refused: --confirm=no" in r.stderr
+    # declared but unset on the leaf: the unset default, not the root's yes
+    r = _run(_app(calls), "--confirm", "yes", "danger")
+    assert r.exit_code == 5
+    assert calls == ["danger:yes"]
+
+
+def test_leaf_local_max_ops_is_the_budget_the_gate_reads(monkeypatch: pytest.MonkeyPatch) -> None:
+    from hop_top_kit.gate import Gate
+
+    seen: list[int] = []
+    real = Gate.engine
+
+    def spy(self: Gate, g: Any) -> Any:
+        seen.append(g.max_ops)
+        return real(self, g)
+
+    monkeypatch.setattr(Gate, "engine", spy)
+    app = _app([])
+
+    @app.command("batch")
+    @annotate(side_effect="write")
+    def batch(max_ops: int = typer.Option(0, "--max-ops")) -> None:
+        pass
+
+    assert _run(app, "--max-ops", "5", "batch", "--max-ops", "3").exit_code == 0
+    assert seen == [3]
+    seen.clear()
+    assert _run(app, "--max-ops", "5", "batch").exit_code == 0
+    assert seen == [0]  # declared but unset on the leaf: 0, as Go's flagInt
+    seen.clear()
+    assert _run(app, "--max-ops", "5", "add").exit_code == 0
+    assert seen == [5]  # no leaf-local flag: the root's
 
 
 def test_max_ops_within_budget_runs() -> None:

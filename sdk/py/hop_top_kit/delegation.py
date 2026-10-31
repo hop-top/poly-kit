@@ -2,10 +2,12 @@
 
 ``create_app`` hands every command resolved through the root to
 :func:`install`, which wraps each leaf callback so the gate runs before the
-handler. Only the root's ``--confirm``, ``--max-ops``, ``--policy`` and
-``--dry-run`` count: a leaf-local option of the same name is the leaf's own
-and never shadows the root gate. ``--confirm-token`` is the one leaf flag,
-added to leaves annotated ``kit/destructive-token: required``.
+handler. Flag precedence follows Go's ``flagValue``: a leaf that declares
+its own ``--confirm`` or ``--max-ops`` supplies the value the gate reads
+(even when unset on that run); ``--policy`` and ``--dry-run`` are the
+root's only, so a leaf-local ``--policy`` is never the delegation policy.
+``--confirm-token`` is the one kit-added leaf flag, put on leaves annotated
+``kit/destructive-token: required``.
 """
 
 from __future__ import annotations
@@ -88,12 +90,23 @@ def _stash_token(ctx: Any, param: Any, value: Any) -> Any:
 
 def _globals(ctx: Any) -> _gate.Globals:
     p = ctx.find_root().params
+    # Go's flagValue: the leaf's own flag shadows the root's, set or not.
+    confirm = ctx.params["confirm"] if "confirm" in ctx.params else p.get("confirm")
+    max_ops = ctx.params["max_ops"] if "max_ops" in ctx.params else p.get("max_ops")
     return _gate.Globals(
-        confirm=str(p.get("confirm") or ""),
-        max_ops=int(p.get("max_ops") or 0),
+        confirm=str(confirm or ""),
+        max_ops=_int(max_ops),
         policy=str(p.get("policy") or ""),
         dry_run=bool(p.get("dry_run")),
     )
+
+
+def _int(v: Any) -> int:
+    """Go's flagInt: 0 when missing or unparseable."""
+    try:
+        return int(v or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _format(ctx: Any) -> str:

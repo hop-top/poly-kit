@@ -668,10 +668,11 @@ Root flags (hidden, like Go's; give them before the command):
 | `--policy <name>` | Loads `$XDG_CONFIG_HOME/<tool>/policies/<name>.yaml` through `policy_loader`. The name must match `^[A-Za-z0-9_-]{1,64}$`, checked before any filesystem access. `kit-default` is reserved and needs no loader. An unreadable or invalid policy is `USAGE` (2), a refusal is `UNAUTHORIZED` (5) and not lifted by `--confirm=yes`. |
 | `--dry-run` | Honored by write and destructive tiers (the handler runs with `is_dry_run()` true, confirm skipped, no budget spent); a no-op on `read`; refused (`USAGE`, 2) on `interactive`, `kit/dry-run: opted-out`, untagged or malformed leaves. `Disable(dry_run=True)` drops the flag. |
 
-Only the root's values drive the gate. A leaf that declares its own
-`--confirm`, `--max-ops` or `--policy` option keeps it as the leaf's own;
-it neither approves the run nor names a policy. (Go and Rust let a
-leaf-local `--confirm` or `--max-ops` shadow the root's; Python does not.)
+Precedence is Go's: a leaf that declares its own `--confirm` or
+`--max-ops` option supplies the value the gate reads for that leaf, set or
+not (a leaf-local `--confirm yes` satisfies the gate there; an unset one
+falls to the unset default). `--policy` and `--dry-run` are the root's
+only: a leaf-local `--policy` is never the delegation policy.
 `GlobalFlag` names `confirm`, `max-ops`, `policy` and `dry-run` are
 reserved (`ValueError`).
 
