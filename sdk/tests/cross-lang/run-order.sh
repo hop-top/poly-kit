@@ -25,6 +25,7 @@
 # Exits non-zero if any runtime that actually ran produced a contract
 # violation. Skipped runtimes do NOT fail the harness — but they are reported
 # as skipped, never as passed: an unrun runtime is not a green runtime.
+# KIT_CROSS_LANG_STRICT=1 (CI) makes a skip a failure.
 
 set -euo pipefail
 
@@ -203,6 +204,12 @@ if [[ ${#SKIPPED[@]} -gt 0 ]]; then
   done
 fi
 
+# KIT_CROSS_LANG_STRICT=1 (set by CI) turns a skipped runtime into a failure,
+# so a missing toolchain cannot pass as green.
+if [[ "${KIT_CROSS_LANG_STRICT:-}" == "1" && ${#SKIPPED[@]} -gt 0 ]]; then
+  fail "strict mode: skipped runtimes count as failures"
+  exit 1
+fi
 if [[ ${#FAILED[@]} -gt 0 ]]; then
   exit 1
 fi
