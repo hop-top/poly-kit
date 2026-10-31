@@ -973,3 +973,109 @@ fn a_bad_trusted_proxy_or_origin_fails_the_build() {
     assert!(err.to_string().contains("proxy.internal"), "{err}");
     let _ = StatusCode::OK.into_response();
 }
+
+#[tokio::test]
+async fn a_full_table_still_gives_a_new_client_its_own_budget() {
+    let clock = Arc::new(Fake(Mutex::new(
+        SystemTime::UNIX_EPOCH + Duration::from_secs(1000),
+    )));
+    let mut c = cfg(hello());
+    let mut rl = RateLimit::new(1, Duration::from_secs(30));
+    rl.max_clients = 2;
+    rl.clock = Some(clock.clone());
+    c.rate_limit = Some(rl);
+    let a = app(c);
+    let from = |ip: &str| {
+        let a = a.clone();
+        let sa: SocketAddr = format!("{ip}:1").parse().unwrap();
+        async move {
+            let mut r = get_req("/hello");
+            r.extensions_mut().insert(ConnectInfo(sa));
+            a.oneshot(r).await.unwrap().status()
+        }
+    };
+    assert_eq!(from("192.0.2.1").await, 200);
+    *clock.0.lock().unwrap() += Duration::from_secs(1);
+    assert_eq!(from("192.0.2.2").await, 200);
+    // At the cap: a third client is served from its own bucket, and an
+    // attacker's churn cannot drain a shared one.
+    *clock.0.lock().unwrap() += Duration::from_secs(1);
+    assert_eq!(from("192.0.2.3").await, 200);
+    assert_eq!(from("192.0.2.4").await, 200);
+    assert_eq!(from("192.0.2.4").await, 429);
+}
+
+#[tokio::test]
+async fn idle_buckets_expire_and_ipv6_shares_a_64() {
+    let clock = Arc::new(Fake(Mutex::new(
+        SystemTime::UNIX_EPOCH + Duration::from_secs(1000),
+    )));
+    let mut c = cfg(hello());
+    let mut rl = RateLimit::new(1, Duration::from_secs(30));
+    rl.max_clients = 1;
+    rl.clock = Some(clock.clone());
+    c.rate_limit = Some(rl);
+    let a = app(c);
+    let from = |ip: &str| {
+        let a = a.clone();
+        let sa: SocketAddr = format!("[{ip}]:1").parse().unwrap();
+        async move {
+            let mut r = get_req("/hello");
+            r.extensions_mut().insert(ConnectInfo(sa));
+            a.oneshot(r).await.unwrap().status()
+        }
+    };
+    assert_eq!(from("2001:db8:1:1::1").await, 200);
+    assert_eq!(
+        from("2001:db8:1:1:ffff::2").await,
+        429,
+        "same /64, same bucket"
+    );
+    assert_eq!(
+        from("2001:db8:1:2::1").await,
+        200,
+        "another /64 evicts, gets its own"
+    );
+    assert_eq!(
+        from("2001:db8:1:1::1").await,
+        200,
+        "the least recently seen was evicted at the cap"
+    );
+    *clock.0.lock().unwrap() += Duration::from_secs(31);
+    assert_eq!(from("2001:db8:1:1::1").await, 200, "idle entry expired");
+}
+
+#[tokio::test]
+async fn an_untidy_request_id_is_replaced_and_logs_stay_one_line() {
+    let lines = Arc::new(Mutex::new(Vec::<String>::new()));
+    let l = lines.clone();
+    let mut c = cfg(hello());
+    c.log = Some(Arc::new(move |line| {
+        l.lock().unwrap().push(line.to_string())
+    }));
+    let a = app(c);
+    for bad in ["a b", "x\"y", &"z".repeat(129), "é"] {
+        let resp = a
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/hello")
+                    .header("host", "127.0.0.1")
+                    .header(
+                        "x-request-id",
+                        axum::http::HeaderValue::from_bytes(bad.as_bytes()).unwrap(),
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let id = resp.headers()["x-request-id"].to_str().unwrap().to_string();
+        assert_eq!(id.len(), 32, "{bad:?} was kept: {id}");
+    }
+    let lines = lines.lock().unwrap();
+    assert_eq!(lines.len(), 4);
+    assert!(lines
+        .iter()
+        .all(|l| !l.contains('\n') && l.contains("request_id=\"")));
+}
