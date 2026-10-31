@@ -17,6 +17,7 @@ mod alias;
 #[cfg(test)]
 mod alias_conformance;
 mod alias_store;
+mod autocorrect_prompt;
 pub mod completion;
 pub mod completion_spec;
 pub mod config;

@@ -789,6 +789,133 @@
    ]
   },
   {
+   "name": "autocorrect prompt applies a read leaf on y",
+   "tree": "main",
+   "args": [
+    "--autocorrect",
+    "prompt",
+    "ls",
+    "--limt",
+    "5"
+   ],
+   "exit": 0,
+   "prompt_answer": "y",
+   "stdout": "{\"args\":[],\"flags\":{\"limit\":\"5\"},\"globals\":{\"format\":\"table\",\"no-color\":\"false\",\"no-hints\":\"false\",\"offline\":\"false\",\"quiet\":\"false\",\"verbose\":0},\"path\":\"ls\"}\n",
+   "stderr_contains": [
+    "OK: applied flag correction: --limt -> --limit",
+    "Corrected from: --limt",
+    "Fix: --limit"
+   ]
+  },
+  {
+   "name": "autocorrect prompt takes the yes default on a read leaf",
+   "tree": "main",
+   "args": [
+    "--autocorrect",
+    "prompt",
+    "ls",
+    "--limt",
+    "5"
+   ],
+   "exit": 0,
+   "prompt_answer": "",
+   "stdout": "{\"args\":[],\"flags\":{\"limit\":\"5\"},\"globals\":{\"format\":\"table\",\"no-color\":\"false\",\"no-hints\":\"false\",\"offline\":\"false\",\"quiet\":\"false\",\"verbose\":0},\"path\":\"ls\"}\n",
+   "stderr_contains": [
+    "OK: applied flag correction: --limt -> --limit",
+    "Corrected from: --limt",
+    "Fix: --limit"
+   ]
+  },
+  {
+   "name": "autocorrect prompt declined on n stays suggest-only",
+   "tree": "main",
+   "args": [
+    "--autocorrect",
+    "prompt",
+    "ls",
+    "--limt",
+    "5"
+   ],
+   "exit": 2,
+   "prompt_answer": "n",
+   "stderr_contains": [
+    "USAGE: unknown flag --limt",
+    "Fix: --limit"
+   ]
+  },
+  {
+   "name": "autocorrect prompt applies a write leaf only on an explicit y",
+   "tree": "main",
+   "args": [
+    "--autocorrect",
+    "prompt",
+    "deploy",
+    "--envv",
+    "p"
+   ],
+   "exit": 0,
+   "prompt_answer": "y",
+   "stdout": "{\"args\":[],\"flags\":{\"env\":\"p\"},\"globals\":{\"format\":\"table\",\"no-color\":\"false\",\"no-hints\":\"false\",\"offline\":\"false\",\"quiet\":\"false\",\"verbose\":0},\"path\":\"deploy\"}\n",
+   "stderr_contains": [
+    "OK: applied flag correction: --envv -> --env",
+    "Corrected from: --envv",
+    "Fix: --env"
+   ]
+  },
+  {
+   "name": "autocorrect prompt Enter declines a write leaf",
+   "tree": "main",
+   "args": [
+    "--autocorrect",
+    "prompt",
+    "deploy",
+    "--envv",
+    "p"
+   ],
+   "exit": 2,
+   "prompt_answer": "",
+   "stderr_contains": [
+    "USAGE: unknown flag --envv",
+    "Fix: --env"
+   ]
+  },
+  {
+   "name": "autocorrect prompt without a terminal stays suggest-only",
+   "tree": "main",
+   "args": [
+    "--autocorrect",
+    "prompt",
+    "ls",
+    "--limt",
+    "5"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE: unknown flag --limt",
+    "Fix: --limit"
+   ]
+  },
+  {
+   "name": "autocorrect prompt from the environment",
+   "tree": "main",
+   "args": [
+    "ls",
+    "--limt",
+    "5"
+   ],
+   "exit": 0,
+   "prompt_answer": "y",
+   "env": {
+    "KIT_AUTOCORRECT": "prompt"
+   },
+   "stdout": "{\"args\":[],\"flags\":{\"limit\":\"5\"},\"globals\":{\"format\":\"table\",\"no-color\":\"false\",\"no-hints\":\"false\",\"offline\":\"false\",\"quiet\":\"false\",\"verbose\":0},\"path\":\"ls\"}\n",
+   "stderr_contains": [
+    "OK: applied flag correction: --limt -> --limit",
+    "Corrected from: --limt",
+    "Fix: --limit"
+   ]
+  },
+  {
    "name": "help hides the management group",
    "tree": "main",
    "args": [
