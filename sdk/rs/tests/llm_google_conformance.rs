@@ -37,7 +37,7 @@ struct Corpus {
 
 fn load() -> Corpus {
     let path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/llm-v1/vectors.json");
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/llm-v1/vectors.json");
     let raw: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     assert_eq!(raw["version"], "v1");
     let only: serde_json::Map<String, Value> = raw

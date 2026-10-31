@@ -45,7 +45,7 @@ struct Fixture {
 }
 
 fn dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/identity-v1")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/identity-v1")
 }
 
 fn unhex(s: &str) -> Vec<u8> {
