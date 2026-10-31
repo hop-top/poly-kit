@@ -233,6 +233,26 @@ pkg/b/b.go" ]
     [[ "$output" == *"docs/x.md deleted"* ]]
 }
 
+# More changed paths than one pipe buffer (64 KiB) holds, so the producer is
+# still writing when the first-hit reader has its answer: a reader that stops
+# early (head -n 1) kills it with SIGPIPE, and pipefail turns that into exit
+# 141 instead of the full-lint verdict. A directory move deletes this many.
+many_paths() {
+    mkdir -p "$REPO/$1"
+    (cd "$REPO/$1" && for i in $(seq 3000); do : > "file-with-a-long-enough-name-$i.txt"; done)
+}
+
+@test "--full-on-delete: a mass deletion (directory move) still lints everything" {
+    many_paths old
+    commit_all many
+    git -C "$REPO" update-ref refs/remotes/origin/next HEAD
+    git -C "$REPO" mv old new
+    commit_all move
+    cf --full-on-delete "'*.md'"
+    [ "$status" -eq 3 ]
+    [[ "$output" == *" deleted"* ]]
+}
+
 @test "unknown option: usage error" {
     cf --nope
     [ "$status" -eq 2 ]
