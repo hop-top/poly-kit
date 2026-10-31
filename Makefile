@@ -537,11 +537,13 @@ test-parity-upgrade: ## upgrade-v1 conformance corpus (Go and Rust runners)
 completion-regen: ## Regenerate completion-v1 script goldens and the Rust and TS completion templates from cobra
 	go test ./go/console/cli/completion/ -run '^(TestConformanceCompletionScripts|TestCompletionTemplatesInSync)$$' -count=1 -update
 
-test-parity-cli-root: ## cli-root-v1 conformance corpus: root flags, version, help groups, flag errors, autocorrect (Go and Rust runners)
+test-parity-cli-root: ## cli-root-v1 conformance corpus: root flags, version, help groups, flag errors, autocorrect (Go and Rust runners; Python replays the delegation and inference vectors)
 	@echo "==> cli-root-v1 conformance: Go"
 	go test ./go/console/cli/ -run '^TestConformanceCLIRoot' -count=1
 	@echo "==> cli-root-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --features cli --test cli_root_conformance --locked
+	@echo "==> cli-root-v1 conformance: Python (delegation and inference vectors)"
+	cd sdk/py && uv sync --all-extras -q && uv run pytest tests/test_cli_root_conformance.py -q -rs
 
 test-parity-completion: ## completion-v1 conformance corpus (Go, Rust and TS runners)
 	@echo "==> completion-v1 conformance: Go"

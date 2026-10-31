@@ -62,13 +62,14 @@ mytool list -o out.csv      # extension infers the formatter
 Non-directory modules: `hop_top_kit.cli` (CLI factory), `hop_top_kit.serve`
 (serve hierarchy and service lifecycle, cross-language, see [the
 contract](../../docs/contracts/serve-lifecycle.md)), `hop_top_kit.uri` (facade
-over `hop-top-cite`), `hop_top_kit.safety` (the Factor 10 `--force` TTY check), `hop_top_kit.llm` (LLM types, client, the `anthropic://`, `openai://` (and OpenAI-compatible) and `routellm://` adapters with tool calling; see [LLM messages](../../docs/adopters/reference/py-sdk.md#llm-messages) and [Provider adapters](../../docs/adopters/reference/py-sdk.md#provider-adapters)), `hop_top_kit.llm_toolnames` (provider tool-name rules and the reversible sanitizer; see [Tool names](../../docs/adopters/reference/py-sdk.md#tool-names)), `hop_top_kit.llm_events` (metadata-only llm event payloads; see [Provider adapters](../../docs/adopters/reference/py-sdk.md#provider-adapters)), `hop_top_kit.netpolicy` (the `--offline` guard beneath `urllib`; see [Offline enforcement](../../docs/adopters/reference/py-sdk.md#offline-enforcement)).
+over `hop-top-cite`), `hop_top_kit.safety` (the Factor 10 `--force` TTY check), `hop_top_kit.gate` / `hop_top_kit.policy` / `hop_top_kit.sideeffect` (the root delegation gate: `--confirm`, `--confirm-token`, `--max-ops`, `--policy`, `--dry-run`, destructive-by-name inference; see [Delegation gate](../../docs/adopters/reference/py-sdk.md#delegation-gate)), `hop_top_kit.llm` (LLM types, client, the `anthropic://`, `openai://` (and OpenAI-compatible) and `routellm://` adapters with tool calling; see [LLM messages](../../docs/adopters/reference/py-sdk.md#llm-messages) and [Provider adapters](../../docs/adopters/reference/py-sdk.md#provider-adapters)), `hop_top_kit.llm_toolnames` (provider tool-name rules and the reversible sanitizer; see [Tool names](../../docs/adopters/reference/py-sdk.md#tool-names)), `hop_top_kit.llm_events` (metadata-only llm event payloads; see [Provider adapters](../../docs/adopters/reference/py-sdk.md#provider-adapters)), `hop_top_kit.netpolicy` (the `--offline` guard beneath `urllib`; see [Offline enforcement](../../docs/adopters/reference/py-sdk.md#offline-enforcement)).
 
 ## Contract
 
 - Five built-in formatters (`json`, `yaml`, `table`, `csv`, `text`), the same set every kit SDK ships.
 - Column order comes from the `columns=` `ColumnSpec` list; `--cols` reorders as well as selects; `header` must equal `key` or `ColumnSpec` raises `ValueError`.
 - Zero rows emits nothing, not even a bare header row.
+- Destructive commands are gated by the root: `--confirm` (no terminal means no), a typed `--confirm-token` where annotated, `--policy`, `--max-ops`; an unannotated `delete`/`remove`/`rm`/`destroy`/`purge`/`drop` leaf counts as destructive, and a malformed `kit/side-effect` fails closed.
 - MCP exposure is default-closed: `default_policy()` leaves `allow_destructive_on` empty, and empty means block-all.
 - Telemetry is default-denied: nothing emits without both a granted consent decision and a non-`off` `KIT_TELEMETRY_MODE`.
 
