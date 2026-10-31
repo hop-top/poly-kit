@@ -16,9 +16,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from hop_top_kit import sideeffect
+
 #: Cobra annotation keys the bridge reads, matching the canonical ``kit/``
 #: vocabulary registered by the Go console package.
-ANN_SIDE_EFFECT = "kit/side-effect"
+ANN_SIDE_EFFECT = sideeffect.SIDE_EFFECT
 ANN_AUTH_REQUIRED = "kit/auth-required"
 ANN_EXIT_CODES = "kit/exit-codes"
 ANN_PERMISSIONS = "kit/permissions"
@@ -74,16 +76,22 @@ def _split_csv(value: str | None) -> tuple[str, ...]:
     return tuple(part.strip() for part in value.split(",") if part.strip())
 
 
-def classify(annotations: dict[str, str] | None) -> SafetyClass:
+def classify(annotations: dict[str, str] | None, *, leaf_name: str = "") -> SafetyClass:
     """Read ``annotations`` into a :class:`SafetyClass`.
 
     ``None`` or an empty mapping yields the zero value, matching Go's
-    treatment of a nil ``cmd.Annotations``.
+    treatment of a nil ``cmd.Annotations``, unless ``leaf_name`` is in the
+    destructive-name table: an unannotated ``delete``/``remove``/``rm``/
+    ``destroy``/``purge``/``drop`` leaf classifies destructive, as Go's
+    cmdreflect reports it. The table and rule live in
+    :mod:`hop_top_kit.sideeffect`, shared with the CLI delegation gate.
     """
-    if not annotations:
+    annotations = annotations or {}
+    tier = sideeffect.effective_side_effect(leaf_name, annotations)
+    if not annotations and tier is None:
         return SafetyClass()
     return SafetyClass(
-        destructive=annotations.get(ANN_SIDE_EFFECT) in DESTRUCTIVE_TIERS,
+        destructive=tier in DESTRUCTIVE_TIERS,
         auth_required=annotations.get(ANN_AUTH_REQUIRED) == "true",
         requires_confirmation=annotations.get(ANN_REQUIRES_CONFIRM) == "true",
         permissions=_split_csv(annotations.get(ANN_PERMISSIONS)),
