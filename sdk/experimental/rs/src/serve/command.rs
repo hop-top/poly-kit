@@ -1,21 +1,26 @@
 //! The `serve` command: `serve [SERVICE]` with `--list`, `--enable`,
-//! `--disable` and the three timeout flags, mounted on any clap root.
+//! `--disable` and the three timeout flags, mounted on a kit
+//! [`CommandSpec`] root.
 //!
-//! Mirrors the TypeScript port's `registerServe(program, opts)` rather
-//! than Go's root option: an adopter hands over whatever `clap::Command`
-//! it already has and gets it back with `serve` mounted. The kit-owned
-//! root factory, when it lands, mounts the same command through its own
-//! option; nothing here depends on it.
+//! The command is kit-owned: [`serve_command`] returns a
+//! [`CommandSpec`] and [`run`] reads the [`Invocation`] the root hands
+//! a handler, so no parsing-provider type reaches this contract. An
+//! adopter mounts it on the root it already builds with [`mount`], and
+//! the root's own parser does the parsing. A handler is synchronous,
+//! so it captures the [`Invocation`] and the async [`run`] is awaited
+//! afterwards, as the example does.
 //!
-//! Two things the parser is deliberately *not* asked to do:
+//! Three things the parser is deliberately *not* asked to do:
 //!
 //! - Arity. `serve a b` parses; [`run`] hands the operands to
-//!   [`resolve`], which refuses two or more at `USAGE`/2. Leaving the
-//!   refusal to clap would produce clap's own error and exit code, and
-//!   the contract's arity refusal belongs to the shared taxonomy.
+//!   [`resolve`], which refuses two or more at `USAGE`/2. The
+//!   contract's arity refusal belongs to the shared taxonomy.
 //! - Name validation. An unknown service is `NOT_FOUND`/3 from the
 //!   registration gate, not a parse error, so the positional carries
-//!   no possible-values list.
+//!   no allowed-values list.
+//! - Duration syntax. The timeout flags are string flags; [`run`] and
+//!   [`apply_flags`] parse them with [`parse_duration`] and refuse a
+//!   malformed one at `USAGE`/2, naming the flag and the token.
 //!
 //! Process exit stays with the adopter's `main`: this is a library
 //! crate, so there is deliberately no `exit_with(result)` helper.
@@ -27,7 +32,9 @@
 //!
 //! ```no_run
 //! use std::sync::Arc;
-//! use hop_top_kit::serve::command::{mount, run, ServeCommandOptions};
+//! use std::sync::Mutex;
+//! use hop_top_kit::cli::{CommandSpec, Invocation, Root};
+//! use hop_top_kit::serve::command::{mount, run, serve_command, ServeCommandOptions};
 //! use hop_top_kit::serve::{ServiceConfig, ServiceConfigs, ServiceRegistry};
 //! # use hop_top_kit::serve::{CancelToken, ReadySignal, ServeFuture, Service};
 //! # struct Api;
@@ -51,14 +58,23 @@
 //!     let mut configs = ServiceConfigs::new();
 //!     configs.insert("api".to_string(), ServiceConfig::enabled());
 //!
-//!     let root = mount(clap::Command::new("tool"));
-//!     let matches = root.get_matches();
-//!     if let Some(sub) = matches.subcommand_matches("serve") {
+//!     // The handler only captures what was typed; `run` is async.
+//!     let seen: Arc<Mutex<Option<Invocation>>> = Arc::default();
+//!     let sink = seen.clone();
+//!     let serve = serve_command().handler(move |inv, _, _| {
+//!         *sink.lock().unwrap() = Some(inv.clone());
+//!         Ok(())
+//!     });
+//!     let root = Root::new(mount(CommandSpec::new("tool"), serve));
+//!     let code = root.run(std::env::args(), &mut std::io::stdout(), &mut std::io::stderr());
+//!     let captured = seen.lock().unwrap().take();
+//!     if let Some(inv) = captured {
 //!         let mut opts = ServeCommandOptions::new(registry);
 //!         opts.configs = Some(configs);
-//!         let res = run(sub, opts).await;
+//!         let res = run(&inv, opts).await;
 //!         std::process::exit(res.exit_code);
 //!     }
+//!     std::process::exit(code);
 //! }
 //! ```
 
@@ -66,8 +82,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
-use clap::{Arg, ArgAction, ArgMatches, Command};
-
+use crate::cli::{ArgSpec, CommandSpec, FlagSpec, Invocation};
 use crate::output::CliError;
 
 use super::cancel::CancelToken;
@@ -102,7 +117,7 @@ pub const FLAG_SHUTDOWN_TIMEOUT: &str = "shutdown-timeout";
 pub const SELECTOR_FLAGS_REFUSAL: &str =
     "--enable/--disable apply to the supervisor form; drop the service name or drop the flags";
 
-/// What [`run`] needs beyond the parsed matches. Mirrors the TypeScript
+/// What [`run`] needs beyond the parsed invocation. Mirrors the TypeScript
 /// `RegisterServeOptions`.
 pub struct ServeCommandOptions {
     /// The seam services were registered into.
@@ -146,9 +161,11 @@ impl ServeCommandOptions {
 /// Builds the `serve [SERVICE]...` command with its flags.
 ///
 /// The positional accepts any number of operands on purpose; see the
-/// module docs for why arity is refused downstream.
-pub fn serve_command() -> Command {
-    Command::new(COMMAND_NAME)
+/// module docs for why arity is refused downstream. The command has no
+/// handler: the adopter attaches one that captures the [`Invocation`]
+/// for [`run`].
+pub fn serve_command() -> CommandSpec {
+    CommandSpec::new(COMMAND_NAME)
         .about("Run configured services under one lifecycle")
         .long_about(
             "Run every configured and enabled service under one lifecycle,\n\
@@ -157,40 +174,30 @@ pub fn serve_command() -> Command {
              its configuration and policy validate.",
         )
         .arg(
-            Arg::new(ARG_SERVICE)
-                .value_name("SERVICE")
-                .num_args(0..)
+            ArgSpec::new(ARG_SERVICE)
+                .variadic()
                 .help("Service to run (at most one; omit to run every enabled service)"),
         )
-        .arg(
-            Arg::new(FLAG_LIST)
-                .long(FLAG_LIST)
-                .action(ArgAction::SetTrue)
-                .help("List registered services and their state"),
-        )
-        .arg(
-            Arg::new(FLAG_ENABLE)
-                .long(FLAG_ENABLE)
+        .flag(FlagSpec::bool(FLAG_LIST).help("List registered services and their state"))
+        .flag(
+            FlagSpec::strings(FLAG_ENABLE)
                 .value_name("NAME")
-                .action(ArgAction::Append)
                 .help("Enable a service for this run (repeatable, supervisor form only)"),
         )
-        .arg(
-            Arg::new(FLAG_DISABLE)
-                .long(FLAG_DISABLE)
+        .flag(
+            FlagSpec::strings(FLAG_DISABLE)
                 .value_name("NAME")
-                .action(ArgAction::Append)
                 .help("Disable a service for this run (repeatable, supervisor form only)"),
         )
-        .arg(duration_flag(
+        .flag(duration_flag(
             FLAG_READY_TIMEOUT,
             "Per-service budget from start to ready (default 30s)",
         ))
-        .arg(duration_flag(
+        .flag(duration_flag(
             FLAG_STOP_TIMEOUT,
             "Per-service budget for one stop (default 30s)",
         ))
-        .arg(duration_flag(
+        .flag(duration_flag(
             FLAG_SHUTDOWN_TIMEOUT,
             "Total shutdown budget across all services (default 60s)",
         ))
@@ -200,49 +207,47 @@ pub fn serve_command() -> Command {
 /// so `serve --help` answers "which services can I name?" — the Go
 /// port's help addendum. The names are help text only; an unknown
 /// operand is still the registration gate's `NOT_FOUND`.
-pub fn serve_command_for(registry: &ServiceRegistry) -> Command {
+pub fn serve_command_for(registry: &ServiceRegistry) -> CommandSpec {
     let names = registry.names();
+    let cmd = serve_command();
     if names.is_empty() {
-        return serve_command();
+        return cmd;
     }
-    serve_command().after_help(format!("Services: {}", names.join(", ")))
+    let long = format!("{}\n\nServices: {}", cmd.long_about, names.join(", "));
+    cmd.long_about(long)
 }
 
-fn duration_flag(name: &'static str, help: &'static str) -> Arg {
-    Arg::new(name)
-        .long(name)
-        .value_name("DURATION")
-        .value_parser(parse_duration)
-        .help(help)
+fn duration_flag(name: &'static str, help: &'static str) -> FlagSpec {
+    FlagSpec::string(name).value_name("DURATION").help(help)
 }
 
-/// Returns `root` with `serve` mounted.
+/// Returns `root` with `serve` mounted, taking the command to mount
+/// (typically [`serve_command`] with a handler attached).
 ///
 /// Exactly one command owns the word: a `serve` already on `root` (a
 /// leaf some other option mounted earlier) is replaced, never kept
 /// beside this one.
-pub fn mount(root: Command) -> Command {
-    mount_command(root, serve_command())
-}
-
-/// [`mount`] with [`serve_command_for`]'s help addendum.
-pub fn mount_for(root: Command, registry: &ServiceRegistry) -> Command {
-    mount_command(root, serve_command_for(registry))
-}
-
-fn mount_command(root: Command, cmd: Command) -> Command {
-    if root.find_subcommand(COMMAND_NAME).is_some() {
-        return root.mut_subcommand(COMMAND_NAME, |_| cmd);
-    }
-    root.subcommand(cmd)
+pub fn mount(mut root: CommandSpec, serve: CommandSpec) -> CommandSpec {
+    root.subcommands.retain(|c| c.name != COMMAND_NAME);
+    root.subcommand(serve)
 }
 
 /// The positional operands, in order.
-pub fn operands(matches: &ArgMatches) -> Vec<String> {
-    matches
-        .get_many::<String>(ARG_SERVICE)
-        .map(|v| v.cloned().collect())
-        .unwrap_or_default()
+pub fn operands(inv: &Invocation) -> Vec<String> {
+    inv.args.clone()
+}
+
+/// A duration flag's value when present and non-zero. Zero is "leave
+/// the configured value alone", as in the Go port. A malformed value
+/// is `USAGE`/2 naming the flag and the token.
+#[allow(clippy::result_large_err)]
+fn positive(inv: &Invocation, flag: &str) -> Result<Option<Duration>, CliError> {
+    let Some(raw) = inv.flag(flag) else {
+        return Ok(None);
+    };
+    let d = parse_duration(raw)
+        .map_err(|e| CliError::usage(format!("--{flag}: invalid duration {raw:?}: {e}")))?;
+    Ok(Some(d).filter(|d| !d.is_zero()))
 }
 
 /// Applies the flag overrides onto the resolved configuration, with
@@ -259,23 +264,28 @@ pub fn operands(matches: &ArgMatches) -> Vec<String> {
 ///   enablement there, and one invocation must not say two things.
 /// - `--ready-timeout` / `--stop-timeout` set the budget on every
 ///   resolved service; `--shutdown-timeout` sets the supervisor's.
-///   Absent or zero leaves the configured value alone.
+///   Absent or zero leaves the configured value alone; a malformed
+///   duration is `USAGE`/2 and mutates nothing.
 // CliError is the crate's own envelope and the supervisor's RunResult
 // already carries one inline; boxing it here alone would give this one
 // function a different shape from every other refusal path.
 #[allow(clippy::result_large_err)]
 pub fn apply_flags(
-    matches: &ArgMatches,
+    inv: &Invocation,
     configs: &mut ServiceConfigs,
     supervisor: &mut SupervisorConfig,
     selector: bool,
 ) -> Result<(), CliError> {
-    let enable: Vec<String> = repeated(matches, FLAG_ENABLE);
-    let disable: Vec<String> = repeated(matches, FLAG_DISABLE);
+    let enable: Vec<String> = repeated(inv, FLAG_ENABLE);
+    let disable: Vec<String> = repeated(inv, FLAG_DISABLE);
 
     if selector && !(enable.is_empty() && disable.is_empty()) {
         return Err(CliError::usage(SELECTOR_FLAGS_REFUSAL));
     }
+
+    let ready = positive(inv, FLAG_READY_TIMEOUT)?;
+    let stop = positive(inv, FLAG_STOP_TIMEOUT)?;
+    let shutdown = positive(inv, FLAG_SHUTDOWN_TIMEOUT)?;
 
     for name in &disable {
         if let Some(cfg) = configs.get_mut(name) {
@@ -286,8 +296,6 @@ pub fn apply_flags(
         configs.entry(name.clone()).or_default().enabled = true;
     }
 
-    let ready = positive(matches, FLAG_READY_TIMEOUT);
-    let stop = positive(matches, FLAG_STOP_TIMEOUT);
     if ready.is_some() || stop.is_some() {
         for cfg in configs.values_mut() {
             if let Some(d) = ready {
@@ -298,7 +306,7 @@ pub fn apply_flags(
             }
         }
     }
-    if let Some(d) = positive(matches, FLAG_SHUTDOWN_TIMEOUT) {
+    if let Some(d) = shutdown {
         supervisor.shutdown_timeout = d;
     }
     Ok(())
@@ -325,20 +333,8 @@ pub fn parse_failure_policy(raw: &str) -> Result<FailurePolicy, CliError> {
     })
 }
 
-fn repeated(matches: &ArgMatches, flag: &str) -> Vec<String> {
-    matches
-        .get_many::<String>(flag)
-        .map(|v| v.cloned().collect())
-        .unwrap_or_default()
-}
-
-/// A duration flag's value when present and non-zero. Zero is "leave
-/// the configured value alone", as in the Go port.
-fn positive(matches: &ArgMatches, flag: &str) -> Option<Duration> {
-    matches
-        .get_one::<Duration>(flag)
-        .copied()
-        .filter(|d| !d.is_zero())
+fn repeated(inv: &Invocation, flag: &str) -> Vec<String> {
+    inv.flags.get(flag).cloned().unwrap_or_default()
 }
 
 /// Writes the `--list` table: every registered service with its
@@ -367,7 +363,7 @@ pub fn run_list(
     Ok(())
 }
 
-/// Runs a parsed `serve` invocation to completion and returns the run
+/// Runs a `serve` invocation to completion and returns the run
 /// result carrying the exit code. Mirrors the Go port's `runServe`
 /// step for step: `--list` short-circuits before resolution; the
 /// operands and flags resolve onto the configuration; [`resolve`]
@@ -378,7 +374,7 @@ pub fn run_list(
 /// Every refusal comes back as a [`RunResult`] with `error` set and
 /// `exit_code` on the shared taxonomy — `USAGE`/2, `NOT_FOUND`/3,
 /// `UNAUTHORIZED`/5 — so the caller has one path to exit through.
-pub async fn run(matches: &ArgMatches, opts: ServeCommandOptions) -> RunResult {
+pub async fn run(inv: &Invocation, opts: ServeCommandOptions) -> RunResult {
     let ServeCommandOptions {
         registry,
         configs,
@@ -392,7 +388,15 @@ pub async fn run(matches: &ArgMatches, opts: ServeCommandOptions) -> RunResult {
     let mut configs = configs.unwrap_or_default();
     let mut config = config;
 
-    if matches.get_flag(FLAG_LIST) {
+    // Malformed durations are refused even under --list: one
+    // invocation, one verdict, whatever else it asked for.
+    for flag in [FLAG_READY_TIMEOUT, FLAG_STOP_TIMEOUT, FLAG_SHUTDOWN_TIMEOUT] {
+        if let Err(e) = positive(inv, flag) {
+            return RunResult::refused(LifecycleOutcome::InvalidSelection, e);
+        }
+    }
+
+    if inv.flags.contains_key(FLAG_LIST) {
         return match run_list(&registry, Some(&configs), stdout.as_mut()) {
             Ok(()) => RunResult::clean(),
             Err(e) => RunResult::refused(
@@ -402,8 +406,8 @@ pub async fn run(matches: &ArgMatches, opts: ServeCommandOptions) -> RunResult {
         };
     }
 
-    let args = operands(matches);
-    if let Err(e) = apply_flags(matches, &mut configs, &mut config, args.len() == 1) {
+    let args = operands(inv);
+    if let Err(e) = apply_flags(inv, &mut configs, &mut config, args.len() == 1) {
         return RunResult::refused(LifecycleOutcome::InvalidSelection, e);
     }
 

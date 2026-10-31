@@ -10,7 +10,7 @@ delivery to `hop_top_kit::bus`.
 
 - a tool ships one or more services and wants `tool serve` and `tool serve <name>` to behave the same → implement
   `Service`, register it on a `ServiceRegistry`, run a `Supervisor`
-- the tool already has a clap root → feature `serve-cli`, then `command::mount` and `command::run`
+- the tool has a kit `CommandSpec` root → feature `serve-cli`, then `command::mount` and `command::run`
 - a service must start after another → override `Service::depends_on`; stop order is the exact reverse
 - an operator must be able to refuse a service → pass a `PolicyGate` in `ResolveRequest`
 
@@ -53,7 +53,7 @@ assert_eq!(res.exit_code, 0);
 
 ## Contract
 
-- Feature `serve` pulls in `output`, `tokio` and `serde_json`; `serve-cli` adds `cli` (clap).
+- Feature `serve` pulls in `output`, `tokio` and `serde_json`; `serve-cli` adds `cli`.
   Authority: the crate [feature table](../../README.md#features).
 - Behaviour is [serve-lifecycle.md](../../../../../docs/contracts/serve-lifecycle.md): the selector form runs a
   disabled service, the supervisor form skips it silently, zero services resolved is a usage error.
@@ -69,7 +69,7 @@ assert_eq!(res.exit_code, 0);
 
 ## Neighbours
 
-- `hop_top_kit::cli` (src/cli.rs): the clap root and one-shot verbs the `serve` command mounts on
+- `hop_top_kit::cli` (src/cli.rs): the kit root and one-shot verbs the `serve` command mounts on
 - `hop_top_kit::bus`: topic grammar the six transitions follow
 - `hop_top_kit::output`: `CliError` and the exit-code taxonomy the outcomes map onto
 - `examples/serve.rs`: a service binding a real listener, driven by `tests/serve_command.rs`

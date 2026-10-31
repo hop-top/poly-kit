@@ -18,31 +18,49 @@ front page's feature table is the authority for what each one pulls in.
 `serve` is the service lifecycle as a library (registry, resolution,
 supervisor, signals, events); `serve-cli` adds the `serve [SERVICE]`
 command with `--list`, `--enable`/`--disable` and the timeout flags,
-and mounts it on any clap root — no kit-owned root required:
+as a kit-owned `CommandSpec` (`serve_command()`); `run` reads the
+`Invocation` a handler receives, so no parsing-provider type is in the
+contract. The handler captures the invocation and the async `run` is
+awaited after the root returns:
 
 ```rust
-use hop_top_kit::serve::command::{mount, run, ServeCommandOptions};
+use std::sync::{Arc, Mutex};
+use hop_top_kit::cli::{CommandSpec, Invocation, Root};
+use hop_top_kit::serve::command::{mount, run, serve_command, ServeCommandOptions};
 use hop_top_kit::serve::{ServiceConfig, ServiceConfigs, ServiceRegistry};
 
 #[tokio::main]
 async fn main() {
     let mut registry = ServiceRegistry::new();
-    registry.register(std::sync::Arc::new(Api)).expect("wiring"); // Api: impl Service
+    registry.register(Arc::new(Api)).expect("wiring"); // Api: impl Service
     let mut configs = ServiceConfigs::new();
     configs.insert("api".to_string(), ServiceConfig::enabled());
 
-    let matches = mount(clap::Command::new("tool")).get_matches();
-    if let Some(sub) = matches.subcommand_matches("serve") {
+    let seen: Arc<Mutex<Option<Invocation>>> = Arc::default();
+    let sink = seen.clone();
+    let serve = serve_command().handler(move |inv, _, _| {
+        *sink.lock().unwrap() = Some(inv.clone());
+        Ok(())
+    });
+    let root = Root::new(mount(CommandSpec::new("tool"), serve));
+    let code = root.run(std::env::args(), &mut std::io::stdout(), &mut std::io::stderr());
+    let captured = seen.lock().unwrap().take();
+    if let Some(inv) = captured {
         let mut opts = ServeCommandOptions::new(registry);
         opts.configs = Some(configs);
-        std::process::exit(run(sub, opts).await.exit_code);
+        std::process::exit(run(&inv, opts).await.exit_code);
     }
+    std::process::exit(code);
 }
 ```
 
+The timeout flags are string flags parsed by kit: a malformed duration is
+`USAGE`/2 naming the flag and the token. `serve_command_for(&registry)`
+adds the registered names to the help.
+
 `serve` runs every configured and enabled service; `serve api` runs that
 one even when disabled; `serve --list` prints them in registration order.
-A `serve` the root already owned is replaced, never doubled. See
+A `serve` the root already owned is replaced by `mount`, never doubled. See
 [`examples/serve.rs`](../../../sdk/experimental/rs/examples/serve.rs) for a service that binds a real
 listener, and `docs/contracts/serve-lifecycle.md` for the contract.
 
@@ -282,7 +300,7 @@ validation. Parity is pinned by `contracts/cli-root-v1`.
 Not ported from Go: the `celpermission` expression rules of a policy
 (carried and shape-checked, not evaluated), per-caller budgets, the
 `kit/idempotent`, `kit/cache-ttl` and `kit/output-schema` validate arms,
-themed help and the `help` subcommand; the `serve-cli` command still mounts on a clap root.
+themed help and the `help` subcommand.
 
 ## MCP surface
 
@@ -1267,7 +1285,7 @@ carries the rule and activation contract.
 
 ## Crate-wide contract
 
-- `serve <service>` runs a named service even when disabled; a `serve` the clap root already owned is replaced, never doubled.
+- `serve <service>` runs a named service even when disabled; a `serve` the root already owned is replaced by `mount`, never doubled.
 - `output` ships `table`, `json` and `yaml` only (no `csv`, `text`); column order comes from an explicit `ColumnSpec` list; `--cols` reorders as well as selects; `header` must equal `key`.
 - MCP exposure is default-closed: the default policy blocks every destructive leaf on every remote surface. Telemetry is default-denied: nothing emits without both a granted consent decision and a non-`off` mode. Consent grants fail closed: no prompter, an unreadable store or a failed audit is a refusal.
 

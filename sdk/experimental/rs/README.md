@@ -17,7 +17,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 
 | Path | What it is | Start here when |
 |------|------------|-----------------|
-| [`serve/`](src/serve/README.md), [`mcp/`](src/mcp/README.md) | serve hierarchy and service lifecycle (feature `serve`, `serve-cli` for the clap command); dual-spec MCP surface over a bridged command tree (feature `mcp`) | your CLI hosts long-running services, or MCP clients must call your commands as tools |
+| [`serve/`](src/serve/README.md), [`mcp/`](src/mcp/README.md) | serve hierarchy and service lifecycle (feature `serve`, `serve-cli` for the `CommandSpec` command); dual-spec MCP surface over a bridged command tree (feature `mcp`) | your CLI hosts long-running services, or MCP clients must call your commands as tools |
 | [`output/`](src/output/README.md) | `--format` flag family, `Formatter` trait, registry, `CliError` (feature `output`); shipped formatters in [`builtins/`](src/output/builtins/README.md) | a command renders one payload as table, json or yaml |
 | [`rpc/`](src/rpc/README.md) | Connect, gRPC and gRPC-Web on one port (HTTP/1.1 and h2c), request-id/log/authenticate interceptors over kit-rs authn, `crud.v1.EntityService` (feature `rpc-server`, native) | a tool serves procedures to Connect, gRPC or gRPC-Web clients |
 | [`socket/`](src/socket/README.md) | unix-socket JSON-lines transport with peer-uid auth and idempotency replay, a `serve` service (feature `socket`, unix only) | a tool must answer a local client over a `0600` socket |
