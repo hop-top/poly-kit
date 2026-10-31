@@ -32,7 +32,8 @@ let svc = ApiService::build(ApiServerConfig::new("127.0.0.1:8080", routes))?;
 - Every refusal is `{"status","code","message"}` JSON: `host_rejected`, `origin_rejected`, `body_too_large`, `unauthenticated` (401, `WWW-Authenticate: Bearer`), `rate_limited` (429, `Retry-After`), `method_not_allowed`. A panic is a plain 500.
 - `/healthz` is liveness. `/readyz` is 200 only while the listener is up and every `readiness` check passes; failing names show on a loopback bind or with `health_detail`. They answer before Host, Origin, limits and auth, and are not overridable by a route of the same path.
 - The access log line passes through the shared `redact` policy whole. `Authorization`, `X-API-Key` and `Cookie` are marked sensitive.
-- Rate limit is per client address (the forwarded client behind a trusted proxy), on `breaker`'s bursty limiter; a full table shares one bucket. `Retry-After` is the period, an upper bound.
+- Rate limit is per client address (the forwarded client behind a trusted proxy; IPv6 by /64), on `breaker`'s bursty limiter. At `max_clients` idle buckets go, then the least recently seen, so a new client always has its own budget. `Retry-After` is the period, an upper bound. Go has no per-client limiter in `api` (its limit is in the invocation plane), so there is nothing to diverge from.
+- An incoming `X-Request-ID` outside `[A-Za-z0-9._-]{1,128}` is replaced with a fresh id; the id is quoted in the log line. Go's `RequestID` keeps whatever the caller sends (a divergence, filed as a Go bug).
 - Events: `kit.api.request.started` and `.ended` (or `<prefix>.started`/`.ended`, a 3-segment prefix) with source `api.router`, only for matched routes; `ended` carries status and `duration`.
 - `OpenApi` emits 3.1.0 documents with schemas verbatim; `crud` describes a resource's five operations. No `$schema` link properties.
 - Gzip only, 1 KiB and up, for text-like types; event streams, upgrades, Connect and gRPC are never compressed.

@@ -139,6 +139,13 @@ fn is_loopback_addr(addr: &str) -> bool {
             .is_ok_and(|ip| ip.is_loopback())
 }
 
+/// 1 to 128 of `[A-Za-z0-9._-]`.
+fn valid_request_id(v: &[u8]) -> bool {
+    (1..=128).contains(&v.len())
+        && v.iter()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
 #[derive(Clone)]
 struct RandomIds;
 
@@ -441,7 +448,24 @@ impl ApiService {
         let id_header = HeaderName::from_static("x-request-id");
         app = app
             .layer(PropagateRequestIdLayer::new(id_header.clone()))
-            .layer(SetRequestIdLayer::new(id_header, RandomIds));
+            .layer(SetRequestIdLayer::new(id_header.clone(), RandomIds))
+            // Outermost: an id that is not a plain token is dropped, so a
+            // fresh one is minted and never reaches a log line or header.
+            .layer(from_fn(
+                move |mut req: Request, next: axum::middleware::Next| {
+                    let h = id_header.clone();
+                    async move {
+                        if req
+                            .headers()
+                            .get(&h)
+                            .is_some_and(|v| !valid_request_id(v.as_bytes()))
+                        {
+                            req.headers_mut().remove(&h);
+                        }
+                        next.run(req).await
+                    }
+                },
+            ));
         app = app.layer(SetSensitiveRequestHeadersLayer::new([
             header::AUTHORIZATION,
             HeaderName::from_static("x-api-key"),

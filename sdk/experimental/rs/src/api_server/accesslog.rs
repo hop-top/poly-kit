@@ -32,7 +32,7 @@ pub fn access_line(method: &str, path: &str, status: u16, ms: u128, request_id: 
         "msg=\"http request\" method={method} path={path:?} status={status} duration={ms}ms"
     );
     if !request_id.is_empty() {
-        line.push_str(&format!(" request_id={request_id}"));
+        line.push_str(&format!(" request_id={request_id:?}"));
     }
     crate::redact::shared().apply(&line).into_owned()
 }
