@@ -153,6 +153,34 @@ telemetry = [
     "dep:thiserror",
 ]
 
+# Bearer-token and API-key authentication, a port of go/transport/authn:
+# an own JWS verifier (asymmetric algorithms only; "none" and HMAC are
+# never accepted), key sets (static keys, PEM, JWKS bytes), claim checks,
+# bearer extraction, the kit-owned Claims/Identity vocabulary and typed
+# refusals. Pure and wasm-safe: no I/O, no server, no clock read on
+# wasm32 (inject one with `Options::now`). Signature primitives are
+# RustCrypto (p256/p384/p521/ecdsa, ed25519-dalek) confined to
+# `authn/provider/`. ES* and EdDSA only; RS*/PS* need `authn-rsa`.
+authn = [
+    "dep:serde",
+    "dep:serde_json",
+    "dep:sha2",
+    "dep:subtle",
+    "dep:base64",
+    "dep:p256",
+    "dep:p384",
+    "dep:p521",
+    "dep:ed25519-dalek",
+]
+# RS256/384/512 and PS256/384/512 verification over `ring`. Native only:
+# the `rsa` crate carries RUSTSEC-2023-0071 with no fixed release, and
+# ring does not build for wasm32-unknown-unknown. Opt-in so the pure
+# `authn` core stays wasm-safe.
+authn-rsa = ["authn", "dep:ring"]
+# Kit-issued API keys held hashed in a `kv` store (`authn::ApiKeys`).
+# Native only: the store is SQLite.
+authn-apikeys = ["authn", "kv", "dep:getrandom"]
+
 # Per-capability consent grants, a port of go/core/consent: the grant
 # model, decision logic, prompter seam, audit records, refusals and the
 # in-memory store. Wasm-safe: nothing of its own beyond the bus, and no
@@ -366,6 +394,8 @@ crypto_secretbox = { version = "0.1", default-features = false, features = [
 # as sha2 and hkdf here. `default-features = false` drops the precomputed
 # tables; `pem` brings PKCS#8/SPKI + PEM, `zeroize` wipes the signing key
 # on drop. No `rand_core`: keys come from a caller seed or the OS RNG.
+# authn shares this pin: `verify_strict` rejects small-order and
+# non-canonical signatures.
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = [
     "alloc",
     "pem",
@@ -447,6 +477,36 @@ hyper = { version = "=1.12.0", default-features = false, features = [
 hyper-util = { version = "=0.1.21", default-features = false, features = [
     "tokio",
 ], optional = true }
+
+# authn: own JWS verifier on RustCrypto, no JWT crate. p256/p384/p521
+# 0.14 and ecdsa 0.17 are the `digest` 0.11 generation, as sha2 0.11 and
+# hmac 0.13 are: one digest stack in the tree. Exact pins: the signature
+# verification path is the authn trust boundary (DECO D3).
+# p256 =0.14.0 (2026-07-03), p384 =0.14.0 (2026-07-06), p521 =0.14.0
+# (2026-07-08): RustCrypto/elliptic-curves, Apache-2.0 OR MIT, no
+# advisories at these versions. Their `ecdsa` feature brings the ecdsa
+# 0.17.0 (2026-07-02, RustCrypto/signatures) verifier they re-export
+# as `<curve>::ecdsa`, so authn names no direct ecdsa dependency. Chosen over
+# jsonwebtoken 11.1.0 (digest 0.10 duplicate stack, wasm32 fails,
+# leaks Validation/DecodingKey types).
+p256 = { version = "=0.14.0", default-features = false, features = [
+    "ecdsa",
+], optional = true }
+p384 = { version = "=0.14.0", default-features = false, features = [
+    "ecdsa",
+], optional = true }
+p521 = { version = "=0.14.0", default-features = false, features = [
+    "ecdsa",
+], optional = true }
+# subtle =2.6.1 (2024-06-24): dalek-cryptography, BSD-3-Clause (NOTICE),
+# no advisories. Constant-time comparison for API-key hashes and webhook
+# secrets; already in the tree through RustCrypto, named explicitly
+# because authn calls it directly.
+subtle = { version = "=2.6.1", default-features = false, optional = true }
+# ring =0.17.14 (2025-03-11): ISC-style licence, already in the lock
+# through rustls; RSA verification only, behind `authn-rsa`. The `rsa`
+# crate is rejected: RUSTSEC-2023-0071 (Marvin) has no fixed release.
+ring = { version = "=0.17.14", default-features = false, features = ["alloc"], optional = true }
 
 # The OS RNG. Declared for native targets only: getrandom 0.4 has no
 # backend on wasm32-unknown-unknown, so the features naming it

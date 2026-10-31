@@ -1123,6 +1123,38 @@ carries the rule and activation contract.
 - wasm: `cargo build --target wasm32-unknown-unknown --features policy`
   builds; the smoke test runs under Node. 48 normal crates in the tree.
 
+## Crate-wide contract
+
+- `serve <service>` runs a named service even when disabled; a `serve` the clap root already owned is replaced, never doubled.
+- `output` ships `table`, `json` and `yaml` only (no `csv`, `text`); column order comes from an explicit `ColumnSpec` list; `--cols` reorders as well as selects; `header` must equal `key`.
+- MCP exposure is default-closed: the default policy blocks every destructive leaf on every remote surface. Telemetry is default-denied: nothing emits without both a granted consent decision and a non-`off` mode. Consent grants fail closed: no prompter, an unreadable store or a failed audit is a refusal.
+
+## Authentication
+
+Feature `authn` ports `go/transport/authn`: an own JWS verifier, key
+sets, claim checks and the kit-owned `Claims` / `Identity` vocabulary,
+wasm-safe and free of any server. `authn-rsa` adds RS256/384/512 and
+PS256/384/512 over `ring` (native); `authn-apikeys` adds the kv-backed
+opaque keys. The module README
+([`src/authn/README.md`](../../../sdk/experimental/rs/src/authn/README.md))
+carries the contract; the points that differ from Go:
+
+- No JWT crate: the signature primitives are RustCrypto (`p256`, `p384`,
+  `p521`, `ed25519-dalek` with `verify_strict`) behind `authn/provider/`,
+  and the public types are kit's (`VerifyKey`, `Key`, `Jwk`, `Verifier`).
+  RSA is `ring` rather than the `rsa` crate, which has no release fixed
+  for RUSTSEC-2023-0071.
+- A transport hands the verifier header values (`Credentials`), not an
+  HTTP request, so `AuthFunc` is a plain closure and the module compiles
+  without an HTTP crate.
+- Time is `Options::now`; on wasm32 it is required.
+- The token and API-key corpus in
+  [`contracts/authn-v1`](../../../contracts/authn-v1/README.md) runs in
+  both ports (`make test-parity-authn`).
+- Not ported: fetching and caching a remote JWKS or OIDC discovery
+  document. Back a `KeySource` with a guarded fetch.
+
+
 ## Build notes
 
 Counts in the front page's feature table are non-dev crates, root

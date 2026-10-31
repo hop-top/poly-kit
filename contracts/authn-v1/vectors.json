@@ -1,0 +1,558 @@
+{
+  "version": "v1",
+  "now": 1790000000,
+  "tokens": [
+    {
+      "name": "eddsa",
+      "alg": "EdDSA",
+      "jwk": {
+        "use": "sig",
+        "kty": "OKP",
+        "kid": "k-eddsa",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "x": "dgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0"
+      },
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImstZWRkc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.MGLs--fptx8lcNnwEpNu1ptZF3aTbUrU75cU74wAzRkxgasjy1XS98Tk4IpWt_Ww3jU24CREkau7JUh5GUqCAw",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "want": {
+        "sub": "alice",
+        "tenant": "acme",
+        "scopes": [
+          "items:read",
+          "items:write"
+        ]
+      },
+      "key_id": "k-eddsa"
+    },
+    {
+      "name": "es256",
+      "alg": "ES256",
+      "jwk": {
+        "use": "sig",
+        "kty": "EC",
+        "kid": "k-es256",
+        "crv": "P-256",
+        "alg": "ES256",
+        "x": "pOW2taBHLk_2Ispawt2KFFWHmw4w87XfAjfRSrJw-es",
+        "y": "5qtkcT6QZ9iIDAX4eVLmnHv4sU5Vs1TwGdOJjzzjIzw"
+      },
+      "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImstZXMyNTYiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.1luQwQ2IsOo_azobWqLxhmp8U9R0tAfCX_9fkyOs0w0YS19kH-dDBsvyBcRP96KGFbrJ8T5A76dBAGbKgtyrGw",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "want": {
+        "sub": "alice",
+        "tenant": "acme",
+        "scopes": [
+          "items:read",
+          "items:write"
+        ]
+      },
+      "key_id": "k-es256"
+    },
+    {
+      "name": "es384",
+      "alg": "ES384",
+      "jwk": {
+        "use": "sig",
+        "kty": "EC",
+        "kid": "k-es384",
+        "crv": "P-384",
+        "alg": "ES384",
+        "x": "sUE1X1qdwSSEtBosUEZF66-Hjh1_LKze4jjQpNjJcEGr_j51STX1Q5ubEqdiCgzY",
+        "y": "V7oJVYjDZG-KxSYtmrBOPL94fl0eEYtNKB8q-ZSOndDfyFUWRcFHOzV-sfe7754U"
+      },
+      "token": "eyJhbGciOiJFUzM4NCIsImtpZCI6ImstZXMzODQiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.S8nmqm1rOPrgylD6g1cQKoT7WOKGy2Pew4zsopcnuIq486wq82_KokeRJrqSKhsn_2k2lVQZn-TbWADxaX77q-6Koh-9cX84F0Up4AIA9Ucpq5H82ayGGr7MZhvUalbL",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "want": {
+        "sub": "alice",
+        "tenant": "acme",
+        "scopes": [
+          "items:read",
+          "items:write"
+        ]
+      },
+      "key_id": "k-es384"
+    },
+    {
+      "name": "es512",
+      "alg": "ES512",
+      "jwk": {
+        "use": "sig",
+        "kty": "EC",
+        "kid": "k-es512",
+        "crv": "P-521",
+        "alg": "ES512",
+        "x": "AcuXKNQovMg24zOm_JdvF4g6HXnadr-WnxRvoh6T5n4-u4IcNY2HWqrod1pK0-HmRQBwjO1wH7h7zIn9eJqPxbVA",
+        "y": "AFAQBt0_xBTjdtZRO97Fwu3VdaPBs8_tPxOOQaa26nyiSqa6EL1vMdrxxuS8yMVyThOCoqyV1dxgASKoOGg_d1IQ"
+      },
+      "token": "eyJhbGciOiJFUzUxMiIsImtpZCI6ImstZXM1MTIiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.AU6jiW-OG5Ti5aWcEkSWW-xYkclSJXRXs1LPe3PyUUBrgIiWXm6XsWmOrkAQ01jMmzkT2ftLjF2JG0kqJQqy1vZiAbu9-bg0VyB1ueAE2KGa9CREu2Bi39UHaQpjpcmDKP-k0npf_ig90eWC9epZGwFg83f6hVzei0OjVfS0PgkkmBs1",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "want": {
+        "sub": "alice",
+        "tenant": "acme",
+        "scopes": [
+          "items:read",
+          "items:write"
+        ]
+      },
+      "key_id": "k-es512"
+    },
+    {
+      "name": "rs256",
+      "alg": "RS256",
+      "jwk": {
+        "use": "sig",
+        "kty": "RSA",
+        "kid": "k-rs256",
+        "alg": "RS256",
+        "n": "xHUavYVRMbellbsA0RtNfEca-EDya1E7q1F2r35_ktRNLpLX_mVfZP8ZT42I1CAtE7XOCaKmlOkwq1jcFKCr8w059TAa3LVIvuA1bKDCVdze_8IcbZ_M8RFVb_V_2GbHeqL05qxqkv5fTokcyubwAy86c3LV92AhMH6JLC7r3hfXPM7DrpC--WWPgKH5TdI4shC09CFTxsLZRglpB_JwkRIg8Kt2zMaZZd_syvlc-T-Dd2eQtNpAs0WiUgZnYNOCKEVSYK0xXjaHgDMlwurUcBvPEeCncphJqA66d9xTuEEjUpfpVGXj5TcQ1UJBXGOoZGO_bXXXsxjPy0vLbZ0JQQ",
+        "e": "AQAB"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImstcnMyNTYiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.ncT8RfWMQCB7hPJ5Mo9AVtMgYBmJmphtBvgzKgaJ0c8oYyPIVCTOglGovLxiW7fu8aHd32zWLVYucmumXk_bnJYsVnnC33HWb8m7hOOtUKNE_05uk6QLWk5nRw--p4pPC5xBdzDCcqcJEpcmoIqKeHpKxgIkCsWVl_c5wOg3-mCQo4KAkdiW5dMFsmP_5HJ3g08CLS4EKvqgRKQjpR2AzvL8g1b9puYAXLeUKzJs-eqtyOn_lvtLt2SQo4JgWf0mv6fPGNlBD8-10ouyX944ay7X9hfc3StPtZUWv30cGnGCniGzZnDva9IvxSUr2dKkQaPheZMTwlZIAdU-2908nw",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "want": {
+        "sub": "alice",
+        "tenant": "acme",
+        "scopes": [
+          "items:read",
+          "items:write"
+        ]
+      },
+      "key_id": "k-rs256"
+    },
+    {
+      "name": "rs384",
+      "alg": "RS384",
+      "jwk": {
+        "use": "sig",
+        "kty": "RSA",
+        "kid": "k-rs384",
+        "alg": "RS384",
+        "n": "xHUavYVRMbellbsA0RtNfEca-EDya1E7q1F2r35_ktRNLpLX_mVfZP8ZT42I1CAtE7XOCaKmlOkwq1jcFKCr8w059TAa3LVIvuA1bKDCVdze_8IcbZ_M8RFVb_V_2GbHeqL05qxqkv5fTokcyubwAy86c3LV92AhMH6JLC7r3hfXPM7DrpC--WWPgKH5TdI4shC09CFTxsLZRglpB_JwkRIg8Kt2zMaZZd_syvlc-T-Dd2eQtNpAs0WiUgZnYNOCKEVSYK0xXjaHgDMlwurUcBvPEeCncphJqA66d9xTuEEjUpfpVGXj5TcQ1UJBXGOoZGO_bXXXsxjPy0vLbZ0JQQ",
+        "e": "AQAB"
+      },
+      "token": "eyJhbGciOiJSUzM4NCIsImtpZCI6ImstcnMzODQiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.o2hTmVxM8L2sT34Xe4Z2YlNQ_2Ggpx7N2SKlQu4-1Ham3xa9GUI3rQ2ikkHVskxPoZvLyhL_7ggaK2wajdFqGyJlum6XOLZYdXOw5K5VWF1CCKHMO6CKmIXuk-2A3vWchyrCArnN6MFvrBu3viQGZAdzN-XwAed-MzZnshxJodO7S9QwEyVN8xZV9ZX6EkJj-Fc-Gc0-Hvo8zHHbUhWrFYRZRETWkJhP0fV3bokbd5urqS6dYljb5yknaXlDZEJrdgE76zfHGKUu2wTS8hGa-NVR4AvO4Rtd9SEz8x9uKj-S3FafjZWa-VFGlCOXxoLpvrBFHeSneq_VPpte0l8qjA",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "want": {
+        "sub": "alice",
+        "tenant": "acme",
+        "scopes": [
+          "items:read",
+          "items:write"
+        ]
+      },
+      "key_id": "k-rs384"
+    },
+    {
+      "name": "rs512",
+      "alg": "RS512",
+      "jwk": {
+        "use": "sig",
+        "kty": "RSA",
+        "kid": "k-rs512",
+        "alg": "RS512",
+        "n": "xHUavYVRMbellbsA0RtNfEca-EDya1E7q1F2r35_ktRNLpLX_mVfZP8ZT42I1CAtE7XOCaKmlOkwq1jcFKCr8w059TAa3LVIvuA1bKDCVdze_8IcbZ_M8RFVb_V_2GbHeqL05qxqkv5fTokcyubwAy86c3LV92AhMH6JLC7r3hfXPM7DrpC--WWPgKH5TdI4shC09CFTxsLZRglpB_JwkRIg8Kt2zMaZZd_syvlc-T-Dd2eQtNpAs0WiUgZnYNOCKEVSYK0xXjaHgDMlwurUcBvPEeCncphJqA66d9xTuEEjUpfpVGXj5TcQ1UJBXGOoZGO_bXXXsxjPy0vLbZ0JQQ",
+        "e": "AQAB"
+      },
+      "token": "eyJhbGciOiJSUzUxMiIsImtpZCI6ImstcnM1MTIiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.QuGXRWcALGOpEDd10Dn8maWxFdyrROKI8QNgixnwD_8TxkrflMQ8QjxlwvMe_oCOn7lco5TG4l2kghl0_DidXAsfj9peD3ksYrmuKnuTGf_YsApJAe4fU8gzZVaNoL5Vho2OfBKITJOd9lkn_krhmNMZ2wiCnBo9ikxeqF_F869mUf4MktNWL-0_5zGxkavqtxBihTyE8GkGJfzWQDUguseZPIibUrsT01Y2f97tYQDTbUEXN80rMsR8WxWdZ6DDjdO8RUkE3WWxfbbaoNn3wjCGsHPT8N9je3XtmqMWNoq8sLw5NoMcSCXBLIhsTUu_PGTTPZF_XRf08PgPsW2-WQ",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "want": {
+        "sub": "alice",
+        "tenant": "acme",
+        "scopes": [
+          "items:read",
+          "items:write"
+        ]
+      },
+      "key_id": "k-rs512"
+    },
+    {
+      "name": "ps256",
+      "alg": "PS256",
+      "jwk": {
+        "use": "sig",
+        "kty": "RSA",
+        "kid": "k-ps256",
+        "alg": "PS256",
+        "n": "xHUavYVRMbellbsA0RtNfEca-EDya1E7q1F2r35_ktRNLpLX_mVfZP8ZT42I1CAtE7XOCaKmlOkwq1jcFKCr8w059TAa3LVIvuA1bKDCVdze_8IcbZ_M8RFVb_V_2GbHeqL05qxqkv5fTokcyubwAy86c3LV92AhMH6JLC7r3hfXPM7DrpC--WWPgKH5TdI4shC09CFTxsLZRglpB_JwkRIg8Kt2zMaZZd_syvlc-T-Dd2eQtNpAs0WiUgZnYNOCKEVSYK0xXjaHgDMlwurUcBvPEeCncphJqA66d9xTuEEjUpfpVGXj5TcQ1UJBXGOoZGO_bXXXsxjPy0vLbZ0JQQ",
+        "e": "AQAB"
+      },
+      "token": "eyJhbGciOiJQUzI1NiIsImtpZCI6ImstcHMyNTYiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.NSyrJM7hi9DeOnabBnZOfkQMsB2ry_DWKiAUrNi1KuCWHKIX987JghtuwBWFOZiJmJp5Q--fGV-JTy5w507tEiKqiCp9qe2mhzgRuYrTMYG8LhO23A_Dpfc5se8z6sjxABB0tPbkh760DeCYZlu0E3jMQp23MXreWvluu-2nVpsadnbWTjTBvUpAyi_GfhIuzMQqvygGE04B6ur36_rowikATtq7KswSEULR0mmH0zXkwDd4icLpVk2_D8DqL8gGNxrBauyNCItUKT4dT6PwxeaA-zXPQxsKelu2f-dXSW-jFTWz4s5yxKLEHZTtOnWPAJBHKpcBN02a29-fUwEMXg",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "want": {
+        "sub": "alice",
+        "tenant": "acme",
+        "scopes": [
+          "items:read",
+          "items:write"
+        ]
+      },
+      "key_id": "k-ps256"
+    },
+    {
+      "name": "ps384",
+      "alg": "PS384",
+      "jwk": {
+        "use": "sig",
+        "kty": "RSA",
+        "kid": "k-ps384",
+        "alg": "PS384",
+        "n": "xHUavYVRMbellbsA0RtNfEca-EDya1E7q1F2r35_ktRNLpLX_mVfZP8ZT42I1CAtE7XOCaKmlOkwq1jcFKCr8w059TAa3LVIvuA1bKDCVdze_8IcbZ_M8RFVb_V_2GbHeqL05qxqkv5fTokcyubwAy86c3LV92AhMH6JLC7r3hfXPM7DrpC--WWPgKH5TdI4shC09CFTxsLZRglpB_JwkRIg8Kt2zMaZZd_syvlc-T-Dd2eQtNpAs0WiUgZnYNOCKEVSYK0xXjaHgDMlwurUcBvPEeCncphJqA66d9xTuEEjUpfpVGXj5TcQ1UJBXGOoZGO_bXXXsxjPy0vLbZ0JQQ",
+        "e": "AQAB"
+      },
+      "token": "eyJhbGciOiJQUzM4NCIsImtpZCI6ImstcHMzODQiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.R4ljTx5-O4X_I5_mZ4N-pA1u13NAXSZSsfNgHhQLrwAi4KL0EdZl5B7Srm8C6WuuemGBA_qB3AtibfqahMYgoBddi-YV8LGVfjp5iVrARcuKdPBIVvzbk-kzoVggwrfXexCGCWEp9cRx-r1QDPYRiIrj7eVnrTxJ_d9O0eS6IN19-nmPYj-nnrSlc_2XIo-nl-kcAJoelmYFg5WTsh1oUpVo1lAj8FX72lRQjwy8lrL8CAWSJoOgRZMZsq5WiQ773-epSgivuqkY_cN6pJBmV-usjXzpg-aMH9OZbzPXVSb5jHo-y3jy7BTGMcItBJx6aHQyKwgMglJqtV-eQVRdiw",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "want": {
+        "sub": "alice",
+        "tenant": "acme",
+        "scopes": [
+          "items:read",
+          "items:write"
+        ]
+      },
+      "key_id": "k-ps384"
+    },
+    {
+      "name": "ps512",
+      "alg": "PS512",
+      "jwk": {
+        "use": "sig",
+        "kty": "RSA",
+        "kid": "k-ps512",
+        "alg": "PS512",
+        "n": "xHUavYVRMbellbsA0RtNfEca-EDya1E7q1F2r35_ktRNLpLX_mVfZP8ZT42I1CAtE7XOCaKmlOkwq1jcFKCr8w059TAa3LVIvuA1bKDCVdze_8IcbZ_M8RFVb_V_2GbHeqL05qxqkv5fTokcyubwAy86c3LV92AhMH6JLC7r3hfXPM7DrpC--WWPgKH5TdI4shC09CFTxsLZRglpB_JwkRIg8Kt2zMaZZd_syvlc-T-Dd2eQtNpAs0WiUgZnYNOCKEVSYK0xXjaHgDMlwurUcBvPEeCncphJqA66d9xTuEEjUpfpVGXj5TcQ1UJBXGOoZGO_bXXXsxjPy0vLbZ0JQQ",
+        "e": "AQAB"
+      },
+      "token": "eyJhbGciOiJQUzUxMiIsImtpZCI6ImstcHM1MTIiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.ifxrxPWYioKksheD-BeLYyiMn97mwGlO2SNenYPCsG4HpugsPWFx_MmMMt86u1h3bY-onTrzjoTrlL-BtrKl6CWk7IGoqy-V686NOiEGYQ2Hr4wgazSQD0JO8T_Or55w15IK9g5KCZT1_fp3nBNPo_9iDtr71BlbMftnlb7BV6Dpa2VQol9KLR2WkyjIfn3OTXak2AuZOK8EfPv1a1thP8DeZB0XpD1aij919tV75Eo1upPOOcNWXH-D7Op01363jat8D21-ego1EOXT5J5bCXZknSlAahV0sBkzK78s9Jg1dbikliGJ5JN_O4Z16MHFq3qiOARrIZCX5OhS48zOIA",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "want": {
+        "sub": "alice",
+        "tenant": "acme",
+        "scopes": [
+          "items:read",
+          "items:write"
+        ]
+      },
+      "key_id": "k-ps512"
+    },
+    {
+      "name": "scope-string",
+      "alg": "EdDSA",
+      "jwk": {
+        "use": "sig",
+        "kty": "OKP",
+        "kid": "k-eddsa",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "x": "dgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0"
+      },
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImstZWRkc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOlsieCIsImtpdC1hcGkiXSwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZSI6ImEgYiIsInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.AHjJk4DmnLazdQp33HDCQRHZKSvzOzoEBmz7unzws8fwzVCLJr3MWzl8R-n3scWn0Lyavfun6B8tEH1yyCKSDQ",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "want": {
+        "sub": "alice",
+        "tenant": "acme",
+        "scopes": [
+          "a",
+          "b"
+        ]
+      },
+      "key_id": "k-eddsa"
+    },
+    {
+      "name": "expired",
+      "alg": "EdDSA",
+      "jwk": {
+        "use": "sig",
+        "kty": "OKP",
+        "kid": "k-eddsa",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "x": "dgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0"
+      },
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImstZWRkc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzg5OTk2NDAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.vD1bJ7PHB-niNF_o2KBqrEdHSWLMlxoX53n74HT4mF0Ljnm7gsHstgWO75og301I5MCrLf2ht3QhC8mDd5LRBQ",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "refusal": "expired"
+    },
+    {
+      "name": "not-yet-valid",
+      "alg": "EdDSA",
+      "jwk": {
+        "use": "sig",
+        "kty": "OKP",
+        "kid": "k-eddsa",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "x": "dgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0"
+      },
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImstZWRkc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJuYmYiOjE3OTAwMDM2MDAsInNjb3BlcyI6WyJpdGVtczpyZWFkIiwiaXRlbXM6d3JpdGUiXSwic3ViIjoiYWxpY2UiLCJ0ZW5hbnQiOiJhY21lIn0.AR61ja2sYINOjJw7FvpgcXNTfnKQcvIco3cEJH41aemTzKJ0J6hrZneBN4wHkOgppM7OgB4-N-CtGIs8GkujCQ",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "refusal": "not valid yet"
+    },
+    {
+      "name": "iat-future",
+      "alg": "EdDSA",
+      "jwk": {
+        "use": "sig",
+        "kty": "OKP",
+        "kid": "k-eddsa",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "x": "dgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0"
+      },
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImstZWRkc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3OTAwMDM2MDAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.Upzk1gUWRcyZAAsJOCxIROBpzDlBD8UD3RPjPwZ3hxd1cE_tH6lgTHpP630E4qw-cbAhBBJkOeJO_JjM1MYkAA",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "refusal": "future"
+    },
+    {
+      "name": "no-exp",
+      "alg": "EdDSA",
+      "jwk": {
+        "use": "sig",
+        "kty": "OKP",
+        "kid": "k-eddsa",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "x": "dgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0"
+      },
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImstZWRkc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiaWF0IjoxNzg5OTk5OTkwLCJpc3MiOiJodHRwczovL2lzc3Vlci50ZXN0Iiwic2NvcGVzIjpbIml0ZW1zOnJlYWQiLCJpdGVtczp3cml0ZSJdLCJzdWIiOiJhbGljZSIsInRlbmFudCI6ImFjbWUifQ.57dwuNfPZpRPUBkQ3tYFHzACNRT27yYzCEL5y_JDtInHwed0WcHbMOzJxwxltFt1P_5Rewrttpg8dFI9zeNdCw",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "refusal": "no exp"
+    },
+    {
+      "name": "no-sub",
+      "alg": "EdDSA",
+      "jwk": {
+        "use": "sig",
+        "kty": "OKP",
+        "kid": "k-eddsa",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "x": "dgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0"
+      },
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImstZWRkc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInRlbmFudCI6ImFjbWUifQ.fKJN9rr2SAdIWyKP5wrsChfj2SAPJKs-5QRnyOgqOVYdfNWEZxMn1gzXxYmgNqpkk11AZUtVrHcmdBGagcN2Bw",
+      "options": {
+        "issuer": "https://issuer.test",
+        "audience": [
+          "kit-api"
+        ]
+      },
+      "refusal": "no sub"
+    },
+    {
+      "name": "wrong-issuer",
+      "alg": "EdDSA",
+      "jwk": {
+        "use": "sig",
+        "kty": "OKP",
+        "kid": "k-eddsa",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "x": "dgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0"
+      },
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImstZWRkc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.MGLs--fptx8lcNnwEpNu1ptZF3aTbUrU75cU74wAzRkxgasjy1XS98Tk4IpWt_Ww3jU24CREkau7JUh5GUqCAw",
+      "options": {
+        "issuer": "https://elsewhere.test"
+      },
+      "refusal": "issuer"
+    },
+    {
+      "name": "wrong-audience",
+      "alg": "EdDSA",
+      "jwk": {
+        "use": "sig",
+        "kty": "OKP",
+        "kid": "k-eddsa",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "x": "dgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0"
+      },
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImstZWRkc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.MGLs--fptx8lcNnwEpNu1ptZF3aTbUrU75cU74wAzRkxgasjy1XS98Tk4IpWt_Ww3jU24CREkau7JUh5GUqCAw",
+      "options": {
+        "audience": [
+          "billing"
+        ]
+      },
+      "refusal": "does not include"
+    },
+    {
+      "name": "audience-path-strict",
+      "alg": "EdDSA",
+      "jwk": {
+        "use": "sig",
+        "kty": "OKP",
+        "kid": "k-eddsa",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "x": "dgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0"
+      },
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImstZWRkc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.MGLs--fptx8lcNnwEpNu1ptZF3aTbUrU75cU74wAzRkxgasjy1XS98Tk4IpWt_Ww3jU24CREkau7JUh5GUqCAw",
+      "options": {
+        "audience": [
+          "kit-api/mcp"
+        ]
+      },
+      "refusal": "does not include"
+    },
+    {
+      "name": "tampered-signature",
+      "alg": "EdDSA",
+      "jwk": {
+        "use": "sig",
+        "kty": "OKP",
+        "kid": "k-eddsa",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "x": "dgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0"
+      },
+      "token": "eyJhbGciOiJFZERTQSIsImtpZCI6ImstZWRkc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.MWLs--fptx8lcNnwEpNu1ptZF3aTbUrU75cU74wAzRkxgasjy1XS98Tk4IpWt_Ww3jU24CREkau7JUh5GUqCAw",
+      "options": {},
+      "refusal": "signature"
+    },
+    {
+      "name": "alg-none",
+      "alg": "none",
+      "jwk": {
+        "use": "sig",
+        "kty": "OKP",
+        "kid": "k-eddsa",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "x": "dgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0"
+      },
+      "token": "eyJhbGciOiJub25lIn0.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.",
+      "options": {},
+      "refusal": "algorithm"
+    },
+    {
+      "name": "hs256",
+      "alg": "HS256",
+      "jwk": {
+        "use": "sig",
+        "kty": "OKP",
+        "kid": "k-eddsa",
+        "crv": "Ed25519",
+        "alg": "EdDSA",
+        "x": "dgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0"
+      },
+      "token": "eyJhbGciOiJIUzI1NiIsImtpZCI6ImstZWRkc2EiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJraXQtYXBpIiwiZXhwIjoxNzkwMDAzNjAwLCJpYXQiOjE3ODk5OTk5OTAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLnRlc3QiLCJzY29wZXMiOlsiaXRlbXM6cmVhZCIsIml0ZW1zOndyaXRlIl0sInN1YiI6ImFsaWNlIiwidGVuYW50IjoiYWNtZSJ9.J_PkSUZ-8rRrCbR2NWDrt5fpX7siVpAi3fRnSIx2CJE",
+      "options": {},
+      "refusal": "algorithm"
+    }
+  ],
+  "pem": [
+    {
+      "name": "rsa2048",
+      "pem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxHUavYVRMbellbsA0RtN\nfEca+EDya1E7q1F2r35/ktRNLpLX/mVfZP8ZT42I1CAtE7XOCaKmlOkwq1jcFKCr\n8w059TAa3LVIvuA1bKDCVdze/8IcbZ/M8RFVb/V/2GbHeqL05qxqkv5fTokcyubw\nAy86c3LV92AhMH6JLC7r3hfXPM7DrpC++WWPgKH5TdI4shC09CFTxsLZRglpB/Jw\nkRIg8Kt2zMaZZd/syvlc+T+Dd2eQtNpAs0WiUgZnYNOCKEVSYK0xXjaHgDMlwurU\ncBvPEeCncphJqA66d9xTuEEjUpfpVGXj5TcQ1UJBXGOoZGO/bXXXsxjPy0vLbZ0J\nQQIDAQAB\n-----END PUBLIC KEY-----\n",
+      "kid": "AHUO0M_49IxYEipnMoms0j4_1lcvS_l1B2REhr0sT6c"
+    },
+    {
+      "name": "ed25519",
+      "pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAdgUb5FuNK0dP84B50V5dkFIPQt8Xl7FpBaxpq3bMku0=\n-----END PUBLIC KEY-----\n",
+      "kid": "519dff4691bc1cd8"
+    },
+    {
+      "name": "p256",
+      "pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEpOW2taBHLk/2Ispawt2KFFWHmw4w\n87XfAjfRSrJw+evmq2RxPpBn2IgMBfh5Uuace/ixTlWzVPAZ04mPPOMjPA==\n-----END PUBLIC KEY-----\n",
+      "kid": "KVEuxhtaoNFMzWmMZTM4bWBZO6-xrLkiqkzSSZZzhlc"
+    },
+    {
+      "name": "p384",
+      "pem": "-----BEGIN PUBLIC KEY-----\nMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEsUE1X1qdwSSEtBosUEZF66+Hjh1/LKze\n4jjQpNjJcEGr/j51STX1Q5ubEqdiCgzYV7oJVYjDZG+KxSYtmrBOPL94fl0eEYtN\nKB8q+ZSOndDfyFUWRcFHOzV+sfe7754U\n-----END PUBLIC KEY-----\n",
+      "kid": "ZkkknGxnQrqQDCux7OLgLmkW6Mv5NwKDSaBowQHj8qo"
+    },
+    {
+      "name": "p521",
+      "pem": "-----BEGIN PUBLIC KEY-----\nMIGbMBAGByqGSM49AgEGBSuBBAAjA4GGAAQBy5co1Ci8yDbjM6b8l28XiDodedp2\nv5afFG+iHpPmfj67ghw1jYdaquh3WkrT4eZFAHCM7XAfuHvMif14mo/FtUAAUBAG\n3T/EFON21lE73sXC7dV1o8Gzz+0/E45BprbqfKJKproQvW8x2vHG5LzIxXJOE4Ki\nrJXV3GABIqg4aD93UhA=\n-----END PUBLIC KEY-----\n",
+      "kid": "sLt7A6-yDaH5H-uzJxQn5T84PU22Xj3xtgOvYBm6yVc"
+    }
+  ],
+  "api_keys": [
+    {
+      "name": "first",
+      "key": "kit_e462ae390156a83b_de355402a5cd461e06205efd3e942c1000d6d01f3d60b76973f37bf3d2ae0af2",
+      "domain": "kit-apikey-v1",
+      "hash": "df2ccba81b85f0519b7ace51d9342943dfcaab5d3a730090ac9cc660ded7641d"
+    },
+    {
+      "name": "second",
+      "key": "kit_10bddf066c038d1f_aff288e0f6a06a1275261a7aa8bfc8cf983645cd07db49f6d22b8883d3cd2d04",
+      "domain": "kit-apikey-v1",
+      "hash": "cedbd456458f8da6f455262a5b19659652934e87ee28aec3a86e5be2db5f98b9"
+    }
+  ]
+}

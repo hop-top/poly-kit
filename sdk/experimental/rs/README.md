@@ -35,6 +35,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`telemetry/`](src/telemetry/README.md) | consent-gated usage events, redaction, sinks (feature `telemetry`) | you record usage under user consent |
 | [`upgrade/`](src/upgrade/README.md) | versioned state migrations: semver-ordered steps per schema, backup, rollback, version files (feature `upgrade`) | stored data must move forward when a new build ships |
 | [`sqldb.rs`](src/sqldb.rs), [`kv.rs`](src/kv.rs) | SQLite connection setup, pragmas, numbered migrations (feature `sqldb`); byte-keyed `Store` / `TtlStore` traits over it (feature `kv`) | you open a database directly, or need small keyed values with expiry |
+| [`authn/`](src/authn/README.md) | bearer-token (JWT) and API-key authentication: own JWS verifier, key sets, claims, typed refusals, a port of `go/transport/authn` (feature `authn`, wasm-safe; `authn-rsa` for RS*/PS*, `authn-apikeys` for the kv-backed keys) | a service must say who is calling |
 | [`netpolicy/`](src/netpolicy/README.md) | `--offline` marker, loopback and dial checks (feature `netpolicy`, no deps, wasm-safe); the guarded reqwest client (feature `api`) | a request or a dial must honour `--offline` |
 | [`llm/`](src/llm/README.md) | provider-neutral LLM core: messages, tool calls and tool choice, streaming with opt-in tool-call and usage events, key resolution (sync or async secret store), hermetic resolve, registry, fallback client with metadata-only bus events (feature `llm`; content redaction with `redact`); adapters for Anthropic, OpenAI and compatible hosts, Gemini, Ollama, Triton and RouteLLM (features `llm-anthropic`, `llm-openai`, `llm-google`, `llm-ollama`, `llm-triton`, `llm-routellm`; see the [adapter table](src/llm/README.md)), the model picker with the llm.yaml pool (`llm-picker`, wasm-safe) and the router engine (`llm-router`) | your tool calls a model by `scheme://model` URI |
 | [`api.rs`](src/api.rs), [`uri.rs`](src/uri.rs) | JSON API client over the guarded client (feature `api`); URI facade delegating to `hop-top-cite` (feature `uri`) | you call an HTTP API from a kit CLI, or parse and format kit URIs |
@@ -55,6 +56,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `notify` (`notify-webhook`, `notify-email`, `notify-os`) | `bus` — nothing of its own, wasm-safe core (+ `api`, `breaker`, `redact`, `tokio` rt/net/time/sync/macros; + `breaker`, `redact`, `netpolicy`, `base64`, `rustls` (ring), `rustls-native-certs`; + `breaker`, `redact`; sinks native only) | 13 (153, 47, 29) |
 | `sideeffect` (`sideeffect-real`, `sideeffect-http`) | `bus` — nothing of its own, wasm-safe (`sideeffect-real`: nothing of its own, native only; `sideeffect-http`: + `api`, the guarded HTTP client) | 13 (13, 138) |
 | `config` (`config-pkl`, `config-signal`) | `bus` + `saphyr-parser`, `thiserror` (+ `regex`; + `tokio` rt, signal, sync) | 18 (22, 25) |
+| `authn` (`authn-rsa`, `authn-apikeys`) | `serde`, `serde_json`, `sha2`, `subtle`, `base64`, `p256`, `p384`, `p521`, `ed25519-dalek` (+ `ring`; + `kv` and `getrandom`; wasm-safe core) | 49 (52, 58) |
 | `identity`; `redact` | `ed25519-dalek`, `crypto_secretbox`, `hkdf`, `sha2`, `base64`, `serde`, `serde_json`, `thiserror` (+ `getrandom` on native targets; core wasm-safe); `regex`, `regex-syntax`, `serde`, `serde_json`, `sha2` | 60; 25 |
 | `output` | `serde`, `serde_json`, `serde_norway`, `comfy-table`, `thiserror` | 22 |
 | `sqlstore` (`sqlstore-blob`, `sqlstore-encrypt`) | `sqldb` + `serde`, `serde_json` (+ `blob`, nothing of its own; + `crypto_secretbox`, `hkdf`, `sha2`) | 22 (22, 50) |
@@ -71,9 +73,7 @@ Counts are non-dev crates, root excluded, from `cargo tree --no-default-features
 
 ## Contract
 
-- `serve <service>` runs a named service even when disabled; a `serve` the clap root already owned is replaced, never doubled.
-- `output` ships `table`, `json` and `yaml` only (no `csv`, `text`); column order comes from an explicit `ColumnSpec` list; `--cols` reorders as well as selects; `header` must equal `key`.
-- MCP exposure is default-closed: the default policy blocks every destructive leaf on every remote surface. Telemetry is default-denied: nothing emits without both a granted consent decision and a non-`off` mode. Consent grants fail closed: no prompter, an unreadable store or a failed audit is a refusal.
+The rules a caller can be wrong about (serve, output, MCP default-closed, telemetry and consent fail-closed) are in [Crate-wide contract](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#crate-wide-contract); each module README carries its own.
 
 ## See also
 

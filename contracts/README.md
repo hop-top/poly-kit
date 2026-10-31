@@ -26,6 +26,7 @@ Corpora bind every port, Go included; detail lives in each corpus README.
 - [breaker-v1/](breaker-v1/README.md): kit/core/breaker on a fake clock.
 - [retry-v1/](retry-v1/README.md): kit/core/util retry backoff corpus: delay table, full-jitter bounds, stop
   rule. Go and Rust runners.
+- [authn-v1/](authn-v1/README.md): kit/transport/authn signed tokens per algorithm, PEM key ids, API key hashes. Go, Rust.
 - [redact-v1/](redact-v1/README.md): kit/core/redact policy dump, spans, output. Go, Rust.
 - [upgrade-v1/](upgrade-v1/README.md): kit/core/upgrade versioned state migrations: version order, pending
   range, run, rollback, prune and error texts. Go and Rust runners.
