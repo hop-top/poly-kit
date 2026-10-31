@@ -5,13 +5,16 @@
 How does a Symfony Console command become a kit command: a data-only `handle()` body whose return value
 is rendered through the standard output flag family? Use `KitCommand` when you own the base class.
 When you already extend another base class, call `KitOutput::for()` from `HopTop\Kit\Output` instead.
-The `Cli` class is an empty placeholder; the global-flag layer (`--offline`, verbosity) is not wired in
-this port yet.
+`Root` is a minimal kit-owned CLI root carrying the delegation gate (`--confirm`, `--confirm-token`,
+`--max-ops`, `--policy`, `--dry-run`). The `Cli` class is an empty placeholder; the rest of the global-flag
+layer (`--offline`, verbosity) is not wired in this port yet.
 
 ## Use it when
 
 - a new command returns rows or a map: extend `KitCommand`, implement `handle()`, call `$this->render()`
 - the command needs a fixed column order and `--cols` validation: pass `columns:` as a `ColumnSpec` list
+- a command tree needs confirmation, policy, budget or dry-run gates: build it on `Root` with `CommandSpec`
+  leaves annotated `kit/side-effect`
 - the command is `serve`: use `HopTop\Kit\Serve\ServeCommand`, which already extends `KitCommand`
 
 ## Quick start
@@ -54,12 +57,15 @@ $app->run(new ArrayInput(['command' => 'items', '--format' => 'json']));
 
 ## Contract
 
+- `Root` gates every leaf before its handler: tier from `kit/side-effect` (else `destructive-shared` for a
+  destructive name with no annotation), `--dry-run` table, `--policy`, `--confirm` matrix, typed
+  `--confirm-token`, `--max-ops`; see [`Delegation`](Delegation/README.md)
 - `Flags::register($app)` must run before the command executes; without it `render()` sees no
   `--format` option and falls back to `table` with no `--cols` support
 - `handle()` replaces `execute()`; `$this->input` and `$this->output` are set before it runs
 - `render()` honors `--format`, `--format-opt`, `--format-help`, `--cols`, `--template` and `-o`
   exactly as `HopTop\Kit\Output\Dispatcher` documents them
-- Parity: none recorded; Go `go/console/cli` is the reference
+- Parity: `Root` replays the `cli-root-v1` delegation vectors; Go `go/console/cli` is the reference
 
 ## Neighbours
 

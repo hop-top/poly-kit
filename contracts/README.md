@@ -13,7 +13,7 @@ Corpora bind every port, Go included; detail lives in each corpus README.
 - [blob-v1/](blob-v1/README.md): kit/storage/blob local store: put/get/delete/list/exists, key escapes,
   list order. Go and Rust runners.
 - [cli-root-v1/](cli-root-v1/README.md): kit/console/cli root at the command line: persistent flags, version,
-  help groups, aliases, flag-error envelopes, autocorrect. Go and Rust runners.
+  help groups, aliases, flag-error envelopes, autocorrect. Go, Rust; TS, Py, PHP replay delegation vectors.
 - [celpermission-v1/](celpermission-v1/README.md): kit/console/cli `permissions:` rule gate for served
   invocations: bindings, deny-overrides, fail-closed evaluation, load-time refusals. Go and Rust runners.
 - [completion-v1/](completion-v1/README.md): kit/console/cli shell completion: completers, `__complete`

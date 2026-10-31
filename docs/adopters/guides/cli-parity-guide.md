@@ -6,7 +6,9 @@ built with kit/cli (or its TS/Py equivalents) must satisfy the
 same contract.
 
 The experimental Rust and PHP SDKs do not wire the global-flag
-layer yet. Where a section names them, it says what each port
+layer yet (PHP's minimal `Root` carries only the delegation flags and
+`--format`; see the [PHP reference](../reference/php-sdk.md#cli-root-and-delegation-gate)).
+Where a section names them, it says what each port
 ships today; elsewhere "all three languages" means Go,
 TypeScript and Python.
 
@@ -80,7 +82,7 @@ Go's `VerboseCount` keeps the raw count under `--quiet`, and the logger
 applies the override. The TypeScript and Python counts read 0 under
 `--quiet`. Rust and PHP have no accessor: neither port wires the global
 flag layer yet (Rust's `cli` module is empty; PHP's `Cli` class is a
-placeholder).
+placeholder; `Root` has no verbosity flag).
 
 ## Help Subcommand
 

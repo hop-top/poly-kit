@@ -31,7 +31,7 @@ described in [`parity-contract`](parity-contract.md).
 | TypeScript | 37 none, 19 unverified, 11 done, 6 partial, 1 n/a |
 | Python | 39 none, 19 unverified, 9 done, 6 partial, 1 n/a |
 | Rust | 42 none, 14 partial, 11 done, 6 unverified, 1 n/a |
-| PHP | 60 none, 5 unverified, 4 partial, 4 done, 1 n/a |
+| PHP | 59 none, 5 unverified, 5 partial, 4 done, 1 n/a |
 
 Rust and PHP serve lifecycle parity is complete for the 13 behaviors in
 `contracts/parity/serve.json`; the MCP wire is pinned for all four SDKs.
@@ -42,7 +42,7 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 
 | Capability | Go | TS | Py | Rust | PHP | Evidence |
 |---|---|---|---|---|---|---|
-| CLI factory | done | done | done | partial | partial | make test-parity-cli (Go/TS/Py); ts:cli.ts py:cli.py rs:cli/root.rs php:Cli/KitCommand.php; rs+php wire no global-flag layer (cli-parity-guide) |
+| CLI factory | done | done | done | partial | partial | make test-parity-cli (Go/TS/Py); ts:cli.ts py:cli.py rs:cli/root.rs php:Cli/KitCommand.php php:Cli/Root.php; rs+php wire no global-flag layer, php:Cli/Root.php carries only the delegation flags and `--format` (cli-parity-guide) |
 | Output and errors | done | done | done | done | done | make test-parity-taxonomy (5 ports); ts:output/ py:output/ rs:output/ php:Output/ |
 | Logging | done | unverified | unverified | none | none | ts:log.ts py:log.py; no rs/php module |
 | Markdown rendering | done | none | none | none | none | no module in any SDK |
@@ -111,7 +111,7 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | Breaker | done | none | none | done | none | make test-parity-breaker (Go/Rs); rs:breaker/ |
 | Network policy | done | unverified | unverified | done | unverified | make test-parity-netpolicy (Go/Rs); ts:netpolicy.ts py:netpolicy.py php:Net/ |
 | Redaction | done | partial | partial | done | partial | make test-parity-redact (Go/Rs); ts:telemetry/redact.ts py:telemetry/redact.py php:Telemetry/Redactor.php cover telemetry only |
-| Delegation safety | done | unverified | unverified | none | none | ts:safety.ts py:safety.py |
+| Delegation safety | done | unverified | unverified | none | partial | ts:safety.ts py:safety.py; php:Cli/Delegation/ is pinned by the cli-root-v1 delegation and `infer` vectors (make test-parity-cli-root); no php `permissions:` or `callers:` evaluation |
 | Event policy engine | done | none | none | none | none | no module in any SDK |
 | Operating mode | done | none | none | none | none | no module in any SDK |
 | Consent grants | done | partial | partial | done | partial | make test-parity-consent (Go/Rs, contracts/consent-v1); ts:telemetry/consent.ts py:telemetry/consent.py php:Telemetry/Consent.php are telemetry consent only |

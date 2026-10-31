@@ -38,8 +38,9 @@ Not pinned: help layout and section titles, the `--format` flag's format list, a
 | Rust | `sdk/experimental/rs/tests/cli_root_conformance.rs` |
 | TypeScript | `sdk/ts/src/cli.root.conformance.test.ts` (delegation + `infer` cases; the rest skipped with a stated reason) |
 | Python | `sdk/py/tests/test_cli_root_conformance.py` (delegation + `infer` cases; the rest skipped with a stated reason) |
+| PHP | `sdk/experimental/php/tests/Cli/CliRootConformanceTest.php` (delegation + `infer` cases; the rest skipped with a stated reason) |
 
-The TypeScript and Python ports have no `Root.Validate`; they refuse a malformed `kit/side-effect` at run time instead, so the case that runs a malformed leaf unvalidated is skipped there. PHP has no CLI root, so no runner; its MCP gate shares the destructive-name inference.
+The TypeScript, Python and PHP ports have no `Root.Validate`; they refuse a malformed `kit/side-effect` at run time instead, so the case that runs a malformed leaf unvalidated is skipped there. The PHP root (`HopTop\Kit\Cli\Root`) is a minimal kit-owned one: persistent `--confirm` / `--max-ops` / `--policy` / `--dry-run` / `--format`, leaf dispatch and the delegation gate; its MCP gate shares the destructive-name inference.
 
 ## See also
 
