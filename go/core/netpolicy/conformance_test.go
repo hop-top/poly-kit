@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 )
 
@@ -71,6 +74,13 @@ type netpolicyConfFile struct {
 		URL        string   `json:"url"`
 		Error      string   `json:"error"`
 	} `json:"allow_url"`
+	RedirectMessage string `json:"redirect_message"`
+	RedirectHeaders []struct {
+		Name        string            `json:"name"`
+		CrossOrigin bool              `json:"cross_origin"`
+		Headers     map[string]string `json:"headers"`
+		Refused     bool              `json:"refused"`
+	} `json:"redirect_headers"`
 }
 
 func loadNetpolicyConf(t *testing.T) netpolicyConfFile {
@@ -243,5 +253,97 @@ func TestConformanceNetpolicyAllowURL(t *testing.T) {
 		case c.Error != "" && err.Error() != c.Error:
 			t.Errorf("%s: err = %q, want %q", c.Name, err.Error(), c.Error)
 		}
+	}
+}
+
+func TestConformanceNetpolicyRedirectHeaders(t *testing.T) {
+	f := loadNetpolicyConf(t)
+	if len(f.RedirectHeaders) == 0 {
+		t.Fatal("redirect_headers section is empty")
+	}
+	if got := ErrCrossOriginHeaders.Error(); got != f.RedirectMessage {
+		t.Errorf("ErrCrossOriginHeaders = %q, want %q", got, f.RedirectMessage)
+	}
+	for _, c := range f.RedirectHeaders {
+		t.Run(c.Name, func(t *testing.T) {
+			var mu sync.Mutex
+			var got []http.Header
+			final := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				got = append(got, r.Header.Clone())
+				mu.Unlock()
+			})
+			b := httptest.NewServer(final)
+			defer b.Close()
+			var a *httptest.Server
+			a = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/final" {
+					final(w, r)
+					return
+				}
+				to := a.URL + "/final"
+				if c.CrossOrigin {
+					to = b.URL + "/final"
+				}
+				http.Redirect(w, r, to, http.StatusFound)
+			}))
+			defer a.Close()
+
+			var refusals []Refusal
+			ctx := WithAudit(t.Context(), func(r Refusal) { refusals = append(refusals, r) })
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.URL+"/hop", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for k, v := range c.Headers {
+				req.Header.Set(k, v)
+			}
+			resp, err := NewClient(nil).Do(req)
+			if resp != nil {
+				resp.Body.Close()
+			}
+			if c.Refused {
+				var re *RedirectError
+				if !errors.As(err, &re) || !errors.Is(err, ErrCrossOriginHeaders) {
+					t.Fatalf("err = %v, want *RedirectError", err)
+				}
+				if !strings.HasSuffix(re.Error(), f.RedirectMessage) {
+					t.Errorf("error %q does not end with %q", re.Error(), f.RedirectMessage)
+				}
+				for _, v := range c.Headers {
+					if strings.Contains(err.Error(), v) {
+						t.Errorf("error leaks header value %q: %v", v, err)
+					}
+				}
+				if len(refusals) != 1 || refusals[0].Op != "redirect" || !errors.Is(refusals[0].Reason, ErrCrossOriginHeaders) {
+					t.Errorf("audit = %+v, want one redirect refusal", refusals)
+				}
+				mu.Lock()
+				defer mu.Unlock()
+				if len(got) != 0 {
+					t.Errorf("target heard %d requests, want 0", len(got))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("hop refused: %v", err)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(got) != 1 {
+				t.Fatalf("target heard %d requests, want 1", len(got))
+			}
+			for k, v := range c.Headers {
+				if http.CanonicalHeaderKey(k) == "Content-Type" {
+					continue // allowed, but net/http drops it on a bodiless hop
+				}
+				if g := got[0].Get(k); g != v {
+					t.Errorf("target header %s = %q, want %q", k, g, v)
+				}
+			}
+			if len(refusals) != 0 {
+				t.Errorf("audit = %+v, want none", refusals)
+			}
+		})
 	}
 }

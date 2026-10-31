@@ -2,7 +2,7 @@
 
 ## What it answers
 
-What the `--offline` policy and the `netpolicy.allow_hosts` allowlist in `kit/core/netpolicy` must decide, independent of language: which hosts are loopback, which hosts an allowlist admits, which dials are refused, which request URLs pass an offline guard, and the exact refusal texts. Wrong place for transport wiring (`Install`, `ObservabilityTransport`, the reqwest client builder); those are per-runtime and have no vectors.
+What the `--offline` policy and the `netpolicy.allow_hosts` allowlist in `kit/core/netpolicy` must decide, independent of language: which hosts are loopback, which hosts an allowlist admits, which dials are refused, which request URLs pass an offline guard, which headers survive a cross-origin redirect, and the exact refusal texts. Wrong place for transport wiring (`Install`, `ObservabilityTransport`, the reqwest client builder, `NewClient`'s construction); those are per-runtime and have no vectors.
 
 ## Use it when
 
@@ -33,6 +33,7 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 | `host_allowed[]` `{allow_hosts, host, allowed}` | allowlist matching: exact entries and `*.suffix` (one or more labels below the suffix; never the suffix itself, never an IP literal); lower case, trailing dot, IDNA, ports and IP spelling normalized; loopback always passes; an empty list restricts nothing; invalid entries never match |
 | `allow_check_dial[]` `{allow_hosts, network, addr, error}` | the dial decision under an allowlist; `error` is the exact refusal `dial <network> <addr>: host not allowed by netpolicy.allow_hosts`, empty when permitted |
 | `allow_url[]` `{allow_hosts, method, url, error}` | the exact allowlist refusal of a request, empty when it passes |
+| `redirect_message`, `redirect_headers[]` `{headers, cross_origin, refused}` | a guarded client follows a redirect to another origin (scheme, host or port) only when the request carries nothing beyond `Accept`, `Accept-Encoding`, `Accept-Language`, `User-Agent`, `Content-Type`; any other header (`Authorization`, `Proxy-Authorization`, `Cookie`, `X-Api-Key`, custom) refuses the hop before anything reaches the second origin, with a typed error ending in `redirect_message`. Same-origin hops forward every header |
 
 Runners are strict: unknown fields, a `version` other than `v1` and a corpus file no runner consumes all fail the run.
 
@@ -45,7 +46,7 @@ Not vectored, because the URL parsers differ before the policy runs. Go keeps `U
 | Port | Runner |
 |------|--------|
 | Go | `go/core/netpolicy/conformance_test.go` (`TestConformanceNetpolicy*`) |
-| Rust | `sdk/experimental/rs/tests/netpolicy_conformance.rs` (`url_allows`, `refusal` need feature `api`) |
+| Rust | `sdk/experimental/rs/tests/netpolicy_conformance.rs` (`url_allows`, `refusal`, `redirect_headers` need feature `api`) |
 
 ## See also
 

@@ -87,6 +87,16 @@ struct AllowUrlCase {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(not(feature = "api"), allow(dead_code))]
+struct RedirectCase {
+    name: String,
+    cross_origin: bool,
+    headers: std::collections::BTreeMap<String, String>,
+    refused: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Vectors {
     version: String,
     #[allow(dead_code)]
@@ -109,6 +119,10 @@ struct Vectors {
     allow_check_dial: Vec<AllowDialCase>,
     #[cfg_attr(not(feature = "api"), allow(dead_code))]
     allow_url: Vec<AllowUrlCase>,
+    #[cfg_attr(not(feature = "api"), allow(dead_code))]
+    redirect_message: String,
+    #[cfg_attr(not(feature = "api"), allow(dead_code))]
+    redirect_headers: Vec<RedirectCase>,
 }
 
 fn load() -> Vectors {
@@ -249,5 +263,64 @@ async fn allow_url_vectors() {
             c.name
         );
         assert_eq!(err.to_string(), c.error, "{}", c.name);
+    }
+}
+
+#[cfg(feature = "api")]
+#[tokio::test]
+async fn redirect_header_vectors() {
+    use hop_top_kit::netpolicy::{GuardedClient, NetError};
+
+    let v = load();
+    assert!(!v.redirect_headers.is_empty(), "redirect_headers is empty");
+    for c in v.redirect_headers {
+        let mut a = mockito::Server::new_async().await;
+        let mut b = mockito::Server::new_async().await;
+        let to = format!(
+            "{}/final",
+            if c.cross_origin { b.url() } else { a.url() }
+        );
+        let _hop = a
+            .mock("GET", "/hop")
+            .with_status(302)
+            .with_header("location", &to)
+            .create_async()
+            .await;
+        let target = if c.cross_origin { &mut b } else { &mut a };
+        let mut fin = target.mock("GET", "/final").with_status(204);
+        if !c.refused {
+            for (k, val) in &c.headers {
+                // Allowed across origins, but an HTTP library may drop it
+                // on a bodiless hop; the contract does not assert it.
+                if k.eq_ignore_ascii_case("content-type") {
+                    continue;
+                }
+                fin = fin.match_header(k.to_ascii_lowercase().as_str(), val.as_str());
+            }
+        }
+        let fin = fin.expect(if c.refused { 0 } else { 1 }).create_async().await;
+
+        let client = GuardedClient::new(NetPolicy::online()).expect("build client");
+        let mut rb = client.get(format!("{}/hop", a.url()));
+        for (k, val) in &c.headers {
+            rb = rb.header(k.as_str(), val.as_str());
+        }
+        let res = rb.send().await;
+        if c.refused {
+            let err = res.expect_err(&c.name);
+            assert!(matches!(err, NetError::Redirect(_)), "{}: {err}", c.name);
+            assert!(
+                err.to_string().ends_with(&v.redirect_message),
+                "{}: {err}",
+                c.name
+            );
+            for val in c.headers.values() {
+                assert!(!err.to_string().contains(val.as_str()), "{}: {err}", c.name);
+            }
+        } else {
+            let resp = res.unwrap_or_else(|e| panic!("{}: {e}", c.name));
+            assert_eq!(resp.status().as_u16(), 204, "{}", c.name);
+        }
+        fin.assert_async().await;
     }
 }
