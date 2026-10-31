@@ -815,29 +815,47 @@ fn decode(
     for f in &gate_flags {
         by_name.insert(f.name.as_str(), f);
     }
-    let mut flags: Vec<(String, Value)> = Vec::new();
+    // One normalized map feeds both the argv the command runs with and
+    // the payload the served gate reads, so they cannot diverge.
+    let mut flags: BTreeMap<String, Value> = BTreeMap::new();
     let mut args: Vec<String> = Vec::new();
     for (k, v) in parse_query(query.unwrap_or("")) {
         if k == "arg" {
             args.push(v);
             continue;
         }
-        let Some(f) = by_name.get(k.as_str()) else {
-            if CONTROL_FLAGS.contains(&k.as_str()) {
-                flags.push((k.clone(), control_value(&k, &v)));
-            }
-            continue;
+        // A control is the root's whatever the leaf declares by that name.
+        let f = by_name
+            .get(k.as_str())
+            .copied()
+            .filter(|_| !CONTROL_FLAGS.contains(&k.as_str()));
+        let value = match f {
+            Some(f) => coerce(f, &v)?,
+            None if CONTROL_FLAGS.contains(&k.as_str()) => control_value(&k, &v),
+            None => continue,
         };
-        flags.push((k, coerce(f, &v)?));
+        put(&mut flags, f, k, value)?;
     }
     if method != Method::GET && !body.is_empty() {
         let parsed: Value = serde_json::from_slice(body).map_err(|e| e.to_string())?;
         if let Some(fm) = parsed.get("flags").and_then(Value::as_object) {
             for (k, v) in fm {
-                if !by_name.contains_key(k.as_str()) && !CONTROL_FLAGS.contains(&k.as_str()) {
+                let control = CONTROL_FLAGS.contains(&k.as_str());
+                let f = by_name.get(k.as_str()).copied().filter(|_| !control);
+                if f.is_none() && !control {
                     return Err(format!("unknown flag: {k}"));
                 }
-                flags.push((k.clone(), v.clone()));
+                let v = match f {
+                    Some(f) => typed(f, v)?,
+                    None => v.clone(),
+                };
+                if v.is_null() {
+                    return Err(format!("{k}: null is not a flag value"));
+                }
+                // The body is the more explicit statement: it replaces
+                // the query's value (Go's rule), in the one map the
+                // command and the rules both read.
+                flags.insert(k.clone(), v);
             }
         }
         if let Some(a) = parsed.get("args").and_then(Value::as_array) {
@@ -847,6 +865,7 @@ fn decode(
                 .collect();
         }
     }
+    flags.retain(|_, v| *v != Value::Bool(false));
     let need = d.args.iter().filter(|a| a.required).count();
     if args.len() < need {
         return Err(format!(
@@ -888,6 +907,9 @@ fn decode(
         set.insert(k.clone(), v.clone());
         match v {
             Value::Bool(true) => argv.push(format!("--{k}")),
+            // A switch left off is a switch not set: the command is not
+            // told, and (the map being dropped of it first) neither are
+            // the rules.
             Value::Bool(false) | Value::Null => {}
             Value::Array(items) => {
                 for i in items {
@@ -917,6 +939,65 @@ fn control_value(name: &str, raw: &str) -> Value {
         return Value::Bool(raw != "false");
     }
     Value::String(raw.to_string())
+}
+
+/// Stores `v` as flag `k`. A flag given twice is refused unless it is
+/// repeatable (`stringArray`), whose values accumulate, so the map is
+/// exactly what the command receives. `null` is never a value.
+fn put(
+    flags: &mut BTreeMap<String, Value>,
+    f: Option<&CommandFlag>,
+    k: String,
+    v: Value,
+) -> Result<(), String> {
+    if v.is_null() {
+        return Err(format!("{k}: null is not a flag value"));
+    }
+    let repeatable = f.is_some_and(|f| f.ty == "stringArray");
+    match flags.get_mut(&k) {
+        None => {
+            flags.insert(k, v);
+        }
+        Some(Value::Array(have)) if repeatable => match v {
+            Value::Array(more) => have.extend(more),
+            one => have.push(one),
+        },
+        Some(_) => return Err(format!("{k}: flag given more than once")),
+    }
+    Ok(())
+}
+
+/// A JSON body value checked against the flag's declared type: no
+/// coercion by accident, no arrays for a scalar flag.
+fn typed(f: &CommandFlag, v: &Value) -> Result<Value, String> {
+    let bad = |want: &str| Err(format!("{}: expected {want}", f.name));
+    match f.ty.as_str() {
+        "bool" => v
+            .is_boolean()
+            .then(|| v.clone())
+            .ok_or(())
+            .or_else(|_| bad("a boolean")),
+        "int" | "uint" | "count" => v
+            .as_i64()
+            .map(|n| json!(n))
+            .ok_or(())
+            .or_else(|_| bad("an integer")),
+        "float" => v
+            .is_number()
+            .then(|| v.clone())
+            .ok_or(())
+            .or_else(|_| bad("a number")),
+        "stringArray" => match v {
+            Value::String(_) => Ok(json!([v])),
+            Value::Array(items) if items.iter().all(Value::is_string) => Ok(v.clone()),
+            _ => bad("a string or an array of strings"),
+        },
+        _ => v
+            .is_string()
+            .then(|| v.clone())
+            .ok_or(())
+            .or_else(|_| bad("a string")),
+    }
 }
 
 fn scalar(v: &Value) -> String {
