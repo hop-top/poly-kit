@@ -119,7 +119,10 @@ func (v *hmacVerifier) Verify(r *http.Request, body []byte) error {
 	ts := ""
 	if v.cfg.TimestampHeader != "" {
 		if ts = r.Header.Get(v.cfg.TimestampHeader); ts == "" {
-			return unverified("no %s header", v.cfg.TimestampHeader)
+			return unverified("no timestamp header %s", v.cfg.TimestampHeader)
+		}
+		if !plainUnixSeconds(ts) {
+			return unverified("timestamp header %s is not Unix seconds", v.cfg.TimestampHeader)
 		}
 	}
 	want := v.sign(ts, body)
@@ -129,6 +132,17 @@ func (v *hmacVerifier) Verify(r *http.Request, body []byte) error {
 		return unverified("signature mismatch")
 	}
 	return nil
+}
+
+// plainUnixSeconds reports whether ts is exactly the decimal form of a
+// non-negative int64: ASCII digits only, no sign, space or leading zero.
+// It is checked before the MAC, so a malformed value never reaches it.
+func plainUnixSeconds(ts string) bool {
+	if len(ts) == 0 || len(ts) > 19 {
+		return false
+	}
+	n, err := strconv.ParseInt(ts, 10, 64)
+	return err == nil && n >= 0 && strconv.FormatInt(n, 10) == ts
 }
 
 // ClientState verifies the shared secret MS Graph echoes in every
@@ -204,7 +218,10 @@ func JSONTimestamp(pointer string) TimestampFunc {
 // KeyFunc extracts the idempotency key; "" means none.
 type KeyFunc func(r *http.Request, body []byte) string
 
-// HeaderKey keys on a header.
+// HeaderKey keys on a header. The header is not authenticated, so it
+// only names the delivery in the published event; the idempotency claim
+// is the body's hash (and a signed timestamp, when the receiver has
+// one): changing the header of a captured request is not a new delivery.
 func HeaderKey(header string) KeyFunc {
 	return func(r *http.Request, _ []byte) string { return strings.TrimSpace(r.Header.Get(header)) }
 }

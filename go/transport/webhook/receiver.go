@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strconv"
 	"time"
 	"unicode/utf8"
 
@@ -45,6 +47,8 @@ var DefaultTopics = map[string]bus.Topic{
 	KindLifecycle:    "kit.webhook.lifecycle.received",
 }
 
+var nameRE = regexp.MustCompile(`^[a-z0-9_-]+$`)
+
 // Receiver is an http.Handler for one webhook endpoint.
 type Receiver struct {
 	name       string
@@ -53,6 +57,8 @@ type Receiver struct {
 	window     time.Duration
 	timestamp  TimestampFunc
 	key        KeyFunc
+	keyInBody  bool
+	sigTS      TimestampFunc
 	dedupe     kv.TTLInserter
 	dedupeTTL  time.Duration
 	pub        api.EventPublisher
@@ -85,8 +91,8 @@ func New(name string, opts ...Option) (*Receiver, error) {
 	for k, v := range DefaultTopics {
 		r.topics[k] = v
 	}
-	if name == "" {
-		return nil, errors.New("webhook: a receiver needs a name")
+	if !nameRE.MatchString(name) {
+		return nil, fmt.Errorf("webhook: receiver name %q: want lowercase letters, digits, '-' and '_'", name)
 	}
 	for _, o := range opts {
 		if err := o(r); err != nil {
@@ -273,7 +279,7 @@ func (rc *Receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	claimed := ""
 	if rc.dedupe != nil {
-		claimed = "webhook/" + rc.name + "/" + key
+		claimed = rc.claimKey(r, key, body)
 		ok, err := rc.dedupe.PutIfAbsentWithTTL(r.Context(), claimed, []byte("1"), rc.dedupeTTL)
 		if err != nil {
 			api.Error(w, http.StatusServiceUnavailable, &api.APIError{
@@ -328,6 +334,26 @@ func (rc *Receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case <-timer.C:
 	}
 	api.JSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
+// claimKey is the kv key a delivery is claimed under: a hash, so no
+// receiver name and key can join to the same string. A key that does not
+// come from the body (a header) is not trusted: the claim is the body's
+// hash and the signed timestamp, so only an identical delivery repeats.
+func (rc *Receiver) claimKey(r *http.Request, key string, body []byte) string {
+	material := key
+	if !rc.keyInBody {
+		// The header's value is not authenticated: it is published, but
+		// the claim is the content alone.
+		material = BodyHashKey(r, body)
+		if rc.sigTS != nil {
+			if t, ok := rc.sigTS(r, body); ok {
+				material += "\x00" + strconv.FormatInt(t.Unix(), 10)
+			}
+		}
+	}
+	sum := sha256.Sum256([]byte(material))
+	return "webhook/" + rc.name + "/" + hex.EncodeToString(sum[:])
 }
 
 func (rc *Receiver) payload(r *http.Request, kind, key string, body []byte) map[string]any {

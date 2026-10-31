@@ -52,7 +52,7 @@ type PipedriveConfig struct {
 func Pipedrive(cfg PipedriveConfig) []Option {
 	opts := []Option{
 		WithVerifier(BasicAuth(cfg.User, cfg.Password)),
-		func(r *Receiver) error { r.key = JSONKey("/meta/id"); return nil },
+		func(r *Receiver) error { r.key, r.keyInBody = JSONKey("/meta/id"), true; return nil },
 	}
 	if cfg.ReplayWindow > 0 {
 		opts = append(opts, WithReplayWindow(cfg.ReplayWindow, JSONTimestamp("/meta/timestamp")))
@@ -79,6 +79,10 @@ func GenericHMAC(cfg GenericHMACConfig) ([]Option, error) {
 	opts := []Option{WithVerifier(v)}
 	if cfg.KeyHeader != "" {
 		opts = append(opts, func(r *Receiver) error { r.key = HeaderKey(cfg.KeyHeader); return nil })
+	}
+	if cfg.HMAC.TimestampHeader != "" {
+		ts := HeaderUnixTimestamp(cfg.HMAC.TimestampHeader)
+		opts = append(opts, func(r *Receiver) error { r.sigTS = ts; return nil })
 	}
 	if cfg.ReplayWindow > 0 && cfg.HMAC.TimestampHeader != "" {
 		opts = append(opts, WithReplayWindow(cfg.ReplayWindow, HeaderUnixTimestamp(cfg.HMAC.TimestampHeader)))
