@@ -15,6 +15,7 @@ use crate::output::{render_error, CliError};
 
 use super::autocorrect_prompt::{autocorrect_allowed, prompt_autocorrect};
 use super::gate::Leaf;
+use super::help::{color_enabled, Scope, Theme};
 use super::root::Root;
 use super::usage::{
     classify, correct_args, correction_candidate, correction_notice, find_cmd, flag_candidates,
@@ -162,6 +163,9 @@ impl Root {
         if let Some(stop) = self.preflight(err, &active_format(argv)) {
             return Err(stop);
         }
+        if let Some(done) = self.help_topic(argv, out, err) {
+            return done;
+        }
         let mut argv = argv.to_vec();
         let mut corrected = false;
         loop {
@@ -175,6 +179,18 @@ impl Root {
                     let enums = |words: &[String], flag: &str| self.enum_values(words, flag);
                     let Some(fail) = classify(&built, built.get_name(), &args, &e, &enums) else {
                         // help or version: not a failure
+                        if e.kind() == clap::error::ErrorKind::DisplayHelp {
+                            let words = help_target_words(&built, &args);
+                            let text = self.help_text(
+                                Scope::Default,
+                                &words,
+                                self.theme_for(&args).as_ref(),
+                            );
+                            if let Some(text) = text {
+                                let _ = write!(out, "{text}");
+                                return Ok(());
+                            }
+                        }
                         let _ = write!(out, "{}", e.render());
                         return Ok(());
                     };
@@ -191,6 +207,71 @@ impl Root {
                 }
             }
         }
+    }
+
+    /// The theme help is colored with, `None` for plain text.
+    fn theme_for(&self, args: &[String]) -> Option<Theme> {
+        color_enabled(args).then(|| self.help_theme.clone().unwrap_or_default())
+    }
+
+    /// The hidden `help [topic...]` form, resolved as Go does: no
+    /// topic is root help; `all`; a command path that resolves fully; a
+    /// group id; else a usage error. `None` when `argv` is not a help
+    /// topic request (or the tree owns a `help` command).
+    #[allow(clippy::result_large_err)]
+    fn help_topic(
+        &self,
+        argv: &[String],
+        out: &mut dyn Write,
+        err: &mut dyn Write,
+    ) -> Option<Result<(), CliError>> {
+        let at = argv
+            .iter()
+            .skip(1)
+            .position(|a| !a.starts_with('-'))
+            .map(|i| i + 1)?;
+        if argv[at] != "help" || argv[1..at].iter().any(|a| a == "--") {
+            return None;
+        }
+        let args = self.expand_alias(argv);
+        let mut built = self.command();
+        built.build();
+        if built.get_subcommands().any(|c| c.get_name() == "help") {
+            return None;
+        }
+        let operands: Vec<String> = argv[at + 1..]
+            .iter()
+            .take_while(|a| *a != "--")
+            .filter(|a| !a.starts_with('-'))
+            .cloned()
+            .collect();
+        let theme = self.theme_for(&args);
+        let text = if operands.is_empty() {
+            self.help_text(Scope::Default, &[], theme.as_ref())
+        } else if operands == ["all"] {
+            self.help_text(Scope::All { plumbing: false }, &[], theme.as_ref())
+        } else if let Some(words) = resolve_topic(&built, &operands) {
+            self.help_text(Scope::Default, &words, theme.as_ref())
+        } else if operands.len() == 1 && self.group_defs().iter().any(|g| g.id == operands[0]) {
+            self.help_text(Scope::Group(&operands[0]), &[], theme.as_ref())
+        } else {
+            None
+        };
+        Some(match text {
+            Some(t) => {
+                let _ = write!(out, "{t}");
+                Ok(())
+            }
+            None => {
+                let ce = CliError::usage(format!(
+                    "unknown help topic {:?} for {:?}",
+                    operands.join(" "),
+                    built.get_name()
+                ));
+                let _ = render_error(err, &active_format(&args), &ce);
+                Err(ce)
+            }
+        })
     }
 
     /// The corrected argv when autocorrect applies to this failure.
@@ -241,21 +322,17 @@ impl Root {
         err: &mut dyn Write,
     ) -> Result<(), CliError> {
         // --help-all / --help-<group>
+        let theme = self.theme_for(args);
         if m.try_get_one::<bool>("help-all").ok().flatten() == Some(&true) {
-            let mut c = self.help_all_command();
-            c.build();
-            let _ = write!(out, "{}", c.render_long_help());
+            let text = self.help_text(Scope::All { plumbing: true }, &[], theme.as_ref());
+            let _ = write!(out, "{}", text.unwrap_or_default());
             return Ok(());
         }
-        let mut ids = vec!["management".to_string()];
-        if let Some(cfg) = &self.config {
-            ids.extend(cfg.groups.iter().map(|g| g.id.clone()));
-        }
-        for id in ids {
+        for def in self.group_defs() {
+            let id = def.id;
             if m.try_get_one::<bool>(&format!("help-{id}")).ok().flatten() == Some(&true) {
-                let mut c = self.help_group_command(&id);
-                c.build();
-                let _ = write!(out, "{}", c.render_long_help());
+                let text = self.help_text(Scope::Group(&id), &[], theme.as_ref());
+                let _ = write!(out, "{}", text.unwrap_or_default());
                 return Ok(());
             }
         }
@@ -270,8 +347,8 @@ impl Root {
         let cmd = find_cmd(built, &words).unwrap_or(built);
         let Some(handler) = self.handlers.get(&path) else {
             if cmd.get_subcommands().next().is_some() || words.is_empty() {
-                let mut c = cmd.clone();
-                let _ = write!(out, "{}", c.render_long_help());
+                let text = self.help_text(Scope::Default, &words, theme.as_ref());
+                let _ = write!(out, "{}", text.unwrap_or_default());
                 return Ok(());
             }
             let ce = CliError::generic(format!("no handler registered for {path:?}"));
@@ -685,4 +762,53 @@ fn autocorrect_mode(args: &[String]) -> AutocorrectMode {
         .ok()
         .and_then(|v| AutocorrectMode::parse(&v))
         .unwrap_or(AutocorrectMode::Off)
+}
+
+/// The command path `operands` name when every word resolves, by name
+/// or alias, below the root.
+fn resolve_topic(root: &Command, operands: &[String]) -> Option<Vec<String>> {
+    let mut cur = root;
+    let mut words = Vec::new();
+    for w in operands {
+        cur = cur
+            .get_subcommands()
+            .find(|c| c.get_name() == w || c.get_all_aliases().any(|a| a == w))?;
+        words.push(cur.get_name().to_string());
+    }
+    Some(words)
+}
+
+/// The command a help request addresses: the subcommand words of
+/// `args`, skipping the values of flags that take one.
+fn help_target_words(root: &Command, args: &[String]) -> Vec<String> {
+    let mut cur = root;
+    let mut words = Vec::new();
+    let mut i = 1;
+    while i < args.len() {
+        let a = &args[i];
+        if a == "--" {
+            break;
+        }
+        if let Some(long) = a.strip_prefix("--") {
+            let takes = !long.contains('=')
+                && cur
+                    .get_arguments()
+                    .any(|x| x.get_long() == Some(long) && x.get_action().takes_values());
+            i += usize::from(takes);
+        } else if a.starts_with('-') && a.chars().count() == 2 {
+            let c = a.chars().nth(1);
+            let takes = cur
+                .get_arguments()
+                .any(|x| x.get_short() == c && x.get_action().takes_values());
+            i += usize::from(takes);
+        } else if let Some(sub) = cur
+            .get_subcommands()
+            .find(|s| s.get_name() == a || s.get_all_aliases().any(|x| x == a))
+        {
+            cur = sub;
+            words.push(sub.get_name().to_string());
+        }
+        i += 1;
+    }
+    words
 }

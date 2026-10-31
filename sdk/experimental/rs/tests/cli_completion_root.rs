@@ -317,7 +317,7 @@ fn help_structure_no_help_or_completion_subcommand() {
     // Go pins what help lists, not what dispatches.
     let root = root_with_sub();
     let help = root.render_help();
-    let commands = help.split("Commands:").nth(1).unwrap_or_default();
+    let commands = help.split("COMMANDS:").nth(1).unwrap_or_default();
     assert!(
         !commands.lines().any(|l| l.trim_start().starts_with("help")),
         "{help}"
