@@ -13,8 +13,9 @@
 use serde_json::{Map, Value};
 
 use super::audit::{self, Refusal};
-use super::bridge::{Bridge, CallResult, InvokeError};
+use super::bridge::{Bridge, CallResult, InvokeError, Leaf};
 use super::identity::Identity;
+use super::permission::PermissionCall;
 use super::safety::Surface;
 use super::wire::{codes, error_response, result_response, ErrorObject, Request, Response};
 use super::HandlerConfig;
@@ -200,7 +201,21 @@ fn handle_tools_call(
         .cloned()
         .unwrap_or_default();
 
-    match bridge.invoke_with(name, &cfg.tool_name_separator, Surface::Mcp, &arguments) {
+    let permit = |leaf: &Leaf| match &cfg.permission {
+        Some(hook) => hook(&PermissionCall {
+            leaf,
+            caller,
+            arguments: &arguments,
+        }),
+        None => Ok(()),
+    };
+    match bridge.invoke_permitted(
+        name,
+        &cfg.tool_name_separator,
+        Surface::Mcp,
+        &arguments,
+        &permit,
+    ) {
         Ok(res) => result_response(200, req.id.as_ref(), &render_call_result(&res)),
         Err(InvokeError::UnknownCommand | InvokeError::SurfaceNotEnabled) => {
             unknown_tool(req, name)
@@ -210,8 +225,14 @@ fn handle_tools_call(
         // is a refusal Go's bridge audits; a handler failure is a run's
         // own outcome.
         Err(err) => {
-            if matches!(err, InvokeError::DestructiveBlocked { .. }) {
-                audit::emit(cfg, leaf, PROTOCOL_VERSION, Refusal::DestructiveBlocked);
+            match err {
+                InvokeError::DestructiveBlocked { .. } => {
+                    audit::emit(cfg, leaf, PROTOCOL_VERSION, Refusal::DestructiveBlocked);
+                }
+                InvokeError::PermissionDenied { .. } => {
+                    audit::emit(cfg, leaf, PROTOCOL_VERSION, Refusal::PermissionDenied);
+                }
+                _ => {}
             }
             result_response(200, req.id.as_ref(), &error_result_block(&err.to_string()))
         }

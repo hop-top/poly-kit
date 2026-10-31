@@ -15,7 +15,8 @@
 //!
 //! Audited: an auth-required leaf refused, a confirmation gate
 //! unsatisfied, a confirmation declined, a confirmation `requestState`
-//! that failed verification, and the destructive ceiling. Not audited:
+//! that failed verification, the destructive ceiling, and a permission
+//! refusal. Not audited:
 //! an unknown tool, malformed arguments, the origin allowlist, a run's
 //! own outcome, and an expired-but-authentic `requestState` (Go
 //! re-prompts silently).
@@ -58,6 +59,9 @@ pub const ERR_CONFIRMATION_DECLINED: &str = "mcpsdk: confirmation declined";
 /// Go's `mcpsdk.ErrConfirmationStateRejected`.
 pub const ERR_CONFIRMATION_STATE_REJECTED: &str =
     "mcpsdk: confirmation requestState failed verification";
+/// `error` for a call the permission hook refused: Go's
+/// `cmdsurface.ErrPermissionDenied`.
+pub const ERR_PERMISSION_DENIED: &str = "cmdsurface: permission denied";
 /// `error` for a destructive leaf the mount policy refuses: Go's
 /// `cmdsurface.ErrDestructiveBlocked`.
 pub const ERR_DESTRUCTIVE_BLOCKED: &str = "cmdsurface: destructive command blocked on this surface";
@@ -100,6 +104,8 @@ pub(crate) enum Refusal {
     ConfirmationStateRejected,
     /// The destructive ceiling.
     DestructiveBlocked,
+    /// The permission hook.
+    PermissionDenied,
 }
 
 impl Refusal {
@@ -111,6 +117,7 @@ impl Refusal {
             Self::ConfirmationDeclined => ERR_CONFIRMATION_DECLINED,
             Self::ConfirmationStateRejected => ERR_CONFIRMATION_STATE_REJECTED,
             Self::DestructiveBlocked => ERR_DESTRUCTIVE_BLOCKED,
+            Self::PermissionDenied => ERR_PERMISSION_DENIED,
         }
     }
 }

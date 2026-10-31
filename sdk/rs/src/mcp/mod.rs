@@ -86,6 +86,7 @@ pub mod dispatch;
 pub mod identity;
 pub mod legacy;
 pub mod modern;
+pub mod permission;
 pub mod safety;
 mod stdio;
 pub mod tasks;
@@ -96,6 +97,7 @@ pub use bridge::{Bridge, CallResult, FlagSchema, InvokeError, Leaf};
 pub use dispatch::{detect_era, Era, HttpRequest, MountError, Surface};
 pub use identity::{Identity, Verifier};
 pub use modern::{request_meta, RequestMeta};
+pub use permission::{PermissionCall, PermissionHook};
 pub use safety::{Policy, SafetyClass, Surface as SurfaceKind};
 pub use wire::{Request, Response};
 
@@ -195,6 +197,13 @@ pub struct MountOptions {
     /// effort, so a panic inside it is caught and the response is
     /// unchanged. `None` audits nothing.
     pub audit: Option<AuditHook>,
+    /// Decides, per `tools/call`, whether the caller may run the leaf:
+    /// Go's `PermissionFunc` slot, after the destructive ceiling and
+    /// before the leaf runs, on both eras and over stdio. `Err` is the
+    /// refusal's reason; it renders as an `isError` result at HTTP 200
+    /// and is audited. See [`permission`]. `None` permits everything the
+    /// earlier gates admitted.
+    pub permission: Option<PermissionHook>,
 }
 
 impl std::fmt::Debug for MountOptions {
@@ -212,6 +221,7 @@ impl std::fmt::Debug for MountOptions {
             .field("verifier", &self.verifier)
             .field("tool_name_separator", &self.tool_name_separator)
             .field("audit", &audit::HookDebug(&self.audit))
+            .field("permission", &permission::HookDebug(&self.permission))
             .finish()
     }
 }
@@ -234,6 +244,7 @@ impl Default for MountOptions {
             verifier: None,
             tool_name_separator: DEFAULT_TOOL_NAME_SEPARATOR.into(),
             audit: None,
+            permission: None,
         }
     }
 }
@@ -251,6 +262,7 @@ pub(crate) struct HandlerConfig {
     pub(crate) verifier: Option<Verifier>,
     pub(crate) tool_name_separator: String,
     pub(crate) audit: Option<AuditHook>,
+    pub(crate) permission: Option<PermissionHook>,
 }
 
 impl std::fmt::Debug for HandlerConfig {
@@ -266,6 +278,7 @@ impl std::fmt::Debug for HandlerConfig {
             .field("verifier", &self.verifier)
             .field("tool_name_separator", &self.tool_name_separator)
             .field("audit", &audit::HookDebug(&self.audit))
+            .field("permission", &permission::HookDebug(&self.permission))
             .finish()
     }
 }
@@ -289,6 +302,7 @@ impl From<MountOptions> for HandlerConfig {
             verifier: options.verifier,
             tool_name_separator: options.tool_name_separator,
             audit: options.audit,
+            permission: options.permission,
         }
     }
 }
