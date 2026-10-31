@@ -796,9 +796,10 @@ $ mytool service start api --policy=team
 and destructive calls per window. Only a call every permission decider
 admits — the policy, its `permissions:` rules and your
 `service.WithPermission` gate — spends from it. It is counted in
-`$XDG_STATE_HOME/mytool/usage.db`, so restarting the server does not
-reset it; pass `service.WithUsageStore(store)` to count in a store several
-instances share. A caller who has spent it is refused until the window
+memory, so restarting the server resets it; pass `service.WithUsageFile()`
+(or set `services.usage_store: file`) to keep it in
+`$XDG_STATE_HOME/mytool/usage.db`, or `service.WithUsageStore(store)` to
+count in a store several instances share. A caller who has spent it is refused until the window
 resets:
 
 ```json
@@ -1575,11 +1576,12 @@ cli.New(cfg, service.WithServeRateLimit(cmdsurface.RateLimit{
 #### Cap how much a caller uses per hour or day
 
 A rate limit bounds bursts and forgets on restart. A quota bounds
-totals, and remembers: set how many calls, or how many bytes of
+totals: set how many calls, or how many bytes of
 output, each caller may use per window, and kit counts them in
-`$XDG_STATE_HOME/mytool/usage.db` (or the store
-`service.WithUsageStore` names), so a restart resets nothing. It is off
-until you set a limit:
+memory, so a restart resets them. `service.WithUsageFile()` (or
+`services.usage_store: file`) keeps them in
+`$XDG_STATE_HOME/mytool/usage.db`; `service.WithUsageStore` names another
+store. It is off until you set a limit:
 
 ```yaml
 # ~/.config/mytool/config.yaml
@@ -1753,7 +1755,8 @@ keys, defaults and refusals.
 | `service.WithAPIKeys(cfg)` | not mounted | Mounts `token key create`, `list` and `revoke` for `auth.mode: apikey`. |
 | `service.WithTokenCheck(fn)` | none | Revocation check on every credential the `auth.mode` verifier accepted (`jwt`, `jwks`, `oidc`, `apikey`); an error refuses it `401`. |
 | `service.WithServeRateLimit(cfg)` | kit tiers | The tool's own tier numbers below `rate_limit.*`; does not switch the limit on. |
-| `service.WithUsageStore(store)` | `$XDG_STATE_HOME/<tool>/usage.db` | Where quotas and the `max_ops` budgets of a policy's caller rules are counted. |
+| `service.WithUsageStore(store)` | in memory | Where quotas and the `max_ops` budgets of a policy's caller rules are counted. |
+| `service.WithUsageFile()` | off | Counts them in `$XDG_STATE_HOME/<tool>/usage.db` instead, so a restart keeps them; same as `services.usage_store: file`. |
 | `service.WithQuotaCommand()` | not mounted | Mounts `<tool> quota show` and `quota reset`; management-only when served. |
 | `service.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service, beside `audit.sinks`. Records are always redacted. |
 | `service.WithAuditCommand()` | not mounted | Mounts `<tool> audit verify` (exit 71 `TAMPER_DETECTED` on a broken chain); management-only when served. |

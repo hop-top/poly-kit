@@ -790,7 +790,7 @@ configuration. The `service start` flags (`--addr`, `--socket`, `--enable`,
 | `services.<name>.optional`         | bool       | the registration's, else `false` | the run does not depend on this service ([Optional services](#optional-services)) |
 | `services.failure_policy`          | enum       | `fail-fast` | `fail-fast` or `isolate`                |
 | `services.shutdown_timeout`        | duration   | `60s`   | total shutdown budget across all services   |
-
+| `services.usage_store`            | enum       | `memory` | `memory` or `file`: where budgets and quotas are counted; `WithUsageFile` and `WithUsageStore` win |
 Like the other lifecycle keys, `optional` has no `services.all`
 default: whether the run depends on a service is a decision about
 that service, and a blanket `services.all.optional` is refused at
@@ -1131,8 +1131,10 @@ of any of them.
 - A caller rule with `max_ops` gives each matching principal, per
   tenant, a budget of admitted write and destructive calls over fixed
   `window`s (default one hour, aligned to the epoch), counted on
-  `storage/kv` so a restart resets nothing: `$XDG_STATE_HOME/<tool>/usage.db`
-  by default, or the store `service.WithUsageStore` names. The permission
+  `storage/kv`, in memory by default (a restart resets it); opt in to
+  persistence with `service.WithUsageFile` (`$XDG_STATE_HOME/<tool>/usage.db`,
+  or `services.usage_store: file`), or name a store with
+  `service.WithUsageStore`. The permission
   gate refuses a spent budget `permission_denied` at the policy's turn,
   naming when the window resets, and charges one call only after every
   slot-6 decider — rules and adopter included — has admitted it; a call
@@ -1784,8 +1786,8 @@ What each slot does:
   counted its limit; slot 13 counts a run that completed without
   error, so the call that crosses a limit completes and a replay or a
   cache hit counts nothing. Counts live in the usage store
-  (`$XDG_STATE_HOME/<tool>/usage.db`, or `service.WithUsageStore`), per
-  service, so a restart resets nothing. `quota show` and
+  (in memory by default; `service.WithUsageFile`, `services.usage_store:
+  file` or `service.WithUsageStore` persist them), per service. `quota show` and
   `quota reset`, mounted by `service.WithQuotaCommand`, are kit-reserved
   and so `management-only` on every served surface. A store that
   cannot be read refuses the call.
