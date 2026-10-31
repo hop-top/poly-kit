@@ -19,6 +19,10 @@ api = ["netpolicy", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:thiserror
 # client that dials its own sockets (websocket, SMTP, SQL) can enforce
 # `--offline` without compiling reqwest or tokio.
 netpolicy = []
+# Terminal UI primitives, a port of go/console/tui and go/console/progress:
+# progress events, bar, spinner, status lines, confirm, app shell frame.
+# Plain ANSI on std: no dependencies of its own.
+tui = []
 blob = ["dep:thiserror"]
 uri = ["dep:hop-top-cite"]
 # preserve_order backs serde_json::Map with indexmap instead of BTreeMap, so

@@ -13,7 +13,7 @@ Nothing is on by default: name the features you use. The version names a prerele
 
 ## Modules
 
-Paths are relative to `src/`; the [feature table](#features) is the authority on what each pulls in. [`tui.rs`](src/tui.rs) is an empty, reserved placeholder.
+Paths are relative to `src/`; the [feature table](#features) is the authority on what each pulls in.
 
 | Path | What it is | Start here when |
 |------|------------|-----------------|
@@ -43,6 +43,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`api.rs`](src/api.rs) | JSON API client over the guarded client (feature `api`) | you call an HTTP API from a kit CLI |
 | [`uri.rs`](src/uri.rs) | URI facade delegating to `hop-top-cite` (feature `uri`) | you parse or format kit URIs |
 | [`cli/`](src/cli/README.md) | clap root with kit's shell completion: `completion bash\|zsh\|fish\|powershell`, `completion fig\|usage` specs, `__complete`, root aliases, flag enums, completers (feature `cli`) | your CLI must offer shell completion |
+| [`tui/`](src/tui/README.md) | progress events (JSONL or human), themed bar, spinner, status lines, confirm prompt with a non-interactive fallback, app shell frame; plain ANSI on std, a port of `go/console/progress` and `go/console/tui` (feature `tui`) | a command reports phases on stderr or asks yes/no |
 
 ## Features
 
@@ -64,6 +65,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `id` | `type-safe-id`, `uuid`, `serde`, `thiserror` | 25 |
 | `httpcache` | `kv` + `serde`, `serde_json`, `sha2`, `base64` | 33 |
 | `cli` | `output` + `clap` | 35 |
+| `tui` | nothing (std only) | 0 |
 | `serve` (`serve-cli`) | `output` + `tokio`, `serde_json` (+ `cli`) | 37 (50) |
 | `mcp` | `rmcp` (default-features off) + `serde`, `serde_json` | 39 |
 | `uri` | `hop-top-cite` | 41 |
