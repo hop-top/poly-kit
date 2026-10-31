@@ -1,5 +1,5 @@
 //! The RouteLLM adapter (Go `ai/llm/routellm`): a RouteLLM server spoken
-//! to through the [`openai`](crate::llm::openai) adapter. Registers the
+//! to through the [`openai`] adapter. Registers the
 //! `routellm` scheme. Feature `llm-routellm`, native only.
 //!
 //! The model field takes either shape a RouteLLM server advertises on
