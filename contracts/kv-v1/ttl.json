@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/kv-v1/ttl.json",
+  "version": "v1",
+  "note": "Atomic put-if-absent-with-TTL sequences for kit/storage/kv (Go memory, sqlite, badger TTLInserter; Rust SqliteStore TtlInserter). Every port replays each scenario against a fresh store: steps run in order; `put_if_absent` must report `inserted`; `get` expects `value_hex` (null = absent); `put` is a plain no-expiry write; `sleep_ms` waits real time. Expiry uses the shortest TTL (1 ms) plus a 50 ms sleep because badger stores expiry at second granularity and no backend takes an injected clock; live TTLs are 60 s. Keys and values are hex.",
+  "scenarios": [
+    {
+      "name": "absent_is_stored",
+      "note": "No entry: the claim wins and the value is readable.",
+      "steps": [
+        {
+          "op": "put_if_absent",
+          "key_hex": "6b",
+          "value_hex": "6669727374",
+          "ttl_ms": 60000,
+          "inserted": true
+        },
+        {
+          "op": "get",
+          "key_hex": "6b",
+          "value_hex": "6669727374"
+        }
+      ]
+    },
+    {
+      "name": "present_is_refused",
+      "note": "A live entry refuses a second claim and keeps its value.",
+      "steps": [
+        {
+          "op": "put_if_absent",
+          "key_hex": "6b",
+          "value_hex": "6669727374",
+          "ttl_ms": 60000,
+          "inserted": true
+        },
+        {
+          "op": "put_if_absent",
+          "key_hex": "6b",
+          "value_hex": "7365636f6e64",
+          "ttl_ms": 60000,
+          "inserted": false
+        },
+        {
+          "op": "get",
+          "key_hex": "6b",
+          "value_hex": "6669727374"
+        }
+      ]
+    },
+    {
+      "name": "expired_is_stored",
+      "note": "An expired entry counts as absent: the next claim wins and replaces it.",
+      "steps": [
+        {
+          "op": "put_if_absent",
+          "key_hex": "6b",
+          "value_hex": "6f6c64",
+          "ttl_ms": 1,
+          "inserted": true
+        },
+        {
+          "op": "sleep_ms",
+          "ms": 50
+        },
+        {
+          "op": "get",
+          "key_hex": "6b",
+          "value_hex": null
+        },
+        {
+          "op": "put_if_absent",
+          "key_hex": "6b",
+          "value_hex": "6e6577",
+          "ttl_ms": 60000,
+          "inserted": true
+        },
+        {
+          "op": "get",
+          "key_hex": "6b",
+          "value_hex": "6e6577"
+        }
+      ]
+    },
+    {
+      "name": "live_without_expiry_is_refused",
+      "note": "A plain Put has no expiry; it is a live entry and refuses the claim.",
+      "steps": [
+        {
+          "op": "put",
+          "key_hex": "6b",
+          "value_hex": "706c61696e"
+        },
+        {
+          "op": "put_if_absent",
+          "key_hex": "6b",
+          "value_hex": "636c61696d",
+          "ttl_ms": 60000,
+          "inserted": false
+        },
+        {
+          "op": "get",
+          "key_hex": "6b",
+          "value_hex": "706c61696e"
+        }
+      ]
+    },
+    {
+      "name": "keys_are_independent",
+      "note": "A refusal on one key does not touch another.",
+      "steps": [
+        {
+          "op": "put_if_absent",
+          "key_hex": "61",
+          "value_hex": "31",
+          "ttl_ms": 60000,
+          "inserted": true
+        },
+        {
+          "op": "put_if_absent",
+          "key_hex": "62",
+          "value_hex": "32",
+          "ttl_ms": 60000,
+          "inserted": true
+        },
+        {
+          "op": "put_if_absent",
+          "key_hex": "61",
+          "value_hex": "33",
+          "ttl_ms": 60000,
+          "inserted": false
+        },
+        {
+          "op": "get",
+          "key_hex": "61",
+          "value_hex": "31"
+        },
+        {
+          "op": "get",
+          "key_hex": "62",
+          "value_hex": "32"
+        }
+      ]
+    },
+    {
+      "name": "empty_value_is_present",
+      "note": "A claimed empty value is a live entry, distinct from absent.",
+      "steps": [
+        {
+          "op": "put_if_absent",
+          "key_hex": "6b",
+          "value_hex": "",
+          "ttl_ms": 60000,
+          "inserted": true
+        },
+        {
+          "op": "put_if_absent",
+          "key_hex": "6b",
+          "value_hex": "78",
+          "ttl_ms": 60000,
+          "inserted": false
+        },
+        {
+          "op": "get",
+          "key_hex": "6b",
+          "value_hex": ""
+        }
+      ]
+    }
+  ]
+}

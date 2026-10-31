@@ -25,14 +25,17 @@ Runs `TestCrossLang*` in `go/storage/kv/sqlite` with `KV_CROSSLANG=1`; the Go te
 - `list_order`: the expected `ORDER BY key` sequence for the corpus
 - `prefix_scans`: 6 prefix queries with the keys they must return
 
+`ttl.json` pins put-if-absent-with-TTL (`TTLInserter` in Go, `TtlInserter` in Rust) as ordered scenarios replayed against a fresh store: absent is stored, present is refused (value untouched), expired is stored, a live no-expiry entry is refused, keys are independent, an empty value is a live entry. Go memory, sqlite and badger and the Rust `SqliteStore` all replay it (`go test ./go/storage/kv/...`, `cargo test --features kv --test kv_ttl_corpus`); no cross-process step, since the claim is an in-store operation. Expiry uses real time (1 ms TTL, 50 ms sleep) because badger expires at second granularity and no backend takes a clock.
+
 The `kv.key` column is TEXT in every implementation. SQLite compares storage class before value, so a BLOB-bound key silently misses a TEXT-bound one; a suite that round-trips within one language cannot catch this, which is why each SDK writes and another reads.
 
-The fixture is edited by hand. `make lint-config` checks it parses; `make test-parity-kv` checks every port still agrees.
+The fixtures are edited by hand. `make lint-config` checks it parses; `make test-parity-kv` checks every port still agrees.
 
 ## Neighbours
 
 - `go/storage/kv/sqlite/crosslang_test.go`: Go loader and the cross-process driver
 - `sdk/experimental/rs/tests/kv_crosslang.rs`: Rust loader
+- `go/storage/kv/internal/ttlcorpus`, `sdk/experimental/rs/tests/kv_ttl_corpus.rs`: `ttl.json` replayers
 - `../httpcache-v1/`: on-store envelope layered on top of `kv`
 
 ## See also
