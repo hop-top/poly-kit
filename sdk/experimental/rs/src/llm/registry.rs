@@ -84,6 +84,16 @@ impl Registry {
         let r = Self::new();
         #[cfg(feature = "llm-anthropic")]
         super::anthropic::register(&r).expect("empty registry");
+        #[cfg(feature = "llm-openai")]
+        super::openai::register(&r).expect("empty registry");
+        #[cfg(feature = "llm-ollama")]
+        super::ollama::register(&r).expect("empty registry");
+        #[cfg(feature = "llm-triton")]
+        super::triton::register(&r).expect("empty registry");
+        #[cfg(feature = "llm-google")]
+        super::google::register(&r).expect("empty registry");
+        #[cfg(feature = "llm-routellm")]
+        super::routellm::register(&r).expect("empty registry");
         r
     }
 

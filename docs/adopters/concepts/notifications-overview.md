@@ -284,10 +284,15 @@ per matching event), so the per-payload cost amortises easily.
 
 ## Cross-language parity
 
-Go-only MVP. `bus.Sink` and `bus.TeeBus` themselves are still
-Go-only (TS / Python ports of pub/sub exist but Sinks/Tee are
-marked `planned`). Notify ports are gated on the bus primitives
-porting first, so every language shares one sink contract.
+Go is the reference. The Rust SDK ports the whole package: severity,
+filter, retry + dead-letter, backoff and the webhook, email and OS
+sinks, over its own `bus` `Sink` and `TeeBus`
+([`sdk/experimental/rs/src/notify`](../../../sdk/experimental/rs/src/notify/README.md),
+features `notify`, `notify-webhook`, `notify-email`, `notify-os`). What
+differs there: a payload is JSON, so severity comes only from the
+`severity` key; templates are literal text plus `{{.Field}}`; the
+webhook does not follow redirects. TS and Python ports of pub/sub exist
+but their Sinks/Tee are marked `planned`, so notify ports wait on them.
 
 ## See also
 

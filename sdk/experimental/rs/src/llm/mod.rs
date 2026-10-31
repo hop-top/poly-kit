@@ -17,14 +17,19 @@
 //! - [`ToolNames`]: tool-name rules ([`ANTHROPIC_TOOL_NAMES`] and
 //!   friends) and the reversible sanitizer adapters run per request;
 //!   [`ToolNameMode`] is the `tool_names` provider param.
-//! - [`anthropic`] (feature `llm-anthropic`): the Messages API adapter.
+//! - [`anthropic`], [`openai`], [`google`], [`ollama`], [`triton`] and
+//!   [`routellm`] (features `llm-anthropic`, `llm-openai`, `llm-google`,
+//!   `llm-ollama`, `llm-triton`, `llm-routellm`): the HTTP adapters.
+//! - [`picker`] (`llm-picker`): model choice by profile, pool and
+//!   budget; [`router`] (`llm-router`): routing by prompt score.
+//! - [`PoolEntry`], [`load_pool`]: the llm.yaml model pool.
 //!
 //! Keys never reach `Debug` or error text: [`redact_uri`] masks URIs,
 //! and config types print `REDACTED` in a key's place.
 //!
-//! Not ported: Go's aim catalog routing (aliases, protocol claims),
-//! the model picker and router, media URL/file sources, and adapters
-//! other than Anthropic.
+//! Not ported: Go's aim catalog routing (aliases, protocol claims; the
+//! picker has a [`picker::ModelCatalog`] seam instead) and media
+//! URL/file sources.
 
 #[cfg(feature = "redact")]
 mod buscontent;
@@ -34,6 +39,7 @@ mod endpoint;
 mod error;
 mod events;
 mod keys;
+mod pool;
 mod provider;
 mod registry;
 mod toolchoice;
@@ -41,8 +47,27 @@ mod toolnames;
 pub mod types;
 mod uri;
 
+// Each adapter uses the part of this it needs; none uses all of it.
+#[cfg(feature = "llm-http")]
+#[allow(dead_code)]
+mod wirehttp;
+
 #[cfg(feature = "llm-anthropic")]
 pub mod anthropic;
+#[cfg(feature = "llm-google")]
+pub mod google;
+#[cfg(feature = "llm-ollama")]
+pub mod ollama;
+#[cfg(feature = "llm-openai")]
+pub mod openai;
+#[cfg(feature = "llm-picker")]
+pub mod picker;
+#[cfg(feature = "llm-routellm")]
+pub mod routellm;
+#[cfg(feature = "llm-router")]
+pub mod router;
+#[cfg(feature = "llm-triton")]
+pub mod triton;
 
 #[cfg(feature = "redact")]
 pub use buscontent::{redact_request, redact_response};
@@ -56,6 +81,7 @@ pub use endpoint::{
 pub use error::{KeyEndpointReason, LlmError, MissingKeyError, ToolNameReason};
 pub use events::{RequestEndPayload, RequestStartPayload};
 pub use keys::{AsyncSecretStore, KeyResolution, KeySource, KeySourceKind, FALLBACK_ENV_KEY};
+pub use pool::{load_pool, resolve_pool, PoolEntry};
 pub use provider::{BoxFuture, Capability, Provider, TokenStream};
 pub use registry::{default_registry, Declaration, Factory, ProviderKey, Registry, ResolveOptions};
 pub use toolchoice::{check_tool_choice, ToolChoice, ToolChoiceMode};
@@ -69,6 +95,8 @@ pub use types::{
     ToolDef, ToolResponse, Usage,
 };
 pub use uri::{parse_uri, redact_uri, Uri};
+#[cfg(feature = "llm-http")]
+pub use wirehttp::{Limits, Sleeper};
 
 /// [`Registry::load_config`] on the default registry, with llm.yaml from
 /// disk, the process environment and no secret store.

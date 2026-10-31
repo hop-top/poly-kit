@@ -222,6 +222,10 @@ impl Store for LocalStore {
     fn list(&self, prefix: &str) -> Result<Vec<Object>, BlobError> {
         let mut paths = Vec::new();
         walk(&self.root, &mut paths).map_err(|e| BlobError::io("walk", e))?;
+        // Path order compares component by component, the order Go's
+        // directory walk yields: `a/b` precedes `a.txt`. Sorting the
+        // joined key strings instead would put `a.txt` first.
+        paths.sort();
 
         let mut objects = Vec::new();
         for path in paths {
@@ -251,7 +255,6 @@ impl Store for LocalStore {
                 content_type: String::new(),
             });
         }
-        objects.sort_by(|a, b| a.key.cmp(&b.key));
         Ok(objects)
     }
 

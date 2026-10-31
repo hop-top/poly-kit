@@ -582,10 +582,11 @@ fn media_fetch_vectors_not_applicable() {
     }
 }
 
-/// Gemini stream-event vectors pin the gemini adapter, which this port
-/// does not have; the section must still be present and well formed.
+/// Gemini stream-event vectors pin the gemini adapter; llm_google_conformance
+/// runs them (feature `llm-google`). Here they must still be present and
+/// well formed.
 #[test]
-fn gemini_stream_events_vectors_not_applicable() {
+fn gemini_stream_events_vectors_present() {
     let c = load();
     assert!(!c.gemini_stream_events.is_empty());
     for v in &c.gemini_stream_events {
@@ -594,14 +595,15 @@ fn gemini_stream_events_vectors_not_applicable() {
             !name.is_empty(),
             "gemini_stream_events vector without a name"
         );
-        eprintln!("gemini_stream_events/{name}: not applicable (no gemini adapter in this port)");
+        eprintln!("gemini_stream_events/{name}: run by llm_google_conformance");
     }
 }
 
-/// The openai_* sections pin the openai adapter, which this port does
-/// not have. They must still be present and well formed.
+/// The openai_* sections pin the openai adapter; llm_openai_conformance
+/// runs them (feature `llm-openai`). Here they must still be present and
+/// well formed.
 #[test]
-fn openai_vectors_not_applicable() {
+fn openai_vectors_present() {
     let c = load();
     for (section, vs) in [
         ("openai_request", &c.openai_request),
@@ -613,7 +615,7 @@ fn openai_vectors_not_applicable() {
     ] {
         assert!(!vs.is_empty(), "{section} is empty");
         eprintln!(
-            "{section}: {} vectors not applicable (no openai adapter in this port)",
+            "{section}: {} vectors, run by llm_openai_conformance",
             vs.len()
         );
     }

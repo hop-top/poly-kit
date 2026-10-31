@@ -20,7 +20,6 @@ mod stream;
 mod wire;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use crate::llm::{
     BoxFuture, Capability, Declaration, LlmError, Provider, Registry, Request, ResolvedConfig,
@@ -36,45 +35,7 @@ pub const DEFAULT_MAX_TOKENS: u32 = 1024;
 /// Retries after the first attempt, as the Anthropic SDKs default.
 pub const DEFAULT_MAX_RETRIES: u32 = 2;
 
-/// Bounds on what a response may hold, to bound memory. Provider params
-/// `max_body_bytes` and `max_event_bytes` set them from a URI or config;
-/// [`Builder::limits`] outranks both.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Limits {
-    /// A whole non-streamed body (and an error body, read no further).
-    pub max_body_bytes: u64,
-    /// One SSE event of a stream.
-    pub max_event_bytes: u64,
-}
-
-impl Default for Limits {
-    fn default() -> Self {
-        Limits {
-            max_body_bytes: 32 << 20,
-            max_event_bytes: sse::DEFAULT_MAX_EVENT,
-        }
-    }
-}
-
-impl Limits {
-    fn from_params(params: &std::collections::BTreeMap<String, String>) -> Result<Self, LlmError> {
-        let mut l = Limits::default();
-        for (name, dst) in [
-            ("max_body_bytes", &mut l.max_body_bytes),
-            ("max_event_bytes", &mut l.max_event_bytes),
-        ] {
-            if let Some(v) = params.get(name) {
-                *dst = v.trim().parse().ok().filter(|n| *n > 0).ok_or_else(|| {
-                    LlmError::invalid(format!("anthropic: {name} must be a positive byte count"))
-                })?;
-            }
-        }
-        Ok(l)
-    }
-}
-
-/// Waits the given delay; resolves `false` when cancelled.
-pub type Sleeper = Arc<dyn Fn(Duration) -> BoxFuture<'static, bool> + Send + Sync>;
+pub use crate::llm::{Limits, Sleeper};
 
 type EnvFn = Box<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
@@ -117,15 +78,7 @@ pub struct Builder {
     limits: Option<Limits>,
 }
 
-/// The default retry timer: tokio's, which reqwest already runs on.
-fn tokio_sleeper() -> Sleeper {
-    Arc::new(|d| {
-        Box::pin(async move {
-            tokio::time::sleep(d).await;
-            true
-        })
-    })
-}
+use crate::llm::wirehttp::tokio_sleeper;
 
 impl Builder {
     /// Read nothing ambient (Go `ResolvedConfig.Hermetic`): no
@@ -262,7 +215,7 @@ impl Builder {
         let credentials = self.credentials(&base, &url)?;
         let limits = match self.limits {
             Some(l) => l,
-            None => Limits::from_params(&p.params)?,
+            None => Limits::from_params(SCHEME, &p.params)?,
         };
         // Redirects are not followed: a credential never moves to a host
         // the server names. Proxies come from the environment only.

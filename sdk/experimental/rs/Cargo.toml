@@ -19,6 +19,10 @@ api = ["netpolicy", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:thiserror
 # client that dials its own sockets (websocket, SMTP, SQL) can enforce
 # `--offline` without compiling reqwest or tokio.
 netpolicy = []
+# Terminal UI primitives, a port of go/console/tui and go/console/progress:
+# progress events, bar, spinner, status lines, confirm, app shell frame.
+# Plain ANSI on std: no dependencies of its own.
+tui = []
 blob = ["dep:thiserror"]
 uri = ["dep:hop-top-cite"]
 # preserve_order backs serde_json::Map with indexmap instead of BTreeMap, so
@@ -73,6 +77,20 @@ domain = ["bus"]
 # port of go/core/breaker. Builds on `domain` for the event publisher;
 # nothing of its own, wasm-safe given a caller clock.
 breaker = ["domain"]
+# Local-first replication, a port of go/runtime/sync: the hybrid logical
+# clock, diffs, last-write-wins and custom merges, named remotes with sync
+# modes and filters, the memory transport and the replicator (diff queue,
+# per-remote cursors, status). Builds on `domain` for the repository port
+# and on `bus` for change capture. base64 carries the diff snapshots as Go's
+# encoding/json does ([]byte). The core is wasm-safe given a caller wall
+# clock: the replicator's timer threads are compiled off wasm32 only, and
+# there a round is driven with `Replicator::sync_once`.
+sync = ["domain", "dep:serde", "dep:serde_json", "dep:base64"]
+# The HTTP transport (`/sync/push`, `/sync/pull`, `/sync/ping`) over the
+# netpolicy guarded client beneath `api`, so `--offline` refuses a remote
+# host. Native only: the blocking `Transport` impl drives reqwest on a
+# small current-thread tokio runtime of its own (rt and time only).
+sync-http = ["sync", "api", "dep:tokio", "tokio/rt", "tokio/time"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
 httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
 # Dual-spec MCP surface. `rmcp` supplies the protocol vocabulary (version
@@ -90,7 +108,7 @@ sqlstore = ["sqldb", "dep:serde", "dep:serde_json"]
 sqlstore-blob = ["sqlstore", "blob"]
 # At-rest value encryption. Opt-in so the base store stays free of the
 # crypto dependency tree.
-sqlstore-encrypt = ["sqlstore", "dep:crypto_secretbox", "dep:hkdf", "dep:sha2"]
+sqlstore-encrypt = ["sqlstore", "dep:crypto_secretbox", "crypto_secretbox/getrandom", "dep:hkdf", "dep:sha2"]
 timeutil = ["dep:chrono", "dep:interim", "dep:thiserror"]
 # Serve hierarchy + service lifecycle. Builds on `output` for the
 # exit-code taxonomy (CliError) and on tokio for the async supervisor:
@@ -144,11 +162,50 @@ consent = ["bus"]
 # audit log and its relay onto the bus. Native only: builds on the
 # config YAML model and on `id` for the audit log id.
 consent-file = ["consent", "config", "id"]
+# The four mutating-effect seams (file system, HTTP, bus, subprocess), a
+# port of go/runtime/sideeffect: the traits, the dry-run flag on a
+# context, the dryrun and testfake implementations and the dry-run bus
+# publisher. Nothing of its own beyond the bus (payloads are
+# serde_json values, qualifiers come from `bus`); wasm-safe. The
+# --dry-run flag itself waits on the CLI root port.
+sideeffect = ["bus"]
+# The production FS, Exec and Bus implementations. Native only: they
+# touch the file system and spawn processes.
+sideeffect-real = ["sideeffect"]
+# The production HTTP implementation, through the netpolicy-guarded
+# client, so `--offline` refuses it like every other user request.
+sideeffect-http = ["sideeffect-real", "api"]
+# Local-first cryptographic identity, a port of go/core/identity: Ed25519
+# keypair with PKCS#8/SPKI PEM, EdDSA JWT sign/verify, HKDF-SHA256 key
+# derivation and NaCl secretbox. The core is wasm-safe: seeds, nonces and
+# the verification clock come from the caller. OS-RNG generation and the
+# on-disk store are compiled off wasm32-unknown-unknown only (the
+# getrandom dependency is declared per target below).
+identity = [
+    "dep:ed25519-dalek",
+    "dep:sha2",
+    "dep:hkdf",
+    "dep:crypto_secretbox",
+    "dep:base64",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:getrandom",
+]
+
 # Secret and PII redaction, a port of go/core/redact: gitleaks rule
 # semantics over Go RE2 patterns, with the default policy embedded.
 # regex-syntax rewrites Go-only pattern meanings before compiling;
 # sha2 backs the Hash strategy. No I/O, wasm-safe.
 redact = ["dep:regex", "dep:regex-syntax", "dep:serde", "dep:serde_json", "dep:sha2"]
+
+# Declarative guard engine, a port of go/runtime/policy: CEL rules on the
+# veto-able pre-transition and pre-entity events, deny-overrides
+# composition and the typed denial. `cel` is the expression backend
+# (pure Rust, regex for `matches`); serde_norway parses the rule YAML.
+# Builds on `domain` for the state machine topics. The only I/O is the
+# optional rule-file load and the env principal, both compiled off wasm32.
+policy = ["domain", "dep:cel", "dep:serde", "dep:serde_json", "dep:serde_norway"]
 
 # Layered YAML configuration, a port of go/core/config. Parsing, merge,
 # scalar resolution, overrides and precedence are pure and wasm-safe;
@@ -188,7 +245,75 @@ llm = ["config", "netpolicy", "dep:url", "dep:sha2"]
 # request shaping, SSE streaming, error mapping and retries with full
 # jitter through `util::retry`, all through the guarded `api` client.
 # tokio supplies only the default retry timer. Native only.
-llm-anthropic = ["llm", "api", "dep:base64", "dep:tokio", "tokio/time"]
+llm-anthropic = ["llm-http"]
+# What the HTTP adapters share (feature-less on its own): the guarded
+# client, SSE decoding, size limits and the retry loop. tokio supplies
+# only the default retry timer. Native only.
+llm-http = ["llm", "api", "dep:base64", "dep:tokio", "tokio/time"]
+# The OpenAI Chat Completions adapter, over the HTTP API (no SDK crate),
+# for openai and its compatible hosts (openrouter, xai, lmstudio, groq,
+# together, fireworks, deepseek, mistral). Native only.
+llm-openai = ["llm-http"]
+# The Ollama chat adapter (`/api/chat`, NDJSON streaming) over HTTP. Native
+# only.
+llm-ollama = ["llm-http"]
+# The Triton Inference Server scorer over its KServe v2 REST API (the same
+# HTTP transport as Go; no gRPC or protobuf). Native only.
+llm-triton = ["llm-http"]
+# The Google Gemini adapter (`generateContent`, SSE streaming, tool calls
+# with thought signatures) over HTTP, for the gemini and google schemes.
+# Native only.
+llm-google = ["llm-http"]
+# The RouteLLM adapter: a RouteLLM server spoken to through the openai
+# adapter, with the router pair / tier model field. Native only.
+llm-routellm = ["llm-openai"]
+# The model picker: filters a model catalog by a request profile, narrows
+# it to the llm.yaml pool and ranks by budget tier, with the classifier
+# stage. Nothing of its own beyond `llm`; wasm-safe.
+llm-picker = ["llm"]
+# The native routing engine: routers (random, MF, BERT, similarity-weighted
+# Elo), the controller over `router-<name>-<threshold>` models, intent
+# detection, and the picker classifier adapters. The MF and BERT routers
+# score through the Triton client. Native only.
+llm-router = ["llm-triton", "llm-picker"]
+
+# Notification primitives over the bus `Sink`, a port of go/runtime/notify:
+# the severity convention, the filter and retry + dead-letter decorators,
+# exponential backoff and the event templates. Nothing of its own beyond
+# the bus; wasm-safe (retry's default wait is compiled off wasm32: give
+# `RetrySink::sleeper` one there).
+notify = ["bus"]
+# The webhook sink: renders, redacts, gates on a breaker and POSTs through
+# the guarded `api` client, so `--offline` applies. tokio supplies the
+# current-thread runtime the sync `Sink::drain` blocks on. Native only.
+notify-webhook = [
+    "notify",
+    "api",
+    "breaker",
+    "redact",
+    "dep:tokio",
+    "tokio/rt",
+    "tokio/net",
+    "tokio/time",
+    "tokio/sync",
+    "tokio/macros",
+]
+# The email sink and its SMTP mailer: a small blocking SMTP client over a
+# policy-checked TCP dial, STARTTLS through rustls (ring, platform roots;
+# the pins `bus-network` already carries) and PLAIN auth. No mail crate.
+# Native only.
+notify-email = [
+    "notify",
+    "breaker",
+    "redact",
+    "netpolicy",
+    "dep:base64",
+    "dep:rustls",
+    "dep:rustls-native-certs",
+]
+# The desktop notification sink: shells out to osascript (macOS) or
+# notify-send (Linux). No dependencies of its own. Native only.
+notify-os = ["notify", "breaker", "redact"]
 
 [dependencies]
 hop-top-cite = { version = "0.1.0", optional = true }
@@ -227,13 +352,25 @@ hkdf = { version = "0.13", default-features = false, optional = true }
 # RustCrypto's pure-Rust implementation: no libsodium C build, unlike
 # `dryoc`/`sodiumoxide`, and two orders of magnitude more downloads than
 # either. `default-features = false` drops `alloc`'s transitive std pull;
-# `getrandom` supplies the OS RNG for nonces and `salsa20` the cipher core.
+# `salsa20` is the cipher core. The OS RNG (`getrandom`) is enabled by
+# `sqlstore-encrypt` alone, so `identity` stays wasm-safe: its core takes
+# the nonce from the caller.
 crypto_secretbox = { version = "0.1", default-features = false, features = [
     "alloc",
-    "getrandom",
     "salsa20",
 ], optional = true }
-getrandom = { version = "0.4", optional = true }
+# Ed25519 for `identity`: dalek-cryptography/curve25519-dalek, BSD-3-Clause,
+# 3.0.0 published 2026-07-06 (over 14 days), no advisories. Exact pin: the
+# signature and PKCS#8/SPKI encodings are a cross-language wire contract.
+# Its curve25519-dalek 5 and sha2 0.11 sit on the same `digest` generation
+# as sha2 and hkdf here. `default-features = false` drops the precomputed
+# tables; `pem` brings PKCS#8/SPKI + PEM, `zeroize` wipes the signing key
+# on drop. No `rand_core`: keys come from a caller seed or the OS RNG.
+ed25519-dalek = { version = "=3.0.0", default-features = false, features = [
+    "alloc",
+    "pem",
+    "zeroize",
+], optional = true }
 # YAML event parser with source spans. Spans drive the comment-keeping
 # editor behind `set`/`unset`; scalars resolve through this crate's own
 # yaml.v3-compatible rules, not the parser's. Exact pin: 0.x and the
@@ -252,6 +389,12 @@ regex = { version = "1", optional = true }
 # (0.8.11, published 2026-06-09).
 regex-syntax = { version = "=0.8.11", optional = true }
 thiserror = { version = "2", optional = true }
+# policy: CEL interpreter. Exact pin: expression semantics are the
+# policy contract. cel-rust/cel-rust, MIT, no advisories; 0.15.0 was
+# published 2026-10-06. Default features off: `regex` backs the
+# `matches` function; chrono/chrono-tz (timestamp functions) and the
+# base64 encoders are not needed by guard rules.
+cel = { version = "=0.15.0", default-features = false, features = ["regex"], optional = true }
 rmcp = { version = "3.7.0", default-features = false, optional = true }
 clap = { version = "4", features = ["derive", "string"], optional = true }
 comfy-table = { version = "8", default-features = false, optional = true }
@@ -305,6 +448,13 @@ hyper-util = { version = "=0.1.21", default-features = false, features = [
     "tokio",
 ], optional = true }
 
+# The OS RNG. Declared for native targets only: getrandom 0.4 has no
+# backend on wasm32-unknown-unknown, so the features naming it
+# (`identity`, `telemetry`, `bus-network`) compile against it natively and
+# gate its callers the same way.
+[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dependencies]
+getrandom = { version = "0.4", optional = true }
+
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
 # No extra features: dev-dependency features unify into the test build, so
@@ -321,6 +471,12 @@ tempfile = "3"
 uuid = { version = "1", features = ["v7", "serde"] }
 # Reads the YAML files the consent conformance runner asserts on.
 serde_norway = "0.9"
+# The notify-email STARTTLS test makes a self-signed certificate at run
+# time, so no key material is committed. Exact pin: 0.14.10 (published
+# 2026-08-28), rustls/rcgen, MIT OR Apache-2.0, no advisories. Default
+# features off; the `ring` backend is the provider rustls already runs on
+# here, so aws-lc-rs stays out of the tree.
+rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "ring"] }
 
 # The wasm32 smoke test (tests/bus_wasm.rs, `make test-rs-wasm`), run
 # under Node by wasm-bindgen-test-runner. Exact pins: each must match the

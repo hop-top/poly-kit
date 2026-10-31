@@ -665,6 +665,14 @@ jobs:
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features upgrade --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
+      # The seams, dryrun and testfake need the bus alone and no clock.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features sideeffect
+        if: steps.scope.outputs.run == 'true'
+      - name: clippy (wasm32, sideeffect)
+        if: steps.scope.outputs.run == 'true'
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features sideeffect --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
       # The breaker builds on domain alone; it reads only the clock its
       # caller gives it, so the clock-read lint holds it to that here.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features breaker
@@ -672,6 +680,16 @@ jobs:
       - name: clippy (wasm32, breaker)
         if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features breaker --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
+      # The sync core: clock, diffs, remotes, the memory transport and the
+      # replicator. It reads only the wall clock its caller gives it, and
+      # starts no thread (`sync-http` is native only).
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features sync
+        if: steps.scope.outputs.run == 'true'
+      - name: clippy (wasm32, sync)
+        if: steps.scope.outputs.run == 'true'
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features sync --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       # The consent core: grant model, decisions and the memory store.
@@ -692,6 +710,15 @@ jobs:
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features llm --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
+      # The picker (catalog filter, pool, ranking, classifier stage) is
+      # pure.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features llm-picker
+        if: steps.scope.outputs.run == 'true'
+      - name: clippy (wasm32, llm picker)
+        if: steps.scope.outputs.run == 'true'
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features llm-picker --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
       # redact has no I/O: the default policy is embedded, so the
       # redactor runs in a browser or worker as it does natively.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features redact
@@ -699,6 +726,32 @@ jobs:
       - name: clippy (wasm32, redact)
         if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features redact --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
+      # The policy engine: rule parsing and the CEL evaluator are pure;
+      # the rule-file load and the env principal are compiled off wasm32.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features policy
+        if: steps.scope.outputs.run == 'true'
+      - name: clippy (wasm32, policy)
+        if: steps.scope.outputs.run == 'true'
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features policy --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
+      # The notify core (severity, filter, retry, templates) is
+      # runtime-free; the webhook, email and desktop sinks are native.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features notify
+        if: steps.scope.outputs.run == 'true'
+      - name: clippy (wasm32, notify core)
+        if: steps.scope.outputs.run == 'true'
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features notify --lib -- -D warnings
+      # identity: seeds, nonces and the verification clock come from the
+      # caller; OS-RNG generation, the system clock and the store are
+      # compiled off this target (getrandom has no backend here).
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features identity
+        if: steps.scope.outputs.run == 'true'
+      - name: clippy (wasm32, identity)
+        if: steps.scope.outputs.run == 'true'
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features identity --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       - name: netpolicy pulls no reqwest or tokio
@@ -847,6 +900,17 @@ jobs:
         if: steps.scope.outputs.run == 'true'
       # llm-anthropic declares only tokio's timer; the retry wait needs it.
       - run: cargo check --locked --lib --no-default-features --features llm-anthropic
+        if: steps.scope.outputs.run == 'true'
+      # The notify sinks declare the tokio pieces they use; --lib leaves
+      # the dev-dependency `full` out so a missing one shows.
+      - run: cargo check --locked --lib --no-default-features --features notify-webhook
+        if: steps.scope.outputs.run == 'true'
+      - run: cargo check --locked --lib --no-default-features --features notify-email
+        if: steps.scope.outputs.run == 'true'
+      - run: cargo check --locked --lib --no-default-features --features notify-os
+        if: steps.scope.outputs.run == 'true'
+      # Every other adapter declares the same: llm-http carries tokio's timer.
+      - run: cargo check --locked --lib --no-default-features --features llm-openai,llm-google,llm-ollama,llm-triton,llm-routellm
         if: steps.scope.outputs.run == 'true'
       # mcp without output: serde_json keeps sorted maps.
       - run: cargo test --locked --no-default-features --features mcp

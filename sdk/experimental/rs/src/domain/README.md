@@ -14,6 +14,7 @@ is `hop_top_kit::bus`, or whatever your `EventPublisher` wraps.
   (wasm32: give it a spawner)
 - an adopter rebrands the topics → `with_topic_prefix("myapp.task.state")`, or `with_topics` per phase
 - the post event must run on your executor, or on wasm32 off the caller → `with_spawner(spawn)`
+- a store of entities must be swappable (memory, SQLite, an API) → implement `Repository<T: Entity>`; failures are `RepoError` (`NotFound`, `Conflict`, `Validation`, `Other`)
 
 ## Quick start
 
@@ -52,6 +53,8 @@ assert!(err.is_invalid_transition());
 - Default topics `kit.runtime.state.{pre,post}_transitioned`. `with_topic_prefix` panics on a prefix
   `prefix_topics` rejects, with Go's text; `with_topics` keeps the default for an empty field.
 - Post event: the given `Spawn`; without one, a thread of its own, or inline on wasm32-unknown-unknown.
+- `Repository<T>` is Go's `domain.Repository[T]` port with `&self` methods (bring your own interior mutability), owned `T` returns and a `Context` first; `Query` is `limit`/`offset`/`sort`/`search`, zero meaning unset. Go's `ErrNotFound`, `ErrConflict`, `ErrValidation` are `RepoError` variants with Go's texts (`domain: not found`, ...) and `is_not_found()` etc. for `errors.Is`. No implementation ships: the port is dependency-free.
+- Not ported: `Service`, the validator and the audit repository.
 
 ## Neighbours
 

@@ -413,6 +413,21 @@ support it.
 - [Expose your CLI over MCP](../guides/expose-cli-over-mcp.md)
   — the Go reference surface, in depth
 
+## Identity
+
+Feature `identity` ports `go/core/identity`: an Ed25519 `Keypair` (PKCS#8/SPKI PEM byte-identical to
+Go's), EdDSA JWT sign and verify with Go's claims checks, `derive_key` (HKDF-SHA256) and NaCl
+secretbox `encrypt`/`decrypt`, and a filesystem `Store`. The key-derivation bytes are pinned by
+`contracts/identity-v1` (`make test-parity-identity`).
+
+The core builds for `wasm32-unknown-unknown`, which has no OS random source and no clock: there,
+build keys with `Keypair::from_seed`, seal with `encrypt_with_nonce` and verify with
+`verify_jwt_at` / `verify_jwt_with_options_at` (unix seconds). `Keypair::generate`, `encrypt`,
+`verify_jwt` and `verify_jwt_with_options` are compiled off that target; `Store` and
+`default_store` (`<data home>/kit/identity`) off wasm32 altogether. See
+[`src/identity/README.md`](../../../sdk/experimental/rs/src/identity/README.md) for the contract and
+the differences from Go.
+
 ## Storage
 
 Four storage modules port the cores of the Go `go/storage/*` packages.
@@ -1001,5 +1016,130 @@ paths, writes and reload do not.
   `go/core/xdg` beyond home and config home.
 
 The full list is in the `hop_top_kit::config` module docs.
+
+## Notify
+
+Feature `notify` ports `go/runtime/notify`; the module README
+([`src/notify/README.md`](../../../sdk/experimental/rs/src/notify/README.md))
+carries the contract, the SMTP details are in
+[`src/notify/email/README.md`](../../../sdk/experimental/rs/src/notify/email/README.md)
+and the Go-side option tables are in [notify sinks](notify-sinks.md). The
+Rust-specific behaviour:
+
+- Features: `notify` is the wasm-safe core (`bus` and nothing else):
+  `Severity`, `severity_of`, `FilterSink`, `RetrySink`,
+  `exponential_backoff`, `Template`, `TextTemplate`, `LiteralTemplate`.
+  The sinks are native only, one feature each: `notify-webhook` (`api`,
+  `breaker`, `redact`, tokio), `notify-email` (`breaker`, `redact`,
+  `netpolicy`, `base64`, `rustls`, `rustls-native-certs`), `notify-os`
+  (`breaker`, `redact`).
+- Severity is read from a JSON object payload's `severity` member: a
+  lowercase keyword or a number `0..=4` (a float must have no fraction);
+  anything else is `Info`. There is no typed `WithSeverity`: a typed
+  payload advertises severity by serializing the key. Go's
+  `Severity(99).String()` = `unknown` has no counterpart; the enum has
+  five values.
+- Retry counts as Go does: attempt 0 is the first try, the wait before
+  attempt `n` is `backoff(n - 1)`, `max_attempts` below 1 is 1, a context
+  that ends during a wait returns `BusError::Context`. On exhaustion: the
+  dead-letter sink's result, else the last inner error as it came.
+- A breaker refusal is terminal for `RetrySink`. A `Sink` reports errors
+  as `BusError::Handler(message)`, so the refusal is recognized by its
+  text, `BROKEN_CIRCUIT`, anywhere in the message (`is_broken_circuit`);
+  the sinks' own wrapping ("webhook: post: ...") still matches. A sink of
+  yours that gates on a breaker reports
+  `BusError::handler(BrokenCircuit.to_string())`.
+- The default retry wait parks the thread and wakes early on cancellation
+  or the deadline; it is not compiled for wasm32, where it does not wait:
+  give `RetrySink::sleeper` one.
+- Templates are Go's `text/template` reduced to literal text and
+  `{{.Field}}` actions (`.Topic`, `.Source`, `.Timestamp`, `.ID`,
+  `.WorkspaceID`, `.Subject`, `.DataContentType`, `.DataSchema`,
+  `.Payload` and `.Payload.a.b` into a JSON object). Bad syntax fails at
+  construction, an unknown field at render. A string renders raw, `null`
+  as `<nil>`, a missing member as `<no value>`, any other value as
+  compact JSON.
+- Webhook: POST through the guarded `api` client, so an offline
+  `NetPolicy` (`.policy(..)`) refuses a remote endpoint and allows
+  loopback. A non-2xx is an error carrying the status and at most 512
+  bytes of the body. Default timeout 5s; `.header` accumulates and
+  repeats; `.auth_bearer`. Redirects are not followed (Go follows up to
+  ten): a 3xx is a non-2xx. `drain` is synchronous: it runs the request
+  on a current-thread runtime on a helper thread, so it is safe inside an
+  async task, and it honors the `Context`'s cancellation and deadline.
+- OS: macOS `osascript -e 'on run argv' ... -- <text> <title>` (title and
+  text are the script's argv, never interpolated into its source), Linux
+  `notify-send -- <title> <text>` (probed on `PATH` in
+  `OsNotifySink::new`), Windows an error. `--` keeps a leading `-` from
+  being read as an option. Spawned directly, never through a shell;
+  `Runner` is the test seam (`.runner(..)`, `for_platform(..)`).
+  `ExecRunner` kills the child when the context ends.
+- Not ported: the typed-payload `WithSeverity` path. No `contracts/`
+  corpus covers notify; the Go tests are ported (see `tests/notify_*.rs`).
+
+## Policy
+
+Feature `policy` ports `go/runtime/policy`; the module README
+([`src/policy/README.md`](../../../sdk/experimental/rs/src/policy/README.md))
+carries the rule and activation contract.
+
+### Differences from Go
+
+- CEL is `cel-rust`, not `cel-go`: no static type check. A typo'd
+  identifier fails at evaluation and denies; `==` across types is false,
+  so a mistyped rule takes its `otherwise`. `timestamp()` and
+  `duration()` are not compiled in (the `chrono` feature needs
+  `chrono-tz`); a `stage.since` is a string. Everything the shipped rules
+  and Go's tests use (`has`, `in`, `&&`, `||`, `!=`, `matches`, `size`)
+  works.
+- No `ErrConflict` sentinel: `PolicyDeniedError::is_conflict()`.
+- Go's `withcel.New(cfg, opts...)` is `EngineBuilder::cel()` then
+  `build(&cfg)`.
+- `Engine::decide` takes the activation by value; Go mutates the
+  caller's map.
+- No contract directory: Go has no shared policy vectors. The Go tests
+  are ported in `tests/policy*.rs`, reading Go's rule files in place;
+  `stage.yaml` is embedded and a test pins it byte-for-byte to Go's.
+
+### Dependency vetting
+
+`cel =0.15.0` (cel-rust/cel-rust), default features off, `regex` on.
+
+- Alternatives: `cel-interpreter` 0.10.0 is the same project's older name,
+  last released 2025-07-23 and superseded by `cel`; no other maintained
+  CEL implementation exists.
+- Maintenance: pushed 2026-10-23, 35 contributors, 8 releases since
+  2026-03, not archived. `rsx analyze` scores 6.2/10 and passes the
+  balanced policy (maintenance 10, license 10; adoption and security
+  scores are low for registry reach, not for findings).
+- Licence: MIT; the tree adds `antlr4rust` (BSD-3-Clause), `nom`,
+  `winnow`, `typed-arena` (MIT), and MIT/Apache crates (`bit-set`,
+  `bit-vec`, `borsh`, `byteorder`, `murmur3`, `pastey`, `minimal-lexical`,
+  `proc-macro-crate`, `toml_edit`). All permissive, compatible with the
+  crate's `MIT AND Apache-2.0`.
+- Advisories: `cargo deny check advisories` clean on the resolved tree.
+- Age: 0.15.0 published 2026-10-06, 25 days before the pin. Exact-pinned
+  because rule semantics are the policy contract.
+- wasm: `cargo build --target wasm32-unknown-unknown --features policy`
+  builds; the smoke test runs under Node. 48 normal crates in the tree.
+
+## Build notes
+
+Counts in the front page's feature table are non-dev crates, root
+excluded, from `cargo tree --no-default-features --features <feature> -e
+normal`. `api` and `telemetry` are heaviest (`reqwest` brings `tokio` and
+TLS); bundled `rusqlite` builds SQLite from source (needs a C compiler).
+
+- The `notify` sinks are native only: `notify-webhook` goes through the
+  guarded `api` client and runs on a current-thread tokio runtime on a
+  helper thread; `notify-email` speaks SMTP itself over a policy-checked
+  dial and needs `ring`'s C compiler for STARTTLS; `notify-os` shells out
+  to `osascript` or `notify-send`.
+- The `llm` HTTP adapters are native only and retry on tokio's timer
+  unless given a `Sleeper`.
+- `bus-network` runs one shared current-thread tokio runtime on its own
+  thread, where its blocking methods panic (use the `_async` variants);
+  `ring` needs a C compiler for the target; `wss://` on Android needs
+  `NetworkOptions::tls_config` or `bus-network-webpki-roots`.
 
 <!-- release: track hop-top-cite 0.1.0 -->

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/blob-v1/blob.json",
+  "version": "v1",
+  "description": "Local blob store (Go `storage/blob/local`): put/get/delete/list/exists scenarios. Each scenario runs `steps` in order against a fresh store rooted at an empty directory. `put` (key, data utf8 or data_hex, content_type; the type is not stored by the local backend), `get` (want_data utf8 or want_hex), `delete`, `exists` (want_bool), `list` (prefix, want_objects: key and size in the order the backend returns them: per directory, entries in ascending name order, subdirectories descended in place, so `a/b` precedes `a.txt`), `raw_write` (path relative to the root, data: plants a file without going through `put`, e.g. a crash-orphaned staging file). A step with `error` must fail: `kind` is `not_found` or `escapes_root`; for `escapes_root`, `text` is the exact message. `not_found` text embeds an OS path and is not pinned. Keys are slash-separated logical strings; `list` never surfaces dot-prefixed `.tmp` staging names.",
+  "source": "storage.blob",
+  "scenarios": [
+    {
+      "name": "roundtrip",
+      "steps": [
+        {"op": "put", "key": "greet.txt", "data": "hello world", "content_type": "text/plain"},
+        {"op": "get", "key": "greet.txt", "want_data": "hello world"},
+        {"op": "exists", "key": "greet.txt", "want_bool": true}
+      ]
+    },
+    {
+      "name": "empty_blob",
+      "steps": [
+        {"op": "put", "key": "empty", "data": ""},
+        {"op": "get", "key": "empty", "want_data": ""},
+        {"op": "list", "prefix": "", "want_objects": [{"key": "empty", "size": 0}]}
+      ]
+    },
+    {
+      "name": "binary_bytes_exact",
+      "steps": [
+        {"op": "put", "key": "bin", "data_hex": "00ff0a0d80fe", "content_type": "application/octet-stream"},
+        {"op": "get", "key": "bin", "want_hex": "00ff0a0d80fe"},
+        {"op": "list", "prefix": "", "want_objects": [{"key": "bin", "size": 6}]}
+      ]
+    },
+    {
+      "name": "overwrite_replaces",
+      "steps": [
+        {"op": "put", "key": "k", "data": "first value"},
+        {"op": "put", "key": "k", "data": "2nd"},
+        {"op": "get", "key": "k", "want_data": "2nd"},
+        {"op": "list", "prefix": "", "want_objects": [{"key": "k", "size": 3}]}
+      ]
+    },
+    {
+      "name": "nested_keys",
+      "steps": [
+        {"op": "put", "key": "a/b/c.txt", "data": "nested"},
+        {"op": "get", "key": "a/b/c.txt", "want_data": "nested"},
+        {"op": "exists", "key": "a/b/c.txt", "want_bool": true},
+        {"op": "exists", "key": "a/b", "want_bool": true},
+        {"op": "list", "prefix": "", "want_objects": [{"key": "a/b/c.txt", "size": 6}]}
+      ]
+    },
+    {
+      "name": "key_normalisation",
+      "steps": [
+        {"op": "put", "key": "a//b/./c", "data": "x"},
+        {"op": "get", "key": "a/b/c", "want_data": "x"},
+        {"op": "put", "key": "/lead", "data": "y"},
+        {"op": "get", "key": "lead", "want_data": "y"},
+        {"op": "put", "key": "d/e/../f", "data": "z"},
+        {"op": "get", "key": "d/f", "want_data": "z"}
+      ]
+    },
+    {
+      "name": "get_missing",
+      "steps": [
+        {"op": "get", "key": "nope", "error": {"kind": "not_found"}}
+      ]
+    },
+    {
+      "name": "delete",
+      "steps": [
+        {"op": "put", "key": "gone", "data": "x"},
+        {"op": "delete", "key": "gone"},
+        {"op": "exists", "key": "gone", "want_bool": false},
+        {"op": "get", "key": "gone", "error": {"kind": "not_found"}},
+        {"op": "delete", "key": "gone", "error": {"kind": "not_found"}}
+      ]
+    },
+    {
+      "name": "exists_missing",
+      "steps": [
+        {"op": "exists", "key": "never", "want_bool": false},
+        {"op": "exists", "key": "x/never", "want_bool": false}
+      ]
+    },
+    {
+      "name": "list_prefix",
+      "steps": [
+        {"op": "put", "key": "reports/q1.txt", "data": "1"},
+        {"op": "put", "key": "reports/q2.txt", "data": "22"},
+        {"op": "put", "key": "notes/n.txt", "data": "333"},
+        {"op": "list", "prefix": "reports/", "want_objects": [{"key": "reports/q1.txt", "size": 1}, {"key": "reports/q2.txt", "size": 2}]},
+        {"op": "list", "prefix": "rep", "want_objects": [{"key": "reports/q1.txt", "size": 1}, {"key": "reports/q2.txt", "size": 2}]},
+        {"op": "list", "prefix": "notes/n", "want_objects": [{"key": "notes/n.txt", "size": 3}]},
+        {"op": "list", "prefix": "zzz", "want_objects": []},
+        {"op": "list", "prefix": "", "want_objects": [{"key": "notes/n.txt", "size": 3}, {"key": "reports/q1.txt", "size": 1}, {"key": "reports/q2.txt", "size": 2}]}
+      ]
+    },
+    {
+      "name": "list_order",
+      "steps": [
+        {"op": "put", "key": "a.txt", "data": "1"},
+        {"op": "put", "key": "a/b", "data": "22"},
+        {"op": "put", "key": "b", "data": "333"},
+        {"op": "list", "prefix": "", "want_objects": [{"key": "a/b", "size": 2}, {"key": "a.txt", "size": 1}, {"key": "b", "size": 3}]}
+      ]
+    },
+    {
+      "name": "list_hides_staging_files",
+      "steps": [
+        {"op": "put", "key": "real", "data": "ok"},
+        {"op": "raw_write", "path": ".real.123.tmp", "data": "partial"},
+        {"op": "raw_write", "path": "sub/.other.9.tmp", "data": "partial"},
+        {"op": "list", "prefix": "", "want_objects": [{"key": "real", "size": 2}]}
+      ]
+    },
+    {
+      "name": "escape_parent",
+      "steps": [
+        {"op": "put", "key": "../escape", "data": "x", "error": {"kind": "escapes_root", "text": "blob/local: key \"../escape\" escapes store root"}},
+        {"op": "get", "key": "../escape", "error": {"kind": "escapes_root", "text": "blob/local: key \"../escape\" escapes store root"}},
+        {"op": "delete", "key": "../escape", "error": {"kind": "escapes_root", "text": "blob/local: key \"../escape\" escapes store root"}},
+        {"op": "exists", "key": "../escape", "error": {"kind": "escapes_root", "text": "blob/local: key \"../escape\" escapes store root"}},
+        {"op": "put", "key": "a/../../escape", "data": "x", "error": {"kind": "escapes_root", "text": "blob/local: key \"a/../../escape\" escapes store root"}},
+        {"op": "list", "prefix": "", "want_objects": []}
+      ]
+    }
+  ]
+}

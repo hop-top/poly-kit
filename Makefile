@@ -4,7 +4,8 @@
 	check-toolchain-parity lint-actions-pinned lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-sdk-paths-all lint-templates lint-ts openapi \
 	preflight promote promote-beta promote-rc promote-open-line proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
+	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
+	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-identity test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	test-php test-py test-py-sdk test-py-engine \
 	test-release test-rs test-rs-wasm test-templates test-ts test-ts-sdk test-ts-engine \
 	test-affected test-bats test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
@@ -279,7 +280,7 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 # async pool is uncapped and close reports NotDrained instead of
 # blocking. wasm-bindgen-test-runner comes from wasm-bindgen-cli, whose
 # version must equal the wasm-bindgen in Cargo.lock.
-test-rs-wasm: ## Rust: bus, domain and breaker wasm32 smoke tests under Node (needs the matching wasm-bindgen-cli)
+test-rs-wasm: ## Rust: bus, domain, breaker, policy, notify, sideeffect and sync wasm32 smoke tests under Node (needs the matching wasm-bindgen-cli)
 	@want=$$(awk '/^name = "wasm-bindgen"$$/ { getline; gsub(/version = |"/, ""); print }' sdk/experimental/rs/Cargo.lock); \
 	have=$$(wasm-bindgen --version 2>/dev/null | awk '{ print $$2 }'); \
 	if [ "$$want" != "$$have" ]; then \
@@ -293,11 +294,20 @@ test-rs-wasm: ## Rust: bus, domain and breaker wasm32 smoke tests under Node (ne
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features domain --test domain_statemachine_wasm
 	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features breaker --test breaker_wasm
+	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features policy --test policy_wasm
+	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features notify --test notify_wasm
+	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features sideeffect --test sideeffect_wasm
+	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features sync --test sync_wasm
 
 # scripts/test-scope.sh maps each prerequisite to its Go packages and
 # SDKs (PARITY_TABLE) so a pull request runs only the targets it
 # reaches; a prerequisite missing from that table always runs.
-test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-blob test-parity-bus test-parity-blob test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-identity test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
 
 test-parity-cli: ## spaced CLI parity: Go, TypeScript and Python builds of the example agree
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
@@ -440,6 +450,12 @@ test-parity-redact: ## redact-v1 conformance corpus: rules dump, spans and outpu
 	@echo "==> redact-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --features redact --test redact_conformance --locked
 
+test-parity-identity: ## identity-v1 conformance corpus: DeriveKey vectors (Go and Rust runners)
+	@echo "==> identity-v1 conformance: Go"
+	go test ./go/core/identity/ -run '^TestDeriveKeyContract$$' -count=1
+	@echo "==> identity-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features identity --test identity_conformance --locked
+
 test-parity-retry: ## retry-v1 conformance corpus (Go and Rust runners)
 	@echo "==> retry-v1 conformance: Go"
 	go test ./go/core/util/ -run '^TestConformanceRetry' -count=1
@@ -454,6 +470,14 @@ test-parity-breaker: ## breaker-v1 conformance corpus (Go and Rust runners)
 	go test -race ./go/core/breaker/ -run '^TestConformanceBreaker' -count=1
 	@echo "==> breaker-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --features breaker --test breaker_conformance --locked
+
+# Blob corpus: local store put/get/delete/list/exists scenarios, key
+# escape errors, list order.
+test-parity-blob: ## blob-v1 conformance corpus (Go and Rust runners)
+	@echo "==> blob-v1 conformance: Go"
+	go test ./go/storage/blob/local/ -run '^TestConformanceBlob' -count=1
+	@echo "==> blob-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features blob --test blob_conformance --locked
 
 # Per-capability consent corpus: on-disk grant records, decision and
 # refusal semantics, audit records, delivery and the telemetry-consent
@@ -509,7 +533,7 @@ test-parity-llm: ## llm-v1 conformance corpus (Go, Rust, Python and TypeScript r
 	@echo "==> llm-v1 conformance: Go"
 	go test ./go/ai/llm/ ./go/ai/llm/anthropic/ ./go/ai/llm/google/ ./go/ai/llm/openai/ ./go/ai/llm/routellm/ -run '^TestConformance' -count=1
 	@echo "==> llm-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --features llm-anthropic --test llm_conformance --locked
+	cd sdk/experimental/rs && cargo test --features llm-anthropic,llm-openai,llm-google,llm-routellm --test llm_conformance --test llm_openai_conformance --test llm_google_conformance --locked
 	@echo "==> llm-v1 conformance: Python"
 	cd sdk/py && uv run pytest -q -rs tests/test_llm_conformance.py tests/test_llm_openai_conformance.py
 	@echo "==> llm-v1 conformance: TypeScript (every section)"

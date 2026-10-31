@@ -6,6 +6,11 @@ templates and the egress pipeline of each. For the mental model,
 severity convention and composition pattern see
 [notifications-overview.md](../concepts/notifications-overview.md).
 
+The Rust SDK carries the same three sinks (`WebhookSink`, `EmailSink` +
+`SmtpMailer`, `OsNotifySink`); see
+[its README](../../../sdk/experimental/rs/src/notify/README.md) for the
+builder form and the differences.
+
 Every sink follows the package-wide guardrail convention in
 `go/runtime/notify/guardrails.go`: `template render → redactor →
 breaker → egress`. The redactor sees exactly the wire bytes that

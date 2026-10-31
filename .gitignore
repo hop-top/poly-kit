@@ -44,3 +44,8 @@ examples/spaced/media/*.png
 .tlc/
 #-hop-#
 .hop/
+
+# Local env values (varlock); .env.schema stays tracked.
+.env
+.env.local
+.env.*.local

@@ -2,6 +2,10 @@
 pub mod cli;
 #[cfg(feature = "output")]
 pub mod output;
+
+// Terminal UI primitives (a port of go/console/tui and go/console/progress):
+// std only, plain ANSI, no raw mode.
+#[cfg(feature = "tui")]
 pub mod tui;
 
 #[cfg(feature = "uri")]
@@ -35,21 +39,46 @@ pub mod domain;
 #[cfg(feature = "breaker")]
 pub mod breaker;
 
+#[cfg(feature = "sync")]
+pub mod sync;
+
 #[cfg(feature = "config")]
 pub mod config;
 
 #[cfg(feature = "consent")]
 pub mod consent;
 
+// The FS, HTTP, bus and subprocess seams with dryrun and testfake
+// implementations (a port of go/runtime/sideeffect). The real ones are
+// native only.
+#[cfg(feature = "sideeffect")]
+pub mod sideeffect;
+
 // Secret and PII redaction (a port of go/core/redact). No I/O.
 #[cfg(feature = "redact")]
 pub mod redact;
+
+// Declarative CEL guard engine on the veto-able pre-events (a port of
+// go/runtime/policy).
+#[cfg(feature = "policy")]
+pub mod policy;
+// Local-first cryptographic identity (a port of go/core/identity):
+// Ed25519 keypair, EdDSA JWT, key derivation and secretbox. The core is
+// wasm-safe; OS-RNG generation, the system clock and the store are
+// native only.
+#[cfg(feature = "identity")]
+pub mod identity;
 
 // Base directories for config, consent, telemetry and upgrade files (a
 // port of go/core/xdg's home, config-home, data-home and state-home
 // resolution). Filesystem-only: off wasm32.
 #[cfg(all(
-    any(feature = "config", feature = "telemetry", feature = "upgrade"),
+    any(
+        feature = "config",
+        feature = "telemetry",
+        feature = "upgrade",
+        feature = "identity"
+    ),
     not(target_arch = "wasm32")
 ))]
 pub mod xdg;
@@ -80,6 +109,9 @@ pub mod llm;
 
 #[cfg(feature = "mcp")]
 pub mod mcp;
+
+#[cfg(feature = "notify")]
+pub mod notify;
 
 #[cfg(feature = "serve")]
 pub mod serve;
