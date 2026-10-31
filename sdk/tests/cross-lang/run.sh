@@ -193,11 +193,15 @@ run_lang() {
     rs)
       # cargo needs a registry cache; point CARGO_HOME at the real one
       # so the rebound HOME inside the runner doesn't trigger a re-fetch.
+      # rustup resolves toolchains and the default under RUSTUP_HOME
+      # (~/.rustup unless set), so without it the rebound HOME has none.
       local real_cargo_home="${CARGO_HOME:-${REAL_HOME:-$HOME}/.cargo}"
+      local real_rustup_home="${RUSTUP_HOME:-${REAL_HOME:-$HOME}/.rustup}"
       # --bin is explicit: the crate carries a second binary (order) for the
       # column-ordering harness, so cargo cannot infer a default.
       ( cd "${RUNNERS}/rs" && \
-        HOME="${HARNESS_HOME}" CARGO_HOME="${real_cargo_home}" cargo run --quiet --bin record )
+        HOME="${HARNESS_HOME}" CARGO_HOME="${real_cargo_home}" \
+          RUSTUP_HOME="${real_rustup_home}" cargo run --quiet --bin record )
       ;;
     php)
       HOME="${HARNESS_HOME}" php "${RUNNERS}/php/record.php"
