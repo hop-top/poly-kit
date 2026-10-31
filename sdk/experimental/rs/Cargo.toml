@@ -198,6 +198,44 @@ llm = ["config", "netpolicy", "dep:url", "dep:sha2"]
 # tokio supplies only the default retry timer. Native only.
 llm-anthropic = ["llm", "api", "dep:base64", "dep:tokio", "tokio/time"]
 
+# Notification primitives over the bus `Sink`, a port of go/runtime/notify:
+# the severity convention, the filter and retry + dead-letter decorators,
+# exponential backoff and the event templates. Nothing of its own beyond
+# the bus; wasm-safe (retry's default wait is compiled off wasm32: give
+# `RetrySink::sleeper` one there).
+notify = ["bus"]
+# The webhook sink: renders, redacts, gates on a breaker and POSTs through
+# the guarded `api` client, so `--offline` applies. tokio supplies the
+# current-thread runtime the sync `Sink::drain` blocks on. Native only.
+notify-webhook = [
+    "notify",
+    "api",
+    "breaker",
+    "redact",
+    "dep:tokio",
+    "tokio/rt",
+    "tokio/net",
+    "tokio/time",
+    "tokio/sync",
+    "tokio/macros",
+]
+# The email sink and its SMTP mailer: a small blocking SMTP client over a
+# policy-checked TCP dial, STARTTLS through rustls (ring, platform roots;
+# the pins `bus-network` already carries) and PLAIN auth. No mail crate.
+# Native only.
+notify-email = [
+    "notify",
+    "breaker",
+    "redact",
+    "netpolicy",
+    "dep:base64",
+    "dep:rustls",
+    "dep:rustls-native-certs",
+]
+# The desktop notification sink: shells out to osascript (macOS) or
+# notify-send (Linux). No dependencies of its own. Native only.
+notify-os = ["notify", "breaker", "redact"]
+
 [dependencies]
 hop-top-cite = { version = "0.1.0", optional = true }
 chrono = { version = "0.4", default-features = false, features = [
