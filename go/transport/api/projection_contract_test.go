@@ -40,8 +40,10 @@ type projectionContract struct {
 			Name     string `json:"name"`
 			Required bool   `json:"required"`
 		} `json:"args"`
-		Invocable bool   `json:"invocable"`
-		Reason    string `json:"reason"`
+		Invocable            bool   `json:"invocable"`
+		Reason               string `json:"reason"`
+		RequiresConfirmation bool   `json:"requires_confirmation"`
+		RequiresConfirmToken bool   `json:"requires_confirm_token"`
 	} `json:"tree"`
 	Discovery struct {
 		InvocableFirst []string `json:"invocable_first"`
@@ -56,6 +58,7 @@ type projectionContract struct {
 			StreamRoute      string `json:"stream_route"`
 			SideEffect       string `json:"side_effect"`
 			SideEffectSource string `json:"side_effect_source"`
+			RequiresConfirm  bool   `json:"requires_confirmation"`
 		} `json:"entries"`
 	} `json:"discovery"`
 	OpenAPI []struct {
@@ -123,6 +126,9 @@ func (c projectionContract) descriptors() []api.CommandDescriptor {
 			SideEffectSource: api.SideEffectSource(n.Source),
 			Invocable:        n.Invocable,
 			Reason:           n.Reason,
+
+			RequiresConfirmation: n.RequiresConfirmation,
+			RequiresConfirmToken: n.RequiresConfirmToken,
 		}
 		for _, f := range n.Flags {
 			d.Flags = append(d.Flags, api.CommandFlag{Name: f.Name, Type: f.Type})
@@ -236,6 +242,7 @@ func TestAPIContractProjectionDiscovery(t *testing.T) {
 			assert.Equal(t, want.Route, e.Route, name)
 			assert.Equal(t, want.SideEffect, string(e.SideEffect), name)
 			assert.Equal(t, want.SideEffectSource, string(e.SideEffectSource), name)
+			assert.Equal(t, want.RequiresConfirm, e.RequiresConfirmation, name)
 		}
 	}
 	for _, d := range c.descriptors() {

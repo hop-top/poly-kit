@@ -33,6 +33,7 @@ fn build(c: &Value, seen: &Seen) -> Root {
     let mut cfg = Config::new("fix", "1.0.0", "Fixture");
     cfg.disable_validate = true;
     let mut root = Root::with_config(cfg);
+    root.with_prompt_source(hop_top_kit::cli::PromptSource::none());
     let mut top: Vec<(String, Vec<&Value>)> = Vec::new();
     for n in c["tree"].as_array().unwrap() {
         let first = n["path"][0].as_str().unwrap().to_string();
@@ -111,19 +112,26 @@ fn leaf_command(root: &mut Root, name: &str, n: &Value, seen: &Seen) -> CommandS
     if n["source"] == "declared" {
         cmd = cmd.side_effect(n["side_effect"].as_str().unwrap());
     }
+    if n["requires_confirm_token"].as_bool().unwrap_or(false) {
+        cmd = cmd.annotate("kit/destructive-token", "required");
+    }
     let _ = &root;
     if n["invocable"].as_bool().unwrap() {
         let seen = seen.clone();
         let p = path.clone();
         cmd = cmd.handler(move |inv, out, _| {
-            *seen.lock().unwrap() = Some((
-                p.clone(),
-                inv.flags
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.last().cloned().unwrap_or_default()))
-                    .collect(),
-                inv.args.clone(),
-            ));
+            let mut flags: BTreeMap<String, String> = inv
+                .flags
+                .iter()
+                .map(|(k, v)| (k.clone(), v.last().cloned().unwrap_or_default()))
+                .collect();
+            // The root's confirm is a global, not a command flag; the
+            // corpus records it as the command's gate saw it. The
+            // projection's own default (no) is not a caller's word.
+            if matches!(inv.globals.confirm.as_str(), "yes" | "auto") {
+                flags.insert("confirm".into(), inv.globals.confirm.clone());
+            }
+            *seen.lock().unwrap() = Some((p.clone(), flags, inv.args.clone()));
             let _ = &arg_names;
             write!(out, "ran {p}").unwrap();
             match inv.flag("exit").and_then(|v| v.parse::<i32>().ok()) {
@@ -449,10 +457,10 @@ fn gated_root(ran: &Arc<Mutex<Vec<String>>>) -> Root {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_unconfirmed_destructive_call_is_refused_and_cannot_approve_itself() {
+async fn a_gated_call_needs_a_confirm_the_caller_may_give() {
     let ran: Arc<Mutex<Vec<String>>> = Arc::default();
     let proj = CommandProjection::new(Arc::new(gated_root(&ran)), "fix", "1.0.0");
-    // --confirm is fixed at no for a call: the command's own refusal.
+    // No confirm: the projection passes no, and the command refuses.
     let (status, out) = send(proj.router(), "POST", "/v1/commands/purge", None).await;
     assert_eq!((status, &out["exit_code"]), (403, &Value::from(5)), "{out}");
     assert!(
@@ -462,24 +470,76 @@ async fn an_unconfirmed_destructive_call_is_refused_and_cannot_approve_itself() 
             .contains("refused: --confirm=no"),
         "{out}"
     );
-    // A caller naming confirm (yes, auto, or anything) is refused outright.
-    for v in ["yes", "auto"] {
+    // no, prompt (the server's terminal is not the caller's) and a value
+    // that is none of the four are all refusals, never a prompt.
+    for v in ["no", "prompt", "maybe", ""] {
         let body = serde_json::json!({"flags": {"confirm": v}});
-        let (status, _) = send(proj.router(), "POST", "/v1/commands/purge", Some(&body)).await;
-        assert_eq!(status, 400, "{v}");
-        let (status, _) = send(
+        let (status, out) = send(proj.router(), "POST", "/v1/commands/purge", Some(&body)).await;
+        assert_eq!((status, &out["exit_code"]), (403, &Value::from(5)), "{v}");
+    }
+    assert!(ran.lock().unwrap().is_empty(), "nothing may run");
+    // yes and auto approve, from the body or the query.
+    for v in ["yes", "auto", "YES"] {
+        let body = serde_json::json!({"flags": {"confirm": v}});
+        let (status, out) = send(proj.router(), "POST", "/v1/commands/purge", Some(&body)).await;
+        assert_eq!(status, 200, "{v}: {out}");
+        let (status, out) = send(
             proj.router(),
             "POST",
             &format!("/v1/commands/purge?confirm={v}"),
             None,
         )
         .await;
-        assert_eq!(status, 400, "query {v}");
+        assert_eq!(status, 200, "query {v}: {out}");
     }
-    assert!(ran.lock().unwrap().is_empty(), "nothing may run");
-    // A write needs no confirmation.
+    assert_eq!(ran.lock().unwrap().len(), 6);
+    assert_eq!(
+        ran.lock().unwrap().last().unwrap(),
+        "purge dry_run=false confirm=yes"
+    );
+    // A write is not gated: no confirm needed, and none accepted.
     let (status, _) = send(proj.router(), "POST", "/v1/commands/add", None).await;
     assert_eq!(status, 200);
+    for (path, body) in [
+        (
+            "/v1/commands/add",
+            Some(serde_json::json!({"flags": {"confirm": "yes"}})),
+        ),
+        ("/v1/commands/add?confirm=yes", None),
+    ] {
+        let (status, _) = send(proj.router(), "POST", path, body.as_ref()).await;
+        assert_eq!(status, 400, "{path}");
+    }
+}
+
+#[test]
+fn gated_commands_list_confirm_in_discovery_and_openapi() {
+    let ran: Arc<Mutex<Vec<String>>> = Arc::default();
+    let proj = CommandProjection::new(Arc::new(gated_root(&ran)), "fix", "1.0.0");
+    let disc = proj.discovery();
+    let entry = |n: &str| {
+        disc["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == n)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(entry("purge")["requires_confirmation"], true);
+    assert!(entry("add").get("requires_confirmation").is_none());
+    let doc = proj.openapi("Fixture", "1.0.0").to_value();
+    let props = |p: &str| {
+        doc["paths"][p]["post"]["requestBody"]["content"]["application/json"]["schema"]
+            ["properties"]["flags"]["properties"]
+            .clone()
+    };
+    assert_eq!(
+        props("/v1/commands/purge")["confirm"]["enum"],
+        serde_json::json!(["yes", "no", "auto", "prompt"])
+    );
+    assert!(props("/v1/commands/purge").get("confirm-token").is_none());
+    assert!(props("/v1/commands/add").get("confirm").is_none());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -583,10 +643,13 @@ async fn max_ops_may_only_tighten_and_dry_run_is_the_callers() {
     assert_eq!(status, 400);
 }
 
+/// What the `nuke` leaf saw: (root confirm, root max-ops).
+type NukeSeen = Arc<Mutex<Vec<(String, i64)>>>;
+
 /// A root whose destructive leaves carry the two shapes a caller could
-/// use to approve itself: a typed confirm-token, and a leaf-local
+/// use to get around the gate: a typed confirm-token, and a leaf-local
 /// `--confirm` that would otherwise shadow the root's.
-fn self_approval_root(ran: &Arc<Mutex<Vec<String>>>) -> Root {
+fn self_approval_root(ran: &Arc<Mutex<Vec<String>>>, nuke_seen: &NukeSeen) -> Root {
     let mut cfg = Config::new("fix", "1.0.0", "Fixture");
     cfg.disable_validate = true;
     let mut root = Root::with_config(cfg);
@@ -603,7 +666,7 @@ fn self_approval_root(ran: &Arc<Mutex<Vec<String>>>) -> Root {
                 Ok(())
             }),
     );
-    let r2 = ran.clone();
+    let (r2, s2) = (ran.clone(), nuke_seen.clone());
     root.add_command(
         CommandSpec::new("nuke")
             .about("nuke")
@@ -611,8 +674,11 @@ fn self_approval_root(ran: &Arc<Mutex<Vec<String>>>) -> Root {
             .flag(FlagSpec::string("confirm").help("leaf-local confirm"))
             .flag(FlagSpec::string("policy").help("leaf-local policy"))
             .flag(FlagSpec::string("max-ops").help("leaf-local max-ops"))
-            .handler(move |_, out, _| {
+            .handler(move |inv, out, _| {
                 r2.lock().unwrap().push("nuke".into());
+                s2.lock()
+                    .unwrap()
+                    .push((inv.globals.confirm.clone(), inv.globals.max_ops));
                 write!(out, "ran nuke").unwrap();
                 Ok(())
             }),
@@ -621,40 +687,112 @@ fn self_approval_root(ran: &Arc<Mutex<Vec<String>>>) -> Root {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_caller_cannot_approve_itself_via_token_or_a_leaf_local_control() {
+async fn a_typed_token_is_checked_by_the_command_gate() {
     let ran: Arc<Mutex<Vec<String>>> = Arc::default();
-    let proj =
-        CommandProjection::new(Arc::new(self_approval_root(&ran)), "fix", "1.0.0").with_max_ops(1);
-    // The typed token is derivable from the path (and printed in the
-    // refusal), so a caller presenting it must still not run the command.
+    let proj = CommandProjection::new(
+        Arc::new(self_approval_root(&ran, &Arc::default())),
+        "fix",
+        "1.0.0",
+    );
     let token = hop_top_kit::cli::destructive_token("fix wipe");
-    let body = serde_json::json!({"flags": {"confirm-token": token}});
-    let (status, _) = send(proj.router(), "POST", "/v1/commands/wipe", Some(&body)).await;
-    assert_eq!(status, 400, "body confirm-token");
-    let (status, _) = send(
+    let post = |flags: Value| {
+        let app = proj.router();
+        async move {
+            send(
+                app,
+                "POST",
+                "/v1/commands/wipe",
+                Some(&serde_json::json!({ "flags": flags })),
+            )
+            .await
+        }
+    };
+    // Missing: refused, and the envelope names the expected token.
+    let (status, out) = post(serde_json::json!({"confirm": "yes"})).await;
+    assert_eq!((status, &out["exit_code"]), (403, &Value::from(5)), "{out}");
+    assert!(out.to_string().contains(&token), "{out}");
+    // Wrong: refused.
+    let (status, out) = post(serde_json::json!({"confirm": "yes", "confirm-token": "nope"})).await;
+    assert_eq!(status, 403, "{out}");
+    assert!(
+        out["stderr"].as_str().unwrap().contains("mismatch"),
+        "{out}"
+    );
+    assert!(ran.lock().unwrap().is_empty(), "nothing may run yet");
+    // Right (with or without a confirm, as the gate has it): runs.
+    let (status, out) = post(serde_json::json!({"confirm": "yes", "confirm-token": token})).await;
+    assert_eq!(status, 200, "{out}");
+    let (status, out) = post(serde_json::json!({"confirm-token": token})).await;
+    assert_eq!(status, 200, "{out}");
+    let (status, out) = send(
         proj.router(),
         "POST",
         &format!("/v1/commands/wipe?confirm-token={token}"),
         None,
     )
     .await;
-    assert_eq!(status, 400, "query confirm-token");
-    // A leaf declaring its own confirm/policy/max-ops gets no say from a
-    // caller: those names stay operator controls.
-    for (k, v) in [("confirm", "yes"), ("policy", "open"), ("max-ops", "100")] {
-        let body = serde_json::json!({"flags": {k: v}});
-        let (status, out) = send(proj.router(), "POST", "/v1/commands/nuke", Some(&body)).await;
-        if k == "max-ops" {
-            // Clamped to the operator ceiling, never raised; still
-            // unconfirmed, so the command refuses itself.
-            assert_eq!(status, 403, "{k}: {out}");
-        } else {
-            assert_eq!(status, 400, "{k}: {out}");
+    assert_eq!(status, 200, "query: {out}");
+    assert_eq!(ran.lock().unwrap().len(), 3);
+    // Advertised on this command only.
+    let doc = proj.openapi("Fixture", "1.0.0").to_value();
+    let props = &doc["paths"]["/v1/commands/wipe"]["post"]["requestBody"]["content"]
+        ["application/json"]["schema"]["properties"]["flags"]["properties"];
+    assert!(props.get("confirm").is_some() && props.get("confirm-token").is_some());
+    // A gated command with no typed token rejects the token as undeclared.
+    let g = CommandProjection::new(Arc::new(gated_root(&ran)), "fix", "1.0.0");
+    let body = serde_json::json!({"flags": {"confirm": "yes", "confirm-token": token}});
+    let (status, _) = send(g.router(), "POST", "/v1/commands/purge", Some(&body)).await;
+    assert_eq!(status, 400);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_leaf_local_control_never_shadows_the_roots() {
+    let ran: Arc<Mutex<Vec<String>>> = Arc::default();
+    let seen: NukeSeen = Arc::default();
+    let proj = CommandProjection::new(Arc::new(self_approval_root(&ran, &seen)), "fix", "1.0.0")
+        .with_max_ops(1);
+    let post = |q: &str, flags: Value| {
+        let app = proj.router();
+        let path = format!("/v1/commands/nuke{q}");
+        async move {
+            send(
+                app,
+                "POST",
+                &path,
+                Some(&serde_json::json!({ "flags": flags })),
+            )
+            .await
         }
+    };
+    // Unconfirmed, the gate refuses: the projection's default is no.
+    let (status, out) = post("", serde_json::json!({})).await;
+    assert_eq!((status, &out["exit_code"]), (403, &Value::from(5)), "{out}");
+    assert!(ran.lock().unwrap().is_empty());
+    // A caller's confirm and max-ops are the ROOT's: the gate reads the
+    // root's confirm (yes) and the budget is clamped to the operator's
+    // ceiling, whatever the leaf names its own flags.
+    let (status, out) = post("", serde_json::json!({"confirm": "yes", "max-ops": 100})).await;
+    assert_eq!(status, 200, "{out}");
+    assert_eq!(
+        seen.lock().unwrap().clone(),
+        [("yes".to_string(), 1)],
+        "root confirm is the caller's, max-ops clamped to the ceiling"
+    );
+    // A caller cannot pick the root's value by way of a different
+    // spelling: `no` and `prompt` stay refusals for the same leaf.
+    for v in ["no", "prompt"] {
+        let (status, _) = post("", serde_json::json!({"confirm": v})).await;
+        assert_eq!(status, 403, "{v}");
     }
-    assert!(
-        ran.lock().unwrap().is_empty(),
-        "nothing may run: {:?}",
-        ran.lock().unwrap()
+    assert_eq!(ran.lock().unwrap().len(), 1, "only the confirmed call ran");
+    // policy stays the operator's whatever the leaf declares.
+    let (status, out) = post("", serde_json::json!({"policy": "open"})).await;
+    assert_eq!(status, 400, "{out}");
+    let (status, _) = send(proj.router(), "POST", "/v1/commands/nuke?policy=open", None).await;
+    assert_eq!(status, 400);
+    assert_eq!(
+        ran.lock().unwrap().len(),
+        1,
+        "a refused policy runs nothing"
     );
 }
