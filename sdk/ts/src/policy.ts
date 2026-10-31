@@ -254,6 +254,14 @@ export class Engine {
     // Untagged and unaddressed by the policy: defer to the validator.
     if (se === undefined || se === '') return { allowed: true, requireConfirm: false, reason: '' };
     if (se === 'read') return { allowed: true, requireConfirm: false, reason: '' };
+    // Fail closed: a tier outside kit's vocabulary matches no class.
+    if (classOf(se) === undefined) {
+      return {
+        allowed: false,
+        requireConfirm: false,
+        reason: this.refusal(`policy: unknown side-effect ${JSON.stringify(se)} for ${cmd.verb}`),
+      };
+    }
     const patterns = lookupClass(this.policy.allow, se);
     if (patterns !== undefined && !matchAny(patterns, cmd.verb)) {
       return {

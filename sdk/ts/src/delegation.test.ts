@@ -258,13 +258,12 @@ describe('dry-run', () => {
 
 describe('inferred destructive gate', () => {
   const l: Leaf[] = [
-    { name: 'delete' }, { name: 'list' }, { name: 'drop', se: 'read' }, { name: 'purge', se: 'bogus' },
-    { name: 'delete-all' },
+    { name: 'delete' }, { name: 'list' }, { name: 'drop', se: 'read' }, { name: 'delete-all' },
   ];
   it('gates the unannotated destructive name, nothing else', () => {
     expect(build(l).run(['delete']).code).toBe(5);
     expect(build(l).run(['--confirm', 'yes', 'delete']).code).toBe(0);
-    for (const n of ['list', 'drop', 'purge', 'delete-all']) expect(build(l).run([n]).code).toBe(0);
+    for (const n of ['list', 'drop', 'delete-all']) expect(build(l).run([n]).code).toBe(0);
   });
   it('the destructive name is the leaf name below a group', () => {
     const { program } = createCLI({ name: 'kitapp', version: '1', description: 'd', promptSource: noPrompt });
@@ -275,5 +274,26 @@ describe('inferred destructive gate', () => {
     g.command('list').exitOverride().action(() => {});
     expect(() => program.parse(['node', 'k', 'widget', 'remove'])).toThrow();
     expect(() => program.parse(['node', 'k', 'widget', 'list'])).not.toThrow();
+  });
+});
+
+describe('malformed side-effect tier', () => {
+  it('is refused as usage before the handler runs, unconfirmed or not', () => {
+    let mutated = false;
+    const mk = () => build([{ name: 'wipe', se: 'destructve', run: () => { mutated = true; } }]);
+    for (const args of [['wipe'], ['--confirm', 'yes', 'wipe'], ['--dry-run', 'wipe']]) {
+      const r = mk().run(args);
+      expect(r.code).toBe(2);
+      expect(r.err).toContain('malformed kit/side-effect tag "destructve"');
+    }
+    expect(mutated).toBe(false);
+  });
+  it('an explicit malformed tier beats the destructive name too', () => {
+    expect(build([{ name: 'purge', se: 'bogus' }]).run(['--confirm', 'yes', 'purge']).code).toBe(2);
+  });
+  it('the engine fails closed on an unknown non-empty tier', () => {
+    const e = new Engine({ ...kitDefault(), allow: undefined, unannotated: undefined }, 0);
+    expect(e.authorize({ verb: 'x', sideEffect: 'destructve' }).allowed).toBe(false);
+    expect(e.authorize({ verb: 'x', sideEffect: '' }).allowed).toBe(true);
   });
 });

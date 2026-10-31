@@ -41,6 +41,7 @@ import {
   isDestructiveLike,
   inferredDestructive,
   isDestructiveName,
+  isValidSideEffect,
   isWriteLike,
   SIDE_EFFECT_ANNOTATION,
 } from './sideeffect.js';
@@ -464,6 +465,18 @@ function gate(program: Command, st: State, cmd: Command): void {
   const path = commandPath(cmd);
 
   try {
+    // Fail closed, as Go's Root.Validate does: a declared tier outside the
+    // closed set would match no class and run unconfirmed.
+    const declared = ann[SIDE_EFFECT_ANNOTATION];
+    if (declared !== undefined && declared !== '' && !isValidSideEffect(declared)) {
+      throw {
+        ...usageError(
+          `${JSON.stringify(path)} has a malformed kit/side-effect tag ${JSON.stringify(declared)} that names no tier`,
+        ),
+        suggested_fix: 'declare one of the kit side-effect tiers',
+      };
+    }
+
     let dryRun = false;
     if (!st.opts.disableDryRun && rootFlag(program, st, '--dry-run') === true) {
       const p = resolveDryRunPolicy(cmd.name(), ann);
