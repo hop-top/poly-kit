@@ -30,7 +30,7 @@ described in [`parity-contract`](parity-contract.md).
 | Go | 74 done |
 | TypeScript | 37 none, 19 unverified, 11 done, 6 partial, 1 n/a |
 | Python | 39 none, 19 unverified, 9 done, 6 partial, 1 n/a |
-| Rust | 42 none, 14 partial, 11 done, 6 unverified, 1 n/a |
+| Rust | 38 none, 15 partial, 11 done, 9 unverified, 1 n/a |
 | PHP | 59 none, 5 unverified, 5 partial, 4 done, 1 n/a |
 
 Rust and PHP serve lifecycle parity is complete for the 13 behaviors in
@@ -42,15 +42,15 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 
 | Capability | Go | TS | Py | Rust | PHP | Evidence |
 |---|---|---|---|---|---|---|
-| CLI factory | done | done | done | partial | partial | make test-parity-cli (Go/TS/Py); ts:cli.ts py:cli.py rs:cli/root.rs php:Cli/KitCommand.php php:Cli/Root.php; rs+php wire no global-flag layer, php:Cli/Root.php carries only the delegation flags and `--format` (cli-parity-guide) |
+| CLI factory | done | done | done | partial | partial | make test-parity-cli (Go/TS/Py); ts:cli.ts py:cli.py rs:cli/root.rs php:Cli/KitCommand.php php:Cli/Root.php; php wires no global-flag layer, php:Cli/Root.php carries only the delegation flags and `--format` (cli-parity-guide) |
 | Output and errors | done | done | done | done | done | make test-parity-taxonomy (5 ports); ts:output/ py:output/ rs:output/ php:Output/ |
-| Logging | done | unverified | unverified | none | none | ts:log.ts py:log.py; no rs/php module |
+| Logging | done | unverified | unverified | unverified | none | ts:log.ts py:log.py rs:cli/log.rs; no php module |
 | Markdown rendering | done | none | none | none | none | no module in any SDK |
 | Command annotations | done | n/a | n/a | n/a | n/a | cobra-only seam; SDKs use commander/typer/clap/symfony |
 | Shell completion | done | done | unverified | done | none | make test-parity-completion (Go/Rs/TS) + test-parity-completion-spec (Go/Rs); py:completion.py (no corpus runner) |
 | Aliases | done | done | done | done | none | make test-parity-alias (Go/Rs/TS/Py); ts:alias.ts py:alias.py rs:cli/alias.rs |
 | Flag helpers | done | unverified | unverified | unverified | none | ts:setflag.ts textflag.ts flagregister.ts py:setflag.py textflag.py flagregister.py rs:cli/enums.rs |
-| Help rendering | done | done | done | none | none | contracts/parity/parity.json help block (ts:tui/parity.ts py:parity.py) |
+| Help rendering | done | done | done | unverified | none | contracts/parity/parity.json help block (ts:tui/parity.ts py:parity.py); rs:cli/help.rs follows the py/ts layout, no shared fixture pins it |
 | Autocorrect | done | unverified | unverified | none | none | ts:errcorrect.ts py:errcorrect.py |
 | Config path commands | done | none | none | none | none | rs-sdk.md: config command not ported; no ts/py/php module |
 | URI scheme handlers | done | unverified | unverified | unverified | unverified | ts:uri.ts py:uri.py rs:uri.rs php:Uri/ (facades over the cite lib) |
@@ -111,7 +111,7 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | Breaker | done | none | none | done | none | make test-parity-breaker (Go/Rs); rs:breaker/ |
 | Network policy | done | unverified | unverified | done | unverified | make test-parity-netpolicy (Go/Rs); ts:netpolicy.ts py:netpolicy.py php:Net/ |
 | Redaction | done | partial | partial | done | partial | make test-parity-redact (Go/Rs); ts:telemetry/redact.ts py:telemetry/redact.py php:Telemetry/Redactor.php cover telemetry only |
-| Delegation safety | done | unverified | unverified | none | partial | ts:safety.ts py:safety.py; php:Cli/Delegation/ is pinned by the cli-root-v1 delegation and `infer` vectors (make test-parity-cli-root); no php `permissions:` or `callers:` evaluation |
+| Delegation safety | done | unverified | unverified | unverified | partial | ts:safety.ts py:safety.py rs:cli/safety.rs; php:Cli/Delegation/ is pinned by the cli-root-v1 delegation and `infer` vectors (make test-parity-cli-root); no php `permissions:` or `callers:` evaluation |
 | Event policy engine | done | none | none | none | none | no module in any SDK |
 | Operating mode | done | none | none | none | none | no module in any SDK |
 | Consent grants | done | partial | partial | done | partial | make test-parity-consent (Go/Rs, contracts/consent-v1); ts:telemetry/consent.ts py:telemetry/consent.py php:Telemetry/Consent.php are telemetry consent only |
@@ -120,7 +120,7 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | Audit log | done | none | none | none | none | no module in any SDK |
 | Identity | done | none | none | partial | none | contracts/identity-v1 derive-key corpus consumed by rs:sqlstore/crypto.rs only |
 | TypeID | done | done | done | done | done | make test-parity-typeid (5 ports, contracts/typeid-v1); ts:id/ py:id/ rs:id/ php:Id/ |
-| Upgrade and migrations | done | unverified | unverified | partial | none | make test-parity-upgrade (Go/Rs); rs:upgrade/ is migrations only (self-update not ported); ts:upgrade.ts py:upgrade.py |
+| Upgrade and migrations | done | unverified | unverified | partial | none | make test-parity-upgrade (Go/Rs); rs:upgrade/ is migrations plus the offline-aware release check (download and replace not ported); ts:upgrade.ts py:upgrade.py |
 | Utilities | done | none | none | partial | none | make test-parity-retry (Go/Rs); rs:util/retry.rs |
 | Avatars | done | none | none | none | none | no module in any SDK |
 
@@ -135,7 +135,7 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | Command reflection | done | none | none | none | none | no module in any SDK |
 | Agent CLI invocation | done | none | none | none | none | no module in any SDK |
 | Extensions | done | none | none | none | none | no module in any SDK |
-| 12-factor compliance check | done | done | done | none | none | sdk/tests/cross-lang run-compliance.sh + compare_compliance.py; ts:compliance.ts py:compliance.py |
+| 12-factor compliance check | done | done | done | partial | none | sdk/tests/cross-lang run-compliance.sh + compare_compliance.py; ts:compliance.ts py:compliance.py rs:compliance/ (static pass; no runtime pass) |
 
 ## Conformance and integrations
 
