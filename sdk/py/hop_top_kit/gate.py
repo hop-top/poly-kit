@@ -249,6 +249,17 @@ class Gate:
         previewed an inferred-destructive leaf instead of running it.
         """
         ann = leaf.annotations
+        # Fail closed: Go refuses an invalid tier at Root.Validate (on by
+        # default); Python has no root validator, so the gate does, before
+        # anything else and before the handler.
+        bad = se.malformed_side_effect(ann)
+        if bad is not None:
+            err = usage_error(
+                f'"{leaf.full_path}" declares a malformed kit/side-effect tag "{bad}" '
+                "that names no tier"
+            )
+            err.suggested_fix = "declare one of the kit side-effect tiers"
+            raise err
         tier = se.effective_side_effect(leaf.name, ann)
         inferred = se.inferred_destructive(leaf.name, ann.get(se.SIDE_EFFECT))
 
