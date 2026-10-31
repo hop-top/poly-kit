@@ -54,7 +54,7 @@ assert_eq!(
   fragment or userinfo.
 - Not covered: a `reqwest::Client` built outside this module, and sockets whose caller skips
   `check_dial`. The telemetry HTTPS sink is deliberately unguarded (logging-class egress).
-- Parity: [`contracts/netpolicy-v1`](../../../../../contracts/netpolicy-v1/README.md), run by
+- Parity: [`contracts/netpolicy-v1`](../../../../contracts/netpolicy-v1/README.md), run by
   `tests/netpolicy_conformance.rs`.
 
 ## Neighbours
@@ -65,5 +65,5 @@ assert_eq!(
 
 ## See also
 
-- [`go/core/netpolicy`](../../../../../go/core/netpolicy/README.md), the Go reference
-- [cli-parity-guide.md](../../../../../docs/adopters/guides/cli-parity-guide.md), "Global Flags"
+- [`go/core/netpolicy`](../../../../go/core/netpolicy/README.md), the Go reference
+- [cli-parity-guide.md](../../../../docs/adopters/guides/cli-parity-guide.md), "Global Flags"

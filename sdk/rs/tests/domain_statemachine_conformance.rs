@@ -135,7 +135,7 @@ fn states(v: &[String]) -> Vec<State> {
 }
 
 fn dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/statemachine-v1")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/statemachine-v1")
 }
 
 fn load() -> Corpus {

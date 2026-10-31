@@ -70,5 +70,5 @@ assert_eq!(keys, vec!["reports/2026.txt".to_string()]);
 
 ## See also
 
-- Crate README, [blob writes are atomic](../../../../../docs/adopters/reference/rs-sdk.md#blob-writes-are-atomic)
-- [`go/storage/blob`](../../../../../go/storage/blob/README.md), the Go reference
+- Crate README, [blob writes are atomic](../../../../docs/adopters/reference/rs-sdk.md#blob-writes-are-atomic)
+- [`go/storage/blob`](../../../../go/storage/blob/README.md), the Go reference

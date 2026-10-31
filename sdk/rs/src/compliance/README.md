@@ -41,5 +41,5 @@ if evolution.status == Status::Fail {
 
 ## See also
 
-- [`go/core/compliance`](../../../../../go/core/compliance/README.md), the Go reference
-- [Cross-language harnesses](../../../../tests/cross-lang/README.md#compliance-conformance-harness)
+- [`go/core/compliance`](../../../../go/core/compliance/README.md), the Go reference
+- [Cross-language harnesses](../../../tests/cross-lang/README.md#compliance-conformance-harness)

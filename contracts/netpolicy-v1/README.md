@@ -15,7 +15,7 @@ What the `--offline` policy and the `netpolicy.allow_hosts` allowlist in `kit/co
 make test-parity-netpolicy
 # or separately:
 go test ./go/core/netpolicy/ -run '^TestConformanceNetpolicy'
-cargo test --features api --test netpolicy_conformance   # from sdk/experimental/rs
+cargo test --features api --test netpolicy_conformance   # from sdk/rs
 ```
 
 ## Contract
@@ -46,9 +46,9 @@ Not vectored, because the URL parsers differ before the policy runs. Go keeps `U
 | Port | Runner |
 |------|--------|
 | Go | `go/core/netpolicy/conformance_test.go` (`TestConformanceNetpolicy*`) |
-| Rust | `sdk/experimental/rs/tests/netpolicy_conformance.rs` (`url_allows`, `refusal`, `redirect_headers` need feature `api`) |
+| Rust | `sdk/rs/tests/netpolicy_conformance.rs` (`url_allows`, `refusal`, `redirect_headers` need feature `api`) |
 
 ## See also
 
 - [`go/core/netpolicy/netpolicy.go`](../../go/core/netpolicy/netpolicy.go), [`dialer.go`](../../go/core/netpolicy/dialer.go)
-- [`sdk/experimental/rs/src/netpolicy/core.rs`](../../sdk/experimental/rs/src/netpolicy/core.rs)
+- [`sdk/rs/src/netpolicy/core.rs`](../../sdk/rs/src/netpolicy/core.rs)

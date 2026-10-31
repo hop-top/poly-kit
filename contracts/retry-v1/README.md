@@ -15,7 +15,7 @@ What the retry backoff policy in `kit/core/util` must compute, independent of la
 make test-parity-retry
 # or separately:
 go test ./go/core/util/ -run '^TestConformanceRetry'
-cargo test --test retry_conformance   # from sdk/experimental/rs
+cargo test --test retry_conformance   # from sdk/rs
 ```
 
 ## Contract
@@ -38,9 +38,9 @@ Runners are strict: unknown fields, a `version` other than `v1` and a corpus fil
 | Port | Runner |
 |------|--------|
 | Go | `go/core/util/retry_conformance_test.go` (`TestConformanceRetry*`) |
-| Rust | `sdk/experimental/rs/tests/retry_conformance.rs` |
+| Rust | `sdk/rs/tests/retry_conformance.rs` |
 
 ## See also
 
 - [`go/core/util/retry.go`](../../go/core/util/retry.go)
-- [`sdk/experimental/rs/src/util/retry.rs`](../../sdk/experimental/rs/src/util/retry.rs)
+- [`sdk/rs/src/util/retry.rs`](../../sdk/rs/src/util/retry.rs)

@@ -59,7 +59,7 @@ assert!(response.body_str().contains("pong"));
 - `tools/list` re-reads the bridge per request: no caching, and `Leaf::with_flags_on_first_execution`
   reproduces cobra's lazy `--help`.
 - Naming trap: `mcp::Surface` is the mounted handler; the safety enum is `mcp::SurfaceKind`.
-- Parity: [mcp-wire.json](../../../../tests/cross-lang/fixtures/mcp-wire.json), replayed byte for byte,
+- Parity: [mcp-wire.json](../../../tests/cross-lang/fixtures/mcp-wire.json), replayed byte for byte,
   cases and sequences, by `tests/mcp_wire_conformance.rs`. Where prose and fixture disagree, the fixture wins.
 
 ## Neighbours
@@ -70,8 +70,8 @@ assert!(response.body_str().contains("pong"));
 
 ## See also
 
-- [Serve MCP from any SDK](../../../../../docs/adopters/guides/serve-mcp-from-any-sdk.md)
-- [Expose your CLI over MCP](../../../../../docs/adopters/guides/expose-cli-over-mcp.md)
-- [Parity README, MCP wire contract section](../../../../../contracts/parity/README.md)
-- [Crate README, MCP surface](../../../../../docs/adopters/reference/rs-sdk.md#mcp-surface)
-- Go reference: [go/transport/mcpsdk](../../../../../go/transport/mcpsdk/README.md)
+- [Serve MCP from any SDK](../../../../docs/adopters/guides/serve-mcp-from-any-sdk.md)
+- [Expose your CLI over MCP](../../../../docs/adopters/guides/expose-cli-over-mcp.md)
+- [Parity README, MCP wire contract section](../../../../contracts/parity/README.md)
+- [Crate README, MCP surface](../../../../docs/adopters/reference/rs-sdk.md#mcp-surface)
+- Go reference: [go/transport/mcpsdk](../../../../go/transport/mcpsdk/README.md)

@@ -44,7 +44,7 @@ Consumers:
 | Port | Loader |
 |------|--------|
 | Go | `go/transport/authn/contract_test.go` (`TestAuthnContractVectors`), `apikey_meta_test.go` (`TestAuthnContractVectorsAPIKeyRecords`) |
-| Rust | `sdk/experimental/rs/tests/authn.rs` (feature `authn`; RSA vectors need `authn-rsa`), `tests/authn_apikeys.rs` (feature `authn-apikeys`; also `apikey-records.json`), `tests/authn_wasm.rs` |
+| Rust | `sdk/rs/tests/authn.rs` (feature `authn`; RSA vectors need `authn-rsa`), `tests/authn_apikeys.rs` (feature `authn-apikeys`; also `apikey-records.json`), `tests/authn_wasm.rs` |
 
 ## Neighbours
 

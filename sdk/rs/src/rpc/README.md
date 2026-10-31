@@ -43,7 +43,7 @@ Verified by `tests/rpc_server.rs` and the shared corpus `tests/rpc_conformance.r
 ## Contract
 
 - Feature `rpc-server` (native): `connectrpc =0.9.1` (default features off; `axum`, `json`) with `buffa =0.9.2` / `buffa-types =0.9.2`, on the `api-server` axum stack. No new transitive crate is younger than 14 days. Vetting record: the comment above the pins in `Cargo.toml`.
-- One listener answers Connect (JSON and proto), gRPC and gRPC-Web. Native gRPC is HTTP/2 with prior knowledge, no TLS (h2c); Connect and gRPC-Web work over either HTTP version. Parity with Go on the wire: [`contracts/rpc-v1`](../../../../../contracts/rpc-v1/README.md).
+- One listener answers Connect (JSON and proto), gRPC and gRPC-Web. Native gRPC is HTTP/2 with prior knowledge, no TLS (h2c); Connect and gRPC-Web work over either HTTP version. Parity with Go on the wire: [`contracts/rpc-v1`](../../../../contracts/rpc-v1/README.md).
 - Generated code is committed (`gen/`), from `contracts/proto/crud/v1` through the plugins pinned in `buf.gen.rs.yaml` (`protoc-gen-buffa` 0.9.2, `protoc-gen-buffa-packaging` 0.9.2, `protoc-gen-connect-rust` from `connectrpc-codegen` 0.9.0; checksums in that file). `make proto-rs` regenerates, `make proto-rs-check` fails on drift. No `build.rs`, no `protoc` at build time. Bump the runtime pins and the plugins together.
 - Boundary: kit's own `RpcService`, `Interceptor`, `Call`, `RequestContext`, `RpcError`, `Code`. connectrpc, buffa, axum and tower stay inside. Two things cross by design: protobuf message types (`rpc::proto`, the data contract) and generated stubs, which are connectrpc-typed and meet the server only at `Mount::generated` (`rpc::connect` exposes the generated clients and traits).
 - Interceptors run after the body is read (within the body limit), in registration order, first outermost, for unary calls and for stream establishment. `authenticate` verifies with kit-rs authn (`Authorization` and `X-API-Key`), refuses `unauthenticated` in the caller's protocol before any handler runs, and attaches `Claims` and `Authenticated` for the handler. A credential check that must refuse before the body is read belongs in a tower layer in front, as in the REST server.
@@ -60,5 +60,5 @@ Verified by `tests/rpc_server.rs` and the shared corpus `tests/rpc_conformance.r
 
 ## See also
 
-- [`contracts/rpc-v1`](../../../../../contracts/rpc-v1/README.md), [`contracts/proto/crud/v1`](../../../../../contracts/proto/crud/v1/README.md)
-- [serve lifecycle contract](../../../../../docs/contracts/serve-lifecycle.md)
+- [`contracts/rpc-v1`](../../../../contracts/rpc-v1/README.md), [`contracts/proto/crud/v1`](../../../../contracts/proto/crud/v1/README.md)
+- [serve lifecycle contract](../../../../docs/contracts/serve-lifecycle.md)

@@ -1,6 +1,6 @@
 // The cli-rs template depends on the Rust kit SDK (hop-top-kit), and a
 // generated project is only as current as that requirement. It tracks
-// the sdk/experimental/rs release the template ships with: the kit-rs
+// the sdk/rs release the template ships with: the kit-rs
 // release PR bumps it, the same way the kit-ts release PR bumps the
 // cli-ts range.
 package kitinit
@@ -34,7 +34,7 @@ var rsDocPinFiles = []string{
 	"docs/adopters/guides/serve-mcp-from-any-sdk.md",
 }
 
-// releasedKitRSVersion reads sdk/experimental/rs's version from the
+// releasedKitRSVersion reads sdk/rs's version from the
 // release-please manifest: the kit-rs release this checkout is, or the
 // one its release PR is cutting.
 func releasedKitRSVersion(t *testing.T) string {
@@ -43,8 +43,8 @@ func releasedKitRSVersion(t *testing.T) string {
 	require.NoError(t, err)
 	var manifest map[string]string
 	require.NoError(t, json.Unmarshal(raw, &manifest))
-	v := manifest["sdk/experimental/rs"]
-	require.NotEmpty(t, v, "the manifest carries sdk/experimental/rs's version")
+	v := manifest["sdk/rs"]
+	require.NotEmpty(t, v, "the manifest carries sdk/rs's version")
 	return v
 }
 
@@ -73,7 +73,7 @@ func TestBootstrap_CLIRS_DependsOnTheKitReleaseItShipsWith(t *testing.T) {
 
 // TestCLIRSKitPin_BumpedByTheReleasePR pins the release wiring: every
 // file holding the requirement is a root-relative generic extra-file of
-// the sdk/experimental/rs package and carries the marker on the
+// the sdk/rs package and carries the marker on the
 // requirement's own line. Drop either and a kit-rs release leaves the
 // requirement behind.
 func TestCLIRSKitPin_BumpedByTheReleasePR(t *testing.T) {
@@ -87,7 +87,7 @@ func TestCLIRSKitPin_BumpedByTheReleasePR(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(raw, &cfg))
 	generic := map[string]bool{}
-	for _, entry := range cfg.Packages["sdk/experimental/rs"].ExtraFiles {
+	for _, entry := range cfg.Packages["sdk/rs"].ExtraFiles {
 		var f struct {
 			Type string `json:"type"`
 			Path string `json:"path"`
@@ -99,9 +99,9 @@ func TestCLIRSKitPin_BumpedByTheReleasePR(t *testing.T) {
 
 	for _, path := range cliRSPinFiles {
 		// Leading slash: release-please resolves the path from the
-		// repo root instead of from sdk/experimental/rs.
+		// repo root instead of from sdk/rs.
 		assert.True(t, generic["/"+path],
-			"/%s must be a generic extra-file of the sdk/experimental/rs package", path)
+			"/%s must be a generic extra-file of the sdk/rs package", path)
 
 		body, err := os.ReadFile(filepath.Join(root, path))
 		require.NoError(t, err)
@@ -120,7 +120,7 @@ func TestCLIRSKitPin_BumpedByTheReleasePR(t *testing.T) {
 
 // TestRSDocPins_BumpedByTheReleasePR pins the docs' release wiring:
 // each doc is a root-relative generic extra-file of the
-// sdk/experimental/rs package, every hop-top-kit requirement in it
+// sdk/rs package, every hop-top-kit requirement in it
 // carries the marker, and each cites the current kit-rs release.
 func TestRSDocPins_BumpedByTheReleasePR(t *testing.T) {
 	root := kitRepoRoot(t)
@@ -134,7 +134,7 @@ func TestRSDocPins_BumpedByTheReleasePR(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(raw, &cfg))
 	generic := map[string]bool{}
-	for _, entry := range cfg.Packages["sdk/experimental/rs"].ExtraFiles {
+	for _, entry := range cfg.Packages["sdk/rs"].ExtraFiles {
 		var f struct {
 			Type string `json:"type"`
 			Path string `json:"path"`
@@ -146,7 +146,7 @@ func TestRSDocPins_BumpedByTheReleasePR(t *testing.T) {
 
 	for _, path := range rsDocPinFiles {
 		assert.True(t, generic["/"+path],
-			"/%s must be a generic extra-file of the sdk/experimental/rs package", path)
+			"/%s must be a generic extra-file of the sdk/rs package", path)
 
 		body, err := os.ReadFile(filepath.Join(root, path))
 		require.NoError(t, err)

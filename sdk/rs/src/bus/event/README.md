@@ -34,4 +34,4 @@ cargo test --features bus --test bus_event
 ## See also
 
 - [bus README](../README.md)
-- [bus-v1 vectors](../../../../../../contracts/bus-v1/README.md)
+- [bus-v1 vectors](../../../../../contracts/bus-v1/README.md)

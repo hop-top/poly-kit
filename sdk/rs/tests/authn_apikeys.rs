@@ -423,7 +423,7 @@ fn the_record_is_the_json_go_writes() {
 fn shared_corpus_hashes_match_go() {
     let corpus = {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../contracts/authn-v1/vectors.json");
+            .join("../../contracts/authn-v1/vectors.json");
         serde_json::from_slice::<Value>(&std::fs::read(path).unwrap()).unwrap()
     };
     let vectors = corpus["api_keys"].as_array().unwrap();
@@ -449,7 +449,7 @@ fn shared_corpus_hashes_match_go() {
 
 fn records_corpus() -> Value {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../contracts/authn-v1/apikey-records.json");
+        .join("../../contracts/authn-v1/apikey-records.json");
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
 }
 

@@ -21,7 +21,7 @@ cross-tool correlation.
 | Lang | Module | Upstream lib |
 |------|--------|---------------|
 | Go   | [`go/core/id`](../../go/core/id/)                         | `go.jetify.com/typeid` v1.3.0 |
-| Rust | [`sdk/experimental/rs/src/id`](../../sdk/experimental/rs/src/id/) | `type-safe-id` v0.3.3 |
+| Rust | [`sdk/rs/src/id`](../../sdk/rs/src/id/) | `type-safe-id` v0.3.3 |
 | TS   | [`sdk/ts/src/id`](../../sdk/ts/src/id/)                   | `typeid-js` v1.2.0 |
 | Py   | [`sdk/py/hop_top_kit/id`](../../sdk/py/hop_top_kit/id/)   | `typeid-python` >=0.3.9 |
 | PHP  | [`sdk/experimental/php/src/Id`](../../sdk/experimental/php/src/Id/) | `jewei/typeid-php` v1.1.5 |

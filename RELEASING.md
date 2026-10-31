@@ -115,7 +115,7 @@ opens the line — see [LTS & backports](#lts--backports).
    [The engine SDKs' kit pin](#the-engine-sdks-kit-pin).
 7. The Rust crate gets two extra checks around the publish. Before a release,
    `.github/workflows/rs-package.yml` runs `scripts/check-rs-package.sh` on any
-   change under `sdk/experimental/rs`: `cargo package --list` must stay inside
+   change under `sdk/rs`: `cargo package --list` must stay inside
    the `include` allowlist in `Cargo.toml` (sources, examples, README,
    CHANGELOG, LICENSE, NOTICE) and the manifest must carry registry metadata.
    After a `kit-rs/v*` publish, the `rs-install-smoke` job in `publish.yml`
@@ -364,7 +364,7 @@ last change you want in.
 | kit | `.` | Go | linked family |
 | kit-php | `sdk/experimental/php` | PHP | linked family, experimental |
 | kit-py | `sdk/py` | Python | linked family |
-| kit-rs | `sdk/experimental/rs` | Rust | linked family, experimental |
+| kit-rs | `sdk/rs` | Rust | linked family, experimental |
 | kit-ts | `sdk/ts` | Node | linked family |
 | mcp-tasks | `extensions/mcp-tasks` | Go | independent |
 | qmochi | `incubator/qmochi` | Go | independent |

@@ -361,7 +361,7 @@ struct Cassette(HashMap<String, (u16, String)>);
 impl Cassette {
     fn load(name: &str) -> Self {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../go/transport/authn/testdata/cassettes")
+            .join("../../go/transport/authn/testdata/cassettes")
             .join(name);
         let mut m = HashMap::new();
         for e in std::fs::read_dir(&dir).unwrap() {

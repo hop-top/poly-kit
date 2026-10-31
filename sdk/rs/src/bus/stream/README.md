@@ -58,5 +58,5 @@ cargo test --features bus --test 'bus_stream_client*'
 ## See also
 
 - [bus README](../README.md)
-- [Stream vectors](../../../../../../contracts/bus-v1/streams/README.md)
-- [Bus streams design](../../../../../../docs/contributors/architecture/bus-streams.md)
+- [Stream vectors](../../../../../contracts/bus-v1/streams/README.md)
+- [Bus streams design](../../../../../docs/contributors/architecture/bus-streams.md)

@@ -74,6 +74,7 @@
         "incubator",
         "sdk/experimental",
         "sdk/py",
+        "sdk/rs",
         "sdk/ts",
         "templates"
       ],
@@ -157,7 +158,7 @@
       "versioning": "target",
       "initial-version": "0.5.0-alpha.0"
     },
-    "sdk/experimental/rs": {
+    "sdk/rs": {
       "release-type": "rust",
       "component": "kit-rs",
       "package-name": "hop-top-kit",

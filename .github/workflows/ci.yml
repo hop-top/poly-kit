@@ -138,14 +138,14 @@ jobs:
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
-          # sdk/experimental/rs/rust-toolchain.toml; the mise.toml pin
+          # sdk/rs/rust-toolchain.toml; the mise.toml pin
           # it reads is held equal to that file by
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: sdk/experimental/rs
+          workspaces: sdk/rs
       - run: make lint-rs
       - run: make doc-rs
 
@@ -573,14 +573,14 @@ jobs:
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
-          # sdk/experimental/rs/rust-toolchain.toml; the mise.toml pin
+          # sdk/rs/rust-toolchain.toml; the mise.toml pin
           # it reads is held equal to that file by
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.scope.outputs.run == 'true'
         with:
-          workspaces: sdk/experimental/rs
+          workspaces: sdk/rs
       - run: scripts/test-affected.sh rs
         if: steps.scope.outputs.run == 'true'
 
@@ -608,8 +608,8 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: |
           if [ "$LEG" = msrv ]; then
-            v=$(sed -n 's/^rust-version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' sdk/experimental/rs/Cargo.toml)
-            [ -n "$v" ] || { echo "no rust-version in sdk/experimental/rs/Cargo.toml" >&2; exit 1; }
+            v=$(sed -n 's/^rust-version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' sdk/rs/Cargo.toml)
+            [ -n "$v" ] || { echo "no rust-version in sdk/rs/Cargo.toml" >&2; exit 1; }
           else
             v=stable
           fi
@@ -623,11 +623,11 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.scope.outputs.run == 'true'
         with:
-          workspaces: sdk/experimental/rs
+          workspaces: sdk/rs
           key: ${{ matrix.leg }}
-      # sdk/experimental/rs/rust-toolchain.toml would override the
+      # sdk/rs/rust-toolchain.toml would override the
       # toolchain installed above; RUSTUP_TOOLCHAIN wins over it.
-      - run: cd sdk/experimental/rs && cargo --version && cargo test --all-features --locked
+      - run: cd sdk/rs && cargo --version && cargo test --all-features --locked
         if: steps.scope.outputs.run == 'true'
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.toolchain.outputs.version }}
@@ -643,7 +643,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: sdk/experimental/rs
+        working-directory: sdk/rs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -667,7 +667,7 @@ jobs:
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
-          # sdk/experimental/rs/rust-toolchain.toml; the mise.toml pin
+          # sdk/rs/rust-toolchain.toml; the mise.toml pin
           # it reads is held equal to that file by
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
@@ -676,7 +676,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.scope.outputs.run == 'true'
         with:
-          workspaces: sdk/experimental/rs
+          workspaces: sdk/rs
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features bus
         if: steps.scope.outputs.run == 'true'
       # clippy-wasm32/clippy.toml denies the std clock reads that panic
@@ -851,7 +851,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        working-directory: sdk/experimental/rs
+        working-directory: sdk/rs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -875,7 +875,7 @@ jobs:
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
-          # sdk/experimental/rs/rust-toolchain.toml; the mise.toml pin
+          # sdk/rs/rust-toolchain.toml; the mise.toml pin
           # it reads is held equal to that file by
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
@@ -883,7 +883,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.scope.outputs.run == 'true'
         with:
-          workspaces: sdk/experimental/rs
+          workspaces: sdk/rs
           key: ${{ matrix.target }}
       - run: cargo check --locked --target "$TARGET" --no-default-features --features bus
         if: steps.scope.outputs.run == 'true'
@@ -909,7 +909,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: sdk/experimental/rs
+        working-directory: sdk/rs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -933,14 +933,14 @@ jobs:
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
-          # sdk/experimental/rs/rust-toolchain.toml; the mise.toml pin
+          # sdk/rs/rust-toolchain.toml; the mise.toml pin
           # it reads is held equal to that file by
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.scope.outputs.run == 'true'
         with:
-          workspaces: sdk/experimental/rs
+          workspaces: sdk/rs
       # --lib leaves dev-dependencies out, so tokio carries only the
       # features each crate feature declares.
       - run: cargo check --locked --lib --no-default-features --features serve
@@ -1058,14 +1058,14 @@ jobs:
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
-          # sdk/experimental/rs/rust-toolchain.toml; the mise.toml pin
+          # sdk/rs/rust-toolchain.toml; the mise.toml pin
           # it reads is held equal to that file by
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.scope.outputs.run == 'true'
         with:
-          workspaces: sdk/experimental/rs
+          workspaces: sdk/rs
       # PHP 8.4 toolchain for the typeid-v1 contract loader.
       # sdk/experimental/php's composer.json requires php ^8.4
       # (needed by jewei/typeid-php), and ubuntu-latest

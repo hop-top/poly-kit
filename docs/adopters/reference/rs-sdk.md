@@ -1,10 +1,10 @@
 # Rust SDK Reference
 
 > Every long-form surface of the experimental `hop-top-kit` crate
-> (`sdk/experimental/rs`): serve, the URI facade, output formatting
+> (`sdk/rs`): serve, the URI facade, output formatting
 > rules, the MCP mount, storage, the httpcache wire contract, offline
 > enforcement, telemetry and the bus. The crate front page is
-> [`sdk/experimental/rs/README.md`](../../../sdk/experimental/rs/README.md),
+> [`sdk/rs/README.md`](../../../sdk/rs/README.md),
 > which carries install, the module table and the feature matrix.
 
 ## Who this is for
@@ -61,7 +61,7 @@ adds the registered names to the help.
 `serve` runs every configured and enabled service; `serve api` runs that
 one even when disabled; `serve --list` prints them in registration order.
 A `serve` the root already owned is replaced by `mount`, never doubled. See
-[`examples/serve.rs`](../../../sdk/experimental/rs/examples/serve.rs) for a service that binds a real
+[`examples/serve.rs`](../../../sdk/rs/examples/serve.rs) for a service that binds a real
 listener, and `docs/contracts/serve-lifecycle.md` for the contract.
 
 ### RPC server
@@ -70,7 +70,7 @@ Feature `rpc-server` (native) adds `RpcServer`, a port of `go/transport/rpc`:
 Connect, gRPC and gRPC-Web on one listener (HTTP/1.1 and h2c) as a `serve`
 service named `rpc`, with `request_id`, `log` and `authenticate` interceptors
 (kit-rs authn) for unary and streaming calls, panic recovery and a body limit.
-Contract and limits: [`src/rpc/README.md`](../../../sdk/experimental/rs/src/rpc/README.md);
+Contract and limits: [`src/rpc/README.md`](../../../sdk/rs/src/rpc/README.md);
 wire parity with Go: [`contracts/rpc-v1`](../../../contracts/rpc-v1/README.md).
 
 ### Socket service
@@ -78,7 +78,7 @@ wire parity with Go: [`contracts/rpc-v1`](../../../contracts/rpc-v1/README.md).
 Feature `socket` (unix) adds `SocketService`, a port of `go/transport/socket`: a
 `serve` service answering NDJSON over a `0600` Unix socket from an explicit
 `Handlers` map, with kernel-uid `PeerAuthenticator` and opt-in `idempotency_key`
-replay. Contract and limits: [`src/socket/README.md`](../../../sdk/experimental/rs/src/socket/README.md);
+replay. Contract and limits: [`src/socket/README.md`](../../../sdk/rs/src/socket/README.md);
 wire format: [socket wire reference](socket-wire.md).
 
 ## URI facade
@@ -547,7 +547,7 @@ build keys with `Keypair::from_seed`, seal with `encrypt_with_nonce` and verify 
 `verify_jwt_at` / `verify_jwt_with_options_at` (unix seconds). `Keypair::generate`, `encrypt`,
 `verify_jwt` and `verify_jwt_with_options` are compiled off that target; `Store` and
 `default_store` (`<data home>/kit/identity`) off wasm32 altogether. See
-[`src/identity/README.md`](../../../sdk/experimental/rs/src/identity/README.md) for the contract and
+[`src/identity/README.md`](../../../sdk/rs/src/identity/README.md) for the contract and
 the differences from Go.
 
 ## Storage
@@ -1193,9 +1193,9 @@ The full list is in the `hop_top_kit::config` module docs.
 ## Notify
 
 Feature `notify` ports `go/runtime/notify`; the module README
-([`src/notify/README.md`](../../../sdk/experimental/rs/src/notify/README.md))
+([`src/notify/README.md`](../../../sdk/rs/src/notify/README.md))
 carries the contract, the SMTP details are in
-[`src/notify/email/README.md`](../../../sdk/experimental/rs/src/notify/email/README.md)
+[`src/notify/email/README.md`](../../../sdk/rs/src/notify/email/README.md)
 and the Go-side option tables are in [notify sinks](notify-sinks.md). The
 Rust-specific behaviour:
 
@@ -1253,7 +1253,7 @@ Rust-specific behaviour:
 ## Policy
 
 Feature `policy` ports `go/runtime/policy`; the module README
-([`src/policy/README.md`](../../../sdk/experimental/rs/src/policy/README.md))
+([`src/policy/README.md`](../../../sdk/rs/src/policy/README.md))
 carries the rule and activation contract.
 
 ### Differences from Go
@@ -1309,7 +1309,7 @@ sets, claim checks and the kit-owned `Claims` / `Identity` vocabulary,
 wasm-safe and free of any server. `authn-rsa` adds RS256/384/512 and
 PS256/384/512 over `ring` (native); `authn-apikeys` adds the kv-backed
 opaque keys. The module README
-([`src/authn/README.md`](../../../sdk/experimental/rs/src/authn/README.md))
+([`src/authn/README.md`](../../../sdk/rs/src/authn/README.md))
 carries the contract; the points that differ from Go:
 
 - No JWT crate: the signature primitives are RustCrypto (`p256`, `p384`,
@@ -1338,7 +1338,7 @@ carries the contract; the points that differ from Go:
 Feature `api-server` ports `go/transport/api` and the Go api service's
 middleware plane: an axum `Router` of your routes wrapped in kit's
 stack, served as a `serve::Service`. The module README
-([`src/api_server/README.md`](../../../sdk/experimental/rs/src/api_server/README.md))
+([`src/api_server/README.md`](../../../sdk/rs/src/api_server/README.md))
 carries the contract and the order of the layers; the points that
 differ from Go:
 

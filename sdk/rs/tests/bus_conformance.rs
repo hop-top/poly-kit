@@ -42,7 +42,7 @@ const FILES: &[&str] = &[
 ];
 
 fn dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/bus-v1")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/bus-v1")
 }
 
 fn load<T: DeserializeOwned>(name: &str) -> T {

@@ -4,14 +4,14 @@
 #
 #   scripts/check-rs-package.sh
 #
-# Mirrors `include` in sdk/experimental/rs/Cargo.toml: the published crate
+# Mirrors `include` in sdk/rs/Cargo.toml: the published crate
 # ships sources, examples and the licence/readme/changelog files, never
 # tests, fixtures or the pinned dev toolchain. Cargo adds the generated
 # files below itself.
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-cd "$root/sdk/experimental/rs"
+cd "$root/sdk/rs"
 
 list=$(mktemp)
 err=$(mktemp)

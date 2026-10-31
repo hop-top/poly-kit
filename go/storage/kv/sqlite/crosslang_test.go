@@ -239,7 +239,7 @@ func runRustKV(t *testing.T, root, mode, path string) {
 	cmd := exec.Command("cargo", "test",
 		"--features", "kv", "--test", "kv_crosslang",
 		"--", "--exact", "--nocapture", "harness_"+mode)
-	cmd.Dir = filepath.Join(root, "sdk", "experimental", "rs")
+	cmd.Dir = filepath.Join(root, "sdk", "rs")
 	cmd.Env = append(os.Environ(), "KV_CROSSLANG_DB="+path)
 	out, err := cmd.CombinedOutput()
 	require.NoErrorf(t, err, "rust harness_%s failed:\n%s", mode, out)

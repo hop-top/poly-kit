@@ -55,7 +55,7 @@ struct BandSlot {
 }
 
 fn locate_contract() -> PathBuf {
-    // Walk up from CARGO_MANIFEST_DIR (sdk/experimental/rs) until we hit
+    // Walk up from CARGO_MANIFEST_DIR (sdk/rs) until we hit
     // the kit repo root that contains the taxonomy contract. Going
     // through CARGO_MANIFEST_DIR is the only stable anchor under both
     // `cargo test` (CWD = manifest dir) and editor invocations.

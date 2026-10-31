@@ -39,4 +39,4 @@ load(&mut cfg, &Options::default()).unwrap();
 
 ## See also
 
-- [`go/core/config`](../../../../../go/core/config/README.md), the Go reference
+- [`go/core/config`](../../../../go/core/config/README.md), the Go reference

@@ -15,7 +15,7 @@ What `kit/core/config` must compute, independent of language: CLI scalar typing,
 make test-parity-config
 # or separately:
 go test ./go/core/config/ -run '^TestConformance'
-cargo test --features config --test config_conformance   # from sdk/experimental/rs
+cargo test --features config --test config_conformance   # from sdk/rs
 ```
 
 ## Contract
@@ -41,4 +41,4 @@ Runners are strict: unknown fields, a `version` other than `v1` and a corpus fil
 | Port | Runner |
 |------|--------|
 | Go | `go/core/config/conformance_test.go` (`TestConformance*`) |
-| Rust | `sdk/experimental/rs/tests/config_conformance.rs` (feature `config`) |
+| Rust | `sdk/rs/tests/config_conformance.rs` (feature `config`) |

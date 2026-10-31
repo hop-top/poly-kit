@@ -14,7 +14,7 @@ body:
         - kit init templates (templates/, internal/template)
         - TypeScript SDK (sdk/ts)
         - Python SDK (sdk/py)
-        - Rust SDK (sdk/experimental/rs)
+        - Rust SDK (sdk/rs)
         - PHP SDK (sdk/experimental/php)
         - Engine (engine/)
         - Contracts / codegen (contracts/)

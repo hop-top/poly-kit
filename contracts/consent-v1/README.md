@@ -53,7 +53,7 @@ Delivery (outbox): `seq` is 1, 2, 3, ... per `log`, an id minted when the log fi
 | Port | Runner |
 |------|--------|
 | Go | `go/core/consent/conformance_test.go`, `conformance_delivery_test.go` (`TestConformanceConsent*`) |
-| Rust | `sdk/experimental/rs/tests/consent_conformance.rs`, `consent_delivery_conformance.rs` |
+| Rust | `sdk/rs/tests/consent_conformance.rs`, `consent_delivery_conformance.rs` |
 
 ## Neighbours
 

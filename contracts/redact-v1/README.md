@@ -16,7 +16,7 @@ What `kit/core/redact` must produce from text, independent of language: which se
 make test-parity-redact
 # or separately:
 go test ./go/core/redact/ -run '^TestConformanceRedact'
-cargo test --features redact --test redact_conformance   # from sdk/experimental/rs
+cargo test --features redact --test redact_conformance   # from sdk/rs
 # after a corpus change:
 go test ./go/core/redact/ -run TestConformanceRedactRules -update
 ```
@@ -50,8 +50,8 @@ Runners are strict: unknown fields, a `version` other than `v1` and a corpus fil
 | Port | Runner |
 |------|--------|
 | Go | `go/core/redact/conformance_test.go` (`TestConformanceRedact*`) |
-| Rust | `sdk/experimental/rs/tests/redact_conformance.rs` (feature `redact`) |
+| Rust | `sdk/rs/tests/redact_conformance.rs` (feature `redact`) |
 
 ## See also
 
-- [`go/core/redact`](../../go/core/redact/README.md), [`sdk/experimental/rs/src/redact`](../../sdk/experimental/rs/src/redact/README.md)
+- [`go/core/redact`](../../go/core/redact/README.md), [`sdk/rs/src/redact`](../../sdk/rs/src/redact/README.md)

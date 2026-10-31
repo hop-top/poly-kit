@@ -34,4 +34,4 @@ cargo test --features bus --test bus_sinks --test bus_sinks_env --test bus_sinks
 ## See also
 
 - [bus README](../README.md)
-- [sink goldens](../../../../../../contracts/bus-v1/sinks/README.md)
+- [sink goldens](../../../../../contracts/bus-v1/sinks/README.md)

@@ -51,7 +51,7 @@ jobs:
           # debugged; can revert to default oidc afterwards.
           pypi-auth: token
         kit-rs:
-          dir: sdk/experimental/rs
+          dir: sdk/rs
           ecosystem: rs
           package: hop-top-kit
           mirror: hop-top/kit-rs

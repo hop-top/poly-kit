@@ -23,7 +23,7 @@ use tower::ServiceExt;
 type Seen = Arc<Mutex<Option<(String, BTreeMap<String, String>, Vec<String>)>>>;
 
 fn corpus() -> Value {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/parity/api.json");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/parity/api.json");
     let v: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     v["projection"].clone()
 }

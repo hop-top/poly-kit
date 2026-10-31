@@ -55,7 +55,7 @@ assert_eq!(res.exit_code, 0);
 
 - Feature `serve` pulls in `output`, `tokio` and `serde_json`; `serve-cli` adds `cli`.
   Authority: the crate [feature table](../../README.md#features).
-- Behaviour is [serve-lifecycle.md](../../../../../docs/contracts/serve-lifecycle.md): the selector form runs a
+- Behaviour is [serve-lifecycle.md](../../../../docs/contracts/serve-lifecycle.md): the selector form runs a
   disabled service, the supervisor form skips it silently, zero services resolved is a usage error.
 - Names match `^[a-z][a-z0-9-]*$`; `all`, `none`, `list` are reserved. Duplicate registration is refused
   at construction; `override_service` is the escape hatch.
@@ -67,7 +67,7 @@ assert_eq!(res.exit_code, 0);
 - Defaults: `ready_timeout` 30s, `stop_timeout` 30s, `shutdown_timeout` 60s, `failure_policy` fail-fast.
 - Lifecycle events publish under `kit.serve.*` through the narrow `Publisher` trait, so `serve` does not
   depend on the `bus` feature; adopters wire a `bus::SharedBus` or their own sink behind it.
-- Parity: [contracts/parity/serve.json](../../../../../contracts/parity/serve.json), row `ports.rs`, pinned by
+- Parity: [contracts/parity/serve.json](../../../../contracts/parity/serve.json), row `ports.rs`, pinned by
   `tests/serve_parity.rs`.
 
 ## Neighbours
@@ -79,5 +79,5 @@ assert_eq!(res.exit_code, 0);
 
 ## See also
 
-- [Migrate to served commands](../../../../../docs/adopters/guides/migrate-to-served-commands.md)
-- [Crate README, Serve](../../../../../docs/adopters/reference/rs-sdk.md#serve)
+- [Migrate to served commands](../../../../docs/adopters/guides/migrate-to-served-commands.md)
+- [Crate README, Serve](../../../../docs/adopters/reference/rs-sdk.md#serve)

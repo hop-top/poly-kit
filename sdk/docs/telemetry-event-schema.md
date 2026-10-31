@@ -233,7 +233,7 @@ attribute keys until they ship as first-class envelope concerns.
 | `go` | Go canonical (`go/runtime/telemetry`) | `telemetry.SDKLang` const |
 | `py` | Python SDK (`sdk/py`) | per-SDK module constant |
 | `ts` | TypeScript SDK (`sdk/ts`) | per-SDK module constant |
-| `rs` | Rust SDK (`sdk/experimental/rs`) | per-SDK crate constant |
+| `rs` | Rust SDK (`sdk/rs`) | per-SDK crate constant |
 | `php` | PHP SDK (`sdk/experimental/php`) | per-SDK package constant |
 
 Any value not in this list is a producer bug. The cross-language

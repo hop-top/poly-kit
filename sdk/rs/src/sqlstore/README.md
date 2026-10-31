@@ -43,7 +43,7 @@ assert_eq!(got.as_deref(), Some(&["build".to_string(), "test".to_string()][..]))
 - Expired rows are hidden by `get`, not deleted.
 - Encryption: HKDF-SHA256 over a 32-byte Ed25519 seed, then NaCl secretbox with a 24-byte nonce.
   Pass the seed, never the 64-byte expanded key. Info string `kit-identity-encryption-v1`.
-- Parity: [`contracts/identity-v1/derive-key.json`](../../../../../contracts/identity-v1/derive-key.json),
+- Parity: [`contracts/identity-v1/derive-key.json`](../../../../contracts/identity-v1/derive-key.json),
   asserted by `tests/sqlstore.rs`; Go `go/storage/sqlstore` is the reference for store behaviour.
 
 ## Neighbours
@@ -54,8 +54,8 @@ assert_eq!(got.as_deref(), Some(&["build".to_string(), "test".to_string()][..]))
 
 ## See also
 
-- Crate README, [Storage](../../../../../docs/adopters/reference/rs-sdk.md#storage) and
-  [At-rest encryption](../../../../../docs/adopters/reference/rs-sdk.md#at-rest-encryption)
-- [`docs/adopters/guides/encrypt-engine-data.md`](../../../../../docs/adopters/guides/encrypt-engine-data.md)
-- [`go/storage/sqlstore`](../../../../../go/storage/sqlstore/) and
-  [`go/core/identity`](../../../../../go/core/identity/README.md), the Go references
+- Crate README, [Storage](../../../../docs/adopters/reference/rs-sdk.md#storage) and
+  [At-rest encryption](../../../../docs/adopters/reference/rs-sdk.md#at-rest-encryption)
+- [`docs/adopters/guides/encrypt-engine-data.md`](../../../../docs/adopters/guides/encrypt-engine-data.md)
+- [`go/storage/sqlstore`](../../../../go/storage/sqlstore/) and
+  [`go/core/identity`](../../../../go/core/identity/README.md), the Go references

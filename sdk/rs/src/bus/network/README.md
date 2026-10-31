@@ -37,7 +37,7 @@ bus_a.publish(&Event::new("crm.sales.deal.created", "crm", json!({"id": 1})))?; 
   rustls on ring with the platform roots. Native only; the wasm32 core (`bus`, `netpolicy`) pulls none of it.
 - Wire: Go's links without streams. Auth frame `{"auth":"<token>"}`, ack exactly `{"type":"auth_ok"}`,
   kit event frames out, kit or CloudEvents frames in. Pinned by
-  [`contracts/bus-v1/streams/wire/plain_ack.jsonl`](../../../../../../contracts/bus-v1/streams/wire/README.md).
+  [`contracts/bus-v1/streams/wire/plain_ack.jsonl`](../../../../../contracts/bus-v1/streams/wire/README.md).
 - Connect checks the context's `NetPolicy` before dialing; offline is remembered for reconnects.
 - Auth ack within 10 s; refusals close 1008, internal failures 1011. Writes time out after 5 s; three
   failures in a row evict a link. Reads are limited to 32768 bytes (1009). Close sends 1001.
@@ -62,5 +62,5 @@ bus_a.publish(&Event::new("crm.sales.deal.created", "crm", json!({"id": 1})))?; 
 
 ## See also
 
-- [`go/runtime/bus`](../../../../../../go/runtime/bus/README.md), the Go reference
-- [cross-lang harness peer](../../../../../tests/cross-lang/bus-network/gonode/main.go)
+- [`go/runtime/bus`](../../../../../go/runtime/bus/README.md), the Go reference
+- [cross-lang harness peer](../../../../tests/cross-lang/bus-network/gonode/main.go)

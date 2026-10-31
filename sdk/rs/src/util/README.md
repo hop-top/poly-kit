@@ -33,4 +33,4 @@ assert_eq!(out, Ok::<_, RetryError<&str>>(3));
 
 ## See also
 
-- [`contracts/retry-v1/`](../../../../../contracts/retry-v1/README.md)
+- [`contracts/retry-v1/`](../../../../contracts/retry-v1/README.md)

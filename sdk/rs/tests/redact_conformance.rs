@@ -62,7 +62,7 @@ struct File {
 }
 
 fn dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/redact-v1")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/redact-v1")
 }
 
 #[test]

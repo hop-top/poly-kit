@@ -27,7 +27,7 @@ const PORT: &str = "rs";
 const FILES: &[&str] = &["bridge.json", "cycles.json", "validate.json"];
 
 fn corpus() -> PathBuf {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/alias-v1");
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/alias-v1");
     let mut seen: Vec<String> = fs::read_dir(&dir)
         .unwrap()
         .map(|e| e.unwrap().file_name().into_string().unwrap())

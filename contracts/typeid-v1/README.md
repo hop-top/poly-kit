@@ -24,7 +24,7 @@ Loaders, one per port, all run by `make test-parity-typeid`:
 | Port | Loader |
 |------|--------|
 | Go | `go/core/id/contract_test.go` (`TestContract*`) |
-| Rust | `sdk/experimental/rs/tests/contract.rs` (feature `id`) |
+| Rust | `sdk/rs/tests/contract.rs` (feature `id`) |
 | TypeScript | `sdk/ts/src/id/contract.test.ts` |
 | Python | `sdk/py/tests/test_id_contract.py` |
 | PHP | `sdk/experimental/php/tests/Id/ContractTest.php`, run only when `php` and `composer` are on PATH |

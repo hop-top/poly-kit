@@ -23,7 +23,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 fn dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/bus-v1/sinks")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/bus-v1/sinks")
 }
 
 fn read(name: &str) -> String {

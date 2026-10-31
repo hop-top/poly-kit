@@ -36,4 +36,4 @@ Go is canonical; the goldens are written by the Go runner. Inputs carry `version
 | Port | Runner |
 |------|--------|
 | Go | `go/runtime/bus/sink_conformance_test.go` (`TestSinkConformance`) |
-| Rust | `sdk/experimental/rs/tests/bus_sinks_conformance.rs` |
+| Rust | `sdk/rs/tests/bus_sinks_conformance.rs` |

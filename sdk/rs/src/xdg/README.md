@@ -42,4 +42,4 @@ assert!(dir.ends_with("mytool"));
 
 ## See also
 
-- [`go/core/xdg`](../../../../../go/core/xdg/README.md), the Go reference
+- [`go/core/xdg`](../../../../go/core/xdg/README.md), the Go reference

@@ -80,7 +80,7 @@ jobs:
               .)                    comp="Kit" ;;
               sdk/ts)               comp="Kit's TS SDK" ;;
               sdk/py)               comp="Kit's Python SDK" ;;
-              sdk/experimental/rs)  comp="Kit's Rust SDK" ;;
+              sdk/rs)               comp="Kit's Rust SDK" ;;
               sdk/experimental/php) comp="Kit's PHP SDK" ;;
               incubator/qmochi)     comp="Qmochi" ;;
               *)                    comp="Kit" ;;

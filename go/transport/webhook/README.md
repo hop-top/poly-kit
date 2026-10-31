@@ -34,4 +34,4 @@ router.Handle("POST", "/hooks/graph", rc.ServeHTTP)
 ## Neighbours
 
 - `go/transport/api`: the router it mounts on; `go/storage/kv`: the dedupe store; `go/runtime/bus`: the topics
-- `sdk/experimental/rs/src/api_server/webhook`: the Rust port (feature `webhook`)
+- `sdk/rs/src/api_server/webhook`: the Rust port (feature `webhook`)

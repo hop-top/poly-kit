@@ -18,7 +18,7 @@
 Status is evidence-based. The Evidence column names the guard (a `make
 test-parity-*` target, a contract under `contracts/`, or `serve.json`) or the
 module path. Path prefixes: `ts:` is `sdk/ts/src/`, `py:` is
-`sdk/py/hop_top_kit/`, `rs:` is `sdk/experimental/rs/src/`, `php:` is
+`sdk/py/hop_top_kit/`, `rs:` is `sdk/rs/src/`, `php:` is
 `sdk/experimental/php/src/`. Guards are defined in the root `Makefile` and in
 [`contracts/parity`](../../../contracts/parity/README.md); the contracts are
 described in [`parity-contract`](parity-contract.md).

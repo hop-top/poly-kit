@@ -35,7 +35,7 @@ in the fixture must be explainable as an intended Go-side change.
 
 | File | Holds | Guard |
 |------|-------|-------|
-| `parity.json` | blocks `status`, `spinner`, `anim`, `help`, `verbosity`, `streams` | `TestParityNoUnloadedBlocks`, `TestParityLoadedBlocksNonZero`, `sdk/ts/src/tui/parity.test.ts`, `sdk/py/tests/test_parity.py`, `sdk/experimental/rs/tests/parity.rs` |
+| `parity.json` | blocks `status`, `spinner`, `anim`, `help`, `verbosity`, `streams` | `TestParityNoUnloadedBlocks`, `TestParityLoadedBlocksNonZero`, `sdk/ts/src/tui/parity.test.ts`, `sdk/py/tests/test_parity.py`, `sdk/rs/tests/parity.rs` |
 | `scope-defaults.json` | default deny patterns for the scope packages | `TestScopeDefaultsContractSync`, `TestScopeDefaultsRegistered` |
 | `sdk/tests/cross-lang/fixtures/mcp-wire.json` | MCP wire bytes: 23 `cases`, 1 `sequences` entry with 5 steps | `make test-parity-mcp` (five runners) |
 | `sdk/tests/cross-lang/fixtures/toolspec-manifest*.json`, `toolspec-spec*.json` | manifest bytes and live `spec` / `spec coverage` stdout Go emits for `toolspec-manifest.tree.json` | `TestManifestCrossLangFixture`, `TestSpecCommandCrossLangFixture`, `sdk/ts/src/toolspec-manifest.test.ts`, `sdk/ts/src/toolspec-spec.test.ts` |
@@ -57,7 +57,7 @@ in the fixture must be explainable as an intended Go-side change.
 
 ## Neighbours
 
-- `go/console/tui/styles`, `sdk/ts/src/tui`, `sdk/py/hop_top_kit/tui`, `sdk/experimental/rs/src/parity`:
+- `go/console/tui/styles`, `sdk/ts/src/tui`, `sdk/py/hop_top_kit/tui`, `sdk/rs/src/parity`:
   consumers of the loaded blocks
 - `go/console/cli/scope`: consumer of `scope-defaults.json`
 - `go/console/serve`: reference implementation `serve.json` is pinned to

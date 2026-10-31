@@ -40,7 +40,7 @@ fn authenticate(pem: &[u8], authorization: Option<&str>) {
 
 ## Contract
 
-- Go is canonical: signed tokens per algorithm, PEM key ids and API key hashes are pinned by [`contracts/authn-v1`](../../../../../contracts/authn-v1/README.md), run by both ports.
+- Go is canonical: signed tokens per algorithm, PEM key ids and API key hashes are pinned by [`contracts/authn-v1`](../../../../contracts/authn-v1/README.md), run by both ports.
 - Accepted algorithms: `EdDSA`, `ES256/384/512`, and with `authn-rsa` `RS256/384/512`, `PS256/384/512`. `none`, HMAC and anything unlisted are refused before any key is consulted, as is a `crit` header.
 - Checks, in order: signature, `exp` present, issuer, `nbf`, `exp`, `iat` (each within `Options::clock_skew`, default one minute), audience (a trailing slash is ignored), `sub` present, then `Options::check`.
 - The `kid` selects the key; a `kid` no key has, or none, tries every key and the signature decides. A JWK `alg` pins its key to that algorithm.

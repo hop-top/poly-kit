@@ -30,9 +30,9 @@ use serde_json::Value;
 
 /// Locates the shared fixture file from the crate root.
 fn fixture_path() -> PathBuf {
-    // sdk/experimental/rs -> repo root
+    // sdk/rs -> repo root
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
+        .join("../..")
         .join("sdk/tests/cross-lang/fixtures/mcp-wire.json")
 }
 

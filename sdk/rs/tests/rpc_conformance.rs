@@ -81,7 +81,7 @@ struct Vectors {
 }
 
 fn load() -> Vectors {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/rpc-v1");
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/rpc-v1");
     let mut found: Vec<String> = fs::read_dir(&dir)
         .expect("read corpus dir")
         .map(|e| e.expect("dir entry").file_name().into_string().unwrap())

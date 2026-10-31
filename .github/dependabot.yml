@@ -186,7 +186,7 @@ updates:
   # serde_json and tokio requirements.
   - package-ecosystem: cargo
     directories:
-      - "/sdk/experimental/rs"
+      - "/sdk/rs"
       - "/sdk/tests/cross-lang/runners/rs"
     schedule:
       interval: weekly
