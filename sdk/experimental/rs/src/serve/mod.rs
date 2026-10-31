@@ -34,12 +34,12 @@
 //!   an exit code by [`command::run`]. No parsing-provider type is part
 //!   of the contract.
 //!
-//! What remains outside both, by the contract's own terms: the env-var
-//! spelling `<TOOL>_SERVICES_API_ENABLED`. The contract makes it
-//! contract "only for a port that has env resolution at all"; this port
-//! reads the key *names* out of the [`ServiceConfigs`] map a caller
-//! resolves however it likes, and the spelling arrives with the config
-//! loader, not here.
+//! Configuration keys resolve through [`configs_from_lookup`] (features
+//! `serve` and `config`): `<TOOL>_SERVICES_<NAME>_ENABLED`,
+//! `_READY_TIMEOUT` and `_STOP_TIMEOUT` read from a config `EnvLookup`,
+//! with file values synced into it ranking below the environment.
+//! [`configs_from_keys`] is the same resolution over any dotted-key
+//! reader, for callers without the config feature.
 //!
 //! # Deliberate non-goals
 //!
@@ -122,11 +122,13 @@ mod signals;
 mod supervisor;
 
 pub use cancel::CancelToken;
+#[cfg(all(feature = "config", not(target_arch = "wasm32")))]
+pub use config::configs_from_lookup;
 pub use config::{
-    failure_error, parse_duration, worst_outcome, FailurePolicy, LifecycleOutcome, ServiceConfig,
-    ServiceConfigs, SupervisorConfig, DEFAULT_READY_TIMEOUT, DEFAULT_SHUTDOWN_TIMEOUT,
-    DEFAULT_STOP_TIMEOUT, KEY_ENABLED, KEY_FAILURE_POLICY, KEY_READY_TIMEOUT, KEY_SHUTDOWN_TIMEOUT,
-    KEY_STOP_TIMEOUT,
+    configs_from_keys, failure_error, parse_duration, worst_outcome, FailurePolicy,
+    LifecycleOutcome, ServiceConfig, ServiceConfigs, SupervisorConfig, DEFAULT_READY_TIMEOUT,
+    DEFAULT_SHUTDOWN_TIMEOUT, DEFAULT_STOP_TIMEOUT, KEY_ENABLED, KEY_FAILURE_POLICY,
+    KEY_READY_TIMEOUT, KEY_SHUTDOWN_TIMEOUT, KEY_STOP_TIMEOUT,
 };
 pub use events::{
     default_topics, EventPayload, Publisher, ServeLogger, StderrLogger, ACTION_FAILED,
