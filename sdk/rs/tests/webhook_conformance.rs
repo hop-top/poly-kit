@@ -34,8 +34,8 @@ impl WebhookPublisher for Rec {
 }
 
 fn corpus() -> Value {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../contracts/webhook-v1/vectors.json");
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/webhook-v1/vectors.json");
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
 }
 
