@@ -1,7 +1,7 @@
 # Python SDK Reference
 
 > Every long-form surface of `hop-top-kit` (`sdk/py`): the MCP mount, the
-> URI facade, output formatting rules and worked examples, offline
+> URI facade, the delegation gate, output formatting rules and worked examples, offline
 > enforcement, the telemetry envelope, and LLM messages (content parts,
 > tool-call round trips). The package front page is
 > [`sdk/py/README.md`](../../../sdk/py/README.md).
@@ -216,8 +216,19 @@ returns an `Identity` or `None`. An `Authorization` header alone is
 refused with 401. The verified `caller`, `tenant` and `scopes` reach the
 bridge on `Invocation.meta`. See [Admit authenticated callers](../guides/serve-mcp-from-any-sdk.md#admit-authenticated-callers).
 
+An unannotated leaf named `delete`, `remove`, `rm`, `destroy`, `purge`
+or `drop` classifies as `destructive-shared` (inferred), so a remote
+surface blocks it by default. The table and the rule (annotation absent or
+empty; an explicit value, even a malformed one, is never inferred over) live
+in `hop_top_kit.sideeffect` and are shared with the CLI delegation gate.
+`classify(annotations, leaf_name=...)` takes the leaf name; `Bridge` passes
+it. The toolspec module only loads and validates a spec file; it emits
+nothing from annotations, so it needs no alignment (Go's `cmdreflect`
+reports the inferred tier as `tier_inferred`).
+
 This gate is unrelated to the Factor 10 `safety.py` `--force` helper,
-which is a CLI-time TTY check for delegation safety.
+which is a CLI-time TTY check for delegation safety. See
+[Delegation gate](#delegation-gate) for how the two relate.
 
 ### Confirmation
 
@@ -615,6 +626,105 @@ It now delegates to `default_registry.lookup(format).render(...)`
 internally. The `Format` Literal extends to include the new built-ins
 (`csv`, `text`) - non-breaking for adopters that typed against the
 narrower set.
+
+## Delegation gate
+
+`create_app` enforces, before a leaf's handler runs, what the Go and Rust
+kit roots enforce (canonical: `go/console/cli`, pinned by the
+[`cli-root-v1`](../../../contracts/cli-root-v1/README.md) vectors).
+Annotate leaves with `kit/*` tags:
+
+```python
+from hop_top_kit.cli import annotate, create_app, is_dry_run
+from hop_top_kit.policy import default_policy_loader
+
+app, _ = create_app(
+    name="mytool", version="1.0.0", help="...",
+    policy_loader=default_policy_loader("mytool"),   # --policy <name>
+)
+
+@app.command("rm")
+@annotate(side_effect="destructive")                  # needs --confirm
+def rm(): ...
+
+@app.command("purge")
+@annotate(side_effect="destructive", destructive_token=True)
+def purge(): ...                                      # needs --confirm-token
+
+@app.command("add")
+@annotate(side_effect="write")
+def add():
+    if is_dry_run():                                  # kit applied --dry-run
+        return preview()
+```
+
+Root flags (hidden, like Go's; give them before the command):
+
+| Flag | Behavior |
+|------|----------|
+| `--confirm yes\|no\|prompt\|auto` | `yes`/`auto` proceed; `no` refuses; `prompt` asks on the controlling terminal (`/dev/tty`, never stdin). Unset or unknown: `prompt` when a terminal exists, else `no`. Applies to destructive tiers and to commands a policy lists under `require_confirm`. |
+| `--confirm-token <sha>` | Leaf flag on `kit/destructive-token: required` leaves. The token is the first 6 bytes (12 hex) of `sha256` of the command path (`mytool purge`); `--confirm=yes` alone never suffices. Under `--format json\|yaml` the envelope's `suggested_fix` carries the re-run instruction; otherwise the token is printed. |
+| `--max-ops N` | Budget of mutating operations (write and destructive tiers) per engine; over budget is `RATE_LIMITED`, exit 64. One CLI invocation runs one command, so the refusal needs a host sharing a `Gate.engine()` across calls. |
+| `--policy <name>` | Loads `$XDG_CONFIG_HOME/<tool>/policies/<name>.yaml` through `policy_loader`. The name must match `^[A-Za-z0-9_-]{1,64}$`, checked before any filesystem access. `kit-default` is reserved and needs no loader. An unreadable or invalid policy is `USAGE` (2), a refusal is `UNAUTHORIZED` (5) and not lifted by `--confirm=yes`. |
+| `--dry-run` | Honored by write and destructive tiers (the handler runs with `is_dry_run()` true, confirm skipped, no budget spent); a no-op on `read`; refused (`USAGE`, 2) on `interactive`, `kit/dry-run: opted-out`, untagged or malformed leaves. `Disable(dry_run=True)` drops the flag. |
+
+Only the root's values drive the gate. A leaf that declares its own
+`--confirm`, `--max-ops` or `--policy` option keeps it as the leaf's own;
+it neither approves the run nor names a policy. (Go and Rust let a
+leaf-local `--confirm` or `--max-ops` shadow the root's; Python does not.)
+`GlobalFlag` names `confirm`, `max-ops`, `policy` and `dry-run` are
+reserved (`ValueError`).
+
+### Side-effect resolution
+
+The gate acts on the declared `kit/side-effect`, else `destructive-shared`
+for an unannotated leaf whose name is in the destructive table (above). The
+tiers are Go's: legacy `read|write|destructive|interactive` and the
+expanded `write-local|write-shared|destructive-local|destructive-shared`.
+
+- **Malformed tags fail closed.** Go refuses a tree with an invalid tier at
+  `Root.Validate`; Python has no root validator, so the gate refuses the
+  leaf (`USAGE`, exit 2) before policy, confirm or the handler, and the
+  policy engine refuses an unknown non-empty tier.
+- **`--dry-run` on an inferred leaf never invokes the handler.** Such a
+  leaf never promised to honor dry-run, so its handler may really mutate.
+  Kit renders a plan (command, one irreversible effect, a warning) in the
+  active `--format` and exits 0. Policy still applies; no confirmation is
+  asked because nothing can mutate. A declared destructive leaf keeps the
+  handler-previews contract above.
+
+### Envelopes
+
+Refusals use the SDK's `CLIError`: `UNAUTHORIZED` (5) for confirm, token and
+policy refusals (transient for the confirm and prompt refusals, permanent
+for policy and token), `USAGE` (2), `RATE_LIMITED` (64). Python's
+`consent_refused_error` (exit 7) is not used, because Go's gate does not.
+
+### Policies
+
+`hop_top_kit.policy` ports Go's `console/cli/policy`: `allow` per class
+(an empty list refuses the class; a tier falls back to its legacy class),
+`max_ops`, `require_confirm` (globs, `verb:*` shorthand), `unannotated`,
+`name`, plus the shipped `kit-default`. `permissions:` rules and `callers:`
+rules are validated but not evaluated; the CLI has no transport-established
+caller, so only the policy's own rules answer.
+
+### Relation to `safety_guard`
+
+`hop_top_kit.safety.safety_guard` is the Factor 10 `--force` check a
+command author calls; it keeps working unchanged. The gate needs no call:
+it reads annotations. A destructive leaf can pass both; they answer
+different questions (may a human proceed here, vs. has the invocation been
+confirmed, policed and budgeted).
+
+### Not ported
+
+`-C/--chdir`, `-c/--config` layering, `Root.Validate`, signature
+validators, flag validators, flags accepted after the command (Typer root
+options precede the subcommand), the alias store commands and
+`config path|paths`. The conformance runner
+(`tests/test_cli_root_conformance.py`) replays the delegation and
+inference vectors and lists each skip with its reason.
 
 ## Offline enforcement
 
