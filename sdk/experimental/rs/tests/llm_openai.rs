@@ -659,3 +659,33 @@ fn schemes_are_in_the_default_registry() {
         assert!(schemes.contains(&s.to_string()), "{s}");
     }
 }
+
+/// A key cut by the message cap must not survive as a fragment: the
+/// stream error text is scrubbed before it is truncated.
+#[tokio::test]
+async fn stream_error_key_straddling_the_cap_is_scrubbed() {
+    let key = format!("{}-{}", "sk", "Q7x9LmN2pR4vT6wZ8bC1dF3gH5jK");
+    for pad in [500usize, 504, 508, 511] {
+        let msg = format!("{}{key}", "x".repeat(pad));
+        let body = format!(
+            "data: {}\n\n",
+            json!({"error": {"message": msg, "type": "server_error"}})
+        );
+        let srv = serve(vec![Canned::sse(&body)]).await;
+        let a = Adapter::new(cfg("openai", &srv.url, "gpt-4o", &key)).unwrap();
+        let mut s = a.stream(&hi()).await.unwrap();
+        let e = loop {
+            match s.next().await {
+                Err(e) => break e,
+                Ok(None) => panic!("ended without an error"),
+                Ok(Some(_)) => {}
+            }
+        };
+        let text = format!("{e} {e:?}");
+        for n in 4..=key.len() {
+            for i in 0..=key.len() - n {
+                assert!(!text.contains(&key[i..i + n]), "pad {pad}: fragment {:?} leaked", &key[i..i + n]);
+            }
+        }
+    }
+}

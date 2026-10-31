@@ -143,7 +143,9 @@ impl ChatStream {
             LlmError::Protocol(format!("{}: decode stream chunk: {e}", self.scheme))
         })?;
         if v["error"].is_object() {
-            return Err(chunk_error(&self.scheme, data, &self.model));
+            // Scrub the raw payload first: truncating it before could cut a
+            // credential in two, and neither half would match afterwards.
+            return Err(chunk_error(&self.scheme, &(self.scrub)(data), &self.model));
         }
         if let Some(ch) = v["choices"].as_array().and_then(|c| c.first()) {
             let delta = &ch["delta"];
