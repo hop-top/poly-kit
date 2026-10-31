@@ -1312,8 +1312,11 @@ differ from Go:
   the invocation plane, so this layer is new on both sides' terms.
 - Probe paths `/healthz` and `/readyz` are reserved: a route of the
   same path does not override them.
-- Not ported: websocket hub, the command-tree projection, TLS and mTLS
-  serving, read and write timeouts, idempotency keys, metrics.
+- Also on this listener: the websocket hub (`api-server-ws`), the
+  command-tree projection (`api_server::commands`), TLS and mTLS
+  (`api-server-tls`), read and write timeouts, idempotency keys
+  (`api-server-idempotency`) and the metrics endpoint. Not ported: ACME,
+  CRLs, reloading changed certificate files.
 - Feature `webhook` mounts an inbound webhook receiver on the router
   (`api_server::webhook`): Graph, Pipedrive v2 and HMAC senders, replay
   window, dedupe through `kv::TtlInserter` (atomic put-if-absent, new in

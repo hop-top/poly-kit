@@ -582,3 +582,79 @@ async fn max_ops_may_only_tighten_and_dry_run_is_the_callers() {
     let (status, _) = send(open.router(), "POST", "/v1/commands/add", Some(&body)).await;
     assert_eq!(status, 400);
 }
+
+/// A root whose destructive leaves carry the two shapes a caller could
+/// use to approve itself: a typed confirm-token, and a leaf-local
+/// `--confirm` that would otherwise shadow the root's.
+fn self_approval_root(ran: &Arc<Mutex<Vec<String>>>) -> Root {
+    let mut cfg = Config::new("fix", "1.0.0", "Fixture");
+    cfg.disable_validate = true;
+    let mut root = Root::with_config(cfg);
+    root.with_prompt_source(hop_top_kit::cli::PromptSource::none());
+    let r1 = ran.clone();
+    root.add_command(
+        CommandSpec::new("wipe")
+            .about("wipe")
+            .side_effect("destructive")
+            .annotate("kit/destructive-token", "required")
+            .handler(move |_, out, _| {
+                r1.lock().unwrap().push("wipe".into());
+                write!(out, "ran wipe").unwrap();
+                Ok(())
+            }),
+    );
+    let r2 = ran.clone();
+    root.add_command(
+        CommandSpec::new("nuke")
+            .about("nuke")
+            .side_effect("destructive")
+            .flag(FlagSpec::string("confirm").help("leaf-local confirm"))
+            .flag(FlagSpec::string("policy").help("leaf-local policy"))
+            .flag(FlagSpec::string("max-ops").help("leaf-local max-ops"))
+            .handler(move |_, out, _| {
+                r2.lock().unwrap().push("nuke".into());
+                write!(out, "ran nuke").unwrap();
+                Ok(())
+            }),
+    );
+    root
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_caller_cannot_approve_itself_via_token_or_a_leaf_local_control() {
+    let ran: Arc<Mutex<Vec<String>>> = Arc::default();
+    let proj =
+        CommandProjection::new(Arc::new(self_approval_root(&ran)), "fix", "1.0.0").with_max_ops(1);
+    // The typed token is derivable from the path (and printed in the
+    // refusal), so a caller presenting it must still not run the command.
+    let token = hop_top_kit::cli::destructive_token("fix wipe");
+    let body = serde_json::json!({"flags": {"confirm-token": token}});
+    let (status, _) = send(proj.router(), "POST", "/v1/commands/wipe", Some(&body)).await;
+    assert_eq!(status, 400, "body confirm-token");
+    let (status, _) = send(
+        proj.router(),
+        "POST",
+        &format!("/v1/commands/wipe?confirm-token={token}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, 400, "query confirm-token");
+    // A leaf declaring its own confirm/policy/max-ops gets no say from a
+    // caller: those names stay operator controls.
+    for (k, v) in [("confirm", "yes"), ("policy", "open"), ("max-ops", "100")] {
+        let body = serde_json::json!({"flags": {k: v}});
+        let (status, out) = send(proj.router(), "POST", "/v1/commands/nuke", Some(&body)).await;
+        if k == "max-ops" {
+            // Clamped to the operator ceiling, never raised; still
+            // unconfirmed, so the command refuses itself.
+            assert_eq!(status, 403, "{k}: {out}");
+        } else {
+            assert_eq!(status, 400, "{k}: {out}");
+        }
+    }
+    assert!(
+        ran.lock().unwrap().is_empty(),
+        "nothing may run: {:?}",
+        ran.lock().unwrap()
+    );
+}
