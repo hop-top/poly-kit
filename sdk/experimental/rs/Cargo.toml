@@ -271,6 +271,11 @@ llm-routellm = ["llm-openai"]
 # it to the llm.yaml pool and ranks by budget tier, with the classifier
 # stage. Nothing of its own beyond `llm`; wasm-safe.
 llm-picker = ["llm"]
+# The native routing engine: routers (random, MF, BERT, similarity-weighted
+# Elo), the controller over `router-<name>-<threshold>` models, intent
+# detection, and the picker classifier adapters. The MF and BERT routers
+# score through the Triton client. Native only.
+llm-router = ["llm-triton", "llm-picker"]
 
 # Notification primitives over the bus `Sink`, a port of go/runtime/notify:
 # the severity convention, the filter and retry + dead-letter decorators,

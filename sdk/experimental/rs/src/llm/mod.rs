@@ -59,6 +59,8 @@ pub mod openai;
 pub mod picker;
 #[cfg(feature = "llm-routellm")]
 pub mod routellm;
+#[cfg(feature = "llm-router")]
+pub mod router;
 #[cfg(feature = "llm-triton")]
 pub mod triton;
 
