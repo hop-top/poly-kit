@@ -1,0 +1,10 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 311736f6
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: DELETE
+  target: /kit-blob-s3-conformance/unprefixed-root/a.txt
+  headers: {}
+  body: ''
+  occurrence: 0

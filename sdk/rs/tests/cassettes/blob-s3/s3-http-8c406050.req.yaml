@@ -1,0 +1,11 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 8c406050
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: PUT
+  target: /kit-blob-s3-conformance/special/amp%26ersand/%3Ctag%3E.txt
+  headers:
+    content-type: text/plain
+  body: amp&ersand/<tag>.txt
+  occurrence: 0

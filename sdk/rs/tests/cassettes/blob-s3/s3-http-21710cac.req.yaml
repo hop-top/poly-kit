@@ -1,0 +1,11 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 21710cac
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: PUT
+  target: /kit-blob-s3-conformance/conformance/statoverwriteupdates/st/over
+  headers:
+    content-type: text/csv
+  body: '22'
+  occurrence: 0

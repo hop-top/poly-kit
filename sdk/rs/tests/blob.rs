@@ -9,6 +9,8 @@ use hop_top_kit::blob::local::LocalStore;
 use hop_top_kit::blob::{stat_by_list, BlobError, Object, Stater, Store};
 use tempfile::TempDir;
 
+mod blobtest;
+
 fn setup() -> (TempDir, LocalStore) {
     let dir = TempDir::new().expect("tempdir");
     let store = LocalStore::new(dir.path()).expect("new store");
@@ -586,4 +588,24 @@ fn every_missing_key_path_is_not_found() {
     }
     // list over an empty prefix match is empty, not NotFound.
     assert!(s.list("zzz").expect("list").is_empty());
+}
+
+fn local_fixture(_case: &str) -> blobtest::Fixture<LocalStore> {
+    let (dir, store) = setup();
+    blobtest::Fixture::holding(store, dir)
+}
+
+#[test]
+fn local_conformance() {
+    blobtest::run(local_fixture);
+}
+
+#[test]
+fn local_conformance_content_type() {
+    blobtest::run_content_type(local_fixture);
+}
+
+#[test]
+fn local_conformance_stat() {
+    blobtest::run_stat(local_fixture);
 }

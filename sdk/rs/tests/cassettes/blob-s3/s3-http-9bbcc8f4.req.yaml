@@ -1,0 +1,10 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 9bbcc8f4
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: GET
+  target: /kit-blob-s3-conformance?encoding-type=url&list-type=2&prefix=iso%2Fb%2F
+  headers: {}
+  body: ''
+  occurrence: 0

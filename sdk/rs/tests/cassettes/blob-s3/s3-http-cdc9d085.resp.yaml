@@ -1,0 +1,10 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: cdc9d085
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  status: 404
+  headers:
+    content-length: '235'
+    content-type: application/xml
+  body: ''

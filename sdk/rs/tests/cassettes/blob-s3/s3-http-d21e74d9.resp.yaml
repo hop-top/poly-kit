@@ -1,0 +1,11 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: d21e74d9
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  status: 200
+  headers:
+    content-length: '19'
+    content-type: text/plain
+    etag: '"6a1f0212ebe102784476f31b6e195f55"'
+  body: tilde~/q?mark=1.txt

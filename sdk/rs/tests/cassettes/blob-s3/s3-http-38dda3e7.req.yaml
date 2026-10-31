@@ -1,0 +1,11 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 38dda3e7
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: PUT
+  target: /kit-blob-s3-conformance/unprefixed-root/a.txt
+  headers:
+    content-type: text/plain
+  body: a
+  occurrence: 0

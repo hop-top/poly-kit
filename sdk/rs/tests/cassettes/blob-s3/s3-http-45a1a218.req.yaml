@@ -1,0 +1,11 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 45a1a218
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: PUT
+  target: /kit-blob-s3-conformance/special/tilde~/q%3Fmark%3D1.txt
+  headers:
+    content-type: text/plain
+  body: tilde~/q?mark=1.txt
+  occurrence: 0

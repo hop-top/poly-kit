@@ -1,0 +1,11 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 5f5234cf
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: PUT
+  target: /kit-blob-s3-conformance/conformance/listcontenttypeneverwrong/ct/a.json
+  headers:
+    content-type: application/json
+  body: '{}'
+  occurrence: 0

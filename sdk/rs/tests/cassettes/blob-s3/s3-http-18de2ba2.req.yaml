@@ -1,0 +1,10 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 18de2ba2
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: HEAD
+  target: /kit-blob-s3-conformance/conformance/statoverwriteupdates/st/over
+  headers: {}
+  body: ''
+  occurrence: 0

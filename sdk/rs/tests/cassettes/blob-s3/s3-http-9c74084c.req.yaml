@@ -1,0 +1,10 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 9c74084c
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: DELETE
+  target: /kit-blob-s3-conformance/conformance/statafterdeleteerrors/st/gone
+  headers: {}
+  body: ''
+  occurrence: 0

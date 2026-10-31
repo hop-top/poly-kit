@@ -1,0 +1,10 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 15c54df4
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  method: DELETE
+  target: /kit-blob-s3-conformance/conformance/deletemissingkeysucceeds/never/existed.txt
+  headers: {}
+  body: ''
+  occurrence: 0

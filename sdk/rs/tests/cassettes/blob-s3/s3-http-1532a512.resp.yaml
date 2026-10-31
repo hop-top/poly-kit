@@ -1,0 +1,12 @@
+xrr: '1'
+adapter: s3-http
+fingerprint: 1532a512
+recorded_at: 2026-10-31T18:21:21Z
+payload:
+  status: 200
+  headers:
+    content-length: '1595'
+    content-type: application/xml
+  body: |
+    <?xml version='1.0' encoding='utf-8'?>
+    <ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><IsTruncated>false</IsTruncated><Name>kit-blob-s3-conformance</Name><Prefix>conformance/listcontenttypeneverwrong/ct/</Prefix><MaxKeys>1000</MaxKeys><EncodingType>url</EncodingType><KeyCount>4</KeyCount><Contents><Key>conformance/listcontenttypeneverwrong/ct/a.json</Key><ETag>"99914b932bd37a50b983c5e7c90ae93b"</ETag><Size>2</Size><LastModified>normalized</LastModified><StorageClass>STANDARD</StorageClass><ChecksumAlgorithm>CRC64NVME</ChecksumAlgorithm><ChecksumType>FULL_OBJECT</ChecksumType></Contents><Contents><Key>conformance/listcontenttypeneverwrong/ct/b.bin</Key><ETag>"9dd4e461268c8034f5c8564e155c67a6"</ETag><Size>1</Size><LastModified>normalized</LastModified><StorageClass>STANDARD</StorageClass><ChecksumAlgorithm>CRC64NVME</ChecksumAlgorithm><ChecksumType>FULL_OBJECT</ChecksumType></Contents><Contents><Key>conformance/listcontenttypeneverwrong/ct/gone</Key><ETag>"c4ca4238a0b923820dcc509a6f75849b"</ETag><Size>1</Size><LastModified>normalized</LastModified><StorageClass>STANDARD</StorageClass><ChecksumAlgorithm>CRC64NVME</ChecksumAlgorithm><ChecksumType>FULL_OBJECT</ChecksumType></Contents><Contents><Key>conformance/listcontenttypeneverwrong/ct/over</Key><ETag>"c81e728d9d4c2f636f067f89cc14862c"</ETag><Size>1</Size><LastModified>normalized</LastModified><StorageClass>STANDARD</StorageClass><ChecksumAlgorithm>CRC64NVME</ChecksumAlgorithm><ChecksumType>FULL_OBJECT</ChecksumType></Contents></ListBucketResult>
