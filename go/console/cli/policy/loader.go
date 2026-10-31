@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 	"hop.top/kit/go/core/xdg"
@@ -43,6 +44,8 @@ func Load(path string) (Policy, error) {
 	return p, nil
 }
 
+var validName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
 // Resolve returns the canonical XDG path for a named policy:
 //
 //	$XDG_CONFIG_HOME/<tool>/policies/<name>.yaml
@@ -55,6 +58,11 @@ func Resolve(tool, name string) (string, error) {
 	}
 	if name == "" {
 		return "", fmt.Errorf("policy: policy name required")
+	}
+	// A name is a file stem under the policies directory, never a path:
+	// refused before any filesystem access.
+	if !validName.MatchString(name) {
+		return "", fmt.Errorf("policy: invalid policy name %q (want [A-Za-z0-9_-]{1,64})", name)
 	}
 	dir, err := xdg.RawConfigDir(tool)
 	if err != nil {

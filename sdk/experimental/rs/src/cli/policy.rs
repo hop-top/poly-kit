@@ -651,9 +651,23 @@ pub fn resolve(tool: &str, name: &str) -> Result<PathBuf, String> {
     if name.is_empty() {
         return Err("policy: policy name required".into());
     }
+    // Before any filesystem access: a name is a file stem under the
+    // policies directory, never a path.
+    if !valid_name(name) {
+        return Err(format!(
+            "policy: invalid policy name {name:?} (want [A-Za-z0-9_-]{{1,64}})"
+        ));
+    }
     Ok(crate::xdg::raw_config_dir(tool)
         .join("policies")
         .join(format!("{name}.yaml")))
+}
+
+fn valid_name(name: &str) -> bool {
+    (1..=64).contains(&name.len())
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 /// [`resolve`] then [`load`]; the reserved [`KIT_DEFAULT_NAME`] is
@@ -882,6 +896,32 @@ mod tests {
         assert_eq!(path_match("[^a-c]x", "bx"), Some(false));
         assert_eq!(path_match("\\*", "*"), Some(true));
         assert_eq!(path_match("[", "x"), None);
+    }
+
+    #[test]
+    fn resolve_refuses_names_that_are_paths_without_touching_the_fs() {
+        for bad in [
+            "../x",
+            "../etc/passwd",
+            "a/b",
+            "/abs",
+            "a\\b",
+            "..",
+            ".",
+            "a.b",
+            &"x".repeat(65),
+            "a b",
+        ] {
+            let e = resolve("t", bad).unwrap_err();
+            assert!(e.contains("invalid policy name"), "{bad}: {e}");
+            assert!(load_named("t", bad)
+                .unwrap_err()
+                .contains("invalid policy name"));
+        }
+        assert!(resolve("t", "ok_Name-1")
+            .unwrap()
+            .ends_with("policies/ok_Name-1.yaml"));
+        assert!(resolve("t", &"x".repeat(64)).is_ok());
     }
 
     #[test]
