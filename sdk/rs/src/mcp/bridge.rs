@@ -113,6 +113,17 @@ pub enum InvokeError {
         /// The surface the call arrived on.
         surface: Surface,
     },
+    /// The permission hook refused the caller.
+    ///
+    /// Renders as an `isError` result at HTTP 200, as the ceiling does.
+    PermissionDenied {
+        /// Space-joined leaf path.
+        command: String,
+        /// The surface the call arrived on.
+        surface: Surface,
+        /// The decider's reason.
+        reason: String,
+    },
     /// The handler itself failed.
     Handler(String),
 }
@@ -128,6 +139,16 @@ impl std::fmt::Display for InvokeError {
                 f,
                 "cmdsurface: destructive command blocked on this surface: \
                  {command} on {surface}"
+            ),
+            // Go's `ErrPermissionDenied` wrapped with the command, the
+            // surface and the decider's reason.
+            Self::PermissionDenied {
+                command,
+                surface,
+                reason,
+            } => write!(
+                f,
+                "cmdsurface: permission denied: {command} on {surface}: {reason}"
             ),
             Self::Handler(msg) => f.write_str(msg),
         }
@@ -430,6 +451,20 @@ impl Bridge {
         surface: Surface,
         arguments: &Map<String, Value>,
     ) -> Result<CallResult, InvokeError> {
+        self.invoke_permitted(tool_name, separator, surface, arguments, &|_| Ok(()))
+    }
+
+    /// [`Bridge::invoke_with`] asking `permit` once the leaf is
+    /// resolved, enabled and past the destructive ceiling, and before
+    /// it runs: Go's permission slot. `Err` is the refusal's reason.
+    pub fn invoke_permitted(
+        &self,
+        tool_name: &str,
+        separator: &str,
+        surface: Surface,
+        arguments: &Map<String, Value>,
+        permit: &dyn Fn(&Leaf) -> Result<(), String>,
+    ) -> Result<CallResult, InvokeError> {
         let leaf = self
             .resolve_with(tool_name, separator)
             .ok_or(InvokeError::UnknownCommand)?;
@@ -442,6 +477,11 @@ impl Bridge {
                 surface,
             });
         }
+        permit(leaf).map_err(|reason| InvokeError::PermissionDenied {
+            command: leaf.path.join(" "),
+            surface,
+            reason,
+        })?;
         // Mirrors cobra attaching flags on a command's first execution:
         // the leaf set a later tools/list renders reflects it.
         leaf.on_first_execution();

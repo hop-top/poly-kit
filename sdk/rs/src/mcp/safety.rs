@@ -77,6 +77,10 @@ pub struct SafetyClass {
     /// Set when `kit/side-effect` names a destructive tier
     /// (`destructive`, `destructive-local`, `destructive-shared`).
     pub destructive: bool,
+    /// The `kit/side-effect` tier as declared (`write-local`,
+    /// `destructive-shared`, ...); empty when unset. What a permission
+    /// rule reads as `resource.tier`.
+    pub side_effect: String,
     /// Set when `kit/auth-required` is `"true"`.
     pub auth_required: bool,
     /// Set when `kit/requires-confirmation` is `"true"`.
@@ -99,6 +103,7 @@ impl SafetyClass {
         for (key, value) in annotations {
             match key {
                 "kit/side-effect" => {
+                    cls.side_effect = value.to_string();
                     cls.destructive = matches!(
                         value,
                         "destructive" | "destructive-local" | "destructive-shared"
