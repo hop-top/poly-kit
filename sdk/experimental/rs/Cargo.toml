@@ -826,3 +826,13 @@ wasm-bindgen-futures = "=0.4.79"
 [[example]]
 name = "serve"
 required-features = ["serve-cli"]
+
+# `cli` alone does not build (the policy loader reads XDG paths from
+# `config`), so the example names both.
+[[example]]
+name = "cli"
+required-features = ["cli", "config"]
+
+[[example]]
+name = "mcp"
+required-features = ["mcp"]
