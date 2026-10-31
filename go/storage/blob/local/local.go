@@ -6,8 +6,10 @@ package local
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -106,13 +108,14 @@ func (s *Store) Get(_ context.Context, key string) (io.ReadCloser, error) {
 	return f, nil
 }
 
-// Delete removes the blob at key.
+// Delete removes the blob at key. Deleting a missing key succeeds
+// (idempotent), matching S3 semantics.
 func (s *Store) Delete(_ context.Context, key string) error {
 	p, err := s.resolve(key)
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(p); err != nil {
+	if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("blob/local: remove: %w", err)
 	}
 	return nil

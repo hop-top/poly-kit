@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"hop.top/kit/go/storage/blob"
+	"hop.top/kit/go/storage/blob/blobtest"
 	"hop.top/kit/go/storage/blob/local"
 )
 
@@ -273,4 +275,8 @@ func TestStreaming1MB(t *testing.T) {
 	if len(got) != len(data) {
 		t.Fatalf("got %d bytes, want %d", len(got), len(data))
 	}
+}
+
+func TestConformance(t *testing.T) {
+	blobtest.Run(t, func(t *testing.T) blob.Store { return setup(t) })
 }

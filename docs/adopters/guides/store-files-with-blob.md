@@ -92,28 +92,30 @@ if err != nil { return err }
 store := kitS3.New(awss3.NewFromConfig(cfg), "my-bucket", "tool-data")
 ```
 
-Keys are joined under the prefix with `path.Join`; `List` strips the
-prefix again, so callers see the same keys they wrote. `List` paginates
-internally.
+Keys are joined under the prefix with `path.Join` (a trailing `/` on the
+prefix is ignored); `List` strips the prefix again, so callers see the
+same keys they wrote. `List("logs/")` matches only keys that start with
+`logs/`. `List` paginates internally.
 
 ## Behaviors that differ by backend
 
 | Behavior | `local` | `s3` |
 |----------|---------|------|
 | `Put` | atomic: synced temp file renamed into place | single `PutObject` with the content type |
-| `Delete` of missing key | returns an error | succeeds |
+| `Delete` of missing key | succeeds | succeeds |
 | `Get` of missing key | error wrapping the OS not-exist error | error from `GetObject` |
-| content type | accepted, discarded; empty on `List` | sent on `Put` |
+| content type | accepted, discarded; empty on `List` | sent on `Put`; empty on `List` |
 | key escaping root | `../` keys rejected before I/O | n/a |
 
 Practical consequences:
 
-- Do not rely on `Delete` being idempotent across backends. Guard with
-  `Exists`, or tolerate the local error.
+- `Delete` is idempotent on every backend: a missing key is not an
+  error, so no `Exists` guard is needed.
 - For missing-key checks on `local`, use `errors.Is(err, fs.ErrNotExist)`
   on the `Get` error. Prefer `Exists` for backend-neutral code.
-- Do not read content type back from `List`; store it in your own
-  metadata if you need it.
+- Do not read content type back from `List` on any backend (S3
+  `ListObjectsV2` returns none and `local` keeps none); store it in your
+  own metadata if you need it.
 - `local` hides in-flight `.tmp` staging files from `List`, and a
   failed `Put` leaves the previous value intact. Concurrent readers see
   the old or new blob, never a partial one.
@@ -128,6 +130,8 @@ store backs up to one; see
 
 `local` runs embedded: point `local.New` at `t.TempDir()`. The S3
 integration test needs `S3_TEST_BUCKET`, AWS credentials and `-tags s3`.
+Both backends run the shared suite `blob/blobtest`; a new backend passes
+it with `blobtest.Run(t, func(t *testing.T) blob.Store { ... })`.
 
 ## See also
 
