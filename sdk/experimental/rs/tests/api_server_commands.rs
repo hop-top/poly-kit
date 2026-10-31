@@ -449,10 +449,10 @@ fn gated_root(ran: &Arc<Mutex<Vec<String>>>) -> Root {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_unconfirmed_destructive_call_is_refused_by_the_command() {
+async fn an_unconfirmed_destructive_call_is_refused_and_cannot_approve_itself() {
     let ran: Arc<Mutex<Vec<String>>> = Arc::default();
     let proj = CommandProjection::new(Arc::new(gated_root(&ran)), "fix", "1.0.0");
-    // No terminal and no --confirm: the command's own refusal, exit 5.
+    // --confirm is fixed at no for a call: the command's own refusal.
     let (status, out) = send(proj.router(), "POST", "/v1/commands/purge", None).await;
     assert_eq!((status, &out["exit_code"]), (403, &Value::from(5)), "{out}");
     assert!(
@@ -462,39 +462,123 @@ async fn an_unconfirmed_destructive_call_is_refused_by_the_command() {
             .contains("refused: --confirm=no"),
         "{out}"
     );
-    assert!(
-        ran.lock().unwrap().is_empty(),
-        "a refused call must not run"
-    );
-    // The caller answers it the way a CLI user does.
-    let body = serde_json::json!({"flags": {"confirm": "yes"}});
-    let (status, out) = send(proj.router(), "POST", "/v1/commands/purge", Some(&body)).await;
-    assert_eq!((status, &out["exit_code"]), (200, &Value::from(0)), "{out}");
-    assert_eq!(
-        ran.lock().unwrap().as_slice(),
-        ["purge dry_run=false confirm=yes"]
-    );
+    // A caller naming confirm (yes, auto, or anything) is refused outright.
+    for v in ["yes", "auto"] {
+        let body = serde_json::json!({"flags": {"confirm": v}});
+        let (status, _) = send(proj.router(), "POST", "/v1/commands/purge", Some(&body)).await;
+        assert_eq!(status, 400, "{v}");
+        let (status, _) = send(
+            proj.router(),
+            "POST",
+            &format!("/v1/commands/purge?confirm={v}"),
+            None,
+        )
+        .await;
+        assert_eq!(status, 400, "query {v}");
+    }
+    assert!(ran.lock().unwrap().is_empty(), "nothing may run");
     // A write needs no confirmation.
     let (status, _) = send(proj.router(), "POST", "/v1/commands/add", None).await;
     assert_eq!(status, 200);
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn dry_run_and_max_ops_ride_the_call() {
+async fn the_operator_fixes_the_policy_and_a_caller_cannot_name_one() {
     let ran: Arc<Mutex<Vec<String>>> = Arc::default();
-    let proj = CommandProjection::new(Arc::new(gated_root(&ran)), "fix", "1.0.0");
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("fix/policies")).unwrap();
+    std::fs::write(
+        dir.path().join("fix/policies/ro.yaml"),
+        "allow:\n  write: []\n",
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("fix/policies/open.yaml"), "name: open\n").unwrap();
+    let mut root = gated_root(&ran);
+    root.with_policy(hop_top_kit::cli::default_policy_loader("fix"));
+    let proj = CommandProjection::new(Arc::new(root), "fix", "1.0.0").with_policy("ro");
+    // Run under the operator's XDG dir; restore after.
+    let prev = std::env::var("XDG_CONFIG_HOME").ok();
+    std::env::set_var("XDG_CONFIG_HOME", dir.path());
+    for (flags, why) in [
+        (serde_json::json!({"policy": "open"}), "weaker policy"),
+        (serde_json::json!({"policy": "../x"}), "traversal"),
+    ] {
+        let body = serde_json::json!({ "flags": flags });
+        let (status, _) = send(proj.router(), "POST", "/v1/commands/add", Some(&body)).await;
+        assert_eq!(status, 400, "{why}");
+    }
+    let (status, _) = send(proj.router(), "POST", "/v1/commands/add?policy=open", None).await;
+    assert_eq!(status, 400, "query");
+    // The operator's policy applies: the write is refused (exit 5, 403).
+    let (status, out) = send(proj.router(), "POST", "/v1/commands/add", None).await;
+    match prev {
+        Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+        None => std::env::remove_var("XDG_CONFIG_HOME"),
+    }
+    assert_eq!(status, 403, "{out}");
+    assert!(
+        out["stderr"]
+            .as_str()
+            .unwrap()
+            .contains("policy: write not allowed for add"),
+        "{out}"
+    );
+    assert!(ran.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn max_ops_may_only_tighten_and_dry_run_is_the_callers() {
+    let ran: Arc<Mutex<Vec<String>>> = Arc::default();
+    let seen: Arc<Mutex<Vec<i64>>> = Arc::default();
+    let mut root = gated_root(&ran);
+    let s = seen.clone();
+    root.add_command(
+        CommandSpec::new("probe")
+            .about("p")
+            .side_effect("read")
+            .handler(move |inv, _, _| {
+                s.lock().unwrap().push(inv.globals.max_ops);
+                Ok(())
+            }),
+    );
+    let proj = CommandProjection::new(Arc::new(root), "fix", "1.0.0").with_max_ops(5);
+    for (q, want) in [
+        ("", 5),
+        ("?max-ops=2", 2),
+        ("?max-ops=50", 5),
+        ("?max-ops=0", 5),
+    ] {
+        let (status, _) = send(
+            proj.router(),
+            "POST",
+            &format!("/v1/commands/probe{q}"),
+            None,
+        )
+        .await;
+        // probe is a read: GET only.
+        assert_eq!(status, 405);
+        let (status, _) = send(
+            proj.router(),
+            "GET",
+            &format!("/v1/commands/probe{q}"),
+            None,
+        )
+        .await;
+        assert_eq!(status, 200, "{q}");
+        assert_eq!(*seen.lock().unwrap().last().unwrap(), want, "{q}");
+    }
+    // With no operator ceiling the caller may set its own budget.
+    let open = CommandProjection::new(Arc::new(gated_root(&ran)), "fix", "1.0.0");
+    let (status, _) = send(open.router(), "POST", "/v1/commands/add?max-ops=1", None).await;
+    assert_eq!(status, 200);
     // A previewed destructive call needs no confirmation and acts on nothing.
-    let (status, _) = send(proj.router(), "POST", "/v1/commands/purge?dry-run", None).await;
+    let (status, _) = send(open.router(), "POST", "/v1/commands/purge?dry-run", None).await;
     assert_eq!(status, 200);
     assert_eq!(
-        ran.lock().unwrap().as_slice(),
-        ["purge dry_run=true confirm="]
+        ran.lock().unwrap().last().unwrap(),
+        "purge dry_run=true confirm=no"
     );
-    // A budget that fits the one operation lets it through.
-    let (status, _) = send(proj.router(), "POST", "/v1/commands/add?max-ops=1", None).await;
-    assert_eq!(status, 200);
-    // A flag that is neither the command's nor a control is still refused.
     let body = serde_json::json!({"flags": {"nosuch": "x"}});
-    let (status, _) = send(proj.router(), "POST", "/v1/commands/add", Some(&body)).await;
+    let (status, _) = send(open.router(), "POST", "/v1/commands/add", Some(&body)).await;
     assert_eq!(status, 400);
 }

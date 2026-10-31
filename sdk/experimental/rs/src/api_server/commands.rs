@@ -319,6 +319,8 @@ pub struct CommandProjection {
     version: String,
     descriptors: Arc<Vec<CommandDescriptor>>,
     gate: Option<Arc<Gate>>,
+    policy: Option<String>,
+    max_ops: i64,
 }
 
 impl CommandProjection {
@@ -331,7 +333,23 @@ impl CommandProjection {
             version: version.into(),
             descriptors,
             gate: None,
+            policy: None,
+            max_ops: 0,
         }
+    }
+
+    /// Fixes the delegation policy every call runs under (`--policy`).
+    /// Only the operator sets it: a caller naming a policy is refused.
+    pub fn with_policy(mut self, name: &str) -> Self {
+        self.policy = Some(name.to_string());
+        self
+    }
+
+    /// Sets the ceiling on mutating operations per call (`--max-ops`).
+    /// A caller may ask for fewer, never more, and cannot lift it.
+    pub fn with_max_ops(mut self, ceiling: i64) -> Self {
+        self.max_ops = ceiling.max(0);
+        self
     }
 
     /// Installs a per-command gate (policy, permission): a refusal is
@@ -479,10 +497,27 @@ impl CommandProjection {
             Ok(b) => b,
             Err(e) => return bad_request(e.to_string()),
         };
-        let argv = match decode(d, &parts.method, parts.uri.query(), &bytes) {
+        let (mut argv, caller_max) = match decode(d, &parts.method, parts.uri.query(), &bytes) {
             Ok(a) => a,
             Err(m) => return bad_request(m),
         };
+        // Operator controls, ahead of the command's own flags. A call
+        // never prompts (the server's terminal is not the caller's) and
+        // never approves itself: --confirm is fixed at no.
+        let mut ops = vec!["--confirm=no".to_string()];
+        if let Some(p) = &self.policy {
+            ops.push(format!("--policy={p}"));
+        }
+        let max = match (caller_max, self.max_ops) {
+            (Some(c), o) if c > 0 && o > 0 => c.min(o),
+            (Some(c), 0) if c > 0 => c,
+            (_, o) => o,
+        };
+        if max > 0 {
+            ops.push(format!("--max-ops={max}"));
+        }
+        let at = d.path.len();
+        argv.splice(at..at, ops);
         let root = self.root.clone();
         let mut full = vec![root.model().name];
         full.extend(argv);
@@ -628,12 +663,12 @@ fn rfc3339_now() -> String {
     )
 }
 
-/// The root's delegation controls a caller may set on a call, as it
-/// would on the command line: the `--confirm` answer, the `--max-ops`
-/// budget, the named `--policy` and `--dry-run`. Confirmation is not a
-/// gate of the projection: it is the command's own refusal, the same
-/// on every surface, and it reaches the caller as the exit class
-/// (403 for an unconfirmed destructive command).
+/// The root's delegation controls, by what a caller may do with them.
+/// `dry-run` only makes a call safer and is the caller's; `max-ops` may
+/// only tighten the operator's ceiling; `policy` and `confirm` are the
+/// operator's and a caller naming either is refused (a call never
+/// approves itself: an unconfirmed destructive command is the command's
+/// own refusal, exit 5, status 403).
 const CONTROL_FLAGS: &[&str] = &["confirm", "max-ops", "policy", "dry-run"];
 
 /// Builds the argv tail for a request, or the refusal text.
@@ -642,7 +677,7 @@ fn decode(
     method: &Method,
     query: Option<&str>,
     body: &[u8],
-) -> Result<Vec<String>, String> {
+) -> Result<(Vec<String>, Option<i64>), String> {
     let by_name: BTreeMap<&str, &CommandFlag> =
         d.flags.iter().map(|f| (f.name.as_str(), f)).collect();
     let mut flags: Vec<(String, Value)> = Vec::new();
@@ -685,7 +720,24 @@ fn decode(
         ));
     }
     let mut argv: Vec<String> = d.path.clone();
+    let mut caller_max = None;
     for (k, v) in flags {
+        // A control only when the command declares no flag of the name.
+        let control = !by_name.contains_key(k.as_str());
+        match k.as_str() {
+            "policy" | "confirm" if control => {
+                return Err(format!("{k} is set by the operator, not the caller"))
+            }
+            "max-ops" if control => {
+                caller_max = Some(
+                    scalar(&v)
+                        .parse::<i64>()
+                        .map_err(|_| "max-ops must be an integer".to_string())?,
+                );
+                continue;
+            }
+            _ => {}
+        }
         match v {
             Value::Bool(true) => argv.push(format!("--{k}")),
             Value::Bool(false) | Value::Null => {}
@@ -701,7 +753,7 @@ fn decode(
         argv.push("--".into());
         argv.extend(args);
     }
-    Ok(argv)
+    Ok((argv, caller_max))
 }
 
 /// A control flag's value from the query: `dry-run` is a switch, the

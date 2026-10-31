@@ -2075,6 +2075,36 @@
         "error_code": "bad_request"
       },
       {
+        "name": "a caller cannot name the delegation policy",
+        "method": "POST",
+        "path": "/v1/commands/widget/add",
+        "status": 400,
+        "body": {
+          "flags": {
+            "policy": "../x"
+          },
+          "args": [
+            "g"
+          ]
+        },
+        "error_code": "bad_request"
+      },
+      {
+        "name": "a caller cannot approve its own destructive call",
+        "method": "POST",
+        "path": "/v1/commands/widget/add",
+        "status": 400,
+        "body": {
+          "flags": {
+            "confirm": "yes"
+          },
+          "args": [
+            "g"
+          ]
+        },
+        "error_code": "bad_request"
+      },
+      {
         "name": "an ill-typed query flag is a bad request",
         "method": "GET",
         "path": "/v1/commands/list?limit=x",

@@ -1182,6 +1182,33 @@
    "stdout": "{\"dry_run\":false,\"path\":\"import\"}\n"
   },
   {
+   "name": "policy name with a separator is refused",
+   "tree": "ops",
+   "args": [
+    "--policy",
+    "../x",
+    "add"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "USAGE",
+    "invalid policy name"
+   ]
+  },
+  {
+   "name": "policy name that is a rooted path is refused",
+   "tree": "ops",
+   "args": [
+    "--policy",
+    "{tmp}/xdg/kitapp/policies/readonly",
+    "add"
+   ],
+   "exit": 2,
+   "stderr_contains": [
+    "invalid policy name"
+   ]
+  },
+  {
    "name": "max-ops within budget",
    "tree": "ops",
    "args": [
