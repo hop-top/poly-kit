@@ -4,7 +4,7 @@
 	check-toolchain-parity lint-actions-pinned lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-sdk-paths-all lint-templates lint-ts openapi \
 	preflight promote promote-beta promote-rc promote-open-line proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
+	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	test-php test-py test-py-sdk test-py-engine \
 	test-release test-rs test-rs-wasm test-templates test-ts test-ts-sdk test-ts-engine \
 	test-affected test-bats test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
@@ -297,7 +297,7 @@ test-rs-wasm: ## Rust: bus, domain and breaker wasm32 smoke tests under Node (ne
 # scripts/test-scope.sh maps each prerequisite to its Go packages and
 # SDKs (PARITY_TABLE) so a pull request runs only the targets it
 # reaches; a prerequisite missing from that table always runs.
-test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-blob test-parity-bus test-parity-blob test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
 
 test-parity-cli: ## spaced CLI parity: Go, TypeScript and Python builds of the example agree
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
@@ -454,6 +454,14 @@ test-parity-breaker: ## breaker-v1 conformance corpus (Go and Rust runners)
 	go test -race ./go/core/breaker/ -run '^TestConformanceBreaker' -count=1
 	@echo "==> breaker-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --features breaker --test breaker_conformance --locked
+
+# Blob corpus: local store put/get/delete/list/exists scenarios, key
+# escape errors, list order.
+test-parity-blob: ## blob-v1 conformance corpus (Go and Rust runners)
+	@echo "==> blob-v1 conformance: Go"
+	go test ./go/storage/blob/local/ -run '^TestConformanceBlob' -count=1
+	@echo "==> blob-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features blob --test blob_conformance --locked
 
 # Per-capability consent corpus: on-disk grant records, decision and
 # refusal semantics, audit records, delivery and the telemetry-consent

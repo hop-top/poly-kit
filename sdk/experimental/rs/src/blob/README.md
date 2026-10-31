@@ -42,8 +42,10 @@ assert_eq!(keys, vec!["reports/2026.txt".to_string()]);
   never sees a partial object and a failed write leaves the previous value intact.
 - A key that resolves outside the store root is refused with `BlobError::KeyEscapesRoot`.
 - A missing key is `BlobError::NotFound`, not an empty reader.
-- Parity: none recorded; Go `go/storage/blob` is the reference, and `tests/blob.rs` pins the
-  atomic-write semantics described in its README.
+- `list` orders per directory by name, as Go's walk does: `a/b` precedes `a.txt`.
+- Parity: Go `go/storage/blob` is the reference; `tests/blob_conformance.rs` runs the shared corpus in
+  `contracts/blob-v1`, and `tests/blob.rs` pins the atomic-write semantics described in its README.
+  Keys that reduce to the root or contain `\` are refused here and not by Go; not in the corpus.
 
 ## Neighbours
 

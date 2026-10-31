@@ -10,6 +10,8 @@ Corpora bind every port, Go included; detail lives in each corpus README.
   envelope, storage gate.
 - [bus-v1/](bus-v1/README.md): kit/runtime/bus topic matching, validator error texts, `PrefixTopics`,
   qualifiers, enforcement modes, event envelope JSON. Go and Rust runners.
+- [blob-v1/](blob-v1/README.md): kit/storage/blob local store: put/get/delete/list/exists, key escapes,
+  list order. Go and Rust runners.
 - [completion-v1/](completion-v1/README.md): kit/console/cli shell completion: completers, `__complete`
   output, `completion <shell>` scripts byte for byte. Go and Rust runners.
 - [consent-v1/](consent-v1/README.md): kit/core/consent grants: records, decisions, refusals, audit,
