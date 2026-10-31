@@ -40,7 +40,7 @@ in the fixture must be explainable as an intended Go-side change.
 | `sdk/tests/cross-lang/fixtures/toolspec-manifest*.json`, `toolspec-spec*.json` | manifest bytes and live `spec` / `spec coverage` stdout Go emits for `toolspec-manifest.tree.json` | `TestManifestCrossLangFixture`, `TestSpecCommandCrossLangFixture`, `sdk/ts/src/toolspec-manifest.test.ts`, `sdk/ts/src/toolspec-spec.test.ts` |
 | `contracts/toolspec-spec-v1/*.schema.json` | output schemas of `spec` and `spec coverage` | `TestSpecOutputSchemaContract`, `sdk/ts/src/toolspec-spec.test.ts` |
 | `serve.json` | serve lifecycle `constants`, `behaviors`, per-port `ports` status | `TestServeContractMatchesGo` (pinned against `go/console/serve`) |
-| `api.json` | REST server tables (client address, Host, Origin, request id, OpenAPI documents), `constants`, per-port `ports` status | `TestAPIContract*` in `go/transport/api`, `TestAPIContractRegistered`, `make test-parity-api` |
+| `api.json` | REST server tables (client address, Host, Origin, request id, OpenAPI documents, websocket topics, metrics, client certificates, idempotency), `constants`, per-port `ports` status | `TestAPIContract*` in `go/transport/api`, `TestAPIContractRegistered`, `make test-parity-api` |
 
 - All three ports read `parity.json` from this directory (Go `//go:embed`,
   TS bundler inlining, Python `hop_top_kit.parity`); there is no copy.

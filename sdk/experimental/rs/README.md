@@ -63,7 +63,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `authn` (`authn-rsa`, `authn-apikeys`) | `serde`, `serde_json`, `sha2`, `subtle`, `base64`, `p256`, `p384`, `p521`, `ed25519-dalek` (+ `ring`; + `kv` and `getrandom`; wasm-safe core) | 49 (52, 58) |
 | `identity`; `redact` | `ed25519-dalek`, `crypto_secretbox`, `hkdf`, `sha2`, `base64`, `serde`, `serde_json`, `thiserror` (+ `getrandom` on native targets; core wasm-safe); `regex`, `regex-syntax`, `serde`, `serde_json`, `sha2` | 60; 25 |
 | `authn-remote` | `authn` + `api` + `url`, `tokio` (rt) (native only) | 186 |
-| `api-server` | `serve` + `authn` + `bus` + `breaker` + `redact` + `axum`, `tower`, `tower-http`, `futures-util`, `getrandom` (native only) | 111 |
+| `api-server` (`api-server-tls`, `api-server-ws`, `api-server-idempotency`) | `serve` + `authn` + `bus` + `breaker` + `redact` + `axum`, `tower`, `tower-http`, `futures-util`, `getrandom`, `hyper`, `hyper-util` (native only; + `rustls` (ring), `tokio-rustls`; + `tokio-tungstenite`; + `kv`, `base64`) | 111 (118, 118, 115) |
 | `webhook` (`webhook-sha1`) | `api-server` + `kv` + `hmac`, `subtle`, `sha2`, `base64` (native only; + `sha1`, legacy senders opt-in) | 115 (116) |
 | `output` | `serde`, `serde_json`, `serde_norway`, `comfy-table`, `thiserror` | 22 |
 | `sqlstore` (`sqlstore-blob`, `sqlstore-encrypt`) | `sqldb` + `serde`, `serde_json` (+ `blob`, nothing of its own; + `crypto_secretbox`, `hkdf`, `sha2`) | 22 (22, 50) |

@@ -24,12 +24,14 @@ pub struct ForwardedProto(pub String);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Authenticated;
 
-/// Whether the request reached the listener over TLS, as a trusted
-/// proxy reported it.
+/// Whether the request reached the listener over TLS: the listener's
+/// own, or as a trusted proxy reported it.
 pub fn is_https(req: &Request) -> bool {
-    req.extensions()
-        .get::<ForwardedProto>()
-        .is_some_and(|p| p.0 == "https" || p.0 == "wss")
+    req.extensions().get::<TlsConnection>().is_some()
+        || req
+            .extensions()
+            .get::<ForwardedProto>()
+            .is_some_and(|p| p.0 == "https" || p.0 == "wss")
 }
 
 /// The peer the connection came from, when the server recorded it.
@@ -48,3 +50,14 @@ pub(crate) fn host_of(req: &Request) -> String {
         .or_else(|| req.uri().authority().map(|a| a.as_str().to_string()))
         .unwrap_or_default()
 }
+
+/// Set on a request that arrived over this listener's own TLS. In
+/// request extensions; [`is_https`] is true for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TlsConnection;
+
+/// The end-entity certificate (DER) a TLS client presented and the
+/// handshake verified against the listener's client CA. In request
+/// extensions, only on a connection that presented one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerCertificate(pub std::sync::Arc<[u8]>);
