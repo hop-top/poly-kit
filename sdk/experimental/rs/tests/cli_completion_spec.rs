@@ -285,12 +285,12 @@ fn optional_value_without_require_equals_is_a_normal_value() {
     let usage = render_usage(&spec);
     assert!(
         usage.contains(
-            "\nflag \"--format-help <format-help>\" help=\"Show available formats and their options\" global=#true hide=#true\n"
+            "\nflag \"--format-help <string>\" help=\"Show available formats and their options\" global=#true hide=#true\n"
         ),
         "{usage}"
     );
     assert!(
-        usage.contains("\nflag \"--many <many>\" {\n    choices strict=#false \"a\" \"b\"\n}\n"),
+        usage.contains("\nflag \"--many <string>\" {\n    choices strict=#false \"a\" \"b\"\n}\n"),
         "{usage}"
     );
     assert!(!usage.contains("require_equals"), "{usage}");
@@ -299,12 +299,12 @@ fn optional_value_without_require_equals_is_a_normal_value() {
     let fig = render_fig(&spec);
     assert!(
         fig.contains(
-            "    {\n      name: \"--format-help\",\n      description: \"Show available formats and their options\",\n      hidden: true,\n      isPersistent: true,\n      args: {\n        name: \"format-help\",\n      },\n    },\n"
+            "    {\n      name: \"--format-help\",\n      description: \"Show available formats and their options\",\n      hidden: true,\n      isPersistent: true,\n      args: {\n        name: \"string\",\n      },\n    },\n"
         ),
         "{fig}"
     );
     assert!(
-        fig.contains("      args: {\n        name: \"many\",\n        suggestions: [\"a\", \"b\"],\n      },\n"),
+        fig.contains("      args: {\n        name: \"string\",\n        suggestions: [\"a\", \"b\"],\n      },\n"),
         "{fig}"
     );
     assert!(!fig.contains("requiresSeparator"), "{fig}");
@@ -326,7 +326,7 @@ fn rejected_default_missing_is_left_out() {
     root.disable_completion_command();
     let usage = render_usage(&Spec::from_root(&root));
     assert!(
-        usage.contains("\nflag \"--typed <typed>\" require_equals=#true {\n"),
+        usage.contains("\nflag \"--typed <uint>\" require_equals=#true {\n"),
         "{usage}"
     );
     assert!(!usage.contains("default_missing"), "{usage}");

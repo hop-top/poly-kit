@@ -260,7 +260,22 @@ Full diff: [kit-rs/v0.5.0-alpha.0...kit-rs/v0.5.0-alpha.1](https://github.com/ho
 
 ## [Unreleased]
 
+### Added
+
+- **`cli`: the kit CLI root.** `Root::with_config` registers Go's persistent
+  flags (`--format`, `--quiet`, `-V/--verbose`, `--no-color`, `--no-hints`,
+  `--offline`, hidden `-C`, `-c`, `--dry-run`, `--autocorrect`), `-v/--version`
+  and `--help-all` / `--help-<group>`; `Root::execute` and `run` dispatch
+  registered handlers, answer flag errors with USAGE envelopes and apply
+  opt-in `read` autocorrect; `Root::model()` is the kit-owned command model.
+  Pinned by `contracts/cli-root-v1`.
+
 ### Changed
+
+- `CliError` gains `corrected_from`; code building it with a full struct
+  literal must name the field.
+- `completion fig|usage` names a flag's value by pflag's type name
+  (`string`, `int`, ...) when it names none, not by its clap id.
 
 - **`serde_json`'s `preserve_order` feature is now enabled.** This is the
   headline change and it reaches further than the output layer: it swaps the

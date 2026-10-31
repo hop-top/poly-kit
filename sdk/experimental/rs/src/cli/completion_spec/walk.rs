@@ -228,14 +228,15 @@ fn possible_values(a: &ClapArg) -> Vec<String> {
         .collect()
 }
 
-/// The first value name, else the id, as clap's help names the value;
-/// an empty one is cobra's `value`.
+/// The explicit value name; else, for a flag, pflag's type name
+/// (`string`, `int`, ...) as Go prints for a flag that names none, and
+/// for a positional its id. An empty name is cobra's `value`.
 fn value_name(a: &ClapArg) -> String {
-    let name = a
-        .get_value_names()
-        .and_then(|n| n.first())
-        .map(|n| n.to_string())
-        .unwrap_or_else(|| a.get_id().to_string());
+    let name = match a.get_value_names().and_then(|n| n.first()) {
+        Some(n) => n.to_string(),
+        None if a.is_positional() => a.get_id().to_string(),
+        None => crate::cli::model::flag_kind(a).type_name().to_string(),
+    };
     if name.is_empty() {
         return "value".into();
     }

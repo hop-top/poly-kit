@@ -18,7 +18,7 @@ use hop_top_kit::cli::completion::{
     self, bind_args, bind_flag, config_keys, dir, file, func, prefixed, static_items,
     static_values, Completer, Context, Item,
 };
-use hop_top_kit::cli::Root;
+use hop_top_kit::cli::{Config, Root};
 use hop_top_kit::config::Value;
 use serde::Deserialize;
 
@@ -328,11 +328,10 @@ fn build_command(c: &ConfCommand) -> Command {
 }
 
 fn build_root(t: &Tree) -> Root {
-    let mut cmd = Command::new(t.program.clone()).about(t.about.clone());
+    let mut root = Root::with_config(Config::new(&t.program, "1.0.0", &t.about));
     for c in &t.commands {
-        cmd = cmd.subcommand(build_command(c));
+        root.add_command(build_command(c));
     }
-    let mut root = Root::new(cmd);
     for (name, path) in &t.aliases {
         root.alias(name, path).unwrap();
     }
