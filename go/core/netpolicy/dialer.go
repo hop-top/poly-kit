@@ -25,18 +25,24 @@ func isLocalNetwork(network string) bool {
 
 // CheckDial reports whether a dial to addr on network is permitted under
 // ctx. It returns nil when the dial may proceed and an error wrapping
-// ErrOffline when the policy refuses it.
+// ErrOffline or ErrHostNotAllowed when the policy refuses it.
 //
 // It applies the same exemptions as the HTTP guard: the policy only bites
-// on an offline-marked context, loopback stays reachable, and unix
-// sockets are not network at all. Use it when a library gives you a hook
+// on an offline-marked context or one carrying a host allowlist, loopback
+// stays reachable, and unix sockets are not network at all. An error
+// wraps ErrOffline, or ErrHostNotAllowed when the allowlist refused. Use it when a library gives you a hook
 // that is not a dialer — a connection callback, a driver Connector — and
 // you need the decision without a net.Conn to return.
 func CheckDial(ctx context.Context, network, addr string) error {
-	if !IsOffline(ctx) || isLocalNetwork(network) || isLoopback(addr) {
+	if isLocalNetwork(network) {
 		return nil
 	}
-	return fmt.Errorf("dial %s %s: %w", network, addr, ErrOffline)
+	err := refuse(ctx, addr)
+	if err == nil {
+		return nil
+	}
+	audit(ctx, err, "dial "+network, addr)
+	return fmt.Errorf("dial %s %s: %w", network, addr, err)
 }
 
 // GuardDial wraps base so a dial on an offline-marked context fails with

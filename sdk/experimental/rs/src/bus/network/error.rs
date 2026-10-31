@@ -5,7 +5,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::bus::context::ContextError;
-use crate::netpolicy::OfflineError;
+use crate::netpolicy::{HostNotAllowedError, OfflineError};
 
 /// The error an authenticator returns. Any error type works; the adapter
 /// reports it unchanged.
@@ -27,6 +27,10 @@ pub enum NetworkError {
     /// The policy refused the dial: offline, and not a loopback peer.
     /// Matches Go's `errors.Is(err, netpolicy.ErrOffline)`.
     Offline(OfflineError),
+    /// The policy refused the dial: a host allowlist is in force and the
+    /// peer is not on it. Matches Go's
+    /// `errors.Is(err, netpolicy.ErrHostNotAllowed)`.
+    HostNotAllowed(HostNotAllowedError),
     /// The WebSocket dial failed: an unusable address, a refused or
     /// failed connection, TLS, or a rejected upgrade.
     Dial(String),
@@ -79,6 +83,14 @@ impl NetworkError {
         )
     }
 
+    /// The allowlist refusal, if the dial was refused by it.
+    pub fn as_host_not_allowed(&self) -> Option<&HostNotAllowedError> {
+        match self.inner() {
+            NetworkError::HostNotAllowed(e) => Some(e),
+            _ => None,
+        }
+    }
+
     /// The policy refusal, if the dial was refused as offline.
     pub fn as_offline(&self) -> Option<&OfflineError> {
         match self.inner() {
@@ -94,6 +106,7 @@ impl fmt::Display for NetworkError {
             NetworkError::Closed => f.write_str("bus: publish after close"),
             NetworkError::Disconnected => f.write_str("bus: address disconnected during connect"),
             NetworkError::Offline(e) => write!(f, "failed to WebSocket dial: {e}"),
+            NetworkError::HostNotAllowed(e) => write!(f, "failed to WebSocket dial: {e}"),
             NetworkError::Dial(m) => write!(f, "failed to WebSocket dial: {m}"),
             NetworkError::AuthFailed => f.write_str(AUTH_FAILED),
             NetworkError::AckTimeout => write!(f, "{AUTH_FAILED}: no ack before the timeout"),
@@ -111,6 +124,7 @@ impl Error for NetworkError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             NetworkError::Offline(e) => Some(e),
+            NetworkError::HostNotAllowed(e) => Some(e),
             NetworkError::Token(e) => Some(e.as_ref()),
             NetworkError::Context(e) => Some(e),
             NetworkError::Handshake { source, .. } => Some(source.as_ref()),

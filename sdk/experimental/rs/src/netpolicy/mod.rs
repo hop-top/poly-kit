@@ -34,6 +34,17 @@
 //! than a context value. [`NetPolicy::default`] is online, so a port
 //! that has not wired the flag behaves exactly as it did before.
 //!
+//! # Allowlist
+//!
+//! `--offline` is all or nothing. [`NetPolicy::with_allow_hosts`] sits
+//! between: dials and requests are permitted only to the configured
+//! hosts (config key `netpolicy.allow_hosts`; exact entries and
+//! `*.suffix`), so a tool can promise it talks to Graph and its login
+//! endpoint and nowhere else. A refusal is typed ([`HostNotAllowedError`])
+//! and, when a sink is set with [`NetPolicy::with_audit`], audited.
+//! Offline wins when both apply; loopback and unix sockets stay exempt
+//! under either.
+//!
 //! Loopback is deliberately exempt. `--offline` means "do not talk to
 //! the network", not "do not talk to myself": a local peer, a dev
 //! backend on 127.0.0.1 and unix sockets stay reachable so offline
@@ -41,9 +52,10 @@
 //!
 //! # Features
 //!
-//! The decision lives in the `netpolicy` feature, which has no
-//! dependencies and builds on wasm32: [`NetPolicy`], [`is_loopback`],
-//! [`NetPolicy::check_dial`], [`OfflineError`]. The reqwest client
+//! The decision lives in the `netpolicy` feature, which depends only
+//! on `url` (host normalization) and builds on wasm32: [`NetPolicy`],
+//! [`is_loopback`], [`NetPolicy::check_dial`], [`OfflineError`],
+//! [`HostNotAllowedError`]. The reqwest client
 //! (`GuardedClient`, `NetError`, `RequestBuilder`, `NetPolicy::allows`)
 //! sits under `api`, which enables `netpolicy`.
 //!
@@ -62,7 +74,10 @@
 
 mod core;
 
-pub use self::core::{is_loopback, NetPolicy, OfflineError, OFFLINE_MESSAGE};
+pub use self::core::{
+    is_loopback, validate_allow_hosts, HostNotAllowedError, InvalidAllowHost, NetPolicy,
+    OfflineError, PolicyError, Refusal, RefusalReason, HOST_NOT_ALLOWED_MESSAGE, OFFLINE_MESSAGE,
+};
 
 #[cfg(feature = "api")]
 mod reqwest;

@@ -15,10 +15,11 @@ default = []
 # tokio: nothing here names it, and reqwest brings its own.
 api = ["netpolicy", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:thiserror"]
 # The policy decision alone: `NetPolicy`, loopback classification, the
-# dial check and the typed refusal. No dependencies, wasm-safe, so a
-# client that dials its own sockets (websocket, SMTP, SQL) can enforce
-# `--offline` without compiling reqwest or tokio.
-netpolicy = []
+# host allowlist, the dial check and the typed refusals. Depends only on
+# `url` (host normalization for the allowlist, the parser reqwest sends
+# with), wasm-safe, so a client that dials its own sockets (websocket,
+# SMTP, SQL) can enforce `--offline` without compiling reqwest or tokio.
+netpolicy = ["dep:url"]
 # Terminal UI primitives, a port of go/console/tui and go/console/progress:
 # progress events, bar, spinner, status lines, confirm, app shell frame.
 # Plain ANSI on std: no dependencies of its own.
@@ -391,8 +392,9 @@ reqwest = { version = "0.13", default-features = false, features = ["default-tls
 serde = { version = "1", features = ["derive"], optional = true }
 # The llm endpoint guard parses base URLs with the parser reqwest sends
 # with, so the host a credential is checked against is the host it goes
-# to. Exact pin to the version reqwest resolves in Cargo.lock: the two
-# must parse alike. servo/rust-url, MIT OR Apache-2.0, no advisories.
+# to; the netpolicy allowlist normalizes hosts (lower case, IDNA) with it
+# for the same reason. Exact pin to the version reqwest resolves in
+# Cargo.lock: the two must parse alike. servo/rust-url, MIT OR Apache-2.0, no advisories.
 url = { version = "=2.5.8", optional = true }
 # No crate-wide features: `output` adds preserve_order for itself.
 serde_json = { version = "1", optional = true }

@@ -2,11 +2,11 @@
 
 ## What it answers
 
-What the `--offline` policy in `kit/core/netpolicy` must decide, independent of language: which hosts are loopback, which dials are refused, which request URLs pass an offline guard, and the exact refusal texts. Wrong place for transport wiring (`Install`, `ObservabilityTransport`, the reqwest client builder); those are per-runtime and have no vectors.
+What the `--offline` policy and the `netpolicy.allow_hosts` allowlist in `kit/core/netpolicy` must decide, independent of language: which hosts are loopback, which hosts an allowlist admits, which dials are refused, which request URLs pass an offline guard, and the exact refusal texts. Wrong place for transport wiring (`Install`, `ObservabilityTransport`, the reqwest client builder); those are per-runtime and have no vectors.
 
 ## Use it when
 
-- you port or change loopback classification, `CheckDial` or the refusal text in any SDK: run both runners
+- you port or change loopback classification, allowlist matching, `CheckDial` or the refusal text in any SDK: run both runners
 - you change netpolicy behaviour in Go: add a vector first, then make every port pass it
 
 ## Quick start
@@ -29,6 +29,10 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 | `check_dial[]` `{offline, network, addr, error}` | the dial decision; `unix`, `unixgram`, `unixpacket` exempt (exact, lower case); `error` is the exact refusal `dial <network> <addr>: network disabled by --offline`, empty when permitted |
 | `url_allows[]` `{url, allowed}` | whether an offline guard lets a request to `url` through |
 | `refusal[]` `{method, url, error}` | the exact offline refusal of a request: method, scheme, host with port and path; never query, fragment or userinfo |
+| `allow_message` | the sentinel text every allowlist refusal ends with (`ErrHostNotAllowed`) |
+| `host_allowed[]` `{allow_hosts, host, allowed}` | allowlist matching: exact entries and `*.suffix` (one or more labels below the suffix; never the suffix itself, never an IP literal); lower case, trailing dot, IDNA, ports and IP spelling normalized; loopback always passes; an empty list restricts nothing; invalid entries never match |
+| `allow_check_dial[]` `{allow_hosts, network, addr, error}` | the dial decision under an allowlist; `error` is the exact refusal `dial <network> <addr>: host not allowed by netpolicy.allow_hosts`, empty when permitted |
+| `allow_url[]` `{allow_hosts, method, url, error}` | the exact allowlist refusal of a request, empty when it passes |
 
 Runners are strict: unknown fields, a `version` other than `v1` and a corpus file no runner consumes all fail the run.
 

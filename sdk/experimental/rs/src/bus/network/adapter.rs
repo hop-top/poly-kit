@@ -81,7 +81,8 @@ pub(crate) struct Inner {
     pub(crate) closed: AtomicBool,
     /// Fired by close: stops listeners and reconnect loops.
     pub(crate) closing: Signal,
-    offline: AtomicBool,
+    /// The policy a connect last recorded, replayed on reconnects.
+    sticky: Mutex<NetPolicy>,
     sub: Mutex<Option<SubscriptionId>>,
     pub(crate) tasks: WaitGroup,
     pub(crate) write_fault: Mutex<Option<WriteFault>>,
@@ -145,10 +146,13 @@ impl Inner {
 
     /// Records a policy seen on a connect. Sticky: once a run is
     /// offline, a later online connect does not clear it for peers dialed
-    /// under the offline policy.
+    /// under the offline policy; the same holds for a host allowlist,
+    /// which a later connect replaces only with another one.
     pub(crate) fn learn_policy(&self, ctx: &Context) {
-        if is_offline(ctx) {
-            self.offline.store(true, Ordering::SeqCst);
+        let seen = policy(ctx);
+        if seen.is_restrictive() {
+            let mut g = self.sticky.lock().unwrap_or_else(PoisonError::into_inner);
+            *g = seen.sticky(&g);
         }
     }
 
@@ -156,8 +160,9 @@ impl Inner {
     /// outlive the caller's context, so they start here, carrying the
     /// offline policy a connect recorded.
     pub(crate) fn base_ctx(&self) -> Context {
-        if self.offline.load(Ordering::SeqCst) {
-            Context::background().with_value(NetPolicy::offline())
+        let sticky = self.sticky.lock().unwrap_or_else(PoisonError::into_inner);
+        if sticky.is_restrictive() {
+            Context::background().with_value(sticky.clone())
         } else {
             Context::background()
         }
@@ -167,11 +172,7 @@ impl Inner {
 /// The policy a context carries: offline when it holds an offline
 /// [`NetPolicy`], as Go's `netpolicy.IsOffline(ctx)`.
 pub(crate) fn policy(ctx: &Context) -> NetPolicy {
-    ctx.value::<NetPolicy>().copied().unwrap_or_default()
-}
-
-fn is_offline(ctx: &Context) -> bool {
-    policy(ctx).is_offline()
+    ctx.value::<NetPolicy>().cloned().unwrap_or_default()
 }
 
 /// Bridges a bus to remote peers over WebSocket: Go's `NetworkAdapter`.
@@ -233,7 +234,7 @@ impl NetworkAdapter {
             state: Mutex::new(State::default()),
             closed: AtomicBool::new(false),
             closing: Signal::default(),
-            offline: AtomicBool::new(false),
+            sticky: Mutex::new(NetPolicy::default()),
             sub: Mutex::new(None),
             tasks: WaitGroup::default(),
             write_fault: Mutex::new(None),

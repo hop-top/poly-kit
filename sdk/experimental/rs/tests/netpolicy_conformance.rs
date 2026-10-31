@@ -6,13 +6,14 @@
 //! Strict: unknown fields fail, `version` must be `v1`, and the corpus
 //! directory must match [`FILES`] exactly. `is_loopback` and
 //! `check_dial` run under `netpolicy`; `url_allows` and `refusal` need
-//! the reqwest client and run under `api`.
+//! the reqwest client and run under `api`. The `allow_*` and
+//! `host_allowed` sections pin the host allowlist the same way.
 #![cfg(feature = "netpolicy")]
 
 use std::fs;
 use std::path::PathBuf;
 
-use hop_top_kit::netpolicy::{is_loopback, NetPolicy, OFFLINE_MESSAGE};
+use hop_top_kit::netpolicy::{is_loopback, NetPolicy, HOST_NOT_ALLOWED_MESSAGE, OFFLINE_MESSAGE};
 use serde::Deserialize;
 
 const FILES: &[&str] = &["vectors.json"];
@@ -56,6 +57,36 @@ struct RefusalCase {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct HostCase {
+    name: String,
+    allow_hosts: Vec<String>,
+    host: String,
+    allowed: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AllowDialCase {
+    name: String,
+    allow_hosts: Vec<String>,
+    network: String,
+    addr: String,
+    error: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(not(feature = "api"), allow(dead_code))]
+struct AllowUrlCase {
+    name: String,
+    allow_hosts: Vec<String>,
+    method: String,
+    url: String,
+    error: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Vectors {
     version: String,
     #[allow(dead_code)]
@@ -73,6 +104,11 @@ struct Vectors {
     url_allows: Vec<UrlCase>,
     #[cfg_attr(not(feature = "api"), allow(dead_code))]
     refusal: Vec<RefusalCase>,
+    allow_message: String,
+    host_allowed: Vec<HostCase>,
+    allow_check_dial: Vec<AllowDialCase>,
+    #[cfg_attr(not(feature = "api"), allow(dead_code))]
+    allow_url: Vec<AllowUrlCase>,
 }
 
 fn load() -> Vectors {
@@ -148,6 +184,70 @@ async fn refusal_vectors() {
             .await
             .expect_err("offline request was sent");
         assert!(err.is_offline(), "{}: not a refusal: {err}", c.name);
+        assert_eq!(err.to_string(), c.error, "{}", c.name);
+    }
+}
+
+#[test]
+fn allow_message() {
+    assert_eq!(HOST_NOT_ALLOWED_MESSAGE, load().allow_message);
+}
+
+#[test]
+fn host_allowed_vectors() {
+    let cases = load().host_allowed;
+    assert!(!cases.is_empty(), "host_allowed section is empty");
+    for c in cases {
+        let p = NetPolicy::online().with_allow_hosts(&c.allow_hosts);
+        assert_eq!(
+            p.allows_host(&c.host),
+            c.allowed,
+            "{}: {:?} against {:?}",
+            c.name,
+            c.host,
+            c.allow_hosts
+        );
+    }
+}
+
+#[test]
+fn allow_check_dial_vectors() {
+    let cases = load().allow_check_dial;
+    assert!(!cases.is_empty(), "allow_check_dial section is empty");
+    for c in cases {
+        let p = NetPolicy::online().with_allow_hosts(&c.allow_hosts);
+        let got = p.check_dial(&c.network, &c.addr);
+        let got = got.err().map(|e| e.to_string()).unwrap_or_default();
+        assert_eq!(got, c.error, "{}", c.name);
+    }
+}
+
+#[cfg(feature = "api")]
+#[tokio::test]
+async fn allow_url_vectors() {
+    use hop_top_kit::netpolicy::GuardedClient;
+
+    let cases = load().allow_url;
+    assert!(!cases.is_empty(), "allow_url section is empty");
+    for c in cases {
+        let p = NetPolicy::online().with_allow_hosts(&c.allow_hosts);
+        let url: reqwest::Url = c.url.parse().expect("vector url parses");
+        if c.error.is_empty() {
+            assert!(p.allows(&url), "{}: {} refused", c.name, c.url);
+            continue;
+        }
+        let client = GuardedClient::new(p).expect("build client");
+        let method: reqwest::Method = c.method.parse().expect("vector method");
+        let err = client
+            .request(method, c.url.as_str())
+            .send()
+            .await
+            .expect_err("unlisted request was sent");
+        assert!(
+            err.is_host_not_allowed(),
+            "{}: not a refusal: {err}",
+            c.name
+        );
         assert_eq!(err.to_string(), c.error, "{}", c.name);
     }
 }

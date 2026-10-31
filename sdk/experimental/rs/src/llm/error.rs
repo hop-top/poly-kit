@@ -6,7 +6,7 @@
 use std::fmt;
 use std::time::Duration;
 
-use crate::netpolicy::OfflineError;
+use crate::netpolicy::{HostNotAllowedError, OfflineError};
 
 /// Every error the llm core and its adapters return.
 #[derive(Debug, Clone, PartialEq)]
@@ -86,6 +86,8 @@ pub enum LlmError {
     },
     /// Refused by the `--offline` policy; never retried.
     Offline(OfflineError),
+    /// Refused by the `netpolicy.allow_hosts` allowlist; never retried.
+    HostNotAllowed(HostNotAllowedError),
     /// The request could not be sent or its body not read. Fallbackable,
     /// like Go's network errors.
     Transport {
@@ -256,6 +258,7 @@ impl fmt::Display for LlmError {
             },
             LlmError::MissingKey(e) => e.fmt(f),
             LlmError::Offline(e) => e.fmt(f),
+            LlmError::HostNotAllowed(e) => e.fmt(f),
             LlmError::Transport { message } => f.write_str(message),
             LlmError::Truncated { provider } => write!(
                 f,
@@ -304,6 +307,12 @@ impl std::error::Error for LlmError {}
 impl From<MissingKeyError> for LlmError {
     fn from(e: MissingKeyError) -> Self {
         LlmError::MissingKey(e)
+    }
+}
+
+impl From<HostNotAllowedError> for LlmError {
+    fn from(e: HostNotAllowedError) -> Self {
+        LlmError::HostNotAllowed(e)
     }
 }
 
