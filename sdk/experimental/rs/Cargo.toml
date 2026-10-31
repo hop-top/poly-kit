@@ -245,7 +245,15 @@ llm = ["config", "netpolicy", "dep:url", "dep:sha2"]
 # request shaping, SSE streaming, error mapping and retries with full
 # jitter through `util::retry`, all through the guarded `api` client.
 # tokio supplies only the default retry timer. Native only.
-llm-anthropic = ["llm", "api", "dep:base64", "dep:tokio", "tokio/time"]
+llm-anthropic = ["llm-http"]
+# What the HTTP adapters share (feature-less on its own): the guarded
+# client, SSE decoding, size limits and the retry loop. tokio supplies
+# only the default retry timer. Native only.
+llm-http = ["llm", "api", "dep:base64", "dep:tokio", "tokio/time"]
+# The OpenAI Chat Completions adapter, over the HTTP API (no SDK crate),
+# for openai and its compatible hosts (openrouter, xai, lmstudio, groq,
+# together, fireworks, deepseek, mistral). Native only.
+llm-openai = ["llm-http"]
 
 # Notification primitives over the bus `Sink`, a port of go/runtime/notify:
 # the severity convention, the filter and retry + dead-letter decorators,

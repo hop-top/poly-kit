@@ -84,6 +84,8 @@ impl Registry {
         let r = Self::new();
         #[cfg(feature = "llm-anthropic")]
         super::anthropic::register(&r).expect("empty registry");
+        #[cfg(feature = "llm-openai")]
+        super::openai::register(&r).expect("empty registry");
         r
     }
 
