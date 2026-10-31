@@ -6,6 +6,7 @@
 //! so it needs no raw mode and no terminal, and it never blocks a
 //! non-interactive run.
 
+use super::sanitize::clean;
 use super::style::Styler;
 use std::io::{self, BufRead, IsTerminal, Write};
 
@@ -79,7 +80,7 @@ impl Confirm {
     pub fn render(&self) -> String {
         format!(
             "{} {} ",
-            self.styler.accent_bold(&self.prompt),
+            self.styler.accent_bold(&clean(&self.prompt)),
             self.styler.muted("[y/n]")
         )
     }
@@ -90,7 +91,7 @@ impl Confirm {
         } else {
             self.styler.error("No")
         };
-        format!("{} {}\n", self.styler.accent_bold(&self.prompt), a)
+        format!("{} {}\n", self.styler.accent_bold(&clean(&self.prompt)), a)
     }
 
     /// Ask on `out`, read the answer from `input`.
@@ -205,6 +206,17 @@ mod tests {
     #[test]
     fn view_before_choice_shows_hint() {
         assert_eq!(confirm().render(), "Delete? [y/n] ");
+    }
+
+    #[test]
+    fn prompt_is_stripped_of_controls() {
+        use crate::tui::sanitize::{assert_inert, HOSTILE};
+        for h in HOSTILE {
+            let c = Confirm::new(h, Styler::plain());
+            assert_inert(&c.render());
+            let (_, out) = run(&c, "y\n", true);
+            assert_inert(&out);
+        }
     }
 
     #[test]

@@ -8,6 +8,7 @@
 //! capabilities (`Initer`, `Updater`, `Resizer`, `HeaderRenderer`,
 //! `FooterRenderer`) become default methods of one trait.
 
+use super::sanitize::clean;
 use super::style::Styler;
 
 /// Rows the shell reserves above and below the main region.
@@ -245,7 +246,7 @@ impl<R: AppRenderer> AppShell<R> {
 }
 
 fn first_line(s: &str) -> String {
-    s.lines().next().unwrap_or("").to_string()
+    clean(s.lines().next().unwrap_or("")).into_owned()
 }
 
 /// Visible width: chars outside CSI escape sequences.
@@ -461,6 +462,22 @@ mod tests {
     #[test]
     fn alt_screen_off() {
         assert!(!shell("x").alt_screen(false).wants_alt_screen());
+    }
+
+    #[test]
+    fn header_and_footer_are_stripped_of_controls() {
+        use crate::tui::sanitize::{assert_inert, HOSTILE};
+        for h in HOSTILE {
+            let v = shell("m").header(h).footer(h).size(20, 5).view();
+            assert_inert(&v);
+            let mut f = fake("m");
+            f.header = Some(h.into());
+            f.footer = Some(h.into());
+            assert_inert(&AppShell::new(f, Styler::plain()).view());
+            let mut a = shell("m").help_text(h);
+            a.update(key("?"));
+            assert_inert(&a.view());
+        }
     }
 
     #[test]

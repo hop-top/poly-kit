@@ -12,6 +12,7 @@
 //! interleave. Go threads the reporter through `context.Context`; here
 //! pass an `Arc<dyn Reporter>` to whoever emits.
 
+use super::sanitize::clean;
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -156,10 +157,10 @@ struct Human<W> {
 
 impl<W: Write + Send> Reporter for Human<W> {
     fn emit(&self, e: Event) {
-        let mut s = format!("[{}]", e.phase);
+        let mut s = format!("[{}]", clean(&e.phase));
         if !e.item.is_empty() {
             s.push(' ');
-            s.push_str(&e.item);
+            s.push_str(&clean(&e.item));
         }
         if e.total != 0 {
             s.push_str(&format!(" ({}/{})", kib(e.bytes), kib(e.total)));
@@ -463,6 +464,33 @@ mod tests {
         let out = b.text();
         assert_eq!(out, "[download] (2.0 KiB)\n");
         assert!(!out.contains('/'));
+    }
+
+    #[test]
+    fn human_strips_control_chars() {
+        use crate::tui::sanitize::HOSTILE;
+        for h in HOSTILE {
+            let b = Buf::default();
+            human(b.clone()).emit(Event::new(h).item(h));
+            let out = b.text();
+            assert!(
+                !out.contains('\x1b') && !out.contains('\r') && !out.contains('\u{9b}'),
+                "{out:?}"
+            );
+            assert_eq!(out.matches('\n').count(), 1, "{out:?}");
+        }
+    }
+
+    #[test]
+    fn jsonl_escapes_control_chars() {
+        use crate::tui::sanitize::HOSTILE;
+        for h in HOSTILE {
+            let b = Buf::default();
+            jsonl(b.clone()).emit(Event::new(h).item(h));
+            let out = b.text();
+            assert!(!out.contains('\x1b') && !out.contains('\r'), "{out:?}");
+            assert_eq!(json(&out)["phase"], h);
+        }
     }
 
     #[test]
