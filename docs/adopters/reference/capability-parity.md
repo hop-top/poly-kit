@@ -68,7 +68,7 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | XDG paths | done | unverified | unverified | partial | none | ts:xdg.ts py:xdg.py rs:xdg/ (home and config home only, rs-sdk.md) |
 | Project registry | done | none | none | none | none | no module in any SDK |
 | Key-value store | done | none | none | partial | none | make test-parity-kv (Go<->Rs, contracts/kv-v1); rs:kv.rs (SQLite only; etcd/TiDB absent by design) |
-| Blob store | done | none | none | partial | none | rs:blob/ (local backend; S3 absent, rs-sdk.md) |
+| Blob store | done | none | none | partial | none | rs:blob/ (local and S3 backends, blobtest port; no cross-language corpus) |
 | SQLite connections | done | none | none | unverified | none | rs:sqldb.rs |
 | SQLite JSON store | done | unverified | unverified | partial | none | ts:sqlstore.ts py:sqlstore.py rs:sqlstore/ (identity-v1 key derivation covered by rs tests/sqlstore.rs) |
 | HTTP cache | done | none | none | done | none | contracts/httpcache-v1 via rs tests/httpcache_contract.rs; rs:httpcache/ |

@@ -627,8 +627,53 @@ are Rust-only and always run.
 `blob::local::LocalStore::put` stages contents in a sibling temp file,
 syncs it, then renames it over the destination. A concurrent `get` never
 observes a partial blob, and an interrupted write leaves any previous
-value intact. The Go local backend matches this. Only the local backend is
-ported; see [Not ported](#not-ported).
+value intact. The Go local backend matches this. The S3 backend has no
+local atomicity story: a `PutObject` is atomic on the service side. See
+[blob S3 backend](#blob-s3-backend).
+
+### blob S3 backend
+
+Feature `blob-s3` adds `blob::s3::S3Store`, a port of Go's `blob/s3`. It
+signs S3 REST calls itself (SigV4) and sends them through the netpolicy
+guarded client, so `--offline` and the allowlist bind it and no AWS SDK is
+linked. It targets AWS and S3-compatible servers (`S3Config::with_endpoint`,
+path-style addressing). Semantics match Go: keys join under a prefix,
+`list` is a string-prefix match that paginates, `delete` of a missing key
+succeeds, `exists` is `false` for one, `get`/`stat` of one are
+`BlobError::NotFound`, content type is the object's native `Content-Type`
+(empty from `list`, one `HeadObject` via `Stater::stat`).
+
+Differences from Go: credentials come from `S3Config` or the standard
+`AWS_*` variables only (no profile, SSO or instance-metadata chain);
+`put`/`get` buffer the object and a single `PutObject` is capped at 5 GiB
+(no multipart); a key climbing out of the prefix with `..` is rejected;
+the store is synchronous like `Store`, so async callers use
+`spawn_blocking`. Failures are `BlobError::Remote`, whose source is
+`blob::s3::ResponseError` (the service said no) or the transport error
+(for a refusal, a downcastable `NetError`).
+
+The backend is tested through `s3::Transport`, the one HTTP seam, with
+committed xrr cassettes (`tests/cassettes/blob-s3/`), so the default
+`cargo test` replays offline; `XRR_MODE=record` re-records against a local
+S3:
+
+`tests/blob_s3.rs` runs the conformance suite against S3 with every HTTP exchange answered from
+`tests/cassettes/blob-s3/` (xrr, adapter `s3-http`): a plain `cargo test --features blob-s3` needs no network
+and no S3 server. Cassettes hold no `Authorization`, signing date, payload hash, token or request id, and
+server timestamps are pinned. Re-record against a local S3 (never AWS; recording refuses a non-loopback
+endpoint):
+
+```sh
+localstack start -d                                  # http://localhost:4566
+rm -f tests/cassettes/blob-s3/*.yaml
+XRR_MODE=record cargo test --features blob-s3 --test blob_s3
+localstack stop
+```
+
+Recording needs `curl` (it creates the bucket). `S3_TEST_ENDPOINT` selects another local server.
+LocalStack releases after 4.x require an account token; the last token-free image works the same:
+`docker run -d --rm --name s3-record -p 127.0.0.1:4566:4566 -e SERVICES=s3 localstack/localstack:4.14.0`
+(stop with `docker stop s3-record`).
 
 ### blob content type is a sidecar
 
@@ -1136,7 +1181,7 @@ net.connect(&Context::background(), "ws://hub:8080/bus")?; // or dial one
 ### Not ported
 
 The Go package's SQLite bus adapter is deliberately absent, as are kv's
-etcd/TiDB backends and blob's S3 backend. See
+etcd/TiDB backends. See
 [rust-bus-parity.md](../../contributors/architecture/rust-bus-parity.md).
 
 ### Cross-references

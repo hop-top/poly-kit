@@ -122,6 +122,34 @@ prefix is ignored); `List` strips the prefix again, so callers see the
 same keys they wrote. `List("logs/")` matches only keys that start with
 `logs/`. `List` paginates internally.
 
+### Rust
+
+Feature `blob-s3` in `hop-top-kit` provides the same backend without the
+AWS SDK. It signs requests itself and sends them through the netpolicy
+guarded client, so `--offline` applies. Credentials, region and endpoint
+come from `S3Config` or the standard `AWS_*` variables; there is no
+profile, SSO or instance-metadata chain.
+
+```rust
+use hop_top_kit::blob::s3::{S3Config, S3Store};
+use hop_top_kit::blob::Store;
+use hop_top_kit::netpolicy::NetPolicy;
+
+// AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION; AWS_ENDPOINT_URL_S3
+// switches to a custom endpoint with path-style addressing (LocalStack, MinIO).
+let cfg = S3Config::from_env("my-bucket")?.with_prefix("tool-data");
+let store = S3Store::new(cfg, NetPolicy::online())?;
+store.put("reports/q1.txt", "hello".as_bytes(), "text/plain")?;
+```
+
+Same semantics as Go: prefix join, string-prefix `list` with pagination,
+idempotent `delete`, native content type (`list` leaves it empty;
+`Stater::stat` reads it). Differences: `put` and `get` hold the whole
+object in memory (single `PutObject`, 5 GiB cap), a key that climbs out of
+the prefix with `..` is rejected, and the API is synchronous (call it in
+`spawn_blocking` from async code). Details:
+[Rust blob README](../../../sdk/rs/src/blob/README.md).
+
 ## Behaviors that differ by backend
 
 | Behavior | `local` | `s3` |
@@ -163,6 +191,11 @@ integration test needs `S3_TEST_BUCKET`, AWS credentials and `-tags s3`.
 Both backends run the shared suite `blob/blobtest`; a new backend passes
 it with `blobtest.Run(t, func(t *testing.T) blob.Store { ... })`; a
 backend implementing `Stater` also passes `blobtest.RunStat`.
+
+In Rust, `tests/blobtest/` ports that suite and runs it on `local` and on
+S3. The S3 run replays committed xrr cassettes, so `cargo test` needs no
+network; re-record against LocalStack with `XRR_MODE=record` (steps in the
+[Rust SDK reference](../reference/rs-sdk.md#blob-s3-backend)).
 
 ## See also
 
