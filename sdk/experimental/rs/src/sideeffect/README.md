@@ -39,7 +39,7 @@ pick_fs(&ctx).write_file("/tmp/x".as_ref(), b"hi", 0o644).unwrap(); // prints, w
 - Features: `sideeffect` is `bus` plus nothing of its own, wasm-safe: the traits, the dry-run flag, `dryrun`,
   `testfake`, `DryRunPublisher`. `sideeffect-real` adds `real::{Fs, Bus, Exec}` (native only);
   `sideeffect-http` adds `real::Http` through the netpolicy guarded client (`api`), so `--offline` refuses it
-  ([`HttpError::is_offline`]). Authority: the crate [feature table](../../README.md#features).
+  ([`HttpError::is_offline`]); an allowlist refusal is [`HttpError::is_host_not_allowed`]. Authority: the crate [feature table](../../README.md#features).
 - Go is canonical for the seams, the dryrun text and the policy of what is intercepted. Differences: `Http` is
   async over plain `Request` / `Response` data, `Exec` takes a `Command`, payloads are `serde_json::Value`s, and the
   real bus publishes on a kit bus `Adapter`.

@@ -441,3 +441,21 @@ fn smtp_crlf_is_not_doubled() {
     let (wire, _) = body_on_the_wire("a\r\n.b\r\n\r\n.");
     assert_eq!(wire, "a\r\n..b\r\n\r\n..\r\n");
 }
+
+#[test]
+fn host_allowlist_refuses_an_unlisted_dial_before_any_connect() {
+    let srv = Server::start(Config::default());
+    let err = SmtpMailer::new("kit-allow-probe.invalid", srv.port)
+        .from("ops@example.com")
+        .policy(NetPolicy::online().with_allow_hosts(["mail.example"]))
+        .send_message(&Context::background(), &msg())
+        .unwrap_err();
+    assert!(err.is_host_not_allowed() && err.is_dial(), "{err}");
+    assert!(!err.is_offline(), "{err}");
+    assert!(
+        err.to_string()
+            .contains("host not allowed by netpolicy.allow_hosts"),
+        "{err}"
+    );
+    assert!(srv.wait_sessions(1).is_empty());
+}

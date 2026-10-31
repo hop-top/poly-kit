@@ -234,3 +234,22 @@ fn a_replicator_round_runs_over_http() {
     assert!(st[0].connected && st[0].last_error.is_none());
     assert_eq!(st[0].pending_diffs, 0);
 }
+
+#[test]
+fn host_allowlist_refuses_an_unlisted_host_but_not_loopback() {
+    let policy = NetPolicy::online().with_allow_hosts(["sync.example"]);
+    let tr = HttpTransport::with_policy("http://other.example.invalid", policy.clone()).unwrap();
+    let err = tr.ping(&ctx()).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("host not allowed by netpolicy.allow_hosts"),
+        "{err}"
+    );
+
+    let mut srv = Server::new();
+    srv.mock("GET", "/sync/ping").with_status(200).create();
+    HttpTransport::with_policy(&srv.url(), policy)
+        .unwrap()
+        .ping(&ctx())
+        .unwrap();
+}

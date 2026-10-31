@@ -23,7 +23,7 @@ use std::time::Duration;
 use reqwest::Method;
 
 use crate::bus::Context;
-use crate::netpolicy::{GuardedClient, NetPolicy, RequestBuilder};
+use crate::netpolicy::{GuardedClient, NetPolicy, Redirects, RequestBuilder};
 
 use super::clock::Timestamp;
 use super::diff::Diff;
@@ -55,8 +55,13 @@ impl HttpTransport {
     /// A transport under an explicit network policy: what the CLI layer
     /// calls once it registers `--offline`.
     pub fn with_policy(base_url: &str, policy: NetPolicy) -> Result<Self, TransportError> {
-        let client = GuardedClient::build(policy, reqwest::Client::builder().timeout(TIMEOUT))
-            .map_err(|e| TransportError::new(format!("create client: {}", e.without_url())))?;
+        let client = GuardedClient::build(
+            policy,
+            reqwest::Client::builder().timeout(TIMEOUT),
+            Redirects::default(),
+            reqwest::header::HeaderMap::new(),
+        )
+        .map_err(|e| TransportError::new(format!("create client: {}", e.without_url())))?;
         Ok(HttpTransport {
             base_url: base_url.trim_end_matches('/').to_string(),
             client,

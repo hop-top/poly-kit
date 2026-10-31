@@ -66,7 +66,7 @@ rep.sync_once(&ctx, "origin").unwrap();      // one round now, as a loop would
 
 - `hop_top_kit::domain`: the `Repository`, `Entity` and `RepoError` the replicator applies diffs through
 - `hop_top_kit::bus`: change events in, `sync.*` events out, `Context` everywhere
-- `hop_top_kit::netpolicy`: `HttpTransport` goes through its guarded client, so `--offline` refuses remote hosts
+- `hop_top_kit::netpolicy`: `HttpTransport` goes through its guarded client, so `--offline` and `netpolicy.allow_hosts` refuse remote hosts; redirects follow the guarded client default (cross-origin hops refused while the bearer token is set)
 
 ## See also
 

@@ -221,7 +221,7 @@ impl Builder {
             uri: cfg.uri.clone(),
             provider,
             fallbacks: Vec::new(),
-            net_policy: cfg.net_policy,
+            net_policy: cfg.net_policy.clone(),
             hermetic: cfg.hermetic,
         };
         let mut b = openai::Adapter::builder(inner_cfg);
