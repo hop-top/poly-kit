@@ -144,21 +144,11 @@ fn scrub(e: reqwest::Error) -> reqwest::Error {
 /// reqwest's own default redirect limit.
 const DEFAULT_MAX_REDIRECTS: usize = 10;
 
-/// Request headers that carry a credential. A hop to another origin
-/// with one of these is refused rather than stripped: stripping is
-/// per-header knowledge (a custom `X-Api-Key` style header is not on
-/// any standard list), refusing is not.
-const CREDENTIAL_HEADERS: &[&str] = &[
-    "authorization",
-    "proxy-authorization",
-    "cookie",
-    "x-api-key",
-    "api-key",
-];
-
-/// Headers a cross-origin hop keeps. Everything else the request
-/// carried (custom headers can hold identity just as well as the
-/// standard credential ones) stays behind.
+/// Headers a cross-origin hop may carry. Anything else on the request
+/// (`Authorization`, `Cookie`, `X-Api-Key`, or a custom header that
+/// holds identity just as well) cannot be told safe from sensitive by
+/// name, so a request carrying one is refused at the first hop that
+/// leaves its origin, never stripped.
 const CROSS_ORIGIN_HEADERS: &[&str] = &[
     "accept",
     "accept-encoding",
@@ -195,9 +185,10 @@ impl Default for Redirects {
 /// A redirect the client refused to follow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RedirectError {
-    /// The request carries a credential header and the hop leaves its
-    /// origin. Both ends are stripped as in a refusal.
-    CrossOriginCredentials { from: String, to: String },
+    /// The request carries a header outside the cross-origin allowlist
+    /// and the hop leaves its origin. Both ends are stripped as in a
+    /// refusal.
+    CrossOriginHeaders { from: String, to: String },
     /// More hops than the mode allows.
     TooMany { max: usize },
 }
@@ -205,9 +196,9 @@ pub enum RedirectError {
 impl std::fmt::Display for RedirectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RedirectError::CrossOriginCredentials { from, to } => write!(
+            RedirectError::CrossOriginHeaders { from, to } => write!(
                 f,
-                "redirect from {from} to {to} refused: request carries credentials"
+                "redirect from {from} to {to} refused: request carries headers that may not leave their origin"
             ),
             RedirectError::TooMany { max } => write!(f, "too many redirects (limit {max})"),
         }
@@ -247,8 +238,9 @@ pub struct GuardedClient {
     inner: reqwest::Client,
     policy: NetPolicy,
     redirects: Redirects,
-    /// The client defaults that are credentials, by name.
-    default_credentials: bool,
+    /// Headers every request carries unless it sets its own. Held here,
+    /// not on the inner client, which would re-add them on every hop.
+    defaults: reqwest::header::HeaderMap,
 }
 
 impl GuardedClient {
@@ -271,28 +263,24 @@ impl GuardedClient {
     /// replaced, so a caller cannot opt out of the per-hop check by
     /// accident, nor into following by omission.
     ///
-    /// Default headers go in `default_headers`, not on `builder`:
-    /// reqwest cannot be asked what a builder holds, and the client must
-    /// know whether its defaults carry a credential to refuse a
-    /// cross-origin hop. (A `default_headers` set on `builder` is
-    /// replaced.)
+    /// Default headers go in `default_headers`, not on `builder`: the
+    /// client merges them into each request itself, so the redirect
+    /// logic sees exactly what is sent. (A `default_headers` set on
+    /// `builder` is replaced.)
     pub fn build(
         policy: NetPolicy,
         builder: reqwest::ClientBuilder,
         redirects: Redirects,
         default_headers: reqwest::header::HeaderMap,
     ) -> Result<Self, reqwest::Error> {
-        let default_credentials = default_headers
-            .keys()
-            .any(|k| CREDENTIAL_HEADERS.contains(&k.as_str()));
         Ok(Self {
             inner: builder
                 .redirect(reqwest::redirect::Policy::none())
-                .default_headers(default_headers)
+                .default_headers(reqwest::header::HeaderMap::new())
                 .build()?,
             policy,
             redirects,
-            default_credentials,
+            defaults: default_headers,
         })
     }
 
@@ -331,16 +319,20 @@ impl GuardedClient {
     /// destination. This is the chokepoint: no request leaves this
     /// crate without passing through here. A failure's URL is stripped
     /// to scheme, host and path (see [`NetError::Transport`]).
-    pub async fn execute(&self, req: reqwest::Request) -> Result<reqwest::Response, NetError> {
+    pub async fn execute(&self, mut req: reqwest::Request) -> Result<reqwest::Response, NetError> {
+        for (k, v) in &self.defaults {
+            if !req.headers().contains_key(k) {
+                req.headers_mut().append(k.clone(), v.clone());
+            }
+        }
         self.judge(req.method().as_str(), req.url())?;
         let Redirects::Follow { max } = self.redirects else {
             return self.send(req).await;
         };
-        let carries_credentials = self.default_credentials
-            || req
-                .headers()
-                .keys()
-                .any(|k| CREDENTIAL_HEADERS.contains(&k.as_str()));
+        let unsafe_headers = req
+            .headers()
+            .keys()
+            .any(|k| !CROSS_ORIGIN_HEADERS.contains(&k.as_str()));
         let first = req.url().clone();
         let mut next = req.try_clone();
         let mut resp = self.send(req).await?;
@@ -364,11 +356,11 @@ impl GuardedClient {
             // The same decision as the first URL, per hop: an allowed
             // host cannot bounce the request to a refused one.
             self.judge("redirect", &to)?;
-            if carries_credentials && origin(&to) != origin(&first) {
+            if unsafe_headers && origin(&to) != origin(&first) {
                 let (from, dest) = (destination(&first), destination(&to));
                 self.policy
-                    .note(RefusalReason::CrossOriginCredentials, "redirect", &dest);
-                return Err(RedirectError::CrossOriginCredentials { from, to: dest }.into());
+                    .note(RefusalReason::CrossOriginHeaders, "redirect", &dest);
+                return Err(RedirectError::CrossOriginHeaders { from, to: dest }.into());
             }
             let cross_origin = origin(&to) != origin(&first);
             let req = redirected(&cur, resp.status(), to, cross_origin);
