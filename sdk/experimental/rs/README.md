@@ -83,6 +83,12 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 
 Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`. `api` and `telemetry` are heaviest; bundled `rusqlite` needs a C compiler. Native-only sinks and adapters, runtime and C-compiler needs: [build notes](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#build-notes).
 
+## Rust versions
+
+The minimum supported Rust version (MSRV) is **1.89**, declared as `rust-version` in `Cargo.toml` and tested in CI with `cargo test --all-features` on that exact toolchain, next to the pinned development toolchain (`rust-toolchain.toml`) and current stable.
+
+Policy: the MSRV is the lowest version the crate and its locked dependencies compile on, not a promise to trail stable. Raising it is a breaking change: it ships in a minor release (a major one from 1.0) and is called out in the changelog. A dependency bump that raises the floor either waits for such a release or is held back. After a bump, set `rust-version` to the highest `rust-version` in `cargo metadata --all-features` and confirm the MSRV job passes.
+
 ## See also
 
 - [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md): [crate-wide contract](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#crate-wide-contract), serve, URI facade, output, MCP mount, storage and the cross-process gate, httpcache, offline, telemetry, bus, config, authentication, REST server; [Serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md), [Serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md)
