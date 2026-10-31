@@ -4,7 +4,7 @@
 	check-toolchain-parity lint-actions-pinned lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-sdk-paths-all lint-templates lint-ts openapi \
 	preflight promote promote-beta promote-rc promote-open-line proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
+	completion-regen test-parity test-parity-authn test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-identity test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	test-php test-py test-py-sdk test-py-engine \
 	test-release test-rs test-rs-wasm test-templates test-ts test-ts-sdk test-ts-engine \
@@ -280,7 +280,7 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 # async pool is uncapped and close reports NotDrained instead of
 # blocking. wasm-bindgen-test-runner comes from wasm-bindgen-cli, whose
 # version must equal the wasm-bindgen in Cargo.lock.
-test-rs-wasm: ## Rust: bus, domain, breaker, policy, notify, sideeffect and sync wasm32 smoke tests under Node (needs the matching wasm-bindgen-cli)
+test-rs-wasm: ## Rust: bus, domain, breaker, policy, notify, sideeffect, sync and authn wasm32 smoke tests under Node (needs the matching wasm-bindgen-cli)
 	@want=$$(awk '/^name = "wasm-bindgen"$$/ { getline; gsub(/version = |"/, ""); print }' sdk/experimental/rs/Cargo.lock); \
 	have=$$(wasm-bindgen --version 2>/dev/null | awk '{ print $$2 }'); \
 	if [ "$$want" != "$$have" ]; then \
@@ -302,11 +302,13 @@ test-rs-wasm: ## Rust: bus, domain, breaker, policy, notify, sideeffect and sync
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features sideeffect --test sideeffect_wasm
 	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features sync --test sync_wasm
+	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features authn --test authn_wasm
 
 # scripts/test-scope.sh maps each prerequisite to its Go packages and
 # SDKs (PARITY_TABLE) so a pull request runs only the targets it
 # reaches; a prerequisite missing from that table always runs.
-test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-blob test-parity-bus test-parity-blob test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-authn test-parity-consent test-parity-breaker test-parity-blob test-parity-bus test-parity-blob test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
 test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-identity test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
 
 test-parity-cli: ## spaced CLI parity: Go, TypeScript and Python builds of the example agree
@@ -443,6 +445,12 @@ test-parity-config: ## config-v1 conformance corpus (Go and Rust runners)
 	go test ./go/core/config/ -run '^TestConformance' -count=1
 	@echo "==> config-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --features config --test config_conformance --locked
+
+test-parity-authn: ## authn-v1 conformance corpus: signed tokens, PEM key ids, API key hashes (Go and Rust runners)
+	@echo "==> authn-v1 conformance: Go"
+	go test ./go/transport/authn/ -run '^TestAuthnContractVectors' -count=1
+	@echo "==> authn-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features authn-apikeys,authn-rsa --test authn --test authn_apikeys --locked
 
 test-parity-redact: ## redact-v1 conformance corpus: rules dump, spans and output (Go and Rust runners)
 	@echo "==> redact-v1 conformance: Go"

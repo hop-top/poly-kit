@@ -16,3 +16,18 @@ completion scripts of Cobra (https://github.com/spf13/cobra), Copyright
 The program-dependent parts of the scripts are replaced by `@@...@@`
 tokens; the scripts are otherwise unchanged. The full licence text is in
 src/cli/completion/scripts/LICENSE-cobra.txt.
+
+Third-party crates compiled in by the `authn` feature (BSD-3-Clause)
+  subtle 2.6.1
+  ed25519-dalek 3.0.0
+  curve25519-dalek 5.0.0 (through ed25519-dalek)
+
+Copyright (c) 2016-2017 Isis Agora Lovecruft, Henry de Valence (subtle)
+Copyright (c) 2016-2024 Isis Agora Lovecruft (subtle)
+Copyright (c) 2017-2019 isis agora lovecruft (ed25519-dalek)
+Copyright (c) 2016-2021 isis agora lovecruft, Henry de Valence
+(curve25519-dalek)
+
+Each is licensed under the BSD 3-Clause License; the conditions and the
+disclaimer are in the LICENSE file of the crate. Redistributions must
+retain the notices above.

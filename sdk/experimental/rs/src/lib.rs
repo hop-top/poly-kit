@@ -24,6 +24,11 @@ pub mod api;
 #[cfg(feature = "netpolicy")]
 pub mod netpolicy;
 
+// Bearer-token and API-key authentication (a port of go/transport/authn).
+// Pure and wasm-safe; the API-key store needs `authn-apikeys`.
+#[cfg(feature = "authn")]
+pub mod authn;
+
 #[cfg(feature = "blob")]
 pub mod blob;
 
