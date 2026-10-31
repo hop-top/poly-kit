@@ -9,6 +9,8 @@
 //! cargo run --example cli --features cli,config -- greet --name Ada -V
 //! ```
 
+#![allow(clippy::result_large_err)]
+
 use hop_top_kit::cli::{ArgSpec, CommandSpec, Config, FlagSpec, Root};
 use serde_json::json;
 
