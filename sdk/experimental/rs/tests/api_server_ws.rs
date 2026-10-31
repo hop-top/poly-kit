@@ -584,7 +584,7 @@ async fn an_oversized_or_deep_pattern_is_refused_and_not_stored() {
     send(&mut ws, json!({"type": "subscribe", "topic": deep})).await;
     expect_error(&mut ws, &deep).await;
 
-    let stars = vec!["**"; MAX_PATTERN_DOUBLE_STARS + 1].join(".");
+    let stars = ["**"; MAX_PATTERN_DOUBLE_STARS + 1].join(".");
     send(&mut ws, json!({"type": "subscribe", "topic": stars})).await;
     expect_error(&mut ws, &stars).await;
 
@@ -596,7 +596,7 @@ async fn an_oversized_or_deep_pattern_is_refused_and_not_stored() {
     // The bounds themselves are allowed.
     subscribe(&mut ws, &"a".repeat(MAX_PATTERN_LEN)).await;
     subscribe(&mut ws, &vec!["a"; MAX_PATTERN_SEGMENTS].join(".")).await;
-    subscribe(&mut ws, &vec!["**"; MAX_PATTERN_DOUBLE_STARS].join(".")).await;
+    subscribe(&mut ws, &["**"; MAX_PATTERN_DOUBLE_STARS].join(".")).await;
     run.stop().await;
 }
 
