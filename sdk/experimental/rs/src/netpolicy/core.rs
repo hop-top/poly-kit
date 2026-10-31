@@ -168,7 +168,7 @@ impl NetPolicy {
                 method: op,
                 url: dest,
             }),
-            RefusalReason::CrossOriginCredentials => {
+            RefusalReason::CrossOriginHeaders => {
                 unreachable!("redirect refusals are not policy errors; see GuardedClient")
             }
         }
@@ -213,8 +213,8 @@ pub enum RefusalReason {
     /// A host allowlist is in force and the destination is not on it.
     HostNotAllowed,
     /// A redirect hop left the request's origin while the request
-    /// carried a credential header.
-    CrossOriginCredentials,
+    /// carried a header outside the cross-origin allowlist.
+    CrossOriginHeaders,
 }
 
 /// One refused operation, handed to the audit sink
