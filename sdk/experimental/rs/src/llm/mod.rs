@@ -52,6 +52,8 @@ pub mod anthropic;
 pub mod openai;
 #[cfg(feature = "llm-ollama")]
 pub mod ollama;
+#[cfg(feature = "llm-triton")]
+pub mod triton;
 
 #[cfg(feature = "redact")]
 pub use buscontent::{redact_request, redact_response};

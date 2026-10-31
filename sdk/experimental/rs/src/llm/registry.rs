@@ -88,6 +88,8 @@ impl Registry {
         super::openai::register(&r).expect("empty registry");
         #[cfg(feature = "llm-ollama")]
         super::ollama::register(&r).expect("empty registry");
+        #[cfg(feature = "llm-triton")]
+        super::triton::register(&r).expect("empty registry");
         r
     }
 
