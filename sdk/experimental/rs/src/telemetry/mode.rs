@@ -1,7 +1,7 @@
 //! Mode enum + env precedence.
 //!
 //! Mirrors `go/runtime/telemetry/mode.go` semantics: three tiers (off,
-//! anon, full), <APP>_TELEMETRY_MODE wins over KIT_TELEMETRY_MODE.
+//! anon, full), `<APP>_TELEMETRY_MODE` wins over KIT_TELEMETRY_MODE.
 //! Unknown tokens map to `Mode::Off + false` so callers can distinguish
 //! "operator typoed" from "operator opted out". The SDK does NOT carry
 //! the Go atomic-global / one-shot env-read machinery — each
