@@ -516,8 +516,9 @@ impl CommandProjection {
         if max > 0 {
             ops.push(format!("--max-ops={max}"));
         }
-        let at = d.path.len();
-        argv.splice(at..at, ops);
+        // Ahead of the command path, so they bind to the root's
+        // persistent flags and never to a leaf-local flag of the same name.
+        argv.splice(0..0, ops);
         let root = self.root.clone();
         let mut full = vec![root.model().name];
         full.extend(argv);
@@ -671,6 +672,10 @@ fn rfc3339_now() -> String {
 /// own refusal, exit 5, status 403).
 const CONTROL_FLAGS: &[&str] = &["confirm", "max-ops", "policy", "dry-run"];
 
+/// The typed confirmation token flag (the CLI gate's `confirm-token`);
+/// never accepted from a caller.
+const CONFIRM_TOKEN: &str = "confirm-token";
+
 /// Builds the argv tail for a request, or the refusal text.
 fn decode(
     d: &CommandDescriptor,
@@ -722,13 +727,15 @@ fn decode(
     let mut argv: Vec<String> = d.path.clone();
     let mut caller_max = None;
     for (k, v) in flags {
-        // A control only when the command declares no flag of the name.
-        let control = !by_name.contains_key(k.as_str());
+        // Delegation controls belong to the operator whether or not the
+        // leaf also declares a flag of that name: a leaf-local `--confirm`
+        // would otherwise shadow the root's and let a caller approve
+        // itself, and the typed token is derivable from the path.
         match k.as_str() {
-            "policy" | "confirm" if control => {
+            "policy" | "confirm" | CONFIRM_TOKEN => {
                 return Err(format!("{k} is set by the operator, not the caller"))
             }
-            "max-ops" if control => {
+            "max-ops" => {
                 caller_max = Some(
                     scalar(&v)
                         .parse::<i64>()
