@@ -49,10 +49,8 @@ stage:
   deny:   <list of strings>
 ```
 
-Default ruleset shipped at `runtime/policy/stage.yaml` covers all 6
-stages — adopters include verbatim or copy-and-customize. Override
-individual rules by name: subsequent loaders may replace entries with
-the same `name`.
+Default ruleset `runtime/policy/stage.yaml` covers all 6 stages: include
+verbatim or copy-and-customize; later loaders replace entries by `name`.
 
 The `entity` binding (also new) is populated automatically by the
 policy subscriber from `domain.PreEntityPayload`:

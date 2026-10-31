@@ -60,36 +60,15 @@ let unwire = wire(&bus, Arc::new(engine)); // vetoes ride the bus
 
 ## Differences from Go
 
-- CEL is `cel-rust`, not `cel-go`: no static type check. A typo'd identifier fails at
-  evaluation and denies; `==` across types is false, so a mistyped rule takes its
-  `otherwise`. `timestamp()` and `duration()` are not compiled in (the `chrono` feature
-  needs `chrono-tz`); a `stage.since` is a string. Everything the shipped rules and Go's
-  tests use (`has`, `in`, `&&`, `||`, `!=`, `matches`, `size`) works.
-- No `ErrConflict` sentinel: `PolicyDeniedError::is_conflict()`.
-- Go's `withcel.New(cfg, opts...)` is `EngineBuilder::cel()` then `build(&cfg)`.
-- `Engine::decide` takes the activation by value; Go mutates the caller's map.
-- No contract directory: Go has no shared policy vectors. The Go tests are ported in
-  `tests/policy*.rs`, reading Go's rule files in place; `stage.yaml` is embedded and a
-  test pins it byte-for-byte to Go's.
+- CEL is `cel-rust` (`cel =0.15.0`, exact-pinned), not `cel-go`: no static type check, so a typo'd
+  identifier fails at evaluation and denies, and a mistyped rule takes its `otherwise`. No
+  `timestamp()` or `duration()`; a `stage.since` is a string.
+- No `ErrConflict` sentinel (`PolicyDeniedError::is_conflict()`); `withcel.New` is
+  `EngineBuilder::cel()` then `build`; `Engine::decide` takes the activation by value.
+- No contract directory; the Go tests are ported and `stage.yaml` is pinned byte-for-byte to Go's.
 
-## Dependency vetting
-
-`cel =0.15.0` (cel-rust/cel-rust), default features off, `regex` on.
-
-- Alternatives: `cel-interpreter` 0.10.0 is the same project's older name, last released
-  2025-07-23 and superseded by `cel`; no other maintained CEL implementation exists.
-- Maintenance: pushed 2026-10-23, 35 contributors, 8 releases since 2026-03, not archived.
-  `rsx analyze` scores 6.2/10 and passes the balanced policy (maintenance 10, license 10;
-  adoption and security scores are low for registry reach, not for findings).
-- Licence: MIT; the tree adds `antlr4rust` (BSD-3-Clause), `nom`, `winnow`,
-  `typed-arena` (MIT), and MIT/Apache crates (`bit-set`, `bit-vec`, `borsh`, `byteorder`,
-  `murmur3`, `pastey`, `minimal-lexical`, `proc-macro-crate`, `toml_edit`). All
-  permissive, compatible with the crate's `MIT AND Apache-2.0`.
-- Advisories: `cargo deny check advisories` clean on the resolved tree.
-- Age: 0.15.0 published 2026-10-06, 25 days before the pin. Exact-pinned because rule
-  semantics are the policy contract.
-- wasm: `cargo build --target wasm32-unknown-unknown --features policy` builds; the
-  smoke test runs under Node. 48 normal crates in the tree.
+Full list and the `cel` vetting record (alternatives, licences, advisories, age, wasm build):
+[Rust SDK reference, Policy](../../../../../docs/adopters/reference/rs-sdk.md#policy).
 
 ## Neighbours
 
