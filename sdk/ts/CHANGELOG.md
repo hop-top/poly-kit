@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.5.0-alpha.11](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.10...kit-ts/v0.5.0-alpha.11) (2026-11-01)
 
+The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.11. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -22,6 +24,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * **ts,py/cli:** inferred dry-run plan matches Go, drop stale skip ([b96cba3](https://github.com/hop-top/poly-kit/commit/b96cba3816a8f21fb2f7b1c900a8240439a8b7c0))
 * **ts/cli:** refuse malformed side-effect tiers before running ([582dc3a](https://github.com/hop-top/poly-kit/commit/582dc3a86e292a1d9ff6ce1bc2576a4559545c80))
 * **ts/completion:** deep alias shim offers inherited root flags ([f79acac](https://github.com/hop-top/poly-kit/commit/f79acac4b1a5fe9004292e3e81a25cc139da1d94))
+
+Full diff: [kit-ts/v0.5.0-alpha.10...kit-ts/v0.5.0-alpha.11](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.10...kit-ts/v0.5.0-alpha.11)
 
 ## [0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.9...kit-ts/v0.5.0-alpha.10) (2026-10-30)
 
