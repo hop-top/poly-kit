@@ -13,7 +13,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: hop-top/.github/.github/workflows/publish-on-tag.yml@5ce6680ccde9878428ed6cfa24e0e8f635d829a1 # v0.15.0
+    uses: hop-top/.github/.github/workflows/publish-on-tag.yml@4200be92484ff51e32add852f2261336f04cfb14 # v0.18.0
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       PYPI_REGISTRY_TOKEN: ${{ secrets.PYPI_REGISTRY_TOKEN }}
