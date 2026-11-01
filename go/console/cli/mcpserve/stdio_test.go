@@ -86,18 +86,27 @@ func stdioCommands(r *cli.Root) {
 		Annotations: map[string]string{"kit/requires-confirmation": "true"},
 		RunE:        func(cmd *cobra.Command, _ []string) error { cmd.Print("deployed"); return nil }}
 	cli.SetSideEffect(deploy, cli.SideEffectWriteLocal)
-	r.Cmd.AddCommand(ping, leak, secret, deploy, nap)
+	stamp := &cobra.Command{Use: "stamp", Short: "Write a stamp",
+		RunE: func(cmd *cobra.Command, _ []string) error { cmd.Print("stamped"); return nil }}
+	cli.SetSideEffect(stamp, cli.SideEffectWriteLocal)
+	r.Cmd.AddCommand(ping, leak, secret, deploy, nap, stamp)
 }
 
 // startStdio runs `serve mcp --stdio` on a root whose stdio transport
 // speaks on pipes, and returns the host's end.
 func startStdio(t *testing.T, opts ...func(*cli.Root)) *stdioPeer {
 	t.Helper()
+	return startStdioCfg(t, Config{}, opts...)
+}
+
+// startStdioCfg is startStdio with the service's Config.
+func startStdioCfg(t *testing.T, cfg Config, opts ...func(*cli.Root)) *stdioPeer {
+	t.Helper()
 	svcIn, hostW := io.Pipe()
 	hostR, svcOut := io.Pipe()
 
 	streams := &stdioStreams{in: svcIn, out: svcOut}
-	all := append([]func(*cli.Root){with(Config{}, streams)}, opts...)
+	all := append([]func(*cli.Root){with(cfg, streams)}, opts...)
 	r := cli.New(cli.Config{Name: "test", Version: "0.1.0", DisableValidate: true}, all...)
 	stdioCommands(r)
 	r.Cmd.SetErr(io.Discard)

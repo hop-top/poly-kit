@@ -107,6 +107,13 @@ type Config struct {
 	// services.mcp.insecure_no_policy sets the same thing.
 	InsecureNoPolicy bool
 
+	// StdioCaller is how the stdio peer is established:
+	// [StdioCallerOwner] (the default) or [StdioCallerUnestablished].
+	// It beats services.mcp.stdio_caller, which beats the default;
+	// an unknown value is refused at validation. It applies to stdio
+	// only. A claim inside the MCP protocol never changes it.
+	StdioCaller string
+
 	// Optional makes the service optional by default: when the tool
 	// runs it beside other services, its failure — a taken port, a
 	// missed readiness budget, a crash — is reported but does not
@@ -371,6 +378,9 @@ func (s *mcpService) optIn(subkey string, code bool) bool {
 // override rule"): every refusal here is a usage error at exit 2,
 // before anything binds.
 func (s *mcpService) validate() error {
+	if _, err := s.stdioCaller(); err != nil {
+		return err
+	}
 	switch transport := s.transport(); transport {
 	case TransportStdio:
 		if _, set := s.flag(addrFlag); set {
@@ -483,7 +493,11 @@ func (t *transport) Prepare(ctx context.Context, b *cmdsurface.Bridge) error {
 	var impl mcpServing
 	switch t.svc.transport() {
 	case TransportStdio:
-		impl = newStdio(t.svc.stdio)
+		caller, err := t.svc.stdioCaller()
+		if err != nil {
+			return err
+		}
+		impl = newStdio(t.svc.stdio, caller)
 	default:
 		impl = newHTTP(t.svc)
 	}
