@@ -1291,6 +1291,7 @@ service runs over HTTP.
 | `services.mcp.path`                | string | `/mcp`           | HTTP endpoint path; MUST begin with `/`                       |
 | `services.mcp.insecure_remote`     | bool   | `false`          | serve HTTP unauthenticated on a non-loopback address          |
 | `services.mcp.insecure_no_policy`  | bool   | `false`          | beyond loopback with no `--policy`, no policy rather than `kit-default` |
+| `services.mcp.stdio_caller`        | enum   | `owner`          | stdio only: how the spawn establishes the peer, `owner` or `unestablished`; `mcpserve.Config.StdioCaller` wins |
 
 `mcpserve.Config` carries the code defaults under the same names; the
 precedence is flag, then config, then `mcpserve.Config`, then the
@@ -1298,6 +1299,20 @@ default. `mcpserve.Config.Optional` is likewise the default for the
 lifecycle key `services.mcp.optional`: a tool that runs `mcp` beside a
 core service sets it so a taken MCP port does not take the core down
 ([Optional services](#optional-services)).
+
+`stdio_caller` is the exception to that order: `mcpserve.Config.StdioCaller`
+wins over the config key, which wins over
+the default, as `service.WithUsageStore` wins over `services.usage_store`.
+`owner` establishes the stdio peer (`Established: transport`): it
+holds the owner's authority, so an owner-only `permissions:` rule passes,
+a `callers:` rule matches it and its `max_ops` budget applies, and
+`kit/auth-required` leaves admit. `unestablished` leaves `Established`
+empty, as for an unauthenticated remote: the same rule refuses, no
+`callers:` rule or budget matches, and `kit/auth-required` leaves are
+refused. An unknown value is a configuration failure at exit `2`. A claim
+inside the protocol (a `caller` field, `_meta`, an argument) never
+changes either; the Rust SDK reads the same key as
+`mcp::StdioCaller::parse`.
 
 Flags, registered on `service start` like `--socket` and inert unless `mcp` is
 the service running:
@@ -1377,7 +1392,7 @@ Provenance, by the same rule as the table in
 |------------------|-------------------------------------------------|----------------------------------|
 | `Caller`         | principal from the `Auth` claims                | —                                |
 | `Tenant`         | tenant from the `Auth` claims                   | —                                |
-| `Established`    | `verified` when `Auth` verified the request     | `transport` (the spawn)          |
+| `Established`    | `verified` when `Auth` verified the request     | `transport` (the spawn), empty under `stdio_caller: unestablished` |
 | `Surface`        | `mcp`, pinned by the seam                       | `mcp`, pinned by the seam        |
 | `RequestID`      | `X-Request-ID`, issued when absent              | issued per call                  |
 | `TraceID`        | `traceparent` trace-id, else `X-Trace-ID`       | —                                |
