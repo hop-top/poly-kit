@@ -4,6 +4,29 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha.11](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.10...kit-ts/v0.5.0-alpha.11) (2026-11-01)
+
+The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.11. This release includes new features and bug fixes.
+
+
+### ⚠ BREAKING CHANGES
+
+* **ts/cli:** unannotated leaf named delete|remove|rm|destroy|purge|drop now needs confirmation on CLI and is blocked on MCP default policy; --dry-run/--confirm/--max-ops/--policy reserved on root
+
+### Features
+
+* **ts/cli:** delegation gate, side-effect inference ([692582a](https://github.com/hop-top/poly-kit/commit/692582ad6bd12757b5fa9199266a5e0584c108eb))
+
+
+### Bug Fixes
+
+* **toolspec:** dry_run_supported counts inferred destructive leaves ([8cb1f6c](https://github.com/hop-top/poly-kit/commit/8cb1f6c60bca7033fd9a137113eb3851bc94b2bb))
+* **ts,py/cli:** inferred dry-run plan matches Go, drop stale skip ([b96cba3](https://github.com/hop-top/poly-kit/commit/b96cba3816a8f21fb2f7b1c900a8240439a8b7c0))
+* **ts/cli:** refuse malformed side-effect tiers before running ([582dc3a](https://github.com/hop-top/poly-kit/commit/582dc3a86e292a1d9ff6ce1bc2576a4559545c80))
+* **ts/completion:** deep alias shim offers inherited root flags ([f79acac](https://github.com/hop-top/poly-kit/commit/f79acac4b1a5fe9004292e3e81a25cc139da1d94))
+
+Full diff: [kit-ts/v0.5.0-alpha.10...kit-ts/v0.5.0-alpha.11](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.10...kit-ts/v0.5.0-alpha.11)
+
 ## [0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.9...kit-ts/v0.5.0-alpha.10) (2026-10-30)
 
 The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.10. This release includes new features.
