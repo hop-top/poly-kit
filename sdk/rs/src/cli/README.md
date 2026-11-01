@@ -11,7 +11,7 @@ The kit CLI root (feature `cli`): the parts of Go `console/cli` a kit-rs CLI aut
 | [`help.rs`](help.rs) | the help renderer: `Usage:` / `COMMANDS:` / group / `FLAGS:` layout of the TypeScript and Python kits over the kit model; `Theme`, `Palette` (Neon, Dark, Bauhaus) | you change help layout or colors |
 | [`log.rs`](log.rs) | `Logger` (levels from `-V`, `--quiet` floor, themed lines on stderr), `Verbosity`, `Invocation::logger/verbose_count/is_quiet/hint_options` | a handler logs or reads verbosity |
 | [`safety.rs`](safety.rs) | `safety_guard`: the `--force` guard for risky operations, stricter off a terminal | a handler must refuse a risky op without `--force` |
-| [`config.rs`](config.rs) | `Config`, `Disable`, `GlobalFlag`, `GroupConfig`: what `Root::with_config` builds from | you start a kit CLI |
+| [`config.rs`](config.rs) | `Config` (incl. the root-help `disclaimer` paragraph), `Disable`, `GlobalFlag`, `GroupConfig`: what `Root::with_config` builds from | you start a kit CLI |
 | [`run.rs`](run.rs) | `Root::execute` / `run`: alias expansion, help-group flags, USAGE envelopes, autocorrect, handler dispatch; `Invocation`, `Globals` | a command must run |
 | [`usage.rs`](usage.rs) | flag-error surfaces (unknown flag, missing value, unknown command, suggestions) and autocorrect | you change an error text |
 | [`autocorrect_prompt.rs`](autocorrect_prompt.rs) | the `--autocorrect prompt` question and the per-mode side-effect gate | you change the prompt or its defaults |

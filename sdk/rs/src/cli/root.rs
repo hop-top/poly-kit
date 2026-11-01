@@ -727,6 +727,10 @@ fn base_command(cfg: &Config) -> Command {
                 .action(ArgAction::Version)
                 .help(format!("Version for {}", cfg.name)),
         );
+    if !cfg.disclaimer.is_empty() {
+        // Go: Long = Short + "\n\n" + Help.Disclaimer.
+        cmd = cmd.long_about(format!("{}\n\n{}", cfg.short, cfg.disclaimer));
+    }
     let d = cfg.disable;
     if !d.quiet {
         cmd = cmd.arg(
