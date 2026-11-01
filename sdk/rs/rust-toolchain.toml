@@ -11,6 +11,6 @@
 # action takes `toolchain` as a required input and runs `rustup default`
 # with it, so it does NOT read this file — keep the two in step.
 [toolchain]
-channel = "1.99.0"
+channel = "1.99.1"
 components = ["rustfmt", "clippy"]
 profile = "minimal"

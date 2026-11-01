@@ -3,5 +3,5 @@
 # mise loads this file together with mise.toml.
 [tools]
 bats = "1.14.0"
-buf = "1.73.0"
+buf = "1.74.0"
 "npm:markdownlint-cli2" = "0.23.3"
