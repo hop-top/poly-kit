@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.9...kit-py/v0.5.0-alpha.10) (2026-11-01)
 
+The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.10. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -21,6 +23,8 @@
 * **py/cli:** leaf-local confirm and max-ops follow Go ([c6674fb](https://github.com/hop-top/poly-kit/commit/c6674fb6f50309be55575de15ffa263e07727f7a))
 * **py:** resync vendored parity.json with canonical contract ([105cbb1](https://github.com/hop-top/poly-kit/commit/105cbb18f813c6b57b3b65708435d7e642835222))
 * **ts,py/cli:** inferred dry-run plan matches Go, drop stale skip ([b96cba3](https://github.com/hop-top/poly-kit/commit/b96cba3816a8f21fb2f7b1c900a8240439a8b7c0))
+
+Full diff: [kit-py/v0.5.0-alpha.9...kit-py/v0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.9...kit-py/v0.5.0-alpha.10)
 
 ## [0.5.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.8...kit-py/v0.5.0-alpha.9) (2026-10-30)
 
