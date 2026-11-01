@@ -146,7 +146,18 @@ func TestMain(m *testing.M) {
 	// Built into the tmp dir by default so the example crate leaves no
 	// target/ behind.
 	// A missing toolchain skips the leg unless the run requires it.
-	if _, err := exec.LookPath("cargo"); err != nil {
+	//
+	// Tests in this package re-exec the test binary with a short deadline;
+	// the child inherits PARITY_RS_BIN and reuses the parent's build
+	// instead of compiling again.
+	if bin := os.Getenv("PARITY_RS_BIN"); bin != "" {
+		if _, err := os.Stat(bin); err == nil {
+			parityRsBin = bin
+		}
+	}
+	if parityRsBin != "" {
+		// Built by the parent test binary.
+	} else if _, err := exec.LookPath("cargo"); err != nil {
 		if os.Getenv("PARITY_REQUIRE_RS") == "1" {
 			fmt.Fprintln(os.Stderr, "parity: cargo not found and PARITY_REQUIRE_RS=1")
 			os.Exit(1)
@@ -170,6 +181,7 @@ func TestMain(m *testing.M) {
 		if runtime.GOOS == "windows" {
 			parityRsBin += ".exe"
 		}
+		_ = os.Setenv("PARITY_RS_BIN", parityRsBin)
 	}
 
 	// ── Python paths ─────────────────────────────────────────────────────
