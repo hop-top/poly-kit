@@ -331,3 +331,48 @@ fn strip_ansi(s: &str) -> String {
     }
     out
 }
+
+fn with_disclaimer(text: &str) -> Root {
+    let mut cfg = Config::new("prog", "1.0.0", "root desc");
+    cfg.disable_validate = true;
+    cfg.disclaimer = text.into();
+    let mut root = Root::with_config(cfg);
+    root.add_command(
+        CommandSpec::new("deploy")
+            .about("Deploy the app")
+            .handler(|_, _, _| Ok(())),
+    );
+    root
+}
+
+#[test]
+fn disclaimer_follows_description_before_commands() {
+    let help = with_disclaimer("Not affiliated.\nSecond line.").render_help();
+    let desc = help.find("root desc").expect("description");
+    let disclaimer = help
+        .find("Not affiliated.\nSecond line.")
+        .expect("disclaimer");
+    assert!(desc < disclaimer, "{help}");
+    assert!(disclaimer < help.find("COMMANDS:").unwrap(), "{help}");
+    // Description and disclaimer are separate paragraphs.
+    assert!(help.contains("root desc\n\nNot affiliated."), "{help}");
+}
+
+#[test]
+fn disclaimer_is_on_the_root_help_only() {
+    let root = with_disclaimer("Not affiliated.");
+    let (code, out, _) = run(&root, &["deploy", "--help"]);
+    assert_eq!(code, 0);
+    assert!(!out.contains("Not affiliated."), "{out}");
+    // --help-all is the root help too.
+    assert!(root.render_help_all().contains("Not affiliated."));
+}
+
+#[test]
+fn empty_disclaimer_adds_nothing() {
+    let help = with_disclaimer("").render_help();
+    assert!(
+        help.starts_with("Usage: prog [flags] [command]\n\nroot desc\n\nCOMMANDS:"),
+        "{help}"
+    );
+}

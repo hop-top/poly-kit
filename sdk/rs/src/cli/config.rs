@@ -103,6 +103,10 @@ pub struct Config {
     pub version: String,
     /// The one-line description.
     pub short: String,
+    /// A paragraph shown on the root help after the description and
+    /// before the command sections (Go `HelpConfig.Disclaimer`). Empty
+    /// adds nothing; subcommand help does not carry it.
+    pub disclaimer: String,
     /// Built-in flags to suppress.
     pub disable: Disable,
     /// Extra persistent flags.
