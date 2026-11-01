@@ -322,7 +322,11 @@ nothing. Wired in `api_server::commands::CommandProjection::with_served_gate` (4
 authenticator's verdict). Counts are in memory by default (`UsageLedger` over a `UsageStore`); opt in to a file with
 `ServedGate::with_usage_file(tool)` (feature `kv`: `$XDG_STATE_HOME/<tool>/usage.db`, entries as
 Go writes them, so either SDK reads the other's file) or any store via `with_usage_store`. The
-config value `services.usage_store: memory|file` is `UsageStoreKind::parse`. The `rpc` module serves proto services, not a command tree, and has no gate.
+config value `services.usage_store: memory|file` is `UsageStoreKind::parse`. Over stdio the peer spawned the
+process, so `MountOptions::stdio_caller` (default `StdioCaller::Owner`, as Go) maps it to the owner's
+authority exactly as the owner-only socket does; `StdioCaller::Unestablished` is nobody. The config value
+`services.mcp.stdio_caller: owner|unestablished` is `StdioCaller::parse`; a claim in the request never
+changes it. Unlike Go, a `kit/auth-required` leaf still needs a verifier over stdio. The `rpc` module serves proto services, not a command tree, and has no gate.
 
 Not ported from Go: kit-default beyond loopback,
 withholding caller-independent refusals from discovery, the
