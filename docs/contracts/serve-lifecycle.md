@@ -790,7 +790,8 @@ configuration. The `service start` flags (`--addr`, `--socket`, `--enable`,
 | `services.<name>.optional`         | bool       | the registration's, else `false` | the run does not depend on this service ([Optional services](#optional-services)) |
 | `services.failure_policy`          | enum       | `fail-fast` | `fail-fast` or `isolate`                |
 | `services.shutdown_timeout`        | duration   | `60s`   | total shutdown budget across all services   |
-| `services.usage_store`            | enum       | `memory` | `memory` or `file`: where budgets and quotas are counted; `WithUsageFile` and `WithUsageStore` win |
+| `services.usage_store`             | enum       | `memory` | `memory` or `file`: where budgets and quotas are counted; `WithUsageFile` and `WithUsageStore` win |
+
 Like the other lifecycle keys, `optional` has no `services.all`
 default: whether the run depends on a service is a decision about
 that service, and a blanket `services.all.optional` is refused at
