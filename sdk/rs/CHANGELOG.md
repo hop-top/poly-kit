@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.6...kit-rs/v0.5.0-alpha.7) (2026-11-01)
+
+
+### Features
+
+* **rs/api_server:** served gate on the command projection ([737e5dc](https://github.com/hop-top/poly-kit/commit/737e5dce4215eea9b2d17cf01b5b9138654dd53e))
+* **rs/blob:** s3 backend ([82c81b2](https://github.com/hop-top/poly-kit/commit/82c81b261c002fa5c9de9f2abe4a24e0c69e9eff))
+* **rs/cli:** pluggable served usage store; memory default ([4c87d3a](https://github.com/hop-top/poly-kit/commit/4c87d3a027d839fe377cf721b3613f0e8de3b37e))
+* **rs/cli:** ServedGate composing policy callers, permissions rules, per-caller max_ops budgets ([5fbb8a4](https://github.com/hop-top/poly-kit/commit/5fbb8a44c12db19521f3fd01274be6199704568b))
+* **rs/mcp:** permission hook on tools/call, ServedGate adapter ([a8aad53](https://github.com/hop-top/poly-kit/commit/a8aad53c24c66a564fc33eea17da2a803dfe00d5))
+* **rs/socket:** canonical route path; docs for served gates ([efb9dd5](https://github.com/hop-top/poly-kit/commit/efb9dd5a7b906e50ead2cb3c31353c1cae833fd2))
+* **rs/socket:** permission gate before dispatch, ServedGate adapter ([85882f0](https://github.com/hop-top/poly-kit/commit/85882f096f734a0fab34c347109e9131058aa99b))
+* **rs:** configurable mcp stdio caller establishment ([bea85aa](https://github.com/hop-top/poly-kit/commit/bea85aae075f3d7a2377201b06976b5722e14b16))
+* **rs:** root help disclaimer slot ([06ee85a](https://github.com/hop-top/poly-kit/commit/06ee85ad103cc0637c4370ca0b560c9bad85e49c))
+
+
+### Bug Fixes
+
+* **rs/api_server:** one normalized flag map feeds argv and permission payload ([1865701](https://github.com/hop-top/poly-kit/commit/186570186588d0f50aa06780ce719240e245ac30))
+* **rs/blob:** key-escape error text matches the blob-v1 corpus ([fd0b096](https://github.com/hop-top/poly-kit/commit/fd0b09680f57f90a7702c6407713980e8637cde7))
+* **rs:** conformance corpora one level shallower from the manifest dir ([fa75df9](https://github.com/hop-top/poly-kit/commit/fa75df9c352048e5c114a5f86c6fc6e9f203468d))
+* **rs:** contract paths one level shallower after the sdk/rs move ([2222713](https://github.com/hop-top/poly-kit/commit/2222713ac654ce900ac82b566d11fb04ebe84a39))
+* **rs:** repoint paths for modules added before the move ([b833856](https://github.com/hop-top/poly-kit/commit/b8338560ef793c40c490c39c6dc64a1f9711e54b))
+* **rs:** value flag takes a dash-leading value ([62cdcec](https://github.com/hop-top/poly-kit/commit/62cdcecbd80adb34bdf1c033a292a0463c5493f9))
+
 ## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.5...kit-rs/v0.5.0-alpha.6) (2026-10-30)
 
 The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.6. This release includes new features.
