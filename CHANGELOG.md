@@ -2,6 +2,8 @@
 
 ## [0.5.0-beta.7](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.6...kit/v0.5.0-beta.7) (2026-11-01)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.7. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -101,6 +103,8 @@
 ### Refactored
 
 * **rs/serve:** serve command on CommandSpec, not clap ([7ac327b](https://github.com/hop-top/poly-kit/commit/7ac327bd3fec739ec05ee87adc16dbfbb52ad9f5))
+
+Full diff: [kit/v0.5.0-beta.6...kit/v0.5.0-beta.7](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.6...kit/v0.5.0-beta.7)
 
 ## [0.5.0-beta.6](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.5...kit/v0.5.0-beta.6) (2026-10-30)
 
