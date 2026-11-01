@@ -1,5 +1,107 @@
 # Changelog
 
+## [0.5.0-beta.7](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.6...kit/v0.5.0-beta.7) (2026-11-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* **go/service:** served per-caller budgets and quota counts no longer survive a restart by default. Opt in with service.WithUsageFile(),
+* **rs/serve:** serve::command API no longer names clap
+* **ts/cli:** unannotated leaf named delete|remove|rm|destroy|purge|drop now needs confirmation on CLI and is blocked on MCP default policy; --dry-run/--confirm/--max-ops/--policy reserved on root
+* **cli:** unannotated commands named delete, remove, rm, destroy, purge or drop now require --confirm. Annotate kit/side-effect to opt out.
+* **rs/api-server:** the projection no longer accepts confirm or policy from callers; confirm is always no.
+
+### Features
+
+* **authn:** api key get, branded prefix, hash domain, metadata ([72e2110](https://github.com/hop-top/poly-kit/commit/72e21107c0079959d56ff0f78d14357ed433b11e))
+* **blob:** local store preserves ContentType via sidecar ([91e006a](https://github.com/hop-top/poly-kit/commit/91e006a21052896ad9038bfcd4036b38277e0ece))
+* **blob:** optional Stater for reliable content type ([a6b7e4c](https://github.com/hop-top/poly-kit/commit/a6b7e4c1b2fedc7a6f5819066b68743f91a80a5a))
+* **blob:** shared ErrNotFound sentinel across backends ([948d1df](https://github.com/hop-top/poly-kit/commit/948d1dfaa1072516a512e9edfcc4f2b4c5be28cb))
+* **cli:** dry-run previews inferred destructive commands ([b53d929](https://github.com/hop-top/poly-kit/commit/b53d9291ab4880e1064704795099c28222f5163c))
+* **cli:** gate unannotated destructive-named commands ([7a3d7f4](https://github.com/hop-top/poly-kit/commit/7a3d7f40720c4add04e5d25e1adac9b0c517791f))
+* **go/service:** serve usage ledger defaults to memory ([e7902eb](https://github.com/hop-top/poly-kit/commit/e7902ebbee140aa586a271f6e4c7f3051fd98135))
+* **job:** injectable RunOne cooldown dir, isolate per test ([8cec677](https://github.com/hop-top/poly-kit/commit/8cec67716e60089e65afc7716faa364a045bc3ad))
+* **kv:** atomic put-if-absent with ttl ([86d0295](https://github.com/hop-top/poly-kit/commit/86d02957e9ae2e80c53186a73b33cc8ef15d41f3))
+* **mcpserve:** configurable stdio caller establishment ([a5a4f25](https://github.com/hop-top/poly-kit/commit/a5a4f25f9880d8a6ae94c5f6a5f9d9e424508454))
+* **netpolicy:** host allowlist mode, Go and Rust ([d6d5d56](https://github.com/hop-top/poly-kit/commit/d6d5d564fd9db08eec5e4bbf46e47dd85a7a706f))
+* **rs/api-server:** axum REST server in kit middleware stack ([3956dc4](https://github.com/hop-top/poly-kit/commit/3956dc4c6b51b39dea84fc557b4efd00d07c15e0))
+* **rs/api-server:** delegation controls ride /v1/commands calls ([391d782](https://github.com/hop-top/poly-kit/commit/391d7825807730c649b2c9dd826008d34918332f))
+* **rs/api:** command-tree projection and /v1/commands ([ac4b250](https://github.com/hop-top/poly-kit/commit/ac4b250e925b9a23129cef174d2e440538959ebc))
+* **rs/api:** server timeouts, idempotency keys, metrics endpoint ([cb0adc7](https://github.com/hop-top/poly-kit/commit/cb0adc7a02343f7c02c332c44d0464162f3d8439))
+* **rs/authn:** bearer tokens + api keys, port of go authn ([b29fd1b](https://github.com/hop-top/poly-kit/commit/b29fd1b2dd81c1850b4c6039f233fd29096fd48a))
+* **rs/authn:** remote JWKS and OIDC discovery ([b1fce65](https://github.com/hop-top/poly-kit/commit/b1fce650cda484c68e9b1ed9080af21ca1547521))
+* **rs/blob:** persist content type via sidecar, optional Stater ([f3d270f](https://github.com/hop-top/poly-kit/commit/f3d270f4b3684cfbba634112f51b91d5c85b993f))
+* **rs/cli:** apply -C/-c, delegation gates, dry-run, validators, alias store ([619fa20](https://github.com/hop-top/poly-kit/commit/619fa20e918687fc78404422284aede8355b1eb2))
+* **rs/cli:** autocorrect prompt mode on the controlling terminal ([dfff28a](https://github.com/hop-top/poly-kit/commit/dfff28a443d1eba86846df189aafcc4924dd69c9))
+* **rs/cli:** evaluate policy permissions rules ([62fe398](https://github.com/hop-top/poly-kit/commit/62fe398897c3fe271d15956b9556903e81718db6))
+* **rs/cli:** kit CLI root, flag-error envelopes, autocorrect, command model ([3a0b70a](https://github.com/hop-top/poly-kit/commit/3a0b70a7e4445ed49f3e66af9e78fd5768e3642b))
+* **rs/cli:** kit help renderer, group titles, help topic, themed output ([38e892b](https://github.com/hop-top/poly-kit/commit/38e892b878d56a89ca45834021f8ba8441f1f5a5))
+* **rs/cli:** logger honouring -V and --quiet; verbosity accessors ([fd76d5a](https://github.com/hop-top/poly-kit/commit/fd76d5ada52b6e0d0711389eb78cd979d6f6d479))
+* **rs/cli:** pluggable served usage store; memory default ([4c87d3a](https://github.com/hop-top/poly-kit/commit/4c87d3a027d839fe377cf721b3613f0e8de3b37e))
+* **rs/compliance:** toolspec loader and 12-factor static check; rs leg in run-compliance ([fd8072e](https://github.com/hop-top/poly-kit/commit/fd8072ed62e712cc57d03d6e66a432742cd157fd))
+* **rs/domain:** repository port ([b511c0f](https://github.com/hop-top/poly-kit/commit/b511c0f02f66b7a1e0be88bcf00b32318d8565b6))
+* **rs/httpcache:** store Vary variants; gate Authorization and private ([8534789](https://github.com/hop-top/poly-kit/commit/8534789ddec068eef0fa71351ffb77fbdedddf8d))
+* **rs/identity:** port core/identity ([c951399](https://github.com/hop-top/poly-kit/commit/c9513994ea21b195c02aac605816221e0176ad98))
+* **rs/llm:** picker, pool and classifier stage ([b25a07b](https://github.com/hop-top/poly-kit/commit/b25a07bbb3f0e6cbffe7c8dc8a356db7fc5149c1))
+* **rs/notify:** port go/runtime/notify ([7c1ec21](https://github.com/hop-top/poly-kit/commit/7c1ec21164a0d309a480a0fb85c4e7b2887a75cc))
+* **rs/output:** human formatter ([fa77e41](https://github.com/hop-top/poly-kit/commit/fa77e41e10ec9532be41f9bdd8035b6275e4e3ca))
+* **rs/parity:** load contracts/parity/parity.json blocks ([7841b7f](https://github.com/hop-top/poly-kit/commit/7841b7fa6437a3a9765d18ae61a70baeaab3ad89))
+* **rs/policy:** port runtime policy engine ([7f6e994](https://github.com/hop-top/poly-kit/commit/7f6e99464c631969fb15ee1d20e18e6fe9c29811))
+* **rs/rpc:** Connect, gRPC and gRPC-Web on one port ([d7dd628](https://github.com/hop-top/poly-kit/commit/d7dd628e8cc58e0b477b018130deddd673892f15))
+* **rs/serve:** resolve services.&lt;name&gt; keys from config env lookup ([9d3ead8](https://github.com/hop-top/poly-kit/commit/9d3ead83ba10305958d3a0b339da539173e685b4))
+* **rs/sideeffect:** port fs/http/bus/exec seams ([13c7e20](https://github.com/hop-top/poly-kit/commit/13c7e208225b3fae4b580b8d3e90c6a79ee70401))
+* **rs/socket:** canonical route path; docs for served gates ([efb9dd5](https://github.com/hop-top/poly-kit/commit/efb9dd5a7b906e50ead2cb3c31353c1cae833fd2))
+* **rs/socket:** unix-socket JSON-lines transport with peer auth ([a127214](https://github.com/hop-top/poly-kit/commit/a1272146f8fab24dde51107cc6c0478e7aa7f101))
+* **rs/sync:** local-first replicator ([d942627](https://github.com/hop-top/poly-kit/commit/d942627e4aaa55e21bedb6e9151ec8863d3442f5))
+* **rs/upgrade:** offline-aware release check with cache and notice ([8b1cf8c](https://github.com/hop-top/poly-kit/commit/8b1cf8ce82305e12f76e82b48b365ed34f636614))
+* **rs/webhook:** inbound webhook receiver on api-server ([348ab41](https://github.com/hop-top/poly-kit/commit/348ab4133d3cdd4a02200ae3aa27b833c754b5f9))
+* **spaced:** rust demo binary ([d3a2bb4](https://github.com/hop-top/poly-kit/commit/d3a2bb43b91be28b9a1c85bd37d6410d3a805a4e))
+* **ts/cli:** delegation gate, side-effect inference ([692582a](https://github.com/hop-top/poly-kit/commit/692582ad6bd12757b5fa9199266a5e0584c108eb))
+* **webhook:** inbound receiver on api router, Go ([00ddfd1](https://github.com/hop-top/poly-kit/commit/00ddfd1ff61abc135558244663ba4dcc28306617))
+
+
+### Bug Fixes
+
+* **api:** bound websocket subscription patterns ([e7ca21c](https://github.com/hop-top/poly-kit/commit/e7ca21ce212e42a4fb77409ecb37f3bf6b993510))
+* **api:** guard websocket subscriptions against concurrent access ([ab83723](https://github.com/hop-top/poly-kit/commit/ab837230f6fc2c32fe101fce30bdff9c4458c488))
+* **api:** validate inbound X-Request-ID, mint fresh otherwise ([a6dfdf5](https://github.com/hop-top/poly-kit/commit/a6dfdf5caaddfff7cc45f7909db4ae97f57d8731))
+* **authn:** api key last-use stamp cannot undo a revoke ([b19bca6](https://github.com/hop-top/poly-kit/commit/b19bca6191e8324b41943cfaf8e2c4a1f39ddbe0))
+* **blob:** idempotent local Delete, shared provider conformance suite ([95154b5](https://github.com/hop-top/poly-kit/commit/95154b5ea5485af28b2a4341e13e2b70cc5b3416))
+* **blob:** reserve metadata dir case- and trailing-dot-insensitively ([b660dee](https://github.com/hop-top/poly-kit/commit/b660deef119b787e4a4cbbc5c9c57c0609c8eb88))
+* **bridge:** enforce one-kind rule in Payload marshal ([ce0e0ac](https://github.com/hop-top/poly-kit/commit/ce0e0ac5370d871850f4a6be5e68a985a443116b))
+* **cli:** uri leaf --policy file no longer read as delegation policy name ([929ce93](https://github.com/hop-top/poly-kit/commit/929ce93b24f7010a9592a78e01d8b7687015c9e5))
+* **contracts:** blob-v1 delete of missing key succeeds ([3f7c8b5](https://github.com/hop-top/poly-kit/commit/3f7c8b5a3fe41f3bed2971665d96d0de88cbeb55))
+* **cross-lang:** rs runner keeps the real RUSTUP_HOME ([b4a73a0](https://github.com/hop-top/poly-kit/commit/b4a73a06715474d47a9f7830ec64bc839c3cc3f9))
+* **deps:** override minimatch to 11.0.3 ([5a80408](https://github.com/hop-top/poly-kit/commit/5a80408a5efa8b59775672d72d107dc8bb25baba))
+* **httpcache:** honor Vary, gate Authorization responses per RFC 9111 ([e0de00f](https://github.com/hop-top/poly-kit/commit/e0de00fc4c75aaf246063d3b06f0f4e6b14c4c10))
+* **httpcache:** never store Cache-Control: private responses ([b99b1ff](https://github.com/hop-top/poly-kit/commit/b99b1ff19b3929ef28c7f663bca405466ab85204))
+* **httpcache:** store authenticated responses only when public ([f93b580](https://github.com/hop-top/poly-kit/commit/f93b58066194bc9f05e1dd98690c514f6e6424c1))
+* **job:** publish job.* events, honor ClaimTTL in mock, harden poller ([0be03f8](https://github.com/hop-top/poly-kit/commit/0be03f8282b47bb30fea0bfc20a2649b3144635b))
+* **markdown:** auto-detect color support in Render/RenderWith ([acf3d5f](https://github.com/hop-top/poly-kit/commit/acf3d5f117f2029f6fb5f69a5cc9d4fab1282514))
+* **netpolicy:** judge every redirect hop in rs guarded client ([54c5fe8](https://github.com/hop-top/poly-kit/commit/54c5fe81fc3060ea265c38d3d9d3f094b073d1a4))
+* **netpolicy:** refuse cross-origin redirect hops carrying non-allowlisted headers ([1289538](https://github.com/hop-top/poly-kit/commit/1289538c48201359780533e706fa875b5c9c0506))
+* **netpolicy:** route guarded http clients through NewClient ([2317273](https://github.com/hop-top/poly-kit/commit/2317273bd5f5e2607260556acbf15fa1601fa3b0))
+* **parity:** re-exec children reuse the rs build ([ccbcb4d](https://github.com/hop-top/poly-kit/commit/ccbcb4de4eb1bf62e3ca83630b442e1b5a9eef51))
+* **projects:** refuse Write/Delete on malformed or newer-schema registry ([183314a](https://github.com/hop-top/poly-kit/commit/183314a0aff688fc46e2814c07e53076a2100057))
+* **py/cli:** leaf-local confirm and max-ops follow Go ([c6674fb](https://github.com/hop-top/poly-kit/commit/c6674fb6f50309be55575de15ffa263e07727f7a))
+* **release:** leave the manifest to release PRs across the rs move ([64ea248](https://github.com/hop-top/poly-kit/commit/64ea2481e138d933b5f75580d98cc421728903b2))
+* **rs blob:** list order per directory by name, match Go walk (a/b before a.txt) ([0c10d7e](https://github.com/hop-top/poly-kit/commit/0c10d7e49166dee729a21d7a0d4f58ff62a59840))
+* **rs/api-server:** caller confirm and confirm-token follow Go's projection model ([67ffe16](https://github.com/hop-top/poly-kit/commit/67ffe16f8d5ba881f69d72984c183c1d517fa033))
+* **rs/api-server:** callers cannot name a policy or approve themselves ([9e9fe3c](https://github.com/hop-top/poly-kit/commit/9e9fe3c45c2492739f10edb91c2349eb37eabbee))
+* **rs/api-server:** callers cannot self-approve via confirm-token or leaf-local controls ([aa8709e](https://github.com/hop-top/poly-kit/commit/aa8709e143b22f65c472ddb89bb5292630a2ef9f))
+* **rs:** repoint paths for modules added before the move ([b833856](https://github.com/hop-top/poly-kit/commit/b8338560ef793c40c490c39c6dc64a1f9711e54b))
+* **scripts:** full-on-delete survives a mass deletion ([3065abe](https://github.com/hop-top/poly-kit/commit/3065abe177c849377090ba8bfff7af0e07fee34d))
+* **toolspec:** dry_run_supported counts inferred destructive leaves ([8cb1f6c](https://github.com/hop-top/poly-kit/commit/8cb1f6c60bca7033fd9a137113eb3851bc94b2bb))
+* **ts/cli:** refuse malformed side-effect tiers before running ([582dc3a](https://github.com/hop-top/poly-kit/commit/582dc3a86e292a1d9ff6ce1bc2576a4559545c80))
+* **util:** assert calendar-day semantics for tomorrow across DST ([2dcebf2](https://github.com/hop-top/poly-kit/commit/2dcebf2f2e09b3f3d6bcb96a42996c7d738c565d))
+* **webhook:** bind claims to content; validate timestamp and name ([3d24c26](https://github.com/hop-top/poly-kit/commit/3d24c2676de24dc5023e6e0dd2c2bf06b25bae32))
+* xdg gated on cli (serve-cli alone failed to build) ([7ac327b](https://github.com/hop-top/poly-kit/commit/7ac327bd3fec739ec05ee87adc16dbfbb52ad9f5))
+
+
+### Refactored
+
+* **rs/serve:** serve command on CommandSpec, not clap ([7ac327b](https://github.com/hop-top/poly-kit/commit/7ac327bd3fec739ec05ee87adc16dbfbb52ad9f5))
+
 ## [0.5.0-beta.6](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.5...kit/v0.5.0-beta.6) (2026-10-30)
 
 The hop-top team is happy to announce Kit 0.5.0-beta.6. This release includes new features and bug fixes.
