@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.4...kit-php/v0.5.0-alpha.5) (2026-11-01)
 
+The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.5. This release includes new features.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -11,6 +13,8 @@
 
 * **php/cli:** kit CLI root with delegation gate ([a464966](https://github.com/hop-top/poly-kit/commit/a4649661817dbd556ed6659f3f41a556410c0484))
 * **php/mcp:** infer destructive from leaf name in safety gate ([cdb2259](https://github.com/hop-top/poly-kit/commit/cdb225983f86eb231e8b5b7020c65d45fb760566))
+
+Full diff: [kit-php/v0.5.0-alpha.4...kit-php/v0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.4...kit-php/v0.5.0-alpha.5)
 
 ## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.3...kit-php/v0.5.0-alpha.4) (2026-10-30)
 
