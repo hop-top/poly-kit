@@ -97,7 +97,7 @@ pub use bridge::{Bridge, CallResult, FlagSchema, InvokeError, Leaf};
 pub use dispatch::{detect_era, Era, HttpRequest, MountError, Surface};
 pub use identity::{Identity, Verifier};
 pub use modern::{request_meta, RequestMeta};
-pub use permission::{PermissionCall, PermissionHook};
+pub use permission::{PermissionCall, PermissionHook, StdioCaller};
 pub use safety::{Policy, SafetyClass, Surface as SurfaceKind};
 pub use wire::{Request, Response};
 
@@ -204,6 +204,12 @@ pub struct MountOptions {
     /// and is audited. See [`permission`]. `None` permits everything the
     /// earlier gates admitted.
     pub permission: Option<PermissionHook>,
+    /// How the stdio peer is established: [`StdioCaller::Owner`] (the
+    /// default) or [`StdioCaller::Unestablished`]. Applies to
+    /// [`Surface::serve_stdio`] only; `services.mcp.stdio_caller` is
+    /// [`StdioCaller::parse`]. A claim inside the protocol never
+    /// changes it.
+    pub stdio_caller: StdioCaller,
 }
 
 impl std::fmt::Debug for MountOptions {
@@ -222,6 +228,7 @@ impl std::fmt::Debug for MountOptions {
             .field("tool_name_separator", &self.tool_name_separator)
             .field("audit", &audit::HookDebug(&self.audit))
             .field("permission", &permission::HookDebug(&self.permission))
+            .field("stdio_caller", &self.stdio_caller)
             .finish()
     }
 }
@@ -245,6 +252,7 @@ impl Default for MountOptions {
             tool_name_separator: DEFAULT_TOOL_NAME_SEPARATOR.into(),
             audit: None,
             permission: None,
+            stdio_caller: StdioCaller::Owner,
         }
     }
 }
@@ -263,6 +271,7 @@ pub(crate) struct HandlerConfig {
     pub(crate) tool_name_separator: String,
     pub(crate) audit: Option<AuditHook>,
     pub(crate) permission: Option<PermissionHook>,
+    pub(crate) stdio_caller: StdioCaller,
 }
 
 impl std::fmt::Debug for HandlerConfig {
@@ -279,6 +288,7 @@ impl std::fmt::Debug for HandlerConfig {
             .field("tool_name_separator", &self.tool_name_separator)
             .field("audit", &audit::HookDebug(&self.audit))
             .field("permission", &permission::HookDebug(&self.permission))
+            .field("stdio_caller", &self.stdio_caller)
             .finish()
     }
 }
@@ -303,6 +313,7 @@ impl From<MountOptions> for HandlerConfig {
             tool_name_separator: options.tool_name_separator,
             audit: options.audit,
             permission: options.permission,
+            stdio_caller: options.stdio_caller,
         }
     }
 }

@@ -337,3 +337,223 @@ fn a_spelling_of_the_tool_name_never_reaches_a_leaf_the_hook_denies() {
         assert_eq!(runs.load(Ordering::SeqCst), 0, "{era}");
     }
 }
+
+/// How the stdio peer is established: `owner` (the default) maps it to
+/// the owner's authority, `unestablished` to nobody; nothing the peer
+/// writes into a request changes either.
+mod stdio_caller {
+    use super::*;
+    use hop_top_kit::mcp::StdioCaller;
+
+    fn stdio(options: MountOptions, line: &str) -> String {
+        let runs = Arc::new(AtomicUsize::new(0));
+        let surface = Surface::mount(bridge(&runs), options).expect("mount");
+        let mut out = Vec::new();
+        surface
+            .serve_stdio(
+                Cursor::new(format!("{line}\n").into_bytes()),
+                &mut out,
+                std::io::sink(),
+            )
+            .unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    const CALL: &str = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"widget.add","arguments":{}}}"#;
+
+    /// Reports `owner:<bool> caller:<bool>` as the refusal's reason.
+    fn probe() -> PermissionHook {
+        Arc::new(|c| Err(format!("owner:{} caller:{}", c.owner, c.caller.is_some())))
+    }
+
+    #[test]
+    fn the_default_is_owner() {
+        assert_eq!(StdioCaller::default(), StdioCaller::Owner);
+        assert_eq!(MountOptions::default().stdio_caller, StdioCaller::Owner);
+        let out = stdio(
+            MountOptions {
+                permission: Some(probe()),
+                ..MountOptions::default()
+            },
+            CALL,
+        );
+        assert!(out.contains("owner:true caller:false"), "{out}");
+    }
+
+    #[test]
+    fn unestablished_asks_the_hook_for_nobody() {
+        let out = stdio(
+            MountOptions {
+                permission: Some(probe()),
+                stdio_caller: StdioCaller::Unestablished,
+                ..MountOptions::default()
+            },
+            CALL,
+        );
+        assert!(out.contains("owner:false caller:false"), "{out}");
+    }
+
+    #[test]
+    fn http_is_never_the_owner() {
+        let runs = Arc::new(AtomicUsize::new(0));
+        let surface = Surface::mount(
+            bridge(&runs),
+            MountOptions {
+                permission: Some(probe()),
+                stdio_caller: StdioCaller::Owner,
+                ..MountOptions::default()
+            },
+        )
+        .unwrap();
+        for era in ERAS {
+            let out = surface.call(&call(era, "widget.add", "{}"));
+            assert!(
+                out.body_str().contains("owner:false caller:false"),
+                "{era}: {}",
+                out.body_str()
+            );
+        }
+    }
+
+    #[test]
+    fn a_verifier_caller_is_not_the_owner() {
+        // A header-less stdio request is verified by nobody here, so
+        // build one the verifier accepts to pin that a verified caller
+        // is never also the owner.
+        let runs = Arc::new(AtomicUsize::new(0));
+        let surface = Surface::mount(
+            bridge(&runs),
+            MountOptions {
+                verifier: Some(Verifier::new(|_| {
+                    Some(Identity {
+                        caller: "alice".into(),
+                        tenant: "acme".into(),
+                        scopes: Vec::new(),
+                    })
+                })),
+                permission: Some(probe()),
+                ..MountOptions::default()
+            },
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        surface
+            .serve_stdio(
+                Cursor::new(format!("{CALL}\n").into_bytes()),
+                &mut out,
+                std::io::sink(),
+            )
+            .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("owner:false caller:true"), "{text}");
+    }
+
+    #[test]
+    fn parse_takes_the_config_values() {
+        assert_eq!(StdioCaller::parse(""), Ok(StdioCaller::Owner));
+        assert_eq!(StdioCaller::parse(" Owner "), Ok(StdioCaller::Owner));
+        assert_eq!(
+            StdioCaller::parse("UNESTABLISHED"),
+            Ok(StdioCaller::Unestablished)
+        );
+        let err = StdioCaller::parse("admin").unwrap_err();
+        assert!(err.contains("services.mcp.stdio_caller"), "{err}");
+        assert!(err.contains("admin"), "{err}");
+    }
+
+    /// A claim inside the protocol never changes the stdio caller.
+    #[test]
+    fn a_claim_in_the_request_never_changes_the_caller() {
+        let claim = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"widget.add","arguments":{"caller":"root","tenant":"acme"},"caller":"root","established":"transport","_meta":{"caller":"root","tenant":"acme","established":"transport"}}}"#;
+        for (setting, want) in [
+            (StdioCaller::Owner, "owner:true caller:false"),
+            (StdioCaller::Unestablished, "owner:false caller:false"),
+        ] {
+            let out = stdio(
+                MountOptions {
+                    permission: Some(probe()),
+                    stdio_caller: setting,
+                    ..MountOptions::default()
+                },
+                claim,
+            );
+            assert!(out.contains(want), "{setting:?}: {out}");
+        }
+    }
+
+    #[cfg(feature = "cli-permissions")]
+    mod served {
+        use super::*;
+        use std::collections::BTreeMap;
+        use std::time::Duration;
+
+        use hop_top_kit::cli::policy::{CallerRule, PermissionRule, Policy};
+        use hop_top_kit::cli::ServedGate;
+        use hop_top_kit::mcp::permission::served_hook;
+
+        /// Refuses writes to everyone but an established caller, who
+        /// gets one an hour; a rule admits the transport-vouched owner
+        /// alone.
+        fn policy() -> Policy {
+            Policy {
+                name: "team".into(),
+                allow: BTreeMap::from([("write".into(), Vec::new())]),
+                callers: vec![CallerRule {
+                    allow: BTreeMap::from([("write".into(), vec!["*".into()])]),
+                    max_ops: 1,
+                    window: Duration::from_secs(3600),
+                    ..CallerRule::default()
+                }],
+                permissions: vec![PermissionRule {
+                    name: "owner-only".into(),
+                    when: "principal.source == 'transport'".into(),
+                    effect: "allow".into(),
+                    otherwise: "deny".into(),
+                    message: "owner only".into(),
+                }],
+                ..Policy::default()
+            }
+        }
+
+        fn serve(setting: StdioCaller) -> (String, usize) {
+            let runs = Arc::new(AtomicUsize::new(0));
+            let gate = Arc::new(ServedGate::new(policy()).unwrap());
+            let surface = Surface::mount(
+                bridge(&runs),
+                MountOptions {
+                    permission: Some(served_hook(gate)),
+                    stdio_caller: setting,
+                    ..MountOptions::default()
+                },
+            )
+            .unwrap();
+            let input = format!("{CALL}\n{}\n", CALL.replace("\"id\":1", "\"id\":2"));
+            let mut out = Vec::new();
+            surface
+                .serve_stdio(Cursor::new(input.into_bytes()), &mut out, std::io::sink())
+                .unwrap();
+            (String::from_utf8(out).unwrap(), runs.load(Ordering::SeqCst))
+        }
+
+        #[test]
+        fn owner_passes_an_owner_only_rule_and_spends_a_budget() {
+            let (out, runs) = serve(StdioCaller::Owner);
+            assert!(!out.contains("owner only"), "{out}");
+            assert!(
+                out.contains("max_ops budget of 1 per 1h0m0s spent"),
+                "{out}"
+            );
+            assert_eq!(runs, 1, "{out}");
+        }
+
+        #[test]
+        fn unestablished_is_refused_by_the_same_rule() {
+            let (out, runs) = serve(StdioCaller::Unestablished);
+            assert!(
+                out.contains("permission denied: widget add on mcp: policy: write not allowed for widget add"),
+                "{out}"
+            );
+            assert_eq!(runs, 0, "{out}");
+        }
+    }
+}
