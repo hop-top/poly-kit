@@ -40,6 +40,8 @@ const stdioDrain = 2 * time.Second
 // consumes a request byte.
 type stdioServing struct {
 	streams *stdioStreams
+	// caller is how the peer is established (StdioCaller*).
+	caller string
 
 	mu      sync.Mutex
 	surf    *mcpsdk.Surface
@@ -49,7 +51,9 @@ type stdioServing struct {
 	ss      *mcp.ServerSession
 }
 
-func newStdio(streams *stdioStreams) *stdioServing { return &stdioServing{streams: streams} }
+func newStdio(streams *stdioStreams, caller string) *stdioServing {
+	return &stdioServing{streams: streams, caller: caller}
+}
 
 // prepare keeps the surface to serve; the session itself needs
 // nothing more.
@@ -160,8 +164,10 @@ func (s *stdioServing) close(context.Context) error {
 }
 
 // callMeta is the provenance of one tool call over stdio: the
-// transport and the peer's process id. No principal is invented, but
-// the caller is established by the spawn (see authenticated).
+// transport and the peer's process id. No principal is invented. Under
+// the default owner setting the spawn establishes the caller (see
+// authenticated); under unestablished nothing does. Nothing a request
+// carries is read into Established.
 func (s *stdioServing) callMeta(_ context.Context, req *mcp.CallToolRequest) cmdsurface.Meta {
 	extra := map[string]string{
 		"mcp_transport": TransportStdio,
@@ -173,7 +179,7 @@ func (s *stdioServing) callMeta(_ context.Context, req *mcp.CallToolRequest) cmd
 	return cmdsurface.Meta{
 		RequestID:   newRequestID(),
 		RequestedAt: time.Now(),
-		Established: cmdsurface.EstablishedTransport,
+		Established: stdioEstablished(s.caller),
 		Extra:       extra,
 	}
 }
@@ -183,4 +189,7 @@ func (s *stdioServing) callMeta(_ context.Context, req *mcp.CallToolRequest) cmd
 // standard streams, and the process runs with the peer's user, so the
 // peer already holds every credential the command would use — the
 // socket's owner-only argument, applied to a pair of pipes.
-func (s *stdioServing) authenticated(context.Context, *mcp.CallToolRequest) bool { return true }
+// Under StdioCallerUnestablished it admits nothing.
+func (s *stdioServing) authenticated(context.Context, *mcp.CallToolRequest) bool {
+	return stdioEstablished(s.caller) == cmdsurface.EstablishedTransport
+}
