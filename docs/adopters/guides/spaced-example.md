@@ -15,9 +15,9 @@ page carries everything a reader does not need on arrival.
 ## Why the example exists
 
 Dual purpose: satirical SpaceX historian **and** cross-language parity
-test vehicle for [`hop.top/kit/cli`][kit]. Four implementations, Go,
-TypeScript, Python, browser, exercising an identical command contract to
-verify output parity.
+test vehicle for [`hop.top/kit/cli`][kit]. Five implementations, Go,
+TypeScript, Python, Rust, browser, exercising an identical command
+contract to verify output parity.
 
 [kit]: https://github.com/hop-top/poly-kit
 
@@ -197,14 +197,21 @@ git tag py/v0.2.0 && git push origin py/v0.2.0   # PyPI
 
 ## Parity architecture
 
-Go is the source of truth. TypeScript and Python implement the same
-command contract. Parity tests enforce identical output across all three
+Go is the source of truth. TypeScript, Python and Rust implement the same
+command contract. Parity tests enforce identical output across all four
 languages.
 
 ```sh
-make test
-# expands to: go test -tags parity ./cli/... -v -run TestParity
+make test-parity-cli
+# expands to: go test -tags parity ./go/console/cli/... -run TestParity
 ```
+
+The harness builds the Go and Rust binaries once and runs every test
+against each language. The Rust build is a minimal demo: a test that needs
+a capability it lacks (`daemon-stop`, `bus`, `wizard`, `toolspec`,
+`config-show`) is skipped for Rust with a reason naming the gap. Without
+`cargo` on the path the Rust leg is skipped; `PARITY_REQUIRE_RS=1` (set in
+CI) makes that a failure instead.
 
 ## See also
 

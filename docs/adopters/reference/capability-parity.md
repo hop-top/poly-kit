@@ -30,7 +30,7 @@ described in [`parity-contract`](parity-contract.md).
 | Go | 74 done |
 | TypeScript | 37 none, 19 unverified, 11 done, 6 partial, 1 n/a |
 | Python | 39 none, 19 unverified, 9 done, 6 partial, 1 n/a |
-| Rust | 38 none, 15 partial, 11 done, 9 unverified, 1 n/a |
+| Rust | 38 none, 15 partial, 12 done, 8 unverified, 1 n/a |
 | PHP | 59 none, 5 unverified, 5 partial, 4 done, 1 n/a |
 
 Rust and PHP serve lifecycle parity is complete for the 13 behaviors in
@@ -42,7 +42,7 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 
 | Capability | Go | TS | Py | Rust | PHP | Evidence |
 |---|---|---|---|---|---|---|
-| CLI factory | done | done | done | partial | partial | make test-parity-cli (Go/TS/Py); ts:cli.ts py:cli.py rs:cli/root.rs php:Cli/KitCommand.php php:Cli/Root.php; php wires no global-flag layer, php:Cli/Root.php carries only the delegation flags and `--format` (cli-parity-guide) |
+| CLI factory | done | done | done | partial | partial | make test-parity-cli (Go/TS/Py/Rs); ts:cli.ts py:cli.py rs:cli/root.rs php:Cli/KitCommand.php php:Cli/Root.php; php wires no global-flag layer, php:Cli/Root.php carries only the delegation flags and `--format` (cli-parity-guide) |
 | Output and errors | done | done | done | done | done | make test-parity-taxonomy (5 ports); ts:output/ py:output/ rs:output/ php:Output/ |
 | Logging | done | unverified | unverified | unverified | none | ts:log.ts py:log.py rs:cli/log.rs; no php module |
 | Markdown rendering | done | none | none | none | none | no module in any SDK |
@@ -50,7 +50,7 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | Shell completion | done | done | unverified | done | none | make test-parity-completion (Go/Rs/TS) + test-parity-completion-spec (Go/Rs); py:completion.py (no corpus runner) |
 | Aliases | done | done | done | done | none | make test-parity-alias (Go/Rs/TS/Py); ts:alias.ts py:alias.py rs:cli/alias.rs |
 | Flag helpers | done | unverified | unverified | unverified | none | ts:setflag.ts textflag.ts flagregister.ts py:setflag.py textflag.py flagregister.py rs:cli/enums.rs |
-| Help rendering | done | done | done | unverified | none | contracts/parity/parity.json help block (ts:tui/parity.ts py:parity.py); rs:cli/help.rs follows the py/ts layout, no shared fixture pins it |
+| Help rendering | done | done | done | done | none | contracts/parity/parity.json help block (ts:tui/parity.ts py:parity.py); make test-parity-cli pins the rs:cli/help.rs layout, command terms and disclaimer against Go |
 | Autocorrect | done | unverified | unverified | none | none | ts:errcorrect.ts py:errcorrect.py |
 | Config path commands | done | none | none | none | none | rs-sdk.md: config command not ported; no ts/py/php module |
 | URI scheme handlers | done | unverified | unverified | unverified | unverified | ts:uri.ts py:uri.py rs:uri.rs php:Uri/ (facades over the cite lib) |
