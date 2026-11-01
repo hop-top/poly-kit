@@ -13,7 +13,7 @@ node   = "24.22.1"  # Node.js runtime (LTS)
 pnpm   = "12.16.0"  # Node package manager
 python = "3.14.10"  # CPython
 uv     = "0.13.6"   # Python package + project manager
-rust   = "1.99.0"   # Rust toolchain (stable; matches rust-toolchain.toml)
+rust   = "1.99.1"   # Rust toolchain (stable; matches rust-toolchain.toml)
 
 [workflow]
 golangci-lint        = "2.14.0"   # Go linter aggregator (v2.x — required for Go 1.26+ targets; v1.x refuses)
