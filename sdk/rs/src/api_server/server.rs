@@ -397,7 +397,7 @@ impl ApiService {
             ));
         }
         if cfg.compress {
-            let predicate = SizeAbove::new(COMPRESS_MIN_BYTES).and(Compressible);
+            let predicate = SizeAbove::new(u64::from(COMPRESS_MIN_BYTES)).and(Compressible);
             app = app
                 .layer(CompressionLayer::new().compress_when(predicate))
                 // Outside the compression layer: a request that must
