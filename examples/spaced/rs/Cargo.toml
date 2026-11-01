@@ -1,0 +1,12 @@
+[package]
+name = "spaced"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+description = "Spaced CLI: Rust implementation"
+
+[dependencies]
+hop-top-kit = { path = "../../../sdk/rs", features = ["cli"] }
+# preserve_order MUST match the SDK's own feature set (see `output`).
+serde_json = { version = "1", features = ["preserve_order"] }
