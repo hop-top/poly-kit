@@ -82,7 +82,7 @@ jobs:
     if: startsWith(github.ref_name, 'kit/v')
     permissions:
       contents: write
-    uses: hop-top/.github/.github/workflows/goreleaser-on-tag.yml@5ce6680ccde9878428ed6cfa24e0e8f635d829a1 # v0.15.0
+    uses: hop-top/.github/.github/workflows/goreleaser-on-tag.yml@4200be92484ff51e32add852f2261336f04cfb14 # v0.18.0
     secrets:
       RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
       RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
