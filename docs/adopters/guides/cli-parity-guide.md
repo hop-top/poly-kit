@@ -12,6 +12,13 @@ and the Rust SDK's `cli` module (feature `cli`) ports the Go root.
 Where a section names them, it says what each port ships today;
 elsewhere "all three languages" means Go, TypeScript and Python.
 
+`make test-parity-cli` also runs the Rust build of the `spaced` example
+([`examples/spaced/rs`](../../../examples/spaced/rs/README.md)) through the
+same harness, so the Rust root is held to this guide by test. Tests that
+need a capability the Rust kit does not ship (daemon stop, bus events, the
+launch wizard, `toolspec`, `config` display) are skipped for Rust with the
+gap named; each shipped feature removes one skip.
+
 ## Global Flags
 
 | Flag | Purpose |

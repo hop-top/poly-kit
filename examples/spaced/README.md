@@ -2,13 +2,14 @@
 
 > Know what SpaceX is really up to — from your terminal.
 
-[![CI](https://img.shields.io/badge/CI-passing-brightgreen)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Go](https://img.shields.io/badge/Go-1.23+-00ADD8)](go/) [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6)](ts/) [![Python](https://img.shields.io/badge/Python-3.11+-3776AB)](py/)
+[![CI](https://img.shields.io/badge/CI-passing-brightgreen)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Go](https://img.shields.io/badge/Go-1.23+-00ADD8)](go/) [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6)](ts/) [![Python](https://img.shields.io/badge/Python-3.11+-3776AB)](py/) [![Rust](https://img.shields.io/badge/Rust-1.89+-DEA584)](rs/)
 
 ![demo](media/go.gif)
 
 Satirical SpaceX historian and cross-language parity test vehicle for
-`hop.top/kit/cli`: Go, TypeScript, Python and a browser build exercising
-one identical command contract.
+`hop.top/kit/cli`: Go, TypeScript, Python, Rust and a browser build
+exercising one identical command contract. The Rust build (`rs/`) is a
+minimal demo: no `daemon stop`, bus, wizard, `toolspec` or `config` yet.
 
 ## Install and run
 

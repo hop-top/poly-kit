@@ -28,8 +28,9 @@ get started.
 
 ## Adding a New Command
 
-All three CLIs must implement every command. Follow this
-checklist:
+The Go, TypeScript and Python CLIs must implement every command;
+the Rust CLI implements the subset its kit supports (see `rs/src/main.rs`).
+Follow this checklist:
 
 1. **Go** — add `go/cmd/<name>.go`; register in `go/main.go`
    via `root.Cmd.AddCommand(cmd.<Name>Cmd(root))`
@@ -37,9 +38,12 @@ checklist:
    register in `ts/spaced.ts`
 3. **Python** — add `py/commands/<name>.py`; register app in
    `py/spaced.py`
-4. **Web router** — export command handler from
+4. **Rust** — add the command to `rs/src/main.rs` when the Rust kit
+   supports it; otherwise the parity test skips Rust (see `caps` in
+   `go/console/cli/parity_test.go`)
+5. **Web router** — export command handler from
    `web/router.ts` so the browser demo stays in sync
-5. **Parity test** — add test cases to the parity suite so CI
+6. **Parity test** — add test cases to the parity suite so CI
    catches drift
 
 ---
