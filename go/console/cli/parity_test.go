@@ -2,9 +2,12 @@
 
 // Package cli_test contains a cross-language CLI parity test suite for spaced.
 //
-// It builds the Go binary, and locates the TS and Python entry points, then
-// runs every hop-top CLI contract behavior against all three implementations
-// asserting identical semantics (modulo language-specific formatting details).
+// It builds the Go and Rust binaries, and locates the TS and Python entry
+// points, then runs every hop-top CLI contract behavior against all four
+// implementations asserting identical semantics (modulo language-specific
+// formatting details). A test that exercises a capability an implementation
+// does not ship yet names it (see forAll); that implementation skips the
+// test with a reason instead of failing.
 //
 // Run with:
 //
@@ -13,6 +16,8 @@
 // Prerequisites:
 //   - pnpm + npx + tsx available on PATH (for TS)
 //   - Python venv at sdk/py/.venv/bin/python (for Python)
+//   - cargo on PATH (for Rust); without it the Rust leg is skipped unless
+//     PARITY_REQUIRE_RS=1, which makes a missing toolchain a failure
 package cli_test
 
 import (
@@ -41,6 +46,7 @@ var (
 	parityTsEntry string
 	parityPyEntry string
 	parityPyVenv  string
+	parityRsBin   string
 	parityTmpDir  string
 	parityRoot    string
 )
@@ -136,6 +142,36 @@ func TestMain(m *testing.M) {
 	// parity.ts's third candidate is `process.cwd() + contracts/parity/parity.json`.
 	// We run node with cwd=root below so that resolves correctly.
 
+	// ── Rust binary ──────────────────────────────────────────────────────
+	// Built into the tmp dir by default so the example crate leaves no
+	// target/ behind.
+	// A missing toolchain skips the leg unless the run requires it.
+	if _, err := exec.LookPath("cargo"); err != nil {
+		if os.Getenv("PARITY_REQUIRE_RS") == "1" {
+			fmt.Fprintln(os.Stderr, "parity: cargo not found and PARITY_REQUIRE_RS=1")
+			os.Exit(1)
+		}
+		fmt.Fprintln(os.Stderr, "parity: cargo not found; skipping the rs leg")
+	} else {
+		// PARITY_RS_TARGET_DIR lets CI build into a cached directory.
+		rsTarget := os.Getenv("PARITY_RS_TARGET_DIR")
+		if rsTarget == "" {
+			rsTarget = filepath.Join(tmp, "rs-target")
+		}
+		rsBuild := exec.Command("cargo", "build", "--release", "--quiet",
+			"--manifest-path", filepath.Join(root, "examples", "spaced", "rs", "Cargo.toml"),
+			"--target-dir", rsTarget)
+		rsBuild.Dir = root
+		if out, err := rsBuild.CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "parity: cargo build failed: %v\n%s", err, out)
+			os.Exit(1)
+		}
+		parityRsBin = filepath.Join(rsTarget, "release", "spaced")
+		if runtime.GOOS == "windows" {
+			parityRsBin += ".exe"
+		}
+	}
+
 	// ── Python paths ─────────────────────────────────────────────────────
 	parityPyEntry = filepath.Join(root, "examples", "spaced", "py", "spaced.py")
 	parityPyVenv = filepath.Join(root, "sdk", "py", ".venv", "bin", "python")
@@ -173,7 +209,33 @@ func findModuleRoot() string {
 type binary struct {
 	lang string
 	run  func(args ...string) *exec.Cmd
+	// caps are the optional capabilities the implementation ships; a test
+	// that needs one an implementation lacks is skipped for it. A nil map
+	// means every capability.
+	caps map[string]bool
 }
+
+// Optional capabilities a test may need (see forAll).
+const (
+	capDaemonStop = "daemon-stop"
+	capBus        = "bus"
+	capWizard     = "wizard"
+	capToolspec   = "toolspec"
+	capConfigShow = "config-show"
+)
+
+// capGap names what an implementation lacks for each capability, for the
+// skip reason.
+var capGap = map[string]string{
+	capDaemonStop: "no daemon supervisor in the rs kit",
+	capBus:        "rs feature `bus` is not wired into the demo commands",
+	capWizard:     "no wizard/prompt feature in the rs kit",
+	capToolspec:   "no toolspec validator feature in the rs kit",
+	capConfigShow: "no `config` display command in the rs kit (config path|paths only)",
+}
+
+// has reports whether b ships capability c.
+func (b binary) has(c string) bool { return b.caps == nil || b.caps[c] }
 
 // result captures the output + exit code of a spaced invocation.
 type result struct {
@@ -185,15 +247,15 @@ type result struct {
 
 func (r result) combined() string { return r.stdout + r.stderr }
 
-// parityHarness returns runners for all three langs using pre-built binaries
-// from TestMain.
+// parityHarness returns runners for every lang using pre-built binaries
+// from TestMain (rs only when cargo was available).
 func parityHarness(t *testing.T) []binary {
 	t.Helper()
 
 	root := moduleRoot(t)
 	pyDir := filepath.Join(root, "sdk", "py")
 
-	return []binary{
+	bins := []binary{
 		{lang: "go", run: func(args ...string) *exec.Cmd {
 			return exec.Command(parityGoBin, args...)
 		}},
@@ -208,6 +270,13 @@ func parityHarness(t *testing.T) []binary {
 			return cmd
 		}},
 	}
+	if parityRsBin != "" {
+		// rs ships none of the optional capabilities yet.
+		bins = append(bins, binary{lang: "rs", caps: map[string]bool{}, run: func(args ...string) *exec.Cmd {
+			return exec.Command(parityRsBin, args...)
+		}})
+	}
+	return bins
 }
 
 // invoke runs a binary with args and returns a result.
@@ -248,11 +317,18 @@ func invoke(b binary, args ...string) result {
 }
 
 // forAll runs fn against every binary and collects sub-test failures per lang.
-func forAll(t *testing.T, bins []binary, fn func(t *testing.T, b binary)) {
+// needs lists the optional capabilities fn exercises; a binary lacking any of
+// them skips with the gap named.
+func forAll(t *testing.T, bins []binary, fn func(t *testing.T, b binary), needs ...string) {
 	t.Helper()
 	for _, b := range bins {
 		b := b
 		t.Run(b.lang, func(t *testing.T) {
+			for _, c := range needs {
+				if !b.has(c) {
+					t.Skipf("%s lacks capability %q: %s", b.lang, c, capGap[c])
+				}
+			}
 			t.Parallel()
 			fn(t, b)
 		})
@@ -327,18 +403,17 @@ func TestParityHelp(t *testing.T) {
 
 // TestParityFlagsExactSet: every lang must expose exactly the cross-lang
 // contract flags — no more, no less. A new flag added in one lang fails
-// here until all three match.
+// here until every lang matches.
 //
 // Contract flags (sorted): --format --help --help-all --help-management
 //
 //	--no-color --no-hints --quiet --telemetry --verbose --version
 func TestParityFlagsExactSet(t *testing.T) {
 	bins := parityHarness(t)
-	// Common flags across all three langs. Python auto-generates
+	// Common flags across every lang. Python auto-generates
 	// --help-commands for the visible default group; Go/TS do not.
-	// --telemetry is the kit-telemetry opt-in mode flag, mirrored
-	// across all three spaced demos (adopter pattern).
-	// --offline ships in all three langs, so it is part of the shared
+	// --telemetry is the kit-telemetry opt-in mode flag, 	// across all the spaced demos (adopter pattern).
+	// --offline ships in every lang, so it is part of the shared
 	// contract set rather than a per-language extra.
 	common := []string{"--format", "--help", "--help-all", "--help-management",
 		"--no-color", "--no-hints", "--offline", "--quiet", "--telemetry",
@@ -711,7 +786,7 @@ func TestParityDaemonStopFails(t *testing.T) {
 		// Must not be empty.
 		assert.NotEmpty(t, strings.TrimSpace(plain),
 			"%s: daemon stop must produce output", b.lang)
-	})
+	}, capDaemonStop)
 }
 
 // TestParityDaemonStopAll: daemon stop --all explains all daemons survived
@@ -728,7 +803,7 @@ func TestParityDaemonStopAll(t *testing.T) {
 		// Must mention the spawned counter-daemon.
 		assert.Contains(t, plain, "musk-response-to-this-cli",
 			"%s: daemon stop --all must spawn musk-response-to-this-cli\ngot: %s", b.lang, plain)
-	})
+	}, capDaemonStop)
 }
 
 // TestParityElonStatus: elon status exits 0, shows known fields.
@@ -833,14 +908,14 @@ func TestParityHelpCommandOrder(t *testing.T) {
 }
 
 // TestParityHelpCommandLines: each command entry in COMMANDS must show the same
-// name, arg pattern, and description across all three languages.
+// name, arg pattern, and description across all languages.
 //
 // Go (fang) is the source of truth. Format per command:
 //
 //	name [args...]  Description text
 //
 // The test normalizes whitespace and extracts (name, args, description) tuples,
-// then asserts all three languages produce the same set.
+// then asserts every language produces the same set.
 func TestParityHelpCommandLines(t *testing.T) {
 	bins := parityHarness(t)
 
@@ -1046,7 +1121,7 @@ func TestParityWizardInteractive(t *testing.T) {
 		assert.Contains(t, plain, "60x Starlink v2 Mini",
 			"%s: wizard output must contain default payload '60x Starlink v2 Mini'",
 			b.lang)
-	})
+	}, capWizard)
 }
 
 // TestParityErrorToStderr: errors must appear in stderr (not only stdout).
@@ -1079,7 +1154,7 @@ func TestParityBusLaunchEvent(t *testing.T) {
 			"%s: launch --dry-run must emit bus event marker [bus]", b.lang)
 		assert.Contains(t, combined, "kit.spaced.launch.initiated",
 			"%s: launch --dry-run must emit kit.spaced.launch.initiated event", b.lang)
-	})
+	}, capBus)
 }
 
 // TestParityBusDaemonEvent: daemon stop must emit a bus event line for
@@ -1098,7 +1173,7 @@ func TestParityBusDaemonEvent(t *testing.T) {
 			"%s: daemon stop must emit bus event marker [bus]", b.lang)
 		assert.Contains(t, combined, "kit.spaced.daemon.stopped",
 			"%s: daemon stop must emit kit.spaced.daemon.stopped event", b.lang)
-	})
+	}, capBus, capDaemonStop)
 }
 
 // ── Log parity tests ─────────────────────────────────────────────────────────
@@ -1281,7 +1356,7 @@ func TestParityToolspec(t *testing.T) {
 			"%s: toolspec output must show 'valid' status", b.lang)
 		assert.NotContains(t, plain, "Errors",
 			"%s: toolspec must not report validation errors", b.lang)
-	})
+	}, capToolspec)
 }
 
 // TestParityHintSuppression: --no-hints flag is accepted and does not break
@@ -1355,7 +1430,7 @@ func TestParityConfigShow(t *testing.T) {
 			"%s: config output must show Data path", b.lang)
 		assert.Contains(t, plain, "Default Pad",
 			"%s: config output must show Default Pad key", b.lang)
-	})
+	}, capConfigShow)
 }
 
 // TestParityXDGPaths: setting XDG_CONFIG_HOME and XDG_DATA_HOME overrides the
@@ -1401,7 +1476,7 @@ func TestParityXDGPaths(t *testing.T) {
 		assert.Contains(t, plain, filepath.Join(customData, "spaced"),
 			"%s: data path must respect XDG_DATA_HOME\ngot: %s",
 			b.lang, plain)
-	})
+	}, capConfigShow)
 }
 
 // TestParityHelpFlagsAlwaysLast: FLAGS must be the last section in help output,
