@@ -226,7 +226,7 @@ Every `uses:` line kit writes is pinned to a full commit SHA, with the
 version it stands for in a trailing comment:
 
 ```yaml
-uses: hop-top/.github/.github/workflows/ci.yml@5ce6680ccde9878428ed6cfa24e0e8f635d829a1 # v0.15.0
+uses: hop-top/.github/.github/workflows/ci.yml@4200be92484ff51e32add852f2261336f04cfb14 # v0.18.0
 ```
 
 A tag can be moved to new code; a commit cannot. The generated
