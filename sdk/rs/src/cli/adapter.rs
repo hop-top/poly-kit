@@ -66,6 +66,11 @@ fn flag(f: &FlagSpec) -> Arg {
         FlagKind::Float => a.value_parser(clap::value_parser!(f64)),
         FlagKind::Strings => a.action(ArgAction::Append),
     };
+    // pflag takes the next token as the value, dash or not: `--tag -x`,
+    // `--n -5`. A flag that may be given bare (`no_opt_default`) cannot.
+    if f.kind.takes_value() && f.no_opt_default.is_none() && !f.help_flag {
+        a = a.allow_hyphen_values(true);
+    }
     if let Some(n) = &f.value_name {
         a = a.value_name(n.clone());
     }
