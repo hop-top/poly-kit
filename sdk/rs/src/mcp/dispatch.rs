@@ -47,7 +47,7 @@ use serde_json::Value;
 use super::legacy::Headers;
 use super::modern::{headers as modern_headers, meta_keys};
 use super::wire::{codes, error_response, ErrorObject, Request, Response};
-use super::{Bridge, HandlerConfig, MountOptions, SpecVersion};
+use super::{Bridge, HandlerConfig, MountOptions, SpecVersion, StdioCaller};
 
 /// Which handler serves a request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -225,6 +225,11 @@ impl Surface {
             None
         };
         let caller = caller.as_ref();
+        // The spawn establishes a stdio peer no verifier did; nothing in
+        // the request is read.
+        let owner = transport == Transport::Stdio
+            && caller.is_none()
+            && self.cfg.stdio_caller == StdioCaller::Owner;
 
         match self.route(&req.headers, parsed) {
             Era::Modern => super::modern::serve_as(
@@ -233,10 +238,11 @@ impl Surface {
                 parsed,
                 &headers,
                 caller,
+                owner,
                 transport,
             ),
             Era::Legacy => {
-                super::legacy::serve_as(&self.cfg, &self.bridge, parsed, &headers, caller)
+                super::legacy::serve_as(&self.cfg, &self.bridge, parsed, &headers, caller, owner)
             }
         }
     }

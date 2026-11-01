@@ -7,8 +7,10 @@
 //! confirmation, the ceiling). It is asked for the caller the mount's
 //! [`Verifier`](super::Verifier) established, and for none otherwise: a
 //! claim in the request body or an `Authorization` header is never a
-//! caller. Over stdio no header reaches the verifier, so the caller is
-//! unestablished there too.
+//! caller. Over stdio no header reaches the verifier; the peer spawned
+//! the process, so [`PermissionCall::owner`] is set under
+//! [`StdioCaller::Owner`] (the default) and the caller is unestablished
+//! under [`StdioCaller::Unestablished`].
 //!
 //! A refusal renders as an `isError` result at HTTP 200 carrying
 //! `cmdsurface: permission denied: <command> on mcp: <reason>`, and is
@@ -28,6 +30,42 @@ use serde_json::{Map, Value};
 use super::bridge::Leaf;
 use super::identity::Identity;
 
+/// How the stdio peer is established: the values of
+/// `services.mcp.stdio_caller`, [`MountOptions::stdio_caller`](super::MountOptions::stdio_caller).
+///
+/// The peer spawned the process and runs as its user, so by default it
+/// holds the owner's authority, as the owner-only socket's caller does.
+/// A claim inside the protocol (a `caller` field, `_meta`, an argument)
+/// never changes the answer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StdioCaller {
+    /// The spawn establishes the peer as the owner: it holds every scope
+    /// and matches no principal rule. The default, as in Go.
+    #[default]
+    Owner,
+    /// Nothing is established, like an unauthenticated remote caller:
+    /// caller-bound rules and budgets do not match.
+    Unestablished,
+}
+
+impl StdioCaller {
+    /// Parses `owner` or `unestablished`, case-insensitively; empty is
+    /// the default (`owner`).
+    ///
+    /// # Errors
+    ///
+    /// An unknown value, naming the key.
+    pub fn parse(s: &str) -> Result<StdioCaller, String> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "" | "owner" => Ok(StdioCaller::Owner),
+            "unestablished" => Ok(StdioCaller::Unestablished),
+            v => Err(format!(
+                "services.mcp.stdio_caller: unknown caller \"{v}\"; use owner or unestablished"
+            )),
+        }
+    }
+}
+
 /// One `tools/call` as the hook sees it.
 #[derive(Debug)]
 pub struct PermissionCall<'a> {
@@ -35,6 +73,11 @@ pub struct PermissionCall<'a> {
     pub leaf: &'a Leaf,
     /// The caller the verifier established; `None` when none did.
     pub caller: Option<&'a Identity>,
+    /// The transport itself vouches for the caller as the owner: a
+    /// stdio call under [`StdioCaller::Owner`] that no verifier
+    /// established. Never true over HTTP, and never together with
+    /// `caller`.
+    pub owner: bool,
     /// The `arguments` object as received.
     pub arguments: &'a Map<String, Value>,
 }
@@ -62,7 +105,8 @@ impl fmt::Debug for HookDebug<'_> {
 /// marked only destructive is `destructive`), every argument a flag and
 /// no positionals (a leaf publishes no `args` property here), and no
 /// peer address. A verified caller is matched by its principal, tenant
-/// and scopes; none is nobody.
+/// and scopes; the transport-vouched owner holds the owner's authority
+/// (the owner-only socket's mapping); none is nobody.
 #[cfg(feature = "cli-permissions")]
 pub fn served_hook(gate: Arc<crate::cli::ServedGate>) -> PermissionHook {
     use crate::cli::{CallerSource, PermissionRequest, ServedCall};
@@ -88,6 +132,8 @@ pub fn served_hook(gate: Arc<crate::cli::ServedGate>) -> PermissionHook {
             req.tenant = id.tenant.clone();
             req.scopes = id.scopes.clone();
             req.source = CallerSource::Verified;
+        } else if call.owner {
+            req.source = CallerSource::Transport;
         }
         let permissions = class.permissions.join(",");
         gate.decide(&ServedCall {

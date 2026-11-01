@@ -31,18 +31,20 @@ pub(super) fn serve(
     req: &Request,
     headers: &Headers,
 ) -> Response {
-    serve_as(cfg, bridge, req, headers, None)
+    serve_as(cfg, bridge, req, headers, None, false)
 }
 
 /// Serves one already-parsed request on the legacy era. `caller` is
 /// the identity the mount's verifier established, `None` when it
-/// established none.
+/// established none; `owner` marks a stdio peer the spawn vouches
+/// for.
 pub(super) fn serve_as(
     cfg: &HandlerConfig,
     bridge: &Bridge,
     req: &Request,
     headers: &Headers,
     caller: Option<&Identity>,
+    owner: bool,
 ) -> Response {
     if !req.jsonrpc_ok() {
         return error_response(
@@ -70,7 +72,7 @@ pub(super) fn serve_as(
         // result. Legacy era only; 2026-07-28 removed ping.
         "ping" => result_response(200, req.id.as_ref(), &Value::Object(Map::new())),
         "tools/list" => handle_tools_list(cfg, bridge, req),
-        "tools/call" => handle_tools_call(cfg, bridge, req, headers, caller),
+        "tools/call" => handle_tools_call(cfg, bridge, req, headers, caller, owner),
         other => error_response(
             // HTTP 200, not 404: the legacy era's convention, preserved.
             200,
@@ -148,6 +150,7 @@ fn handle_tools_call(
     req: &Request,
     headers: &Headers,
     caller: Option<&Identity>,
+    owner: bool,
 ) -> Response {
     let params = req.params.as_ref();
     let name = params
@@ -205,6 +208,7 @@ fn handle_tools_call(
         Some(hook) => hook(&PermissionCall {
             leaf,
             caller,
+            owner,
             arguments: &arguments,
         }),
         None => Ok(()),
@@ -387,7 +391,14 @@ mod tests {
             caller: "alice".into(),
             ..Identity::default()
         };
-        let resp = serve_as(&cfg(), &bridge, &req, &Headers(&headers), Some(&alice));
+        let resp = serve_as(
+            &cfg(),
+            &bridge,
+            &req,
+            &Headers(&headers),
+            Some(&alice),
+            false,
+        );
         assert_eq!(resp.status, 200);
         assert_eq!(resp.www_authenticate, None);
     }
