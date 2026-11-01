@@ -319,7 +319,7 @@ test-rs-wasm: ## Rust: bus, domain, breaker, policy, notify, sideeffect, sync an
 test-parity: test-parity-typeid test-parity-api test-parity-webhook test-parity-authn test-parity-consent test-parity-breaker test-parity-blob test-parity-bus test-parity-blob test-parity-bus-network test-parity-config test-parity-retry test-parity-cli-root test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-rpc test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias test-parity-cross-lang ## Cross-language parity tests
 test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-parity-bus test-parity-bus-network test-parity-config test-parity-retry test-parity-completion test-parity-completion-spec test-parity-netpolicy test-parity-llm test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-statemachine test-parity-redact test-parity-identity test-parity-upgrade test-parity-cli test-parity-engine test-parity-alias ## Cross-language parity tests
 
-test-parity-cli: ## spaced CLI parity: Go, TypeScript and Python builds of the example agree
+test-parity-cli: ## spaced CLI parity: Go, TypeScript, Python and Rust builds of the example agree (PARITY_REQUIRE_RS=1 fails when cargo is missing)
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 
 test-parity-engine: ## engine SDK parity: Go, TypeScript and Python engine clients agree

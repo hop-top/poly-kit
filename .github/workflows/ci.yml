@@ -1050,7 +1050,8 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         with:
           version: ${{ steps.pins.outputs.uv }}
-      # Rust toolchain + cache for the typeid-v1 contract loader.
+      # Rust toolchain + cache for the typeid-v1 contract loader and the Rust
+      # build of the spaced example (make test-parity-cli).
       # test-parity (via test-parity-typeid) runs
       # `cargo test --features id --test contract` on every build.
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
@@ -1065,7 +1066,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.scope.outputs.run == 'true'
         with:
-          workspaces: sdk/rs
+          workspaces: |
+            sdk/rs
+            examples/spaced/rs
       # PHP 8.4 toolchain for the typeid-v1 contract loader.
       # sdk/experimental/php's composer.json requires php ^8.4
       # (needed by jewei/typeid-php), and ubuntu-latest
@@ -1078,8 +1081,14 @@ jobs:
         if: steps.scope.outputs.run == 'true'
       - run: cd sdk/py && uv sync --all-extras --locked
         if: steps.scope.outputs.run == 'true'
+      # The spaced parity harness builds the Rust demo; a missing
+      # toolchain must fail here, never skip the Rust leg. The build goes
+      # into the cached target directory.
       - run: scripts/test-affected.sh parity
         if: steps.scope.outputs.run == 'true'
+        env:
+          PARITY_REQUIRE_RS: '1'
+          PARITY_RS_TARGET_DIR: ${{ github.workspace }}/examples/spaced/rs/target
 
   # ── Build + compliance ────────────────────────────────────────
   compliance:
