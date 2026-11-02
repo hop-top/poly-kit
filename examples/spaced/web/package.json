@@ -9,7 +9,7 @@
     "test": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.0",
+    "@playwright/test": "^1.64.1",
     "commander": "^15",
     "esbuild": "^0.28.2",
     "typescript": "^5"
