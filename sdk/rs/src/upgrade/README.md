@@ -57,6 +57,7 @@ m.run(&Context::background()).unwrap(); // nothing pending
   stops the run; in auto mode applied `down`s run newest first on a fresh context, else the backup
   is restored. A failed verify undoes its own step too. Error texts match Go's.
 - `check` never fails: errors sit in `CheckResult::error`, a fresh cache (default 4h) answers without a request, and an offline check returns `Skipped::Offline` touching neither transport, cache nor state dir.
+- in a repository that tags several components, `CheckConfig::tag_prefix("xray/v")` keeps only this tool's releases and `include_prereleases(true)` offers prereleases; either lists releases (3 pages of 100 at most, highest semver, drafts skipped), calling the transport once per page, and `CheckResult::tag` carries the tag the notice links.
 - A prune failure goes to `on_warning` (default stderr, Go's `log.Printf` text); never fatal.
 - Registration is per `Migrator`; Go's process-wide default registry has no Rust counterpart, since
   Rust has no `init()` to fill it from. Only the `configfile` driver is ported.

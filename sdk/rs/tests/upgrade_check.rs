@@ -191,7 +191,7 @@ fn long_notes_are_truncated() {
         r#"{{"tag_name":"v9.0.0","body":"{}","assets":[]}}"#,
         "x".repeat(1500)
     );
-    let r = Checker::new(cfg(tmp.path())).check(|_| Ok(body));
+    let r = Checker::new(cfg(tmp.path())).check(|_| Ok(body.clone()));
     assert_eq!(r.notes.chars().count(), 1001);
     assert!(r.notes.ends_with('…'));
 }
