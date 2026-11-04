@@ -40,7 +40,8 @@ func New(opts ...Option) *Checker {
 // on the bus. Cached hits are silent to avoid spam on repeat polls.
 func (c *Checker) Check(ctx context.Context) *Result {
 	cached, err := loadCachedResult(c.cfg.StateDir, c.cfg.BinaryName)
-	if err == nil && cached != nil && time.Since(cached.CheckedAt) < c.cfg.CacheTTL {
+	if err == nil && cached != nil && time.Since(cached.CheckedAt) < c.cfg.CacheTTL &&
+		c.cachedTagOK(cached) {
 		return cached
 	}
 
@@ -55,6 +56,7 @@ func (c *Checker) Check(ctx context.Context) *Result {
 		URL:         latest.URL,
 		ChecksumURL: latest.ChecksumURL,
 		Notes:       latest.Notes,
+		Tag:         latest.Tag,
 		CheckedAt:   time.Now(),
 		UpdateAvail: isNewer(c.cfg.CurrentVersion, latest.Version),
 	}

@@ -7,6 +7,18 @@ import (
 	"net/http"
 	"runtime"
 	"strings"
+
+	msemver "github.com/Masterminds/semver/v3"
+)
+
+// githubAPI is the GitHub REST base; tests point it at a local server.
+var githubAPI = "https://api.github.com"
+
+const (
+	// listPageSize is the releases requested per page (GitHub's maximum).
+	listPageSize = 100
+	// listMaxPages bounds a listing to this many requests.
+	listMaxPages = 3
 )
 
 type releaseInfo struct {
@@ -14,12 +26,15 @@ type releaseInfo struct {
 	URL         string
 	ChecksumURL string
 	Notes       string
+	Tag         string // set only when releases are listed
 }
 
 type ghRelease struct {
-	TagName string    `json:"tag_name"`
-	Body    string    `json:"body"`
-	Assets  []ghAsset `json:"assets"`
+	TagName    string    `json:"tag_name"`
+	Draft      bool      `json:"draft"`
+	Prerelease bool      `json:"prerelease"`
+	Body       string    `json:"body"`
+	Assets     []ghAsset `json:"assets"`
 }
 
 type ghAsset struct {
@@ -38,7 +53,10 @@ func fetchLatest(ctx context.Context, cfg Config) (*releaseInfo, error) {
 }
 
 func fetchGitHub(ctx context.Context, cfg Config) (*releaseInfo, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", cfg.GitHubRepo)
+	if cfg.TagPrefix != "" || cfg.IncludePrereleases {
+		return fetchGitHubList(ctx, cfg)
+	}
+	url := fmt.Sprintf("%s/repos/%s/releases/latest", githubAPI, cfg.GitHubRepo)
 	client := &http.Client{Timeout: cfg.Timeout}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -255,4 +273,115 @@ func comparePreIdent(a, b string) int {
 		}
 		return 0
 	}
+}
+
+// tagVersion returns the strict semver a tag names once cfg.TagPrefix and
+// one leading "v" are stripped; ok is false for another component's tag
+// or a tag that is not semver.
+func tagVersion(cfg Config, tag string) (*msemver.Version, bool) {
+	if !strings.HasPrefix(tag, cfg.TagPrefix) {
+		return nil, false
+	}
+	v, err := msemver.StrictNewVersion(strings.TrimPrefix(strings.TrimPrefix(tag, cfg.TagPrefix), "v"))
+	if err != nil {
+		return nil, false
+	}
+	return v, true
+}
+
+// fetchGitHubList lists releases (newest first, at most listMaxPages of
+// listPageSize) and returns the highest semver among non-draft releases
+// whose tag starts with cfg.TagPrefix; prereleases only when
+// cfg.IncludePrereleases. A later page failing keeps earlier pages.
+func fetchGitHubList(ctx context.Context, cfg Config) (*releaseInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+	defer cancel()
+	client := &http.Client{}
+
+	var (
+		best    *msemver.Version
+		bestRel ghRelease
+	)
+	for page := 1; page <= listMaxPages; page++ {
+		items, err := fetchReleasePage(ctx, client, cfg, page)
+		if err != nil {
+			if page == 1 {
+				return nil, err
+			}
+			break
+		}
+		for _, raw := range items {
+			var rel ghRelease
+			if json.Unmarshal(raw, &rel) != nil || rel.Draft {
+				continue
+			}
+			v, ok := tagVersion(cfg, rel.TagName)
+			if !ok {
+				continue
+			}
+			if !cfg.IncludePrereleases && (rel.Prerelease || v.Prerelease() != "") {
+				continue
+			}
+			if best == nil || v.GreaterThan(best) {
+				best, bestRel = v, rel
+			}
+		}
+		if len(items) < listPageSize {
+			break
+		}
+	}
+	if best == nil {
+		return nil, fmt.Errorf("upgrade: no matching release")
+	}
+
+	notes := bestRel.Body
+	if len(notes) > 1000 {
+		notes = notes[:1000] + "…"
+	}
+	return &releaseInfo{
+		Version:     best.String(),
+		URL:         selectAsset(bestRel.Assets),
+		ChecksumURL: selectChecksumAsset(bestRel.Assets),
+		Notes:       notes,
+		Tag:         bestRel.TagName,
+	}, nil
+}
+
+func fetchReleasePage(ctx context.Context, client *http.Client, cfg Config, page int) ([]json.RawMessage, error) {
+	u := fmt.Sprintf("%s/repos/%s/releases?per_page=%d&page=%d", githubAPI, cfg.GitHubRepo, listPageSize, page)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("upgrade: github API returned %d", resp.StatusCode)
+	}
+	var items []json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		return nil, fmt.Errorf("upgrade: decode github response: %w", err)
+	}
+	return items, nil
+}
+
+// cachedTagOK reports whether a cached Result may be served. In list mode
+// a cached tag is trusted only when it starts with the prefix and names
+// the cached version; anything else, a missing tag included (a record
+// written in default mode), is a cache miss. (The cache may sit in
+// a shared directory, and a tag can end up in a link.)
+func (c *Checker) cachedTagOK(r *Result) bool {
+	if c.cfg.TagPrefix == "" && !c.cfg.IncludePrereleases {
+		return true
+	}
+	v, ok := tagVersion(c.cfg, r.Tag)
+	if !ok {
+		return false
+	}
+	want, err := msemver.StrictNewVersion(strings.TrimPrefix(r.Latest, "v"))
+	return err == nil && v.Equal(want)
 }

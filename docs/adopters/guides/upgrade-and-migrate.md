@@ -36,7 +36,11 @@ Options (all in `config.go`): `WithGitHub(owner/repo)`,
 `WithReleaseURL(url)` for a custom endpoint, `WithCacheTTL` (default
 4h), `WithSnoozeDuration` (default 24h), `WithTimeout` (default 10s),
 `WithStateDir` (default `$XDG_STATE_HOME/<binary>/upgrade`),
-`WithChecksumURL`, `WithSkipVerify`. With neither a repo nor a URL,
+`WithChecksumURL`, `WithSkipVerify`, `WithTagPrefix("xray/v")` (this
+tool's releases in a multi-component repo; other tags are ignored) and
+`WithIncludePrereleases(true)`; either lists releases (3 pages of 100
+at most) and takes the highest semver, where the default reads
+`releases/latest`. With neither a repo nor a URL,
 `Check` returns an error ("no release source configured").
 
 A custom endpoint answers a GET with
