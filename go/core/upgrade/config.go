@@ -21,6 +21,12 @@ type Config struct {
 	Timeout        time.Duration
 	SkipVerify     bool
 
+	// TagPrefix selects this tool's releases in a repository that tags
+	// several components (e.g. "xray/v"); see WithTagPrefix.
+	TagPrefix string
+	// IncludePrereleases offers prereleases; see WithIncludePrereleases.
+	IncludePrereleases bool
+
 	// pub, topics: opt-in bus emission. See bus.go for WithPublisher,
 	// WithTopicPrefix, WithTopics.
 	pub    domain.EventPublisher
@@ -50,6 +56,22 @@ func WithBinary(name, currentVersion string) Option {
 // WithGitHub sets the GitHub owner/repo for release checks.
 func WithGitHub(repo string) Option {
 	return func(c *Config) { c.GitHubRepo = repo }
+}
+
+// WithTagPrefix limits the GitHub check to releases whose tag starts with
+// prefix (e.g. "xray/v" for tag "xray/v0.2.0"); the prefix is stripped
+// before the version comparison and other tags are ignored. Setting it
+// lists releases instead of reading releases/latest, which may belong to
+// another component.
+func WithTagPrefix(prefix string) Option {
+	return func(c *Config) { c.TagPrefix = prefix }
+}
+
+// WithIncludePrereleases makes the GitHub check offer prereleases.
+// Setting it lists releases instead of reading releases/latest, which
+// skips prereleases. Without it, prereleases are never offered.
+func WithIncludePrereleases(include bool) Option {
+	return func(c *Config) { c.IncludePrereleases = include }
 }
 
 // WithReleaseURL sets a custom release endpoint.

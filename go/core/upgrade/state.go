@@ -49,6 +49,7 @@ type cachedResult struct {
 	Notes       string    `json:"notes"`
 	CheckedAt   time.Time `json:"checked_at"`
 	UpdateAvail bool      `json:"update_avail"`
+	Tag         string    `json:"tag,omitempty"`
 }
 
 func saveCachedResult(stateDir, binary string, r *Result) error {
@@ -64,6 +65,7 @@ func saveCachedResult(stateDir, binary string, r *Result) error {
 		Notes:       r.Notes,
 		CheckedAt:   r.CheckedAt,
 		UpdateAvail: r.UpdateAvail,
+		Tag:         r.Tag,
 	}
 	data, err := json.Marshal(rec)
 	if err != nil {
@@ -93,5 +95,6 @@ func loadCachedResult(stateDir, binary string) (*Result, error) {
 		Notes:       rec.Notes,
 		CheckedAt:   rec.CheckedAt,
 		UpdateAvail: rec.UpdateAvail,
+		Tag:         rec.Tag,
 	}, nil
 }
