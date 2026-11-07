@@ -534,6 +534,7 @@ export INIT_AUTHOR_NAME="$AUTHOR"
 export INIT_AUTHOR_EMAIL="$EMAIL"
 export INIT_LICENSE
 export INIT_MODULE_PREFIX="$MODULE_PREFIX"
+export INIT_ORG="$ORG"
 if [ "$IS_POLYGLOT" = true ]; then
   export INIT_LANGUAGES="$LANG"
 fi

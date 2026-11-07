@@ -1138,6 +1138,39 @@ assert_file_contains "$TEST16_DIR/Makefile" 'MAKE) -C php' \
 assert_managed_files "$TEST16_DIR" "go,ts,py,rs,php" "" "test16app"
 
 # ======================================================
+# Test 17: --org wins over a vanity module prefix
+# ======================================================
+# A vanity prefix (no slash) used to become {{.Org}} verbatim, so
+# README badges pointed at github.com/<vanity-host>/<name>.
+
+info "Test 17: --org with vanity module prefix"
+TEST17_DIR="$TMPDIR_BASE/test17"
+bash "$SCRIPT_DIR/scaffold.sh" test17app \
+  --output "$TEST17_DIR" \
+  --lang go \
+  --description "Test vanity prefix" \
+  --license mit --author "Test Author" --email "test@example.com" \
+  --org vanityorg \
+  --module-prefix "vanity.example" \
+  --forge none --no-push --no-tlc
+assert_file_contains "$TEST17_DIR/go.mod" "^module vanity.example/test17app$" \
+  "test17 module keeps vanity prefix"
+assert_file_contains "$TEST17_DIR/README.md" \
+  "github.com/vanityorg/test17app/releases" \
+  "test17 README badges use --org"
+assert_file_excludes "$TEST17_DIR/README.md" "github.com/vanity.example" \
+  "test17 README badges skip vanity host"
+assert_file_contains "$TEST17_DIR/README.md" "github.com/hop-top/spec-12fc" \
+  "test17 README 12fc badge links spec repo"
+assert_file_excludes "$TEST17_DIR/README.md" "12-factor-ai-cli-apps" \
+  "test17 README has no dead 12fc link"
+
+# Without --org, org still derives from the module prefix.
+assert_file_contains "$TEST1_DIR/README.md" \
+  "github.com/testorg/test1app/releases" \
+  "test1 README org derived from module prefix"
+
+# ======================================================
 # Summary
 # ======================================================
 
