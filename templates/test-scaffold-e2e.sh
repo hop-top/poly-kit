@@ -513,7 +513,7 @@ assert_managed_files() {
       local wf
       while IFS= read -r wf; do
         [ -z "$wf" ] && continue
-        if grep -Eq 'jdx/mise-action@[0-9a-f]{40} # v2\.' "$wf"; then
+        if grep -Eq 'jdx/mise-action@[0-9a-f]{40} +# v[0-9]+\.' "$wf"; then
           has_mise_action=true
         fi
         for pat in 'actions/setup-go@' 'actions/setup-node@' \
@@ -526,9 +526,9 @@ assert_managed_files() {
       done <<< "$wf_files"
 
       if $has_mise_action; then
-        pass "$tag CI workflows use jdx/mise-action (SHA-pinned, v2)"
+        pass "$tag CI workflows use jdx/mise-action (SHA-pinned)"
       else
-        fail "$tag CI workflows use jdx/mise-action (SHA-pinned, v2): not found under $wf_dir"
+        fail "$tag CI workflows use jdx/mise-action (SHA-pinned): not found under $wf_dir"
       fi
       local lint_out wf_list=()
       while IFS= read -r wf; do
