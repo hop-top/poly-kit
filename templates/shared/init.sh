@@ -10,6 +10,7 @@ set -euo pipefail
 # Environment overrides (for CI/automation):
 #   INIT_APP_NAME, INIT_DESCRIPTION, INIT_AUTHOR_NAME,
 #   INIT_AUTHOR_EMAIL, INIT_LICENSE, INIT_MODULE_PREFIX,
+#   INIT_ORG (forge org; defaults to last module-prefix segment),
 #   INIT_LANGUAGES (comma-separated, polyglot only)
 # -------------------------------------------------------
 
@@ -69,14 +70,19 @@ fi
 # Uppercase app name for env var prefixes (e.g. my-app -> MY_APP)
 app_name_upper="$(echo "$app_name" | tr '[:lower:]-' '[:upper:]_')"
 
-# Org: trailing segment of module_prefix (github.com/foo -> foo).
-# Strip trailing slash first so `github.com/foo/` still yields `foo`.
-# Falls back to author_name (then app_name) if no usable segment.
-module_prefix_trimmed="${module_prefix%/}"
-if [[ "$module_prefix_trimmed" == */* ]]; then
-  org="${module_prefix_trimmed##*/}"
-else
-  org="$module_prefix_trimmed"
+# Org: INIT_ORG when given; a vanity prefix (hop.top) names a host,
+# not the forge org. Otherwise trailing segment of module_prefix
+# (github.com/foo -> foo); strip trailing slash first so
+# `github.com/foo/` still yields `foo`. Falls back to author_name
+# (then app_name) if no usable segment.
+org="${INIT_ORG:-}"
+if [ -z "$org" ]; then
+  module_prefix_trimmed="${module_prefix%/}"
+  if [[ "$module_prefix_trimmed" == */* ]]; then
+    org="${module_prefix_trimmed##*/}"
+  else
+    org="$module_prefix_trimmed"
+  fi
 fi
 [ -z "$org" ] && org="${author_name:-$app_name}"
 
