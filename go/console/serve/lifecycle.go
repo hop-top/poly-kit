@@ -171,10 +171,7 @@ func (s *Supervisor) awaitReady(
 	for {
 		select {
 		case <-readyCh:
-			st.markReady(name)
-			em.emit(ctx, ObjectService, ActionReadyReported, EventPayload{
-				Service: name, Address: addrOf(s.reg, name), ElapsedMS: st.elapsedMS(),
-			})
+			s.markReadyReported(ctx, name, st, em)
 			return nil
 
 		case exit := <-sup.exits:
@@ -186,6 +183,17 @@ func (s *Supervisor) awaitReady(
 			// failure even when it returns nil: it was asked to
 			// serve and it did not.
 			if exit.name == name {
+				// select picks at random when both are pending, and a
+				// service that reports ready then returns at once
+				// leaves both. Ready wins: it did report, so this is an
+				// ordinary post-ready return, handled as the run loop
+				// would handle it.
+				select {
+				case <-readyCh:
+					s.markReadyReported(ctx, name, st, em)
+					return s.otherExit(ctx, exit, st, em)
+				default:
+				}
 				err := exit.err
 				if err == nil {
 					err = errors.New("returned before reporting ready")
@@ -214,6 +222,14 @@ func (s *Supervisor) awaitReady(
 			return ctx.Err()
 		}
 	}
+}
+
+// markReadyReported records name as ready and emits its ready event.
+func (s *Supervisor) markReadyReported(ctx context.Context, name string, st *runState, em *emitter) {
+	st.markReady(name)
+	em.emit(ctx, ObjectService, ActionReadyReported, EventPayload{
+		Service: name, Address: addrOf(s.reg, name), ElapsedMS: st.elapsedMS(),
+	})
 }
 
 // awaitRelease waits for an optional service's release to end, the run
