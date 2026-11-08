@@ -47,6 +47,14 @@ impl Fake {
     }
 }
 
+/// Serializes every test that mutates or depends on the process-wide `PATH`
+/// (the Linux probe test rewrites it; `ExecRunner` resolves binaries on it).
+static PATH_LOCK: Mutex<()> = Mutex::new(());
+
+fn path_guard() -> std::sync::MutexGuard<'static, ()> {
+    PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn ev() -> hop_top_kit::bus::Event {
     let mut e = event("kit.notify.test", json!({"msg": "hello"}));
     e.source = "test".into();
@@ -66,6 +74,7 @@ fn drain(s: &OsNotifySink) -> Result<(), BusError> {
 
 #[test]
 fn new_matches_the_host_platform() {
+    let _g = path_guard();
     match (std::env::consts::OS, OsNotifySink::new()) {
         ("macos", Ok(_)) => {}
         ("linux", Ok(_)) => {}
@@ -80,6 +89,7 @@ fn new_matches_the_host_platform() {
 #[test]
 fn new_probes_notify_send_on_path() {
     use std::os::unix::fs::PermissionsExt;
+    let _g = path_guard();
     let saved = std::env::var_os("PATH");
 
     std::env::set_var("PATH", "");
@@ -275,6 +285,7 @@ mod exec {
 
     #[test]
     fn success_and_failure_exit_codes() {
+        let _g = path_guard();
         let ctx = Context::background();
         run(&ctx, "true", &[]).unwrap();
         let err = run(&ctx, "false", &[]).unwrap_err().to_string();
@@ -283,11 +294,13 @@ mod exec {
 
     #[test]
     fn a_missing_binary_is_an_error() {
+        let _g = path_guard();
         assert!(run(&Context::background(), "kit-notify-no-such-binary", &[]).is_err());
     }
 
     #[test]
     fn arguments_are_not_interpreted_by_a_shell() {
+        let _g = path_guard();
         // `test` receives the whole string as one operand: non-empty.
         run(
             &Context::background(),
@@ -299,6 +312,7 @@ mod exec {
 
     #[test]
     fn cancellation_kills_the_child() {
+        let _g = path_guard();
         let (ctx, cancel) = Context::background().with_cancel();
         let t = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(50));
@@ -313,6 +327,7 @@ mod exec {
 
     #[test]
     fn a_done_context_never_spawns() {
+        let _g = path_guard();
         let (ctx, cancel) = Context::background().with_cancel();
         cancel.cancel();
         assert!(run(&ctx, "true", &[]).is_err());
