@@ -17,8 +17,10 @@
  * ### Error handling philosophy
  * Version checking is a best-effort, non-critical operation.  Any failure —
  * network error, bad JSON, HTTP error, filesystem error, invalid semver — is
- * silently discarded.  The function always resolves without throwing.  If
- * something goes wrong the user sees neither a notice nor an error.
+ * silently discarded by `notifyIfAvailable`, which always resolves without
+ * throwing.  `check()` is the strict variant: it rejects with an
+ * {@link UpgradeCheckError} so callers (e.g. `upgrade --check`) can tell a
+ * failed lookup from "up to date".
  *
  * ### Notice format
  * ```
@@ -100,11 +102,41 @@ export interface CheckerOptions {
   includePrereleases?: boolean;
 }
 
+/** Outcome of {@link Checker.check}. */
+export interface UpgradeCheckResult {
+  /** Running version, as configured. */
+  current: string;
+  /** Latest release version (no leading `v` / tag prefix). */
+  latest: string;
+  /** True when `latest` is strictly greater than `current`. */
+  updateAvailable: boolean;
+  /** Release page to link to. */
+  url: string;
+}
+
+/** Rejection of {@link Checker.check}; the underlying error is in `cause`. */
+export class UpgradeCheckError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'UpgradeCheckError';
+  }
+}
+
 /**
  * Returned by {@link createChecker}.  Call {@link Checker.notifyIfAvailable}
  * at the end of a CLI command to surface upgrade notices non-intrusively.
  */
 export interface Checker {
+  /**
+   * Looks up the latest release and resolves with the outcome. Unlike
+   * {@link Checker.notifyIfAvailable} it never swallows failures: network,
+   * HTTP, parse and "no matching release" errors reject with an
+   * {@link UpgradeCheckError}, so callers can tell a failed lookup from
+   * "up to date". Honours `tagPrefix`, `includePrereleases` and the cache;
+   * pass `cacheTTL: 0` to bypass the cache.
+   */
+  check(): Promise<UpgradeCheckResult>;
+
   /**
    * Checks for a newer GitHub release and writes a one-line notice to `out`
    * if one is available.  Silently swallows all errors.
@@ -218,7 +250,7 @@ export function createChecker(opts: CheckerOptions): Checker {
     tag?: string;
   }
 
-  async function fetchLatestVersion(): Promise<Latest | null> {
+  async function fetchLatestVersion(): Promise<Latest> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
     try {
@@ -227,10 +259,10 @@ export function createChecker(opts: CheckerOptions): Checker {
         signal: controller.signal,
         headers: { Accept: 'application/vnd.github+json' },
       });
-      if (!res.ok) return null;
+      if (!res.ok) throw new UpgradeCheckError(`release lookup failed: HTTP ${res.status}`);
       const body = (await res.json()) as { tag_name?: string };
       const tag = body.tag_name;
-      if (typeof tag !== 'string') return null;
+      if (typeof tag !== 'string') throw new UpgradeCheckError('release lookup failed: no tag_name');
       // Strip leading 'v' so semver.gt works with or without prefix.
       return { version: tag.replace(/^v/, '') };
     } finally {
@@ -243,7 +275,7 @@ export function createChecker(opts: CheckerOptions): Checker {
    * among non-draft releases whose tag starts with `tagPrefix`; prereleases
    * only when `includePrereleases` is set.
    */
-  async function fetchHighestRelease(signal: AbortSignal): Promise<Latest | null> {
+  async function fetchHighestRelease(signal: AbortSignal): Promise<Latest> {
     let best: Latest | null = null;
     for (let page = 1; page <= MAX_PAGES; page++) {
       const res = await fetch(`${listURL}?per_page=${PAGE_SIZE}&page=${page}`, {
@@ -252,11 +284,14 @@ export function createChecker(opts: CheckerOptions): Checker {
       });
       if (!res.ok) {
         // Page 1 failing is a failed check; a later page keeps what we have.
-        if (page === 1) return null;
+        if (page === 1) throw new UpgradeCheckError(`release lookup failed: HTTP ${res.status}`);
         break;
       }
       const body = (await res.json()) as unknown;
-      if (!Array.isArray(body)) return page === 1 ? null : best;
+      if (!Array.isArray(body)) {
+        if (page === 1) throw new UpgradeCheckError('release lookup failed: unexpected response');
+        break;
+      }
       for (const rel of body as GitHubRelease[]) {
         if (rel === null || typeof rel !== 'object') continue;
         if (rel.draft === true || typeof rel.tag_name !== 'string') continue;
@@ -271,44 +306,58 @@ export function createChecker(opts: CheckerOptions): Checker {
       }
       if (body.length < PAGE_SIZE) break;
     }
+    if (best === null) throw new UpgradeCheckError('no matching release found');
     return best;
   }
 
-  // ── notifyIfAvailable ──────────────────────────────────────────────────────
+  // ── check ──────────────────────────────────────────────────────────────────
 
-  async function notifyIfAvailable(out: NodeJS.WritableStream): Promise<void> {
+  async function check(): Promise<UpgradeCheckResult> {
     try {
-      let latestVersion: string | null = null;
+      let latestVersion: string;
       let latestTag: string | undefined;
 
-      // Check cache first.
       const cached = readCache();
       if (cached !== null && Date.now() - cached.checkedAt < cacheTTL) {
         latestVersion = cached.version;
         latestTag = cached.tag;
       } else {
         const latest = await fetchLatestVersion();
-        if (latest !== null) {
-          latestVersion = latest.version;
-          latestTag = latest.tag;
-          writeCache(latest.version, latest.tag);
-        }
+        latestVersion = latest.version;
+        latestTag = latest.tag;
+        writeCache(latest.version, latest.tag);
       }
 
-      if (latestVersion === null) return;
-
-      // Only notify when latest is strictly greater than current.
-      if (!semver.gt(latestVersion, currentVersion)) return;
-
-      const notice =
-        `\nA new release of ${name} is available: v${currentVersion} → v${latestVersion}\n` +
-        `${noticeURL(latestTag)}\n`;
-
-      out.write(notice);
-    } catch {
-      // Any unexpected error is silently swallowed.
+      return {
+        current: currentVersion,
+        latest: latestVersion,
+        // Only strictly greater counts as an update.
+        updateAvailable: semver.gt(latestVersion, currentVersion),
+        url: noticeURL(latestTag),
+      };
+    } catch (err) {
+      if (err instanceof UpgradeCheckError) throw err;
+      throw new UpgradeCheckError(
+        `upgrade check failed: ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err },
+      );
     }
   }
 
-  return { notifyIfAvailable };
+  // ── notifyIfAvailable ──────────────────────────────────────────────────────
+
+  async function notifyIfAvailable(out: NodeJS.WritableStream): Promise<void> {
+    try {
+      const r = await check();
+      if (!r.updateAvailable) return;
+      out.write(
+        `\nA new release of ${name} is available: v${r.current} → v${r.latest}\n` +
+          `${r.url}\n`,
+      );
+    } catch {
+      // Best-effort: any failure is silently swallowed.
+    }
+  }
+
+  return { check, notifyIfAvailable };
 }
