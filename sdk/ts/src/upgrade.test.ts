@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
-import { createChecker } from './upgrade';
+import { createChecker, UpgradeCheckError } from './upgrade';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -585,5 +585,106 @@ describe('createChecker: tagPrefix and includePrereleases', () => {
     }).notifyIfAvailable(out as unknown as NodeJS.WritableStream);
     expect(spy).not.toHaveBeenCalled();
     expect(out.value()).toContain('https://github.com/acme/mono/releases/tag/xray/v2.0.0');
+  });
+});
+
+describe('createChecker: check()', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'upgrade-check-'));
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const mk = (extra: Record<string, unknown> = {}) =>
+    createChecker({
+      name: 'my-tool',
+      currentVersion: '1.0.0',
+      owner: 'acme',
+      repo: 'my-tool',
+      stateDir: tmpDir,
+      ...extra,
+    });
+
+  it('resolves update info when newer', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ tag_name: 'v2.0.0' }));
+    expect(await mk().check()).toEqual({
+      current: '1.0.0',
+      latest: '2.0.0',
+      updateAvailable: true,
+      url: 'https://github.com/acme/my-tool/releases/latest',
+    });
+  });
+
+  it('resolves updateAvailable false when up to date', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ tag_name: 'v1.0.0' }));
+    const r = await mk().check();
+    expect(r.updateAvailable).toBe(false);
+    expect(r.latest).toBe('1.0.0');
+  });
+
+  it('rejects with UpgradeCheckError on network failure', async () => {
+    const boom = new Error('offline');
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(boom);
+    const err = await mk().check().catch((e) => e);
+    expect(err).toBeInstanceOf(UpgradeCheckError);
+    expect(err.cause).toBe(boom);
+  });
+
+  it('rejects on HTTP error status', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({}, 500));
+    await expect(mk().check()).rejects.toBeInstanceOf(UpgradeCheckError);
+  });
+
+  it('rejects on malformed body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('not json', { status: 200 }),
+    );
+    await expect(mk().check()).rejects.toBeInstanceOf(UpgradeCheckError);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ tag_name: 5 }));
+    await expect(mk().check()).rejects.toBeInstanceOf(UpgradeCheckError);
+  });
+
+  it('rejects when no release matches tagPrefix', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse([{ tag_name: 'other/v9.0.0' }]),
+    );
+    await expect(mk({ tagPrefix: 'xray/v' }).check()).rejects.toBeInstanceOf(
+      UpgradeCheckError,
+    );
+  });
+
+  it('honours tagPrefix and links the exact release', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse([{ tag_name: 'xray/v1.5.0' }, { tag_name: 'other/v9.0.0' }]),
+    );
+    const r = await mk({ tagPrefix: 'xray/v' }).check();
+    expect(r.latest).toBe('1.5.0');
+    expect(r.url).toBe('https://github.com/acme/my-tool/releases/tag/xray/v1.5.0');
+  });
+
+  it('serves from cache within TTL; cacheTTL 0 bypasses it', async () => {
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => jsonResponse({ tag_name: 'v2.0.0' }));
+    await mk().check();
+    await mk().check();
+    expect(spy).toHaveBeenCalledTimes(1);
+    await mk({ cacheTTL: 0 }).check();
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('notifyIfAvailable still swallows what check() rejects', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    const out = new StringStream();
+    await expect(
+      mk().notifyIfAvailable(out as unknown as NodeJS.WritableStream),
+    ).resolves.toBeUndefined();
+    expect(out.value()).toBe('');
   });
 });
