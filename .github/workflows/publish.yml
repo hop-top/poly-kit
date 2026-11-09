@@ -13,7 +13,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: hop-top/.github/.github/workflows/publish-on-tag.yml@4200be92484ff51e32add852f2261336f04cfb14 # v0.18.0
+    uses: hop-top/.github/.github/workflows/publish-on-tag.yml@932d42a3c87be0767e20187fb522d29764374eb5 # v0.18.1
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       PYPI_REGISTRY_TOKEN: ${{ secrets.PYPI_REGISTRY_TOKEN }}
@@ -82,7 +82,7 @@ jobs:
     if: startsWith(github.ref_name, 'kit/v')
     permissions:
       contents: write
-    uses: hop-top/.github/.github/workflows/goreleaser-on-tag.yml@4200be92484ff51e32add852f2261336f04cfb14 # v0.18.0
+    uses: hop-top/.github/.github/workflows/goreleaser-on-tag.yml@932d42a3c87be0767e20187fb522d29764374eb5 # v0.18.1
     secrets:
       RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
       RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
