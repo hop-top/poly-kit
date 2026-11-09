@@ -19,6 +19,8 @@ Public API:
     StoreOptions — options dataclass (hop_top_kit.sqlstore.Options).
     create_checker — factory for an upgrade Checker.
     CheckerOptions — options dataclass (hop_top_kit.upgrade.CheckerOptions).
+    UpgradeCheckResult — result of ``Checker.check()``.
+    UpgradeCheckError  — raised by ``Checker.check()`` on failure.
     new_id       — generate a new canonical TypeID string.
     parse_id     — parse a TypeID string into ``(prefix, uuid)``.
     TypeId       — Pydantic v2 prefix-validated string field
@@ -52,7 +54,12 @@ from hop_top_kit.sqlstore import Store
 from hop_top_kit.sqlstore import open as open_store
 from hop_top_kit.telemetry import Client as TelemetryClient
 from hop_top_kit.telemetry import Mode as TelemetryMode
-from hop_top_kit.upgrade import CheckerOptions, create_checker
+from hop_top_kit.upgrade import (
+    CheckerOptions,
+    UpgradeCheckError,
+    UpgradeCheckResult,
+    create_checker,
+)
 from hop_top_kit.xdg import cache_dir, config_dir, data_dir, must_ensure, state_dir
 
 __all__ = [
@@ -73,6 +80,8 @@ __all__ = [
     "TypeId",
     "TypeIdError",
     "Typed",
+    "UpgradeCheckError",
+    "UpgradeCheckResult",
     "cache_dir",
     "config_dir",
     "create_app",

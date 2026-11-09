@@ -13,9 +13,13 @@ Cache behaviour:
     Releases API is queried; a fresh entry is written on success.
 
 Error handling:
-    All errors (network, JSON parse, file I/O, version parse) are
-    silently swallowed.  The function is intended for best-effort use
-    at CLI startup and must never abort the tool.
+    :meth:`Checker.notify_if_available` silently swallows all errors
+    (network, JSON parse, file I/O, version parse); it is intended for
+    best-effort use at CLI startup and must never abort the tool.
+    :meth:`Checker.check` is the strict variant: it returns an
+    :class:`UpgradeCheckResult` and raises :class:`UpgradeCheckError`
+    (original error chained as ``__cause__``) so callers, e.g.
+    ``upgrade --check``, can tell a failed lookup from "up to date".
 
 Notice format (written to ``out`` when a newer version exists)::
 
@@ -48,6 +52,11 @@ Usage example::
 
     # At CLI startup — prints notice if newer version exists, else silent:
     checker.notify_if_available()
+
+    # Strict variant — raises UpgradeCheckError on failure:
+    result = checker.check()
+    if result.update_available:
+        print(result.latest, result.url)
 """
 
 from __future__ import annotations
@@ -79,6 +88,29 @@ _SEMVER = re.compile(
     r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
     r"(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$"
 )
+
+
+@dataclass
+class UpgradeCheckResult:
+    """Outcome of :meth:`Checker.check`.
+
+    Attributes:
+        current:          Running version, as configured.
+        latest:           Latest release version (no ``v`` / tag prefix).
+        update_available: True when *latest* is strictly greater than
+                          *current*.
+        url:              Release page to link to.
+    """
+
+    current: str
+    latest: str
+    update_available: bool
+    url: str
+
+
+class UpgradeCheckError(Exception):
+    """Raised by :meth:`Checker.check`; the underlying error, if any, is
+    chained as ``__cause__``."""
 
 
 @dataclass
@@ -129,6 +161,42 @@ class Checker:
     # Public API
     # ------------------------------------------------------------------
 
+    def check(self) -> UpgradeCheckResult:
+        """Look up the latest release and return the outcome.
+
+        Unlike :meth:`notify_if_available` failures are not swallowed:
+        network, HTTP, parse, "no matching release" and invalid-semver
+        errors raise :class:`UpgradeCheckError` with the original error
+        chained.  Honours ``tag_prefix``, ``include_prereleases`` and the
+        cache; a ``cache_ttl`` of zero bypasses the cache.
+        """
+        opts = self._opts
+        try:
+            tag: str | None = None
+            cached = self._read_cache()
+            if cached is not None:
+                latest, tag = cached
+            elif self._list_mode():
+                found = self._fetch_highest()
+                if found is None:
+                    raise UpgradeCheckError("no matching release found")
+                latest, tag = found
+                self._write_cache(latest, tag)
+            else:
+                latest = self._fetch_latest()
+                self._write_cache(latest)
+            return UpgradeCheckResult(
+                current=opts.current_version,
+                latest=latest,
+                # Only strictly greater counts as an update.
+                update_available=Version(latest) > Version(opts.current_version),
+                url=self._notice_url(tag),
+            )
+        except UpgradeCheckError:
+            raise
+        except Exception as err:
+            raise UpgradeCheckError(f"upgrade check failed: {err}") from err
+
     def notify_if_available(self, out: IO = sys.stdout) -> None:
         """Write an upgrade notice to *out* if a newer version is available.
 
@@ -140,7 +208,14 @@ class Checker:
                  Defaults to ``sys.stdout``.
         """
         with contextlib.suppress(Exception):
-            self._run(out)
+            r = self.check()
+            if not r.update_available:
+                return
+            out.write(
+                f"\nA new release of {self._opts.name} is available: "
+                f"{r.current} \u2192 {r.latest}\n"
+                f"{r.url}\n"
+            )
 
     # ------------------------------------------------------------------
     # Internals
@@ -224,15 +299,15 @@ class Checker:
         segs = (urllib.parse.quote(seg, safe="!'()*") for seg in tag.split("/"))
         return f"{base}/tag/{'/'.join(segs)}"
 
-    def _fetch_latest(self) -> str | None:
+    def _fetch_latest(self) -> str:
         """Fetch the latest release tag from GitHub and return version string.
 
-        Returns ``None`` on any error or non-200 status.
+        Raises on any error or non-200 status.
         """
         url = f"https://api.github.com/repos/{self._opts.owner}/{self._opts.repo}/releases/latest"
         with urllib.request.urlopen(url, timeout=self._opts.timeout) as resp:
             if resp.status != 200:
-                return None
+                raise UpgradeCheckError(f"release lookup failed: HTTP {resp.status}")
             body = resp.read()
         data = json.loads(body)
         tag: str = data["tag_name"]
@@ -285,42 +360,6 @@ class Checker:
                 break
         return None if best is None else (best[0], best[1])
 
-    def _run(self, out: IO) -> None:
-        """Core logic: fetch (or read cache), compare, maybe write notice."""
-        opts = self._opts
-
-        tag: str | None = None
-        cached = self._read_cache()
-        if cached is not None:
-            latest, tag = cached
-        elif self._list_mode():
-            found = self._fetch_highest()
-            if found is None:
-                return
-            latest, tag = found
-            self._write_cache(latest, tag)
-        else:
-            fetched = self._fetch_latest()
-            if fetched is None:
-                return
-            latest = fetched
-            self._write_cache(latest)
-
-        try:
-            current_v = Version(opts.current_version)
-            latest_v = Version(latest)
-        except InvalidVersion:
-            return
-
-        if latest_v <= current_v:
-            return
-
-        out.write(
-            f"\nA new release of {opts.name} is available: "
-            f"{opts.current_version} \u2192 {latest}\n"
-            f"{self._notice_url(tag)}\n"
-        )
-
 
 def create_checker(opts: CheckerOptions) -> Checker:
     """Create a :class:`Checker` from *opts*.
@@ -330,7 +369,7 @@ def create_checker(opts: CheckerOptions) -> Checker:
 
     Returns:
         A :class:`Checker` instance ready to call
-        :meth:`~Checker.notify_if_available`.
+        :meth:`~Checker.check` or :meth:`~Checker.notify_if_available`.
 
     Example::
 
