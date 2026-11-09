@@ -200,9 +200,13 @@ func newSSEHandler(b *Bridge, leaf *Leaf, cfg sseConfig) http.HandlerFunc {
 		defer cancel()
 
 		events := make(chan Event, 16)
-		errc := make(chan error, 1)
+		// runErr is written before done closes; reads after <-done are
+		// ordered by the close.
+		var runErr error
+		done := make(chan struct{})
 		go func() {
-			errc <- adm.Stream(streamCtx, events)
+			defer close(done)
+			runErr = adm.Stream(streamCtx, events)
 		}()
 
 		hb := time.NewTicker(cfg.heartbeat)
@@ -255,13 +259,13 @@ func newSSEHandler(b *Bridge, leaf *Leaf, cfg sseConfig) http.HandlerFunc {
 			case <-r.Context().Done():
 				cancel()
 				drain(events)
-				<-errc
+				<-done
 				return
 			case <-hb.C:
 				if err := writeComment(); err != nil {
 					cancel()
 					drain(events)
-					<-errc
+					<-done
 					return
 				}
 			case ev, ok := <-events:
@@ -271,14 +275,14 @@ func newSSEHandler(b *Bridge, leaf *Leaf, cfg sseConfig) http.HandlerFunc {
 				if err := forwardEvent(ev); err != nil {
 					cancel()
 					drain(events)
-					<-errc
+					<-done
 					return
 				}
 			}
 		}
 
 		// Stream goroutine has finished — collect its return.
-		runErr := <-errc
+		<-done
 
 		// Terminal frame: either error or result.
 		if runErr != nil {

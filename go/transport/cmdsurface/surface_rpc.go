@@ -292,13 +292,17 @@ func (s *rpcServer) stream(ctx context.Context, conn connect.StreamingHandlerCon
 	// Run the streamer in its own goroutine so we can multiplex Event
 	// receipt with ctx cancellation observability.
 	events := make(chan Event, 16)
-	errc := make(chan error, 1)
+	// streamErr is written before done closes; reads after <-done are
+	// ordered by the close.
+	var streamErr error
+	done := make(chan struct{})
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	rpcMarkReplayed(conn.ResponseHeader(), adm.Replayed())
 	go func() {
-		errc <- adm.Stream(streamCtx, events)
+		defer close(done)
+		streamErr = adm.Stream(streamCtx, events)
 	}()
 
 	// abort stops the runner and waits for it, so it never blocks on a
@@ -306,7 +310,7 @@ func (s *rpcServer) stream(ctx context.Context, conn connect.StreamingHandlerCon
 	abort := func() {
 		cancel()
 		drain(events)
-		<-errc
+		<-done
 	}
 
 	for {
@@ -323,7 +327,8 @@ func (s *rpcServer) stream(ctx context.Context, conn connect.StreamingHandlerCon
 			if !ok {
 				// Channel closed by runner. Wait for the run's err and
 				// translate.
-				if err := <-errc; err != nil {
+				<-done
+				if err := streamErr; err != nil {
 					return mapBridgeError(err, leaf)
 				}
 				return nil
