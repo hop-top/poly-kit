@@ -600,7 +600,7 @@ uuid = { version = "1", features = ["v7", "serde"], optional = true }
 # platforms and CI runners. Matches the Go side's pure-Go driver posture.
 # `default-features = false` drops the unused statement cache (hashlink)
 # and the wasm ffi shim.
-rusqlite = { version = "0.40", default-features = false, features = [
+rusqlite = { version = "0.41", default-features = false, features = [
     "bundled",
 ], optional = true }
 # bus-network and api-server-ws. Exact pins: both depend on their close,
