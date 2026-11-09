@@ -40,8 +40,8 @@ import (
 // own .github/workflows/publish.yml. Bump both together: a refresh then
 // rewrites unedited callers in place.
 const (
-	workflowCallerRef     = "4200be92484ff51e32add852f2261336f04cfb14"
-	workflowCallerVersion = "v0.18.0"
+	workflowCallerRef     = "932d42a3c87be0767e20187fb522d29764374eb5"
+	workflowCallerVersion = "v0.18.1"
 )
 
 // workflowCallerUses is the pinned `uses:` value (with its version
