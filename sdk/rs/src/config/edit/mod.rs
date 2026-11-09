@@ -300,6 +300,26 @@ mod tests {
     }
 
     #[test]
+    fn properties_before_a_node_are_not_part_of_it() {
+        // The parser's span opens at the anchor or tag; edits around a
+        // propertied block scalar, tagged scalar or flow collection must
+        // still land on the node itself.
+        let src = "a: &x |\n  t\nb: !!str 1\nc: &y [1]\nd: 4\n";
+        assert_eq!(
+            s(src, "d", "5"),
+            "a: &x |\n  t\nb: !!str 1\nc: &y [1]\nd: \"5\"\n"
+        );
+        assert_eq!(unset(src, "a").unwrap(), "b: !!str 1\nc: &y [1]\nd: 4\n");
+        assert_eq!(
+            s(src, "b", "2"),
+            "a: &x |
+  t
+b: !!str \"2\"
+c: &y [1]\nd: 4\n"
+        );
+    }
+
+    #[test]
     fn dangling_alias_is_refused() {
         // Go writes `other: *b` with the anchor gone, a file it cannot
         // read back; the port refuses.

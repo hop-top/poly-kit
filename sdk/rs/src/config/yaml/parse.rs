@@ -186,7 +186,15 @@ fn parse_text(src: &str) -> Result<Option<Node>, Failure> {
                     ScalarStyle::Folded => Style::Folded,
                 };
                 node.line = line;
-                node.span = Some(scalar_span(src, node.style, start, end));
+                // The parser's span opens at the node's first property
+                // (anchor or tag); the editor wants the node itself.
+                let body = skip_props(src, start);
+                node.span = Some(match node.style {
+                    Style::Literal | Style::Folded if body != start => {
+                        (body, body + src[body..end.max(body)].trim_end().len())
+                    }
+                    _ => scalar_span(src, node.style, body, end),
+                });
                 set_tag(&mut node, tag.as_deref(), line).map_err(fail)?;
                 Some((node, anchor))
             }
@@ -206,6 +214,7 @@ fn parse_text(src: &str) -> Result<Option<Node>, Failure> {
             Event::SequenceStart(anchor, tag) => {
                 let mut node = Node::new(Kind::Seq(Vec::new()), SEQ_TAG);
                 node.line = line;
+                let start = skip_props(src, start);
                 node.span = Some((start, start));
                 node.style = flow_style(src, start, b'[');
                 set_tag(&mut node, tag.as_deref(), line).map_err(fail)?;
@@ -219,6 +228,7 @@ fn parse_text(src: &str) -> Result<Option<Node>, Failure> {
             Event::MappingStart(anchor, tag) => {
                 let mut node = Node::new(Kind::Map(Vec::new()), MAP_TAG);
                 node.line = line;
+                let start = skip_props(src, start);
                 node.span = Some((start, start));
                 node.style = flow_style(src, start, b'{');
                 set_tag(&mut node, tag.as_deref(), line).map_err(fail)?;
@@ -338,6 +348,32 @@ fn close_span(node: &mut Node, first: Option<usize>, last: Option<usize>, end_ev
     }
     let start = first.map_or(start, |f| f.min(start));
     node.span = Some((start, last.unwrap_or(start)));
+}
+
+/// The parser opens a node's span at its first property (`&anchor`,
+/// `!tag`); the offset past the properties and the blanks, breaks and
+/// comments after them, where the node itself starts. `start` unchanged
+/// when it is not at a property.
+fn skip_props(src: &str, start: usize) -> usize {
+    let b = src.as_bytes();
+    let mut i = start;
+    while matches!(b.get(i), Some(b'&' | b'!')) {
+        while b.get(i).is_some_and(|c| !c.is_ascii_whitespace()) {
+            i += 1;
+        }
+        loop {
+            match b.get(i) {
+                Some(c) if c.is_ascii_whitespace() => i += 1,
+                Some(b'#') if i > 0 && b[i - 1].is_ascii_whitespace() => {
+                    while b.get(i).is_some_and(|c| *c != b'\n') {
+                        i += 1;
+                    }
+                }
+                _ => break,
+            }
+        }
+    }
+    i
 }
 
 /// The parser's scalar spans run to the line end for quoted scalars
