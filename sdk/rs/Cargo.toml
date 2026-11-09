@@ -587,7 +587,7 @@ thiserror = { version = "2", optional = true }
 # `matches` function; chrono/chrono-tz (timestamp functions) and the
 # base64 encoders are not needed by guard rules.
 cel = { version = "=0.15.0", default-features = false, features = ["regex"], optional = true }
-rmcp = { version = "3.8.0", default-features = false, optional = true }
+rmcp = { version = "3.9.0", default-features = false, optional = true }
 clap = { version = "4", features = ["derive", "string"], optional = true }
 comfy-table = { version = "8", default-features = false, optional = true }
 # TypeID codec. Exact pin: the wire form is a cross-language contract
