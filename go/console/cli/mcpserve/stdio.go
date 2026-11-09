@@ -118,11 +118,17 @@ func (s *stdioServing) serve(ctx context.Context) error {
 	s.ss = ss
 	s.mu.Unlock()
 
-	done := make(chan error, 1)
-	go func() { done <- ss.Wait() }()
+	// waitErr is written before done closes; reads after <-done are
+	// ordered by the close.
+	var waitErr error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		waitErr = ss.Wait()
+	}()
 	select {
-	case err := <-done:
-		return sessionEnd(tr.SessionEnd(err))
+	case <-done:
+		return sessionEnd(tr.SessionEnd(waitErr))
 	case <-ctx.Done():
 		_ = ss.Close()
 		select {
