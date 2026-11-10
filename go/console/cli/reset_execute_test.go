@@ -206,3 +206,34 @@ func TestRerun_CallbackFlagChangedIsCleared(t *testing.T) {
 	assert.Len(t, verboseCalls, 1,
 		"the reset must not invoke the BoolFunc callback")
 }
+
+// TestRerun_ValidatedRootExecutesTwice: fang registers a hidden `man`
+// command inside every fang.Execute. Without dropping the previous
+// run's copy, the second Execute validated a tree holding an
+// unannotated `man` leaf and refused to run, and every run appended
+// another copy.
+func TestRerun_ValidatedRootExecutesTwice(t *testing.T) {
+	r := cli.New(cli.Config{Name: "rerunvalid", Version: "0.0.0", Short: "rerun validated tool"},
+		cli.WithStatus(cli.StatusConfig{}))
+	leaf := &cobra.Command{
+		Use: "hello", Short: "say hello", Long: "Say hello.",
+		RunE: func(*cobra.Command, []string) error { return nil },
+	}
+	cli.SetSideEffect(leaf, cli.SideEffectRead)
+	cli.SetIdempotency(leaf, cli.IdempotencyYes)
+	cli.SetTopLevelVerb(leaf)
+	r.Cmd.AddCommand(leaf)
+
+	for i := range 3 {
+		r.SetArgs([]string{"hello"})
+		require.NoError(t, r.Execute(context.Background()), "run %d", i+1)
+	}
+
+	var man int
+	for _, c := range r.Cmd.Commands() {
+		if c.Name() == "man" {
+			man++
+		}
+	}
+	assert.Equal(t, 1, man, "one fang man command after repeated runs")
+}

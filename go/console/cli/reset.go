@@ -66,6 +66,28 @@ func (r *Root) resetForExecute() {
 	}
 	ResetFlags(r.Cmd)
 	r.rearmRootHelp()
+	r.dropFangManCommand()
+}
+
+// dropFangManCommand removes the hidden `man` command fang registered
+// during the previous run. fang.Execute adds it on every call, so
+// without this a second Execute validates a tree holding that
+// unannotated leaf (and refuses to run under EnforceValidate), and
+// each run appends another copy. fang adds a fresh one when this run
+// reaches it.
+func (r *Root) dropFangManCommand() {
+	for _, c := range r.Cmd.Commands() {
+		if isFangManCommand(c) {
+			r.Cmd.RemoveCommand(c)
+		}
+	}
+}
+
+// isFangManCommand matches the command fang.Execute registers for its
+// manpages option: hidden `man`, fang's Short, no kit annotations. An
+// adopter's own `man` command carries annotations and is left alone.
+func isFangManCommand(c *cobra.Command) bool {
+	return c.Name() == "man" && c.Hidden && c.Short == "Generates manpages" && len(c.Annotations) == 0
 }
 
 // rearmRootHelp lets the root's --help swap install its renderer again.
