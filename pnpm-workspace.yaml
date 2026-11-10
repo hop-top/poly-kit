@@ -21,6 +21,8 @@ overrides:
   # typeid-js 1.2.0 (latest) declares uuid ^10.0.0; the missing buffer
   # bounds check is in v3/v5/v6, and typeid-js calls only v7 and stringify.
   # 11.1.1 is the first release carrying the fix and keeps the CommonJS entry.
+  # typeid-js is a dev dependency of sdk/ts only (differential test); the
+  # published SDK ships its own TypeID, so adopters never resolve it.
   typeid-js>uuid: 11.1.1
   # eslint, @eslint/config-array and @typescript-eslint/typescript-estree
   # (all latest) declare minimatch ^10; every 10.x allows a CPU-amplification

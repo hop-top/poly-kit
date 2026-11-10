@@ -21,10 +21,10 @@ console.log(id, parse(id).uuid);
 
 ## Contract
 
-- Thin wrapper over `typeid-js`; the string returned by `newId` is the JSON wire form and round-trips losslessly through `parse`.
+- Self-contained TypeID (spec v0.3, UUIDv7), no runtime dependency; the string returned by `newId` is the JSON wire form and round-trips losslessly through `parse`. `fromUUID` encodes an existing UUID.
 - Prefix grammar and length limit follow the typeid spec pinned in the fixture; a divergence is a wire-format break.
 - No transitive dependency on the URI registry, by design.
-- Parity: [`contracts/typeid-v1/fixtures.json`](../../../../contracts/typeid-v1/fixtures.json), replayed by [`contract.test.ts`](contract.test.ts).
+- Parity: [`contracts/typeid-v1/fixtures.json`](../../../../contracts/typeid-v1/fixtures.json), replayed by [`contract.test.ts`](contract.test.ts); [`differential.test.ts`](differential.test.ts) checks against `typeid-js`, the reference implementation, as a dev dependency.
 
 ## Neighbours
 

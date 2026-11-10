@@ -1,10 +1,11 @@
 // Cross-language parity contract test.
 //
 // Loads contracts/typeid-v1/fixtures.json from the repo root and
-// asserts that this TS SDK's encode (via typeid-js's TypeID.fromUUID)
-// and decode (via the kit's parse) agree with the canonical wire form
-// shared by go/rs/py/php. A divergence here means either typeid-js
-// drifted or the contract was edited without updating all five SDKs.
+// asserts that this TS SDK's encode (fromUUID) and decode (parse)
+// agree with the canonical wire form shared by go/rs/py/php, and that
+// typeid-js, the reference implementation, still agrees too. A
+// divergence means the SDK drifted, typeid-js drifted, or the contract
+// was edited without updating all five SDKs.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -13,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { TypeID } from 'typeid-js';
 
-import { parse } from './index';
+import { fromUUID, parse } from './index';
 
 interface ContractVector {
   readonly name: string;
@@ -65,9 +66,11 @@ describe('typeid-v1 contract generation (TS)', () => {
   for (const v of CONTRACT.vectors) {
     const skipped = v.skip_in?.includes('ts') ?? false;
     const fn = skipped ? it.skip : it;
-    fn(`vector ${v.name}: TypeID.fromUUID produces the pinned canonical`, () => {
-      const got = TypeID.fromUUID(v.prefix, v.uuid).toString();
-      expect(got).toBe(v.typeid);
+    fn(`vector ${v.name}: fromUUID produces the pinned canonical`, () => {
+      expect(fromUUID(v.prefix, v.uuid)).toBe(v.typeid);
+    });
+    fn(`vector ${v.name}: typeid-js (reference) agrees`, () => {
+      expect(TypeID.fromUUID(v.prefix, v.uuid).toString()).toBe(v.typeid);
     });
   }
 });
