@@ -219,7 +219,7 @@ assert_file_contains "$PY_DIR/pyproject.toml" 'name = "testcli"' "py project nam
 assert_file_contains "$PY_DIR/pyproject.toml" 'license = "MIT"' "py license in pyproject"
 assert_file_contains "$PY_DIR/pyproject.toml" 'pytest-cov' "py pytest-cov in dev deps"
 assert_dir_exists "$PY_DIR/src/testcli" "py src dir renamed"
-assert_file_exists "$PY_DIR/tests/unit/test_placeholder.py" "py placeholder test"
+assert_file_exists "$PY_DIR/tests/unit/test_cli.py" "py starter test"
 
 # ======================================================
 # Test: Polyglot scaffold (all languages)

@@ -12,7 +12,8 @@
 // .gitignore, ci/ci-<lang>.yml lands under .github/workflows/, the
 // license rule picks one LICENSE). The mapping here mirrors
 // templates/lib.sh (compose_gitignore, compose_gitattributes,
-// copy_polyglot_ci_workflows) so bash and Go scaffolds agree.
+// copy_polyglot_ci_workflows, copy_quality_workflow) so bash and Go
+// scaffolds agree.
 //
 // Files with no mapping (the managed-block emitter machinery:
 // emit-*.sh, apply-services.*, tool-versions.toml, *.bats) are
@@ -213,6 +214,13 @@ func renderShared(ctx context.Context, deps Deps, in Inputs, target string, tier
 			}
 		}
 	}
+	// The quality workflow is language-agnostic: it runs `make quality`,
+	// which a polyglot root delegates to every language directory.
+	if b, ok := read(filepath.Join("ci", "quality.yml")); ok {
+		if err := place(filepath.Join(".github", "workflows", "quality.yml"), b, 0o644); err != nil {
+			return sum, fmt.Errorf("shared: quality: %w", err)
+		}
+	}
 	if b, ok := read(filepath.Join("ci", "dependabot.yml")); ok {
 		if err := place(filepath.Join(".github", "dependabot.yml"), b, 0o644); err != nil {
 			return sum, fmt.Errorf("shared: dependabot: %w", err)
@@ -235,7 +243,7 @@ func renderShared(ctx context.Context, deps Deps, in Inputs, target string, tier
 			return nil // consumed by composeConcat above
 		case strings.HasPrefix(rel, "ci/"):
 			base := strings.TrimPrefix(rel, "ci/")
-			if base == "dependabot.yml" {
+			if base == "dependabot.yml" || base == "quality.yml" {
 				return nil // placed above
 			}
 			if lang, ok := strings.CutSuffix(strings.TrimPrefix(base, "ci-"), ".yml"); ok && !rtSet[lang] {

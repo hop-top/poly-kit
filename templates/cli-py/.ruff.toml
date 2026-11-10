@@ -2,7 +2,12 @@ line-length = 88
 target-version = "py312"
 
 [lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+# C90: McCabe complexity. A function over the limit is split, not
+# exempted.
+select = ["E", "F", "I", "UP", "B", "SIM", "C90"]
+
+[lint.mccabe]
+max-complexity = 10
 
 [format]
 quote-style = "double"

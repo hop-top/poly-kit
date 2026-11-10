@@ -1,0 +1,91 @@
+name: Quality
+
+# `make quality`: known vulnerabilities, unused code and dependencies,
+# the publishable package, a coverage floor and copy-paste. Advisories
+# land without a code change here, so it also runs weekly. The same
+# Makefile entry point runs locally; a polyglot root delegates it to
+# every language directory.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # PHP comes from setup-php, not mise (mise builds PHP from
+      # source). pcov is the coverage driver `make coverage` needs.
+      # Keep php-version equal to composer.json's floor.
+      - if: hashFiles('**/composer.json') != ''
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+          tools: composer
+          coverage: pcov
+
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        with:
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
+
+      - if: hashFiles('**/Cargo.toml') != ''
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Install dependencies
+        run: mise exec -- make setup
+
+      - name: make quality
+        run: mise exec -- make quality
+
+  mutation:
+    name: Mutation testing (report-only)
+    # Too slow for every PR. Report-only until the project sets a
+    # mutation-score floor: a surviving mutant is a missing assertion
+    # to write, not a red build.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - if: hashFiles('**/composer.json') != ''
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+          tools: composer
+          coverage: pcov
+
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        with:
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
+
+      - if: hashFiles('**/Cargo.toml') != ''
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Install dependencies
+        run: mise exec -- make setup
+
+      - name: make mutation
+        run: mise exec -- make mutation

@@ -1,6 +1,12 @@
 .PHONY: build test lint links check clean setup symlink release \
+       quality audit unused pkgcheck coverage dupes mutation \
        promote promote-alpha promote-beta promote-rc \
        promote-release
+
+# Line-coverage floor for `make coverage`: the scaffold ships at what
+# its own starter tests reach. Raise it as tests land; never lower it
+# to get a change through.
+COVERAGE_MIN ?= 35
 
 check: lint test links
 
@@ -34,8 +40,37 @@ links:
 		echo "lychee not installed; skipping link check"; \
 	fi
 
+# quality runs the engineering gates beyond check: known
+# vulnerabilities, unused code and modules, release config, a
+# coverage floor and copy-paste. CI runs it on every PR and weekly.
+quality: audit unused pkgcheck coverage dupes
+
+audit:
+	go tool govulncheck ./...
+
+unused:
+	go mod tidy -diff
+	go tool deadcode -test ./...
+
+pkgcheck:
+	goreleaser check
+
+coverage:
+	go test -buildvcs=false -coverprofile=coverage.out ./...
+	@go tool cover -func=coverage.out | awk -v min=$(COVERAGE_MIN) \
+		'/^total:/ { pct = $$3; sub(/%/, "", pct); \
+		printf "coverage %s%% (floor %s%%)\n", pct, min; exit (pct + 0 < min) }'
+
+dupes:
+	jscpd .
+
+# mutation checks that the tests catch changed behaviour, not only
+# that they run the code. Slow: CI runs it weekly, report-only.
+mutation:
+	go tool gremlins unleash
+
 clean:
-	rm -rf bin/ dist/
+	rm -rf bin/ dist/ coverage.out
 
 setup:
 	go mod download

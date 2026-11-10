@@ -8,6 +8,8 @@ export default defineConfig(
   tseslint.configs.recommended,
   {
     rules: {
+      // A function over the limit is split, not exempted.
+      complexity: ["error", 10],
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_" },

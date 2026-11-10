@@ -24,8 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // clap-idiomatic mirror of cli-py's `register_output_flags(app)`
     // and cli-php's `Flags::register($app)`.
     let cli_cmd: Command = Cli::command();
-    let (cli_cmd, _ctx) =
-        register_output_flags(cli_cmd, RegisterOutputFlagsOptions::default());
+    let (cli_cmd, _ctx) = register_output_flags(cli_cmd, RegisterOutputFlagsOptions::default());
     let matches = cli_cmd.get_matches();
 
     match matches.subcommand() {

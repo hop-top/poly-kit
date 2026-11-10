@@ -13,6 +13,7 @@ the kit toolchain (or stripped manually for one-off use).
 | `ci-ts.yml` | TypeScript / Node | ubuntu-latest | `pnpm test`, lint, build |
 | `ci-py.yml` | Python | ubuntu-latest | `pytest`, ruff, type-check |
 | `ci-php.yml` | PHP | ubuntu-latest | `make setup` (composer install), `make lint` (phpstan), `make test` (phpunit) |
+| `quality.yml` | any (go/ts/py/rs/php, single or polyglot) | ubuntu-latest | `make quality` on PRs, pushes and weekly; `make mutation` weekly, report-only |
 | `ci-swift.yml.tmpl` | Swift / iOS | macos-14 (Xcode 15.4) | `xcodebuild test` (iPhone + iPad simulators), SwiftLint, no-signing build |
 | `ci-kotlin.yml.tmpl` | Kotlin / Android | ubuntu-latest (JDK 17) | `./gradlew test`, `lint`, `ktlintCheck`, `assembleDebug` |
 

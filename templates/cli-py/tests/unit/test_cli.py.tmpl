@@ -1,0 +1,33 @@
+"""Tests for the {{.Name}} CLI. Start a test of your own command from here."""
+
+from typer.testing import CliRunner
+
+from {{.Name}}.cli import app, greeting
+
+runner = CliRunner()
+
+
+def test_hello_greets_the_world_by_default() -> None:
+    result = runner.invoke(app, ["hello"])
+    assert result.exit_code == 0, result.output
+    assert "Hello, World!" in result.output
+
+
+def test_hello_greets_by_name() -> None:
+    result = runner.invoke(app, ["hello", "--name", "Ada"])
+    assert result.exit_code == 0, result.output
+    assert "Hello, Ada!" in result.output
+
+
+def test_greeting_names_the_person() -> None:
+    assert greeting("Ada") == "Hello, Ada!"
+
+
+def test_greeting_falls_back_to_the_world_for_a_blank_name() -> None:
+    assert greeting("  ") == "Hello, World!"
+
+
+def test_version_flag_prints_the_version() -> None:
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("{{.Name}} ")

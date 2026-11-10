@@ -1,7 +1,6 @@
 """CLI entry point."""
 
 import typer
-
 from hop_top_kit.output import default_registry  # noqa: F401  (registers built-ins)
 from hop_top_kit.output.cli import register_output_flags
 from hop_top_kit.output.dispatch import dispatch
@@ -35,6 +34,8 @@ def main(
     ),
 ) -> None:
     """{{.Description}}"""
+    # Subcommands read the flag from ctx.obj["verbose"].
+    ctx.ensure_object(dict)["verbose"] = verbose
     if version:
         from . import __version__
 
@@ -42,10 +43,21 @@ def main(
         raise typer.Exit()
 
 
+def greeting(name: str) -> str:
+    """Return the greeting for *name*, or for the world when it is blank.
+
+    Logic lives in plain functions and commands stay thin: mutation
+    testing (`make mutation`) cannot reach code inside a decorated
+    command.
+    """
+    who = name.strip() or "World"
+    return f"Hello, {who}!"
+
+
 @app.command()
 def hello(ctx: typer.Context, name: str = "World") -> None:
     """Say hello to *name*."""
-    typer.echo(f"Hello, {name}!")
+    typer.echo(greeting(name))
 
 
 @app.command("list")

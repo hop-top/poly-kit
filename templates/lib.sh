@@ -492,7 +492,8 @@ compose_polyglot_dependabot() {
 }
 
 # copy_polyglot_ci_workflows <dest> <lang...>
-# Copies per-lang CI workflow into $dest/.github/workflows/ci-<lang>.yml.
+# Copies per-lang CI workflow into $dest/.github/workflows/ci-<lang>.yml,
+# plus the shared quality.yml.
 copy_polyglot_ci_workflows() {
   local dest="$1"
   shift
@@ -506,6 +507,16 @@ copy_polyglot_ci_workflows() {
     fi
     cp "$src" "$dest/.github/workflows/ci-${lang}.yml"
   done
+  copy_quality_workflow "$dest"
+}
+
+# copy_quality_workflow <dest>
+# Copies the language-agnostic quality workflow (`make quality` on PRs
+# and weekly, `make mutation` weekly) into $dest/.github/workflows/.
+copy_quality_workflow() {
+  local dest="$1"
+  mkdir -p "$dest/.github/workflows"
+  cp "$KIT_TEMPLATES_SHARED/ci/quality.yml" "$dest/.github/workflows/quality.yml"
 }
 
 # compose_polyglot_makefile <dest> <lang...>
@@ -516,9 +527,11 @@ compose_polyglot_makefile() {
   shift
   local out="$dest/Makefile"
   {
-    printf '.PHONY: build test lint links check setup\n\n'
+    printf '.PHONY: build test lint links check setup \\\n'
+    printf '       quality audit unused pkgcheck coverage dupes mutation\n\n'
     printf 'check: lint test links\n\n'
-    printf 'build test lint setup:\n'
+    printf 'quality: audit unused pkgcheck coverage dupes\n\n'
+    printf 'build test lint setup audit unused pkgcheck coverage dupes mutation:\n'
     local lang
     for lang in "$@"; do
       # shellcheck disable=SC2016
