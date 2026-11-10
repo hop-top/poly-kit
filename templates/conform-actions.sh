@@ -88,7 +88,7 @@ run_copy_actions() {
 
     copy_template_if_missing \
       ".goreleaser.yaml" \
-      "$tpl/cli-go/.goreleaser.yml" \
+      "$tpl/cli-go/.goreleaser.yaml" \
       "{{.Module}}=$module" \
       "{{.Name}}=$APP_NAME" \
       '{{`=' \

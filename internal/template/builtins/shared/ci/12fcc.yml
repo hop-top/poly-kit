@@ -41,6 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0     # full history so --diff=auto resolves base
 
       # Pinned to a full commit SHA (supply-chain hardening); spec-12fc
@@ -67,6 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - uses: hop-top/spec-12fc@fbd05973d8c0ec1acd9b20994d3db9bbfc3ac141 # main @ 2026-07-02

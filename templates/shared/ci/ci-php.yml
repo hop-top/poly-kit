@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # PHP comes from setup-php, not mise (mise builds PHP from
       # source); ubuntu-latest ships an older PHP than composer.json's
@@ -45,6 +47,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # PHP comes from setup-php, not mise (mise builds PHP from
       # source); ubuntu-latest ships an older PHP than composer.json's
