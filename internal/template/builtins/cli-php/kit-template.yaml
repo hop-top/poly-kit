@@ -12,13 +12,13 @@ variables:
     default: "A {{.Name}} CLI"
   - name: Vendor
     prompt: "Composer/PSR-4 vendor (lowercase, hyphens)"
-    default: "{{.Org}}"
+    default: "{{.Owner}}"
   - name: VendorNamespace
     prompt: "PSR-4 vendor namespace segment (PascalCase, no spaces)"
-    default: "{{.Org}}"
+    default: "{{.OwnerPascal}}"
   - name: NameNamespace
     prompt: "PSR-4 project namespace segment (PascalCase, no spaces)"
-    default: "{{.Name}}"
+    default: "{{.NamePascal}}"
   - name: Author
     prompt: "Author name"
     required: true

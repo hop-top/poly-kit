@@ -393,3 +393,27 @@ func TestGather_MultiHolderViaRepeatedFlag(t *testing.T) {
 	assert.Equal(t, "https://foo.io", in.Copyrights[0].URL)
 	assert.Equal(t, "Bar", in.Copyrights[1].Holder)
 }
+
+// Without --org, defaults that name an owner (cli-php's composer
+// vendor and PSR-4 namespace) render from the owner the module path
+// carries, instead of leaving the variable unset.
+func TestGather_OwnerVarsWithoutOrg(t *testing.T) {
+	clearKitEnv(t)
+	isolateGit(t, "", "")
+	flags := &kitinit.FlagSet{
+		Name:          ptrStr("my-app"),
+		Module:        ptrStr("github.com/test-user/my-app"),
+		Author:        []string{"Ada Lovelace"},
+		AuthorChanged: true,
+	}
+	m := tmpl.Manifest{Variables: []tmpl.Variable{
+		{Name: "Vendor", Default: "{{.Owner}}"},
+		{Name: "VendorNamespace", Default: "{{.OwnerPascal}}"},
+		{Name: "NameNamespace", Default: "{{.NamePascal}}"},
+	}}
+	in, err := kitinit.Gather(context.Background(), nil, flags, m, kitinit.Defaults{}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "test-user", in.Vars["Vendor"])
+	assert.Equal(t, "TestUser", in.Vars["VendorNamespace"])
+	assert.Equal(t, "MyApp", in.Vars["NameNamespace"])
+}
