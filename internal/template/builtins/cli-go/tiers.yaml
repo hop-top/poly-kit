@@ -13,7 +13,7 @@ files:
   "Makefile": [1, 2, 3, 4]
   "go.mod": [1, 2, 3, 4]
 
-  ".goreleaser.yml": [2, 3, 4]
+  ".goreleaser.yaml": [2, 3, 4]
 
   "main.go": [3, 4]
   "cmd/root.go": [3, 4]
