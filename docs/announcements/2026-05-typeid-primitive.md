@@ -22,7 +22,7 @@ cross-tool correlation.
 |------|--------|---------------|
 | Go   | [`go/core/id`](../../go/core/id/)                         | `go.jetify.com/typeid` v1.3.0 |
 | Rust | [`sdk/rs/src/id`](../../sdk/rs/src/id/) | `type-safe-id` v0.3.3 |
-| TS   | [`sdk/ts/src/id`](../../sdk/ts/src/id/)                   | `typeid-js` v1.2.0 |
+| TS   | [`sdk/ts/src/id`](../../sdk/ts/src/id/)                   | self-contained (spec v0.3; `typeid-js` v1.2.0 as test reference) |
 | Py   | [`sdk/py/hop_top_kit/id`](../../sdk/py/hop_top_kit/id/)   | `typeid-python` >=0.3.9 |
 | PHP  | [`sdk/experimental/php/src/Id`](../../sdk/experimental/php/src/Id/) | `jewei/typeid-php` v1.1.5 |
 
