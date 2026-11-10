@@ -7,7 +7,10 @@
 files:
   "Cargo.toml": [1, 2, 3, 4]
   "Makefile": [1, 2, 3, 4]
+  ".jscpd.json": [1, 2, 3, 4]
   "rustfmt.toml": [1, 2, 3, 4]
+  "clippy.toml": [1, 2, 3, 4]
+  "deny.toml": [1, 2, 3, 4]
 
   "src/main.rs": [3, 4]
   "src/commands/mod.rs": [3, 4]

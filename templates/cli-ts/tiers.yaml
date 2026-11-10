@@ -6,6 +6,8 @@ files:
   "Makefile": [1, 2, 3, 4]
   "tsconfig.json": [1, 2, 3, 4]
   "vitest.config.ts": [1, 2, 3, 4]
+  "stryker.config.json": [1, 2, 3, 4]
+  ".jscpd.json": [1, 2, 3, 4]
   "package.json": [1, 2, 3, 4]
   "pnpm-workspace.yaml": [1, 2, 3, 4]
 

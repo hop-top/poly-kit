@@ -19,6 +19,7 @@ files:
   "ci/ci-py.yml": [2, 3, 4]
   "ci/ci-php.yml": [2, 3, 4]
   "ci/dependabot.yml": [2, 3, 4]
+  "ci/quality.yml": [2, 3, 4]
 
   "scripts/promote-release.sh": [2, 3, 4]
   "LICENSE-MIT": [2, 3, 4]

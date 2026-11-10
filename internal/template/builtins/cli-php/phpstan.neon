@@ -1,5 +1,11 @@
+# shipmonk/dead-code-detector and tomasvotruba/cognitive-complexity
+# load through phpstan/extension-installer: unused code and over-complex
+# functions fail `make lint`.
 parameters:
   level: 8
+  cognitive_complexity:
+    class: 50
+    function: 10
   paths:
     - src
     - tests

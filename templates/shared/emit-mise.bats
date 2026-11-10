@@ -221,3 +221,31 @@ teardown() {
   run emit_mise "$TMP/does-not-exist" "go"
   [ "$status" -ne 0 ]
 }
+
+# ----------------------------------------------------------
+# quality-gate tools: lang-gated except the copy-paste detector
+# ----------------------------------------------------------
+
+@test "emit_mise go: includes goreleaser and jscpd, no cargo tools" {
+  emit_mise "$PROJ" "go"
+  expect_pin goreleaser
+  expect_pin npm:jscpd
+  ! grep -qE '^(cargo-deny|cargo-binstall|"cargo:[^"]*") = ' "$PROJ/mise.toml" || false
+}
+
+@test "emit_mise rs: includes the cargo quality tools, no goreleaser" {
+  emit_mise "$PROJ" "rs"
+  expect_pin cargo-deny
+  expect_pin cargo-binstall
+  expect_pin cargo:cargo-machete
+  expect_pin cargo:cargo-llvm-cov
+  expect_pin cargo:cargo-mutants
+  expect_pin npm:jscpd
+  ! grep -qE '^goreleaser = ' "$PROJ/mise.toml" || false
+}
+
+@test "emit_mise py: jscpd only among quality tools" {
+  emit_mise "$PROJ" "py"
+  expect_pin npm:jscpd
+  ! grep -qE '^(goreleaser|cargo-deny|cargo-binstall|"cargo:[^"]*") = ' "$PROJ/mise.toml" || false
+}

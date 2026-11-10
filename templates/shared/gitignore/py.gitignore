@@ -13,3 +13,5 @@ build/
 .ruff_cache/
 .pytest_cache/
 htmlcov/
+mutants/
+.coverage

@@ -5,3 +5,5 @@ build/
 *.tsbuildinfo
 coverage/
 .npm
+.stryker-tmp/
+reports/

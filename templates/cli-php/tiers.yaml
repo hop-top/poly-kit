@@ -6,9 +6,11 @@
 # Tier 4 = + full conformance (README, docs, changelogs)
 files:
   "Makefile": [1, 2, 3, 4]
+  ".jscpd.json": [1, 2, 3, 4]
   "composer.json": [1, 2, 3, 4]
   "phpstan.neon": [1, 2, 3, 4]
   "phpunit.xml": [1, 2, 3, 4]
+  "infection.json5": [1, 2, 3, 4]
 
   "bin/{{.Name}}": [3, 4]
   "src/Application.php": [3, 4]

@@ -29,4 +29,13 @@ class PlaceholderTest extends TestCase
         $this->assertSame(0, $tester->execute(['name' => 'kit']));
         $this->assertSame("Hello, kit!\n", $tester->getDisplay());
     }
+
+    public function testListRendersItemsAsJson(): void
+    {
+        $tester = new CommandTester((new Application())->find('list'));
+
+        $this->assertSame(0, $tester->execute(['--format' => 'json']));
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(['alpha', 'beta'], array_column($rows, 'name'));
+    }
 }

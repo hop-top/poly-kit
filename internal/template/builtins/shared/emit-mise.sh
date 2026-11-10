@@ -27,8 +27,10 @@
 #     - Workflow tools from `[workflow]` table:
 #         golangci-lint -> gated by `go`
 #         ruff          -> gated by `py`
+#         goreleaser    -> gated by `go`
+#         cargo-deny, cargo-binstall, "cargo:*" -> gated by `rs`
 #         lychee, hadolint, actionlint, shellcheck, shfmt,
-#         "npm:release-please" -> always emitted
+#         "npm:release-please", "npm:jscpd" -> always emitted
 #
 #   [env]
 #     _.file = ".env"   (always)
@@ -143,6 +145,10 @@ _mise_lang_gate() {
     golangci-lint)
             [[ "$langs" == *",go,"* ]] ;;
     ruff)   [[ "$langs" == *",py,"* ]] ;;
+    goreleaser)
+            [[ "$langs" == *",go,"* ]] ;;
+    cargo-deny|cargo-binstall|cargo:*)
+            [[ "$langs" == *",rs,"* ]] ;;
     # Everything else from the workflow table is always emitted
     *)      return 0 ;;
   esac

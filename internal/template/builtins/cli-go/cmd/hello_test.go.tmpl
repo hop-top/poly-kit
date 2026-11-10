@@ -1,0 +1,34 @@
+package cmd
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
+
+// runHello executes the hello command with args and returns what it
+// wrote to stdout. Start a test of your own command from here.
+func runHello(t *testing.T, args ...string) string {
+	t.Helper()
+	var out bytes.Buffer
+	cmd := helloCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(args)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("hello %s: %v\n%s", strings.Join(args, " "), err, out.String())
+	}
+	return out.String()
+}
+
+func TestHelloGreetsTheWorldByDefault(t *testing.T) {
+	if got := runHello(t); !strings.Contains(got, "Hello, world!") {
+		t.Fatalf("hello without a name: got %q", got)
+	}
+}
+
+func TestHelloGreetsByName(t *testing.T) {
+	if got := runHello(t, "Ada"); !strings.Contains(got, "Hello, Ada!") {
+		t.Fatalf("hello Ada: got %q", got)
+	}
+}

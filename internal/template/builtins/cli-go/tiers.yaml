@@ -8,6 +8,7 @@
 # Output paths (post-suffix-strip, post-substitution).
 files:
   ".golangci.yml": [1, 2, 3, 4]
+  ".jscpd.json": [1, 2, 3, 4]
   ".trivyignore": [1, 2, 3, 4]
   "Makefile": [1, 2, 3, 4]
   "go.mod": [1, 2, 3, 4]
@@ -17,6 +18,7 @@ files:
   "main.go": [3, 4]
   "cmd/root.go": [3, 4]
   "cmd/hello.go": [3, 4]
+  "cmd/hello_test.go": [3, 4]
   "internal/version/version.go": [3, 4]
   # Agent-facing doc for the served surface: ships wherever serve does.
   "AGENTS.md": [3, 4]

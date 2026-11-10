@@ -24,3 +24,15 @@ actionlint           = "1.7.12"   # GitHub Actions workflow linter
 shellcheck           = "0.11.0"   # Shell script linter
 shfmt                = "3.14.1"   # Shell script formatter
 "npm:release-please" = "17.11.2"  # Release automation (npm-backed)
+
+# Quality gates (`make quality`; see docs/contributors/quality-gates.md).
+# Go tools are pinned as go.mod `tool` lines and Python/TS/PHP tools as
+# dev dependencies, so each lockfile and Dependabot own them. Only the
+# tools with no home in a language lockfile live here.
+goreleaser             = "2.19.0"   # Release config check (`make pkgcheck`), gated by go
+cargo-deny             = "0.20.2"   # Rust advisories, licenses, bans, sources (`make audit`)
+cargo-binstall         = "1.26.1"   # Prebuilt-binary installer the cargo: backend uses
+"cargo:cargo-machete"  = "0.9.2"    # Rust unused dependencies (`make unused`)
+"cargo:cargo-llvm-cov" = "0.9.1"    # Rust line coverage with a floor (`make coverage`)
+"cargo:cargo-mutants"  = "27.1.0"   # Rust mutation testing (`make mutation`)
+"npm:jscpd"            = "5.4.2"    # Copy-paste detector, every language (`make dupes`)

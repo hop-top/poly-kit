@@ -46,6 +46,7 @@ DEPEOF
   local src
   src="$(ci_workflow_src "$lang")"
   cp "$src" "$dest/.github/workflows/ci.yml"
+  copy_quality_workflow "$dest"
 }
 
 # overlay_lang <dest> <lang>

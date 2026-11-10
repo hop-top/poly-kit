@@ -11,6 +11,17 @@ linters:
     - gosec
     - unused
     - ineffassign
+    # Complexity and duplication: a function over these limits is
+    # split, not exempted.
+    - gocognit
+    - gocyclo
+    - dupl
   settings:
     gosec:
       severity: medium
+    gocognit:
+      min-complexity: 20
+    gocyclo:
+      min-complexity: 15
+    dupl:
+      threshold: 150
