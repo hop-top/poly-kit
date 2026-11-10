@@ -15,7 +15,8 @@ use {{.VendorNamespace}}\{{.NameNamespace}}\Commands\ListCommand;
  * Wires the kit Output flag suite (--format, --format-opt, --format-help,
  * --cols, --template, -o/--output) on every command, then registers the
  * built-in commands. Add your own commands by extending KitCommand and
- * calling {@see SymfonyApplication::add()} below.
+ * calling {@see SymfonyApplication::addCommand()} below. addCommand()
+ * exists from symfony/console 7.4 on; 8.0 removed add().
  */
 final class Application extends SymfonyApplication
 {
@@ -27,7 +28,7 @@ final class Application extends SymfonyApplication
         // after this call picks up --format/--cols/etc. automatically.
         Flags::register($this);
 
-        $this->add(new HelloCommand());
-        $this->add(new ListCommand());
+        $this->addCommand(new HelloCommand());
+        $this->addCommand(new ListCommand());
     }
 }
