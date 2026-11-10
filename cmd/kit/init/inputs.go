@@ -336,6 +336,15 @@ func Gather(
 	setVar(in.Vars, "Copyrights", in.Copyrights)
 	setVar(in.Vars, "Email", in.Email)
 	setVar(in.Vars, "Org", in.Org)
+	// Owner is the org, or whoever the project belongs to without one:
+	// the owner segment of the module path, else the author, else the
+	// name. Templates that need an owner (composer vendor, PSR-4
+	// namespace) default from it so they render without --org. Mirrors
+	// templates/shared/init.sh.
+	owner := ownerSlug(in.Org, in.Module, in.Author, in.Name)
+	setVar(in.Vars, "Owner", owner)
+	setVar(in.Vars, "OwnerPascal", toPascal(owner))
+	setVar(in.Vars, "NamePascal", toPascal(in.Name))
 	setVar(in.Vars, "AccountType", in.AccountType)
 	setVar(in.Vars, "Visibility", in.Visibility)
 	setVar(in.Vars, "Theme", in.Theme)
@@ -532,4 +541,31 @@ func promptOf(v tmpl.Variable) string {
 		return v.Prompt
 	}
 	return v.Name
+}
+
+// ownerSlug picks the project owner as a lowercase, hyphenated slug:
+// org, else the owner segment of a host/owner/name module path, else
+// the author, else the project name.
+func ownerSlug(org, module, author, name string) string {
+	if org != "" {
+		return slugify(org)
+	}
+	if parts := strings.Split(module, "/"); len(parts) >= 3 && parts[1] != "" {
+		return slugify(parts[1])
+	}
+	if author != "" {
+		return slugify(author)
+	}
+	return slugify(name)
+}
+
+// toPascal splits on hyphens, underscores and spaces and title-cases
+// each segment (my-app -> MyApp), matching to_pascal in
+// templates/shared/init.sh.
+func toPascal(s string) string {
+	var b strings.Builder
+	for _, w := range strings.FieldsFunc(s, func(r rune) bool { return r == '-' || r == '_' || r == ' ' }) {
+		b.WriteString(strings.ToUpper(w[:1]) + strings.ToLower(w[1:]))
+	}
+	return b.String()
 }
