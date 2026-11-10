@@ -32,7 +32,7 @@ $app = new Application('tool', '0.1.0');
 $app->setAutoExit(false);
 Flags::register($app); // --format, --format-opt, --format-help, --cols, --template, -o
 
-$app->add(new class('items') extends Command {
+$app->addCommand(new class('items') extends Command {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         KitOutput::for($input, $output)

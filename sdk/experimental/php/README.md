@@ -36,7 +36,7 @@ final class ItemsCommand extends KitCommand
 $app = new Application('tool', '0.1.0');
 $app->setAutoExit(false);
 Flags::register($app);      // --format, --format-opt, --cols, --template, -o
-$app->add(new ItemsCommand());
+$app->addCommand(new ItemsCommand());
 ```
 
 Already extending another base class? Call `HopTop\Kit\Output\KitOutput::for()`

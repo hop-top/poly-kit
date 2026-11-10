@@ -44,7 +44,7 @@ final class ItemsCommand extends KitCommand
 $app = new Application('tool', '0.1.0');
 $app->setAutoExit(false);
 Flags::register($app);
-$app->add(new ItemsCommand());
+$app->addCommand(new ItemsCommand());
 
 $app->run(new ArrayInput(['command' => 'items', '--format' => 'json']));
 // [
