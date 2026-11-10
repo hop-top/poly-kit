@@ -72,8 +72,11 @@ mutation:
 clean:
 	rm -rf bin/ dist/ coverage.out
 
+# tidy, not download: a fresh scaffold ships no go.sum, and download
+# leaves it without the entries lint and build need. Once go.sum is
+# committed this changes nothing; `make unused` fails on drift.
 setup:
-	go mod download
+	go mod tidy
 	@command -v lychee >/dev/null 2>&1 || cargo install lychee
 
 release:

@@ -298,7 +298,7 @@ documented in poly-kit's
 Prerequisites: `mise` (installs the pinned Go toolchain), GNU Make.
 
 ```sh
-make setup    # download deps
+make setup    # resolve deps; writes go.sum on the first run (commit it)
 make check    # lint + test + links
 make build    # build binary
 ```
