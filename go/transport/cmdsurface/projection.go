@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/pflag"
+
 	"hop.top/kit/go/ai/cmdreflect"
 	"hop.top/kit/go/transport/api"
 )
@@ -416,6 +418,7 @@ func descriptorToProjection(d *cmdreflect.Descriptor, b *Bridge, leaf *Leaf) api
 		Cacheable: b.rcache != nil && leaf != nil && leaf.cacheTTL > 0,
 	}
 
+	seen := make(map[string]bool, len(d.Flags))
 	for _, f := range d.Flags {
 		// Hidden and deprecated flags are part of the command but
 		// not part of its supported surface; publishing them would
@@ -423,12 +426,33 @@ func descriptorToProjection(d *cmdreflect.Descriptor, b *Bridge, leaf *Leaf) api
 		if f.Hidden || f.Deprecated {
 			continue
 		}
+		seen[f.Name] = true
 		out.Flags = append(out.Flags, api.CommandFlag{
 			Name:        f.Name,
 			Type:        f.Type,
 			Description: f.Description,
 			Default:     f.Default,
 			Required:    f.Required,
+		})
+	}
+	// Persistent flags inherited from ancestors are part of what the
+	// command accepts, and the MCP tool schema publishes them (see
+	// collectFlags): same visibility rule, a local flag winning a
+	// name clash. Without them a REST caller could not pass a flag
+	// every other surface carries.
+	if d.Cmd != nil {
+		d.Cmd.InheritedFlags().VisitAll(func(f *pflag.Flag) {
+			if f.Hidden || f.Deprecated != "" || seen[f.Name] {
+				return
+			}
+			seen[f.Name] = true
+			out.Flags = append(out.Flags, api.CommandFlag{
+				Name:        f.Name,
+				Type:        f.Value.Type(),
+				Description: f.Usage,
+				Default:     f.DefValue,
+				Required:    isFlagRequired(f),
+			})
 		})
 	}
 	for _, a := range d.Args {
