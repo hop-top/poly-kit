@@ -73,8 +73,10 @@ const (
 	ReasonSelfHosting NonInvocableReason = "self-hosting"
 
 	// ReasonMalformedSchema marks a command whose declared metadata
-	// does not resolve: an unrecognized kit/side-effect value, or a
-	// kit/output-schema that is not valid JSON. The command is
+	// does not resolve: an unrecognized kit/side-effect value, a
+	// kit/output-schema that is not valid JSON, or a
+	// kit/secret-output that is unreadable or names a field the
+	// output schema does not declare. The command is
 	// described so the defect is visible, and withheld because a
 	// consumer cannot build a correct request for it.
 	ReasonMalformedSchema NonInvocableReason = "malformed-schema"

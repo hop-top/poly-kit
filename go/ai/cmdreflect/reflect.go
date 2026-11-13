@@ -455,6 +455,15 @@ func reflectOutput(cmd *cobra.Command) OutputMeta {
 			o.SchemaMalformed = true
 		}
 	}
+	if sec, err := cmdmeta.GetSecretOutput(cmd); err != nil {
+		o.SecretInvalid = err.Error()
+	} else {
+		o.SecretAll = sec.All
+		o.SecretFields = append([]string(nil), sec.Fields...)
+		if err := cmdmeta.CheckSecretOutput(cmd); err != nil {
+			o.SecretInvalid = err.Error()
+		}
+	}
 	if ex, ok := cmdmeta.GetExamples(cmd); ok {
 		o.Examples = make([]Example, 0, len(ex))
 		for _, e := range ex {
@@ -487,7 +496,7 @@ func decide(d *Descriptor, cfg *config) {
 	if d.Surface.Builtin {
 		fired[ReasonBuiltin] = true
 	}
-	if d.Safety.Tier == TierUnknown || d.Output.SchemaMalformed {
+	if d.Safety.Tier == TierUnknown || d.Output.SchemaMalformed || d.Output.SecretInvalid != "" {
 		fired[ReasonMalformedSchema] = true
 	}
 	if d.Surface.Hidden && !cfg.allowHidden {

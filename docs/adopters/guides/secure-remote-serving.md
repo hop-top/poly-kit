@@ -993,6 +993,21 @@ cmd.Flags().String("dsn", "", "database DSN, password included")
 _ = cmdsurface.MarkFlagSecret(cmd.Flags(), "dsn")
 ```
 
+A command that returns a secret to its caller marks the output the
+same way, so no sink records it while the caller still gets it:
+
+```go
+_ = cmdsurface.MarkOutputSecret(cmd, "value") // a field of its structured output
+_ = cmdsurface.MarkOutputSecret(cmd)          // or all of it, for text
+```
+
+A record then keeps no stdout or stderr of that command, masks the
+named field wherever it appears in the result, and the result cache
+and the idempotency ledger do not keep the answer. A name the output
+schema does not declare is refused when the tool is built.
+[The reference](../reference/cmdsurface.md#secret-output) lists every
+path.
+
 An operator adds flags and content patterns per service, or for every
 service under `services.all`; the service's own key wins, and a list
 replaces rather than merges. The block can only add: it has no

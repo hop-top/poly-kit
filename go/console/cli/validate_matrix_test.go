@@ -111,6 +111,29 @@ func TestValidate_Matrix_RejectsInvalidOutputSchema(t *testing.T) {
 	assert.Contains(t, ve.InvalidOutputSchema[0], "ping")
 }
 
+func TestValidate_Matrix_RejectsSecretOutputNamingAnUndeclaredField(t *testing.T) {
+	r := fixtureRoot(t)
+	bad := wellFormedLeaf("ping", cli.SideEffectRead)
+	if bad.Annotations == nil {
+		bad.Annotations = map[string]string{}
+	}
+	bad.Annotations["kit/output-schema"] = `{"type":"object","properties":{"value":{"type":"string"}}}`
+	bad.Annotations["kit/output-schema-version"] = "1.0"
+	bad.Annotations["kit/secret-output"] = `["valeu"]`
+	r.Cmd.AddCommand(bad)
+
+	ve := matchValidationError(t, r.Validate())
+	require.Len(t, ve.InvalidOutputSchema, 1)
+	assert.Contains(t, ve.InvalidOutputSchema[0], "ping")
+	assert.Contains(t, ve.InvalidOutputSchema[0], "valeu")
+
+	bad.Annotations["kit/secret-output"] = `["value"]`
+	if err := r.Validate(); err != nil {
+		ve := matchValidationError(t, err)
+		assert.Empty(t, ve.InvalidOutputSchema, "a declared field is accepted")
+	}
+}
+
 func TestValidate_Matrix_RejectsTopLevelLeafWithoutAnnotation(t *testing.T) {
 	// kit/top-level-verb required on depth-1 runnable leaves. The
 	// default fixture status subcommand DOES require the annotation

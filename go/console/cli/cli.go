@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"hop.top/kit/contracts/parity"
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/cli/completionspec"
 	"hop.top/kit/go/console/cli/idemstore"
 	"hop.top/kit/go/console/output"
@@ -1251,7 +1252,8 @@ func (r *Root) checkReservedStatus(ve *ValidationError) {
 
 // checkShortLongOutputSchema enforces hard tier H1, H2, H5: Short on
 // every runnable leaf + group node, Long on every runnable leaf,
-// kit/output-schema parses when declared.
+// kit/output-schema parses when declared, and a kit/secret-output
+// declaration names only fields that schema declares.
 func (r *Root) checkShortLongOutputSchema(ve *ValidationError) {
 	walk(r.Cmd, func(cmd *cobra.Command) {
 		if cmd == r.Cmd {
@@ -1278,6 +1280,10 @@ func (r *Root) checkShortLongOutputSchema(ve *ValidationError) {
 					ve.InvalidOutputSchema = append(ve.InvalidOutputSchema,
 						fmt.Sprintf("%s: not valid JSON", cmd.CommandPath()))
 				}
+			}
+			if err := cmdmeta.CheckSecretOutput(cmd); err != nil {
+				ve.InvalidOutputSchema = append(ve.InvalidOutputSchema,
+					fmt.Sprintf("%s: %v", cmd.CommandPath(), err))
 			}
 		}
 	})

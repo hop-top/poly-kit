@@ -85,7 +85,10 @@ func WithCronContext(ctx context.Context) CronOption {
 // WithCronResultSink installs a callback invoked after each scheduled
 // job runs. The callback receives the originating CronSchedule, the
 // Result, and any error returned by the bridge. Default is nil
-// (results are discarded).
+// (results are discarded). A job has no caller to answer, so the
+// callback is a record: for a command declaring secret output
+// ([MarkOutputSecret]) the Result it receives is the redacted one,
+// as an audit sink's is.
 func WithCronResultSink(fn func(CronSchedule, Result, error)) CronOption {
 	return func(c *cronConfig) { c.sink = fn }
 }
@@ -250,7 +253,7 @@ func makeCronJob(b *Bridge, s CronSchedule, cfg cronConfig) func() {
 		}
 		res, err := b.Invoke(cfg.ctx, inv)
 		if cfg.sink != nil {
-			cfg.sink(frozen, res, err)
+			cfg.sink(frozen, b.cronView(frozen.Path, res), err)
 		}
 		if err != nil {
 			cfg.logger("cmdsurface: cron %s error: %v",
