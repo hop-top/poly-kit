@@ -113,8 +113,11 @@ wins on conflict, being the more explicit statement. Undeclared query
 parameters are ignored (query strings collect tracking junk); an
 undeclared flag in a **body** is a `400` naming the flag.
 
-Hidden and deprecated flags are not projected: they are not part of
-the supported surface.
+A command's flags are its own plus the persistent flags it inherits
+from its ancestors, the same set the MCP tool schema publishes; a
+local flag wins a name clash. Hidden and deprecated flags, local or
+inherited, are not projected: they are not part of the supported
+surface.
 
 ### Discovery
 
