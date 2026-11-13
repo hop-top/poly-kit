@@ -122,6 +122,8 @@ func newAuditExtra(r AuditRedaction) *auditExtra {
 type auditScope struct {
 	secretFlags map[string]bool
 	extra       *auditExtra
+	// secretOut is the leaf's declared secret output, nil when none.
+	secretOut *secretOutput
 }
 
 // auditScopeKey is the context key for auditScope.
@@ -159,8 +161,9 @@ func (b *Bridge) auditContext(ctx context.Context, leaf *Leaf) context.Context {
 	scope := auditScope{extra: b.audit}
 	if leaf != nil {
 		scope.secretFlags = leaf.secretFlags
+		scope.secretOut = leaf.secretOut
 	}
-	if scope.secretFlags == nil && scope.extra == nil {
+	if scope.secretFlags == nil && scope.extra == nil && scope.secretOut == nil {
 		return ctx
 	}
 	return context.WithValue(ctx, auditScopeKey{}, scope)
@@ -280,7 +283,7 @@ func redactForAudit(ctx context.Context, inv Invocation, res Result, err error, 
 	if x := a.scope.extra; x != nil && x.maxField > 0 {
 		a.limit = x.maxField
 	}
-	secretArgs := a.collect(inv)
+	secretArgs := a.collect(inv, res)
 
 	out := inv
 	out.Path = append([]string(nil), inv.Path...)
@@ -320,8 +323,15 @@ func redactForAudit(ctx context.Context, inv Invocation, res Result, err error, 
 
 	rres := Result{ExitCode: res.ExitCode}
 	if withOutput {
-		rres.Stdout = a.scrub(res.Stdout)
-		rres.Stderr = a.scrub(res.Stderr)
+		if a.scope.secretOut != nil {
+			// Text cannot be parsed for the value, so none of it is
+			// kept; the marker says output existed.
+			rres.Stdout = withheldText(res.Stdout)
+			rres.Stderr = withheldText(res.Stderr)
+		} else {
+			rres.Stdout = a.scrub(res.Stdout)
+			rres.Stderr = a.scrub(res.Stderr)
+		}
 		rres.Data = a.data(res.Data)
 	}
 
@@ -346,7 +356,7 @@ func (a *auditRedactor) secretFlag(name string) bool {
 // collect records the values of secret flags, secret positional
 // pairs and secret Extra entries as literals, and returns the indexes
 // of positional args that are secret values.
-func (a *auditRedactor) collect(inv Invocation) map[int]bool {
+func (a *auditRedactor) collect(inv Invocation, res Result) map[int]bool {
 	for k, v := range inv.Flags {
 		if a.secretFlag(k) {
 			a.addLiteralValue(v)
@@ -382,6 +392,13 @@ func (a *auditRedactor) collect(inv Invocation) map[int]bool {
 		// "Bearer <token>": the credential alone may recur elsewhere.
 		if _, cred, ok := strings.Cut(v, " "); ok {
 			a.addLiteral(strings.TrimSpace(cred))
+		}
+	}
+	// The values of declared secret output fields recur in echoes and
+	// error text too.
+	if so := a.scope.secretOut; so != nil && !so.all {
+		if data, ok := normalizeData(res.Data); ok {
+			a.collectOutput(data, so)
 		}
 	}
 	// Longest first, so a literal containing another is replaced whole.
@@ -488,18 +505,13 @@ func (a *auditRedactor) data(v any) any {
 	if v == nil {
 		return nil
 	}
-	switch v.(type) {
-	case map[string]any, []any, string, bool, json.Number, float64:
-	default:
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return a.withheld(0)
-		}
-		dec := json.NewDecoder(strings.NewReader(string(raw)))
-		dec.UseNumber()
-		if err := dec.Decode(&v); err != nil {
-			return a.withheld(len(raw))
-		}
+	if a.scope.secretOut != nil && a.scope.secretOut.all {
+		return auditRedacted
+	}
+	v, ok := normalizeData(v)
+	if !ok {
+		// Not representable as JSON, so not scannable: withheld.
+		return a.withheld(0)
 	}
 	scanned := 0
 	out := a.walk(v, &scanned)
@@ -524,6 +536,10 @@ func (a *auditRedactor) walk(v any, scanned *int) any {
 	case map[string]any:
 		out := make(map[string]any, len(t))
 		for k, x := range t {
+			if a.scope.secretOut.field(k) {
+				out[k] = auditRedacted
+				continue
+			}
 			if secretName(k) && !scalarNonString(x) {
 				out[k] = auditRedacted
 				continue
@@ -548,4 +564,73 @@ func scalarNonString(v any) bool {
 		return true
 	}
 	return false
+}
+
+// normalizeData returns v in the generic JSON shape the redactor
+// walks. Values already in it pass through; others are round-tripped
+// through JSON, the form every shipped sink serializes anyway. It
+// reports false when v cannot be.
+func normalizeData(v any) (any, bool) {
+	if v == nil {
+		return nil, true
+	}
+	switch v.(type) {
+	case map[string]any, []any, string, bool, json.Number, float64:
+		return v, true
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, false
+	}
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec.UseNumber()
+	var out any
+	if err := dec.Decode(&out); err != nil {
+		return nil, false
+	}
+	return out, true
+}
+
+// collectOutput records, as literals, every value found under a
+// declared secret key at any depth of v.
+func (a *auditRedactor) collectOutput(v any, so *secretOutput) {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, x := range t {
+			if so.field(k) {
+				a.addAny(x)
+				continue
+			}
+			a.collectOutput(x, so)
+		}
+	case []any:
+		for _, x := range t {
+			a.collectOutput(x, so)
+		}
+	}
+}
+
+// addAny records every scalar inside v as a literal.
+func (a *auditRedactor) addAny(v any) {
+	switch t := v.(type) {
+	case map[string]any:
+		for _, x := range t {
+			a.addAny(x)
+		}
+	case []any:
+		for _, x := range t {
+			a.addAny(x)
+		}
+	default:
+		a.addLiteralValue(v)
+	}
+}
+
+// withheldText stands for a stream a record does not keep: empty
+// stays empty, anything else becomes the redaction marker.
+func withheldText(s string) string {
+	if s == "" {
+		return s
+	}
+	return auditRedacted
 }

@@ -115,6 +115,9 @@ type Leaf struct {
 	// secretFlags names the flags carrying AnnotationSecretFlag,
 	// resolved once at discovery for the audit redactor.
 	secretFlags map[string]bool
+	// secretOut is the leaf's kit/secret-output declaration, nil when
+	// it declares none. Records withhold what it names.
+	secretOut *secretOutput
 	// cacheTTL is the leaf's kit/cache-ttl on the read tier, zero
 	// when its results are never cached.
 	cacheTTL time.Duration
@@ -301,6 +304,12 @@ func (b *Bridge) discover() {
 			secretFlags: secretFlagSet(d.Cmd),
 			cacheTTL:    cacheTTLOf(d),
 			withheld:    withheld,
+		}
+		leaf.secretOut = secretOutputOf(leaf)
+		if leaf.secretOut != nil {
+			// A cached result is a copy of the answer in a store the
+			// command does not control: a secret output is not kept.
+			leaf.cacheTTL = 0
 		}
 		b.leaves = append(b.leaves, leaf)
 		b.byPath[leaf.PathKey()] = leaf
@@ -709,7 +718,7 @@ func (a *Admission) Run(ctx context.Context) (Result, error) {
 		res, err := a.runCached(ctx)
 		// Slot 13: a keyed read the cache answered or ran is recorded
 		// like any run, and its reservation released.
-		a.idem.settle(ctx, res, err)
+		a.settle(ctx, res, err)
 		return res, err
 	}
 	// Stamped before the run, so a Runner emitting to its own SinkSet
@@ -717,9 +726,9 @@ func (a *Admission) Run(ctx context.Context) (Result, error) {
 	ctx = a.b.auditContext(ctx, a.leaf)
 	res, err := a.runBounded(ctx)
 	// Slot 13: a successful run is recorded under its key.
-	a.idem.settle(ctx, res, err)
+	a.settle(ctx, res, err)
 	if isRemote(a.inv.Meta.Surface) {
-		a.b.Audit(ctx, a.inv, res, err)
+		a.b.Audit(ctx, a.inv, res, a.auditErr(err))
 	}
 	return res, err
 }
@@ -768,7 +777,7 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 	}
 	if a.cache != nil && a.cache.hit != nil {
 		err := a.streamHit(ctx, out)
-		a.idem.settle(ctx, a.cache.hit.Result, err)
+		a.settle(ctx, a.cache.hit.Result, err)
 		return err
 	}
 	ctx = a.b.auditContext(ctx, a.leaf)
@@ -801,13 +810,13 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 	err := deadlineError(runCtx, <-errc, a.leaf, bound)
 	// Slot 13: the done Event carries the Result Run would have
 	// returned, so a successful stream is recorded as a run is.
-	a.idem.settle(ctx, res, err)
+	a.settle(ctx, res, err)
 	close(out)
 	if err == nil {
 		a.recordQuota(ctx, resultBytes(res))
 	}
 	if isRemote(a.inv.Meta.Surface) {
-		a.b.Audit(ctx, a.inv, res, err)
+		a.b.Audit(ctx, a.inv, res, a.auditErr(err))
 	}
 	return err
 }

@@ -23,6 +23,11 @@ const (
 	// KeyOutputSchemaVersion holds the MAJOR.MINOR version paired
 	// with KeyOutputSchema.
 	KeyOutputSchemaVersion = "kit/output-schema-version"
+	// KeySecretOutput declares which part of a command's output is
+	// secret: "*" for all of it, else a JSON array of output-schema
+	// field names whose values are. Audit records never carry it
+	// ([SecretOutput]).
+	KeySecretOutput = "kit/secret-output"
 	// KeyExamples holds a JSON-encoded []Example.
 	KeyExamples = "kit/examples"
 	// KeyNextSteps holds a JSON-encoded []NextStep.

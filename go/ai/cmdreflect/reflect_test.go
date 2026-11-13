@@ -914,3 +914,32 @@ func TestFlagChoices(t *testing.T) {
 		t.Errorf("plain Choices = %v, want nil", got)
 	}
 }
+
+func TestReflect_SecretOutput(t *testing.T) {
+	const schema = `{"type":"object","properties":{"value":{"type":"string"}}}`
+	mk := func(secret string) *Descriptor {
+		root := &cobra.Command{Use: "tool"}
+		leaf := &cobra.Command{
+			Use: "reveal", RunE: func(*cobra.Command, []string) error { return nil },
+			Annotations: map[string]string{
+				"kit/side-effect": "read", "kit/output-schema": schema,
+				"kit/output-schema-version": "1.0", "kit/secret-output": secret,
+			},
+		}
+		root.AddCommand(leaf)
+		return Reflect(root).Lookup("reveal")
+	}
+	d := mk(`["value"]`)
+	if !d.Invocable || d.Output.SecretInvalid != "" || len(d.Output.SecretFields) != 1 || d.Output.SecretAll {
+		t.Errorf("declared field: %+v invocable=%v", d.Output, d.Invocable)
+	}
+	if d := mk("*"); !d.Invocable || !d.Output.SecretAll {
+		t.Errorf("whole output: %+v", d.Output)
+	}
+	for _, bad := range []string{`["valeu"]`, "value", "[]"} {
+		d := mk(bad)
+		if d.Invocable || d.Reason != ReasonMalformedSchema || d.Output.SecretInvalid == "" {
+			t.Errorf("%s: invocable=%v reason=%q invalid=%q", bad, d.Invocable, d.Reason, d.Output.SecretInvalid)
+		}
+	}
+}

@@ -1240,15 +1240,16 @@ caller's values are left untouched. Both paths above go through it —
 `SinkSet.Emit`. Calling a `Sink`'s own `Emit` directly bypasses it.
 Redaction has no off switch.
 
-Three checks find a secret:
+Four checks find a secret:
 
 | Check | Catches | Result |
 |---|---|---|
 | `kit/secret` annotation (`MarkFlagSecret`), or `AuditRedaction.SecretFlags` | a flag, by declaration | value masked |
+| `kit/secret-output` annotation (`MarkOutputSecret`) | a field of the command's output, or all of it, by declaration | value masked; stdout and stderr not kept |
 | Name reads as secret | flags, `Meta.Extra` keys, `--name=value` and `--name value` args, map keys in `Data` | value masked |
 | Content rules: `redact.Default()`, then `AuditRedaction.Rules` | credential- or PII-shaped text in any other flag value, arg, `Extra` value, stdout, stderr, `Data` string, or error message | the match masked |
 
-A value masked by the first two checks is also replaced wherever it
+A value masked by the first three checks is also replaced wherever it
 recurs in the record (a command echoing its `--dsn`, an error quoting
 a token), once it is at least 4 bytes and not `true`/`false`.
 
@@ -1284,6 +1285,59 @@ Also:
   before running any regex. A 4 KiB field costs a few milliseconds at
   most (see `go/core/redact/PERF.md`), so raising the limit trades
   latency on every invocation for longer outputs kept.
+
+#### Secret output
+
+A command that returns a secret to its caller (a decrypted identifier,
+a minted credential) declares which part of its output that is. The
+declaration is the output-side twin of `MarkFlagSecret`, and sits
+beside the output schema it refers to:
+
+```go
+_ = cli.SetOutputSchema(cmd, cli.OutputSchema{Type: &revealed{}, Version: "1.0"})
+_ = cmdsurface.MarkOutputSecret(cmd, "value")   // fields of the structured output
+_ = cmdsurface.MarkOutputSecret(printsText)     // no field: the whole output
+```
+
+Field names are keys of the structured output (the property names the
+output schema declares). A key is matched wherever it appears in the
+result, nested objects and lists of rows included, and a command's
+records never carry the value under it: it is replaced by
+`***REDACTED***`, as are copies of it elsewhere in the record. The
+name check above keeps working beside it.
+
+For a command declaring anything secret:
+
+- A record keeps no `Stdout` or `Stderr` (they become the marker, or
+  stay empty), because text cannot be parsed for the value. The same
+  goes for the lines of a streamed run: no record is made from them.
+- A declaration of the whole output also masks all of `Data`.
+- The error a run fails with is recorded as a marker, with its
+  identity kept for `errors.Is`, unless the toolkit raised it around
+  the run (a deadline, an overload, a cancellation). The caller is
+  returned the error as it was.
+- The result cache does not store the result, and the idempotency
+  ledger does not record the run (a retry under its key runs again):
+  either would keep a copy of the answer.
+- A cron job's result callback (`WithCronResultSink`) receives the
+  redacted result: a job has no caller who asked for the value.
+
+What does not change: the response to the caller, on every transport
+(the REST body, the gRPC `data_json`, MCP `structuredContent` and text
+blocks, the socket envelope, streamed events, the bus reply
+topic), byte for byte. Redaction happens in `SinkSet.Emit` before any
+sink, a custom one included, receives the record; a `Sink`'s own `Emit`
+called directly, or `SinkSet.Emit` called without the context the
+bridge stamps, sees only what it is handed.
+
+A field the output schema does not declare, a declaration that is
+not `*` or a JSON array of names, or field names with no output
+schema at all, is a registration error: `MarkOutputSecret` fails when
+the schema is already set, `Root.Validate` reports it, and the bridge
+leaves the command off every served surface
+(`cmdreflect.ReasonMalformedSchema`, listed by `Bridge.NonInvocable`).
+A typo therefore never leaves a value unredacted without a sound.
+`Leaf.SecretOutput` reports what a leaf declares.
 
 Declare a flag secret in code with `MarkFlagSecret`; the annotation
 lives on the flag, so a persistent flag marked on the root is secret

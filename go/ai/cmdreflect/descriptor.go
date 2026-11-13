@@ -278,6 +278,18 @@ type OutputMeta struct {
 	// not parse as JSON. The descriptor is non-invocable with
 	// ReasonMalformedSchema when this is set.
 	SchemaMalformed bool
+	// SecretAll reports that the command declared its whole output
+	// secret (kit/secret-output "*").
+	SecretAll bool
+	// SecretFields are the output fields the command declared secret
+	// (kit/secret-output), matched by key at any depth.
+	SecretFields []string
+	// SecretInvalid is why a kit/secret-output declaration does not
+	// hold: unreadable, or naming a field the output schema does
+	// not declare. Empty when the declaration is sound or absent.
+	// The descriptor is non-invocable with ReasonMalformedSchema
+	// when this is set.
+	SecretInvalid string
 	// Examples are the adopter-declared agent-facing examples.
 	Examples []Example
 	// NextSteps are the declared post-invocation suggestions.
