@@ -1,7 +1,8 @@
 //! The CLI and MCP examples run as real processes. Cargo sets no
-//! `CARGO_BIN_EXE_*` for examples and builds them only for a whole-crate
-//! `cargo test`, so a missing binary is built here, then found next to
-//! the test executable.
+//! `CARGO_BIN_EXE_*` for examples, and the test executable's own location
+//! says nothing reliable about where examples land (the build directory
+//! and the artifact directory can differ), so each example is built here
+//! and its path taken from cargo's own artifact report.
 
 #![cfg(all(feature = "cli", feature = "config", feature = "mcp"))]
 
@@ -10,19 +11,43 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 fn example(name: &str) -> PathBuf {
-    let mut p = std::env::current_exe().unwrap();
-    p.pop(); // deps
-    p.pop(); // debug
-    p.push("examples");
-    p.push(name);
-    if !p.exists() {
-        let st = Command::new(env!("CARGO"))
-            .args(["build", "--example", name, "--features", "cli,config,mcp"])
-            .status()
-            .expect("cargo");
-        assert!(st.success(), "build example {name}");
+    let out = Command::new(env!("CARGO"))
+        .args([
+            "build",
+            "--example",
+            name,
+            "--features",
+            "cli,config,mcp",
+            "--message-format=json-render-diagnostics",
+        ])
+        .stderr(Stdio::inherit())
+        .output()
+        .expect("cargo");
+    assert!(out.status.success(), "build example {name}");
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    stdout
+        .lines()
+        .filter(|l| l.contains(r#""reason":"compiler-artifact""#))
+        .filter(|l| l.contains(r#""kind":["example"]"#))
+        .filter(|l| l.contains(&format!(r#""name":"{name}""#)))
+        .find_map(executable)
+        .unwrap_or_else(|| panic!("cargo reported no executable for example {name}"))
+}
+
+// executable extracts the "executable" string from one cargo JSON message,
+// undoing the JSON escapes a path can carry (backslashes on Windows).
+fn executable(line: &str) -> Option<PathBuf> {
+    let rest = &line[line.find(r#""executable":""#)? + r#""executable":""#.len()..];
+    let mut path = String::new();
+    let mut chars = rest.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(PathBuf::from(path)),
+            '\\' => path.push(chars.next()?),
+            c => path.push(c),
+        }
     }
-    p
+    None
 }
 
 fn run(name: &str, args: &[&str], stdin: &str) -> (i32, String, String) {
