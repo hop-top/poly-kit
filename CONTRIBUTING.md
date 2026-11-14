@@ -54,7 +54,8 @@ the repo root gives you what CI runs.
   Dockerfile's `NODE_VERSION`, `PNPM_VERSION`, `PYTHON_VERSION` and uv
   image tag.
   `make check-toolchain-parity` names each one that disagrees; it runs
-  in CI (the `toolchain-parity` job) and in the pre-push hook.
+  in CI (the `toolchain-parity` step of the `repo-lint` job) and in the
+  pre-push hook.
 - PHP is the exception: mise would build it from source, so CI installs
   the version `sdk/experimental/php/composer.json` requires, and the
   check holds each workflow's `php-version` to that.
@@ -208,10 +209,16 @@ and `make test-affected` runs the same scope locally:
 A suite runs **whole** when TEST_ALL is set, the base is unknown, or a
 shared input changed: the scope scripts, the Makefile, the mise pins,
 `ci.yml`, the root `go.mod`/`go.sum`, the pnpm lockfile or workspace,
-`uv.toml`. When nothing relevant changed, a CI job skips its remaining
-steps and still succeeds, with the reason in its job summary, so
-status checks see green. The lint, test and parity jobs run in
-parallel; none waits on another.
+`uv.toml`. A `changes` job asks `scripts/test-affected.sh --gate <suite>`
+once per suite; a test job whose suite nothing reached is skipped at the
+job level (no runner starts) and shows as skipped, which counts as
+passing. The reason is in the `changes` job summary. The lint, test and
+parity jobs run in parallel once `changes` is done; none waits on another.
+
+Branch protection requires one check, `ci-ok / gate`: the last job of
+`ci.yml`, which needs every other job, fails when one failed or was
+cancelled and passes when each succeeded or was skipped. A new `ci.yml`
+job goes into its `needs:`; no ruleset edit follows.
 
 | Run | Tests |
 | --- | --- |
@@ -255,9 +262,12 @@ pushes and the nightly run); it needs only bash and git.
 
 ## Vulnerability scans
 
-`.github/workflows/vulnerability-scan.yml` runs on every pull request and
-weekly. The same scans, at the same pinned versions, run locally (network
-needed; not part of `make check`):
+`.github/workflows/vulnerability-scan.yml` runs every scan on pushes to
+`main` and `next` and weekly. A pull request runs osv-scanner alone, and
+only when a lockfile (or `go.mod`/`go.sum`), `osv-scanner.toml` or the
+workflow changed; otherwise its jobs are skipped. The same scans, at the
+same pinned versions, run locally (network needed; not part of
+`make check`):
 
 | Target | Covers |
 | --- | --- |
