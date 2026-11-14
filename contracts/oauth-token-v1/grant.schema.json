@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/oauth-token-v1/grant.schema.json",
+  "title": "oauth-token-v1 grant envelope",
+  "description": "Long-lived OAuth grant configuration stored at <ref>. Key material is referenced (secret_ref, client_cert_ref), never inlined. Rules JSON Schema cannot state exactly (Unicode white space in scopes, any loopback IP for http) are pinned by grant-corpus.json; this schema is the conservative structural subset.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "kind", "token_url"],
+  "properties": {
+    "v": { "const": 1 },
+    "kind": { "enum": ["client_credentials", "client_assertion", "jwt_bearer", "refresh_token"] },
+    "token_url": {
+      "type": "string",
+      "pattern": "^(https://[^/?#@\\s]+|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?)([/?][^#\\s]*)?$"
+    },
+    "client_id": { "type": "string", "minLength": 1, "pattern": "^[^\u0000-\u001f\u007f-\u009f]+$" },
+    "scopes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[^\\s\u0000-\u001f\u007f-\u009f]+$" }
+    },
+    "subject": { "type": "string", "pattern": "^[^\u0000-\u001f\u007f-\u009f]*$" },
+    "secret_ref": { "type": "string", "minLength": 1, "pattern": "^[^\u0000-\u001f\u007f-\u009f]+$" },
+    "client_cert_ref": { "type": "string", "minLength": 1, "pattern": "^[^\u0000-\u001f\u007f-\u009f]+$" },
+    "client_secret_ref": { "type": "string", "minLength": 1, "pattern": "^[^\u0000-\u001f\u007f-\u009f]+$" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "refresh_token" } }, "required": ["kind"] },
+      "then": {},
+      "else": { "not": { "required": ["client_secret_ref"] } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "jwt_bearer" } }, "required": ["kind"] },
+      "then": {},
+      "else": { "required": ["client_id"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "client_assertion" } }, "required": ["kind"] },
+      "then": { "required": ["client_cert_ref"], "not": { "required": ["secret_ref"] } },
+      "else": { "required": ["secret_ref"], "not": { "required": ["client_cert_ref"] } }
+    }
+  ]
+}

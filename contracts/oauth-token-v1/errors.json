@@ -1,0 +1,66 @@
+{
+  "_comment": [
+    "Error taxonomy every port exposes as four distinct, matchable error",
+    "classes. Messages MUST NOT carry credential values. `oauth_errors` maps",
+    "the RFC 6749 section 5.2 `error` code of a token endpoint response;",
+    "`other` maps non-OAuth failures. A grant not listed for a code uses the",
+    "`default` of that entry."
+  ],
+  "classes": [
+    {
+      "name": "credential_rejected",
+      "meaning": "Token endpoint refused the credential (bad secret, revoked key, invalid assertion). Retrying cannot help."
+    },
+    {
+      "name": "needs_reconsent",
+      "meaning": "Grant unusable until the user grants access again (expired or revoked refresh token)."
+    },
+    {
+      "name": "not_writable",
+      "meaning": "Grant needs write-back (refresh token rotation) and the secret backend does not declare itself writable."
+    },
+    {
+      "name": "transient",
+      "meaning": "Network or server failure. Retrying may succeed."
+    }
+  ],
+  "oauth_errors": [
+    { "code": "invalid_client", "class": "credential_rejected" },
+    { "code": "unauthorized_client", "class": "credential_rejected" },
+    {
+      "code": "invalid_grant",
+      "class": "credential_rejected",
+      "by_kind": { "refresh_token": "needs_reconsent" }
+    },
+    {
+      "code": "interaction_required",
+      "class": "credential_rejected",
+      "by_kind": { "refresh_token": "needs_reconsent" }
+    },
+    {
+      "code": "consent_required",
+      "class": "credential_rejected",
+      "by_kind": { "refresh_token": "needs_reconsent" }
+    },
+    {
+      "code": "login_required",
+      "class": "credential_rejected",
+      "by_kind": { "refresh_token": "needs_reconsent" }
+    }
+  ],
+  "other": [
+    { "condition": "other HTTP 4xx from token endpoint (any error code, or none)", "class": "credential_rejected" },
+    { "condition": "HTTP 5xx, 429 or 408 from token endpoint", "class": "transient" },
+    { "condition": "network failure, timeout or cancellation", "class": "transient" },
+    { "condition": "secret store read failure other than not found", "class": "transient" },
+    { "condition": "rotating grant on a backend without writable declaration", "class": "not_writable" }
+  ],
+  "unclassified": [
+    { "condition": "HTTP 3xx from token endpoint: redirect refused, never followed" },
+    { "condition": "TLS certificate verification failure (unknown authority, invalid or expired certificate, hostname mismatch): configuration fault, retrying cannot help" },
+    { "condition": "2xx token response missing access_token or expires_in: retrying cannot help and the credential is not at fault" }
+  ],
+  "validation": [
+    { "condition": "secret ref not found in the store: validation error naming the ref field" }
+  ]
+}

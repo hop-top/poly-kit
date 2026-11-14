@@ -1,0 +1,1127 @@
+{
+  "_comment": [
+    "Grant envelope corpus. Per case: `doc` (JSON value) or `raw` (exact bytes) is the stored value.",
+    "valid: decode succeeds; re-encode equals `doc` (or `encoded`) as JSON. invalid: decode fails naming `field` ('' = whole-document fault).",
+    "schema_gap: grant.schema.json does not reject this case; every other invalid case MUST fail the schema."
+  ],
+  "cases": [
+    {
+      "name": "valid client_credentials minimal",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "valid client_assertion minimal",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "client_assertion",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "client_cert_ref": "uma/t/cert"
+      }
+    },
+    {
+      "name": "valid jwt_bearer minimal",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "jwt_bearer",
+        "token_url": "https://idp.example/oauth2/token",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "valid refresh_token minimal",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "refresh_token",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "valid client_credentials with scopes and subject",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "mail.read",
+          "calendars.read"
+        ],
+        "subject": "user@example.test"
+      }
+    },
+    {
+      "name": "valid client_assertion with scopes and subject",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "client_assertion",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "client_cert_ref": "uma/t/cert",
+        "scopes": [
+          "mail.read",
+          "calendars.read"
+        ],
+        "subject": "user@example.test"
+      }
+    },
+    {
+      "name": "valid jwt_bearer with scopes and subject",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "jwt_bearer",
+        "token_url": "https://idp.example/oauth2/token",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "mail.read",
+          "calendars.read"
+        ],
+        "subject": "user@example.test"
+      }
+    },
+    {
+      "name": "valid refresh_token with scopes and subject",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "refresh_token",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "mail.read",
+          "calendars.read"
+        ],
+        "subject": "user@example.test"
+      }
+    },
+    {
+      "name": "valid jwt_bearer with client_id",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "jwt_bearer",
+        "token_url": "https://idp.example/oauth2/token",
+        "secret_ref": "uma/t/secret",
+        "client_id": "client-1"
+      }
+    },
+    {
+      "name": "valid empty scopes array encodes to omitted",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": []
+      },
+      "encoded": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "valid scope with url form",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "https://api.example/auth/mail.read"
+        ]
+      }
+    },
+    {
+      "name": "valid token_url localhost",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "http://localhost/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "valid token_url localhost port",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "http://localhost:8080/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "valid token_url 127.0.0.1",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "http://127.0.0.1:9000/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "valid token_url ipv6 loopback",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "http://[::1]:9000/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "valid token_url https port and query",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example:8443/token?tenant=t1",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "empty input",
+      "valid": false,
+      "field": "",
+      "raw": ""
+    },
+    {
+      "name": "not json",
+      "valid": false,
+      "field": "",
+      "raw": "not json"
+    },
+    {
+      "name": "array",
+      "valid": false,
+      "field": "",
+      "raw": "[]"
+    },
+    {
+      "name": "null",
+      "valid": false,
+      "field": "",
+      "raw": "null"
+    },
+    {
+      "name": "string",
+      "valid": false,
+      "field": "",
+      "raw": "\"x\""
+    },
+    {
+      "name": "number",
+      "valid": false,
+      "field": "",
+      "raw": "1"
+    },
+    {
+      "name": "trailing data",
+      "valid": false,
+      "field": "",
+      "raw": "{\"v\": 1, \"kind\": \"client_credentials\", \"token_url\": \"https://idp.example/oauth2/token\", \"client_id\": \"client-1\", \"secret_ref\": \"uma/t/secret\"} {}"
+    },
+    {
+      "name": "truncated",
+      "valid": false,
+      "field": "",
+      "raw": "{\"v\": 1, \"kind\": \"client_credentials\", \"token_url\": \"https://idp.example/oauth2/token\", \"client_id\": \"client-1\", \"secret_ref\": \"uma/t/secret\""
+    },
+    {
+      "name": "unknown field",
+      "valid": false,
+      "field": "",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "extra": "x"
+      }
+    },
+    {
+      "name": "unknown field mixed case",
+      "valid": false,
+      "field": "",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "Kind": "client_credentials"
+      }
+    },
+    {
+      "name": "missing v",
+      "valid": false,
+      "field": "v",
+      "doc": {
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "v zero",
+      "valid": false,
+      "field": "v",
+      "doc": {
+        "v": 0,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "v two",
+      "valid": false,
+      "field": "v",
+      "doc": {
+        "v": 2,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "v negative",
+      "valid": false,
+      "field": "v",
+      "doc": {
+        "v": -1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "v string",
+      "valid": false,
+      "field": "v",
+      "doc": {
+        "v": "1",
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "v bool",
+      "valid": false,
+      "field": "v",
+      "doc": {
+        "v": true,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "v array",
+      "valid": false,
+      "field": "v",
+      "doc": {
+        "v": [
+          1
+        ],
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "missing kind",
+      "valid": false,
+      "field": "kind",
+      "doc": {
+        "v": 1,
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "unknown kind",
+      "valid": false,
+      "field": "kind",
+      "doc": {
+        "v": 1,
+        "kind": "device_code",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "empty kind",
+      "valid": false,
+      "field": "kind",
+      "doc": {
+        "v": 1,
+        "kind": "",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "kind wrong case",
+      "valid": false,
+      "field": "kind",
+      "doc": {
+        "v": 1,
+        "kind": "Client_Credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "kind number",
+      "valid": false,
+      "field": "kind",
+      "doc": {
+        "v": 1,
+        "kind": 7,
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "missing token_url",
+      "valid": false,
+      "field": "token_url",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "empty token_url",
+      "valid": false,
+      "field": "token_url",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "token_url number",
+      "valid": false,
+      "field": "token_url",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": 5,
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "token_url http non-loopback",
+      "valid": false,
+      "field": "token_url",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "http://idp.example/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "token_url http lookalike host",
+      "valid": false,
+      "field": "token_url",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "http://localhost.evil.example/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "token_url ftp scheme",
+      "valid": false,
+      "field": "token_url",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "ftp://idp.example/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "token_url relative path",
+      "valid": false,
+      "field": "token_url",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "token_url no scheme",
+      "valid": false,
+      "field": "token_url",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "idp.example/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "token_url no host",
+      "valid": false,
+      "field": "token_url",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https:///token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "token_url scheme only",
+      "valid": false,
+      "field": "token_url",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "token_url userinfo",
+      "valid": false,
+      "field": "token_url",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://user:pw@idp.example/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "token_url userinfo user only",
+      "valid": false,
+      "field": "token_url",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://user@idp.example/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "token_url fragment",
+      "valid": false,
+      "field": "token_url",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/token#frag",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "client_credentials missing client_id",
+      "valid": false,
+      "field": "client_id",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "client_credentials empty client_id",
+      "valid": false,
+      "field": "client_id",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "client_assertion missing client_id",
+      "valid": false,
+      "field": "client_id",
+      "doc": {
+        "v": 1,
+        "kind": "client_assertion",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_cert_ref": "uma/t/cert"
+      }
+    },
+    {
+      "name": "client_assertion empty client_id",
+      "valid": false,
+      "field": "client_id",
+      "doc": {
+        "v": 1,
+        "kind": "client_assertion",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "",
+        "client_cert_ref": "uma/t/cert"
+      }
+    },
+    {
+      "name": "refresh_token missing client_id",
+      "valid": false,
+      "field": "client_id",
+      "doc": {
+        "v": 1,
+        "kind": "refresh_token",
+        "token_url": "https://idp.example/oauth2/token",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "refresh_token empty client_id",
+      "valid": false,
+      "field": "client_id",
+      "doc": {
+        "v": 1,
+        "kind": "refresh_token",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "client_id control char",
+      "valid": false,
+      "field": "client_id",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "cli\u0007ent",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "client_id newline",
+      "valid": false,
+      "field": "client_id",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client\n1",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "client_id number",
+      "valid": false,
+      "field": "client_id",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": 1,
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "jwt_bearer client_id control char",
+      "valid": false,
+      "field": "client_id",
+      "doc": {
+        "v": 1,
+        "kind": "jwt_bearer",
+        "token_url": "https://idp.example/oauth2/token",
+        "secret_ref": "uma/t/secret",
+        "client_id": "a\u0000b"
+      }
+    },
+    {
+      "name": "subject control char",
+      "valid": false,
+      "field": "subject",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "subject": "u\u0001@example.test"
+      }
+    },
+    {
+      "name": "subject number",
+      "valid": false,
+      "field": "subject",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "subject": 1
+      }
+    },
+    {
+      "name": "scopes empty element",
+      "valid": false,
+      "field": "scopes",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "a",
+          ""
+        ]
+      }
+    },
+    {
+      "name": "scopes wrong-typed element",
+      "valid": false,
+      "field": "scopes",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "a",
+          1
+        ]
+      }
+    },
+    {
+      "name": "scope with space",
+      "valid": false,
+      "field": "scopes",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "mail read"
+        ]
+      }
+    },
+    {
+      "name": "scope with tab",
+      "valid": false,
+      "field": "scopes",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "mail\tread"
+        ]
+      }
+    },
+    {
+      "name": "scope with newline",
+      "valid": false,
+      "field": "scopes",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "mail\nread"
+        ]
+      }
+    },
+    {
+      "name": "scope with control char",
+      "valid": false,
+      "field": "scopes",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "mail\u0007"
+        ]
+      }
+    },
+    {
+      "name": "scope with no-break space",
+      "valid": false,
+      "field": "scopes",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "mail read"
+        ]
+      },
+      "schema_gap": true
+    },
+    {
+      "name": "duplicate scope",
+      "valid": false,
+      "field": "scopes",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "a",
+          "b",
+          "a"
+        ]
+      }
+    },
+    {
+      "name": "scopes string",
+      "valid": false,
+      "field": "scopes",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": "a b"
+      }
+    },
+    {
+      "name": "scopes object",
+      "valid": false,
+      "field": "scopes",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": {
+          "a": 1
+        }
+      }
+    },
+    {
+      "name": "client_credentials missing secret_ref",
+      "valid": false,
+      "field": "secret_ref",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1"
+      }
+    },
+    {
+      "name": "client_credentials empty secret_ref",
+      "valid": false,
+      "field": "secret_ref",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": ""
+      }
+    },
+    {
+      "name": "client_credentials with client_cert_ref",
+      "valid": false,
+      "field": "client_cert_ref",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "client_cert_ref": "uma/t/cert"
+      }
+    },
+    {
+      "name": "jwt_bearer missing secret_ref",
+      "valid": false,
+      "field": "secret_ref",
+      "doc": {
+        "v": 1,
+        "kind": "jwt_bearer",
+        "token_url": "https://idp.example/oauth2/token"
+      }
+    },
+    {
+      "name": "jwt_bearer with client_cert_ref",
+      "valid": false,
+      "field": "client_cert_ref",
+      "doc": {
+        "v": 1,
+        "kind": "jwt_bearer",
+        "token_url": "https://idp.example/oauth2/token",
+        "secret_ref": "uma/t/secret",
+        "client_cert_ref": "uma/t/cert"
+      }
+    },
+    {
+      "name": "refresh_token missing secret_ref",
+      "valid": false,
+      "field": "secret_ref",
+      "doc": {
+        "v": 1,
+        "kind": "refresh_token",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1"
+      }
+    },
+    {
+      "name": "refresh_token with client_cert_ref",
+      "valid": false,
+      "field": "client_cert_ref",
+      "doc": {
+        "v": 1,
+        "kind": "refresh_token",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "client_cert_ref": "uma/t/cert"
+      }
+    },
+    {
+      "name": "client_assertion missing client_cert_ref",
+      "valid": false,
+      "field": "client_cert_ref",
+      "doc": {
+        "v": 1,
+        "kind": "client_assertion",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1"
+      }
+    },
+    {
+      "name": "client_assertion empty client_cert_ref",
+      "valid": false,
+      "field": "client_cert_ref",
+      "doc": {
+        "v": 1,
+        "kind": "client_assertion",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "client_cert_ref": ""
+      }
+    },
+    {
+      "name": "client_assertion with secret_ref",
+      "valid": false,
+      "field": "secret_ref",
+      "doc": {
+        "v": 1,
+        "kind": "client_assertion",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "client_cert_ref": "uma/t/cert",
+        "secret_ref": "uma/t/secret"
+      }
+    },
+    {
+      "name": "secret_ref control char",
+      "valid": false,
+      "field": "secret_ref",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/\u0007"
+      }
+    },
+    {
+      "name": "client_cert_ref control char",
+      "valid": false,
+      "field": "client_cert_ref",
+      "doc": {
+        "v": 1,
+        "kind": "client_assertion",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "client_cert_ref": "uma/t/\u0007"
+      }
+    },
+    {
+      "name": "secret_ref number",
+      "valid": false,
+      "field": "secret_ref",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": 3
+      }
+    },
+    {
+      "name": "client_cert_ref array",
+      "valid": false,
+      "field": "client_cert_ref",
+      "doc": {
+        "v": 1,
+        "kind": "client_assertion",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "client_cert_ref": [
+          "x"
+        ]
+      }
+    },
+    {
+      "name": "valid refresh_token with client_secret_ref",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "refresh_token",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "client_secret_ref": "uma/t/client-secret"
+      }
+    },
+    {
+      "name": "client_credentials with client_secret_ref",
+      "valid": false,
+      "field": "client_secret_ref",
+      "doc": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "client_secret_ref": "uma/t/client-secret"
+      }
+    },
+    {
+      "name": "client_assertion with client_secret_ref",
+      "valid": false,
+      "field": "client_secret_ref",
+      "doc": {
+        "v": 1,
+        "kind": "client_assertion",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "client_cert_ref": "uma/t/cert",
+        "client_secret_ref": "uma/t/client-secret"
+      }
+    },
+    {
+      "name": "jwt_bearer with client_secret_ref",
+      "valid": false,
+      "field": "client_secret_ref",
+      "doc": {
+        "v": 1,
+        "kind": "jwt_bearer",
+        "token_url": "https://idp.example/oauth2/token",
+        "secret_ref": "uma/t/secret",
+        "client_secret_ref": "uma/t/client-secret"
+      }
+    },
+    {
+      "name": "refresh_token client_secret_ref control char",
+      "valid": false,
+      "field": "client_secret_ref",
+      "doc": {
+        "v": 1,
+        "kind": "refresh_token",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "client_secret_ref": "uma/t/\u0007"
+      }
+    },
+    {
+      "name": "refresh_token client_secret_ref number",
+      "valid": false,
+      "field": "client_secret_ref",
+      "doc": {
+        "v": 1,
+        "kind": "refresh_token",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "client_secret_ref": 3
+      }
+    }
+  ]
+}

@@ -56,6 +56,18 @@ Needs `_ "hop.top/kit/go/storage/secret/memory"` in the imports; see
 - `Mint` is the one sanctioned way to generate a bearer token into a store.
 - Tests: `env`, `file`, `agefile`, `memory`, `local`, `composite` run embedded; `keyring` is `!ci` and skips without a keychain; `onepassword`, `infisical` use `httptest` and a fake CLI on `PATH`; `openbao` replays an xrr cassette; `ghsecrets` only tests the env fallback.
 
+## Design: OAuth token source
+
+`secret/oauth` mints and refreshes OAuth 2 access tokens from a credential held in a store. Rationale and rejected alternatives: [concept page](../../../docs/adopters/concepts/oauth-token-source.md).
+
+- Package `go/storage/secret/oauth`; `golang.org/x/oauth2` (`clientcredentials`, `jwt`) stays out of core `secret`.
+- `TokenSource(ctx, store, ref, ...Option)` returns a `*Source`; `Source.Token(ctx)` returns `Token{AccessToken, ExpiresAt}`, refreshing when under the skew (default 5 min) remains. `Source.Invalidate()` / `oauth.Invalidate(ref)` force one refresh after a provider 401. Refresh is single-flight per `Source`.
+- Grant envelope at `<ref>`; cached token beside it as a uma `oauth2` envelope, expiry inside the value (`Set` writes bytes only).
+- Write-back: `keyring`, `file`, `openbao` rotate; others cache in memory and refuse rotating grants.
+- Lock: advisory `flock` per reference under the user cache dir (`WithLockDir` overrides), no CAS; the store is re-read after the lock is taken. A rotated refresh token whose write-back fails is kept in memory, the write retried with bounded backoff, and the stale stored token is never sent while it is pending. Formats are language-neutral and pinned in [`contracts/oauth-token-v1`](../../../contracts/oauth-token-v1/README.md).
+- Grants: `client_credentials`, `client_assertion` (certificate), `jwt_bearer` (service account), `refresh_token` (rotating; first token via PKCE). Errors: `ErrCredentialRejected`, `ErrNeedsReconsent`, `ErrNotWritable`, `ErrTransient`.
+- Examples, per-backend write-back table, error handling and operating limits (one `Source` per ref, per-machine lock, pending-rotation window): [concept page](../../../docs/adopters/concepts/oauth-token-source.md). Runnable: `oauth/example_*_test.go`.
+
 ## Neighbours
 
 - `hop.top/kit/go/core/identity`: keypair and `DeriveKey` behind `local.NewKeeper`.
