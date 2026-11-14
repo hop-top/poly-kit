@@ -8,7 +8,7 @@
 # mise pick a new release the day it ships, past the dependency age gate.
 
 [runtimes]
-go     = "1.27.3"   # Go toolchain (matches kit's go.mod and CI)
+go     = "1.27.4"   # Go toolchain (matches kit's go.mod and CI)
 node   = "24.22.1"  # Node.js runtime (LTS)
 pnpm   = "12.16.0"  # Node package manager
 python = "3.14.10"  # CPython
