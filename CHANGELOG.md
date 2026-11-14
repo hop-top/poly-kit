@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0-beta.8](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.7...kit/v0.5.0-beta.8) (2026-11-14)
+
+The hop-top team is happy to announce Kit 0.5.0-beta.8. This release includes new features.
+
+
+### Features
+
+* **cli:** AuthIntrospector over OAuth token sources ([e1dab4a](https://github.com/hop-top/poly-kit/commit/e1dab4af04484ad94e1b3ffe6f2f692a022937c2))
+* **cmdsurface:** PKCE authorization code flow and loopback login ([3111bd8](https://github.com/hop-top/poly-kit/commit/3111bd86a5dc71f56065206bb9bf4869e6b85de4))
+* **secret/oauth:** OAuth 2 token source over secret stores ([a2be28a](https://github.com/hop-top/poly-kit/commit/a2be28a7c90d7c68b4d9b29171eae97a7784b4b9))
+* **secret:** writability declaration and atomic file writes ([0504f4a](https://github.com/hop-top/poly-kit/commit/0504f4ae15a09b76f1ff5d0ffbced292ebeef5d9))
+
+Full diff: [kit/v0.5.0-beta.7...kit/v0.5.0-beta.8](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.7...kit/v0.5.0-beta.8)
+
 ## [0.5.0-beta.7](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.6...kit/v0.5.0-beta.7) (2026-11-14)
 
 The hop-top team is happy to announce Kit 0.5.0-beta.7. This release includes new features and bug fixes.
