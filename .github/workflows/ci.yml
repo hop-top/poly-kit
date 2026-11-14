@@ -22,19 +22,20 @@ on:
 # Test jobs test the change on pull requests, the same way
 # (scripts/test-scope.sh; Testing in CONTRIBUTING.md): changed Go
 # packages and their reverse dependencies, the SDK packages, bats suites
-# and parity targets a change reaches. Each job first asks
-# `scripts/test-affected.sh --gate <suite>` whether anything relevant
-# changed; when nothing did, its remaining steps are skipped and the job
-# still succeeds, with the reason in its summary, so status checks and
-# the nightly report see a green job. A shared config, lockfile,
-# toolchain pin or the scope scripts themselves run that suite in full.
-# Pushes, the nightly schedule and dispatch set TEST_ALL: everything, as
-# before.
+# and parity targets a change reaches. The `changes` job asks
+# `scripts/test-affected.sh --gate <suite>` once per suite and outputs a
+# flag for each; a test job whose flag is false is skipped at the job
+# level (no runner), and a skipped job counts as passing. A shared
+# config, lockfile, toolchain pin or the scope scripts themselves run that
+# suite in full. Pushes, the nightly schedule and dispatch set TEST_ALL:
+# every flag is true, everything runs, as before.
 #
-# Lint, test, parity and compliance jobs all start at once: none reads
-# another's output, so none waits on another (a red lint fails the run
-# without holding the tests back). Only nightly-report has `needs:`, to
-# collect every verdict.
+# Lint, test and parity jobs start together once `changes` is done: none
+# reads another's output (a red lint fails the run without holding the
+# tests back). nightly-report has `needs:` to collect every verdict, and
+# ci-ok, the last job, needs every job: it is the one check branch
+# protection requires. It fails when any job failed or was cancelled and
+# passes when each succeeded or was skipped.
 env:
   LINT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
   LINT_HEAD: HEAD
@@ -52,6 +53,59 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # ── Scope ─────────────────────────────────────────────────────
+  # What the change reaches, asked once (scripts/test-affected.sh --gate
+  # <suite>, file level, no toolchain), one flag per suite. A test job that
+  # needs `changes` and tests an unreached suite is skipped: no runner, no
+  # checkout, a "skipped" check instead of a green one. Pushes, the nightly
+  # schedule and dispatch set TEST_ALL, so every flag is true there; so it is
+  # for a shared config, the scope scripts or ci.yml itself, or an unknown
+  # base (see scripts/test-scope.sh).
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.scope.outputs.go }}
+      ts: ${{ steps.scope.outputs.ts }}
+      py: ${{ steps.scope.outputs.py }}
+      rs: ${{ steps.scope.outputs.rs }}
+      php: ${{ steps.scope.outputs.php }}
+      bats: ${{ steps.scope.outputs.bats }}
+      parity: ${{ steps.scope.outputs.parity }}
+      templates: ${{ steps.scope.outputs.templates }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # History for the merge-base of the change.
+          fetch-depth: 0
+          filter: blob:none
+      - id: scope
+        run: |
+          set -euo pipefail
+          out=$(mktemp)
+          for suite in go ts py rs php bats parity; do
+            GITHUB_OUTPUT="$out" scripts/test-affected.sh --gate "$suite"
+            echo "$suite=$(sed -n 's/^run=//p' "$out")" >> "$GITHUB_OUTPUT"
+            : > "$out"
+          done
+          # No test-scope.sh suite covers templates/, so its gate is a
+          # changed-files.sh pathspec; TEST_ALL or an unknown base runs it.
+          run=true
+          if [ -z "$TEST_ALL" ]; then
+            rc=0
+            changed=$(scripts/changed-files.sh --include-deleted \
+              --trigger .github/workflows/ci.yml -- templates/) || rc=$?
+            if [ "$rc" -eq 0 ] && [ -z "$changed" ]; then
+              run=false
+              {
+                echo "### templates-e2e: skipped"
+                echo
+                echo "No change in this pull request reaches templates/."
+              } >>"$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "templates=$run" >> "$GITHUB_OUTPUT"
+
   # ── Lint ───────────────────────────────────────────────────────
   go-lint:
     runs-on: ubuntu-latest
@@ -149,7 +203,20 @@ jobs:
       - run: make lint-rs
       - run: make doc-rs
 
-  docs-lint:
+  # Whole-tree and repo-wide guards in one runner: each is cheap, none has a
+  # scope of its own (the make targets and scripts decide what a change
+  # needs), so a job apiece cost a runner and a checkout each. A failing
+  # step does not hide the ones after it: every check runs, the job fails if
+  # any did. Step names are the old job names.
+  #
+  # toolchain-parity: mise.toml pins the toolchain and the jobs here read
+  # it. go.mod, rust-toolchain.toml, uv.lock, workflow literals and the
+  # devcontainer carry their own copies; it fails when one of them drifts.
+  # template-kit-pin: a generated project requires the kit release pinned in
+  # the cli-go template. The release PR bumps the pin; it catches a release
+  # that did not, against the proxy's list rather than local tags. Nightly
+  # runs catch a release published since the last pull request.
+  repo-lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -162,16 +229,46 @@ jobs:
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ steps.pins.outputs.node }}
-      - run: make lint-docs
-      - run: make lint-readmes
+      # buf only; lint, format and generate run inside `make proto-check`.
+      - uses: bufbuild/buf-action@85aebf73123b5c15fd5528aaecbf9129cddf7fa7 # v1.6.0
+        with:
+          version: ${{ steps.pins.outputs.buf }}
+          setup_only: true
+      - name: actions-pinned-lint
+        if: ${{ !cancelled() }}
+        run: make lint-actions-pinned
+      - name: adr-refs-lint
+        if: ${{ !cancelled() }}
+        run: make lint-adr-refs
+      - name: internal-refs-lint
+        if: ${{ !cancelled() }}
+        run: make lint-internal-refs
+      - name: sdk-paths-lint
+        if: ${{ !cancelled() }}
+        run: make lint-sdk-paths
+      - name: toolchain-parity
+        if: ${{ !cancelled() }}
+        run: make check-toolchain-parity
+      - name: template-kit-pin
+        if: ${{ !cancelled() }}
+        run: make check-template-kit-pin
+      - name: docs-lint
+        if: ${{ !cancelled() }}
+        run: |
+          make lint-docs
+          make lint-readmes
       # Docs the link checks cover, on the same rules as `make lint-links`:
       # the changed ones, or all of them when a doc was deleted or renamed
       # (an untouched doc can link to it) or a lychee config changed.
       - id: docs
-        name: Changed docs
+        name: docs-lint (changed docs)
+        if: ${{ !cancelled() }}
         run: |
           rc=0
           files=$(scripts/changed-files.sh --full-on-delete \
@@ -184,83 +281,37 @@ jobs:
           esac
           echo "files=$(printf '%s\n' "$files" | tr '\n' ' ' | sed 's/ *$//')" >> "$GITHUB_OUTPUT"
       - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
-        if: steps.docs.outputs.files != ''
+        if: ${{ !cancelled() && steps.docs.outputs.files != '' }}
         with:
           lycheeVersion: v${{ steps.pins.outputs.lychee }}
           args: '--config examples/spaced/lychee.toml ${{ steps.docs.outputs.files }}'
           fail: false
-      - name: Fail on broken internal links
-        if: steps.docs.outputs.files != ''
+      - name: docs-lint (broken internal links)
+        if: ${{ !cancelled() && steps.docs.outputs.files != '' }}
         run: make lint-links
-
-  sdk-paths-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          # History for the merge-base of the change (trees and commits
-          # only; blobs arrive for the checked-out commit alone).
-          fetch-depth: 0
-          filter: blob:none
-      - run: make lint-sdk-paths
-
-  adr-refs-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          # History for the merge-base of the change (trees and commits
-          # only; blobs arrive for the checked-out commit alone).
-          fetch-depth: 0
-          filter: blob:none
-      - run: make lint-adr-refs
-
-  internal-refs-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          # History for the merge-base of the change (trees and commits
-          # only; blobs arrive for the checked-out commit alone).
-          fetch-depth: 0
-          filter: blob:none
-      - run: make lint-internal-refs
-
-  actions-pinned-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          # History for the merge-base of the change (trees and commits
-          # only; blobs arrive for the checked-out commit alone).
-          fetch-depth: 0
-          filter: blob:none
-      - run: make lint-actions-pinned
-
-  # mise.toml pins the toolchain and the jobs here read it. go.mod,
-  # rust-toolchain.toml, uv.lock, workflow literals and the devcontainer
-  # carry their own copies; this fails when one of them drifts.
-  toolchain-parity:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          # History for the merge-base of the change (trees and commits
-          # only; blobs arrive for the checked-out commit alone).
-          fetch-depth: 0
-          filter: blob:none
-      - run: make check-toolchain-parity
+      # buf.gen.yaml uses remote plugins, and the Buf registry rate-limits
+      # anonymous callers ("resource_exhausted: too many requests"). A
+      # BUF_TOKEN repository secret lifts the limit; a maintainer adds it
+      # (CONTRIBUTING.md, "Protobuf stubs"). Unset, as on fork pull
+      # requests, buf treats the empty value as absent and runs anonymously.
+      - name: proto-check
+        if: ${{ !cancelled() }}
+        run: make proto-check
+        env:
+          BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
+      - name: compliance
+        if: ${{ !cancelled() }}
+        run: |
+          go build -buildvcs=false -o spaced ./examples/spaced/go/
+          ./spaced compliance --spec examples/spaced/spaced.toolspec.yaml --format json
 
   # Every *.bats suite (make test-bats): template scripts and their embed
   # mirror, workflow and hook shell logic, repo lint and sync scripts.
   # mise installs go (the conform and bootstrap suites build kit), bats and
   # shellcheck at the pins a local `mise install` gets.
   bats-tests:
+    needs: changes
+    if: needs.changes.outputs.bats == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -269,25 +320,21 @@ jobs:
           # History for the merge-base of the change; the pre-push hook
           # suite also diffs HEAD against earlier commits.
           fetch-depth: 0
-      # Nothing this job tests changed: the steps below skip, the job
-      # stays green (see the header).
-      - id: scope
-        run: scripts/test-affected.sh --gate bats
       - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
-        if: steps.scope.outputs.run == 'true'
         with:
           version: 2026.10.8
           install_args: go bats shellcheck
       - run: scripts/test-affected.sh bats
-        if: steps.scope.outputs.run == 'true'
 
   # templates/test-e2e.sh: build every template, init the dist copies
   # outside the repo, scaffold the polyglot subsets. Bash, git and coreutils
   # only (no toolchain), on a runner without tlc, the way an adopter's
   # clone runs init.sh. No test-scope.sh suite covers templates/, so the
-  # gate is a changed-files.sh pathspec; like --gate it skips to a green
-  # job, and TEST_ALL (push, nightly, dispatch) or an unknown base runs it.
+  # `changes` job gates it on a changed-files.sh pathspec; TEST_ALL (push,
+  # nightly, dispatch) or an unknown base runs it.
   templates-e2e:
+    needs: changes
+    if: needs.changes.outputs.templates == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -296,66 +343,12 @@ jobs:
           # History for the merge-base of the change.
           fetch-depth: 0
           filter: blob:none
-      - id: scope
-        run: |
-          run=true
-          if [ -z "$TEST_ALL" ]; then
-            rc=0
-            changed=$(scripts/changed-files.sh --include-deleted \
-              --trigger .github/workflows/ci.yml -- templates/) || rc=$?
-            if [ "$rc" -eq 0 ] && [ -z "$changed" ]; then
-              run=false
-              {
-                echo "### templates-e2e: skipped"
-                echo
-                echo "No change in this pull request reaches templates/."
-              } >>"$GITHUB_STEP_SUMMARY"
-            fi
-          fi
-          echo "run=$run" >>"$GITHUB_OUTPUT"
       - run: templates/test-e2e.sh
-        if: steps.scope.outputs.run == 'true'
-
-  proto-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      # Tool versions from mise.toml, as a local `mise install` gets them.
-      - id: pins
-        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
-      # buf only; lint, format and generate run inside `make proto-check`.
-      - uses: bufbuild/buf-action@85aebf73123b5c15fd5528aaecbf9129cddf7fa7 # v1.6.0
-        with:
-          version: ${{ steps.pins.outputs.buf }}
-          setup_only: true
-      # buf.gen.yaml uses remote plugins, and the Buf registry rate-limits
-      # anonymous callers ("resource_exhausted: too many requests"). A
-      # BUF_TOKEN repository secret lifts the limit; a maintainer adds it
-      # (CONTRIBUTING.md, "Protobuf stubs"). Unset, as on fork pull
-      # requests, buf treats the empty value as absent and runs anonymously.
-      - run: make proto-check
-        env:
-          BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
-
-  # A generated project requires the kit release pinned in the cli-go
-  # template. The release PR bumps the pin; this catches a release that
-  # did not, against the proxy's list rather than local tags. Nightly
-  # runs catch a release published since the last pull request.
-  template-kit-pin:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - run: make check-template-kit-pin
 
   # ── Test ───────────────────────────────────────────────────────
   go-test:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -365,15 +358,11 @@ jobs:
           # only; blobs arrive for the checked-out commit alone).
           fetch-depth: 0
           filter: blob:none
-      - id: scope
-        run: scripts/test-affected.sh --gate go
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: steps.scope.outputs.run == 'true'
         with:
           go-version-file: go.mod
       # Affected packages (make test-go-integration in full).
       - run: scripts/test-affected.sh go-integration
-        if: steps.scope.outputs.run == 'true'
         # Property tests at 100 iterations on pull requests, full count
         # (1000) on pushes and the nightly schedule. The Makefile turns
         # PROPERTY_ITERATIONS into KIT_PROPERTY_ITERATIONS for go test.
@@ -400,6 +389,8 @@ jobs:
   # documented on the `test-go-race` target in the Makefile — CI and a
   # developer's local run share the one command.
   go-race:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -409,17 +400,15 @@ jobs:
           # only; blobs arrive for the checked-out commit alone).
           fetch-depth: 0
           filter: blob:none
-      - id: scope
-        run: scripts/test-affected.sh --gate go
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: steps.scope.outputs.run == 'true'
         with:
           go-version-file: go.mod
       # Affected packages of the race scope (make test-go-race in full).
       - run: scripts/test-affected.sh go-race
-        if: steps.scope.outputs.run == 'true'
 
   ts-test:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -429,32 +418,25 @@ jobs:
           # only; blobs arrive for the checked-out commit alone).
           fetch-depth: 0
           filter: blob:none
-      # Nothing this job tests changed: the steps below skip, the job
-      # stays green (see the header).
-      - id: scope
-        run: scripts/test-affected.sh --gate ts
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
-        if: steps.scope.outputs.run == 'true'
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: steps.scope.outputs.run == 'true'
         with:
           node-version: ${{ steps.pins.outputs.node }}
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        if: steps.scope.outputs.run == 'true'
         with:
           version: ${{ steps.pins.outputs.pnpm }}
       - run: pnpm install --frozen-lockfile --ignore-scripts
-        if: steps.scope.outputs.run == 'true'
       - run: scripts/test-affected.sh ts
-        if: steps.scope.outputs.run == 'true'
 
   # The TS SDKs develop on the mise Node pin but ship `engines.node`
   # >=22.12, and @types/node follows the pin, so a newer-Node API can
   # typecheck and still break on the floor. Same scope and suites as
   # ts-test, on the floor itself, plus the sdk/ts build.
   ts-node-floor:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -462,27 +444,21 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
           filter: blob:none
-      - id: scope
-        run: scripts/test-affected.sh --gate ts
       - id: pins
-        if: steps.scope.outputs.run == 'true'
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: steps.scope.outputs.run == 'true'
         with:
           node-version: '22.12'  # toolchain-parity: allow (engines.node floor of sdk/ts and ts-kit-engine)
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        if: steps.scope.outputs.run == 'true'
         with:
           version: ${{ steps.pins.outputs.pnpm }}
       - run: pnpm install --frozen-lockfile --ignore-scripts
-        if: steps.scope.outputs.run == 'true'
       - run: scripts/test-affected.sh ts
-        if: steps.scope.outputs.run == 'true'
       - run: pnpm --dir sdk/ts build
-        if: steps.scope.outputs.run == 'true'
 
   py-test:
+    needs: changes
+    if: needs.changes.outputs.py == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -492,28 +468,18 @@ jobs:
           # only; blobs arrive for the checked-out commit alone).
           fetch-depth: 0
           filter: blob:none
-      # Nothing this job tests changed: the steps below skip, the job
-      # stays green (see the header).
-      - id: scope
-        run: scripts/test-affected.sh --gate py
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
-        if: steps.scope.outputs.run == 'true'
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        if: steps.scope.outputs.run == 'true'
         with:
           python-version: ${{ steps.pins.outputs.python }}
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
-        if: steps.scope.outputs.run == 'true'
         with:
           version: ${{ steps.pins.outputs.uv }}
       - run: cd sdk/py && uv sync --all-extras --locked
-        if: steps.scope.outputs.run == 'true'
       - run: cd engine/sdk/py-kit-engine && uv sync --all-extras --locked
-        if: steps.scope.outputs.run == 'true'
       - run: scripts/test-affected.sh py
-        if: steps.scope.outputs.run == 'true'
 
   # The Python SDKs develop on the mise Python pin but ship
   # requires-python floors (sdk/py >=3.11, py-kit-engine >=3.10), so a
@@ -521,6 +487,8 @@ jobs:
   # scope and suites as py-test, each package synced on its own floor
   # (the make targets' `uv sync` keeps that environment).
   py-floor:
+    needs: changes
+    if: needs.changes.outputs.py == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -528,29 +496,23 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
           filter: blob:none
-      - id: scope
-        run: scripts/test-affected.sh --gate py
       - id: pins
-        if: steps.scope.outputs.run == 'true'
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        if: steps.scope.outputs.run == 'true'
         with:
           python-version: |  # toolchain-parity: allow (requires-python floors of py-kit-engine and sdk/py)
             3.10
             3.11
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
-        if: steps.scope.outputs.run == 'true'
         with:
           version: ${{ steps.pins.outputs.uv }}
       - run: cd sdk/py && uv sync --all-extras --locked --python 3.11
-        if: steps.scope.outputs.run == 'true'
       - run: cd engine/sdk/py-kit-engine && uv sync --all-extras --locked --python 3.10
-        if: steps.scope.outputs.run == 'true'
       - run: scripts/test-affected.sh py
-        if: steps.scope.outputs.run == 'true'
 
   rs-test:
+    needs: changes
+    if: needs.changes.outputs.rs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -560,16 +522,10 @@ jobs:
           # only; blobs arrive for the checked-out commit alone).
           fetch-depth: 0
           filter: blob:none
-      # Nothing this job tests changed: the steps below skip, the job
-      # stays green (see the header).
-      - id: scope
-        run: scripts/test-affected.sh --gate rs
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
-        if: steps.scope.outputs.run == 'true'
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        if: steps.scope.outputs.run == 'true'
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
@@ -578,11 +534,9 @@ jobs:
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        if: steps.scope.outputs.run == 'true'
         with:
           workspaces: sdk/rs
       - run: scripts/test-affected.sh rs
-        if: steps.scope.outputs.run == 'true'
 
   # rs-test runs the toolchain pinned in mise.toml. Two more legs bracket
   # it: the MSRV (`rust-version` in Cargo.toml), so a newer-std API or
@@ -591,6 +545,8 @@ jobs:
   # not find the breakage first. Same scope as rs-test; fmt and clippy
   # stay on the pin (rs-lint), their output is version-sensitive.
   rs-toolchains:
+    needs: changes
+    if: needs.changes.outputs.rs == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -602,10 +558,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
           filter: blob:none
-      - id: scope
-        run: scripts/test-affected.sh --gate rs
       - id: toolchain
-        if: steps.scope.outputs.run == 'true'
         run: |
           if [ "$LEG" = msrv ]; then
             v=$(sed -n 's/^rust-version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' sdk/rs/Cargo.toml)
@@ -617,18 +570,15 @@ jobs:
         env:
           LEG: ${{ matrix.leg }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        if: steps.scope.outputs.run == 'true'
         with:
           toolchain: ${{ steps.toolchain.outputs.version }}  # toolchain-parity: allow (MSRV and stable legs, not the dev pin)
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        if: steps.scope.outputs.run == 'true'
         with:
           workspaces: sdk/rs
           key: ${{ matrix.leg }}
       # sdk/rs/rust-toolchain.toml would override the
       # toolchain installed above; RUSTUP_TOOLCHAIN wins over it.
       - run: cd sdk/rs && cargo --version && cargo test --all-features --locked
-        if: steps.scope.outputs.run == 'true'
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.toolchain.outputs.version }}
 
@@ -640,6 +590,8 @@ jobs:
   # wasm32 itself under Node (tests/bus_wasm.rs and
   # tests/domain_statemachine_wasm.rs, `make test-rs-wasm`).
   rs-wasm:
+    needs: changes
+    if: needs.changes.outputs.rs == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -652,18 +604,11 @@ jobs:
           # only; blobs arrive for the checked-out commit alone).
           fetch-depth: 0
           filter: blob:none
-      # Nothing this job tests changed: the steps below skip, the job
-      # stays green (see the header).
-      - id: scope
-        run: scripts/test-affected.sh --gate rs
-        working-directory: .
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
-        if: steps.scope.outputs.run == 'true'
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
         working-directory: .
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        if: steps.scope.outputs.run == 'true'
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
@@ -674,60 +619,47 @@ jobs:
           targets: wasm32-unknown-unknown
           components: clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        if: steps.scope.outputs.run == 'true'
         with:
           workspaces: sdk/rs
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features bus
-        if: steps.scope.outputs.run == 'true'
       # clippy-wasm32/clippy.toml denies the std clock reads that panic
       # on this target, so a new SystemTime::now/Instant::now reachable
       # from the bus fails here instead of at run time in a browser.
       - name: clippy (wasm32, no clock reads)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features bus --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       # The netpolicy core is the dependency-free half of the --offline
       # policy (no reqwest, no tokio), so a wasm client can check dials.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features bus,netpolicy
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, bus and netpolicy)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features bus,netpolicy --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       # The domain state machine builds on the bus alone; with no
       # spawner its post-transition event runs inline on this target.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features bus,netpolicy,domain
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, bus, netpolicy and domain)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features bus,netpolicy,domain --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       # Version order, the migration registry and the driver trait of
       # `upgrade` are pure; the runner is compiled off wasm32.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features upgrade
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, upgrade)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features upgrade --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       # The seams, dryrun and testfake need the bus alone and no clock.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features sideeffect
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, sideeffect)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features sideeffect --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       # The breaker builds on domain alone; it reads only the clock its
       # caller gives it, so the clock-read lint holds it to that here.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features breaker
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, breaker)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features breaker --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
@@ -735,72 +667,56 @@ jobs:
       # replicator. It reads only the wall clock its caller gives it, and
       # starts no thread (`sync-http` is native only).
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features sync
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, sync)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features sync --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       # The consent core: grant model, decisions and the memory store.
       # The per-tool files and the relay (`consent-file`) are native only.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features consent
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, consent)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features consent --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       # The llm core (types, URIs, keys, registry, client) is
       # runtime-free; only the anthropic adapter is native.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features llm
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, llm core)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features llm --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       # The picker (catalog filter, pool, ranking, classifier stage) is
       # pure.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features llm-picker
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, llm picker)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features llm-picker --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       # redact has no I/O: the default policy is embedded, so the
       # redactor runs in a browser or worker as it does natively.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features redact
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, redact)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features redact --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       # The policy engine: rule parsing and the CEL evaluator are pure;
       # the rule-file load and the env principal are compiled off wasm32.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features policy
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, policy)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features policy --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       # The notify core (severity, filter, retry, templates) is
       # runtime-free; the webhook, email and desktop sinks are native.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features notify
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, notify core)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features notify --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       # authn: verification and grants are pure; ring-backed signing is
       # opt-in and not built here. The clock is injected on this target.
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features authn
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, authn)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features authn --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
@@ -808,14 +724,11 @@ jobs:
       # caller; OS-RNG generation, the system clock and the store are
       # compiled off this target (getrandom has no backend here).
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features identity
-        if: steps.scope.outputs.run == 'true'
       - name: clippy (wasm32, identity)
-        if: steps.scope.outputs.run == 'true'
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features identity --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
       - name: netpolicy pulls no reqwest or tokio
-        if: steps.scope.outputs.run == 'true'
         run: |
           tree=$(cargo tree --locked -e normal --no-default-features --features netpolicy)
           if grep -qE '(reqwest|tokio) v' <<<"$tree"; then
@@ -824,7 +737,6 @@ jobs:
             exit 1
           fi
       - name: bus does not enable serde_json/preserve_order
-        if: steps.scope.outputs.run == 'true'
         run: |
           tree=$(cargo tree --locked -e normal,features --no-default-features --features bus -i serde_json)
           if grep -q preserve_order <<<"$tree"; then
@@ -833,16 +745,13 @@ jobs:
             exit 1
           fi
       - run: cargo test --locked --no-default-features --features bus
-        if: steps.scope.outputs.run == 'true'
       # wasm-bindgen-test-runner must be the wasm-bindgen version in
       # Cargo.lock, so the version is read from there, not pinned twice.
       - name: wasm-bindgen-cli matching Cargo.lock
-        if: steps.scope.outputs.run == 'true'
         run: |
           v=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print }' Cargo.lock)
           cargo install wasm-bindgen-cli --version "$v" --locked
       - name: wasm32 smoke test (Node)
-        if: steps.scope.outputs.run == 'true'
         run: make test-rs-wasm
         working-directory: .
 
@@ -851,6 +760,8 @@ jobs:
   # script compiles C for the target: Xcode's iOS SDK on the macOS
   # runner, the NDK preinstalled on the Ubuntu runner.
   rs-mobile:
+    needs: changes
+    if: needs.changes.outputs.rs == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -871,18 +782,11 @@ jobs:
           # only; blobs arrive for the checked-out commit alone).
           fetch-depth: 0
           filter: blob:none
-      # Nothing this job tests changed: the steps below skip, the job
-      # stays green (see the header).
-      - id: scope
-        run: scripts/test-affected.sh --gate rs
-        working-directory: .
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
-        if: steps.scope.outputs.run == 'true'
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
         working-directory: .
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        if: steps.scope.outputs.run == 'true'
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
@@ -892,16 +796,13 @@ jobs:
           toolchain: ${{ steps.pins.outputs.rust }}
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        if: steps.scope.outputs.run == 'true'
         with:
           workspaces: sdk/rs
           key: ${{ matrix.target }}
       - run: cargo check --locked --target "$TARGET" --no-default-features --features bus
-        if: steps.scope.outputs.run == 'true'
         env:
           TARGET: ${{ matrix.target }}
       - name: check bus-network
-        if: steps.scope.outputs.run == 'true'
         run: |
           if [ "$TARGET" = aarch64-linux-android ]; then
             bin="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
@@ -917,6 +818,8 @@ jobs:
   # bring tokio `full`, and `output` brings serde_json/preserve_order.
   # These steps build features the way such a consumer does.
   rs-features:
+    needs: changes
+    if: needs.changes.outputs.rs == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -929,18 +832,11 @@ jobs:
           # only; blobs arrive for the checked-out commit alone).
           fetch-depth: 0
           filter: blob:none
-      # Nothing this job tests changed: the steps below skip, the job
-      # stays green (see the header).
-      - id: scope
-        run: scripts/test-affected.sh --gate rs
-        working-directory: .
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
-        if: steps.scope.outputs.run == 'true'
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
         working-directory: .
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        if: steps.scope.outputs.run == 'true'
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
@@ -949,41 +845,32 @@ jobs:
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        if: steps.scope.outputs.run == 'true'
         with:
           workspaces: sdk/rs
       # --lib leaves dev-dependencies out, so tokio carries only the
       # features each crate feature declares.
       - run: cargo check --locked --lib --no-default-features --features serve
-        if: steps.scope.outputs.run == 'true'
       - run: cargo check --locked --lib --no-default-features --features telemetry
-        if: steps.scope.outputs.run == 'true'
       # llm-anthropic declares only tokio's timer; the retry wait needs it.
       - run: cargo check --locked --lib --no-default-features --features llm-anthropic
-        if: steps.scope.outputs.run == 'true'
       # The notify sinks declare the tokio pieces they use; --lib leaves
       # the dev-dependency `full` out so a missing one shows.
       - run: cargo check --locked --lib --no-default-features --features notify-webhook
-        if: steps.scope.outputs.run == 'true'
       - run: cargo check --locked --lib --no-default-features --features notify-email
-        if: steps.scope.outputs.run == 'true'
       - run: cargo check --locked --lib --no-default-features --features notify-os
-        if: steps.scope.outputs.run == 'true'
       # Every other adapter declares the same: llm-http carries tokio's timer.
       - run: cargo check --locked --lib --no-default-features --features llm-openai,llm-google,llm-ollama,llm-triton,llm-routellm
-        if: steps.scope.outputs.run == 'true'
       # mcp without output: serde_json keeps sorted maps.
       - run: cargo test --locked --no-default-features --features mcp
-        if: steps.scope.outputs.run == 'true'
       # Every feature alone, tests and examples included: a file that
       # names another feature's items without declaring it compiles
       # under --all-features and breaks for the consumer who enables
       # only its own. The list comes from Cargo.toml's [features].
       - run: scripts/check-rs-features.sh
-        if: steps.scope.outputs.run == 'true'
         working-directory: .
 
   php-test:
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1017,13 +904,13 @@ jobs:
       # phpunit when the change reaches the SDK (make test-php; its
       # CrossLangSmokeTest exclusion is documented there). The lock,
       # audit and lint steps above run on every change.
-      - id: scope
-        run: scripts/test-affected.sh --gate php
       - run: scripts/test-affected.sh php
-        if: steps.scope.outputs.run == 'true'
+        if: needs.changes.outputs.php == 'true'
 
   # ── Parity ────────────────────────────────────────────────────
   parity:
+    needs: changes
+    if: needs.changes.outputs.parity == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1033,32 +920,22 @@ jobs:
           # only; blobs arrive for the checked-out commit alone).
           fetch-depth: 0
           filter: blob:none
-      # Nothing this job tests changed: the steps below skip, the job
-      # stays green (see the header).
-      - id: scope
-        run: scripts/test-affected.sh --gate parity
       # Tool versions from mise.toml, as a local `mise install` gets them.
       - id: pins
-        if: steps.scope.outputs.run == 'true'
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: steps.scope.outputs.run == 'true'
         with:
           go-version-file: go.mod
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: steps.scope.outputs.run == 'true'
         with:
           node-version: ${{ steps.pins.outputs.node }}
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        if: steps.scope.outputs.run == 'true'
         with:
           version: ${{ steps.pins.outputs.pnpm }}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        if: steps.scope.outputs.run == 'true'
         with:
           python-version: ${{ steps.pins.outputs.python }}
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
-        if: steps.scope.outputs.run == 'true'
         with:
           version: ${{ steps.pins.outputs.uv }}
       # Rust toolchain + cache for the typeid-v1 contract loader and the Rust
@@ -1066,7 +943,6 @@ jobs:
       # test-parity (via test-parity-typeid) runs
       # `cargo test --features id --test contract` on every build.
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        if: steps.scope.outputs.run == 'true'
         with:
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read
@@ -1075,7 +951,6 @@ jobs:
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        if: steps.scope.outputs.run == 'true'
         with:
           workspaces: |
             sdk/rs
@@ -1085,34 +960,17 @@ jobs:
       # (needed by jewei/typeid-php), and ubuntu-latest
       # ships PHP 8.3 by default, so we pin explicitly.
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
-        if: steps.scope.outputs.run == 'true'
         with:
           php-version: '8.4'
       - run: pnpm install --frozen-lockfile --ignore-scripts
-        if: steps.scope.outputs.run == 'true'
       - run: cd sdk/py && uv sync --all-extras --locked
-        if: steps.scope.outputs.run == 'true'
       # The spaced parity harness builds the Rust demo; a missing
       # toolchain must fail here, never skip the Rust leg. The build goes
       # into the cached target directory.
       - run: scripts/test-affected.sh parity
-        if: steps.scope.outputs.run == 'true'
         env:
           PARITY_REQUIRE_RS: '1'
           PARITY_RS_TARGET_DIR: ${{ github.workspace }}/examples/spaced/rs/target
-
-  # ── Build + compliance ────────────────────────────────────────
-  compliance:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - run: go build -buildvcs=false -o spaced ./examples/spaced/go/
-      - run: ./spaced compliance --spec examples/spaced/spaced.toolspec.yaml --format json
 
   # ── Nightly report ─────────────────────────────────────────────
   # Pull requests run only the tests a change reaches; the nightly run
@@ -1122,7 +980,7 @@ jobs:
   # The failed jobs carry the red; this job fails only when it cannot
   # report.
   nightly-report:
-    needs: [go-lint, ts-lint, py-lint, rs-lint, docs-lint, sdk-paths-lint, adr-refs-lint, internal-refs-lint, actions-pinned-lint, toolchain-parity, bats-tests, templates-e2e, proto-check, template-kit-pin, go-test, go-race, ts-test, ts-node-floor, py-test, py-floor, rs-test, rs-toolchains, rs-wasm, rs-mobile, rs-features, php-test, parity, compliance]
+    needs: [changes, go-lint, ts-lint, py-lint, rs-lint, repo-lint, bats-tests, templates-e2e, go-test, go-race, ts-test, ts-node-floor, py-test, py-floor, rs-test, rs-toolchains, rs-wasm, rs-mobile, rs-features, php-test, parity]
     if: ${{ github.event_name == 'schedule' && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1188,3 +1046,13 @@ jobs:
           else
             gh issue create --title "$TITLE" --body "$body"
           fi
+
+  # The required check (`ci-ok / gate`). always() so it reports even when a
+  # job failed or was skipped; the shared gate fails on any failure or
+  # cancellation and passes success and skipped.
+  ci-ok:
+    if: always()
+    needs: [changes, go-lint, ts-lint, py-lint, rs-lint, repo-lint, bats-tests, templates-e2e, go-test, go-race, ts-test, ts-node-floor, py-test, py-floor, rs-test, rs-toolchains, rs-wasm, rs-mobile, rs-features, php-test, parity, nightly-report]
+    uses: hop-top/.github/.github/workflows/ci-gate.yml@96c50b6e371d15cd5fedab9951d1bd94db593fb1 # feat/ci-gate (hop-top/.github#112); re-pin to the release that ships it
+    with:
+      needs: ${{ toJSON(needs) }}
