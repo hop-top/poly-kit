@@ -337,6 +337,24 @@ func TestInfisicalIntegration(t *testing.T) {
 }
 ```
 
+## OAuth Access Tokens
+
+`secret/oauth` turns a grant held in a store into a cached, refreshed
+access token: `client_credentials`, `client_assertion` (certificate),
+`jwt_bearer` (service account) and rotating `refresh_token`.
+
+```go
+src, err := oauth.TokenSource(ctx, store, "app/graph")
+tok, err := src.Token(ctx) // refreshed when under 5 minutes remain
+// after a provider 401:
+src.Invalidate()
+```
+
+Rotating grants need a writable store (`keyring`, `file`, `openbao`);
+others fail with `oauth.ErrNotWritable`. On `oauth.ErrNeedsReconsent` run
+the PKCE consent again. Examples, the write-back table, error handling and
+limits: [OAuth token source](../concepts/oauth-token-source.md).
+
 ## Cross-Language Access
 
 TS/Python apps access secrets via kit's gRPC/HTTP serve layer:
