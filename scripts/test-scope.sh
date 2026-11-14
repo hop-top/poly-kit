@@ -31,8 +31,9 @@
 #
 #   --gate   file level only, no toolchain needed: the changed files that
 #            make the suite relevant, one per line (empty: skip). CI runs
-#            it before installing a toolchain; a gated-in go suite can
-#            still come out empty once packages are resolved.
+#            it once, in ci.yml's `changes` job, and skips a suite's
+#            jobs when it is empty; a gated-in go suite can still come
+#            out empty once packages are resolved.
 #
 # Exit:
 #   0  the units (empty: nothing to run)

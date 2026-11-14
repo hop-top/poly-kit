@@ -705,7 +705,7 @@ lint-lock-php: ## PHP: composer.lock consistent with composer.json (when either 
 # Changed-only like the rest of `lint`: it runs when composer.json or
 # composer.lock changed. An advisory published against an unchanged lock
 # is the vulnerability-scan workflow's job (osv-scanner reads
-# composer.lock on every pull request and weekly).
+# composer.lock on a pull request that changes a lockfile, and weekly).
 audit-php: ## PHP: composer.lock free of medium+ security advisories (when it changed)
 	@$(LINT_CHANGED) audit-php --cd $(PHP_SDK) --gate \
 		$(PHP_SDK)/composer.json $(PHP_SDK)/composer.lock \
@@ -716,8 +716,8 @@ audit-php: ## PHP: composer.lock free of medium+ security advisories (when it ch
 # same pins, same scope, same verdicts; text output instead of the
 # workflow's JSON/SARIF/Markdown artifacts. Every scan queries osv.dev or
 # vuln.go.dev, and an advisory can land without a code change, so `vuln` is
-# kept out of `check` and `lint`; CI gates it on every pull request and
-# weekly. `make -k` runs every scan before `vuln` fails, like the workflow's
+# kept out of `check` and `lint`; CI runs it on pushes and weekly (a pull
+# request runs osv-scanner, and only when a lockfile changed). `make -k` runs every scan before `vuln` fails, like the workflow's
 # independent jobs and fail-fast: false matrix.
 vuln: ## Run every vulnerability scan CI runs (needs network)
 	@$(MAKE) --no-print-directory -k vuln-osv vuln-go vuln-go-binary

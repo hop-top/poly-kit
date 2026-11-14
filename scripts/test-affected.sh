@@ -9,8 +9,9 @@
 #   scripts/test-affected.sh [suite...]   run (default: go ts py rs php bats parity)
 #   scripts/test-affected.sh --gate <scope suite>
 #                                         CI: run=true|false into
-#                                         $GITHUB_OUTPUT, before a job
-#                                         installs its toolchain
+#                                         $GITHUB_OUTPUT; ci.yml's `changes`
+#                                         job runs it per suite, and a test
+#                                         job is skipped when it is false
 #
 # Suites and what each runs:
 #   go              affected packages, go test -short (whole: make test-go)

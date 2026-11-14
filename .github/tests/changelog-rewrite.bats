@@ -88,9 +88,9 @@ job_block() {
 
 # A GITHUB_TOKEN push starts runs as github-actions[bot] that wait for
 # approval, so the release PR head would get no CI.
-@test "rewrite job checks out and pushes with the release-bot app token" {
+@test "changelog-ready job checks out and pushes with the release-bot app token" {
     local job
-    job="$(job_block rewrite)"
+    job="$(job_block changelog-ready)"
     [ -n "$job" ]
     grep -qF 'uses: actions/create-github-app-token@' <<<"$job"
     grep -qF 'token: ${{ steps.app-token.outputs.token }}' <<<"$job"
