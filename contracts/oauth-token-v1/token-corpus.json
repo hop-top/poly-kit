@@ -1,0 +1,357 @@
+{
+  "_comment": [
+    "Cached token (uma oauth2 envelope) corpus. valid: decode succeeds, expires_at_utc is the instant normalised to UTC (RFC 3339, fractional seconds only when non-zero), re-encode equals `doc` (or `encoded`) after normalising expires_at to UTC.",
+    "invalid: decode fails naming `field`. schema_gap as in grant-corpus.json."
+  ],
+  "cases": [
+    {
+      "name": "valid minimal",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z"
+      },
+      "expires_at_utc": "2030-01-02T03:04:05Z"
+    },
+    {
+      "name": "valid with user and authzid",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z",
+        "user": "user@example.test",
+        "authzid": "authz-1"
+      },
+      "expires_at_utc": "2030-01-02T03:04:05Z"
+    },
+    {
+      "name": "valid offset time",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05+02:00"
+      },
+      "expires_at_utc": "2030-01-02T01:04:05Z"
+    },
+    {
+      "name": "valid negative offset",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05-05:30"
+      },
+      "expires_at_utc": "2030-01-02T08:34:05Z"
+    },
+    {
+      "name": "valid fractional seconds",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05.123456789Z"
+      },
+      "expires_at_utc": "2030-01-02T03:04:05.123456789Z"
+    },
+    {
+      "name": "valid empty user omitted on encode",
+      "valid": true,
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z",
+        "user": ""
+      },
+      "expires_at_utc": "2030-01-02T03:04:05Z",
+      "encoded": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z"
+      }
+    },
+    {
+      "name": "empty input",
+      "valid": false,
+      "field": "",
+      "raw": ""
+    },
+    {
+      "name": "not json",
+      "valid": false,
+      "field": "",
+      "raw": "nope"
+    },
+    {
+      "name": "array",
+      "valid": false,
+      "field": "",
+      "raw": "[]"
+    },
+    {
+      "name": "null",
+      "valid": false,
+      "field": "",
+      "raw": "null"
+    },
+    {
+      "name": "trailing data",
+      "valid": false,
+      "field": "",
+      "raw": "{\"v\": 1, \"kind\": \"oauth2\", \"access_token\": \"fake-access-token-1\", \"expires_at\": \"2030-01-02T03:04:05Z\"} {}"
+    },
+    {
+      "name": "unknown field",
+      "valid": false,
+      "field": "",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z",
+        "refresh_token": "fake-refresh-token-1"
+      }
+    },
+    {
+      "name": "unknown field token_type",
+      "valid": false,
+      "field": "",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z",
+        "token_type": "Bearer"
+      }
+    },
+    {
+      "name": "missing v",
+      "valid": false,
+      "field": "v",
+      "doc": {
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z"
+      }
+    },
+    {
+      "name": "v two",
+      "valid": false,
+      "field": "v",
+      "doc": {
+        "v": 2,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z"
+      }
+    },
+    {
+      "name": "v string",
+      "valid": false,
+      "field": "v",
+      "doc": {
+        "v": "1",
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z"
+      }
+    },
+    {
+      "name": "missing kind",
+      "valid": false,
+      "field": "kind",
+      "doc": {
+        "v": 1,
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z"
+      }
+    },
+    {
+      "name": "kind secret",
+      "valid": false,
+      "field": "kind",
+      "doc": {
+        "v": 1,
+        "kind": "secret",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z"
+      }
+    },
+    {
+      "name": "kind wrong case",
+      "valid": false,
+      "field": "kind",
+      "doc": {
+        "v": 1,
+        "kind": "OAuth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z"
+      }
+    },
+    {
+      "name": "kind number",
+      "valid": false,
+      "field": "kind",
+      "doc": {
+        "v": 1,
+        "kind": 2,
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z"
+      }
+    },
+    {
+      "name": "missing access_token",
+      "valid": false,
+      "field": "access_token",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "expires_at": "2030-01-02T03:04:05Z"
+      }
+    },
+    {
+      "name": "empty access_token",
+      "valid": false,
+      "field": "access_token",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "",
+        "expires_at": "2030-01-02T03:04:05Z"
+      }
+    },
+    {
+      "name": "access_token number",
+      "valid": false,
+      "field": "access_token",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": 7,
+        "expires_at": "2030-01-02T03:04:05Z"
+      }
+    },
+    {
+      "name": "missing expires_at",
+      "valid": false,
+      "field": "expires_at",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1"
+      }
+    },
+    {
+      "name": "empty expires_at",
+      "valid": false,
+      "field": "expires_at",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": ""
+      }
+    },
+    {
+      "name": "expires_at number",
+      "valid": false,
+      "field": "expires_at",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": 1893553445
+      }
+    },
+    {
+      "name": "expires_at not a time",
+      "valid": false,
+      "field": "expires_at",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "tomorrow"
+      }
+    },
+    {
+      "name": "expires_at no zone",
+      "valid": false,
+      "field": "expires_at",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05"
+      }
+    },
+    {
+      "name": "expires_at date only",
+      "valid": false,
+      "field": "expires_at",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02"
+      }
+    },
+    {
+      "name": "expires_at month 13",
+      "valid": false,
+      "field": "expires_at",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-13-02T03:04:05Z"
+      },
+      "schema_gap": true
+    },
+    {
+      "name": "expires_at zero time",
+      "valid": false,
+      "field": "expires_at",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "0001-01-01T00:00:00Z"
+      },
+      "schema_gap": true
+    },
+    {
+      "name": "user number",
+      "valid": false,
+      "field": "user",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z",
+        "user": 1
+      }
+    },
+    {
+      "name": "authzid number",
+      "valid": false,
+      "field": "authzid",
+      "doc": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z",
+        "authzid": 1
+      }
+    }
+  ]
+}

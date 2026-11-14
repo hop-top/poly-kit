@@ -1,0 +1,276 @@
+{
+  "_comment": [
+    "Digest = first 16 lowercase hex chars of SHA-256 over `canonical`: JSON object with keys client_cert_ref, client_id, client_secret_ref, kind, scopes (sorted ascending by bytes, always an array), secret_ref, subject, token_url in that (alphabetical) order, no whitespace, absent strings as \"\", JSON string escaping per RFC 8259 minimal form plus \\u2028 and \\u2029, no HTML escaping.",
+    "token_key = ref + \".token.\" + digest."
+  ],
+  "vectors": [
+    {
+      "name": "scopes sorted",
+      "grant": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "mail.read",
+          "calendars.read"
+        ],
+        "subject": "user@example.test"
+      },
+      "canonical": "{\"client_cert_ref\":\"\",\"client_id\":\"client-1\",\"client_secret_ref\":\"\",\"kind\":\"client_credentials\",\"scopes\":[\"calendars.read\",\"mail.read\"],\"secret_ref\":\"uma/t/secret\",\"subject\":\"user@example.test\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "f6395ad51cfa40c3",
+      "ref": "uma/t/oauth",
+      "token_key": "uma/t/oauth.token.f6395ad51cfa40c3"
+    },
+    {
+      "name": "scope order does not matter",
+      "grant": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "calendars.read",
+          "mail.read"
+        ],
+        "subject": "user@example.test"
+      },
+      "canonical": "{\"client_cert_ref\":\"\",\"client_id\":\"client-1\",\"client_secret_ref\":\"\",\"kind\":\"client_credentials\",\"scopes\":[\"calendars.read\",\"mail.read\"],\"secret_ref\":\"uma/t/secret\",\"subject\":\"user@example.test\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "f6395ad51cfa40c3",
+      "ref": "uma/t/oauth",
+      "token_key": "uma/t/oauth.token.f6395ad51cfa40c3",
+      "note": "same digest as previous"
+    },
+    {
+      "name": "kind and secret_ref matter",
+      "grant": {
+        "v": 1,
+        "kind": "refresh_token",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/other/refresh",
+        "scopes": [
+          "mail.read",
+          "calendars.read"
+        ],
+        "subject": "user@example.test"
+      },
+      "canonical": "{\"client_cert_ref\":\"\",\"client_id\":\"client-1\",\"client_secret_ref\":\"\",\"kind\":\"refresh_token\",\"scopes\":[\"calendars.read\",\"mail.read\"],\"secret_ref\":\"uma/other/refresh\",\"subject\":\"user@example.test\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "94ee45f5ee826206",
+      "ref": "uma/t/oauth",
+      "token_key": "uma/t/oauth.token.94ee45f5ee826206",
+      "note": "different digest from the first vector: kind and secret_ref are in the digest"
+    },
+    {
+      "name": "client_secret_ref matters",
+      "grant": {
+        "v": 1,
+        "kind": "refresh_token",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "mail.read",
+          "calendars.read"
+        ],
+        "subject": "user@example.test",
+        "client_secret_ref": "uma/t/client-secret"
+      },
+      "canonical": "{\"client_cert_ref\":\"\",\"client_id\":\"client-1\",\"client_secret_ref\":\"uma/t/client-secret\",\"kind\":\"refresh_token\",\"scopes\":[\"calendars.read\",\"mail.read\"],\"secret_ref\":\"uma/t/secret\",\"subject\":\"user@example.test\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "95e6622a95751693",
+      "ref": "uma/t/oauth",
+      "token_key": "uma/t/oauth.token.95e6622a95751693",
+      "note": "different digest from the same grant without client_secret_ref"
+    },
+    {
+      "name": "secret_ref repointed",
+      "grant": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/other-secret",
+        "scopes": [
+          "mail.read",
+          "calendars.read"
+        ],
+        "subject": "user@example.test"
+      },
+      "canonical": "{\"client_cert_ref\":\"\",\"client_id\":\"client-1\",\"client_secret_ref\":\"\",\"kind\":\"client_credentials\",\"scopes\":[\"calendars.read\",\"mail.read\"],\"secret_ref\":\"uma/t/other-secret\",\"subject\":\"user@example.test\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "7ea16336687fc1fb",
+      "ref": "uma/t/oauth",
+      "token_key": "uma/t/oauth.token.7ea16336687fc1fb",
+      "note": "same grant as the first vector with another secret_ref: different digest"
+    },
+    {
+      "name": "client_assertion with client_cert_ref",
+      "grant": {
+        "v": 1,
+        "kind": "client_assertion",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "client_cert_ref": "uma/t/cert",
+        "scopes": [
+          "mail.read"
+        ]
+      },
+      "canonical": "{\"client_cert_ref\":\"uma/t/cert\",\"client_id\":\"client-1\",\"client_secret_ref\":\"\",\"kind\":\"client_assertion\",\"scopes\":[\"mail.read\"],\"secret_ref\":\"\",\"subject\":\"\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "ddbe04dd0b1c91fa",
+      "ref": "uma/t/oauth",
+      "token_key": "uma/t/oauth.token.ddbe04dd0b1c91fa"
+    },
+    {
+      "name": "client_cert_ref repointed",
+      "grant": {
+        "v": 1,
+        "kind": "client_assertion",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "client_cert_ref": "uma/t/cert-2",
+        "scopes": [
+          "mail.read"
+        ]
+      },
+      "canonical": "{\"client_cert_ref\":\"uma/t/cert-2\",\"client_id\":\"client-1\",\"client_secret_ref\":\"\",\"kind\":\"client_assertion\",\"scopes\":[\"mail.read\"],\"secret_ref\":\"\",\"subject\":\"\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "80f2652753b4dd9f",
+      "ref": "uma/t/oauth",
+      "token_key": "uma/t/oauth.token.80f2652753b4dd9f",
+      "note": "same grant as the previous vector with another client_cert_ref: different digest"
+    },
+    {
+      "name": "ref only prefixes the key",
+      "grant": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "mail.read",
+          "calendars.read"
+        ],
+        "subject": "user@example.test"
+      },
+      "canonical": "{\"client_cert_ref\":\"\",\"client_id\":\"client-1\",\"client_secret_ref\":\"\",\"kind\":\"client_credentials\",\"scopes\":[\"calendars.read\",\"mail.read\"],\"secret_ref\":\"uma/t/secret\",\"subject\":\"user@example.test\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "f6395ad51cfa40c3",
+      "ref": "uma/other/ref",
+      "token_key": "uma/other/ref.token.f6395ad51cfa40c3"
+    },
+    {
+      "name": "different subject",
+      "grant": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "scopes": [
+          "mail.read",
+          "calendars.read"
+        ],
+        "subject": "other@example.test"
+      },
+      "canonical": "{\"client_cert_ref\":\"\",\"client_id\":\"client-1\",\"client_secret_ref\":\"\",\"kind\":\"client_credentials\",\"scopes\":[\"calendars.read\",\"mail.read\"],\"secret_ref\":\"uma/t/secret\",\"subject\":\"other@example.test\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "65237d98ae8168c0",
+      "ref": "uma/t/oauth",
+      "token_key": "uma/t/oauth.token.65237d98ae8168c0"
+    },
+    {
+      "name": "no scopes encodes empty array",
+      "grant": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret"
+      },
+      "canonical": "{\"client_cert_ref\":\"\",\"client_id\":\"client-1\",\"client_secret_ref\":\"\",\"kind\":\"client_credentials\",\"scopes\":[],\"secret_ref\":\"uma/t/secret\",\"subject\":\"\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "ec0ccb43d9d4f31a",
+      "ref": "uma/t/oauth",
+      "token_key": "uma/t/oauth.token.ec0ccb43d9d4f31a"
+    },
+    {
+      "name": "jwt_bearer without client_id",
+      "grant": {
+        "v": 1,
+        "kind": "jwt_bearer",
+        "token_url": "https://idp.example/oauth2/token",
+        "secret_ref": "uma/t/secret",
+        "subject": "admin@example.test",
+        "scopes": [
+          "https://api.example/auth/mail"
+        ]
+      },
+      "canonical": "{\"client_cert_ref\":\"\",\"client_id\":\"\",\"client_secret_ref\":\"\",\"kind\":\"jwt_bearer\",\"scopes\":[\"https://api.example/auth/mail\"],\"secret_ref\":\"uma/t/secret\",\"subject\":\"admin@example.test\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "fc1d0aaad8f14a13",
+      "ref": "uma/t/sa",
+      "token_key": "uma/t/sa.token.fc1d0aaad8f14a13"
+    },
+    {
+      "name": "html characters not escaped",
+      "grant": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/token?a=1&b=2",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "subject": "a&b<c>@example.test"
+      },
+      "canonical": "{\"client_cert_ref\":\"\",\"client_id\":\"client-1\",\"client_secret_ref\":\"\",\"kind\":\"client_credentials\",\"scopes\":[],\"secret_ref\":\"uma/t/secret\",\"subject\":\"a&b<c>@example.test\",\"token_url\":\"https://idp.example/token?a=1&b=2\"}",
+      "digest": "5fae7a0b6063996f",
+      "ref": "uma/t/oauth",
+      "token_key": "uma/t/oauth.token.5fae7a0b6063996f",
+      "note": "Go json escapes <>& by default; canonical form MUST NOT"
+    },
+    {
+      "name": "non-ascii kept as UTF-8",
+      "grant": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "subject": "zoé@example.test"
+      },
+      "canonical": "{\"client_cert_ref\":\"\",\"client_id\":\"client-1\",\"client_secret_ref\":\"\",\"kind\":\"client_credentials\",\"scopes\":[],\"secret_ref\":\"uma/t/secret\",\"subject\":\"zoé@example.test\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "9f7378a0d1b1be41",
+      "ref": "uma/t/oauth",
+      "token_key": "uma/t/oauth.token.9f7378a0d1b1be41",
+      "note": "no \\u escaping of non-ASCII"
+    },
+    {
+      "name": "quote and backslash escaped",
+      "grant": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "subject": "a\"b\\c"
+      },
+      "canonical": "{\"client_cert_ref\":\"\",\"client_id\":\"client-1\",\"client_secret_ref\":\"\",\"kind\":\"client_credentials\",\"scopes\":[],\"secret_ref\":\"uma/t/secret\",\"subject\":\"a\\\"b\\\\c\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "74239d5e18faef6e",
+      "ref": "uma/t/oauth",
+      "token_key": "uma/t/oauth.token.74239d5e18faef6e",
+      "note": "standard JSON escapes"
+    },
+    {
+      "name": "line separator escaped",
+      "grant": {
+        "v": 1,
+        "kind": "client_credentials",
+        "token_url": "https://idp.example/oauth2/token",
+        "client_id": "client-1",
+        "secret_ref": "uma/t/secret",
+        "subject": "a b c"
+      },
+      "canonical": "{\"client_cert_ref\":\"\",\"client_id\":\"client-1\",\"client_secret_ref\":\"\",\"kind\":\"client_credentials\",\"scopes\":[],\"secret_ref\":\"uma/t/secret\",\"subject\":\"a\\u2028b\\u2029c\",\"token_url\":\"https://idp.example/oauth2/token\"}",
+      "digest": "f7c79ec9957560f7",
+      "ref": "uma/t/oauth",
+      "token_key": "uma/t/oauth.token.f7c79ec9957560f7",
+      "note": "U+2028 and U+2029 are written as \\u2028 and \\u2029"
+    }
+  ]
+}

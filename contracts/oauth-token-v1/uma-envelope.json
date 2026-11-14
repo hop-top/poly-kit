@@ -1,0 +1,80 @@
+{
+  "_comment": [
+    "Cached token <-> uma `oauth2` credential envelope. `token` is the logical value (access_token, expires_at as any RFC 3339 instant, optional user, authzid); `envelope` is what is stored.",
+    "encode(token) MUST equal envelope as JSON (key order not significant); decode(envelope) MUST yield token with expires_at the same instant.",
+    "Empty user/authzid are omitted. No other field is ever written: uma rejects unknown fields, so refresh tokens and token types never enter this envelope."
+  ],
+  "pairs": [
+    {
+      "name": "access token and utc expiry",
+      "token": {
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z"
+      },
+      "envelope": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-1",
+        "expires_at": "2030-01-02T03:04:05Z"
+      }
+    },
+    {
+      "name": "offset normalised to utc",
+      "token": {
+        "access_token": "fake-access-token-2",
+        "expires_at": "2030-01-02T03:04:05+02:00"
+      },
+      "envelope": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-2",
+        "expires_at": "2030-01-02T01:04:05Z"
+      }
+    },
+    {
+      "name": "nanoseconds kept, trailing zeros trimmed",
+      "token": {
+        "access_token": "fake-access-token-3",
+        "expires_at": "2030-01-02T03:04:05.120000000Z"
+      },
+      "envelope": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-3",
+        "expires_at": "2030-01-02T03:04:05.12Z"
+      }
+    },
+    {
+      "name": "user maps to user",
+      "token": {
+        "access_token": "fake-access-token-4",
+        "expires_at": "2030-01-02T03:04:05Z",
+        "user": "user@example.test"
+      },
+      "envelope": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-4",
+        "expires_at": "2030-01-02T03:04:05Z",
+        "user": "user@example.test"
+      }
+    },
+    {
+      "name": "authzid maps to authzid",
+      "token": {
+        "access_token": "fake-access-token-5",
+        "expires_at": "2030-01-02T03:04:05Z",
+        "user": "user@example.test",
+        "authzid": "authz-1"
+      },
+      "envelope": {
+        "v": 1,
+        "kind": "oauth2",
+        "access_token": "fake-access-token-5",
+        "expires_at": "2030-01-02T03:04:05Z",
+        "user": "user@example.test",
+        "authzid": "authz-1"
+      }
+    }
+  ]
+}
