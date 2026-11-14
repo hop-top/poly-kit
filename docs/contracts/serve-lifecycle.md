@@ -1147,6 +1147,15 @@ of any of them.
   distinct from the destructive ceiling's `403 destructive_blocked`
   and `BLOCKED`, because different people fix them. Over RPC both
   are `permission_denied`, told apart by the message's sentinel.
+- A decision MAY mark its refusal `Unauthenticated`: the verified
+  credential maps to no admitted principal. The bridge then returns
+  `ErrAuthRefused`, not `ErrPermissionDenied` (one sentinel, never
+  both), and every surface answers the unauthenticated class as it
+  answers a failed credential (401 with `WWW-Authenticate`,
+  `Unauthenticated`, `UNAUTHENTICATED`). It precedes the rate limiter
+  and spends nothing. Sinks receive the error, so the record names the
+  class and carries the decision's reason; the credential is in
+  neither.
 - The shared listing — the one served to a request whose caller
   nobody established — MUST keep a command invocable when the verdict
   depends on the caller; it cannot know who will call. A decision

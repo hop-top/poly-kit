@@ -713,6 +713,34 @@ Its refusal is `403 permission_denied` with your reason:
 {"status":403,"code":"permission_denied","message":"api: permission denied: cmdsurface: permission denied: widget purge on rest: account suspended"}
 ```
 
+A caller who authenticated but whom your account system does not
+know, or knows as inactive, is not a caller without entitlement: you
+do not know who is asking. Say so with `Unauthenticated: true`, and
+every surface answers it as it answers a failed credential:
+
+```go
+func admitted(_ context.Context, meta cmdsurface.Meta, _ *cmdsurface.Leaf) cmdsurface.PermissionDecision {
+    switch accountState(meta.Caller) {
+    case unknown:
+        return cmdsurface.PermissionDecision{Reason: "unknown_principal", Unauthenticated: true}
+    case inactive:
+        return cmdsurface.PermissionDecision{Reason: "principal_inactive", Unauthenticated: true}
+    }
+    return cmdsurface.PermissionDecision{Allowed: true}
+}
+```
+
+The answer is `401 unauthenticated` with a `WWW-Authenticate`
+challenge over REST, `Unauthenticated` over Connect, gRPC and
+gRPC-Web, `UNAUTHENTICATED` over the socket, and an `isError` result
+over MCP; the message carries your reason and names the command. The
+audit record is the authentication class (`ErrAuthRefused`, refusal
+code `unauthenticated`) with the same reason, so a reader can tell an
+unknown principal from a missing token. The reason is the caller's to
+read, so make it a stable word that says nothing about other accounts.
+Such a refusal spends no rate-limit token and is not counted, like any
+failure before the permission gate.
+
 Over the socket, without an authenticator, `caller` is what the
 request claimed: a decision that trusts `Meta.Caller` there is
 trusting the caller's word. Decide on what the transport verified, or

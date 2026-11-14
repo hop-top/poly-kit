@@ -353,6 +353,9 @@ func oauthWriteError(w http.ResponseWriter, p OAuthProvider, status int, code, m
 // unknown, disabled or non-invocable one is the server's fault (500).
 func oauthWriteInvokeError(w http.ResponseWriter, p OAuthProvider, err error) {
 	switch {
+	case errors.Is(err, ErrAuthRefused):
+		w.Header().Set("WWW-Authenticate", api.DefaultAuthChallenge)
+		oauthWriteError(w, p, http.StatusUnauthorized, api.CodeUnauthenticated, err.Error())
 	case errors.Is(err, ErrUnknownCommand):
 		oauthWriteError(w, p, http.StatusInternalServerError, "unknown_command", err.Error())
 	case errors.Is(err, ErrSurfaceNotEnabled):

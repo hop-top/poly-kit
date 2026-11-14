@@ -2,7 +2,6 @@ package cmdsurface
 
 import (
 	"context"
-	"fmt"
 
 	"hop.top/kit/go/transport/cmdsurface/admitted"
 	"hop.top/kit/internal/admittedctx"
@@ -84,7 +83,9 @@ func AdmittedMeta(ctx context.Context) (Meta, bool) {
 // without running, charging or auditing anything: the built-in scope
 // check, then the [PermissionFunc], asked on a probe context. It
 // returns the refusal the gate would return — an error wrapping
-// [ErrInsufficientScope] or [ErrPermissionDenied] — or nil.
+// [ErrInsufficientScope], [ErrPermissionDenied] or, for a decision
+// marked [PermissionDecision.Unauthenticated], [ErrAuthRefused] — or
+// nil.
 //
 // Discovery asks it to describe what the calling principal may run.
 // The answer is advisory: the call itself still meets every gate.
@@ -96,8 +97,7 @@ func (b *Bridge) Verdict(ctx context.Context, meta Meta, leaf *Leaf) error {
 		return err
 	}
 	if dec := b.Permission(ProbeContext(ctx), meta, leaf); !dec.Allowed {
-		return fmt.Errorf("%w: %s on %s: %s",
-			ErrPermissionDenied, leaf.PathKey(), meta.Surface, dec.Reason)
+		return permissionRefusal(dec, leaf, meta.Surface)
 	}
 	return nil
 }

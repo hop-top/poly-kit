@@ -230,6 +230,18 @@ type PermissionDecision struct {
 	// can only refuse. A caller-specific refusal must leave it
 	// false, or the command disappears for callers who are allowed.
 	CallerIndependent bool
+	// Unauthenticated marks a refusal as an authentication failure
+	// rather than a lack of entitlement: the caller the transport
+	// verified is not a principal the host admits (it maps to nobody,
+	// or to an inactive account), so the host does not know who is
+	// asking. The bridge then refuses with [ErrAuthRefused], the
+	// class a failed credential gets, instead of [ErrPermissionDenied]:
+	// 401 with WWW-Authenticate over HTTP, Unauthenticated over
+	// Connect and gRPC, UNAUTHENTICATED over the socket, an isError
+	// result over MCP. Reason travels with it, to the caller and to
+	// audit sinks, as for any refusal; the credential never does.
+	// Ignored when Allowed.
+	Unauthenticated bool
 }
 
 // PermissionFunc decides whether the principal described by meta
