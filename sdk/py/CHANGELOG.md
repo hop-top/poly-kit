@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.9...kit-py/v0.5.0-alpha.10) (2026-11-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **rs/upgrade:** CheckResult gains pub field tag; Checker::check and check_async take FnMut, not FnOnce.
+* **py/cli:** unannotated destructive-named commands need --confirm; malformed side-effect tags refused; reserved global names raise ValueError
+* **py/cli:** unannotated destructive-named commands refused without --confirm
+* **py/mcp:** unannotated destructive-named leaves now blocked on remote surfaces
+
+### Features
+
+* **py/cli:** delegation gate + policy engine ([a06fc65](https://github.com/hop-top/poly-kit/commit/a06fc65ddb5f0e9596dcecc2ac92ff36a4aa92a2))
+* **py/cli:** wire delegation gate into create_app ([429927b](https://github.com/hop-top/poly-kit/commit/429927be55cb859a54da56d6c4f1c328e55cb6ec))
+* **py/mcp:** infer destructive from leaf name in safety gate ([70b764c](https://github.com/hop-top/poly-kit/commit/70b764cfc5c38858af18bf3616bc6e8f4071c05b))
+* **py/upgrade:** result-returning check() ([b212133](https://github.com/hop-top/poly-kit/commit/b212133e1e072b95efe93404e979052abdef2bb8))
+* **py/upgrade:** tag_prefix and include_prereleases options ([52692c1](https://github.com/hop-top/poly-kit/commit/52692c18c4ac7fa0c3c91b57218b6f3dbf99bd6e))
+* **rs/upgrade:** CheckConfig tag_prefix and include_prereleases ([a1a9019](https://github.com/hop-top/poly-kit/commit/a1a90195b23aac0b42e6c2593f2f8562d7dbed7a))
+
+
+### Bug Fixes
+
+* **deps:** opentelemetry-api 1.45.2 in sdk/py ([f302d51](https://github.com/hop-top/poly-kit/commit/f302d5110182a52e98aef281b110a6626bdf9482))
+* **py/cli:** leaf-local confirm and max-ops follow Go ([c6674fb](https://github.com/hop-top/poly-kit/commit/c6674fb6f50309be55575de15ffa263e07727f7a))
+* **py:** resync vendored parity.json with canonical contract ([105cbb1](https://github.com/hop-top/poly-kit/commit/105cbb18f813c6b57b3b65708435d7e642835222))
+* **ts,py/cli:** inferred dry-run plan matches Go, drop stale skip ([b96cba3](https://github.com/hop-top/poly-kit/commit/b96cba3816a8f21fb2f7b1c900a8240439a8b7c0))
+
 ## [0.5.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.8...kit-py/v0.5.0-alpha.9) (2026-10-30)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.9. This release includes maintenance release with bug fixes.
