@@ -1,18 +1,23 @@
 name: Changelog Rewrite
 
-# Post-processing for release-please PRs, run in order on the bot's branch:
-#   rewrite   — rewrite changelog prose
-#   lockfiles — regenerate uv.lock / composer.lock when release-please bumped
+# Post-processing for release-please PRs, one job (`changelog-ready`; the check
+# a release PR needs before it merges) with two stages in order on the bot's
+# branch:
+#   rewrite changelogs — rewrite changelog prose
+#   regenerate lockfiles — uv.lock / composer.lock when release-please bumped
 #               pyproject.toml / composer.json
-# Both push with the release-bot app token, so CI runs on the new head. A push
-# made with GITHUB_TOKEN starts runs as github-actions[bot], which wait for
-# maintainer approval (`action_required`) and leave the head without CI.
+# Both push with the release-bot app token (the checkout persists it), so CI
+# runs on the new head. A push made with GITHUB_TOKEN starts runs as
+# github-actions[bot], which wait for maintainer approval (`action_required`)
+# and leave the head without CI. GITHUB_TOKEN itself only reads, so the job
+# asks for no write permission.
 #
 # Each push fires `synchronize` and a new run of this workflow. That run
-# commits nothing: the rewrite marker makes `rewrite` a no-op, and `lockfiles`
-# finds the locks in sync. The concurrency group cancels the older run, so the
-# two runs never push `lockfiles` commits from the same head. release-please
-# rewrites its branch on every run and the cycle starts fresh from there.
+# commits nothing: the rewrite marker makes the rewrite stage a no-op, and the
+# lockfile stage finds the locks in sync. The concurrency group cancels the
+# older run, so the two runs never push lockfile commits from the same head.
+# release-please rewrites its branch on every run and the cycle starts fresh
+# from there.
 
 on:
   pull_request:
@@ -25,7 +30,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  rewrite:
+  changelog-ready:
     if: startsWith(github.head_ref, 'release-please--')
     runs-on: ubuntu-latest
     permissions:
@@ -43,11 +48,11 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
-          # persist-credentials intentionally left on: the commit step below
-          # pushes with the app token so the resulting commit runs CI.
+          # persist-credentials intentionally left on: the commit steps below
+          # push with the app token so the resulting commit runs CI.
 
       - name: Detect modified changelogs
-        id: detect
+        id: changelogs
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         # `:(glob)` magic: `**/` then matches zero or more directories, so the
@@ -59,17 +64,19 @@ jobs:
             echo "No changelogs modified"
             echo "found=false" >> "$GITHUB_OUTPUT"
           else
-            echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "files<<EOF" >> "$GITHUB_OUTPUT"
-            echo "$FILES" >> "$GITHUB_OUTPUT"
-            echo "EOF" >> "$GITHUB_OUTPUT"
+            {
+              echo "found=true"
+              echo "files<<EOF"
+              echo "$FILES"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Rewrite changelogs
-        if: steps.detect.outputs.found == 'true'
+        if: steps.changelogs.outputs.found == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CHANGELOG_FILES: ${{ steps.detect.outputs.files }}
+          CHANGELOG_FILES: ${{ steps.changelogs.outputs.files }}
         run: |
           chmod +x scripts/rewrite-changelog.sh
 
@@ -90,7 +97,7 @@ jobs:
           done <<< "$CHANGELOG_FILES"
 
       - name: Commit rewritten changelogs
-        if: steps.detect.outputs.found == 'true'
+        if: steps.changelogs.outputs.found == 'true'
         run: |
           git config user.name "hop-top-release-bot[bot]"
           git config user.email \
@@ -104,34 +111,14 @@ jobs:
             git push
           fi
 
-  lockfiles:
-    needs: rewrite
-    if: startsWith(github.head_ref, 'release-please--')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: read
-    steps:
-      # release-please's extra-files bump pyproject.toml / composer.json but
-      # cannot regenerate the lockfiles those manifests are hashed into, so
-      # every release PR would fail `uv lock --check` / `composer validate
-      # --check-lock` and leave the base branch inconsistent after merge.
-      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        id: app-token
-        with:
-          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
-          # persist-credentials intentionally left on: the push below relies
-          # on the app token so the resulting commit retriggers CI.
-
+      # Lockfiles. release-please's extra-files bump pyproject.toml /
+      # composer.json but cannot regenerate the lockfiles those manifests are
+      # hashed into, so every release PR would fail `uv lock --check` /
+      # `composer validate --check-lock` and leave the base branch
+      # inconsistent after merge. The checkout above is the rewrite stage's
+      # head, so a changelog commit it pushed is in the tree these steps use.
       - name: Detect bumped lock-backed manifests
-        id: detect
+        id: locks
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
@@ -145,31 +132,31 @@ jobs:
       # Tool versions from mise.toml, as ci.yml and a local `mise install`
       # get them; uv's version decides the lockfile it writes.
       - id: pins
-        if: steps.detect.outputs.py == 'true'
+        if: steps.locks.outputs.py == 'true'
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        if: steps.detect.outputs.py == 'true'
+        if: steps.locks.outputs.py == 'true'
         with:
           python-version: ${{ steps.pins.outputs.python }}
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
-        if: steps.detect.outputs.py == 'true'
+        if: steps.locks.outputs.py == 'true'
         with:
           version: ${{ steps.pins.outputs.uv }}
       - name: Regenerate uv.lock
-        if: steps.detect.outputs.py == 'true'
+        if: steps.locks.outputs.py == 'true'
         run: cd sdk/py && uv lock
 
       # sdk/experimental/php requires php ^8.4; matches ci.yml.
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
-        if: steps.detect.outputs.php == 'true'
+        if: steps.locks.outputs.php == 'true'
         with:
           php-version: '8.4'
       - name: Regenerate composer.lock
-        if: steps.detect.outputs.php == 'true'
+        if: steps.locks.outputs.php == 'true'
         run: cd sdk/experimental/php && composer update --lock --no-interaction
 
       - name: Commit synced lockfiles
-        if: steps.detect.outputs.py == 'true' || steps.detect.outputs.php == 'true'
+        if: steps.locks.outputs.py == 'true' || steps.locks.outputs.php == 'true'
         run: |
           git config user.name "hop-top-release-bot[bot]"
           git config user.email \
@@ -181,10 +168,3 @@ jobs:
             git commit -m "build(deps): sync lockfiles after version bump"
             git push
           fi
-
-  changelog-ready:
-    needs: rewrite
-    runs-on: ubuntu-latest
-    if: startsWith(github.head_ref, 'release-please--')
-    steps:
-      - run: echo "Changelog rewrite complete"
