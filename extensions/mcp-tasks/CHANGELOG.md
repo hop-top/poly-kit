@@ -2,10 +2,14 @@
 
 ## [0.1.0-alpha.3](https://github.com/hop-top/poly-kit/compare/mcp-tasks/v0.1.0-alpha.2...mcp-tasks/v0.1.0-alpha.3) (2026-11-14)
 
+The hop-top team is happy to announce Kit 0.1.0-alpha.3. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
 * **deps:** go 1.27.4 toolchain for GO-2026-6859 ([3787e94](https://github.com/hop-top/poly-kit/commit/3787e94a86de0f9e8e337237ab66626e7072d7ce))
+
+Full diff: [mcp-tasks/v0.1.0-alpha.2...mcp-tasks/v0.1.0-alpha.3](https://github.com/hop-top/poly-kit/compare/mcp-tasks/v0.1.0-alpha.2...mcp-tasks/v0.1.0-alpha.3)
 
 ## [0.1.0-alpha.2](https://github.com/hop-top/poly-kit/compare/mcp-tasks/v0.1.0-alpha.1...mcp-tasks/v0.1.0-alpha.2) (2026-10-28)
 
