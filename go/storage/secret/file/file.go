@@ -125,7 +125,7 @@ func (s *Store) Set(ctx context.Context, key string, value []byte) error {
 			return err
 		}
 	}
-	return os.WriteFile(p, data, 0600)
+	return writeAtomic(p, data)
 }
 
 // matchesPrefix reports whether key matches the given prefix respecting
