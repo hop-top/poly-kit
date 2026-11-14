@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.6...kit-rs/v0.5.0-alpha.7) (2026-11-14)
 
+The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.7. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -32,6 +34,8 @@
 * **rs:** repoint paths for modules added before the move ([b833856](https://github.com/hop-top/poly-kit/commit/b8338560ef793c40c490c39c6dc64a1f9711e54b))
 * **rs:** serialize PATH-dependent osnotify tests ([60a9034](https://github.com/hop-top/poly-kit/commit/60a9034e1c7b961b6bf51bfd5c017f5770853faf))
 * **rs:** value flag takes a dash-leading value ([62cdcec](https://github.com/hop-top/poly-kit/commit/62cdcecbd80adb34bdf1c033a292a0463c5493f9))
+
+Full diff: [kit-rs/v0.5.0-alpha.6...kit-rs/v0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.6...kit-rs/v0.5.0-alpha.7)
 
 ## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.5...kit-rs/v0.5.0-alpha.6) (2026-10-30)
 
