@@ -38,7 +38,9 @@ var ErrPermissionDenied = errors.New("cmdsurface: permission denied")
 // The bridge returns it from its authentication gate, when a leaf
 // declaring kit/auth-required is invoked on a remote surface by a
 // caller whose [Meta] carries no established identity (see
-// [Meta.Established]). A transport reports it through [Bridge.Audit]
+// [Meta.Established]), and from its permission gate when the
+// [PermissionFunc] marks a refusal [PermissionDecision.Unauthenticated].
+// A transport reports it through [Bridge.Audit]
 // when it refuses a request before the bridge is reached because a
 // presented credential failed verification. Either way the refusal
 // reaches the same sinks: one stream carries "not authenticated",
@@ -456,7 +458,10 @@ func matchPattern(pattern string, path []string) bool {
 //     lacks one of those scopes (a transport-established caller holds
 //     the owner's authority and passes; an unestablished one holds
 //     none). Then ErrPermissionDenied: the [PermissionFunc] refused
-//     this Meta for this leaf; the message carries its reason.
+//     this Meta for this leaf; the message carries its reason. A
+//     decision marked [PermissionDecision.Unauthenticated] returns
+//     ErrAuthRefused instead: the host does not admit the verified
+//     principal, an authentication failure, not a missing entitlement.
 //  7. Rate limit — ErrRateLimited, as a [*RateLimitedError] carrying
 //     the retry hint: the caller's bucket for the leaf's tier is
 //     empty. Only with [WithRateLimit], and only on remote surfaces.
@@ -574,8 +579,7 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 		return nil, b.refuse(ctx, inv, err)
 	}
 	if dec := b.Permission(withInvocation(ctx, inv), inv.Meta, leaf); !dec.Allowed {
-		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s: %s",
-			ErrPermissionDenied, leaf.PathKey(), surface, dec.Reason))
+		return nil, b.refuse(ctx, inv, permissionRefusal(dec, leaf, surface))
 	}
 	// Slot 7: rate limit (ratelimit.go). Only a call policy admits
 	// spends a token.
@@ -609,6 +613,21 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 		}
 	}
 	return adm, nil
+}
+
+// permissionRefusal is the error a refusing [PermissionDecision]
+// becomes: [ErrAuthRefused] when the decision says the refusal is an
+// authentication failure ([PermissionDecision.Unauthenticated]), so
+// every transport answers it as it answers a failed credential, and
+// [ErrPermissionDenied] otherwise. The error wraps one sentinel, never
+// both: the transports test the authentication class first, and a
+// refusal that matched two classes would be audited as two.
+func permissionRefusal(dec PermissionDecision, leaf *Leaf, surface Surface) error {
+	sentinel := ErrPermissionDenied
+	if dec.Unauthenticated {
+		sentinel = ErrAuthRefused
+	}
+	return fmt.Errorf("%w: %s on %s: %s", sentinel, leaf.PathKey(), surface, dec.Reason)
 }
 
 // callerIndependentGates is slots 2–5 for a resolved leaf: surface

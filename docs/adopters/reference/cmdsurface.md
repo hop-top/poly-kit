@@ -1507,6 +1507,24 @@ is asked only about calls it admitted: the adopter's decision can
 narrow the answer, never widen it. The default, `PermitAll`, adds
 nothing.
 
+A refusal is `ErrPermissionDenied` (403, `DENIED`, `permission_denied`),
+unless the decision sets `PermissionDecision.Unauthenticated`: the
+transport verified a credential, but the host does not admit the
+principal behind it (it maps to nobody, or to an inactive account), so
+the host does not know who is asking. The bridge then refuses with
+`ErrAuthRefused`, the class a failed credential gets, and every
+transport answers it as it answers one: 401 `unauthenticated` with
+`WWW-Authenticate` over REST, SSE, the webhook, signed and OAuth
+callback surfaces and the MCP HTTP surfaces that set a status, `Unauthenticated`
+over Connect, gRPC and gRPC-Web, `UNAUTHENTICATED` over the socket, the
+bus and WebSocket `unauthenticated` code, an `isError` result over MCP
+stdio and the MCP SDK surface. The error wraps one sentinel, never
+both. The decision's `Reason` travels with it to the caller and to
+audit sinks; the credential never does. The refusal comes before the
+rate limiter, so it spends no token and is not counted, as a failure
+of the authentication stage is not. `Bridge.Verdict`, which discovery
+asks, keeps the class. Ignored when `Allowed`.
+
 `WithRateLimit(cfg)` adds the rate-limit gate right after it: one
 token bucket per caller and side-effect tier (`RateTierRead`,
 `RateTierWrite`, `RateTierDestructive`; `DefaultRateLimit` holds the

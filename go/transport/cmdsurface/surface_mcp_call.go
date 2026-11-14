@@ -152,9 +152,17 @@ func errorResultBlock(msg string) map[string]any {
 // caller who presented a bearer token, with the RFC 6750 §3.1
 // challenge the MCP authorization spec asks for set on w (the scopes
 // the tool needs, and resource_metadata behind a protected resource),
-// so the client can step up its authorization; 200 for every other
-// refusal, which a new token cannot lift.
+// so the client can step up its authorization; 401 with the default
+// challenge for an authentication refusal ([ErrAuthRefused], which a
+// [PermissionFunc] may return for a verified caller it does not admit);
+// 200 for every other refusal, which a new token cannot lift.
 func mcpRefusalStatus(w http.ResponseWriter, req *http.Request, err error) int {
+	if errors.Is(err, ErrAuthRefused) {
+		// The class a failed credential gets, with the same challenge
+		// the pre-flight authentication gate sets.
+		w.Header().Set("WWW-Authenticate", api.DefaultAuthChallenge)
+		return http.StatusUnauthorized
+	}
 	if !errors.Is(err, ErrInsufficientScope) || !api.BearerPresented(req) {
 		return http.StatusOK
 	}
