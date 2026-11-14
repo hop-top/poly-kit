@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0-beta.1](https://github.com/hop-top/poly-kit/compare/qmochi/v0.2.0-beta.0...qmochi/v0.2.0-beta.1) (2026-11-14)
+
+The hop-top team is happy to announce Qmochi 0.2.0-beta.1. This release includes maintenance release with bug fixes.
+
+
+### Bug Fixes
+
+* **deps:** go 1.27.4 toolchain for GO-2026-6859 ([3787e94](https://github.com/hop-top/poly-kit/commit/3787e94a86de0f9e8e337237ab66626e7072d7ce))
+
+Full diff: [qmochi/v0.2.0-beta.0...qmochi/v0.2.0-beta.1](https://github.com/hop-top/poly-kit/compare/qmochi/v0.2.0-beta.0...qmochi/v0.2.0-beta.1)
+
 ## [0.2.0-beta.0](https://github.com/hop-top/poly-kit/compare/qmochi/v0.2.0-alpha.1...qmochi/v0.2.0-beta.0) (2026-10-29)
 
 The hop-top team is happy to announce Qmochi 0.2.0-beta.0. This release includes miscellaneous improvements.
