@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.4...kit-php/v0.5.0-alpha.5) (2026-11-14)
 
+The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.5. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -16,6 +18,8 @@
 ### Bug Fixes
 
 * **php:** register scaffold commands with addCommand ([03ed043](https://github.com/hop-top/poly-kit/commit/03ed043b551e63aaf1c8cd460feece12372720c6))
+
+Full diff: [kit-php/v0.5.0-alpha.4...kit-php/v0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.4...kit-php/v0.5.0-alpha.5)
 
 ## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.3...kit-php/v0.5.0-alpha.4) (2026-10-30)
 
