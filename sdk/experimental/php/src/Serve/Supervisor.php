@@ -245,6 +245,13 @@ final class Supervisor
                         // process must not survive as an empty shell,
                         // so the loop ends when the last one is gone.
                         unset($live[$i]);
+                        // Once cancelled the return is the cancellation's
+                        // doing, not a stop of its own: stopped waits for
+                        // the service's stop() in stopAll, which reports
+                        // in reverse start order.
+                        if ($cancel->cancelled()) {
+                            continue;
+                        }
                         if (!$state->markStopped($name)) {
                             $this->emitter->emit(
                                 Topics::OBJECT_SERVICE,
