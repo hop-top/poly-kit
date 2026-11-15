@@ -263,11 +263,9 @@ test-py-sdk: ## Python tests: sdk/py
 test-py-engine: ## Python tests: engine/sdk/py-kit-engine
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q && uv run pytest
 
-# CrossLangSmokeTest fails on the anon-mode null assertion (telemetry
-# stack regression); excluded so the gate ships green until it is fixed.
 test-php: ## PHP SDK tests (phpunit)
 	cd sdk/experimental/php && composer install --no-progress
-	cd sdk/experimental/php && vendor/bin/phpunit --exclude-filter '/CrossLangSmokeTest/'
+	cd sdk/experimental/php && vendor/bin/phpunit
 
 test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual --features api)
 	# Default features must compile and pass — that's what publish-rs.yml

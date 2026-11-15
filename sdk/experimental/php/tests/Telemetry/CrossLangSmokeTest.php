@@ -54,10 +54,11 @@ class CrossLangSmokeTest extends TestCase
         putenv('KIT_TELEMETRY_SINK=jsonl');
         putenv('DO_NOT_TRACK');
 
-        // Persist a granted consent decision so Telemetry::record() proceeds.
+        // Persist a granted consent decision in the canonical shape
+        // (kit.telemetry.consent in config.yaml) so Telemetry::record() proceeds.
         file_put_contents(
             Consent::path(),
-            "telemetry:\n  consent:\n    state: granted\n    prompt_version: 1\n    decision_source: test\n",
+            "kit:\n  telemetry:\n    consent:\n      state: granted\n      prompt_version: 1\n      decision_source: test\n",
         );
 
         Telemetry::resetForTest();
@@ -172,7 +173,7 @@ class CrossLangSmokeTest extends TestCase
         // Overwrite with denied state.
         file_put_contents(
             Consent::path(),
-            "telemetry:\n  consent:\n    state: denied\n    prompt_version: 1\n    decision_source: test\n",
+            "kit:\n  telemetry:\n    consent:\n      state: denied\n      prompt_version: 1\n      decision_source: test\n",
         );
 
         $sinkPath = $this->tmpRoot . '/state/kit/telemetry/inbox/denied.jsonl';

@@ -901,9 +901,8 @@ jobs:
       # level 5, tests/ at 2; see phpstan.neon for why they differ. No
       # baseline and no ignore list.
       - run: make lint-php
-      # phpunit when the change reaches the SDK (make test-php; its
-      # CrossLangSmokeTest exclusion is documented there). The lock,
-      # audit and lint steps above run on every change.
+      # phpunit when the change reaches the SDK. The lock, audit and
+      # lint steps above run on every change.
       - run: scripts/test-affected.sh php
         if: needs.changes.outputs.php == 'true'
 
