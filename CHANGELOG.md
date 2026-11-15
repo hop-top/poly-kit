@@ -2,6 +2,8 @@
 
 ## [0.5.0-beta.9](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.8...kit/v0.5.0-beta.9) (2026-11-15)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.9. This release includes new features and bug fixes.
+
 
 ### Features
 
@@ -20,6 +22,8 @@
 * **secret:** stamp minted token expiry from WithClock ([353a041](https://github.com/hop-top/poly-kit/commit/353a041ab1d7868f599a68c89cfd871f57890aed))
 * **serve:** emit stopped from ordered stop on canceled run ([150fa30](https://github.com/hop-top/poly-kit/commit/150fa308d587de48ca33548262582519ed41bb0b))
 * **store:** queue in-process sqlite writers before BEGIN IMMEDIATE ([b04b704](https://github.com/hop-top/poly-kit/commit/b04b704f699be38be253a124b83ce37f582dee2d))
+
+Full diff: [kit/v0.5.0-beta.8...kit/v0.5.0-beta.9](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.8...kit/v0.5.0-beta.9)
 
 ## [0.5.0-beta.8](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.7...kit/v0.5.0-beta.8) (2026-11-15)
 
