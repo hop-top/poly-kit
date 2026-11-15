@@ -429,6 +429,10 @@ service may still be idle, and it may later fail.
 - A service that has not reported ready within its readiness timeout
   (default 30s, `services.<name>.ready_timeout`) is treated as a
   start failure — see [Exit behavior](#exit-behavior).
+- A `Start` that returns before reporting ready is a start failure,
+  even when it returns no error — unless it returns cleanly once the
+  run is canceled: that return is the cancellation, not a failure, and
+  the service reports `stopped` from the [ordered stop](#ordered-stop).
 
 ### Readiness over HTTP
 

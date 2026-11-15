@@ -194,6 +194,14 @@ func (s *Supervisor) awaitReady(
 					return s.otherExit(ctx, exit, st, em)
 				default:
 				}
+				// A clean return on a canceled run is the
+				// cancellation's doing, as in otherExit: the
+				// select that delivered it could as well have
+				// taken ctx.Done. stopped waits for the ordered
+				// stop.
+				if exit.err == nil && ctx.Err() != nil {
+					return ctx.Err()
+				}
 				err := exit.err
 				if err == nil {
 					err = errors.New("returned before reporting ready")
