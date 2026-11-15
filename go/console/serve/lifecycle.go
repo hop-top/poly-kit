@@ -265,13 +265,21 @@ func (s *Supervisor) awaitRelease(
 // is reported, and returned when the failure policy says it ends the
 // run: under fail-fast, for a service the run depends on. failure_policy
 // governs those services only; an optional one's failure never ends the
-// run. A clean return is a stop, reported once.
+// run. A clean return is a stop, reported once, unless the run is
+// already canceled: then the return is the cancellation's doing and
+// stopped waits for the service's Stop in the ordered stop, which is
+// what stopped means and which reports in reverse start order. The
+// select that delivers an exit cannot tell, since a canceled run and a
+// returned Start are ready together and Go picks at random.
 func (s *Supervisor) otherExit(ctx context.Context, exit serviceExit, st *runState, em *emitter) error {
 	if exit.err != nil {
 		s.noteFailure(ctx, exit.name, exit.err, OutcomeRuntimeCrash, "runtime", st, em)
 		if s.cfg.FailurePolicy == FailFast && !st.isOptional(exit.name) {
 			return exit.err
 		}
+		return nil
+	}
+	if ctx.Err() != nil {
 		return nil
 	}
 	if !st.markStopped(exit.name) {
