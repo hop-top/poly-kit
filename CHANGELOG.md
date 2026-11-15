@@ -2,10 +2,14 @@
 
 ## [0.5.0-beta.11](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.10...kit/v0.5.0-beta.11) (2026-11-15)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.11. This release includes new features.
+
 
 ### Features
 
 * **cli:** add degraded status section value ([7edc3cd](https://github.com/hop-top/poly-kit/commit/7edc3cd4c4a4c19bf3f92c08386f543139e8d6b7))
+
+Full diff: [kit/v0.5.0-beta.10...kit/v0.5.0-beta.11](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.10...kit/v0.5.0-beta.11)
 
 ## [0.5.0-beta.10](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.9...kit/v0.5.0-beta.10) (2026-11-15)
 
