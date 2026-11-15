@@ -1,0 +1,49 @@
+[package]
+name = "hop-top-kit-engine"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+license = "MIT AND Apache-2.0"
+description = "Rust SDK for kit serve: identity, storage, sync, peers via sidecar"
+readme = "README.md"
+repository = "https://github.com/hop-top/poly-kit"
+homepage = "https://github.com/hop-top/poly-kit"
+keywords = ["kit", "engine", "sidecar", "sdk"]
+categories = ["api-bindings"]
+publish = false
+
+# Standalone crate: not a member of any enclosing workspace.
+[workspace]
+
+[features]
+default = ["http"]
+# Engine lifecycle, collections, sync, peers and identity over HTTP.
+http = [
+    "dep:reqwest",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:tokio",
+    "dep:thiserror",
+]
+# WebSocket event stream (`/events`).
+events = ["http", "dep:tokio-tungstenite", "dep:futures-util"]
+# Integration tests that need a real `kit serve` binary; they only run
+# inside the parity harness (KIT_BIN names the binary).
+parity = ["http"]
+
+# Same dependency set and pins as sdk/rs (hop-top-kit), kept in step with
+# its Cargo.lock.
+[dependencies]
+# Loopback only, so no TLS stack: default features off.
+reqwest = { version = "0.13", default-features = false, features = ["json", "query"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+thiserror = { version = "2", optional = true }
+# `process` + `io-util` spawn `kit serve` and read its startup line.
+tokio = { version = "1", features = ["process", "io-util", "rt", "time"], optional = true }
+tokio-tungstenite = { version = "=0.30.0", default-features = false, features = ["connect", "handshake"], optional = true }
+futures-util = { version = "=0.3.34", default-features = false, features = ["sink", "std"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+mockito = "1"
