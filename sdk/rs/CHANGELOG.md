@@ -2,10 +2,14 @@
 
 ## [0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.7...kit-rs/v0.5.0-alpha.8) (2026-11-15)
 
+The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.8. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
 * **rs/serve:** skip stopped on clean exit once run canceled ([fcad09f](https://github.com/hop-top/poly-kit/commit/fcad09f0c0ab766f89689d59b465c98014f5954b))
+
+Full diff: [kit-rs/v0.5.0-alpha.7...kit-rs/v0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.7...kit-rs/v0.5.0-alpha.8)
 
 ## [0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.6...kit-rs/v0.5.0-alpha.7) (2026-11-15)
 
