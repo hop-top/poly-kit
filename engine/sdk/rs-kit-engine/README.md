@@ -54,6 +54,8 @@ async fn main() -> Result<(), hop_top_kit_engine::EngineError> {
 
 `update` sends its JSON value as the full `PUT` body. `history_with_topology`
 returns the version DAG; `branches(id, live)` lists its tips.
+`fork`, `merge`, `prune(id, PrunePolicy)` and `abandon` manage branches;
+out-of-range seqs (409) map to `EngineError::VersionConflict`.
 
 `stop` consumes the handle. A dropped handle kills a spawned child.
 `KitEngineOptions::bin_path` selects the `kit` binary (default: `kit` on
