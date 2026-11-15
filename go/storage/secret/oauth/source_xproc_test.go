@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -64,11 +65,14 @@ func TestHelperProcessRefresh(t *testing.T) {
 	st := file.New(os.Getenv("OAUTH_TEST_DIR"), nil)
 	var loops int
 	fmt.Sscan(os.Getenv("OAUTH_TEST_LOOPS"), &loops)
-	// The clock runs 45 minutes ahead of the provider's one-hour tokens and
-	// the skew is 2 hours, so every token, ours or another process's, is
-	// stale at once and each Token call hits the provider.
+	// The clock steps 45 minutes on every read, so a token this process
+	// minted is stale by the next Token call; the skew is far beyond any
+	// step difference between processes, so another process's token is stale
+	// too and each call hits the provider.
+	var steps atomic.Int64
+	clock := func() time.Time { return time.Now().Add(time.Duration(steps.Add(1)) * 45 * time.Minute) }
 	src, err := TokenSource(context.Background(), st, "g", WithLockDir(os.Getenv("OAUTH_TEST_LOCKS")),
-		WithSkew(2*time.Hour), WithClock(func() time.Time { return time.Now().Add(45 * time.Minute) }))
+		WithSkew(1000*time.Hour), WithClock(clock))
 	if err != nil {
 		t.Fatal(err)
 	}

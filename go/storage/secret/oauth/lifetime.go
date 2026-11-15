@@ -17,17 +17,17 @@ var (
 
 type lifeEntry struct {
 	lifetime time.Duration
-	expires  time.Time // wall clock, for pruning
+	expires  time.Time // Source clock, for pruning
 }
 
 const maxLifeEntries = 256
 
 // recordLifetime notes the lifetime of the token just minted.
-func recordLifetime(access string, lifetime time.Duration, expires time.Time) {
+// now is the Source clock that expires is stamped from.
+func recordLifetime(access string, lifetime time.Duration, expires, now time.Time) {
 	lifeMu.Lock()
 	defer lifeMu.Unlock()
 	if len(life) >= maxLifeEntries {
-		now := time.Now()
 		for k, e := range life {
 			if e.expires.Before(now) {
 				delete(life, k)
