@@ -525,7 +525,10 @@ The supervisor installs a `signal.NotifyContext` for `SIGINT` and
    cancellation at the same instant; nothing is queued behind another
    service's drain.
 2. `Stop` is invoked in reverse start order, one service at a time, so
-   a dependent is always fully stopped before its dependency.
+   a dependent is always fully stopped before its dependency. A
+   `Start` that returns once the context is canceled is not a stop:
+   `kit.serve.service.stopped` is emitted when that service's `Stop`
+   returns, so the events follow the same reverse order.
 3. Each `Stop` is bounded by the per-service stop timeout (default
    `30s`, `services.<name>.stop_timeout`), which matches the existing
    default in [`api.ListenAndServe`](../../go/transport/api/server.go).
