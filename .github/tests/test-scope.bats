@@ -11,6 +11,9 @@
 # Run: bats .github/tests/test-scope.bats
 
 SRC="$BATS_TEST_DIRNAME/../../scripts"
+# Engine SDK dir, kept apart from the package names: a literal package path
+# in this file would run this suite on a change to that real file.
+E=engine/sdk
 
 setup() {
     REPO="$(mktemp -d)"
@@ -103,12 +106,12 @@ func User() int { return store.Store() }
     w sdk/py/kit/a.py 'A = 1'
     w sdk/rs/src/lib.rs 'pub fn a() {}'
     w sdk/experimental/php/src/A.php '<?php'
-    w engine/sdk/ts-kit-engine/src/a.ts 'export const a = 1;'
-    w engine/sdk/py-kit-engine/kit_engine/a.py 'A = 1'
-    w engine/sdk/php-kit-engine/src/A.php '<?php'
-    w engine/sdk/php-kit-engine/composer.json '{}'
-    w engine/sdk/rs-kit-engine/src/lib.rs 'pub fn a() {}'
-    w engine/sdk/rs-kit-engine/Cargo.toml '[package]'
+    w $E/ts-kit-engine/src/a.ts 'export const a = 1;'
+    w $E/py-kit-engine/kit_engine/a.py 'A = 1'
+    w $E/php-kit-engine/src/A.php '<?php'
+    w $E/php-kit-engine/composer.json '{}'
+    w $E/rs-kit-engine/src/lib.rs 'pub fn a() {}'
+    w $E/rs-kit-engine/Cargo.toml '[package]'
     w docs/guide.md '# guide'
     w .github/tests/a.bats '#!/usr/bin/env bats
 @test "a" { true; }'
@@ -330,12 +333,12 @@ pkgs() {
 # --- engine SDKs -------------------------------------------------------------
 
 @test "engine php: runs the php suite and the engine parity target, nothing else" {
-    touch_ engine/sdk/php-kit-engine/src/A.php
+    touch_ $E/php-kit-engine/src/A.php
     ts php
     [ "$status" -eq 0 ]
-    [ "$output" = "engine/sdk/php-kit-engine" ]
+    [ "$output" = "$E/php-kit-engine" ]
     ts --gate php
-    [ "$output" = "engine/sdk/php-kit-engine/src/A.php" ]
+    [ "$output" = "$E/php-kit-engine/src/A.php" ]
     for s in rs rs-engine ts py go bats; do
         ts "$s"
         [ "$status" -eq 0 ]
@@ -348,9 +351,9 @@ test-parity-engine" ]
 }
 
 @test "engine php: the composer manifest counts; the experimental php sdk stays apart" {
-    touch_ engine/sdk/php-kit-engine/composer.json
+    touch_ $E/php-kit-engine/composer.json
     ts php
-    [ "$output" = "engine/sdk/php-kit-engine" ]
+    [ "$output" = "$E/php-kit-engine" ]
     git -C "$REPO" checkout -q -- engine
     touch_ sdk/experimental/php/src/A.php
     ts php
@@ -360,12 +363,12 @@ test-parity-engine" ]
 }
 
 @test "engine rs: runs rs-engine and the engine parity target; the rs sdk jobs stay out" {
-    touch_ engine/sdk/rs-kit-engine/src/lib.rs
+    touch_ $E/rs-kit-engine/src/lib.rs
     ts rs-engine
     [ "$status" -eq 0 ]
-    [ "$output" = "engine/sdk/rs-kit-engine" ]
+    [ "$output" = "$E/rs-kit-engine" ]
     ts --gate rs-engine
-    [ "$output" = "engine/sdk/rs-kit-engine/src/lib.rs" ]
+    [ "$output" = "$E/rs-kit-engine/src/lib.rs" ]
     for s in rs php ts py go bats; do
         ts "$s"
         [ "$status" -eq 0 ]
@@ -377,9 +380,9 @@ test-parity-engine" ]
 }
 
 @test "engine rs: a Cargo.toml change counts; the rs sdk does not reach rs-engine" {
-    touch_ engine/sdk/rs-kit-engine/Cargo.toml
+    touch_ $E/rs-kit-engine/Cargo.toml
     ts rs-engine
-    [ "$output" = "engine/sdk/rs-kit-engine" ]
+    [ "$output" = "$E/rs-kit-engine" ]
     git -C "$REPO" checkout -q -- engine
     touch_ sdk/rs/src/lib.rs
     ts rs-engine
@@ -389,11 +392,11 @@ test-parity-engine" ]
 }
 
 @test "engine ts and py: still map to their own suites only" {
-    touch_ engine/sdk/ts-kit-engine/src/a.ts engine/sdk/py-kit-engine/kit_engine/a.py
+    touch_ $E/ts-kit-engine/src/a.ts $E/py-kit-engine/kit_engine/a.py
     ts ts
-    [ "$output" = "engine/sdk/ts-kit-engine" ]
+    [ "$output" = "$E/ts-kit-engine" ]
     ts py
-    [ "$output" = "engine/sdk/py-kit-engine" ]
+    [ "$output" = "$E/py-kit-engine" ]
     for s in rs rs-engine php; do
         ts "$s"
         [ -z "$output" ]
