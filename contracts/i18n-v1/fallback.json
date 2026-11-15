@@ -1,32 +1,45 @@
 {
   "_comment": [
-    "Locale tag canonicalisation, fallback chains, resolution and per-key lookup. Rules: SPEC.md, sections Locale tags and Fallback.",
-    "canonicalize: `in` -> `out`, or `error` (always invalid_locale) when the tag is not accepted.",
-    "chain: unfiltered chain for `tag` with `default`: lookup truncation of tag, then of default, de-duplicated, first occurrence kept.",
-    "resolve: first chain entry present in `available` (canonical comparison); null when none. `error` = invalid_locale for a malformed tag or default.",
-    "lookup: for each `keys` entry, the locale of the first chain entry (as for resolve, over the locales of `catalogs`) whose catalog defines the key; null when none does. `catalogs` maps locale to the dotted keys it defines."
+      "Locale tag canonicalisation, likely subtags, parent locales, fallback chains, resolution and per-key lookup. Rules: SPEC.md, sections Locale tags and Fallback.",
+      "Sources: BCP 47 (RFC 5646) syntax; CLDR supplemental aliases.json, likelySubtags.json and parentLocales.json; UTS 35 part 1 (locale inheritance). Expected values computed with ICU 79.1 / CLDR 49 (ECMAScript Intl.getCanonicalLocales, Intl.Locale.maximize) and from the cldr-json files of CLDR 47, 48 and 49 (parent locales, likely subtags). PHP ext-intl Locale::canonicalize is not a reference: it does not apply aliases or reject malformed tags.",
+      "`since`: first CLDR major in which the row holds. A port on an older CLDR (47 is the minimum) skips rows whose `since` exceeds its CLDR version; a port on that version or later MUST pass them. Rows without `since` are identical in CLDR 47, 48 and 49.",
+      "canonicalize: `in` -> `out`, or `error` (always invalid_locale). A `_` separator is read as `-` first; any other non-BCP 47 syntax is rejected.",
+      "likely_subtags: `tag` -> `max`, the CLDR likely-subtags expansion (language, script and region all present).",
+      "parent: CLDR locale inheritance, one step. `parent` is null when the next step is root (nothing further to try).",
+      "chain: locales to try for `tag`, then for `default`, de-duplicated, first occurrence kept. Per tag: the canonical tag without extension and private-use subtags; then its normal form (a script equal to the language likely script dropped, a script missing but implied by language+region likely subtags added: zh-TW becomes zh-Hant-TW, en-Latn-US becomes en-US); then parents until root.",
+      "resolve: first chain entry present in `available` (canonical comparison); null when none. `error` = invalid_locale for a malformed tag or default.",
+      "lookup: for each `keys` entry, the first chain entry (as for chain, over the locales of `catalogs`) whose catalog defines the key; null when none does. `catalogs` maps locale to the dotted keys it defines."
   ],
   "canonicalize": [
     { "in": "en", "out": "en" },
     { "in": "EN", "out": "en" },
     { "in": "en-us", "out": "en-US" },
     { "in": "en-US", "out": "en-US" },
+    { "in": "EN_us", "out": "en-US" },
+    { "in": "en_US", "out": "en-US" },
+    { "in": "en-latn-us", "out": "en-Latn-US" },
     { "in": "zh-hant-tw", "out": "zh-Hant-TW" },
+    { "in": "zh_Hant_TW", "out": "zh-Hant-TW" },
     { "in": "sr-LATN", "out": "sr-Latn" },
     { "in": "es-419", "out": "es-419" },
     { "in": "fil", "out": "fil" },
+    { "in": "tl", "out": "fil" },
+    { "in": "iw", "out": "he" },
+    { "in": "in", "out": "id" },
+    { "in": "ji", "out": "yi" },
+    { "in": "sh", "out": "sr-Latn" },
     { "in": "ca-VALENCIA", "out": "ca-valencia" },
+    { "in": "en-GB-oxendict", "out": "en-GB-oxendict" },
     { "in": "de-de-u-co-phonebk", "out": "de-DE-u-co-phonebk" },
     { "in": "DE-DE-U-CO-PHONEBK", "out": "de-DE-u-co-phonebk" },
     { "in": "en-x-Priv", "out": "en-x-priv" },
     { "in": "", "error": "invalid_locale" },
     { "in": "e", "error": "invalid_locale" },
-    { "in": "en_US", "error": "invalid_locale" },
-    { "in": "en_US.UTF-8", "error": "invalid_locale" },
     { "in": "en-", "error": "invalid_locale" },
     { "in": "-en", "error": "invalid_locale" },
     { "in": "en--US", "error": "invalid_locale" },
     { "in": "en US", "error": "invalid_locale" },
+    { "in": "en_US.UTF-8", "error": "invalid_locale" },
     { "in": "123", "error": "invalid_locale" },
     { "in": "x-private", "error": "invalid_locale" },
     { "in": "en-u", "error": "invalid_locale" },
@@ -34,64 +47,229 @@
     { "in": "en-US-US", "error": "invalid_locale" },
     { "in": "en-Latn-Latn", "error": "invalid_locale" },
     { "in": "en-abcdefghi", "error": "invalid_locale" },
-    { "in": "i-klingon", "error": "invalid_locale" },
-    { "in": "zh-yue", "error": "invalid_locale" },
     { "in": "*", "error": "invalid_locale" },
-    { "in": "en-é", "error": "invalid_locale" }
+    { "in": "en-é", "error": "invalid_locale" },
+    { "in": "zh-yue", "error": "invalid_locale" },
+    { "in": "i-klingon", "error": "invalid_locale" }
+  ],
+  "likely_subtags": [
+    { "tag": "zh", "max": "zh-Hans-CN" },
+    { "tag": "zh-TW", "max": "zh-Hant-TW" },
+    { "tag": "zh-HK", "max": "zh-Hant-HK" },
+    { "tag": "zh-Hans", "max": "zh-Hans-CN" },
+    { "tag": "zh-Hant", "max": "zh-Hant-TW" },
+    { "tag": "sr", "max": "sr-Cyrl-RS" },
+    { "tag": "sr-ME", "max": "sr-Latn-ME" },
+    { "tag": "en", "max": "en-Latn-US" },
+    { "tag": "pt", "max": "pt-Latn-BR" },
+    { "tag": "ja", "max": "ja-Jpan-JP" },
+    { "tag": "ar", "max": "ar-Arab-EG" },
+    { "tag": "az", "max": "az-Latn-AZ" },
+    { "tag": "az-IR", "max": "az-Arab-IR" }
+  ],
+  "parent": [
+    { "tag": "en-AU", "parent": "en-001" },
+    { "tag": "en-GB", "parent": "en-001" },
+    { "tag": "en-IN", "parent": "en-001" },
+    { "tag": "en-001", "parent": "en" },
+    { "tag": "en-150", "parent": "en-001" },
+    { "tag": "en-DE", "parent": "en-150" },
+    { "tag": "en-US", "parent": "en" },
+    { "tag": "en-EE", "parent": "en-150", "since": "48" },
+    { "tag": "es-MX", "parent": "es-419" },
+    { "tag": "es-419", "parent": "es" },
+    { "tag": "es-ES", "parent": "es" },
+    { "tag": "pt-AO", "parent": "pt-PT" },
+    { "tag": "pt-PT", "parent": "pt" },
+    { "tag": "pt-BR", "parent": "pt" },
+    { "tag": "fr-CA", "parent": "fr" },
+    { "tag": "zh-Hant-TW", "parent": "zh-Hant" },
+    { "tag": "zh-Hant-HK", "parent": "zh-Hant" },
+    { "tag": "zh-Hant-MO", "parent": "zh-Hant-HK" },
+    { "tag": "zh-Hant", "parent": null },
+    { "tag": "sr-Latn-ME", "parent": "sr-Latn" },
+    { "tag": "sr-Latn", "parent": null },
+    { "tag": "nb", "parent": "no" },
+    { "tag": "no", "parent": null },
+    { "tag": "hi-Latn", "parent": "en-IN" },
+    { "tag": "en", "parent": null }
   ],
   "chain": [
     { "tag": "en", "default": "en", "chain": ["en"] },
-    { "tag": "zh-CN", "default": "en", "chain": ["zh-CN", "zh", "en"] },
-    { "tag": "zh-Hant-TW", "default": "en", "chain": ["zh-Hant-TW", "zh-Hant", "zh", "en"] },
-    { "tag": "zh-hant-tw", "default": "EN", "chain": ["zh-Hant-TW", "zh-Hant", "zh", "en"] },
+    { "tag": "en-US", "default": "en", "chain": ["en-US", "en"] },
+    { "tag": "en-Latn-US", "default": "en", "chain": ["en-Latn-US", "en-US", "en"] },
+    { "tag": "EN_us", "default": "en", "chain": ["en-US", "en"] },
+    { "tag": "en-latn-us", "default": "en", "chain": ["en-Latn-US", "en-US", "en"] },
+    { "tag": "en-AU", "default": "en", "chain": ["en-AU", "en-001", "en"] },
+    { "tag": "en-GB", "default": "en-US", "chain": ["en-GB", "en-001", "en", "en-US"] },
+    { "tag": "en-DE", "default": "en", "chain": ["en-DE", "en-150", "en-001", "en"] },
+    { "tag": "en-EE", "default": "en", "chain": ["en-EE", "en-150", "en-001", "en"], "since": "48" },
+    { "tag": "en-IN", "default": "en", "chain": ["en-IN", "en-001", "en"] },
     { "tag": "fr-CA", "default": "fr-FR", "chain": ["fr-CA", "fr", "fr-FR"] },
-    { "tag": "en-GB", "default": "en-US", "chain": ["en-GB", "en", "en-US"] },
-    { "tag": "pt-BR", "default": "pt-PT", "chain": ["pt-BR", "pt", "pt-PT"] },
-    { "tag": "ca-valencia", "default": "es-ES", "chain": ["ca-valencia", "ca", "es-ES", "es"] },
+    { "tag": "fr-CA", "default": "en", "chain": ["fr-CA", "fr", "en"] },
+    { "tag": "es-MX", "default": "en", "chain": ["es-MX", "es-419", "es", "en"] },
     { "tag": "es-419", "default": "en", "chain": ["es-419", "es", "en"] },
-    {
-      "tag": "de-DE-u-co-phonebk",
-      "default": "en",
-      "chain": ["de-DE-u-co-phonebk", "de-DE-u-co", "de-DE", "de", "en"]
-    },
-    { "tag": "en-x-priv", "default": "en", "chain": ["en-x-priv", "en"] },
+    { "tag": "es-ES", "default": "en", "chain": ["es-ES", "es", "en"] },
+    { "tag": "pt-BR", "default": "pt-PT", "chain": ["pt-BR", "pt", "pt-PT"] },
+    { "tag": "pt-PT", "default": "en", "chain": ["pt-PT", "pt", "en"] },
+    { "tag": "pt-AO", "default": "en", "chain": ["pt-AO", "pt-PT", "pt", "en"] },
+    { "tag": "zh-CN", "default": "en", "chain": ["zh-CN", "zh", "en"] },
+    { "tag": "zh-Hans-CN", "default": "en", "chain": ["zh-Hans-CN", "zh-CN", "zh", "en"] },
+    { "tag": "zh-TW", "default": "en", "chain": ["zh-TW", "zh-Hant-TW", "zh-Hant", "en"] },
+    { "tag": "zh-HK", "default": "en", "chain": ["zh-HK", "zh-Hant-HK", "zh-Hant", "en"] },
+    { "tag": "zh-Hant-TW", "default": "en", "chain": ["zh-Hant-TW", "zh-Hant", "en"] },
+    { "tag": "zh-hant-tw", "default": "EN", "chain": ["zh-Hant-TW", "zh-Hant", "en"] },
+    { "tag": "zh-Hant-MO", "default": "en", "chain": ["zh-Hant-MO", "zh-Hant-HK", "zh-Hant", "en"] },
+    { "tag": "zh-Hant", "default": "en", "chain": ["zh-Hant", "en"] },
+    { "tag": "sr-ME", "default": "en", "chain": ["sr-ME", "sr-Latn-ME", "sr-Latn", "en"] },
+    { "tag": "sr-Latn-ME", "default": "en", "chain": ["sr-Latn-ME", "sr-Latn", "en"] },
+    { "tag": "nb", "default": "en", "chain": ["nb", "no", "en"] },
+    { "tag": "ca-valencia", "default": "es-ES", "chain": ["ca-valencia", "ca", "es-ES", "es"] },
+    { "tag": "ca-ES-valencia", "default": "en", "chain": ["ca-ES-valencia", "ca-ES", "ca", "en"] },
+    { "tag": "de-DE-u-co-phonebk", "default": "en", "chain": ["de-DE", "de", "en"] },
+    { "tag": "en-x-priv", "default": "en", "chain": ["en"] },
+    { "tag": "hi-Latn", "default": "en", "chain": ["hi-Latn", "en-IN", "en-001", "en"] },
+    { "tag": "iw", "default": "en", "chain": ["he", "en"] },
     { "tag": "ja", "default": "en", "chain": ["ja", "en"] },
-    { "tag": "en_US", "default": "en", "error": "invalid_locale" },
+    { "tag": "ja", "default": "ja-JP", "chain": ["ja", "ja-JP"] },
+    { "tag": "az-IR", "default": "en", "chain": ["az-IR", "az-Arab-IR", "az-Arab", "en"] },
+    { "tag": "en_US.UTF-8", "default": "en", "error": "invalid_locale" },
     { "tag": "en", "default": "", "error": "invalid_locale" }
   ],
   "resolve": [
     { "tag": "zh-CN", "available": ["en", "zh-CN", "zh"], "default": "en", "want": "zh-CN" },
     { "tag": "zh-CN", "available": ["en", "zh"], "default": "en", "want": "zh" },
     { "tag": "zh-CN", "available": ["en"], "default": "en", "want": "en" },
-    { "tag": "zh-TW", "available": ["en", "zh-Hant", "zh-CN"], "default": "en", "want": "en" },
+    { "tag": "zh-TW", "available": ["en", "zh-Hant", "zh-CN"], "default": "en", "want": "zh-Hant" },
+    { "tag": "zh-TW", "available": ["en", "zh"], "default": "en", "want": "en" },
     { "tag": "zh-Hant-TW", "available": ["en", "zh-Hant"], "default": "en", "want": "zh-Hant" },
+    { "tag": "zh-HK", "available": ["en", "zh-Hant-HK", "zh-Hant"], "default": "en", "want": "zh-Hant-HK" },
     { "tag": "pt-BR", "available": ["pt-PT", "en"], "default": "pt-PT", "want": "pt-PT" },
+    { "tag": "pt-AO", "available": ["pt-PT", "pt", "en"], "default": "en", "want": "pt-PT" },
+    { "tag": "pt-PT", "available": ["pt", "en"], "default": "en", "want": "pt" },
+    { "tag": "fr-CA", "available": ["fr", "en"], "default": "en", "want": "fr" },
     { "tag": "fr", "available": ["fr-FR", "en"], "default": "en", "want": "en" },
+    { "tag": "fr", "available": ["fr-CA", "en"], "default": "en", "want": "en" },
+    { "tag": "es-MX", "available": ["es-419", "es"], "default": "en", "want": "es-419" },
+    { "tag": "es-MX", "available": ["es", "en"], "default": "en", "want": "es" },
+    { "tag": "en-AU", "available": ["en-001", "en"], "default": "en", "want": "en-001" },
+    { "tag": "en-AU", "available": ["en"], "default": "en", "want": "en" },
+    { "tag": "sr-ME", "available": ["sr-Latn", "sr"], "default": "en", "want": "sr-Latn" },
     { "tag": "DE-de", "available": ["de-DE", "en"], "default": "en", "want": "de-DE" },
     { "tag": "de-DE", "available": ["DE", "EN"], "default": "en", "want": "de" },
     { "tag": "de-DE-u-co-phonebk", "available": ["de-DE", "en"], "default": "en", "want": "de-DE" },
+    { "tag": "en-Latn-US", "available": ["en-US", "en"], "default": "en", "want": "en-US" },
     { "tag": "ja", "available": ["ko"], "default": "en", "want": null },
     { "tag": "en-US", "available": [], "default": "en", "want": null },
-    { "tag": "en_US", "available": ["en"], "default": "en", "error": "invalid_locale" }
+    { "tag": "en_US.UTF-8", "available": ["en"], "default": "en", "error": "invalid_locale" }
   ],
   "lookup": [
     {
       "tag": "zh-CN",
       "default": "en",
-      "catalogs": { "zh-CN": ["a"], "zh": ["a", "b"], "en": ["a", "b", "c"] },
-      "keys": { "a": "zh-CN", "b": "zh", "c": "en", "d": null }
+      "catalogs": {
+        "zh-CN": [
+          "a"
+        ],
+        "zh": [
+          "a",
+          "b"
+        ],
+        "en": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      "keys": {
+        "a": "zh-CN",
+        "b": "zh",
+        "c": "en",
+        "d": null
+      }
     },
     {
       "tag": "fr-CA",
       "default": "en",
-      "catalogs": { "fr-FR": ["a"], "en": ["a", "b"] },
-      "keys": { "a": "en", "b": "en" }
+      "catalogs": {
+        "fr": [
+          "a"
+        ],
+        "fr-FR": [
+          "a",
+          "x"
+        ],
+        "en": [
+          "a",
+          "b"
+        ]
+      },
+      "keys": {
+        "a": "fr",
+        "b": "en",
+        "x": null
+      }
+    },
+    {
+      "tag": "zh-TW",
+      "default": "en",
+      "catalogs": {
+        "zh-Hant": [
+          "a"
+        ],
+        "zh": [
+          "a",
+          "b"
+        ],
+        "en": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      "keys": {
+        "a": "zh-Hant",
+        "b": "en",
+        "c": "en"
+      }
+    },
+    {
+      "tag": "es-MX",
+      "default": "en",
+      "catalogs": {
+        "es-419": [
+          "a"
+        ],
+        "es": [
+          "a",
+          "b"
+        ],
+        "en": [
+          "c"
+        ]
+      },
+      "keys": {
+        "a": "es-419",
+        "b": "es",
+        "c": "en"
+      }
     },
     {
       "tag": "en-GB",
       "default": "en-US",
-      "catalogs": { "en-US": ["a"], "en-GB": ["b"] },
-      "keys": { "a": "en-US", "b": "en-GB", "nested.key": null }
+      "catalogs": {
+        "en-US": [
+          "a"
+        ],
+        "en-GB": [
+          "b"
+        ]
+      },
+      "keys": {
+        "a": "en-US",
+        "b": "en-GB",
+        "nested.key": null
+      }
     }
   ]
 }

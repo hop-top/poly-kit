@@ -1,266 +1,321 @@
 {
   "_comment": [
-    "Catalog parse corpus. Each case is one catalog document.",
-    "valid=true: parse succeeds; `messages` is the expected flat result keyed by dotted path. A message is {params, text} or {params, plural}; text is a segment list: {\"t\": literal} or {\"p\": param name}. Adjacent literals are merged; empty literals are omitted.",
-    "valid=false: parse fails with exactly `code` at dotted message `key` (\"\" = whole document). Only the first error in document order is pinned; each invalid case contains exactly one fault.",
-    "`doc` is the catalog as JSON; `raw` replaces it when the fault is in the bytes (invalid JSON, duplicate object key, trailing data). schema_gap: the fault is not expressible in catalog.schema.json, so the schema accepts the document.",
+    "Catalog corpus. Each case is one catalog document.",
+    "valid=true: load succeeds; `messages` is the expected flat result keyed by dotted path: {msg} or {msg, desc}. `msg` is the MessageFormat 2 source exactly as written (a port parses it with its MF2 library; the parse tree is not pinned here).",
+    "valid=false: load fails with exactly `code` at dotted message `key` (\"\" = whole document). Only the first error in document order is pinned; each invalid case contains exactly one fault.",
+    "`doc` is the catalog as JSON; `raw` replaces it when the fault is in the bytes (invalid JSON, duplicate object key, trailing data). schema_gap: the fault is not expressible in catalog.schema.json, so the schema accepts the document. `invalid_message` cases are all schema_gap: the schema does not parse MF2.",
+    "Every message in a valid case MUST parse as MessageFormat 2 with no syntax or data-model error; `unknown-function-loads` shows that an unregistered function is a formatting-time error, not a load error.",
     "All text is fake."
   ],
   "cases": [
     {
       "name": "shorthand-literal",
       "valid": true,
-      "doc": { "v": 1, "locale": "en", "messages": { "title": "Settings" } },
-      "messages": { "title": { "params": {}, "text": [{ "t": "Settings" }] } }
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "title": "Settings"
+        }
+      },
+      "messages": {
+        "title": {
+          "msg": "Settings"
+        }
+      }
     },
     {
       "name": "empty-messages",
       "valid": true,
-      "doc": { "v": 1, "locale": "en", "messages": {} },
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {}
+      },
       "messages": {}
     },
     {
       "name": "empty-string-message",
       "valid": true,
-      "doc": { "v": 1, "locale": "en", "messages": { "blank": "" } },
-      "messages": { "blank": { "params": {}, "text": [] } }
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "blank": ""
+        }
+      },
+      "messages": {
+        "blank": {
+          "msg": ""
+        }
+      }
     },
     {
       "name": "nested-keys",
       "valid": true,
       "doc": {
-        "v": 1,
-        "locale": "en-GB",
+        "v": 2,
+        "locale": "en",
         "messages": {
-          "cli": { "init": { "done": "Initialised." }, "version": "v1" },
-          "top-level_key2": "x"
+          "cli": {
+            "files": {
+              "count": "Files",
+              "hint": "Press q"
+            },
+            "title": "CLI"
+          },
+          "k-1_a": "x"
         }
       },
       "messages": {
-        "cli.init.done": { "params": {}, "text": [{ "t": "Initialised." }] },
-        "cli.version": { "params": {}, "text": [{ "t": "v1" }] },
-        "top-level_key2": { "params": {}, "text": [{ "t": "x" }] }
+        "cli.files.count": {
+          "msg": "Files"
+        },
+        "cli.files.hint": {
+          "msg": "Press q"
+        },
+        "cli.title": {
+          "msg": "CLI"
+        },
+        "k-1_a": {
+          "msg": "x"
+        }
       }
     },
     {
-      "name": "typed-params",
+      "name": "leaf-with-desc",
       "valid": true,
       "doc": {
-        "v": 1,
-        "locale": "fr",
+        "v": 2,
+        "locale": "en",
         "messages": {
-          "greet": {
-            "$text": "Bonjour %{name}, solde %{balance} au %{day}.",
-            "$params": { "name": "string", "balance": "number", "day": "date" },
-            "$desc": "Greeting on the account page"
+          "greeting": {
+            "$msg": "Hello, {$name}!",
+            "$desc": "Shown at startup; name is the user"
           }
         }
       },
       "messages": {
-        "greet": {
-          "params": { "name": "string", "balance": "number", "day": "date" },
-          "text": [
-            { "t": "Bonjour " },
-            { "p": "name" },
-            { "t": ", solde " },
-            { "p": "balance" },
-            { "t": " au " },
-            { "p": "day" },
-            { "t": "." }
-          ]
+        "greeting": {
+          "msg": "Hello, {$name}!",
+          "desc": "Shown at startup; name is the user"
         }
       }
     },
     {
-      "name": "declared-unused-param",
+      "name": "leaf-without-desc",
       "valid": true,
       "doc": {
-        "v": 1,
+        "v": 2,
         "locale": "en",
-        "messages": { "m": { "$text": "fixed", "$params": { "n": "integer" } } }
-      },
-      "messages": { "m": { "params": { "n": "integer" }, "text": [{ "t": "fixed" }] } }
-    },
-    {
-      "name": "repeated-placeholder",
-      "valid": true,
-      "doc": {
-        "v": 1,
-        "locale": "en",
-        "messages": { "m": { "$text": "%{a}%{a}", "$params": { "a": "string" } } }
+        "messages": {
+          "greeting": {
+            "$msg": "Hello"
+          }
+        }
       },
       "messages": {
-        "m": { "params": { "a": "string" }, "text": [{ "p": "a" }, { "p": "a" }] }
+        "greeting": {
+          "msg": "Hello"
+        }
       }
     },
     {
-      "name": "mustache-braces-literal",
+      "name": "variable-placeholder",
       "valid": true,
       "doc": {
-        "v": 1,
+        "v": 2,
         "locale": "en",
-        "messages": { "tpl": "Use {{name}} or {name} in templates" }
+        "messages": {
+          "hi": "Hello, {$name}!"
+        }
       },
       "messages": {
-        "tpl": { "params": {}, "text": [{ "t": "Use {{name}} or {name} in templates" }] }
+        "hi": {
+          "msg": "Hello, {$name}!"
+        }
       }
     },
     {
-      "name": "dollar-signs-literal",
+      "name": "number-function",
       "valid": true,
       "doc": {
-        "v": 1,
+        "v": 2,
         "locale": "en",
-        "messages": { "price": "Costs $1, or ${amount}, or $$ total" }
+        "messages": {
+          "size": "{$bytes :integer} bytes"
+        }
       },
       "messages": {
-        "price": { "params": {}, "text": [{ "t": "Costs $1, or ${amount}, or $$ total" }] }
+        "size": {
+          "msg": "{$bytes :integer} bytes"
+        }
       }
     },
     {
-      "name": "dollar-next-to-placeholder",
+      "name": "plural-match",
       "valid": true,
       "doc": {
-        "v": 1,
+        "v": 2,
         "locale": "en",
-        "messages": { "m": { "$text": "$%{amount}", "$params": { "amount": "number" } } }
+        "messages": {
+          "files": ".input {$count :number}\n.match $count\none {{{$count} file}}\n* {{{$count} files}}"
+        }
       },
       "messages": {
-        "m": { "params": { "amount": "number" }, "text": [{ "t": "$" }, { "p": "amount" }] }
+        "files": {
+          "msg": ".input {$count :number}\n.match $count\none {{{$count} file}}\n* {{{$count} files}}"
+        }
       }
     },
     {
-      "name": "percent-not-before-brace-literal",
+      "name": "ordinal-match",
       "valid": true,
       "doc": {
-        "v": 1,
+        "v": 2,
         "locale": "en",
-        "messages": { "m": "100% done, %d, %s, 50%" }
+        "messages": {
+          "place": ".input {$n :number select=ordinal}\n.match $n\none {{{$n}st}}\ntwo {{{$n}nd}}\nfew {{{$n}rd}}\n* {{{$n}th}}"
+        }
       },
       "messages": {
-        "m": { "params": {}, "text": [{ "t": "100% done, %d, %s, 50%" }] }
+        "place": {
+          "msg": ".input {$n :number select=ordinal}\n.match $n\none {{{$n}st}}\ntwo {{{$n}nd}}\nfew {{{$n}rd}}\n* {{{$n}th}}"
+        }
       }
     },
     {
-      "name": "escape-percent-brace",
+      "name": "exact-match-and-local",
       "valid": true,
       "doc": {
-        "v": 1,
+        "v": 2,
         "locale": "en",
-        "messages": { "m": "Write %%{name} to show a placeholder" }
+        "messages": {
+          "state": ".input {$s :string}\n.local $label = {$s :string}\n.match $s\nok {{All good: {$label}}}\n* {{Other: {$label}}}"
+        }
       },
       "messages": {
-        "m": { "params": {}, "text": [{ "t": "Write %{name} to show a placeholder" }] }
+        "state": {
+          "msg": ".input {$s :string}\n.local $label = {$s :string}\n.match $s\nok {{All good: {$label}}}\n* {{Other: {$label}}}"
+        }
       }
     },
     {
-      "name": "escape-then-placeholder",
+      "name": "quoted-pattern",
       "valid": true,
       "doc": {
-        "v": 1,
+        "v": 2,
         "locale": "en",
-        "messages": { "m": { "$text": "%%%{a}", "$params": { "a": "string" } } }
+        "messages": {
+          "q": "{{ Leading and trailing space }}"
+        }
       },
       "messages": {
-        "m": { "params": { "a": "string" }, "text": [{ "t": "%" }, { "p": "a" }] }
+        "q": {
+          "msg": "{{ Leading and trailing space }}"
+        }
       }
     },
     {
-      "name": "escape-pairs-even-run",
+      "name": "escaped-braces-literal",
       "valid": true,
-      "doc": { "v": 1, "locale": "en", "messages": { "m": "%%%%{a}" } },
-      "messages": { "m": { "params": {}, "text": [{ "t": "%%{a}" }] } }
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "lit": "Use \\{braces\\} and a \\\\ backslash"
+        }
+      },
+      "messages": {
+        "lit": {
+          "msg": "Use \\{braces\\} and a \\\\ backslash"
+        }
+      }
+    },
+    {
+      "name": "dollar-and-percent-are-literal-text",
+      "valid": true,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "old": "Cost $5, 100% sure, $1"
+        }
+      },
+      "messages": {
+        "old": {
+          "msg": "Cost $5, 100% sure, $1"
+        }
+      }
+    },
+    {
+      "name": "markup",
+      "valid": true,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "link": "Read {#a}the docs{/a}"
+        }
+      },
+      "messages": {
+        "link": {
+          "msg": "Read {#a}the docs{/a}"
+        }
+      }
+    },
+    {
+      "name": "unknown-function-loads",
+      "valid": true,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "f": "{$x :nosuch}"
+        }
+      },
+      "messages": {
+        "f": {
+          "msg": "{$x :nosuch}"
+        }
+      }
     },
     {
       "name": "unicode-text",
       "valid": true,
-      "doc": { "v": 1, "locale": "ja", "messages": { "hi": "こんにちは 🌍 é" } },
-      "messages": { "hi": { "params": {}, "text": [{ "t": "こんにちは 🌍 é" }] } }
-    },
-    {
-      "name": "plural-en",
-      "valid": true,
       "doc": {
-        "v": 1,
-        "locale": "en",
+        "v": 2,
+        "locale": "de",
         "messages": {
-          "files": {
-            "$plural": {
-              "on": "count",
-              "branches": { "one": "%{count} file", "other": "%{count} files" }
-            },
-            "$params": { "count": "integer" }
-          }
+          "u": "Größe: 日本語 😀"
         }
       },
       "messages": {
-        "files": {
-          "params": { "count": "integer" },
-          "plural": {
-            "on": "count",
-            "branches": {
-              "one": [{ "p": "count" }, { "t": " file" }],
-              "other": [{ "p": "count" }, { "t": " files" }]
-            }
-          }
+        "u": {
+          "msg": "Größe: 日本語 😀"
         }
       }
     },
     {
-      "name": "plural-other-only",
+      "name": "locale-script-region",
       "valid": true,
       "doc": {
-        "v": 1,
-        "locale": "ja",
+        "v": 2,
+        "locale": "zh-Hant-TW",
         "messages": {
-          "files": {
-            "$plural": { "on": "n", "branches": { "other": "ファイル" } },
-            "$params": { "n": "number" }
-          }
+          "a": "x"
         }
       },
       "messages": {
-        "files": {
-          "params": { "n": "number" },
-          "plural": { "on": "n", "branches": { "other": [{ "t": "ファイル" }] } }
+        "a": {
+          "msg": "x"
         }
       }
     },
-    {
-      "name": "plural-branch-uses-other-param",
-      "valid": true,
-      "doc": {
-        "v": 1,
-        "locale": "ar",
-        "messages": {
-          "m": {
-            "$plural": {
-              "on": "count",
-              "branches": { "zero": "none", "few": "%{who}", "other": "x" }
-            },
-            "$params": { "count": "number", "who": "string" }
-          }
-        }
-      },
-      "messages": {
-        "m": {
-          "params": { "count": "number", "who": "string" },
-          "plural": {
-            "on": "count",
-            "branches": {
-              "zero": [{ "t": "none" }],
-              "few": [{ "p": "who" }],
-              "other": [{ "t": "x" }]
-            }
-          }
-        }
-      }
-    },
-
     {
       "name": "err-invalid-json",
       "valid": false,
-      "raw": "{\"v\": 1, \"locale\": \"en\", \"messages\": {",
+      "raw": "{\"v\":2,",
       "code": "invalid_json",
       "key": "",
       "schema_gap": true
@@ -268,7 +323,7 @@
     {
       "name": "err-trailing-data",
       "valid": false,
-      "raw": "{\"v\":1,\"locale\":\"en\",\"messages\":{}} {}",
+      "raw": "{\"v\":2,\"locale\":\"en\",\"messages\":{}} x",
       "code": "invalid_json",
       "key": "",
       "schema_gap": true
@@ -276,14 +331,14 @@
     {
       "name": "err-not-object",
       "valid": false,
-      "doc": ["en"],
+      "doc": [],
       "code": "invalid_document",
       "key": ""
     },
     {
       "name": "err-duplicate-key",
       "valid": false,
-      "raw": "{\"v\":1,\"locale\":\"en\",\"messages\":{\"a\":\"x\",\"a\":\"y\"}}",
+      "raw": "{\"v\":2,\"locale\":\"en\",\"messages\":{\"a\":\"x\",\"a\":\"y\"}}",
       "code": "duplicate_key",
       "key": "a",
       "schema_gap": true
@@ -291,309 +346,468 @@
     {
       "name": "err-duplicate-key-nested",
       "valid": false,
-      "raw": "{\"v\":1,\"locale\":\"en\",\"messages\":{\"n\":{\"a\":\"x\",\"a\":\"y\"}}}",
+      "raw": "{\"v\":2,\"locale\":\"en\",\"messages\":{\"a\":{\"b\":\"x\",\"b\":\"y\"}}}",
       "code": "duplicate_key",
-      "key": "n.a",
+      "key": "a.b",
       "schema_gap": true
     },
     {
       "name": "err-unknown-top-level-field",
       "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": {}, "extra": 1 },
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {},
+        "extra": 1
+      },
       "code": "invalid_document",
       "key": ""
     },
     {
       "name": "err-missing-locale",
       "valid": false,
-      "doc": { "v": 1, "messages": {} },
+      "doc": {
+        "v": 2,
+        "messages": {}
+      },
       "code": "invalid_document",
       "key": ""
     },
     {
       "name": "err-missing-messages",
       "valid": false,
-      "doc": { "v": 1, "locale": "en" },
+      "doc": {
+        "v": 2,
+        "locale": "en"
+      },
       "code": "invalid_document",
       "key": ""
     },
     {
       "name": "err-version-string",
       "valid": false,
-      "doc": { "v": "1", "locale": "en", "messages": {} },
+      "doc": {
+        "v": "2",
+        "locale": "en",
+        "messages": {}
+      },
       "code": "unsupported_version",
       "key": ""
     },
     {
-      "name": "err-version-2",
+      "name": "err-version-1",
       "valid": false,
-      "doc": { "v": 2, "locale": "en", "messages": {} },
+      "doc": {
+        "v": 1,
+        "locale": "en",
+        "messages": {}
+      },
+      "code": "unsupported_version",
+      "key": ""
+    },
+    {
+      "name": "err-version-3",
+      "valid": false,
+      "doc": {
+        "v": 3,
+        "locale": "en",
+        "messages": {}
+      },
       "code": "unsupported_version",
       "key": ""
     },
     {
       "name": "err-locale-underscore",
       "valid": false,
-      "doc": { "v": 1, "locale": "en_US", "messages": {} },
+      "doc": {
+        "v": 2,
+        "locale": "en_US",
+        "messages": {}
+      },
       "code": "invalid_locale",
       "key": ""
     },
     {
       "name": "err-locale-empty",
       "valid": false,
-      "doc": { "v": 1, "locale": "", "messages": {} },
+      "doc": {
+        "v": 2,
+        "locale": "",
+        "messages": {}
+      },
       "code": "invalid_locale",
       "key": ""
     },
     {
       "name": "err-locale-not-bcp47-syntax",
       "valid": false,
-      "doc": { "v": 1, "locale": "en-", "messages": {} },
+      "doc": {
+        "v": 2,
+        "locale": "e",
+        "messages": {}
+      },
       "code": "invalid_locale",
       "key": ""
     },
     {
       "name": "err-key-with-dot",
       "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "a.b": "x" } },
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a.b": "x"
+        }
+      },
       "code": "invalid_key",
       "key": "a.b"
     },
     {
       "name": "err-key-empty",
       "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "": "x" } },
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "": "x"
+        }
+      },
       "code": "invalid_key",
       "key": ""
     },
     {
       "name": "err-key-with-space",
       "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "n": { "a b": "x" } } },
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a b": "x"
+        }
+      },
       "code": "invalid_key",
-      "key": "n.a b"
+      "key": "a b"
     },
     {
       "name": "err-unknown-reserved-key",
       "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "m": { "$text": "x", "$note": "y" } } },
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": {
+            "$msg": "x",
+            "$extra": "y"
+          }
+        }
+      },
       "code": "unknown_reserved_key",
-      "key": "m.$note"
+      "key": "a"
+    },
+    {
+      "name": "err-legacy-params-key",
+      "valid": false,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": {
+            "$msg": "x",
+            "$params": {}
+          }
+        }
+      },
+      "code": "unknown_reserved_key",
+      "key": "a"
+    },
+    {
+      "name": "err-legacy-text-key",
+      "valid": false,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": {
+            "$text": "x"
+          }
+        }
+      },
+      "code": "unknown_reserved_key",
+      "key": "a"
     },
     {
       "name": "err-reserved-key-in-namespace",
       "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "n": { "$text": "x", "child": "y" } } },
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": {
+            "$x": "y",
+            "b": "z"
+          }
+        }
+      },
       "code": "unknown_reserved_key",
-      "key": "n.child"
+      "key": "a"
     },
     {
       "name": "err-empty-namespace",
       "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "n": {} } },
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": {}
+        }
+      },
       "code": "empty_namespace",
-      "key": "n"
+      "key": "a"
     },
     {
       "name": "err-node-number",
       "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "n": 3 } },
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": 1
+        }
+      },
       "code": "invalid_node",
-      "key": "n"
+      "key": "a"
     },
     {
       "name": "err-node-null",
       "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "n": null } },
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": null
+        }
+      },
       "code": "invalid_node",
-      "key": "n"
+      "key": "a"
     },
     {
       "name": "err-node-array",
       "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "n": ["a"] } },
-      "code": "invalid_node",
-      "key": "n"
-    },
-    {
-      "name": "err-text-not-string",
-      "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "m": { "$text": 5 } } },
-      "code": "invalid_node",
-      "key": "m"
-    },
-    {
-      "name": "err-text-and-plural",
-      "valid": false,
       "doc": {
-        "v": 1,
+        "v": 2,
         "locale": "en",
         "messages": {
-          "m": { "$text": "x", "$plural": { "on": "n", "branches": { "other": "y" } }, "$params": { "n": "number" } }
+          "a": [
+            "x"
+          ]
         }
       },
       "code": "invalid_node",
-      "key": "m"
+      "key": "a"
     },
     {
-      "name": "err-params-without-text-or-plural",
+      "name": "err-msg-not-string",
       "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "m": { "$params": { "a": "string" } } } },
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": {
+            "$msg": 1
+          }
+        }
+      },
       "code": "invalid_node",
-      "key": "m"
+      "key": "a"
     },
     {
-      "name": "err-placeholder-undeclared-in-shorthand",
-      "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "m": "Hello %{name}" } },
-      "code": "placeholder_undeclared",
-      "key": "m",
-      "schema_gap": true
-    },
-    {
-      "name": "err-placeholder-undeclared",
+      "name": "err-desc-not-string",
       "valid": false,
       "doc": {
-        "v": 1,
-        "locale": "en",
-        "messages": { "m": { "$text": "%{a} %{b}", "$params": { "a": "string" } } }
-      },
-      "code": "placeholder_undeclared",
-      "key": "m",
-      "schema_gap": true
-    },
-    {
-      "name": "err-placeholder-empty-name",
-      "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "m": "x %{} y" } },
-      "code": "placeholder_malformed",
-      "key": "m",
-      "schema_gap": true
-    },
-    {
-      "name": "err-placeholder-bad-name",
-      "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "m": "x %{1a} y" } },
-      "code": "placeholder_malformed",
-      "key": "m",
-      "schema_gap": true
-    },
-    {
-      "name": "err-placeholder-space-in-name",
-      "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "m": "x %{a b} y" } },
-      "code": "placeholder_malformed",
-      "key": "m",
-      "schema_gap": true
-    },
-    {
-      "name": "err-placeholder-unterminated",
-      "valid": false,
-      "doc": { "v": 1, "locale": "en", "messages": { "m": "x %{abc" } },
-      "code": "placeholder_malformed",
-      "key": "m",
-      "schema_gap": true
-    },
-    {
-      "name": "err-placeholder-in-plural-branch-undeclared",
-      "valid": false,
-      "doc": {
-        "v": 1,
+        "v": 2,
         "locale": "en",
         "messages": {
-          "m": {
-            "$plural": { "on": "n", "branches": { "one": "%{zz}", "other": "x" } },
-            "$params": { "n": "number" }
+          "a": {
+            "$msg": "x",
+            "$desc": 1
           }
         }
       },
-      "code": "placeholder_undeclared",
-      "key": "m",
+      "code": "invalid_node",
+      "key": "a"
+    },
+    {
+      "name": "err-desc-without-msg",
+      "valid": false,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": {
+            "$desc": "x"
+          }
+        }
+      },
+      "code": "invalid_node",
+      "key": "a"
+    },
+    {
+      "name": "err-mf2-unclosed-placeholder",
+      "valid": false,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": "Hello {$name"
+        }
+      },
+      "code": "invalid_message",
+      "key": "a",
       "schema_gap": true
     },
     {
-      "name": "err-param-type-unknown",
+      "name": "err-mf2-stray-brace",
       "valid": false,
       "doc": {
-        "v": 1,
-        "locale": "en",
-        "messages": { "m": { "$text": "x", "$params": { "a": "bool" } } }
-      },
-      "code": "invalid_param_type",
-      "key": "m"
-    },
-    {
-      "name": "err-param-name-invalid",
-      "valid": false,
-      "doc": {
-        "v": 1,
-        "locale": "en",
-        "messages": { "m": { "$text": "x", "$params": { "1a": "string" } } }
-      },
-      "code": "invalid_param_name",
-      "key": "m"
-    },
-    {
-      "name": "err-plural-missing-other",
-      "valid": false,
-      "doc": {
-        "v": 1,
+        "v": 2,
         "locale": "en",
         "messages": {
-          "m": {
-            "$plural": { "on": "n", "branches": { "one": "x" } },
-            "$params": { "n": "number" }
-          }
+          "a": "Hello } there"
         }
       },
-      "code": "plural_missing_other",
-      "key": "m"
-    },
-    {
-      "name": "err-plural-bad-category",
-      "valid": false,
-      "doc": {
-        "v": 1,
-        "locale": "en",
-        "messages": {
-          "m": {
-            "$plural": { "on": "n", "branches": { "several": "x", "other": "y" } },
-            "$params": { "n": "number" }
-          }
-        }
-      },
-      "code": "plural_invalid_category",
-      "key": "m"
-    },
-    {
-      "name": "err-plural-on-undeclared",
-      "valid": false,
-      "doc": {
-        "v": 1,
-        "locale": "en",
-        "messages": {
-          "m": { "$plural": { "on": "n", "branches": { "other": "y" } } }
-        }
-      },
-      "code": "plural_param_undeclared",
-      "key": "m",
+      "code": "invalid_message",
+      "key": "a",
       "schema_gap": true
     },
     {
-      "name": "err-plural-on-string-type",
+      "name": "err-mf2-complex-without-pattern",
       "valid": false,
       "doc": {
-        "v": 1,
+        "v": 2,
         "locale": "en",
         "messages": {
-          "m": {
-            "$plural": { "on": "n", "branches": { "other": "y" } },
-            "$params": { "n": "string" }
+          "a": ".input {$n :number}"
+        }
+      },
+      "code": "invalid_message",
+      "key": "a",
+      "schema_gap": true
+    },
+    {
+      "name": "err-mf2-missing-fallback-variant",
+      "valid": false,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": ".input {$n :number}\n.match $n\none {{x}}"
+        }
+      },
+      "code": "invalid_message",
+      "key": "a",
+      "schema_gap": true
+    },
+    {
+      "name": "err-mf2-duplicate-variant",
+      "valid": false,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": ".input {$n :number}\n.match $n\none {{x}}\none {{y}}\n* {{z}}"
+        }
+      },
+      "code": "invalid_message",
+      "key": "a",
+      "schema_gap": true
+    },
+    {
+      "name": "err-mf2-variant-key-mismatch",
+      "valid": false,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": ".input {$n :number}\n.match $n\none one {{x}}\n* {{z}}"
+        }
+      },
+      "code": "invalid_message",
+      "key": "a",
+      "schema_gap": true
+    },
+    {
+      "name": "err-mf2-missing-selector-annotation",
+      "valid": false,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": ".match $n\n* {{z}}"
+        }
+      },
+      "code": "invalid_message",
+      "key": "a",
+      "schema_gap": true
+    },
+    {
+      "name": "err-mf2-duplicate-declaration",
+      "valid": false,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": ".local $x = {1}\n.local $x = {2}\n{{{$x}}}"
+        }
+      },
+      "code": "invalid_message",
+      "key": "a",
+      "schema_gap": true
+    },
+    {
+      "name": "err-mf2-duplicate-option-name",
+      "valid": false,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": "{$n :number minimumFractionDigits=1 minimumFractionDigits=2}"
+        }
+      },
+      "code": "invalid_message",
+      "key": "a",
+      "schema_gap": true
+    },
+    {
+      "name": "err-mf2-in-nested-key",
+      "valid": false,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "cli": {
+            "files": "{$n"
           }
         }
       },
-      "code": "plural_param_type",
-      "key": "m",
+      "code": "invalid_message",
+      "key": "cli.files",
+      "schema_gap": true
+    },
+    {
+      "name": "err-mf2-in-leaf-object",
+      "valid": false,
+      "doc": {
+        "v": 2,
+        "locale": "en",
+        "messages": {
+          "a": {
+            "$msg": "{{",
+            "$desc": "x"
+          }
+        }
+      },
+      "code": "invalid_message",
+      "key": "a",
       "schema_gap": true
     }
   ]

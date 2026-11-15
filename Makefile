@@ -628,10 +628,11 @@ test-parity-oauth-token: ## oauth-token-v1 grant, token, digest and taxonomy cor
 	@echo "==> oauth-token-v1 parity: Go"
 	go test ./go/storage/secret/oauth/... -run '^TestContract' -count=1
 
-# i18n-v1 catalog, fallback and plural corpus. The corpus self-check is the
-# only runner until a port lands; ports add their replayer here.
-test-parity-i18n: ## i18n-v1 corpus: schema validation and reference check
-	@echo "==> i18n-v1 corpus: schema + reference"
+# i18n-v1 catalog corpus, plural and locale vectors, vendored MessageFormat 2
+# suite. The fixture self-check is the only runner until a port lands; ports
+# add their replayer here.
+test-parity-i18n: ## i18n-v1 fixtures: schema validation, vendored suite integrity
+	@echo "==> i18n-v1 fixtures: schemas + suite integrity"
 	go test ./contracts/i18n-v1/... -count=1
 
 # ── Lint scope: changed files only ────────────────────────────

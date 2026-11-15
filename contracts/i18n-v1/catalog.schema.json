@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hop.top/kit/contracts/i18n-v1/catalog.schema.json",
   "title": "i18n-v1 message catalog",
-  "description": "One catalog = one locale. Structural rules only; placeholder syntax, declared-vs-used parameters and the plural parameter's type are pinned by catalog-corpus.json (cases marked schema_gap), not by this schema.",
+  "description": "One catalog = one locale. Structural rules only; whether a message is valid MessageFormat 2 is pinned by catalog-corpus.json (cases marked schema_gap) and by the vendored MF2 suite, not by this schema.",
   "type": "object",
   "additionalProperties": false,
   "required": ["v", "locale", "messages"],
   "properties": {
     "$schema": { "type": "string" },
-    "v": { "const": 1 },
+    "v": { "const": 2 },
     "locale": {
       "type": "string",
       "pattern": "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$"
@@ -16,7 +16,6 @@
     "messages": { "$ref": "#/$defs/namespace" }
   },
   "$defs": {
-    "key": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
     "node": {
       "oneOf": [
         { "type": "string" },
@@ -35,46 +34,14 @@
       "additionalProperties": false,
       "patternProperties": { "^[A-Za-z0-9_-]+$": { "$ref": "#/$defs/node" } }
     },
-    "paramType": {
-      "enum": ["string", "number", "integer", "date", "time", "datetime"]
-    },
-    "params": {
-      "type": "object",
-      "additionalProperties": false,
-      "patternProperties": {
-        "^[A-Za-z_][A-Za-z0-9_]*$": { "$ref": "#/$defs/paramType" }
-      }
-    },
     "leaf": {
       "type": "object",
       "additionalProperties": false,
+      "required": ["$msg"],
       "properties": {
-        "$text": { "type": "string" },
-        "$plural": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["on", "branches"],
-          "properties": {
-            "on": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
-            "branches": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["other"],
-              "properties": {
-                "zero": { "type": "string" },
-                "one": { "type": "string" },
-                "two": { "type": "string" },
-                "few": { "type": "string" },
-                "many": { "type": "string" },
-                "other": { "type": "string" }
-              }
-            }
-          }
-        },
-        "$params": { "$ref": "#/$defs/params" },
+        "$msg": { "type": "string" },
         "$desc": { "type": "string" }
-      },
-      "oneOf": [{ "required": ["$text"] }, { "required": ["$plural"] }]
+      }
     }
   }
 }

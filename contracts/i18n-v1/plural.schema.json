@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/i18n-v1/plural.schema.json",
+  "title": "i18n-v1 plural vectors",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cldr_min", "cases"],
+  "properties": {
+    "_comment": { "type": "array", "items": { "type": "string" } },
+    "cldr_min": { "type": "string", "pattern": "^[0-9]+$" },
+    "cldr_computed": { "type": "string", "pattern": "^[0-9]+$" },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["locale", "type", "n", "category"],
+        "properties": {
+          "locale": { "type": "string", "pattern": "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$" },
+          "type": { "enum": ["cardinal", "ordinal"] },
+          "n": { "type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$" },
+          "category": { "enum": ["zero", "one", "two", "few", "many", "other"] },
+          "since": { "type": "string", "pattern": "^[0-9]+$" }
+        }
+      }
+    }
+  }
+}
