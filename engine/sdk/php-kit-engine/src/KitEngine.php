@@ -27,6 +27,8 @@ final class KitEngine
     private const DEFAULT_STOP_TIMEOUT = 10.0;
 
     private readonly Http $http;
+    /** @var array<string,Collection> */
+    private array $collections = [];
     private ?SyncClient $sync = null;
     private ?PeerClient $peers = null;
     private ?IdentityClient $identity = null;
@@ -124,6 +126,11 @@ final class KitEngine
         $pid = \is_array($health) && isset($health['pid']) ? (int) $health['pid'] : 0;
 
         return new self($port, $pid, $token, $shutdownToken, $client);
+    }
+
+    public function collection(string $type): Collection
+    {
+        return $this->collections[$type] ??= new Collection($this->client, self::baseUrlFor($this->port), $type, $this->token);
     }
 
     /**
