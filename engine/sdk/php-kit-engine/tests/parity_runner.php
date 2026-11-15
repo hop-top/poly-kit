@@ -55,8 +55,15 @@ $pruned = $notes->prune($b, maxVersions: 1);
 $missing = 'no-such-doc';
 $forkKeys = array_keys($forkA);
 sort($forkKeys);
+// The engine does not yet bridge bus events to the socket, so only the
+// connect + subscribe path is observable: iteration throws if the first
+// connect fails, and otherwise ends quietly at the timeout.
+foreach ($engine->events('kit.engine.document.*', 0.5) as $_) {
+}
+$eventsOpen = true;
 
 echo json_encode([
+    'eventsOpen' => $eventsOpen,
     'forkSeq' => $forkA['seq'],
     'forkParents' => count($forkA['parent_ids']),
     'forkKeys' => $forkKeys,

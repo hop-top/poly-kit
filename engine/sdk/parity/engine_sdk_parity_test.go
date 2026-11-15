@@ -253,7 +253,16 @@ const { KitEngine } = require(%q);
   const pruneNoPolicy = await status(() => notes.prune(b, {}));
   const pruned = await notes.prune(b, { max_versions: 1 });
   const missing = "no-such-doc";
+  // The engine does not yet bridge bus events to the socket, so only the
+  // connect + subscribe path is observable: the stream must open. connect()
+  // is fire-and-forget, so read the socket state off the stream.
+  const ev = engine.events;
+  ev.on("kit.engine.document.*", () => {});
+  await new Promise((r) => setTimeout(r, 500));
+  const eventsOpen = ev.ws !== undefined && ev.ws.readyState === 1;
+  ev.close();
   console.log(JSON.stringify({
+    eventsOpen,
     forkSeq: forkA.seq,
     forkParents: forkA.parent_ids.length,
     forkKeys: Object.keys(forkA).sort(),
@@ -334,7 +343,14 @@ merged = notes.merge(b, fork_b["seq"], 3, {"title": "merged"})
 prune_no_policy = status(lambda: notes.prune(b))
 pruned = notes.prune(b, max_versions=1)
 missing = "no-such-doc"
+# The engine does not yet bridge bus events to the socket, so only the
+# connect + subscribe path is observable: the constructor raises if the
+# first connect fails.
+ev = engine.events("kit.engine.document.*")
+events_open = True
+ev.close()
 print(json.dumps({
+    "eventsOpen": events_open,
     "forkSeq": fork_a["seq"],
     "forkParents": len(fork_a["parent_ids"]),
     "forkKeys": sorted(fork_a.keys()),
