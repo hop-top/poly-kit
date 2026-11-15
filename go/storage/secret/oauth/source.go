@@ -28,7 +28,9 @@ func WithHTTPClient(hc *http.Client) Option { return func(s *Source) { s.hc = hc
 // lifetime, so a token that lives no longer than the skew is still reused.
 func WithSkew(d time.Duration) Option { return func(s *Source) { s.skew = d } }
 
-// WithClock replaces time.Now for freshness decisions (tests).
+// WithClock replaces time.Now for freshness decisions and for stamping the
+// expiry of tokens this Source mints (tests). Outbound assertions (JWT iat/exp)
+// still carry real wall-clock time: the provider validates them.
 func WithClock(now func() time.Time) Option { return func(s *Source) { s.now = now } }
 
 // WithLockDir sets the directory of the per-reference advisory lock files
@@ -244,10 +246,11 @@ func (s *Source) refresh(ctx context.Context) (CachedToken, error) {
 	if err != nil {
 		return CachedToken{}, err
 	}
-	if ct.Expired(s.now(), 0) {
+	now := s.now()
+	if ct.Expired(now, 0) {
 		return CachedToken{}, errTokenIncomplete
 	}
-	recordLifetime(ct.AccessToken, time.Until(ct.ExpiresAt), ct.ExpiresAt)
+	recordLifetime(ct.AccessToken, ct.ExpiresAt.Sub(now), ct.ExpiresAt, now)
 	if s.persist && s.generation() == gen {
 		if raw, err := EncodeCachedToken(ct); err == nil {
 			ms := s.store.(secret.MutableStore)
@@ -300,7 +303,20 @@ func (s *Source) readPersisted(ctx context.Context) (CachedToken, bool) {
 	return ct, true
 }
 
+// mint runs the grant and restamps the token's expiry from the Source clock.
+// The grant code (and x/oauth2 under it) computes expiry as wall clock +
+// expires_in; the remaining lifetime is kept and re-based onto s.now so that
+// every freshness decision, and the stored expires_at, share one timeline.
 func (s *Source) mint(ctx context.Context) (CachedToken, error) {
+	ct, err := s.mintGrant(ctx)
+	if err != nil {
+		return ct, err
+	}
+	ct.ExpiresAt = s.now().Add(time.Until(ct.ExpiresAt)).UTC()
+	return ct, nil
+}
+
+func (s *Source) mintGrant(ctx context.Context) (CachedToken, error) {
 	switch s.g.Kind {
 	case ClientCredentials:
 		return fetchClientCredentials(ctx, s.store, s.ref, s.g, s.hc)

@@ -249,18 +249,6 @@ func TestSourceRejectsNonPositiveExpiresIn(t *testing.T) {
 	}
 }
 
-func TestSourceExpiredOnArrivalRejected(t *testing.T) {
-	var calls atomic.Int32
-	srv := srcServer(t, 3600, &calls)
-	st := memory.New()
-	ccSetup(t, st, srv.URL)
-	future := time.Now().Add(48 * time.Hour) // clock ahead of the provider
-	src, _ := TokenSource(context.Background(), st, "g", WithHTTPClient(srv.Client()), WithClock(func() time.Time { return future }))
-	if tok, err := src.Token(context.Background()); err == nil {
-		t.Errorf("accepted already-expired token %+v", tok)
-	}
-}
-
 func TestTokenSourceConfiguration(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New() // not writable
@@ -401,15 +389,18 @@ func TestRotationPendingFlushedWithoutRefresh(t *testing.T) {
 	st := &wStore{Store: memory.New()}
 	rtSetup(t, st, rs.URL, "rt-fake-0")
 	st.failKey, st.failSets = "rt", 1000
+	var off atomic.Int64
 	src, _ := TokenSource(context.Background(), st, "g", WithHTTPClient(rs.Client()),
 		WithLockDir(t.TempDir()), WithWriteBackRetry(1, time.Millisecond), WithSkew(2*time.Hour),
-		WithClock(func() time.Time { return time.Now().Add(45 * time.Minute) }))
+		WithClock(func() time.Time { return time.Now().Add(time.Duration(off.Load())) }))
 	_, _ = src.Token(context.Background())
 	st.mu.Lock()
 	st.failSets = 0
 	st.mu.Unlock()
-	// skew makes every call stale; a second Token flushes then refreshes
+	// 45 minutes on, 15 minutes of the one-hour token remain, inside the
+	// skew (capped at half the lifetime): a second Token flushes then refreshes
 	// with the pending token (never the stored old one).
+	off.Store(int64(45 * time.Minute))
 	if _, err := src.Token(context.Background()); err != nil {
 		t.Fatal(err)
 	}
