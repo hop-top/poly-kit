@@ -146,15 +146,18 @@ fn default_sleeper() -> Sleeper {
     use std::sync::{Condvar, Mutex, PoisonError};
 
     Arc::new(|ctx, d| {
-        if let Some(e) = ctx.err() {
-            return Err(e);
-        }
         let woken = Arc::new((Mutex::new(false), Condvar::new()));
         let w = Arc::clone(&woken);
         let _watch = ctx.on_cancel(Arc::new(move || {
             *w.0.lock().unwrap_or_else(PoisonError::into_inner) = true;
             w.1.notify_all();
         }));
+        // Checked after registering: on_cancel skips a context that is
+        // already canceled, so a cancel landing before the watch would
+        // otherwise never wake the wait.
+        if let Some(e) = ctx.err() {
+            return Err(e);
+        }
         let wait = match ctx.deadline() {
             Some(dl) => d.min(dl.saturating_duration_since(crate::bus::context::now())),
             None => d,

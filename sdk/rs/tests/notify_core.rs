@@ -478,6 +478,30 @@ fn broken_circuit_text_is_the_breakers() {
 }
 
 #[test]
+fn retry_cancel_before_sleep_returns_without_waiting() {
+    // A context canceled before the wait starts must not sleep the full
+    // backoff: the cancel watch skips an already-canceled context.
+    let inner = Scripted::failing(&[Some("transient")]);
+    let (ctx, cancel) = Context::background().with_cancel();
+    cancel.cancel();
+    let r = RetrySink::new(inner.clone())
+        .max_attempts(5)
+        .backoff(|_| Duration::from_secs(10));
+    let start = Instant::now();
+    let err = r.drain(&ctx, &event("a.b.c.d", Value::Null)).unwrap_err();
+    assert!(
+        matches!(err, BusError::Context(ContextError::Canceled)),
+        "{err}"
+    );
+    assert_eq!(inner.calls(), 1);
+    assert!(
+        start.elapsed() < Duration::from_secs(1),
+        "{:?}",
+        start.elapsed()
+    );
+}
+
+#[test]
 fn retry_cancel_during_sleep_wakes_early() {
     let inner = Scripted::failing(&[Some("transient")]);
     let (ctx, cancel) = Context::background().with_cancel();
