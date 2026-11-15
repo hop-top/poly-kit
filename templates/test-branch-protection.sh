@@ -98,6 +98,7 @@ fresh; export GH_WRITE_RC=1
 run hop-top/foo
 has   "write_fail: stdout" "$OUT" "FAILED: hop-top/foo"
 check "write_fail: rc" "$RC" "1"
+has   "write_fail: diagnostic" "$OUT" "boom"
 
 # 7. body builder failure -> FAILED, no write
 fresh

@@ -44,9 +44,22 @@ apply_branch_protection() {
       --jq ".[] | select(.name == \"$BP_RULESET_NAME\") | .id" 2>/dev/null)"; then
     _bp_fail "$repo_slug" "ruleset lookup failed"; return 1
   fi
-  : "$ruleset_id"
 
-  _bp_fail "$repo_slug" "not implemented"
+  # 2. ruleset body (injected seam)
+  local body
+  if ! body="$("${BP_BODY_FN:-bp_build_body}" "$repo_slug" 2>/dev/null)" || [[ -z "$body" ]]; then
+    _bp_fail "$repo_slug" "ruleset body construction failed"; return 1
+  fi
+
+  # 3. POST (new) or PUT (existing); 4. report
+  local method=POST path="repos/$repo_slug/rulesets" status=SET err
+  if [[ -n "$ruleset_id" ]]; then
+    method=PUT path="$path/$ruleset_id" status=UPDATED
+  fi
+  if ! err="$(printf '%s' "$body" | gh api -X "$method" "$path" --input - 2>&1 >/dev/null)"; then
+    _bp_fail "$repo_slug" "gh api $method failed: ${err//$'\n'/ }"; return 1
+  fi
+  printf '%s: %s\n' "$status" "$repo_slug"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
