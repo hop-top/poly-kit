@@ -66,7 +66,7 @@ run hop-top/foo
 check "no_existing: stdout" "$OUT" "SET: hop-top/foo"
 check "no_existing: rc" "$RC" "0"
 has   "no_existing: POST" "$(cat "$GH_LOG")" "-X POST repos/hop-top/foo/rulesets"
-has   "no_existing: body sent" "$(cat "$GH_BODY")" '"slug":"hop-top/foo"'
+has   "no_existing: body sent" "$(cat "$GH_BODY" 2>/dev/null || true)" '"slug":"hop-top/foo"'
 
 # 2. existing ruleset -> UPDATED via PUT on that id
 fresh; export GH_RULESET_ID=4242
