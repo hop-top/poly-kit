@@ -2,10 +2,14 @@
 
 ## [0.5.0-beta.10](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.9...kit/v0.5.0-beta.10) (2026-11-15)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.10. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
 * **serve:** treat clean pre-ready Start return on canceled run as cancel ([9f111d2](https://github.com/hop-top/poly-kit/commit/9f111d20565dcd37076c70d6a18c9c74aabb24df))
+
+Full diff: [kit/v0.5.0-beta.9...kit/v0.5.0-beta.10](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.9...kit/v0.5.0-beta.10)
 
 ## [0.5.0-beta.9](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.8...kit/v0.5.0-beta.9) (2026-11-15)
 
