@@ -144,8 +144,8 @@ class KitEngine:
     def events(self, topic: str = "*") -> EventStream:
         from kit_engine.events import EventStream
 
-        ws_url = f"ws://localhost:{self.port}/events?topic={topic}"
-        return EventStream(ws_url)
+        ws_url = f"ws://127.0.0.1:{self.port}/events"
+        return EventStream(ws_url, topic, self._token)
 
     def stop(self):
         """Gracefully shut down the engine."""
