@@ -230,7 +230,9 @@ Protobuf definitions for cross-language CRUD (`v1`) and RouteL2M
 | `HopTop\Kit\Telemetry` *(experimental)* | `runtime/telemetry` |
 
 This table lists a sample. The full Go package to port module mapping, with a
-status per port, is [`sdk-parity-inventory.md`](../sdk-parity-inventory.md).
+status per port, is [`sdk-parity-inventory.md`](../sdk-parity-inventory.md). What
+"experimental" and "supported" mean for an SDK is in
+[`sdk-support-tiers.md`](../sdk-support-tiers.md).
 
 Every Rust module is feature-gated, and the crate's default feature set is
 empty. Distributed backends are deliberately absent from the Rust SDK;
