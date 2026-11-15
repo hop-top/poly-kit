@@ -2,6 +2,8 @@
 
 ## [0.5.0-beta.8](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.7...kit/v0.5.0-beta.8) (2026-11-15)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.8. This release includes new features and bug fixes.
+
 
 ### Features
 
@@ -23,6 +25,8 @@
 ### Bug Fixes
 
 * **cmdsurface:** repeat flag per element for array flag values ([75a569f](https://github.com/hop-top/poly-kit/commit/75a569f7f05feaa90a3a8067a7fef6faf93f995e))
+
+Full diff: [kit/v0.5.0-beta.7...kit/v0.5.0-beta.8](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.7...kit/v0.5.0-beta.8)
 
 ## [0.5.0-beta.7](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.6...kit/v0.5.0-beta.7) (2026-11-14)
 
