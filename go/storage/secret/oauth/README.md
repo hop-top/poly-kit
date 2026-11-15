@@ -22,6 +22,9 @@ if err != nil {
 tok, err := src.Token(ctx) // refreshed when under the skew remains
 ```
 
+`src.TokenWithIdentity(ctx)` also returns the envelope's optional `User` and
+`AuthzID` (SASL identity, e.g. IMAP XOAUTH2).
+
 One runnable example per grant: `example_*_test.go`.
 
 ## Contract

@@ -57,6 +57,7 @@ Probe results, `v0.37.0`, throwaway program against `httptest` servers:
 func TokenSource(ctx context.Context, store secret.Store, ref string, opts ...Option) (*Source, error)
 
 func (s *Source) Token(ctx context.Context) (Token, error)
+func (s *Source) TokenWithIdentity(ctx context.Context) (CachedToken, error)
 func (s *Source) Invalidate()
 func Invalidate(ref string)
 
@@ -66,7 +67,14 @@ type Token struct {
 }
 ```
 
-Options: `WithHTTPClient`, `WithSkew` (default 5 minutes), `WithClock`,
+`TokenWithIdentity` is `Token` plus the cached envelope's optional `User` and
+`AuthzID` (`CachedToken` embeds `Token`), for consumers that need the SASL
+identity, such as IMAP XOAUTH2. Both are empty for a token this package
+minted; they come from an envelope another writer stored at the token key.
+`Token` drops them.
+
+Options: `WithHTTPClient`, `WithSkew` (default 5 minutes), `WithClock`
+(also stamps the expiry of tokens the `Source` mints),
 `WithLockDir`, `WithWriteBackRetry`. `TokenSource` reads and validates the
 grant and fails with `ErrNotWritable` for a `refresh_token` grant on a
 store that cannot hold the rotated token. A token with the skew or less
@@ -110,7 +118,7 @@ inlined: a reference points at an envelope in uma's format
 
 The cached access token is stored at `<ref>.token.<d>` as exactly a uma
 `oauth2` envelope: `{"v":1,"kind":"oauth2","access_token":...,"expires_at":...}`
-with optional `user` (from the grant subject) and `authzid`. uma decodes
+with optional `user` and `authzid` (this package never sets them; other writers may, and `TokenWithIdentity` returns them). uma decodes
 strictly and rejects unknown fields, so the cached value carries nothing
 else. The mapping to and from uma `oauth2` is therefore the identity on
 `access_token` and `expires_at`, and a host that reads the token key
