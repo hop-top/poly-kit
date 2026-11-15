@@ -284,11 +284,12 @@ final class KitEngineTest extends TestCase
         self::assertSame('/sync/status', $client->last()->getUri()->getPath());
     }
 
-    public function testEventsAccessorUnsupported(): void
+    public function testEventsAccessorReturnsLazyStream(): void
     {
         $engine = KitEngine::connect(9090, null, null, new RecordingClient(static fn () => RecordingClient::json(200, ['pid' => 1])));
-        $this->expectException(\LogicException::class);
-        $engine->events('notes.*');
+        $stream = $engine->events('notes.*');
+        self::assertInstanceOf(\HopTop\KitEngine\EventStream::class, $stream);
+        self::assertSame('notes.*', $stream->topic);
     }
 
     public function testRealKitStartHealthStop(): void

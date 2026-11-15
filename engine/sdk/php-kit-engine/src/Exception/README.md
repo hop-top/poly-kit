@@ -4,8 +4,6 @@
 
 Which error did an engine call raise, and what does it carry? Every error the
 SDK throws extends `KitEngineException`, so one `catch` covers the client.
-`LogicException` from `KitEngine::events()` is not one of them: it marks an
-unimplemented method, not a runtime failure.
 
 ## Use it when
 
