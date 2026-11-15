@@ -33,6 +33,7 @@ $versions = $notes->history($note['id']);          // newest first
 $notes->revert($note['id'], 1);                    // VersionConflictException if v1 missing
 $topology = $notes->historyWithTopology($note['id']);
 $heads    = $notes->branches($note['id'], live: true);
+// Branch ops: fork($id, $seq), merge(), prune(), abandon() (see Collection)
 
 // Identity, sync, peers
 $key = $engine->identity()->publicKey();
@@ -66,7 +67,6 @@ passed to `create()`/`update()`; throw to veto before the request is sent.
 
 `$engine->events()` throws `LogicException`: no WebSocket client is
 bundled (`ratchet/pawl` is suggested for a future events module).
-`Collection` has no fork/merge/prune/abandon yet.
 
 ## Development
 
