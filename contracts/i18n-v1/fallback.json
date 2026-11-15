@@ -1,0 +1,97 @@
+{
+  "_comment": [
+    "Locale tag canonicalisation, fallback chains, resolution and per-key lookup. Rules: SPEC.md, sections Locale tags and Fallback.",
+    "canonicalize: `in` -> `out`, or `error` (always invalid_locale) when the tag is not accepted.",
+    "chain: unfiltered chain for `tag` with `default`: lookup truncation of tag, then of default, de-duplicated, first occurrence kept.",
+    "resolve: first chain entry present in `available` (canonical comparison); null when none. `error` = invalid_locale for a malformed tag or default.",
+    "lookup: for each `keys` entry, the locale of the first chain entry (as for resolve, over the locales of `catalogs`) whose catalog defines the key; null when none does. `catalogs` maps locale to the dotted keys it defines."
+  ],
+  "canonicalize": [
+    { "in": "en", "out": "en" },
+    { "in": "EN", "out": "en" },
+    { "in": "en-us", "out": "en-US" },
+    { "in": "en-US", "out": "en-US" },
+    { "in": "zh-hant-tw", "out": "zh-Hant-TW" },
+    { "in": "sr-LATN", "out": "sr-Latn" },
+    { "in": "es-419", "out": "es-419" },
+    { "in": "fil", "out": "fil" },
+    { "in": "ca-VALENCIA", "out": "ca-valencia" },
+    { "in": "de-de-u-co-phonebk", "out": "de-DE-u-co-phonebk" },
+    { "in": "DE-DE-U-CO-PHONEBK", "out": "de-DE-u-co-phonebk" },
+    { "in": "en-x-Priv", "out": "en-x-priv" },
+    { "in": "", "error": "invalid_locale" },
+    { "in": "e", "error": "invalid_locale" },
+    { "in": "en_US", "error": "invalid_locale" },
+    { "in": "en_US.UTF-8", "error": "invalid_locale" },
+    { "in": "en-", "error": "invalid_locale" },
+    { "in": "-en", "error": "invalid_locale" },
+    { "in": "en--US", "error": "invalid_locale" },
+    { "in": "en US", "error": "invalid_locale" },
+    { "in": "123", "error": "invalid_locale" },
+    { "in": "x-private", "error": "invalid_locale" },
+    { "in": "en-u", "error": "invalid_locale" },
+    { "in": "en-x", "error": "invalid_locale" },
+    { "in": "en-US-US", "error": "invalid_locale" },
+    { "in": "en-Latn-Latn", "error": "invalid_locale" },
+    { "in": "en-abcdefghi", "error": "invalid_locale" },
+    { "in": "i-klingon", "error": "invalid_locale" },
+    { "in": "zh-yue", "error": "invalid_locale" },
+    { "in": "*", "error": "invalid_locale" },
+    { "in": "en-é", "error": "invalid_locale" }
+  ],
+  "chain": [
+    { "tag": "en", "default": "en", "chain": ["en"] },
+    { "tag": "zh-CN", "default": "en", "chain": ["zh-CN", "zh", "en"] },
+    { "tag": "zh-Hant-TW", "default": "en", "chain": ["zh-Hant-TW", "zh-Hant", "zh", "en"] },
+    { "tag": "zh-hant-tw", "default": "EN", "chain": ["zh-Hant-TW", "zh-Hant", "zh", "en"] },
+    { "tag": "fr-CA", "default": "fr-FR", "chain": ["fr-CA", "fr", "fr-FR"] },
+    { "tag": "en-GB", "default": "en-US", "chain": ["en-GB", "en", "en-US"] },
+    { "tag": "pt-BR", "default": "pt-PT", "chain": ["pt-BR", "pt", "pt-PT"] },
+    { "tag": "ca-valencia", "default": "es-ES", "chain": ["ca-valencia", "ca", "es-ES", "es"] },
+    { "tag": "es-419", "default": "en", "chain": ["es-419", "es", "en"] },
+    {
+      "tag": "de-DE-u-co-phonebk",
+      "default": "en",
+      "chain": ["de-DE-u-co-phonebk", "de-DE-u-co", "de-DE", "de", "en"]
+    },
+    { "tag": "en-x-priv", "default": "en", "chain": ["en-x-priv", "en"] },
+    { "tag": "ja", "default": "en", "chain": ["ja", "en"] },
+    { "tag": "en_US", "default": "en", "error": "invalid_locale" },
+    { "tag": "en", "default": "", "error": "invalid_locale" }
+  ],
+  "resolve": [
+    { "tag": "zh-CN", "available": ["en", "zh-CN", "zh"], "default": "en", "want": "zh-CN" },
+    { "tag": "zh-CN", "available": ["en", "zh"], "default": "en", "want": "zh" },
+    { "tag": "zh-CN", "available": ["en"], "default": "en", "want": "en" },
+    { "tag": "zh-TW", "available": ["en", "zh-Hant", "zh-CN"], "default": "en", "want": "en" },
+    { "tag": "zh-Hant-TW", "available": ["en", "zh-Hant"], "default": "en", "want": "zh-Hant" },
+    { "tag": "pt-BR", "available": ["pt-PT", "en"], "default": "pt-PT", "want": "pt-PT" },
+    { "tag": "fr", "available": ["fr-FR", "en"], "default": "en", "want": "en" },
+    { "tag": "DE-de", "available": ["de-DE", "en"], "default": "en", "want": "de-DE" },
+    { "tag": "de-DE", "available": ["DE", "EN"], "default": "en", "want": "de" },
+    { "tag": "de-DE-u-co-phonebk", "available": ["de-DE", "en"], "default": "en", "want": "de-DE" },
+    { "tag": "ja", "available": ["ko"], "default": "en", "want": null },
+    { "tag": "en-US", "available": [], "default": "en", "want": null },
+    { "tag": "en_US", "available": ["en"], "default": "en", "error": "invalid_locale" }
+  ],
+  "lookup": [
+    {
+      "tag": "zh-CN",
+      "default": "en",
+      "catalogs": { "zh-CN": ["a"], "zh": ["a", "b"], "en": ["a", "b", "c"] },
+      "keys": { "a": "zh-CN", "b": "zh", "c": "en", "d": null }
+    },
+    {
+      "tag": "fr-CA",
+      "default": "en",
+      "catalogs": { "fr-FR": ["a"], "en": ["a", "b"] },
+      "keys": { "a": "en", "b": "en" }
+    },
+    {
+      "tag": "en-GB",
+      "default": "en-US",
+      "catalogs": { "en-US": ["a"], "en-GB": ["b"] },
+      "keys": { "a": "en-US", "b": "en-GB", "nested.key": null }
+    }
+  ]
+}
