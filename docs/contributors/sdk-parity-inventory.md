@@ -176,7 +176,8 @@ WebSocket protocol. They are separate from the library ports above.
 | Collections, events, sync, peers, identity | ported | ported | absent | absent |
 
 The engine parity test runs Go, TypeScript and Python against one
-`kit serve`. Rust and PHP clients do not exist yet.
+`kit serve`. Rust and PHP clients do not exist yet; the
+[engine SDK parity policy](architecture/engine-sdk-parity.md) proposes them.
 
 ## Keeping this page true
 
