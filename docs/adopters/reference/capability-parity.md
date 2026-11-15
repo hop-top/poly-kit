@@ -21,17 +21,19 @@ module path. Path prefixes: `ts:` is `sdk/ts/src/`, `py:` is
 `sdk/py/hop_top_kit/`, `rs:` is `sdk/rs/src/`, `php:` is
 `sdk/experimental/php/src/`. Guards are defined in the root `Makefile` and in
 [`contracts/parity`](../../../contracts/parity/README.md); the contracts are
-described in [`parity-contract`](parity-contract.md).
+described in [`parity-contract`](parity-contract.md). The package-level
+view for contributors, with the gap behind each `partial`, is
+[`sdk-parity-inventory`](../../contributors/sdk-parity-inventory.md).
 
 ## Summary
 
 | SDK | Counts |
 |---|---|
 | Go | 74 done |
-| TypeScript | 37 none, 19 unverified, 11 done, 6 partial, 1 n/a |
-| Python | 39 none, 19 unverified, 9 done, 6 partial, 1 n/a |
-| Rust | 38 none, 15 partial, 12 done, 8 unverified, 1 n/a |
-| PHP | 59 none, 5 unverified, 5 partial, 4 done, 1 n/a |
+| TypeScript | 36 none, 19 unverified, 11 done, 7 partial, 1 n/a |
+| Python | 38 none, 19 unverified, 9 done, 7 partial, 1 n/a |
+| Rust | 29 none, 19 partial, 13 done, 12 unverified, 1 n/a |
+| PHP | 58 none, 5 unverified, 6 partial, 4 done, 1 n/a |
 
 Rust and PHP serve lifecycle parity is complete for the 13 behaviors in
 `contracts/parity/serve.json`; the MCP wire is pinned for all four SDKs.
@@ -57,7 +59,7 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | Fuzzy matching | done | none | none | none | none | no module in any SDK |
 | Process status | done | none | none | none | none | no module in any SDK |
 | Wizard | done | unverified | unverified | none | none | ts:wizard.ts py:wizard.py; rs-sdk.md: wizard not ported |
-| TUI components | done | partial | partial | none | none | parity.json blocks (status, spinner, anim, help, verbosity, streams) only; ts:tui/ py:tui/; rs tui.rs and php Tui.php are stubs |
+| TUI components | done | partial | partial | partial | none | parity.json blocks (status, spinner, anim, help, verbosity, streams); ts:tui/ py:tui/ rs:tui/ (progress, bar, spinner, status, confirm, app shell; no list or dialog); php Tui.php is an empty placeholder |
 | Progress events | done | unverified | unverified | none | none | ts:progress.ts py:progress.py |
 
 ## Config, storage and secrets
@@ -83,10 +85,10 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | Command surface bridge | done | partial | partial | partial | partial | MCP leg only: ts:mcp/bridge.ts py:mcp/bridge.py rs:mcp/bridge.rs php:Mcp/Bridge.php |
 | Transport service seam | done | none | none | none | none | no module in any SDK |
 | REST API toolkit | done | unverified | none | unverified | unverified | ts:api.ts rs:api.rs (guarded HTTP client) php:Api/ApiClient.php; no py module |
-| ConnectRPC | done | unverified | none | none | none | ts:rpc.ts gen/ |
-| Unix socket | done | none | none | none | none | no module in any SDK |
+| ConnectRPC | done | unverified | none | partial | none | make test-parity-rpc (Go/Rs, contracts/rpc-v1); rs:rpc/ is the server (no typed client or command-tree service); ts:rpc.ts gen/ is the client |
+| Unix socket | done | none | none | unverified | none | rs:socket/ (no corpus) |
 | MCP server | done | done | done | done | done | make test-parity-mcp (mcp-wire.json, 23 cases + 1 sequence; PHP runs when toolchain present) |
-| Served authentication | done | none | none | none | none | no module in any SDK |
+| Served authentication | done | none | none | done | none | make test-parity-authn (Go/Rs, contracts/authn-v1); rs:authn/ |
 | Served middleware | done | unverified | unverified | unverified | unverified | MCP audit/safety only: ts:mcp/audit.ts py:mcp/audit.py rs:mcp/audit.rs php:Mcp/Auditor.php; serve.json mcp_refusal_audit |
 | Served observability | done | none | none | none | none | no module in any SDK |
 | Bridge payloads | done | none | none | none | none | contracts/bridge.proto and bridge.schema.json only; no SDK module |
@@ -97,9 +99,9 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 |---|---|---|---|---|---|---|
 | Event bus | done | unverified | unverified | partial | none | make test-parity-bus + bus-network (Go<->Rs); rs:bus/ omits SQLite adapter, remote streams, CloudEvents outbound (rs-sdk.md); ts:bus.ts py:bus.py |
 | Job queue | done | none | none | none | none | no module in any SDK |
-| Notifications | done | none | none | none | none | no module in any SDK |
+| Notifications | done | none | none | unverified | none | rs:notify/ (Go tests ported; no corpus) |
 | Domain building blocks | done | none | none | partial | none | make test-parity-statemachine (Go/Rs); rs:domain/ has state machine only |
-| Entity sync | done | none | none | none | none | no module in the five SDKs; engine/sdk has separate ts and py engine clients (make test-parity-engine) |
+| Entity sync | done | none | none | partial | none | rs:sync/ (replicator, remotes, HTTP transport; no durable cursor, BusPublisher or SQLite repository); engine/sdk has separate ts and py engine clients (make test-parity-engine) |
 | Peer mesh | done | none | none | none | none | no module in any SDK |
 | Telemetry | done | unverified | unverified | unverified | unverified | ts:telemetry/ py:telemetry/ rs:telemetry/ php:Telemetry/ |
 
@@ -112,13 +114,13 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | Network policy | done | unverified | unverified | done | unverified | make test-parity-netpolicy (Go/Rs); ts:netpolicy.ts py:netpolicy.py php:Net/ |
 | Redaction | done | partial | partial | done | partial | make test-parity-redact (Go/Rs); ts:telemetry/redact.ts py:telemetry/redact.py php:Telemetry/Redactor.php cover telemetry only |
 | Delegation safety | done | unverified | unverified | unverified | partial | ts:safety.ts py:safety.py rs:cli/safety.rs (+ cli/served.rs: served `callers:`, `permissions:` and `max_ops` on api_server, mcp and socket); php:Cli/Delegation/ is pinned by the cli-root-v1 delegation and `infer` vectors (make test-parity-cli-root); no php `permissions:` or `callers:` evaluation |
-| Event policy engine | done | none | none | none | none | no module in any SDK |
+| Event policy engine | done | none | none | unverified | none | rs:policy/ (Go tests ported; stage.yaml pinned to Go; no corpus) |
 | Operating mode | done | none | none | none | none | no module in any SDK |
 | Consent grants | done | partial | partial | done | partial | make test-parity-consent (Go/Rs, contracts/consent-v1); ts:telemetry/consent.ts py:telemetry/consent.py php:Telemetry/Consent.php are telemetry consent only |
-| Side-effect seams | done | none | none | none | none | no module in any SDK |
+| Side-effect seams | done | partial | partial | partial | partial | ts:sideeffect.ts py:sideeffect.py rs:sideeffect/ (--dry-run flag and per-command tiers not wired) php:Cli/SideEffect.php; shared annotation tiers, no corpus |
 | Provenance | done | unverified | unverified | none | none | ts:provenance.ts py:provenance.py |
 | Audit log | done | none | none | none | none | no module in any SDK |
-| Identity | done | none | none | partial | none | contracts/identity-v1 derive-key corpus consumed by rs:sqlstore/crypto.rs only |
+| Identity | done | none | none | partial | none | make test-parity-identity (Go/Rs, contracts/identity-v1 derive-key corpus); rs:identity/ (keypair, JWT, encryption; `cli.WithIdentity` not ported), rs:sqlstore/crypto.rs |
 | TypeID | done | done | done | done | done | make test-parity-typeid (5 ports, contracts/typeid-v1); ts:id/ py:id/ rs:id/ php:Id/ |
 | Upgrade and migrations | done | unverified | unverified | partial | none | make test-parity-upgrade (Go/Rs); rs:upgrade/ is migrations plus the offline-aware release check (download and replace not ported); ts:upgrade.ts py:upgrade.py |
 | Utilities | done | none | none | partial | none | make test-parity-retry (Go/Rs); rs:util/retry.rs |
@@ -129,8 +131,8 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | Capability | Go | TS | Py | Rust | PHP | Evidence |
 |---|---|---|---|---|---|---|
 | LLM client | done | partial | partial | partial | none | make test-parity-llm (Go/Rs/Py/TS, contracts/llm-v1); ts:llm.ts py:llm.py rs:llm/ |
-| LLM providers | done | partial | partial | partial | none | ts:llm-anthropic.ts llm-openai.ts triton/ py:llm_anthropic.py llm_openai.py rs:llm/anthropic/ (Anthropic only); no Google or Ollama adapter |
-| LLM routing | done | unverified | unverified | none | none | ts:router/ routellm.ts py:routellm_adapter.py routellm_grpc.py |
+| LLM providers | done | partial | partial | partial | none | ts:llm-anthropic.ts llm-openai.ts triton/ py:llm_anthropic.py llm_openai.py rs:llm/ (anthropic, openai, google, ollama, triton); ts and py have no Google or Ollama adapter |
+| LLM routing | done | unverified | unverified | unverified | none | ts:router/ routellm.ts py:routellm_adapter.py routellm_grpc.py rs:llm/router/ rs:llm/routellm/ |
 | Toolspec | done | done | unverified | none | none | toolspec-manifest and spec cross-lang fixtures (ts tests: toolspec-manifest.test.ts toolspec-spec.test.ts); py:toolspec.py |
 | Command reflection | done | none | none | none | none | no module in any SDK |
 | Agent CLI invocation | done | none | none | none | none | no module in any SDK |

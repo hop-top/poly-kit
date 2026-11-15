@@ -42,8 +42,8 @@ kit ships as multiple deployable units under one repo:
 | Go module `hop.top/kit` | `go/` | Library imported by Go consumers |
 | TS package `@hop-top/kit` | `sdk/ts/` | Library for Node + browser consumers |
 | Python package `hop-top-kit` | `sdk/py/` | Library for Python consumers |
-| Rust crate `hop-top-kit` (release component `kit-rs`) | `sdk/rs/` | Library for Rust consumers; telemetry parity |
-| PHP package `hop-top/kit` *(experimental)* | `sdk/experimental/php/` | Library for PHP consumers; telemetry parity |
+| Rust crate `hop-top-kit` (release component `kit-rs`) | `sdk/rs/` | Library for Rust consumers; prerelease, one Cargo feature per module |
+| PHP package `hop-top/kit` *(experimental)* | `sdk/experimental/php/` | Library for PHP consumers; output, delegation, serve, MCP, telemetry, TypeID |
 | `kit` sidecar binary | `cmd/kit/` | Engine + consent/telemetry subcommand tree |
 | `routellm-server` binary | `cmd/routellm-server/` | Standalone LLM router |
 
@@ -224,10 +224,13 @@ Protobuf definitions for cross-language CRUD (`v1`) and RouteL2M
 | `hop_top_kit::bus` *(experimental)* | `runtime/bus` (parity in progress; see [rust-bus-parity.md](rust-bus-parity.md); SQLite adapter not ported) |
 | `hop_top_kit::sqldb` *(experimental)* | `storage/sqldb` |
 | `hop_top_kit::kv` *(experimental)* | `storage/kv` (SQLite backend only) |
-| `hop_top_kit::blob` *(experimental)* | `storage/blob` (local backend only) |
+| `hop_top_kit::blob` *(experimental)* | `storage/blob` (local and S3 backends) |
 | `hop_top_kit::sqlstore` *(experimental)* | `storage/sqlstore` |
 | `hop_top_kit::httpcache` *(experimental)* | `storage/httpcache` |
 | `HopTop\Kit\Telemetry` *(experimental)* | `runtime/telemetry` |
+
+This table lists a sample. The full Go package to port module mapping, with a
+status per port, is [`sdk-parity-inventory.md`](../sdk-parity-inventory.md).
 
 Every Rust module is feature-gated, and the crate's default feature set is
 empty. Distributed backends are deliberately absent from the Rust SDK;
