@@ -169,6 +169,13 @@ $ mytool service status --format json
 - All providers run at once, each with a 2s deadline. A slow one is
   reported `unavailable`, a failing or panicking one as an `error`
   section; `service status` still exits 0.
+- A section that is running but not wholly — 20 of 200 receivers
+  failed, push fell back to polling — returns `cli.StatusDegraded`
+  with its `Data` and, in `ErrorMessage`, the reason, which the
+  `DETAIL` cell shows. Degraded counts as running; no section status
+  changes the exit code. To rank sections by outcome, use
+  `cli.StatusSeverity` (ok < empty < degraded < unavailable < error);
+  kit's own order stays priority, then title.
 - `Sensitive: true` sections are redacted with the root status's
   patterns (`StatusConfig.RedactPatterns` included) before they leave
   the instance. There is no `--show-sensitive` here.
