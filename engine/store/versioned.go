@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"hop.top/kit/go/runtime/domain/version"
@@ -172,16 +173,34 @@ type txCapable interface {
 // immediately, not on a wait queue. BEGIN IMMEDIATE acquires the
 // reserved lock at transaction start, so the upgrade race is
 // avoided entirely.
+//
+// In-process writers queue on a per-*sql.DB gate before issuing
+// BEGIN IMMEDIATE. SQLite's busy handler is a poll-with-backoff loop,
+// not a queue: under sustained contention an unlucky writer can lose
+// every race until busy_timeout expires and fail with SQLITE_BUSY
+// although the lock is only ever held for milliseconds. The gate
+// serializes same-process writers (blocked channel senders are
+// queued FIFO) and honors ctx while waiting; busy_timeout
+// remains the cross-process fallback.
 func beginImmediate(ctx context.Context, db *sql.DB) (*sql.Conn, func(error) error, error) {
+	gate := writeGate(db)
+	select {
+	case gate <- struct{}{}:
+	case <-ctx.Done():
+		return nil, nil, fmt.Errorf("store: begin immediate: %w", ctx.Err())
+	}
 	conn, err := db.Conn(ctx)
 	if err != nil {
+		<-gate
 		return nil, nil, fmt.Errorf("store: begin immediate: conn: %w", err)
 	}
 	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
 		_ = conn.Close()
+		<-gate
 		return nil, nil, fmt.Errorf("store: begin immediate: %w", err)
 	}
 	commit := func(callerErr error) error {
+		defer func() { <-gate }()
 		defer func() { _ = conn.Close() }()
 		if callerErr != nil {
 			if _, rerr := conn.ExecContext(context.Background(), "ROLLBACK"); rerr != nil {
@@ -195,6 +214,18 @@ func beginImmediate(ctx context.Context, db *sql.DB) (*sql.Conn, func(error) err
 		return nil
 	}
 	return conn, commit, nil
+}
+
+// writeGates maps *sql.DB to its single-slot write gate. Entries
+// live for the process lifetime (one small channel per opened DB).
+var writeGates sync.Map
+
+func writeGate(db *sql.DB) chan struct{} {
+	if g, ok := writeGates.Load(db); ok {
+		return g.(chan struct{})
+	}
+	g, _ := writeGates.LoadOrStore(db, make(chan struct{}, 1))
+	return g.(chan struct{})
 }
 
 // Create inserts a document and records version 1. When the
