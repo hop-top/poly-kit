@@ -17,10 +17,35 @@ API shape matches the [TypeScript](../ts-kit-engine/README.md) and
 ## Quickstart
 
 ```rust
-use hop_top_kit_engine::EngineError;
-// Engine and collection APIs land with the `http` feature; see the
-// module docs once published.
+use hop_top_kit_engine::{KitEngine, KitEngineOptions};
+
+#[tokio::main]
+async fn main() -> Result<(), hop_top_kit_engine::EngineError> {
+    // Spawns `kit serve`, reads the startup line, waits for /health.
+    let engine = KitEngine::start(KitEngineOptions {
+        app: Some("myapp".into()),
+        ..Default::default()
+    })
+    .await?;
+
+    let key = engine.identity().public_key().await?;
+    let peers = engine.peers().list().await?;
+    engine.sync().add_remote("origin", "https://sync.example.com", "both", "").await?;
+
+    // Attach to an engine that is already running instead:
+    // KitEngine::connect(port, Some(token), Some(shutdown_token)).await?
+
+    engine.stop().await?; // POST /shutdown, then reaps the child
+    Ok(())
+}
 ```
+
+`stop` consumes the handle. A dropped handle kills a spawned child.
+`KitEngineOptions::bin_path` selects the `kit` binary (default: `kit` on
+PATH).
+
+With the `events` feature, `engine.events("notes.created")` returns an
+`EventStream`; `next().await` yields the `data` of each matching frame.
 
 ## Development
 
