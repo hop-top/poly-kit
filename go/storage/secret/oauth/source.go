@@ -126,8 +126,20 @@ func TokenSource(ctx context.Context, store secret.Store, ref string, opts ...Op
 }
 
 // Token returns a token with more than the skew left, minting one when the
-// cached token is missing or stale.
+// cached token is missing or stale. It drops the envelope's User and AuthzID;
+// use TokenWithIdentity when the consumer needs them.
 func (s *Source) Token(ctx context.Context) (Token, error) {
+	ct, err := s.TokenWithIdentity(ctx)
+	return ct.Token, err
+}
+
+// TokenWithIdentity is Token plus the cached envelope's optional User and
+// AuthzID (the SASL user and authorization identity, e.g. for IMAP XOAUTH2).
+// Both are empty when the envelope carries none, which is always the case
+// for a token this package minted itself; they come from an envelope another
+// writer stored at TokenKey. Freshness, refresh and single-flight are
+// exactly those of Token.
+func (s *Source) TokenWithIdentity(ctx context.Context) (CachedToken, error) {
 	if t, ok := s.fresh(); ok {
 		return t, nil
 	}
@@ -135,16 +147,12 @@ func (s *Source) Token(ctx context.Context) (Token, error) {
 	case s.sem <- struct{}{}:
 		defer func() { <-s.sem }()
 	case <-ctx.Done():
-		return Token{}, fmt.Errorf("oauth: waiting for refresh: %w: %w", ErrTransient, ctx.Err())
+		return CachedToken{}, fmt.Errorf("oauth: waiting for refresh: %w: %w", ErrTransient, ctx.Err())
 	}
 	if t, ok := s.fresh(); ok {
 		return t, nil
 	}
-	ct, err := s.refresh(ctx)
-	if err != nil {
-		return Token{}, err
-	}
-	return ct.Token, nil
+	return s.refresh(ctx)
 }
 
 // Invalidate drops the cached token, in memory and in the store, so the
@@ -199,13 +207,13 @@ func (s *Source) isRejected(access string) bool {
 	return false
 }
 
-func (s *Source) fresh() (Token, bool) {
+func (s *Source) fresh() (CachedToken, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.mem != nil && !s.mem.Expired(s.now(), effectiveSkew(s.skew, s.mem.AccessToken)) {
-		return s.mem.Token, true
+		return *s.mem, true
 	}
-	return Token{}, false
+	return CachedToken{}, false
 }
 
 func (s *Source) generation() uint64 {
