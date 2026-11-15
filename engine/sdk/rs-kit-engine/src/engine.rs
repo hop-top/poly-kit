@@ -243,9 +243,14 @@ impl KitEngine {
         }
     }
 
-    /// Event stream for `topic`; connects lazily on first `next()`.
+    /// Event stream for the hub pattern `topic` (`*` one segment, `**`
+    /// one or more, bare `*` all); connects lazily on first `next()`.
     #[cfg(feature = "events")]
     pub fn events(&self, topic: &str) -> crate::events::EventStream {
-        crate::events::EventStream::new(format!("ws://127.0.0.1:{}/events", self.port), topic)
+        crate::events::EventStream::new(
+            format!("ws://127.0.0.1:{}/events", self.port),
+            topic,
+            self.token.clone(),
+        )
     }
 }
