@@ -134,12 +134,16 @@ final class KitEngine
     }
 
     /**
-     * The `/events` WebSocket stream is not implemented: the package ships
-     * no WebSocket client (see composer `suggest`).
+     * Lazy, blocking, reconnecting stream of `/events` frames matching
+     * `$topic` (hub pattern: `*` one segment, `**` one or more; the bare
+     * default `*` yields everything). `$timeout` ends iteration after that
+     * many seconds. Needs `phrity/websocket`.
+     *
+     *     foreach ($engine->events('kit.engine.document.*') as $e) { ... }
      */
-    public function events(string $topic = '*'): never
+    public function events(string $topic = '*', ?float $timeout = null): EventStream
     {
-        throw new \LogicException("events({$topic}): WebSocket event streaming is not implemented in the PHP SDK");
+        return new EventStream("ws://127.0.0.1:{$this->port}/events", $topic, $this->token, timeout: $timeout);
     }
 
     public function sync(): SyncClient

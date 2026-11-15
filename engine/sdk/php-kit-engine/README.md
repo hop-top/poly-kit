@@ -63,10 +63,10 @@ Errors: [src/Exception](src/Exception/README.md).
 `new Collection(...)` accepts a `$validator` callable run on documents
 passed to `create()`/`update()`; throw to veto before the request is sent.
 
-### Not implemented
+### Events
 
-`$engine->events()` throws `LogicException`: no WebSocket client is
-bundled (`ratchet/pawl` is suggested for a future events module).
+`foreach ($engine->events('notes.*') as $e)` streams `/events` frames
+(needs `phrity/websocket`): [src/README.md](src/README.md).
 
 ## Development
 
