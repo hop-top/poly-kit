@@ -12,7 +12,7 @@ API shape matches the [TypeScript](../ts-kit-engine/README.md) and
 |----------|---------|-------------------------------------------------------|
 | `http`   | yes     | `KitEngine` lifecycle, collections, sync, peers, identity (reqwest, tokio, serde) |
 | `events` | no      | WebSocket event stream (implies `http`; tokio-tungstenite) |
-| `parity` | no      | Enables integration tests that need a real `kit serve` binary (`KIT_BIN`); parity harness only |
+| `parity` | no      | Implies `events`; enables integration tests that need a real `kit serve` binary (`KIT_BIN`); parity harness only |
 
 ## Quickstart
 

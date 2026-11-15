@@ -29,7 +29,7 @@ http = [
 events = ["http", "dep:tokio-tungstenite", "dep:futures-util"]
 # Integration tests that need a real `kit serve` binary; they only run
 # inside the parity harness (KIT_BIN names the binary).
-parity = ["http"]
+parity = ["http", "events"]
 
 # Cross-SDK parity runner binary; built only with the `parity` feature.
 [[bin]]

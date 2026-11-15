@@ -89,6 +89,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let prune_missing = status(notes.prune(missing, one()).await);
     let abandon_missing = status(notes.abandon(missing, 1).await);
 
+    // The engine does not yet bridge bus events to the socket, so only the
+    // connect + subscribe path is observable: a first-connect failure is an
+    // error; a quiet stream times out.
+    let mut ev = engine.events("kit.engine.document.*");
+    let events_open = !matches!(
+        tokio::time::timeout(std::time::Duration::from_millis(500), ev.next()).await,
+        Ok(Err(_))
+    );
     let mut keys: Vec<String> = match serde_json::to_value(&created)? {
         Value::Object(m) => m.keys().cloned().collect(),
         _ => vec![],
@@ -98,6 +106,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "{}",
         json!({
+            "eventsOpen": events_open,
             "forkSeq": fork_a.seq,
             "forkParents": fork_a.parent_ids.len(),
             "forkKeys": fork_keys,
