@@ -50,13 +50,23 @@ func stoppedOrder(rec *recorder) []string {
 // keeps the supervisor out of await while the run is canceled and the
 // Start calls return: ctx.Done and every exit are then ready together
 // when await first selects, and Go picks among them at random.
+//
+// reached closes when that publish begins: every service has started
+// and reported ready by then, so a cancel after it reaches all of them.
 type gatedRecorder struct {
 	recorder
-	gate chan struct{}
+	gate    chan struct{}
+	reached chan struct{}
+	once    sync.Once
+}
+
+func newGatedRecorder() *gatedRecorder {
+	return &gatedRecorder{gate: make(chan struct{}), reached: make(chan struct{})}
 }
 
 func (g *gatedRecorder) Publish(ctx context.Context, e bus.Event) error {
 	if e.Topic == "kit.serve.supervisor.ready_reported" {
+		g.once.Do(func() { close(g.reached) })
 		<-g.gate
 	}
 	return g.recorder.Publish(ctx, e)
@@ -69,7 +79,7 @@ func TestSupervisor_ShutdownStoppedEventsFollowReverseStartOrder(t *testing.T) {
 	names := []string{"alpha", "beta", "gamma", "delta"}
 	for range 50 {
 		tr := &trace{}
-		rec := &gatedRecorder{gate: make(chan struct{})}
+		rec := newGatedRecorder()
 		reg := serve.NewRegistry()
 		reg.Register(&fake{name: "alpha", trace: tr})
 		reg.Register(&stopReleasedFake{name: "beta", stop: make(chan struct{})})
@@ -81,7 +91,13 @@ func TestSupervisor_ShutdownStoppedEventsFollowReverseStartOrder(t *testing.T) {
 		done := make(chan serve.Result, 1)
 		go func() { done <- sup.Run(ctx, names, enabledSet(names...)) }()
 
-		waitFor(t, func() bool { return slices.Contains(tr.events(), "ready:gamma") })
+		// Waiting for one service's ready raced the start of the last
+		// one: a cancel before delta started rightly skips it.
+		select {
+		case <-rec.reached:
+		case <-time.After(5 * time.Second):
+			t.Fatal("aggregate ready never published")
+		}
 		cancel()
 		time.Sleep(20 * time.Millisecond)
 		close(rec.gate)
