@@ -76,3 +76,5 @@ vendor/bin/phpunit                          # unit tests, no kit needed
 KIT_BIN=/path/to/kit vendor/bin/phpunit     # adds the real-binary test
 vendor/bin/phpstan analyse
 ```
+`composer.lock` is committed (`composer update` to change it); CI runs
+`make lint-lock-php audit-php lint-php`.

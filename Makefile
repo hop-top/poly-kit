@@ -148,7 +148,7 @@ setup: preflight ## Initialize all sub-projects and dependencies
 	@echo "==> Installing PHP Engine SDK"
 	cd engine/sdk/php-kit-engine && composer install --no-progress
 	@echo "==> Fetching Rust Engine SDK dependencies"
-	cd engine/sdk/rs-kit-engine && cargo fetch
+	cd engine/sdk/rs-kit-engine && cargo fetch --locked
 	@echo "==> Fetching Rust SDK dependencies"
 	cd sdk/rs && cargo fetch --locked
 	@echo "==> Setup complete."
@@ -292,8 +292,8 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 # kit binary and runs in test-parity-engine; the crate has no committed
 # Cargo.lock, so no --locked.
 test-rs-engine: ## Rust tests: engine/sdk/rs-kit-engine (default + events features)
-	cd engine/sdk/rs-kit-engine && cargo test
-	cd engine/sdk/rs-kit-engine && cargo test --features events
+	cd engine/sdk/rs-kit-engine && cargo test --locked
+	cd engine/sdk/rs-kit-engine && cargo test --locked --features events
 
 check-rs-features: ## Rust: cargo check --all-targets once per feature, each alone (slow; CI rs-features)
 	@scripts/check-rs-features.sh
@@ -711,11 +711,14 @@ lint-lock-py: ## Python: uv.lock consistent with pyproject.toml (when either cha
 	done
 
 PHP_SDK := sdk/experimental/php
+PHP_SDKS := $(PHP_SDK) engine/sdk/php-kit-engine
 
 lint-lock-php: ## PHP: composer.lock consistent with composer.json (when either changed)
-	@$(LINT_CHANGED) lint-lock-php --cd $(PHP_SDK) --gate --include-deleted \
-		$(PHP_SDK)/composer.json $(PHP_SDK)/composer.lock \
-		-- composer validate --check-lock --no-check-publish
+	@set -e; for p in $(PHP_SDKS); do \
+		$(LINT_CHANGED) "lint-lock-php:$$p" --cd $$p --gate --include-deleted \
+			$$p/composer.json $$p/composer.lock \
+			-- composer validate --check-lock --no-check-publish; \
+	done
 
 # `--locked` audits composer.lock directly, so this runs without a vendor/
 # tree and reports what CI would actually install. Severity gate: low is
@@ -731,10 +734,12 @@ lint-lock-php: ## PHP: composer.lock consistent with composer.json (when either 
 # is the vulnerability-scan workflow's job (osv-scanner reads
 # composer.lock on a pull request that changes a lockfile, and weekly).
 audit-php: ## PHP: composer.lock free of medium+ security advisories (when it changed)
-	@$(LINT_CHANGED) audit-php --cd $(PHP_SDK) --gate \
-		$(PHP_SDK)/composer.json $(PHP_SDK)/composer.lock \
-		-- composer audit --locked --no-dev \
-		--ignore-severity=low --abandoned=report --ignore-unreachable
+	@set -e; for p in $(PHP_SDKS); do \
+		$(LINT_CHANGED) "audit-php:$$p" --cd $$p --gate \
+			$$p/composer.json $$p/composer.lock \
+			-- composer audit --locked --no-dev \
+			--ignore-severity=low --abandoned=report --ignore-unreachable; \
+	done
 
 # Local mirror of .github/workflows/vulnerability-scan.yml: same scanners,
 # same pins, same scope, same verdicts; text output instead of the
@@ -789,16 +794,22 @@ vuln-go-binary: check-go-version tools-govulncheck ## govulncheck binary scan of
 # `composer analyse` gate identically. Neither config carries a baseline or
 # an ignore list, so every error reported is a real one. Needs vendor/
 # (unlike audit-php), hence the install.
-lint-php: ## PHP: phpstan static analysis when the PHP SDK changed (levels pinned in phpstan.neon)
-	@$(LINT_CHANGED) lint-php --cd $(PHP_SDK) --gate --include-deleted $(PHP_SDK) ':(exclude)*.md' \
-		-- sh -c 'composer install --no-progress --quiet && composer analyse'
+lint-php: ## PHP: phpstan static analysis when a PHP SDK changed (levels pinned in each phpstan.neon)
+	@set -e; for p in $(PHP_SDKS); do \
+		$(LINT_CHANGED) "lint-php:$$p" --cd $$p --gate --include-deleted $$p ':(exclude)*.md' \
+			-- sh -c 'composer install --no-progress --quiet && composer analyse'; \
+	done
 
 RS_SDK := sdk/rs
+RS_SDKS := $(RS_SDK) engine/sdk/rs-kit-engine
 
-lint-rs: ## Rust: cargo fmt --check + clippy (all features) when the Rust SDK changed
-	@$(LINT_CHANGED) lint-rs --cd $(RS_SDK) --gate --include-deleted --trigger mise.toml \
-		$(RS_SDK) ':(exclude)*.md' \
-		-- sh -c 'cargo fmt --all -- --check && cargo clippy --all-features --all-targets -- -D warnings'
+# --locked: both crates track Cargo.lock, so lint sees what CI builds.
+lint-rs: ## Rust: cargo fmt --check + clippy (all features) when a Rust SDK changed
+	@set -e; for p in $(RS_SDKS); do \
+		$(LINT_CHANGED) "lint-rs:$$p" --cd $$p --gate --include-deleted --trigger mise.toml \
+			$$p ':(exclude)*.md' \
+			-- sh -c 'cargo fmt --all -- --check && cargo clippy --locked --all-features --all-targets -- -D warnings'; \
+	done
 
 # release-please CHANGELOG.md files get their own config: their entries are
 # commit text copied verbatim, so prose rules there are relaxed (see

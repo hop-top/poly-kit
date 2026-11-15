@@ -198,9 +198,13 @@ jobs:
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
           components: rustfmt, clippy
+      # make lint-rs covers sdk/rs and the standalone engine crate
+      # (engine/sdk/rs-kit-engine), each only when it changed.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: sdk/rs
+          workspaces: |
+            sdk/rs
+            engine/sdk/rs-kit-engine
       - run: make lint-rs
       - run: make doc-rs
 
@@ -564,17 +568,19 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: engine/sdk/rs-kit-engine
+      # --locked inside the make target: Cargo.lock is tracked.
       - run: scripts/test-affected.sh rs-engine
 
   # rs-test runs the toolchain pinned in mise.toml. Two more legs bracket
   # it: the MSRV (`rust-version` in Cargo.toml), so a newer-std API or
   # language feature cannot slip past the floor consumers build on, and
   # current stable, which is what publish compiles on, so a release does
-  # not find the breakage first. Same scope as rs-test; fmt and clippy
+  # not find the breakage first. Same scope as rs-test (sdk/rs) and
+  # rs-engine-test (the engine crate, its own rust-version); fmt and clippy
   # stay on the pin (rs-lint), their output is version-sensitive.
   rs-toolchains:
     needs: changes
-    if: needs.changes.outputs.rs == 'true'
+    if: needs.changes.outputs.rs == 'true' || needs.changes.outputs.rs-engine == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -586,29 +592,54 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
           filter: blob:none
+      # One toolchain per leg: the MSRV of sdk/rs, and of the engine crate
+      # when it has its own. The engine step selects its own via
+      # RUSTUP_TOOLCHAIN; both are installed below.
       - id: toolchain
         run: |
+          msrv() {
+            v=$(sed -n 's/^rust-version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$1/Cargo.toml")
+            [ -n "$v" ] || { echo "no rust-version in $1/Cargo.toml" >&2; exit 1; }
+            echo "$v"
+          }
           if [ "$LEG" = msrv ]; then
-            v=$(sed -n 's/^rust-version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' sdk/rs/Cargo.toml)
-            [ -n "$v" ] || { echo "no rust-version in sdk/rs/Cargo.toml" >&2; exit 1; }
+            v=$(msrv sdk/rs)
+            e=$(msrv engine/sdk/rs-kit-engine)
           else
             v=stable
+            e=stable
           fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "engine=$e" >> "$GITHUB_OUTPUT"
         env:
           LEG: ${{ matrix.leg }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: ${{ steps.toolchain.outputs.version }}  # toolchain-parity: allow (MSRV and stable legs, not the dev pin)
+      - if: steps.toolchain.outputs.engine != steps.toolchain.outputs.version
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ steps.toolchain.outputs.engine }}  # toolchain-parity: allow (engine MSRV, not the dev pin)
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: sdk/rs
+          workspaces: |
+            sdk/rs
+            engine/sdk/rs-kit-engine
           key: ${{ matrix.leg }}
       # sdk/rs/rust-toolchain.toml would override the
       # toolchain installed above; RUSTUP_TOOLCHAIN wins over it.
       - run: cd sdk/rs && cargo --version && cargo test --all-features --locked
+        if: needs.changes.outputs.rs == 'true'
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.toolchain.outputs.version }}
+      # The parity feature needs a live kit serve (parity job), so it is
+      # left out; default + events match make test-rs-engine.
+      - run: |
+          cd engine/sdk/rs-kit-engine && cargo --version
+          cargo test --locked && cargo test --locked --features events
+        if: needs.changes.outputs.rs-engine == 'true'
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.toolchain.outputs.engine }}
 
   # The bus feature is embedded in multi-threaded and browser consumers.
   # Holds it to what they build: wasm32-unknown-unknown with no default
@@ -909,7 +940,7 @@ jobs:
           fetch-depth: 0
           filter: blob:none
       # sdk/experimental/php's composer.json requires php ^8.4
-      # (for jewei/typeid-php); ubuntu-latest ships 8.3 by default,
+      # (for jewei/typeid-php) and the engine SDK ^8.4; ubuntu-latest ships 8.3 by default,
       # so pin explicitly. Matches the parity job's PHP setup below.
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
@@ -924,10 +955,12 @@ jobs:
       # medium+; see the audit-php target for the severity rationale.
       - run: make audit-php
       - run: cd sdk/experimental/php && composer install --no-progress
+      - run: cd engine/sdk/php-kit-engine && composer install --no-progress
       # Static analysis. phpstan was in require-dev but never ran, so it
-      # was installed on every build and enforced nothing. src/ gates at
-      # level 5, tests/ at 2; see phpstan.neon for why they differ. No
-      # baseline and no ignore list.
+      # was installed on every build and enforced nothing. SDK: src/ gates
+      # at level 5, tests/ at 2; see phpstan.neon for why they differ.
+      # Engine SDK: src/ at level 8. No baseline and no ignore list.
+      # The lock, audit and lint targets cover both composer projects.
       - run: make lint-php
       # phpunit when the change reaches an SDK (make test-php-sdk and
       # test-php-engine). The lock, audit and lint steps above run on

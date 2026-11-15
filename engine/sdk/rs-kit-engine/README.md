@@ -67,8 +67,10 @@ With the `events` feature, `engine.events("notes.created")` returns an
 ## Development
 
 ```sh
-cargo test                      # unit + mocked-HTTP tests
+cargo test --locked             # unit + mocked-HTTP tests
 cargo test --features parity    # needs KIT_BIN=/path/to/kit
 ```
 
-Dependency pins follow `sdk/rs`.
+`Cargo.lock` is committed; CI builds with `--locked` and runs
+`make lint-rs` (rustfmt + clippy `-D warnings`). Dependency pins follow
+`sdk/rs`.
