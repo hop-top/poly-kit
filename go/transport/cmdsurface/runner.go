@@ -127,8 +127,12 @@ func resolveLeaf(root *cobra.Command, path []string) (*cobra.Command, error) {
 //	[<path...>, --flag=<value>..., --, <args...>]
 //
 // Bool flags whose value is true are emitted as --flag (no value);
-// false bool flags are omitted entirely. Other flag values are
-// rendered with fmt %v.
+// false bool flags are omitted entirely. An array value ([]any or
+// []string, as a JSON array arrives over MCP or SSE) becomes one
+// --flag=<element> per element, which both pflag slice and array
+// flags accept; an empty array emits nothing, leaving the flag's
+// default. Other flag values, and array elements, are rendered with
+// fmt %v.
 //
 // The "--" end-of-options marker precedes the args whenever there
 // are any, so an argument spelled like a flag ("-x", "--help") is
@@ -144,6 +148,14 @@ func buildArgs(inv Invocation) []string {
 		case bool:
 			if tv {
 				out = append(out, "--"+k)
+			}
+		case []any:
+			for _, e := range tv {
+				out = append(out, fmt.Sprintf("--%s=%v", k, e))
+			}
+		case []string:
+			for _, e := range tv {
+				out = append(out, "--"+k+"="+e)
 			}
 		default:
 			out = append(out, fmt.Sprintf("--%s=%v", k, v))
