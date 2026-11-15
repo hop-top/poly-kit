@@ -369,6 +369,15 @@ impl Supervisor {
             // A clean return under isolate is not a failure of that
             // service, but the process must not survive as an empty
             // shell: when the last one is gone the run is over.
+            //
+            // Once the run is canceled the return is the cancellation's
+            // doing, not a stop of its own: stopped waits for the
+            // service's stop in `stop_all`, which reports in reverse
+            // start order. The biased select cannot tell, since an
+            // exit queued during start is drained ahead of it.
+            if run_token.is_cancelled() {
+                continue;
+            }
             if !st.mark_stopped(&name) {
                 self.emitter.emit(
                     OBJECT_SERVICE,
