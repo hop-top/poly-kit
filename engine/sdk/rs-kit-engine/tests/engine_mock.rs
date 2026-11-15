@@ -7,6 +7,16 @@ use std::time::Duration;
 use hop_top_kit_engine::{EngineError, KitEngine, KitEngineOptions};
 
 /// Writes an executable stand-in for `kit` into `dir`.
+// Tests that write a fake `kit` script and spawn it run one at a time. On
+// Linux a child forked by a parallel test briefly holds the script's write
+// descriptor (close-on-exec only fires at its exec), and exec of the script
+// then fails with ETXTBSY. Hold the guard for the whole test.
+static SPAWN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+async fn serial() -> tokio::sync::MutexGuard<'static, ()> {
+    SPAWN.lock().await
+}
+
 fn fake_kit(dir: &std::path::Path, body: &str) -> PathBuf {
     let p = dir.join("kit");
     std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
@@ -70,6 +80,7 @@ async fn connect_fails_on_unhealthy() {
 
 #[tokio::test]
 async fn start_spawns_parses_startup_line_health_checks_and_stops() {
+    let _serial = serial().await;
     let mut s = mockito::Server::new_async().await;
     let port = host_port(&s);
     let health = s
@@ -117,6 +128,7 @@ async fn start_spawns_parses_startup_line_health_checks_and_stops() {
 
 #[tokio::test]
 async fn stop_kills_child_that_ignores_shutdown() {
+    let _serial = serial().await;
     let mut s = mockito::Server::new_async().await;
     let port = host_port(&s);
     s.mock("GET", "/health").create_async().await;
@@ -148,6 +160,7 @@ async fn stop_kills_child_that_ignores_shutdown() {
 
 #[tokio::test]
 async fn start_rejects_bad_startup_json() {
+    let _serial = serial().await;
     let dir = tempfile_dir("badjson");
     let bin = fake_kit(&dir, "echo 'not json'\nsleep 5");
     let err = KitEngine::start(opts(bin)).await.err().unwrap();
@@ -156,6 +169,7 @@ async fn start_rejects_bad_startup_json() {
 
 #[tokio::test]
 async fn start_reports_early_exit() {
+    let _serial = serial().await;
     let dir = tempfile_dir("exit");
     let bin = fake_kit(&dir, "exit 3");
     let err = KitEngine::start(opts(bin)).await.err().unwrap();
@@ -164,6 +178,7 @@ async fn start_reports_early_exit() {
 
 #[tokio::test]
 async fn start_fails_and_reaps_child_when_health_fails() {
+    let _serial = serial().await;
     let mut s = mockito::Server::new_async().await;
     let port = host_port(&s);
     s.mock("GET", "/health")
