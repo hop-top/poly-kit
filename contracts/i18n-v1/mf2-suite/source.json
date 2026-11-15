@@ -1,0 +1,29 @@
+{
+  "_comment": [
+    "Provenance of the vendored MessageFormat 2 test suite. `sha256` covers every file under tests/ and schemas/ byte for byte; contract_test.go fails when one differs. Update procedure: README.md."
+  ],
+  "repo": "https://github.com/unicode-org/message-format-wg",
+  "tag": "LDML48.2",
+  "commit": "7f142fb4f1f5ea6ab1eb34ce2b87e918ca9fd331",
+  "upstream_path": "test",
+  "license": "Unicode-3.0",
+  "sha256": {
+    "schemas/v0/tests.schema.json": "02ca6b26a8c859f91c82b76dc2b99d4d680666cb72e1e8449b07e8e0b3cfec99",
+    "tests/bidi.json": "fa3ebcd416dbdadab63731ee7a18a25b531773e4cc159dbe22da4ca1cba64afb",
+    "tests/data-model-errors.json": "6b8d8527b5248af76bca3f61d7c58c3339c91b05555f2fc11727efc81b94e615",
+    "tests/fallback.json": "9654322cdaed27660b53d91e7142795aa62ce2da87a99e7ce6a471549139c010",
+    "tests/functions/currency.json": "12c38d70bfea75c016427ad9623122dd19efdd1cb848b72fcf54dd72292abdea",
+    "tests/functions/date.json": "8b8c76dd1e44b625e97185a04b73f6b416b98931bc1d532325b50f1ff9bfe219",
+    "tests/functions/datetime.json": "f7f15c40eba40e972a2d84bf9f7e54a12f4d5b7a65ae9b316e8fe7cc2aae20cd",
+    "tests/functions/integer.json": "bc6f05c8df8252e656cff58f70bdc976fd813f306ab063aac87c474c6f8b58c1",
+    "tests/functions/number.json": "13fe17281e72a65d0cee73f923077db3d9d2c513cf7b0f2258f657d09b57cc9e",
+    "tests/functions/offset.json": "e9e3057e12d11028d41c387858e6262c3a1a698018b9f69401d9d37e296e81d5",
+    "tests/functions/percent.json": "6167bccb70e03c209cc86ea0244197c8138a18271696868ca996c04382756654",
+    "tests/functions/string.json": "a5d9bedd56a0a5b5de1a90487a21c82f0b8dfe11f18455f9e745b24b0fed800f",
+    "tests/functions/time.json": "8215b8f822de2750256baf125229c3b80d1f2206e2a5cb8551b6996181e96a50",
+    "tests/pattern-selection.json": "510a7e054f7d86eee645877bbfe8739bcd7ccabfa4290c8fbd93d64e3a89dadc",
+    "tests/syntax-errors.json": "26a090b1eb1fdda98d578362c7a49184350a5f80fd919ad54a1735e00786909b",
+    "tests/syntax.json": "4311db5ee6cfc307fa0505a7484ce7cf9e326dd770cc1c85772a35b3fdbdb810",
+    "tests/u-options.json": "6931deea81ec7c2a282e48428fee3250b3b27ee74690573e3c2ed23747d1f64a"
+  }
+}

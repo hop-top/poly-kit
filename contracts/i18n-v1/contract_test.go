@@ -2,10 +2,12 @@ package i18nv1
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"reflect"
-	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -13,36 +15,53 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v5"
 )
 
-// Self-check of the i18n-v1 corpus: every catalog vector is validated against
-// catalog.schema.json, and a minimal reference of the placeholder scanner and
-// the RFC 4647 lookup proves the recorded expectations are consistent. Ports
-// replay the same files; they do not import this package.
+// Self-check of the i18n-v1 files. It validates structure only: catalogs,
+// plural vectors and locale vectors against their schemas, the vendored
+// MessageFormat 2 suite against upstream's test schema and a recorded hash.
+// It does not parse MessageFormat 2, compute plural categories or build
+// fallback chains; ports replay the files against their platform libraries.
 
-func readJSON(t *testing.T, name string, v any) {
+func readFile(t *testing.T, name string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dec := json.NewDecoder(bytes.NewReader(b))
+	return b
+}
+
+func readJSON(t *testing.T, name string, v any) {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(readFile(t, name)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		t.Fatalf("%s: %v", name, err)
 	}
 }
 
-type segment struct {
-	T *string `json:"t,omitempty"`
-	P *string `json:"p,omitempty"`
+func compile(t *testing.T, name string) *jsonschema.Schema {
+	t.Helper()
+	s, err := jsonschema.NewCompiler().Compile(name)
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	return s
+}
+
+func validateFile(t *testing.T, s *jsonschema.Schema, name string) {
+	t.Helper()
+	var doc any
+	if err := json.Unmarshal(readFile(t, name), &doc); err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	if err := s.Validate(doc); err != nil {
+		t.Errorf("%s: %v", name, err)
+	}
 }
 
 type message struct {
-	Params map[string]string `json:"params"`
-	Text   []segment         `json:"text,omitempty"`
-	Plural *struct {
-		On       string               `json:"on"`
-		Branches map[string][]segment `json:"branches"`
-	} `json:"plural,omitempty"`
+	Msg  string `json:"msg"`
+	Desc string `json:"desc,omitempty"`
 }
 
 type catalogCase struct {
@@ -61,69 +80,9 @@ type catalogCorpus struct {
 	Cases   []catalogCase `json:"cases"`
 }
 
-var identRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-
-// scan implements SPEC.md "Parameters": a run of n '%' immediately before '{'
-// yields n/2 literal '%'; an odd run opens a placeholder.
-func scan(s string) (segs []segment, err string) {
-	var lit strings.Builder
-	flush := func() {
-		if lit.Len() > 0 {
-			l := lit.String()
-			segs = append(segs, segment{T: &l})
-			lit.Reset()
-		}
-	}
-	for i := 0; i < len(s); {
-		if s[i] != '%' {
-			lit.WriteByte(s[i])
-			i++
-			continue
-		}
-		j := i
-		for j < len(s) && s[j] == '%' {
-			j++
-		}
-		n := j - i
-		if j >= len(s) || s[j] != '{' {
-			lit.WriteString(strings.Repeat("%", n))
-			i = j
-			continue
-		}
-		lit.WriteString(strings.Repeat("%", n/2))
-		if n%2 == 0 {
-			i = j // the '{' is literal; the main loop writes it
-			continue
-		}
-		end := strings.IndexByte(s[j:], '}')
-		if end < 0 {
-			return nil, "placeholder_malformed"
-		}
-		name := s[j+1 : j+end]
-		if !identRE.MatchString(name) {
-			return nil, "placeholder_malformed"
-		}
-		flush()
-		segs = append(segs, segment{P: &name})
-		i = j + end + 1
-	}
-	flush()
-	return segs, ""
-}
-
-func used(segs []segment) []string {
-	var out []string
-	for _, s := range segs {
-		if s.P != nil {
-			out = append(out, *s.P)
-		}
-	}
-	return out
-}
-
-// flatten covers the placeholder rules only; structural faults are the
-// schema's job and are skipped here.
-func flatten(prefix string, node any, out map[string]message) (code, key string) {
+// flatten walks the catalog tree into dotted keys. Structure only: a string
+// is a message, an object with $msg is a leaf, anything else a namespace.
+func flatten(prefix string, node any, out map[string]message) {
 	join := func(k string) string {
 		if prefix == "" {
 			return k
@@ -132,81 +91,24 @@ func flatten(prefix string, node any, out map[string]message) (code, key string)
 	}
 	switch v := node.(type) {
 	case string:
-		segs, e := scan(v)
-		if e != "" {
-			return e, prefix
-		}
-		if len(used(segs)) > 0 {
-			return "placeholder_undeclared", prefix
-		}
-		out[prefix] = message{Params: map[string]string{}, Text: segs}
+		out[prefix] = message{Msg: v}
 	case map[string]any:
-		_, isText := v["$text"]
-		_, isPlural := v["$plural"]
-		if !isText && !isPlural {
-			keys := make([]string, 0, len(v))
-			for k := range v {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			for _, k := range keys {
-				if c, kk := flatten(join(k), v[k], out); c != "" {
-					return c, kk
-				}
-			}
-			return "", ""
+		if m, ok := v["$msg"]; ok {
+			d, _ := v["$desc"].(string)
+			out[prefix] = message{Msg: m.(string), Desc: d}
+			return
 		}
-		params := map[string]string{}
-		if p, ok := v["$params"].(map[string]any); ok {
-			for k, t := range p {
-				params[k] = t.(string)
-			}
+		for k, c := range v {
+			flatten(join(k), c, out)
 		}
-		check := func(segs []segment) (string, string) {
-			for _, u := range used(segs) {
-				if _, ok := params[u]; !ok {
-					return "placeholder_undeclared", prefix
-				}
-			}
-			return "", ""
-		}
-		if isText {
-			segs, e := scan(v["$text"].(string))
-			if e != "" {
-				return e, prefix
-			}
-			if c, k := check(segs); c != "" {
-				return c, k
-			}
-			out[prefix] = message{Params: params, Text: segs}
-			return "", ""
-		}
-		pl := v["$plural"].(map[string]any)
-		on := pl["on"].(string)
-		if _, ok := params[on]; !ok {
-			return "plural_param_undeclared", prefix
-		}
-		if params[on] != "number" && params[on] != "integer" {
-			return "plural_param_type", prefix
-		}
-		m := message{Params: params}
-		m.Plural = &struct {
-			On       string               `json:"on"`
-			Branches map[string][]segment `json:"branches"`
-		}{On: on, Branches: map[string][]segment{}}
-		for cat, txt := range pl["branches"].(map[string]any) {
-			segs, e := scan(txt.(string))
-			if e != "" {
-				return e, prefix
-			}
-			if c, k := check(segs); c != "" {
-				return c, k
-			}
-			m.Plural.Branches[cat] = segs
-		}
-		out[prefix] = m
 	}
-	return "", ""
+}
+
+var invalidCodes = map[string]bool{
+	"invalid_json": true, "duplicate_key": true, "invalid_document": true,
+	"unsupported_version": true, "invalid_locale": true, "invalid_key": true,
+	"unknown_reserved_key": true, "empty_namespace": true, "invalid_node": true,
+	"invalid_message": true,
 }
 
 func TestCatalogCorpus(t *testing.T) {
@@ -215,10 +117,7 @@ func TestCatalogCorpus(t *testing.T) {
 	if len(c.Cases) == 0 {
 		t.Fatal("empty corpus")
 	}
-	schema, err := jsonschema.NewCompiler().Compile("catalog.schema.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	schema := compile(t, "catalog.schema.json")
 	seen := map[string]bool{}
 	for _, tc := range c.Cases {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -229,11 +128,17 @@ func TestCatalogCorpus(t *testing.T) {
 			if (tc.Doc == nil) == (tc.Raw == nil) {
 				t.Fatalf("exactly one of doc and raw")
 			}
-			if tc.Valid && (tc.Code != "" || tc.Messages == nil) {
-				t.Fatalf("valid case needs messages and no code")
+			if tc.Valid && (tc.Code != "" || tc.Messages == nil || tc.SchemaGap) {
+				t.Fatalf("valid case needs messages, no code, no schema_gap")
 			}
 			if !tc.Valid && (tc.Code == "" || tc.Messages != nil) {
 				t.Fatalf("invalid case needs code and no messages")
+			}
+			if !tc.Valid && !invalidCodes[tc.Code] {
+				t.Fatalf("unknown code %q", tc.Code)
+			}
+			if tc.Code == "invalid_message" && !tc.SchemaGap {
+				t.Fatalf("invalid_message is a schema gap by definition")
 			}
 			if tc.Raw != nil {
 				if !tc.SchemaGap {
@@ -255,291 +160,203 @@ func TestCatalogCorpus(t *testing.T) {
 			if !tc.Valid && tc.SchemaGap && verr != nil {
 				t.Fatalf("schema_gap but schema rejects: %v", verr)
 			}
-			if verr != nil {
-				return // the schema owns structural faults
-			}
-			msgs := doc.(map[string]any)["messages"].(map[string]any)
-			got := map[string]message{}
-			code, key := flatten("", msgs, got)
-			if tc.Valid {
-				if code != "" {
-					t.Fatalf("reference rejects valid doc: %s at %q", code, key)
-				}
-				if !reflect.DeepEqual(norm(t, got), norm(t, tc.Messages)) {
-					t.Fatalf("flat messages differ:\n got %v\nwant %v", norm(t, got), norm(t, tc.Messages))
-				}
+			if !tc.Valid {
 				return
 			}
-			if strings.HasPrefix(tc.Code, "placeholder_") || strings.HasPrefix(tc.Code, "plural_param") {
-				if code != tc.Code || key != tc.Key {
-					t.Fatalf("reference: %s at %q, want %s at %q", code, key, tc.Code, tc.Key)
-				}
+			got := map[string]message{}
+			flatten("", doc.(map[string]any)["messages"], got)
+			if !reflect.DeepEqual(got, tc.Messages) {
+				t.Fatalf("flat messages differ:\n got %v\nwant %v", got, tc.Messages)
 			}
 		})
 	}
 }
 
-func norm(t *testing.T, v any) any {
-	t.Helper()
-	b, err := json.Marshal(v)
-	if err != nil {
+type pluralFile struct {
+	CLDRMin string `json:"cldr_min"`
+	Cases   []struct {
+		Locale   string `json:"locale"`
+		Type     string `json:"type"`
+		N        string `json:"n"`
+		Category string `json:"category"`
+		Since    string `json:"since"`
+	} `json:"cases"`
+}
+
+func TestPluralVectors(t *testing.T) {
+	validateFile(t, compile(t, "plural.schema.json"), "plural.json")
+	var p pluralFile
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(readFile(t, "plural.json"), &raw); err != nil {
 		t.Fatal(err)
 	}
-	var out any
-	if err := json.Unmarshal(b, &out); err != nil {
+	delete(raw, "_comment")
+	b, _ := json.Marshal(raw)
+	if err := json.Unmarshal(b, &p); err != nil {
 		t.Fatal(err)
 	}
-	return out
-}
-
-var (
-	langRE   = regexp.MustCompile(`^[a-z]{2,3}$|^[a-z]{5,8}$`)
-	scriptRE = regexp.MustCompile(`^[a-z]{4}$`)
-	regionRE = regexp.MustCompile(`^[a-z]{2}$|^[0-9]{3}$`)
-	varRE    = regexp.MustCompile(`^[a-z0-9]{5,8}$|^[0-9][a-z0-9]{3}$`)
-	extRE    = regexp.MustCompile(`^[a-z0-9]{2,8}$`)
-	privRE   = regexp.MustCompile(`^[a-z0-9]{1,8}$`)
-)
-
-// canon implements SPEC.md "Locale tags".
-func canon(tag string) (string, bool) {
-	if tag == "" || strings.ContainsAny(tag, "_ ") {
-		return "", false
-	}
-	p := strings.Split(strings.ToLower(tag), "-")
-	for _, s := range p {
-		if s == "" {
-			return "", false
-		}
-		for _, r := range s {
-			if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
-				return "", false
-			}
-		}
-	}
-	if !langRE.MatchString(p[0]) {
-		return "", false
-	}
-	out := []string{p[0]}
-	i := 1
-	if i < len(p) && scriptRE.MatchString(p[i]) {
-		out = append(out, strings.ToUpper(p[i][:1])+p[i][1:])
-		i++
-	}
-	if i < len(p) && regionRE.MatchString(p[i]) {
-		out = append(out, strings.ToUpper(p[i]))
-		i++
-	}
-	for i < len(p) && varRE.MatchString(p[i]) {
-		out = append(out, p[i])
-		i++
-	}
-	for i < len(p) && len(p[i]) == 1 && p[i] != "x" {
-		out = append(out, p[i])
-		i++
-		n := 0
-		for i < len(p) && extRE.MatchString(p[i]) && len(p[i]) >= 2 {
-			out = append(out, p[i])
-			i++
-			n++
-		}
-		if n == 0 {
-			return "", false
-		}
-	}
-	if i < len(p) && p[i] == "x" {
-		out = append(out, "x")
-		i++
-		n := 0
-		for i < len(p) && privRE.MatchString(p[i]) {
-			out = append(out, p[i])
-			i++
-			n++
-		}
-		if n == 0 {
-			return "", false
-		}
-	}
-	if i != len(p) {
-		return "", false
-	}
-	return strings.Join(out, "-"), true
-}
-
-// lookup is RFC 4647 section 3.4 truncation.
-func lookup(tag string) []string {
-	p := strings.Split(tag, "-")
-	var out []string
-	for len(p) > 0 {
-		out = append(out, strings.Join(p, "-"))
-		p = p[:len(p)-1]
-		if len(p) > 0 && len(p[len(p)-1]) == 1 {
-			p = p[:len(p)-1]
-		}
-	}
-	return out
-}
-
-func chain(tag, def string) ([]string, bool) {
-	t, ok := canon(tag)
-	if !ok {
-		return nil, false
-	}
-	d, ok := canon(def)
-	if !ok {
-		return nil, false
-	}
-	var out []string
 	seen := map[string]bool{}
-	for _, c := range append(lookup(t), lookup(d)...) {
-		if !seen[c] {
-			seen[c] = true
-			out = append(out, c)
-		}
-	}
-	return out, true
-}
-
-type fallbackFile struct {
-	Comment      []string `json:"_comment"`
-	Canonicalize []struct {
-		In    string `json:"in"`
-		Out   string `json:"out"`
-		Error string `json:"error"`
-	} `json:"canonicalize"`
-	Chain []struct {
-		Tag     string   `json:"tag"`
-		Default string   `json:"default"`
-		Chain   []string `json:"chain"`
-		Error   string   `json:"error"`
-	} `json:"chain"`
-	Resolve []struct {
-		Tag       string   `json:"tag"`
-		Available []string `json:"available"`
-		Default   string   `json:"default"`
-		Want      *string  `json:"want"`
-		Error     string   `json:"error"`
-	} `json:"resolve"`
-	Lookup []struct {
-		Tag      string              `json:"tag"`
-		Default  string              `json:"default"`
-		Catalogs map[string][]string `json:"catalogs"`
-		Keys     map[string]*string  `json:"keys"`
-	} `json:"lookup"`
-}
-
-func firstAvailable(ch []string, avail map[string]bool) *string {
-	for _, c := range ch {
-		if avail[c] {
-			c := c
-			return &c
-		}
-	}
-	return nil
-}
-
-func TestFallback(t *testing.T) {
-	var f fallbackFile
-	readJSON(t, "fallback.json", &f)
-	for _, c := range f.Canonicalize {
-		got, ok := canon(c.In)
-		if c.Error != "" {
-			if ok {
-				t.Errorf("canonicalize %q: accepted as %q, want %s", c.In, got, c.Error)
-			}
-			continue
-		}
-		if !ok || got != c.Out {
-			t.Errorf("canonicalize %q = %q (ok=%v), want %q", c.In, got, ok, c.Out)
-		}
-	}
-	for _, c := range f.Chain {
-		got, ok := chain(c.Tag, c.Default)
-		if c.Error != "" {
-			if ok {
-				t.Errorf("chain %q/%q: accepted, want %s", c.Tag, c.Default, c.Error)
-			}
-			continue
-		}
-		if !ok || !reflect.DeepEqual(got, c.Chain) {
-			t.Errorf("chain %q/%q = %v, want %v", c.Tag, c.Default, got, c.Chain)
-		}
-	}
-	for _, c := range f.Resolve {
-		ch, ok := chain(c.Tag, c.Default)
-		if c.Error != "" {
-			if ok {
-				t.Errorf("resolve %q: accepted, want %s", c.Tag, c.Error)
-			}
-			continue
-		}
-		avail := map[string]bool{}
-		for _, a := range c.Available {
-			ca, ok := canon(a)
-			if !ok {
-				t.Fatalf("available %q invalid", a)
-			}
-			avail[ca] = true
-		}
-		got := firstAvailable(ch, avail)
-		if (got == nil) != (c.Want == nil) || (got != nil && *got != *c.Want) {
-			t.Errorf("resolve %q in %v = %v, want %v", c.Tag, c.Available, got, c.Want)
-		}
-	}
-	for _, c := range f.Lookup {
-		ch, ok := chain(c.Tag, c.Default)
-		if !ok {
-			t.Fatalf("lookup %q: bad tag", c.Tag)
-		}
-		for key, want := range c.Keys {
-			var got *string
-			for _, loc := range ch {
-				for _, k := range c.Catalogs[loc] {
-					if k == key {
-						loc := loc
-						got = &loc
-						break
-					}
-				}
-				if got != nil {
-					break
-				}
-			}
-			if (got == nil) != (want == nil) || (got != nil && *got != *want) {
-				t.Errorf("lookup %q key %q = %v, want %v", c.Tag, key, got, want)
-			}
-		}
-	}
-}
-
-func TestPluralCorpus(t *testing.T) {
-	var p struct {
-		Comment []string `json:"_comment"`
-		CLDRMin string   `json:"cldr_min"`
-		Cases   []struct {
-			Locale   string `json:"locale"`
-			N        string `json:"n"`
-			Category string `json:"category"`
-		} `json:"cases"`
-	}
-	readJSON(t, "plural.json", &p)
-	cats := map[string]bool{"zero": true, "one": true, "two": true, "few": true, "many": true, "other": true}
-	num := regexp.MustCompile(`^(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$`)
-	seen := map[string]bool{}
+	cats := map[string]bool{}
+	types := map[string]bool{}
 	for _, c := range p.Cases {
-		if _, ok := canon(c.Locale); !ok {
-			t.Errorf("locale %q invalid", c.Locale)
-		}
-		if !cats[c.Category] {
-			t.Errorf("%s %s: category %q", c.Locale, c.N, c.Category)
-		}
-		if !num.MatchString(c.N) {
-			t.Errorf("%s: n %q not a plain decimal without trailing zeros", c.Locale, c.N)
-		}
-		k := c.Locale + "/" + c.N
+		k := c.Type + "/" + c.Locale + "/" + c.N
 		if seen[k] {
 			t.Errorf("duplicate %s", k)
 		}
 		seen[k] = true
+		cats[c.Type+"/"+c.Category] = true
+		types[c.Type] = true
+		if c.Since != "" && c.Since <= p.CLDRMin {
+			t.Errorf("%s: since %s not above cldr_min %s", k, c.Since, p.CLDRMin)
+		}
+	}
+	for _, want := range []string{"cardinal/many", "cardinal/zero", "cardinal/few", "cardinal/two", "ordinal/one", "ordinal/two", "ordinal/few", "ordinal/other"} {
+		if !cats[want] {
+			t.Errorf("no vector for %s", want)
+		}
+	}
+	if len(types) != 2 {
+		t.Errorf("want cardinal and ordinal vectors, got %v", types)
+	}
+}
+
+func TestFallbackVectors(t *testing.T) {
+	validateFile(t, compile(t, "fallback.schema.json"), "fallback.json")
+	var f struct {
+		Lookup []struct {
+			Tag      string              `json:"tag"`
+			Catalogs map[string][]string `json:"catalogs"`
+			Keys     map[string]*string  `json:"keys"`
+		} `json:"lookup"`
+		Chain []struct {
+			Tag     string   `json:"tag"`
+			Default string   `json:"default"`
+			Chain   []string `json:"chain"`
+			Error   string   `json:"error"`
+		} `json:"chain"`
+		Resolve []struct {
+			Tag       string   `json:"tag"`
+			Available []string `json:"available"`
+			Default   string   `json:"default"`
+			Want      *string  `json:"want"`
+			Error     string   `json:"error"`
+		} `json:"resolve"`
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(readFile(t, "fallback.json"), &raw); err != nil {
+		t.Fatal(err)
+	}
+	delete(raw, "_comment")
+	b, _ := json.Marshal(raw)
+	dec := json.NewDecoder(bytes.NewReader(b))
+	if err := dec.Decode(&f); err != nil {
+		t.Fatal(err)
+	}
+	// A lookup answer must name a catalog that defines the key.
+	for _, l := range f.Lookup {
+		for key, loc := range l.Keys {
+			if loc == nil {
+				continue
+			}
+			ok := false
+			for _, k := range l.Catalogs[*loc] {
+				ok = ok || k == key
+			}
+			if !ok {
+				t.Errorf("lookup %q: key %q answered by %q, which does not define it", l.Tag, key, *loc)
+			}
+		}
+	}
+	// A chain row starts with the canonical request and a resolve answer for
+	// the same request is a chain member (recorded data agreeing with itself,
+	// not a chain computation).
+	chains := map[string][]string{}
+	for _, c := range f.Chain {
+		if c.Error == "" {
+			if len(c.Chain) == 0 {
+				t.Errorf("chain %q: empty", c.Tag)
+			}
+			chains[c.Tag+"\x00"+c.Default] = c.Chain
+		}
+	}
+	for _, r := range f.Resolve {
+		ch, ok := chains[r.Tag+"\x00"+r.Default]
+		if !ok || r.Want == nil || r.Error != "" {
+			continue
+		}
+		in := false
+		for _, c := range ch {
+			in = in || c == *r.Want
+		}
+		if !in {
+			t.Errorf("resolve %q: want %q not in recorded chain %v", r.Tag, *r.Want, ch)
+		}
+	}
+}
+
+type suiteSource struct {
+	Repo     string            `json:"repo"`
+	Tag      string            `json:"tag"`
+	Commit   string            `json:"commit"`
+	License  string            `json:"license"`
+	SHA256   map[string]string `json:"sha256"`
+	Upstream string            `json:"upstream_path"`
+	Comment  []string          `json:"_comment"`
+}
+
+func TestMF2SuiteVendored(t *testing.T) {
+	const dir = "mf2-suite"
+	var src suiteSource
+	readJSON(t, filepath.Join(dir, "source.json"), &src)
+	if src.Tag != "LDML48.2" || len(src.Commit) != 40 || src.License == "" || src.Repo == "" {
+		t.Fatalf("source.json incomplete: %+v", src)
+	}
+	if !strings.Contains(string(readFile(t, filepath.Join(dir, "LICENSE"))), "UNICODE LICENSE V3") {
+		t.Errorf("mf2-suite/LICENSE is not the Unicode License")
+	}
+
+	// Every vendored file matches its recorded hash, and nothing else lives
+	// under tests/ or schemas/.
+	var onDisk []string
+	for _, sub := range []string{"tests", "schemas"} {
+		err := filepath.WalkDir(filepath.Join(dir, sub), func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			rel, _ := filepath.Rel(dir, p)
+			onDisk = append(onDisk, filepath.ToSlash(rel))
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	sort.Strings(onDisk)
+	var recorded []string
+	for f := range src.SHA256 {
+		recorded = append(recorded, f)
+	}
+	sort.Strings(recorded)
+	if !reflect.DeepEqual(onDisk, recorded) {
+		t.Fatalf("files on disk %v differ from source.json %v", onDisk, recorded)
+	}
+	for _, f := range onDisk {
+		sum := sha256.Sum256(readFile(t, filepath.Join(dir, f)))
+		if got := hex.EncodeToString(sum[:]); got != src.SHA256[f] {
+			t.Errorf("%s: sha256 %s, recorded %s (vendored files are not edited; see mf2-suite/README.md)", f, got, src.SHA256[f])
+		}
+	}
+
+	// Every test file parses against upstream's schema.
+	schema := compile(t, filepath.Join(dir, "schemas/v0/tests.schema.json"))
+	n := 0
+	for _, f := range onDisk {
+		if strings.HasPrefix(f, "tests/") {
+			validateFile(t, schema, filepath.Join(dir, f))
+			n++
+		}
+	}
+	if n == 0 {
+		t.Fatal("no suite files")
 	}
 }

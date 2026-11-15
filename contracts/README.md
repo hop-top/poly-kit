@@ -31,7 +31,7 @@ Corpora bind every port, Go included; detail lives in each corpus README.
 - [kv-v1/](kv-v1/README.md): kit/storage/kv keys bind to SQLite as TEXT; one SDK writes, another reads.
 - [identity-v1/](identity-v1/README.md): kit/core/identity HKDF-SHA256 key derivation over an Ed25519 seed.
 - [typeid-v1/](typeid-v1/README.md): kit `typeid`: the string every SDK makes from `(prefix, uuid)` and back.
-- [i18n-v1/](i18n-v1/README.md): message catalogs, `%{name}` parameters, BCP 47 fallback chains, CLDR plural categories; spec in [SPEC.md](i18n-v1/SPEC.md).
+- [i18n-v1/](i18n-v1/README.md): message catalogs of Unicode MessageFormat 2 messages with the official test suite vendored, CLDR plural and locale-fallback vectors; spec in [SPEC.md](i18n-v1/SPEC.md).
 - [alias-v1/](alias-v1/README.md): kit alias bridge options, name validation, cycle detection; four runners.
 - [proto/](proto/README.md): shared protobuf definitions, incl. the cmdsurface RPC schema
   ([commands.proto](proto/cmdsurface/v1/commands.proto)).
