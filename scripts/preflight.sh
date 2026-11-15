@@ -180,7 +180,7 @@ fi
 php_required=$(grep -oE '"php":\s*"[^"]+"' "$REPO_ROOT/sdk/experimental/php/composer.json" 2>/dev/null \
                | sed -E 's/.*"([^"]+)".*/\1/' || true)
 if ! command -v php >/dev/null 2>&1; then
-  fail "php" "not installed (sdk/experimental/php requires $php_required)" \
+  fail "php" "not installed (sdk/experimental/php, engine/sdk/php-kit-engine require $php_required)" \
        "mise install php@8.3    # or: brew install php@8.3"
 else
   php_have=$(php -v 2>/dev/null | head -1 | awk '{ print $2 }')
@@ -200,7 +200,7 @@ else
 fi
 
 if ! command -v composer >/dev/null 2>&1; then
-  fail "composer" "not installed (sdk/experimental/php uses composer)" \
+  fail "composer" "not installed (sdk/experimental/php, engine/sdk/php-kit-engine use composer)" \
        "brew install composer    # or: https://getcomposer.org/download/"
 else
   composer_have=$(composer --version --no-ansi 2>/dev/null | awk '{ print $3 }')
@@ -211,7 +211,7 @@ fi
 # Rust (cargo). No version pin; check presence only.
 # ---------------------------------------------------------------------------
 if ! command -v cargo >/dev/null 2>&1; then
-  fail "cargo" "not installed (sdk/rs uses cargo)" \
+  fail "cargo" "not installed (sdk/rs, engine/sdk/rs-kit-engine use cargo)" \
        "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
 else
   cargo_have=$(cargo --version 2>/dev/null | awk '{ print $2 }')

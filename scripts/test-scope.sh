@@ -20,10 +20,12 @@
 #            module (its go.mod or go.sum changed, a package was deleted).
 #   go-race  the same under -race, kept to `make test-go-race`'s
 #            packages (go/, cmd/, internal/, examples/ of the root module)
-#   rs ts py php
+#   rs rs-engine ts py php
 #            a package dir: the package when a file under it changed, or
 #            a file its sources name by path (scripts/path-refs.awk: a
 #            contract vector, a shared fixture, another package)
+#            rs-engine is the engine SDK crate alone: the rs sdk's
+#            wasm, mobile and feature jobs do not follow it
 #   bats     a suite path: a changed suite, a suite naming a changed
 #            file, the suites that build Go when Go changed
 #   parity   a make target from `test-parity`'s list: its Go half
@@ -58,7 +60,8 @@ GO_RACE_PREFIXES=(go cmd internal examples)
 TS_PKGS=(sdk/ts engine/sdk/ts-kit-engine)
 PY_PKGS=(sdk/py engine/sdk/py-kit-engine)
 RS_PKGS=(sdk/rs)
-PHP_PKGS=(sdk/experimental/php)
+RS_ENGINE_PKGS=(engine/sdk/rs-kit-engine)
+PHP_PKGS=(sdk/experimental/php engine/sdk/php-kit-engine)
 
 # Parity targets: "<target> <go packages, comma-separated, /... for a
 # subtree> <SDK package dirs, comma-separated>". A test-parity
@@ -87,7 +90,7 @@ test-parity-redact go/core/redact $RS
 test-parity-identity go/core/identity $RS
 test-parity-upgrade go/core/upgrade $RS
 test-parity-cli go/console/cli/... $RS,$TS,$PY,examples/spaced/rs
-test-parity-engine engine/sdk/parity/... engine/sdk/ts-kit-engine,engine/sdk/py-kit-engine
+test-parity-engine engine/sdk/parity/... engine/sdk/ts-kit-engine,engine/sdk/py-kit-engine,engine/sdk/php-kit-engine,engine/sdk/rs-kit-engine
 test-parity-alias go/console/alias,go/console/cli $RS,$TS,$PY
 test-parity-cross-lang sdk/tests/cross-lang $RS
 "
@@ -110,10 +113,10 @@ while [ $# -gt 0 ]; do
         *) break ;;
     esac
 done
-[ $# -eq 1 ] || { echo "usage: test-scope.sh [--gate] go|go-race|rs|ts|py|php|bats|parity" >&2; exit 2; }
+[ $# -eq 1 ] || { echo "usage: test-scope.sh [--gate] go|go-race|rs|rs-engine|ts|py|php|bats|parity" >&2; exit 2; }
 suite=$1
 case "$suite" in
-    go|go-race|rs|ts|py|php|bats|parity) ;;
+    go|go-race|rs|rs-engine|ts|py|php|bats|parity) ;;
     *) echo "test-scope: unknown suite: $suite" >&2; exit 2 ;;
 esac
 
@@ -202,8 +205,8 @@ pkg_globs() {
     case "$1" in
         ts) echo '*.ts *.tsx *.mts *.cts *.js *.mjs *.cjs *.json' ;;
         py) echo '*.py *.toml *.cfg *.ini' ;;
-        rs) echo '*.rs *.toml' ;;
-        php) echo '*.php *.json *.xml *.dist *.neon' ;;
+        rs|rs-engine) echo '*.rs *.toml' ;;
+        php) echo '*.php *.json *.lock *.xml *.dist *.neon' ;;
     esac
 }
 
@@ -215,6 +218,7 @@ pkg_scope() {
         ts) pkgs=("${TS_PKGS[@]}") ;;
         py) pkgs=("${PY_PKGS[@]}") ;;
         rs) pkgs=("${RS_PKGS[@]}") ;;
+        rs-engine) pkgs=("${RS_ENGINE_PKGS[@]}") ;;
         php) pkgs=("${PHP_PKGS[@]}") ;;
     esac
     read -r -a globs <<<"$(pkg_globs "$lang")"
@@ -338,7 +342,7 @@ parity_targets() {
 parity_scope() {
     local go_out sdk_out t row gopk sdks hit
     if [ "$gate" -eq 1 ]; then
-        { go_gate; for l in rs ts py php; do pkg_scope "$l"; done; } | sort -u
+        { go_gate; for l in rs rs-engine ts py php; do pkg_scope "$l"; done; } | sort -u
         return
     fi
     go_gate >"$tmp/parity-go-gate"
@@ -346,7 +350,7 @@ parity_scope() {
     if [ -s "$tmp/parity-go-gate" ]; then
         go_out=$(go_scope -tags parity | awk -F'\t' '$1 == "." { print $2 }')
     fi
-    sdk_out=$(for l in rs ts py php; do pkg_scope "$l"; done)
+    sdk_out=$(for l in rs rs-engine ts py php; do pkg_scope "$l"; done)
     for t in $(parity_targets); do
         row=$(printf '%s\n' "$PARITY_TABLE" | awk -v t="$t" '$1 == t')
         if [ -z "$row" ]; then
@@ -374,7 +378,7 @@ parity_scope() {
 case "$suite" in
     go) go_suite 0 ;;
     go-race) go_suite 1 ;;
-    rs|ts|py|php) pkg_scope "$suite" ;;
+    rs|rs-engine|ts|py|php) pkg_scope "$suite" ;;
     bats) bats_scope ;;
     parity) parity_scope ;;
 esac

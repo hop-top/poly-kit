@@ -151,7 +151,7 @@ full, and you can run any of them locally (one heavy suite at a time):
 | `make test-go-integration` | Every Go module, testcontainer suites included. The `go-test` job. |
 | `make test-go-integration PROPERTY_ITERATIONS=100` | Same, with the `engine/store` property tests at 100 iterations instead of 1000: what the `go-test` job runs on pull requests. Pushes and the nightly schedule keep the full count. |
 | `make test-go-race` | `go/`, `cmd/`, `internal/` and `examples/` under `-race`. The `go-race` job. |
-| `make test-ts`, `test-py`, `test-rs`, `test-php` | The SDK suites (`test-ts-sdk`, `test-ts-engine`, `test-py-sdk`, `test-py-engine` per package). |
+| `make test-ts`, `test-py`, `test-rs`, `test-php` | The SDK suites (`test-ts-sdk`, `test-ts-engine`, `test-py-sdk`, `test-py-engine`, `test-php-sdk`, `test-php-engine` per package). The Rust engine SDK is `make test-rs-engine`, its own CI job. |
 | `make test-parity` | Every cross-language parity target. The `parity` job. |
 
 `test-go-race` exists because a concurrency guard is invisible to a
@@ -195,10 +195,13 @@ and `make test-affected` runs the same scope locally:
   counts when Go code names its path (a contract vector, a fixture, a
   doc a test checks; [`scripts/path-refs.awk`](scripts/path-refs.awk)).
   A changed `go.mod`/`go.sum` or a deleted package runs the module whole.
-- **SDKs** (`ts-test`, `ts-node-floor`, `py-test`, `py-floor`, `rs-*`, `php-test`): a package runs
+- **SDKs** (`ts-test`, `ts-node-floor`, `py-test`, `py-floor`, `rs-*`, `rs-engine-test`, `php-test`): a package runs
   when a file under it changed or a file its sources name by path
-  (contracts, shared fixtures). Rust and PHP are crate level; TypeScript
-  and Python per package.
+  (contracts, shared fixtures). The package is the unit for every
+  language, the engine SDKs (`engine/sdk/*-kit-engine`) included. The
+  Rust engine crate has its own scope (`rs-engine`), so the `sdk/rs`
+  wasm, mobile and feature jobs do not run for it; the PHP engine SDK
+  shares `php-test`.
 - **bats**: a changed suite, a suite naming a changed file, and the
   suites that build kit when non-test Go changed. Any shell, template,
   hook, workflow or `scripts/` change runs every suite.

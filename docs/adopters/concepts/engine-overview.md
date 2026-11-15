@@ -102,7 +102,8 @@ survives engine restarts. There are no external storage backends
 
 Server-side storage lives in `engine/store`, internal to `kit serve`:
 external clients, including the SDKs (`engine/sdk/ts-kit-engine`,
-`engine/sdk/py-kit-engine`), reach it through the engine's HTTP/WS API
+`engine/sdk/py-kit-engine`, `engine/sdk/php-kit-engine`,
+`engine/sdk/rs-kit-engine`), reach it through the engine's HTTP/WS API
 and never import the package. `kit serve` delegates to `DocumentStore` /
 `VersionedDocumentStore`. The version DAG primitive is
 [`go/runtime/domain/version`](../../../go/runtime/domain/version).

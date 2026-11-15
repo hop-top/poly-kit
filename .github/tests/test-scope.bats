@@ -101,6 +101,14 @@ func User() int { return store.Store() }
     w sdk/ts/src/a.ts 'export const a = 1;'
     w sdk/ts/src/contract.test.ts 'const p = "../../../contracts/x-v1/v.json";'
     w sdk/py/kit/a.py 'A = 1'
+    w sdk/rs/src/lib.rs 'pub fn a() {}'
+    w sdk/experimental/php/src/A.php '<?php'
+    w engine/sdk/ts-kit-engine/src/a.ts 'export const a = 1;'
+    w engine/sdk/py-kit-engine/kit_engine/a.py 'A = 1'
+    w engine/sdk/php-kit-engine/src/A.php '<?php'
+    w engine/sdk/php-kit-engine/composer.json '{}'
+    w engine/sdk/rs-kit-engine/src/lib.rs 'pub fn a() {}'
+    w engine/sdk/rs-kit-engine/Cargo.toml '[package]'
     w docs/guide.md '# guide'
     w .github/tests/a.bats '#!/usr/bin/env bats
 @test "a" { true; }'
@@ -108,7 +116,7 @@ func User() int { return store.Store() }
 @test "b" { cat docs/guide.md; }'
     w .github/tests/c.bats '#!/usr/bin/env bats
 @test "c" { go build ./...; }'
-    w Makefile 'test-parity: test-parity-typeid test-parity-mcp test-parity-new ## parity
+    w Makefile 'test-parity: test-parity-typeid test-parity-mcp test-parity-new test-parity-engine ## parity
 '
     git -C "$REPO" add -A
     git -C "$REPO" commit -qm base
@@ -144,7 +152,7 @@ pkgs() {
 # --- no change, whole-suite paths -----------------------------------------
 
 @test "no change: every suite empty, exit 0" {
-    for s in go go-race rs ts py php bats parity; do
+    for s in go go-race rs rs-engine ts py php bats parity; do
         ts "$s"
         [ "$status" -eq 0 ]
         [ -z "$output" ]
@@ -317,6 +325,79 @@ pkgs() {
     w pnpm-lock.yaml 'lockfileVersion: 9'
     ts ts
     [ "$status" -eq 3 ]
+}
+
+# --- engine SDKs -------------------------------------------------------------
+
+@test "engine php: runs the php suite and the engine parity target, nothing else" {
+    touch_ engine/sdk/php-kit-engine/src/A.php
+    ts php
+    [ "$status" -eq 0 ]
+    [ "$output" = "engine/sdk/php-kit-engine" ]
+    ts --gate php
+    [ "$output" = "engine/sdk/php-kit-engine/src/A.php" ]
+    for s in rs rs-engine ts py go bats; do
+        ts "$s"
+        [ "$status" -eq 0 ]
+        [ -z "$output" ]
+    done
+    ts parity
+    [ "$status" -eq 0 ]
+    [ "$output" = "test-parity-new
+test-parity-engine" ]
+}
+
+@test "engine php: the composer manifest counts; the experimental php sdk stays apart" {
+    touch_ engine/sdk/php-kit-engine/composer.json
+    ts php
+    [ "$output" = "engine/sdk/php-kit-engine" ]
+    git -C "$REPO" checkout -q -- engine
+    touch_ sdk/experimental/php/src/A.php
+    ts php
+    [ "$output" = "sdk/experimental/php" ]
+    ts rs-engine
+    [ -z "$output" ]
+}
+
+@test "engine rs: runs rs-engine and the engine parity target; the rs sdk jobs stay out" {
+    touch_ engine/sdk/rs-kit-engine/src/lib.rs
+    ts rs-engine
+    [ "$status" -eq 0 ]
+    [ "$output" = "engine/sdk/rs-kit-engine" ]
+    ts --gate rs-engine
+    [ "$output" = "engine/sdk/rs-kit-engine/src/lib.rs" ]
+    for s in rs php ts py go bats; do
+        ts "$s"
+        [ "$status" -eq 0 ]
+        [ -z "$output" ]
+    done
+    ts parity
+    [ "$output" = "test-parity-new
+test-parity-engine" ]
+}
+
+@test "engine rs: a Cargo.toml change counts; the rs sdk does not reach rs-engine" {
+    touch_ engine/sdk/rs-kit-engine/Cargo.toml
+    ts rs-engine
+    [ "$output" = "engine/sdk/rs-kit-engine" ]
+    git -C "$REPO" checkout -q -- engine
+    touch_ sdk/rs/src/lib.rs
+    ts rs-engine
+    [ -z "$output" ]
+    ts rs
+    [ "$output" = "sdk/rs" ]
+}
+
+@test "engine ts and py: still map to their own suites only" {
+    touch_ engine/sdk/ts-kit-engine/src/a.ts engine/sdk/py-kit-engine/kit_engine/a.py
+    ts ts
+    [ "$output" = "engine/sdk/ts-kit-engine" ]
+    ts py
+    [ "$output" = "engine/sdk/py-kit-engine" ]
+    for s in rs rs-engine php; do
+        ts "$s"
+        [ -z "$output" ]
+    done
 }
 
 # --- bats --------------------------------------------------------------------

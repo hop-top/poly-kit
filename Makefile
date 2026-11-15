@@ -6,8 +6,8 @@
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
 	completion-regen test-parity test-parity-api test-parity-webhook test-parity-authn test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-cli-root test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-oauth-token test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-rpc test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-oauth-token test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-identity test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
-	test-php test-py test-py-sdk test-py-engine \
-	test-release test-rs test-rs-wasm test-templates test-ts test-ts-sdk test-ts-engine \
+	test-php test-php-sdk test-php-engine test-py test-py-sdk test-py-engine \
+	test-release test-rs test-rs-engine test-rs-wasm test-templates test-ts test-ts-sdk test-ts-engine \
 	test-affected test-bats test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
 	vuln vuln-go vuln-go-binary vuln-osv
 
@@ -145,13 +145,17 @@ setup: preflight ## Initialize all sub-projects and dependencies
 	cd sdk/py && uv sync --all-extras
 	@echo "==> Initializing Python Engine SDK"
 	cd engine/sdk/py-kit-engine && uv sync --all-extras
+	@echo "==> Installing PHP Engine SDK"
+	cd engine/sdk/php-kit-engine && composer install --no-progress
+	@echo "==> Fetching Rust Engine SDK dependencies"
+	cd engine/sdk/rs-kit-engine && cargo fetch
 	@echo "==> Fetching Rust SDK dependencies"
 	cd sdk/rs && cargo fetch --locked
 	@echo "==> Setup complete."
 
 check: preflight lint test ## Run all linters and tests (full gate)
 
-test: preflight test-go test-ts test-py test-rs test-bats ## Run all tests
+test: preflight test-go test-ts test-py test-rs test-rs-engine test-php-engine test-bats ## Run all tests
 
 # The tests a change needs (scripts/test-scope.sh; Testing in
 # CONTRIBUTING.md): changed Go packages and their reverse dependencies,
@@ -263,9 +267,17 @@ test-py-sdk: ## Python tests: sdk/py
 test-py-engine: ## Python tests: engine/sdk/py-kit-engine
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q && uv run pytest
 
-test-php: ## PHP SDK tests (phpunit)
+test-php: test-php-sdk test-php-engine ## PHP tests (phpunit)
+
+test-php-sdk: ## PHP tests: sdk/experimental/php (phpunit)
 	cd sdk/experimental/php && composer install --no-progress
 	cd sdk/experimental/php && vendor/bin/phpunit
+
+# The real-kit test skips without KIT_BIN; the parity harness
+# (test-parity-engine) runs the engine against a live kit serve.
+test-php-engine: ## PHP tests: engine/sdk/php-kit-engine (phpunit)
+	cd engine/sdk/php-kit-engine && composer install --no-progress
+	cd engine/sdk/php-kit-engine && vendor/bin/phpunit
 
 test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual --features api)
 	# Default features must compile and pass — that's what publish-rs.yml
@@ -275,6 +287,13 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# All features ensures the api integration test (gated on feature=api)
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/rs && cargo test --all-features --locked
+
+# Default features, then the events feature. The `parity` feature needs a
+# kit binary and runs in test-parity-engine; the crate has no committed
+# Cargo.lock, so no --locked.
+test-rs-engine: ## Rust tests: engine/sdk/rs-kit-engine (default + events features)
+	cd engine/sdk/rs-kit-engine && cargo test
+	cd engine/sdk/rs-kit-engine && cargo test --features events
 
 check-rs-features: ## Rust: cargo check --all-targets once per feature, each alone (slow; CI rs-features)
 	@scripts/check-rs-features.sh
@@ -320,7 +339,7 @@ test-parity: test-parity-typeid test-parity-consent test-parity-breaker test-par
 test-parity-cli: ## spaced CLI parity: Go, TypeScript, Python and Rust builds of the example agree (PARITY_REQUIRE_RS=1 fails when cargo is missing)
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 
-test-parity-engine: ## engine SDK parity: Go, TypeScript and Python engine clients agree
+test-parity-engine: ## engine SDK parity: TypeScript, Python, PHP and Rust engine clients agree against one kit serve
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
 

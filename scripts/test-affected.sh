@@ -6,7 +6,7 @@
 # so a local run and the pull request run the same packages.
 #
 # Usage:
-#   scripts/test-affected.sh [suite...]   run (default: go ts py rs php bats parity)
+#   scripts/test-affected.sh [suite...]   run (default: go ts py rs rs-engine php bats parity)
 #   scripts/test-affected.sh --gate <scope suite>
 #                                         CI: run=true|false into
 #                                         $GITHUB_OUTPUT; ci.yml's `changes`
@@ -22,8 +22,10 @@
 #   ts py           make test-ts-sdk / test-ts-engine, test-py-sdk /
 #                   test-py-engine per affected package (whole: test-ts,
 #                   test-py)
-#   rs php          make test-rs / test-php when the crate or SDK is
-#                   affected (crate level)
+#   rs rs-engine php
+#                   make test-rs, test-rs-engine, test-php-sdk /
+#                   test-php-engine per affected package (whole: test-rs,
+#                   test-rs-engine, test-php)
 #   bats            scripts/test-bats.sh on the affected suites
 #   parity          the affected test-parity-* targets
 #
@@ -35,8 +37,8 @@
 # origin/next and the working tree; LINT_BASE / LINT_BASE_REF / LINT_HEAD
 # as for the lint targets. BASE=<ref> is kept as LINT_BASE_REF=<ref>.
 #
-# Locally, rs and php are reported NOT RUN when cargo or php/composer is
-# missing. With GITHUB_STEP_SUMMARY set, each suite's scope goes into the
+# Locally, rs, rs-engine and php are reported NOT RUN when cargo or
+# php/composer is missing. With GITHUB_STEP_SUMMARY set, each suite's scope goes into the
 # job summary. Exits non-zero on the first failing suite.
 set -euo pipefail
 
@@ -116,6 +118,7 @@ full_target() {
         ts) echo test-ts ;;
         py) echo test-py ;;
         rs) echo test-rs ;;
+        rs-engine) echo test-rs-engine ;;
         php) echo test-php ;;
         bats) echo test-bats ;;
         parity) echo test-parity ;;
@@ -128,6 +131,10 @@ pkg_target() {
         engine/sdk/ts-kit-engine) echo test-ts-engine ;;
         sdk/py) echo test-py-sdk ;;
         engine/sdk/py-kit-engine) echo test-py-engine ;;
+        sdk/rs) echo test-rs ;;
+        engine/sdk/rs-kit-engine) echo test-rs-engine ;;
+        sdk/experimental/php) echo test-php-sdk ;;
+        engine/sdk/php-kit-engine) echo test-php-engine ;;
         *) echo "test-affected: no make target for package $1" >&2; exit 1 ;;
     esac
 }
@@ -151,18 +158,18 @@ go_run() {
 
 missing_tool() {
     case "$1" in
-        rs) command -v cargo >/dev/null 2>&1 || echo cargo ;;
+        rs|rs-engine) command -v cargo >/dev/null 2>&1 || echo cargo ;;
         php) { command -v php >/dev/null 2>&1 && command -v composer >/dev/null 2>&1; } || echo php/composer ;;
     esac
 }
 
 suites=("$@")
-[ "${#suites[@]}" -gt 0 ] || suites=(go ts py rs php bats parity)
+[ "${#suites[@]}" -gt 0 ] || suites=(go ts py rs rs-engine php bats parity)
 not_run=()
 
 for s in "${suites[@]}"; do
     case "$s" in
-        go|go-integration|go-race|ts|py|rs|php|bats|parity) ;;
+        go|go-integration|go-race|ts|py|rs|rs-engine|php|bats|parity) ;;
         *) echo "test-affected: unknown suite: $s" >&2; exit 2 ;;
     esac
     sc=$s
@@ -199,8 +206,7 @@ for s in "${suites[@]}"; do
     fi
     case "$s" in
         go|go-integration|go-race) go_run "$s" ;;
-        ts|py) while IFS= read -r p; do make --no-print-directory "$(pkg_target "$p")" </dev/null; done <"$tmp/units" ;;
-        rs|php) make --no-print-directory "$(full_target "$s")" ;;
+        ts|py|rs|rs-engine|php) while IFS= read -r p; do make --no-print-directory "$(pkg_target "$p")" </dev/null; done <"$tmp/units" ;;
         bats) xargs scripts/test-bats.sh <"$tmp/units" ;;
         parity) xargs make --no-print-directory <"$tmp/units" ;;
     esac
