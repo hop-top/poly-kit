@@ -44,8 +44,7 @@ all_notes = notes.list(limit=10)
 
 # Real-time events (requires `ws` extra)
 events = engine.events("notes.*")
-for event in events:
-    print("event:", event)
+events.on("*", lambda payload: print("event:", payload))
 
 # Identity
 pubkey = engine.identity.public_key()
@@ -68,7 +67,7 @@ engine.stop()
 | `KitEngine.start(...)` | spawn `kit serve`, return engine |
 | `KitEngine.connect(port)` | attach to a running instance, e.g. `KitEngine.connect(9876)` |
 | `engine.collection(type)` | typed CRUD on a document type |
-| `engine.events(topic)` | WebSocket event stream |
+| `engine.events(topic)` | `/events` stream; `on(pattern, fn)` gets payloads; `*`/`**` |
 | `engine.sync` | remote management |
 | `engine.peers` | peer discovery and trust |
 | `engine.identity` | key management and signing |
