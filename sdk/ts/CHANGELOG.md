@@ -4,6 +4,20 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha.12](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.11...kit-ts/v0.5.0-alpha.12) (2026-11-15)
+
+
+### Features
+
+* **py/upgrade:** result-returning check() ([b212133](https://github.com/hop-top/poly-kit/commit/b212133e1e072b95efe93404e979052abdef2bb8))
+* **ts/upgrade:** result-returning check() ([855da06](https://github.com/hop-top/poly-kit/commit/855da064273c089f49207156f42fdc58a272bd71))
+
+
+### Bug Fixes
+
+* **deps:** hono 4.13.16 in sdk/ts ([7c20fb7](https://github.com/hop-top/poly-kit/commit/7c20fb7b5d9dda0ff949b05bac2460cf33991fe9))
+* **ts:** ship a self-contained TypeID, drop the typeid-js runtime dep ([c5aa133](https://github.com/hop-top/poly-kit/commit/c5aa133e826330d47b29e2b46e51c9e07ad4fa7a))
+
 ## [0.5.0-alpha.11](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.10...kit-ts/v0.5.0-alpha.11) (2026-11-04)
 
 The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.11. This release includes new features and bug fixes.
