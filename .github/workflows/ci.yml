@@ -68,6 +68,7 @@ jobs:
       ts: ${{ steps.scope.outputs.ts }}
       py: ${{ steps.scope.outputs.py }}
       rs: ${{ steps.scope.outputs.rs }}
+      rs-engine: ${{ steps.scope.outputs.rs-engine }}
       php: ${{ steps.scope.outputs.php }}
       bats: ${{ steps.scope.outputs.bats }}
       parity: ${{ steps.scope.outputs.parity }}
@@ -83,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           out=$(mktemp)
-          for suite in go ts py rs php bats parity; do
+          for suite in go ts py rs rs-engine php bats parity; do
             GITHUB_OUTPUT="$out" scripts/test-affected.sh --gate "$suite"
             echo "$suite=$(sed -n 's/^run=//p' "$out")" >> "$GITHUB_OUTPUT"
             : > "$out"
@@ -538,6 +539,33 @@ jobs:
           workspaces: sdk/rs
       - run: scripts/test-affected.sh rs
 
+  # The engine SDK crate (engine/sdk/rs-kit-engine) is standalone: it has
+  # its own job and scope flag, so the sdk/rs wasm, mobile and feature
+  # jobs stay out of an engine-only change. The cross-language run against
+  # a live kit serve is the parity job.
+  rs-engine-test:
+    needs: changes
+    if: needs.changes.outputs.rs-engine == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # History for the merge-base of the change (trees and commits
+          # only; blobs arrive for the checked-out commit alone).
+          fetch-depth: 0
+          filter: blob:none
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ steps.pins.outputs.rust }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: engine/sdk/rs-kit-engine
+      - run: scripts/test-affected.sh rs-engine
+
   # rs-test runs the toolchain pinned in mise.toml. Two more legs bracket
   # it: the MSRV (`rust-version` in Cargo.toml), so a newer-std API or
   # language feature cannot slip past the floor consumers build on, and
@@ -901,8 +929,9 @@ jobs:
       # level 5, tests/ at 2; see phpstan.neon for why they differ. No
       # baseline and no ignore list.
       - run: make lint-php
-      # phpunit when the change reaches the SDK. The lock, audit and
-      # lint steps above run on every change.
+      # phpunit when the change reaches an SDK (make test-php-sdk and
+      # test-php-engine). The lock, audit and lint steps above run on
+      # every change.
       - run: scripts/test-affected.sh php
         if: needs.changes.outputs.php == 'true'
 
@@ -937,8 +966,9 @@ jobs:
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ steps.pins.outputs.uv }}
-      # Rust toolchain + cache for the typeid-v1 contract loader and the Rust
-      # build of the spaced example (make test-parity-cli).
+      # Rust toolchain + cache for the typeid-v1 contract loader, the Rust
+      # build of the spaced example (make test-parity-cli) and the Rust
+      # engine SDK runner (make test-parity-engine builds it itself).
       # test-parity (via test-parity-typeid) runs
       # `cargo test --features id --test contract` on every build.
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
@@ -954,7 +984,8 @@ jobs:
           workspaces: |
             sdk/rs
             examples/spaced/rs
-      # PHP 8.4 toolchain for the typeid-v1 contract loader.
+      # PHP 8.4 toolchain (with composer) for the typeid-v1 contract loader and
+      # the PHP engine SDK runner (test-parity-engine runs composer install).
       # sdk/experimental/php's composer.json requires php ^8.4
       # (needed by jewei/typeid-php), and ubuntu-latest
       # ships PHP 8.3 by default, so we pin explicitly.
@@ -979,7 +1010,7 @@ jobs:
   # The failed jobs carry the red; this job fails only when it cannot
   # report.
   nightly-report:
-    needs: [changes, go-lint, ts-lint, py-lint, rs-lint, repo-lint, bats-tests, templates-e2e, go-test, go-race, ts-test, ts-node-floor, py-test, py-floor, rs-test, rs-toolchains, rs-wasm, rs-mobile, rs-features, php-test, parity]
+    needs: [changes, go-lint, ts-lint, py-lint, rs-lint, repo-lint, bats-tests, templates-e2e, go-test, go-race, ts-test, ts-node-floor, py-test, py-floor, rs-test, rs-engine-test, rs-toolchains, rs-wasm, rs-mobile, rs-features, php-test, parity]
     if: ${{ github.event_name == 'schedule' && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1051,7 +1082,7 @@ jobs:
   # cancellation and passes success and skipped.
   ci-ok:
     if: always()
-    needs: [changes, go-lint, ts-lint, py-lint, rs-lint, repo-lint, bats-tests, templates-e2e, go-test, go-race, ts-test, ts-node-floor, py-test, py-floor, rs-test, rs-toolchains, rs-wasm, rs-mobile, rs-features, php-test, parity, nightly-report]
+    needs: [changes, go-lint, ts-lint, py-lint, rs-lint, repo-lint, bats-tests, templates-e2e, go-test, go-race, ts-test, ts-node-floor, py-test, py-floor, rs-test, rs-engine-test, rs-toolchains, rs-wasm, rs-mobile, rs-features, php-test, parity, nightly-report]
     uses: hop-top/.github/.github/workflows/ci-gate.yml@9f6dc29c24719bd43fca28f293d439db0d48b21b # main after hop-top/.github#112; re-pin to the release that ships it
     with:
       needs: ${{ toJSON(needs) }}

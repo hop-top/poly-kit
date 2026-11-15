@@ -18,7 +18,9 @@ of record is:
 Implementations:
 [`cmd/kit/serve.go`](../../../cmd/kit/serve.go),
 [`engine/sdk/ts-kit-engine`](../../../engine/sdk/ts-kit-engine/README.md),
-[`engine/sdk/py-kit-engine`](../../../engine/sdk/py-kit-engine/README.md).
+[`engine/sdk/py-kit-engine`](../../../engine/sdk/py-kit-engine/README.md),
+[`engine/sdk/php-kit-engine`](../../../engine/sdk/php-kit-engine/README.md),
+[`engine/sdk/rs-kit-engine`](../../../engine/sdk/rs-kit-engine/README.md).
 
 ## Conventions
 
