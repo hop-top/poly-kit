@@ -21,10 +21,10 @@ Not covered: message rendering APIs, TMS wire protocols, code generation. They c
 One document per locale:
 
 ```json
-{ "v": 2, "locale": "en", "messages": { "cli": { "files": ".input {$n :number}\n.match $n\none {{{$n} file}}\n* {{{$n} files}}" } } }
+{ "v": 1, "locale": "en", "messages": { "cli": { "files": ".input {$n :number}\n.match $n\none {{{$n} file}}\n* {{{$n} files}}" } } }
 ```
 
-- `v`: the number `2`. Any other value, including the string `"2"`, is `unsupported_version`.
+- `v`: the number `1`. Any other value, including the string `"1"`, is `unsupported_version`.
 - `locale`: a tag accepted by Locale tags below. The file name is not significant.
 - `messages`: an object tree. `$schema` MAY appear at the top level and is ignored. No other top-level field is allowed.
 - Decoding is strict: unknown fields, duplicate object keys at any depth and trailing data after the document are load errors.
@@ -116,7 +116,7 @@ A load error carries `code`, the catalog `file` (when loaded from one) and the d
 | `invalid_json` | not JSON, or trailing data |
 | `duplicate_key` | object key repeated; `key` is the full path of the second |
 | `invalid_document` | not an object, unknown or missing top-level field |
-| `unsupported_version` | `v` is not the number 2 |
+| `unsupported_version` | `v` is not the number 1 |
 | `invalid_locale` | `locale` rejected by Locale tags |
 | `invalid_key` | key segment outside `^[A-Za-z0-9_-]+$` |
 | `unknown_reserved_key` | `$` key not defined above, or a non-`$` key beside `$msg` |
@@ -141,4 +141,4 @@ The MessageFormat 2 message is one opaque string in transit: no per-category uni
 
 ## Versioning
 
-`v` in the catalog is the format version, currently 2; the `-v1` suffix names this contract. A change that makes a catalog parse differently or fail bumps `v`. Additive changes (new vectors, new optional functions) do not. The pinned MessageFormat 2 tag and the minimum CLDR move only by the update procedure in `mf2-suite/README.md` and a vector refresh.
+`v` in the catalog is the format version, currently 1, matching the `-v1` suffix. A change that makes a catalog parse differently or fail bumps `v`. Additive changes (new vectors, new optional functions) do not. The pinned MessageFormat 2 tag and the minimum CLDR move only by the update procedure in `mf2-suite/README.md` and a vector refresh.

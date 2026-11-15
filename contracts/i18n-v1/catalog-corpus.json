@@ -12,7 +12,7 @@
       "name": "shorthand-literal",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "title": "Settings"
@@ -28,7 +28,7 @@
       "name": "empty-messages",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {}
       },
@@ -38,7 +38,7 @@
       "name": "empty-string-message",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "blank": ""
@@ -54,7 +54,7 @@
       "name": "nested-keys",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "cli": {
@@ -86,7 +86,7 @@
       "name": "leaf-with-desc",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "greeting": {
@@ -106,7 +106,7 @@
       "name": "leaf-without-desc",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "greeting": {
@@ -124,7 +124,7 @@
       "name": "variable-placeholder",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "hi": "Hello, {$name}!"
@@ -140,7 +140,7 @@
       "name": "number-function",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "size": "{$bytes :integer} bytes"
@@ -156,7 +156,7 @@
       "name": "plural-match",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "files": ".input {$count :number}\n.match $count\none {{{$count} file}}\n* {{{$count} files}}"
@@ -172,7 +172,7 @@
       "name": "ordinal-match",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "place": ".input {$n :number select=ordinal}\n.match $n\none {{{$n}st}}\ntwo {{{$n}nd}}\nfew {{{$n}rd}}\n* {{{$n}th}}"
@@ -188,7 +188,7 @@
       "name": "exact-match-and-local",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "state": ".input {$s :string}\n.local $label = {$s :string}\n.match $s\nok {{All good: {$label}}}\n* {{Other: {$label}}}"
@@ -204,7 +204,7 @@
       "name": "quoted-pattern",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "q": "{{ Leading and trailing space }}"
@@ -220,7 +220,7 @@
       "name": "escaped-braces-literal",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "lit": "Use \\{braces\\} and a \\\\ backslash"
@@ -236,7 +236,7 @@
       "name": "dollar-and-percent-are-literal-text",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "old": "Cost $5, 100% sure, $1"
@@ -252,7 +252,7 @@
       "name": "markup",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "link": "Read {#a}the docs{/a}"
@@ -268,7 +268,7 @@
       "name": "unknown-function-loads",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "f": "{$x :nosuch}"
@@ -284,7 +284,7 @@
       "name": "unicode-text",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "de",
         "messages": {
           "u": "Größe: 日本語 😀"
@@ -300,7 +300,7 @@
       "name": "locale-script-region",
       "valid": true,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "zh-Hant-TW",
         "messages": {
           "a": "x"
@@ -355,7 +355,7 @@
       "name": "err-unknown-top-level-field",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {},
         "extra": 1
@@ -367,7 +367,7 @@
       "name": "err-missing-locale",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "messages": {}
       },
       "code": "invalid_document",
@@ -377,7 +377,7 @@
       "name": "err-missing-messages",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en"
       },
       "code": "invalid_document",
@@ -387,7 +387,7 @@
       "name": "err-version-string",
       "valid": false,
       "doc": {
-        "v": "2",
+        "v": "1",
         "locale": "en",
         "messages": {}
       },
@@ -395,10 +395,10 @@
       "key": ""
     },
     {
-      "name": "err-version-1",
+      "name": "err-version-0",
       "valid": false,
       "doc": {
-        "v": 1,
+        "v": 0,
         "locale": "en",
         "messages": {}
       },
@@ -406,10 +406,10 @@
       "key": ""
     },
     {
-      "name": "err-version-3",
+      "name": "err-version-2",
       "valid": false,
       "doc": {
-        "v": 3,
+        "v": 2,
         "locale": "en",
         "messages": {}
       },
@@ -420,7 +420,7 @@
       "name": "err-locale-underscore",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en_US",
         "messages": {}
       },
@@ -431,7 +431,7 @@
       "name": "err-locale-empty",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "",
         "messages": {}
       },
@@ -442,7 +442,7 @@
       "name": "err-locale-not-bcp47-syntax",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "e",
         "messages": {}
       },
@@ -453,7 +453,7 @@
       "name": "err-key-with-dot",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a.b": "x"
@@ -466,7 +466,7 @@
       "name": "err-key-empty",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "": "x"
@@ -479,7 +479,7 @@
       "name": "err-key-with-space",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a b": "x"
@@ -492,7 +492,7 @@
       "name": "err-unknown-reserved-key",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": {
@@ -508,7 +508,7 @@
       "name": "err-legacy-params-key",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": {
@@ -524,7 +524,7 @@
       "name": "err-legacy-text-key",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": {
@@ -539,7 +539,7 @@
       "name": "err-reserved-key-in-namespace",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": {
@@ -555,7 +555,7 @@
       "name": "err-empty-namespace",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": {}
@@ -568,7 +568,7 @@
       "name": "err-node-number",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": 1
@@ -581,7 +581,7 @@
       "name": "err-node-null",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": null
@@ -594,7 +594,7 @@
       "name": "err-node-array",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": [
@@ -609,7 +609,7 @@
       "name": "err-msg-not-string",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": {
@@ -624,7 +624,7 @@
       "name": "err-desc-not-string",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": {
@@ -640,7 +640,7 @@
       "name": "err-desc-without-msg",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": {
@@ -655,7 +655,7 @@
       "name": "err-mf2-unclosed-placeholder",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": "Hello {$name"
@@ -669,7 +669,7 @@
       "name": "err-mf2-stray-brace",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": "Hello } there"
@@ -683,7 +683,7 @@
       "name": "err-mf2-complex-without-pattern",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": ".input {$n :number}"
@@ -697,7 +697,7 @@
       "name": "err-mf2-missing-fallback-variant",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": ".input {$n :number}\n.match $n\none {{x}}"
@@ -711,7 +711,7 @@
       "name": "err-mf2-duplicate-variant",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": ".input {$n :number}\n.match $n\none {{x}}\none {{y}}\n* {{z}}"
@@ -725,7 +725,7 @@
       "name": "err-mf2-variant-key-mismatch",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": ".input {$n :number}\n.match $n\none one {{x}}\n* {{z}}"
@@ -739,7 +739,7 @@
       "name": "err-mf2-missing-selector-annotation",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": ".match $n\n* {{z}}"
@@ -753,7 +753,7 @@
       "name": "err-mf2-duplicate-declaration",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": ".local $x = {1}\n.local $x = {2}\n{{{$x}}}"
@@ -767,7 +767,7 @@
       "name": "err-mf2-duplicate-option-name",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": "{$n :number minimumFractionDigits=1 minimumFractionDigits=2}"
@@ -781,7 +781,7 @@
       "name": "err-mf2-in-nested-key",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "cli": {
@@ -797,7 +797,7 @@
       "name": "err-mf2-in-leaf-object",
       "valid": false,
       "doc": {
-        "v": 2,
+        "v": 1,
         "locale": "en",
         "messages": {
           "a": {
