@@ -1,0 +1,36 @@
+{
+  "name": "hop-top/kit-engine",
+  "description": "PHP SDK for the kit serve sidecar engine",
+  "type": "library",
+  "license": "MIT",
+  "require": {
+    "php": "^8.4",
+    "ext-json": "*",
+    "guzzlehttp/guzzle": "^7",
+    "psr/http-client": "^1.0"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^13",
+    "phpstan/phpstan": "2.3.4"
+  },
+  "suggest": {
+    "ratchet/pawl": "WebSocket client for the events module"
+  },
+  "autoload": {
+    "psr-4": {
+      "HopTop\\KitEngine\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "HopTop\\KitEngine\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": "phpunit",
+    "analyse": "phpstan analyse --memory-limit=1G"
+  },
+  "config": {
+    "sort-packages": true
+  }
+}
