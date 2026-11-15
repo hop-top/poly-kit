@@ -23,7 +23,8 @@ mod sync;
 
 #[cfg(feature = "http")]
 pub use collection::{
-    BranchHead, Collection, CollectionQuery, DocumentRecord, HistoryTopology, Version,
+    BranchHead, Collection, CollectionQuery, DocumentRecord, HistoryTopology, PrunePolicy,
+    PruneResult, Version,
 };
 #[cfg(feature = "http")]
 pub use engine::{KitEngine, KitEngineOptions};

@@ -1,6 +1,6 @@
 #![cfg(feature = "http")]
 
-use hop_top_kit_engine::{CollectionQuery, EngineError, KitEngine};
+use hop_top_kit_engine::{CollectionQuery, EngineError, KitEngine, PrunePolicy};
 use mockito::Matcher;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -254,4 +254,200 @@ async fn branches_live_flag_and_heads_unwrap() {
     assert_eq!(h[0].version_id, "v2");
     c.branches("a", true).await.unwrap();
     live.assert_async().await;
+}
+
+const HEAD: &str = r#"{"version_id":"v9","seq":4,"parent_ids":["v1"],"timestamp":"t"}"#;
+
+#[tokio::test]
+async fn fork_posts_from_seq_and_returns_head() {
+    let mut s = mockito::Server::new_async().await;
+    let e = engine(&mut s).await;
+    let m = s
+        .mock("POST", "/notes/a%20b/fork")
+        .match_header("authorization", "Bearer tok")
+        .match_body(Matcher::Json(json!({"from_seq":2})))
+        .with_status(201)
+        .with_body(HEAD)
+        .create_async()
+        .await;
+    let h = e.collection::<Note>("notes").fork("a b", 2).await.unwrap();
+    m.assert_async().await;
+    assert_eq!(h.version_id, "v9");
+    assert_eq!(h.seq, 4);
+    assert_eq!(h.parent_ids, vec!["v1"]);
+}
+
+#[tokio::test]
+async fn merge_posts_seqs_and_data() {
+    let mut s = mockito::Server::new_async().await;
+    let e = engine(&mut s).await;
+    let m = s
+        .mock("POST", "/notes/a/merge")
+        .match_header("authorization", "Bearer tok")
+        .match_body(Matcher::Json(
+            json!({"source_seq":4,"target_seq":3,"data":{"title":"merged"}}),
+        ))
+        .with_status(201)
+        .with_body(HEAD)
+        .create_async()
+        .await;
+    let h = e
+        .collection::<Note>("notes")
+        .merge(
+            "a",
+            4,
+            3,
+            Note {
+                title: "merged".into(),
+            },
+        )
+        .await
+        .unwrap();
+    m.assert_async().await;
+    assert_eq!(h.seq, 4);
+}
+
+#[tokio::test]
+async fn prune_sends_only_set_policy_fields() {
+    let mut s = mockito::Server::new_async().await;
+    let e = engine(&mut s).await;
+    let body = r#"{"versions_removed":["v1","v2"],"blobs_freed":2,"bytes_freed":4096}"#;
+    let both = s
+        .mock("POST", "/notes/a/prune")
+        .match_header("authorization", "Bearer tok")
+        .match_body(Matcher::Json(
+            json!({"max_versions":10,"max_age_seconds":60}),
+        ))
+        .with_body(body)
+        .create_async()
+        .await;
+    let only_versions = s
+        .mock("POST", "/notes/a/prune")
+        .match_body(Matcher::Json(json!({"max_versions":10})))
+        .with_body(body)
+        .create_async()
+        .await;
+    let c = e.collection::<Note>("notes");
+    let r = c
+        .prune(
+            "a",
+            PrunePolicy {
+                max_versions: Some(10),
+                max_age_seconds: Some(60),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(r.versions_removed, vec!["v1", "v2"]);
+    assert_eq!((r.blobs_freed, r.bytes_freed), (2, 4096));
+    c.prune(
+        "a",
+        PrunePolicy {
+            max_versions: Some(10),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    both.assert_async().await;
+    only_versions.assert_async().await;
+}
+
+#[tokio::test]
+async fn prune_empty_policy_400_is_status_error() {
+    let mut s = mockito::Server::new_async().await;
+    let e = engine(&mut s).await;
+    let m = s
+        .mock("POST", "/notes/a/prune")
+        .match_body(Matcher::Json(json!({})))
+        .with_status(400)
+        .with_body(
+            r#"{"status":400,"code":"bad_request","message":"no policy","error":"no policy"}"#,
+        )
+        .create_async()
+        .await;
+    let err = e
+        .collection::<Note>("notes")
+        .prune("a", PrunePolicy::default())
+        .await
+        .err()
+        .unwrap();
+    m.assert_async().await;
+    assert!(
+        matches!(err, EngineError::Status { status: 400, .. }),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn abandon_posts_seq_and_accepts_empty_body() {
+    let mut s = mockito::Server::new_async().await;
+    let e = engine(&mut s).await;
+    let m = s
+        .mock("POST", "/notes/a/abandon")
+        .match_header("authorization", "Bearer tok")
+        .match_body(Matcher::Json(json!({"seq":6})))
+        .with_status(200)
+        .create_async()
+        .await;
+    e.collection::<Note>("notes").abandon("a", 6).await.unwrap();
+    m.assert_async().await;
+}
+
+#[tokio::test]
+async fn branch_ops_409_is_version_conflict_and_404_is_status() {
+    let mut s = mockito::Server::new_async().await;
+    let e = engine(&mut s).await;
+    let c = e.collection::<Note>("notes");
+    for (code, route) in [(409, "fork"), (409, "merge"), (409, "abandon")] {
+        let m = s
+            .mock("POST", format!("/notes/a/{route}").as_str())
+            .with_status(code)
+            .with_body(r#"{"status":409,"code":"conflict","message":"out of range","error":"out of range"}"#)
+            .create_async()
+            .await;
+        let err = match route {
+            "fork" => c.fork("a", 99).await.err(),
+            "merge" => c.merge("a", 99, 1, Note { title: "x".into() }).await.err(),
+            _ => c.abandon("a", 99).await.err(),
+        }
+        .unwrap();
+        m.remove_async().await;
+        match err {
+            EngineError::VersionConflict(msg) => assert_eq!(msg, "out of range", "{route}"),
+            o => panic!("{route}: {o:?}"),
+        }
+    }
+    for route in ["fork", "merge", "prune", "abandon"] {
+        let m = s
+            .mock("POST", format!("/notes/gone/{route}").as_str())
+            .with_status(404)
+            .with_body(r#"{"status":404,"code":"not_found","message":"nope","error":"nope"}"#)
+            .create_async()
+            .await;
+        let err = match route {
+            "fork" => c.fork("gone", 1).await.err(),
+            "merge" => c
+                .merge("gone", 2, 1, Note { title: "x".into() })
+                .await
+                .err(),
+            "prune" => c
+                .prune(
+                    "gone",
+                    PrunePolicy {
+                        max_versions: Some(1),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .err(),
+            _ => c.abandon("gone", 1).await.err(),
+        }
+        .unwrap();
+        m.remove_async().await;
+        assert!(
+            matches!(err, EngineError::Status { status: 404, .. }),
+            "{route}: {err:?}"
+        );
+    }
 }
