@@ -369,6 +369,9 @@ last change you want in.
 | mcp-tasks | `extensions/mcp-tasks` | Go | independent |
 | qmochi | `incubator/qmochi` | Go | independent |
 
+What the `experimental` status means, and what an SDK must ship to leave it,
+is in [`docs/contributors/sdk-support-tiers.md`](docs/contributors/sdk-support-tiers.md).
+
 Each starts every line on alpha and is promoted on its own (or with its
 group); see [Linked family](#linked-family) for what links the five kit
 packages.

@@ -11,6 +11,7 @@ Documentation for changing kit itself: adding packages, changing behaviour, cutt
 | [`releasing.md`](releasing.md) | release-please flow, version-bump policy, BREAKING-change protocol, per-release notes | you prepare or cut a release |
 | [`shared-template-blueprints.md`](shared-template-blueprints.md) | `templates/shared/`: version SOT, gitignore/gitattributes composition, managed-block library, emitters, services catalog | you change what a scaffold writes into a project |
 | [`sdk-parity-inventory.md`](sdk-parity-inventory.md) | each Go package mapped to its Python, TypeScript, Rust and PHP module, with status (ported / partial / absent / n/a) | you port a Go package to an SDK, or check whether a gap is known |
+| [`sdk-support-tiers.md`](sdk-support-tiers.md) | what experimental and supported mean for an SDK, the required module surface, the graduation checklist for PHP and Rust | you decide whether an SDK is ready to graduate, or what it must ship |
 | [`quality-gates.md`](quality-gates.md) | `make quality` and `make mutation` in every scaffold: targets, tools per language, where each is pinned, coverage floors, `quality.yml` | you change a scaffold's quality gates or one of their tools |
 | [`architecture/`](architecture/README.md) | layering, dependency rules, package map, internal coupling; start at `architecture.md` | you need to know where new code belongs |
 | [`../contracts/`](../contracts/README.md) | wire-level contracts: event topics, ext-discover protocol, kit init PR wiring, serve lifecycle | your change touches a cross-process boundary |
