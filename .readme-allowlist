@@ -54,3 +54,5 @@ go/integrations/repohost/github/mock     # test double registered as github-mock
 go/integrations/repohost/gitlab/mock     # test double registered as gitlab-mock; go/integrations/README.md documents the pattern
 internal/tools/vendor-gitleaks       # internal/tools/README.md table plus the main.go package comment are the reference
 internal/tools/vendor-presidio       # internal/tools/README.md table plus the main.go package comment are the reference
+contracts/i18n-v1/mf2-suite/schemas     # vendored upstream directory, byte-identical; mf2-suite/README.md documents it
+contracts/i18n-v1/mf2-suite/schemas/v0  # vendored upstream directory, byte-identical; mf2-suite/README.md documents it
