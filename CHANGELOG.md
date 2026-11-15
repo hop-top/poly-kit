@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.0-beta.8](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.7...kit/v0.5.0-beta.8) (2026-11-15)
+
+
+### Features
+
+* **cli:** AuthIntrospector over OAuth token sources ([e1dab4a](https://github.com/hop-top/poly-kit/commit/e1dab4af04484ad94e1b3ffe6f2f692a022937c2))
+* **cmdsurface:** PKCE authorization code flow and loopback login ([3111bd8](https://github.com/hop-top/poly-kit/commit/3111bd86a5dc71f56065206bb9bf4869e6b85de4))
+* **contracts:** add i18n-v1 catalog, fallback, plural corpus ([5af0403](https://github.com/hop-top/poly-kit/commit/5af04039b1bd040fc1212fd40ae091e18d55bd1a))
+* **contracts:** i18n-v1 catalog format version 1 ([fa0fdc6](https://github.com/hop-top/poly-kit/commit/fa0fdc6cbbd7d1c7bf0ce2f5d8febf6ff572eb32))
+* **contracts:** i18n-v1 on MessageFormat 2, vendored suite, CLDR vectors ([1364ffe](https://github.com/hop-top/poly-kit/commit/1364ffe19f41950d9b65cb369768bf44c1600471))
+* **engine-php:** Collection module + CollectionQuery ([8185ea6](https://github.com/hop-top/poly-kit/commit/8185ea6bb02098530be8e29843523e14d63c8fb4))
+* **engine-php:** KitEngine spawn/connect/stop + sync/peers/identity clients ([d17b2d7](https://github.com/hop-top/poly-kit/commit/d17b2d78c2a8a2cf6c9b68abd5a0b377b5401cbc))
+* **engine-php:** scaffold php-kit-engine package ([149d002](https://github.com/hop-top/poly-kit/commit/149d0027a692722c929a5a2fe7e2ed353806a13a))
+* **engine-rs:** generic Collection&lt;T&gt; CRUD, history, revert, branches ([0839b0a](https://github.com/hop-top/poly-kit/commit/0839b0a7660326717d84549061836eeacd974375))
+* **engine-rs:** kit serve lifecycle + sync/peers/identity/events clients ([c5262fb](https://github.com/hop-top/poly-kit/commit/c5262fbb3a8afda571a3c0a86e873eef27ba4d49))
+* **engine-rs:** scaffold rust engine sdk crate ([5c57a82](https://github.com/hop-top/poly-kit/commit/5c57a823a471249586888c2df3786c3e4401b864))
+* **secret/oauth:** OAuth 2 token source over secret stores ([a2be28a](https://github.com/hop-top/poly-kit/commit/a2be28a7c90d7c68b4d9b29171eae97a7784b4b9))
+* **secret:** writability declaration and atomic file writes ([0504f4a](https://github.com/hop-top/poly-kit/commit/0504f4ae15a09b76f1ff5d0ffbced292ebeef5d9))
+
+
+### Bug Fixes
+
+* **cmdsurface:** repeat flag per element for array flag values ([75a569f](https://github.com/hop-top/poly-kit/commit/75a569f7f05feaa90a3a8067a7fef6faf93f995e))
+
 ## [0.5.0-beta.7](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.6...kit/v0.5.0-beta.7) (2026-11-14)
 
 The hop-top team is happy to announce Kit 0.5.0-beta.7. This release includes new features and bug fixes.
