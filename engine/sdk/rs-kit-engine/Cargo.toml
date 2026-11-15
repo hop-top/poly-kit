@@ -47,3 +47,5 @@ futures-util = { version = "=0.3.34", default-features = false, features = ["sin
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 mockito = "1"
+tokio-tungstenite = { version = "=0.30.0", default-features = false, features = ["handshake"] }
+futures-util = { version = "=0.3.34", default-features = false, features = ["sink", "std"] }

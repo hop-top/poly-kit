@@ -22,4 +22,16 @@ mod peers;
 mod sync;
 
 #[cfg(feature = "http")]
+pub use collection::Collection;
+#[cfg(feature = "http")]
+pub use engine::{KitEngine, KitEngineOptions};
+#[cfg(feature = "http")]
 pub use error::EngineError;
+#[cfg(feature = "events")]
+pub use events::EventStream;
+#[cfg(feature = "http")]
+pub use identity::{IdentityClient, PublicKeyInfo, VerifyResult};
+#[cfg(feature = "http")]
+pub use peers::{PeerClient, PeerInfo};
+#[cfg(feature = "http")]
+pub use sync::{RemoteConfig, RemoteStatus, SyncClient};
