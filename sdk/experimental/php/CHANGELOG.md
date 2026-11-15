@@ -2,11 +2,15 @@
 
 ## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.5...kit-php/v0.5.0-alpha.6) (2026-11-15)
 
+The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.6. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
 * **php/serve:** read cancel afresh after a tick ([0272e4a](https://github.com/hop-top/poly-kit/commit/0272e4a98dc2ac2a2e220d96379b98c1e6e024a3))
 * **php/serve:** skip stopped on finish once run cancelled ([b164ebc](https://github.com/hop-top/poly-kit/commit/b164ebcbd2853b25377178dfb15e4b407405f962))
+
+Full diff: [kit-php/v0.5.0-alpha.5...kit-php/v0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.5...kit-php/v0.5.0-alpha.6)
 
 ## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.4...kit-php/v0.5.0-alpha.5) (2026-11-15)
 
