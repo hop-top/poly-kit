@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.0-alpha.3](https://github.com/hop-top/poly-kit/compare/mcp-tasks/v0.1.0-alpha.2...mcp-tasks/v0.1.0-alpha.3) (2026-11-15)
+
+
+### Bug Fixes
+
+* **deps:** go 1.27.4 toolchain for GO-2026-6859 ([3787e94](https://github.com/hop-top/poly-kit/commit/3787e94a86de0f9e8e337237ab66626e7072d7ce))
+* **deps:** rustix 1.1.6 in sdk/rs ([3fc3c59](https://github.com/hop-top/poly-kit/commit/3fc3c59f97e4a9455791b423a8d3c065b178a698))
+
 ## [0.1.0-alpha.2](https://github.com/hop-top/poly-kit/compare/mcp-tasks/v0.1.0-alpha.1...mcp-tasks/v0.1.0-alpha.2) (2026-10-28)
 
 The hop-top team is happy to announce Kit 0.1.0-alpha.2. This release includes maintenance release with bug fixes.
