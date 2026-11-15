@@ -42,3 +42,36 @@ func TestAwaitReady_ReadyAndExitBothPending(t *testing.T) {
 		}
 	}
 }
+
+// A Start that returns nil once the run is canceled, before it reported
+// ready, leaves both ctx.Done and its exit pending when awaitReady
+// looks. Either pick is the cancellation, never a start failure: the
+// return is the cancellation's doing, and stopped waits for the ordered
+// stop, as for any other service.
+func TestAwaitReady_CleanExitOnCanceledRunIsNotStartFailure(t *testing.T) {
+	for _, optional := range []bool{false, true} {
+		for i := 0; i < 200; i++ {
+			s := NewSupervisor(NewRegistry(), SupervisorConfig{})
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			sup := newSupervised(ctx, 1)
+			configs := map[string]Config{"svc": {Enabled: true, Optional: optional}}
+			st := newRunState(time.Now, []string{"svc"}, configs)
+			em := &emitter{optional: st.optional}
+
+			st.markStarted("svc")
+			sup.running["svc"] = true
+			sup.exits <- serviceExit{name: "svc"}
+
+			err := s.awaitReady(ctx, sup, "svc", make(chan struct{}), configs, st, em)
+			require.ErrorIs(t, err, context.Canceled, "optional=%v iteration %d", optional, i)
+
+			_, ready, failed, outcomes := st.snapshot()
+			assert.Empty(t, ready, "optional=%v iteration %d", optional, i)
+			assert.Empty(t, failed, "optional=%v iteration %d", optional, i)
+			assert.NotContains(t, outcomes, OutcomeStartFailed, "optional=%v iteration %d", optional, i)
+			// stopped is left to the ordered stop.
+			assert.False(t, st.markStopped("svc"), "stopped reported early, optional=%v iteration %d", optional, i)
+		}
+	}
+}
