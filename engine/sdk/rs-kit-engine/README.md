@@ -61,8 +61,10 @@ out-of-range seqs (409) map to `EngineError::VersionConflict`.
 `KitEngineOptions::bin_path` selects the `kit` binary (default: `kit` on
 PATH).
 
-With the `events` feature, `engine.events("notes.created")` returns an
-`EventStream`; `next().await` yields the `data` of each matching frame.
+With the `events` feature, `engine.events("notes.*")` returns an
+`EventStream`: it subscribes to that hub pattern (`*` one segment, `**`
+one or more, bare `*` all) and `next().await` yields the `payload` of
+each matching `message` frame, resubscribing after a reconnect.
 
 ## Development
 
