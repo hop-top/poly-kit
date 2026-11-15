@@ -1,9 +1,7 @@
 # hop-top/kit-engine
 
 PHP client for the `kit serve` sidecar: local storage, version history,
-sync, peers, identity.
-
-Wire contract:
+sync, peers, identity. Wire contract:
 [engine-protocol.md](../../../docs/adopters/reference/engine-protocol.md).
 
 ## Install
@@ -57,13 +55,7 @@ $engine = KitEngine::connect(9876, token: $token, shutdownToken: $shutdownToken)
 `noSync`, `binPath`, `client` (any PSR-18 `ClientInterface`; default
 Guzzle), `startTimeout`, `healthTimeout`, `stopTimeout` (seconds).
 
-### Errors
-
-- `HttpException` (`->status`, `->body`): any non-2xx.
-- `VersionConflictException` (extends `HttpException`): 409 on `revert()`
-  of a missing version.
-- `KitEngineException`: base of all SDK errors (spawn, startup JSON,
-  health, transport).
+Errors: [src/Exception](src/Exception/README.md).
 
 ### Schema validation
 
