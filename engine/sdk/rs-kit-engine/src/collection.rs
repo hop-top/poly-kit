@@ -114,13 +114,14 @@ impl<T: DeserializeOwned + Serialize> Collection<'_, T> {
         Ok(check(rb.send().await?).await?.json().await?)
     }
 
-    /// `PUT`: `patch` is the full replacement body.
+    /// `PUT`: `data` is the whole new document; fields it omits are
+    /// dropped, not kept.
     pub async fn update(
         &self,
         id: &str,
-        patch: serde_json::Value,
+        data: serde_json::Value,
     ) -> Result<DocumentRecord<T>, EngineError> {
-        let rb = self.client.put(self.route(&[id])?).json(&patch);
+        let rb = self.client.put(self.route(&[id])?).json(&data);
         Ok(check(self.auth(rb).send().await?).await?.json().await?)
     }
 
