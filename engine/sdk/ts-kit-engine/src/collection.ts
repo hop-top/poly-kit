@@ -42,13 +42,18 @@ export class Collection<T = unknown> {
     return headers;
   }
 
-  private async request<R>(method: string, path: string, body?: unknown): Promise<R> {
+  private async send(method: string, path: string, body?: unknown): Promise<Response> {
     const res = await fetch(this.url(path), {
       method,
       headers: this.headers(method, body),
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) throw new Error(`${method} ${this.type}${path}: ${res.status}`);
+    return res;
+  }
+
+  private async request<R>(method: string, path: string, body?: unknown): Promise<R> {
+    const res = await this.send(method, path, body);
     if (res.status === 204) return undefined as R;
     return (await res.json()) as R;
   }
@@ -121,6 +126,7 @@ export class Collection<T = unknown> {
   }
 
   async abandon(id: string, seq: number): Promise<void> {
-    return this.request<void>("POST", `/${encodeURIComponent(id)}/abandon`, { seq });
+    // 200 with an empty body: nothing to parse.
+    await this.send("POST", `/${encodeURIComponent(id)}/abandon`, { seq });
   }
 }

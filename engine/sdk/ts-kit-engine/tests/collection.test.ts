@@ -111,4 +111,21 @@ describe("Collection", () => {
     const col = new Collection<Item>("http://localhost:9000", "notes");
     await expect(col.get("missing")).rejects.toThrow("404");
   });
+
+  it("abandon posts seq and tolerates an empty 200 body", async () => {
+    const f = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.reject(new SyntaxError("Unexpected end of JSON input")),
+    });
+    vi.stubGlobal("fetch", f);
+
+    const col = new Collection<Item>("http://localhost:9000", "notes", "tok");
+    await expect(col.abandon("a b", 6)).resolves.toBeUndefined();
+
+    expect(f).toHaveBeenCalledWith(
+      "http://localhost:9000/notes/a%20b/abandon",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ seq: 6 }) }),
+    );
+  });
 });
