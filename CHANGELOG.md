@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0-beta.9](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.8...kit/v0.5.0-beta.9) (2026-11-15)
+
+
+### Features
+
+* **engine-php:** Collection fork/merge/prune/abandon ([6e0ff7a](https://github.com/hop-top/poly-kit/commit/6e0ff7a8e11d99f8b7d6996dff557ec6e7cca512))
+* **engine-php:** events() WebSocket stream ([be06974](https://github.com/hop-top/poly-kit/commit/be069740123c4b14ccad48ccad4bb86bd7b6b0d2))
+* **engine-rs:** Collection fork/merge/prune/abandon ([d155f3b](https://github.com/hop-top/poly-kit/commit/d155f3b15602eed9a3e08fb65d7f711af1b36880))
+* **secret:** Source.TokenWithIdentity returns envelope User/AuthzID ([1a097df](https://github.com/hop-top/poly-kit/commit/1a097df6f004606df13d32e6d21f433b4e6b66a7))
+
+
+### Bug Fixes
+
+* **engine-py:** speak subscribe/message frames on /events ([2b1b793](https://github.com/hop-top/poly-kit/commit/2b1b79350bd8ac6f62c0e3d4a0224f71cb2a8232))
+* **engine-rs:** speak subscribe/message frames on /events ([2c5e545](https://github.com/hop-top/poly-kit/commit/2c5e545dacf3e6d82a50646a7dcf5184aa10c933))
+* **engine-ts:** abandon tolerates empty 200 body ([f9cffee](https://github.com/hop-top/poly-kit/commit/f9cffee641a7b5d7a6fd0d2d746588c8476ef486))
+* **engine-ts:** speak subscribe/message frames on /events ([588f93f](https://github.com/hop-top/poly-kit/commit/588f93f9fa0b3a4929557d67c3f8abd781ea3916))
+* **secret:** stamp minted token expiry from WithClock ([353a041](https://github.com/hop-top/poly-kit/commit/353a041ab1d7868f599a68c89cfd871f57890aed))
+* **serve:** emit stopped from ordered stop on canceled run ([150fa30](https://github.com/hop-top/poly-kit/commit/150fa308d587de48ca33548262582519ed41bb0b))
+* **store:** queue in-process sqlite writers before BEGIN IMMEDIATE ([b04b704](https://github.com/hop-top/poly-kit/commit/b04b704f699be38be253a124b83ce37f582dee2d))
+
 ## [0.5.0-beta.8](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.7...kit/v0.5.0-beta.8) (2026-11-15)
 
 The hop-top team is happy to announce Kit 0.5.0-beta.8. This release includes new features and bug fixes.
