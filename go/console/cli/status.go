@@ -19,12 +19,42 @@ import (
 // Status section status enums. Surface in StatusOutput.Sections[i].Status
 // so adopters can sort/filter by lookup outcome without inspecting
 // section-specific shapes.
+//
+// StatusDegraded is a section that is running but not wholly: the
+// provider answered and carries Data, yet part of what it reports is
+// not ready (some receivers failed, a push channel fell back to
+// polling). ErrorMessage may carry the reason. It counts as running:
+// like every section status, it never changes the exit code of
+// `status` or `service status`, which exit 0 whatever the sections
+// report.
 const (
 	StatusOK          = "ok"
 	StatusEmpty       = "empty"
+	StatusDegraded    = "degraded"
 	StatusUnavailable = "unavailable"
 	StatusError       = "error"
 )
+
+// StatusSeverity ranks a section status from healthiest to worst —
+// ok, empty, degraded, unavailable, error — for callers that sort or
+// aggregate sections by outcome. An empty status is ok, as the
+// pipeline normalizes it; a value outside the set ranks with error.
+// Kit's own output keeps priority-then-title order; status never
+// reorders it.
+func StatusSeverity(status string) int {
+	switch status {
+	case StatusOK, "":
+		return 0
+	case StatusEmpty:
+		return 1
+	case StatusDegraded:
+		return 2
+	case StatusUnavailable:
+		return 3
+	default:
+		return 4
+	}
+}
 
 // StatusProviderTimeout is the deadline the status pipeline gives one
 // StatusProvider, for the root `status` and for `service status`
@@ -61,11 +91,13 @@ type StatusSection struct {
 	Title string `json:"title" yaml:"title"`
 	// Data is the section payload. Required when Status=="ok".
 	Data any `json:"data,omitempty" yaml:"data,omitempty"`
-	// Status is one of "ok" / "empty" / "unavailable" / "error".
-	// Empty value is normalized to "ok".
+	// Status is one of "ok" / "empty" / "degraded" / "unavailable" /
+	// "error". Empty value is normalized to "ok".
 	Status string `json:"status" yaml:"status"`
-	// ErrorMessage is non-empty only when Status=="error". Sanitized
-	// before set — adopters are responsible for stripping secrets.
+	// ErrorMessage is set when Status is "error" or "unavailable",
+	// and may carry the reason a "degraded" section is degraded.
+	// Sanitized before set — adopters are responsible for stripping
+	// secrets.
 	ErrorMessage string `json:"error_message,omitempty" yaml:"error_message,omitempty"`
 	// Sensitive marks the section as containing sensitive data.
 	// When true, Data values render as "[redacted]" inside the
@@ -616,8 +648,9 @@ func resolveStatusFormat(cmd *cobra.Command) output.Format {
 type StatusRow struct {
 	// Section is the provider's title, the stable row key.
 	Section string `json:"section" yaml:"section" table:"SECTION,priority=9"`
-	// Status is the lookup outcome ("ok" / "empty" / "unavailable" /
-	// "error"), carried through verbatim from the section.
+	// Status is the lookup outcome ("ok" / "empty" / "degraded" /
+	// "unavailable" / "error"), carried through verbatim from the
+	// section.
 	Status string `json:"status" yaml:"status" table:"STATUS,priority=8"`
 	// Detail is a one-line digest: the error message for failed
 	// sections, otherwise a compact rendering of Data. Nested
@@ -650,7 +683,9 @@ func StatusSectionRows(sections []StatusSection) []StatusRow {
 // ErrorMessage folds in here rather than taking a column of its own:
 // it is populated only when Status is "error" or "unavailable", which
 // is exactly when Data is nil, so the two never compete for the cell
-// and a dedicated column would be blank on every healthy row.
+// and a dedicated column would be blank on every healthy row. A
+// "degraded" section may carry both; its reason wins the cell, and
+// the payload stays in --format json.
 func statusDetail(sec StatusSection) string {
 	if sec.ErrorMessage != "" {
 		return sec.ErrorMessage
@@ -664,6 +699,8 @@ func statusDetail(sec StatusSection) string {
 	switch sec.Status {
 	case StatusEmpty:
 		return "(no entries)"
+	case StatusDegraded:
+		return "(degraded)"
 	case StatusUnavailable:
 		return "(unavailable)"
 	case StatusError:
