@@ -221,6 +221,10 @@ final class Supervisor
     private function serve(Cancellation $cancel, RunState $state, ?Signals $signals): void
     {
         $live = $state->started;
+        // A tick can cancel the run (a service, a signal delivered
+        // mid-pass), so the check after a tick reads the state afresh
+        // rather than trusting the loop condition's answer.
+        $isCancelled = $cancel->cancelled(...);
 
         while ($live !== [] && !$cancel->cancelled()) {
             // Deliver any pending signal. Async delivery usually beats
@@ -249,7 +253,7 @@ final class Supervisor
                         // doing, not a stop of its own: stopped waits for
                         // the service's stop() in stopAll, which reports
                         // in reverse start order.
-                        if ($cancel->cancelled()) {
+                        if ($isCancelled()) {
                             continue;
                         }
                         if (!$state->markStopped($name)) {
