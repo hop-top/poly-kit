@@ -59,16 +59,17 @@ final class Collection
     }
 
     /**
-     * Replaces the document body (PUT): `$patch` is sent verbatim, not merged.
+     * Replaces the document body (PUT): `$data` is the whole new document,
+     * sent verbatim; fields it omits are dropped, not kept.
      *
-     * @param array<string,mixed> $patch
+     * @param array<string,mixed> $data
      * @return array<string,mixed>
      */
-    public function update(string $id, array $patch): array
+    public function update(string $id, array $data): array
     {
-        $this->validate($patch);
+        $this->validate($data);
 
-        return $this->call('PUT', '/' . rawurlencode($id), self::asBody($patch));
+        return $this->call('PUT', '/' . rawurlencode($id), self::asBody($data));
     }
 
     public function delete(string $id): void
