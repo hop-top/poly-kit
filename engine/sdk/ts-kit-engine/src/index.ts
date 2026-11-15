@@ -113,7 +113,7 @@ export class KitEngine {
 
   get events(): EventStream {
     if (!this._events) {
-      this._events = new EventStream(`ws://127.0.0.1:${this.port}/events`);
+      this._events = new EventStream(`ws://127.0.0.1:${this.port}/events`, this.token);
       this._events.connect();
     }
     return this._events;

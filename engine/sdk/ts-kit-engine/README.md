@@ -41,7 +41,7 @@ const all = await notes.list({ limit: 10 });
 
 // Real-time events
 const events = engine.events;
-events.on("notes.created", (data) => console.log("new note:", data));
+events.on("notes.*", (payload) => console.log("note event:", payload));
 
 // Identity
 const { publicKey } = await engine.identity.publicKey();
@@ -68,7 +68,7 @@ const engine = await KitEngine.connect(9876);
 - `KitEngine.start(opts?)` — spawn kit serve, return engine
 - `KitEngine.connect(port)` — attach to running instance
 - `engine.collection<T>(type)` — typed CRUD + history + revert
-- `engine.events` — WebSocket event stream with auto-reconnect
+- `engine.events` — `on(topic, fn)` payloads; `*`/`**`; auto-reconnect
 - `engine.sync` — remote management
 - `engine.peers` — peer discovery and trust
 - `engine.identity` — key management and signing
