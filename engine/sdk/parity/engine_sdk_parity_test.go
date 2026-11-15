@@ -13,6 +13,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -25,7 +27,7 @@ type startupInfo struct {
 }
 
 func TestEngineSDKParityAgainstKitServe(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
 	defer cancel()
 
 	root := repoRoot(t)
@@ -48,23 +50,78 @@ func TestEngineSDKParityAgainstKitServe(t *testing.T) {
 	info, stop := startKitServe(t, ctx, root, bin)
 	defer stop()
 
+	runCmd(t, ctx, filepath.Join(root, "engine/sdk/py-kit-engine"), "uv", "sync", "--all-extras", "-q")
+	runCmd(t, ctx, filepath.Join(root, "engine/sdk/php-kit-engine"),
+		"composer", "install", "--no-interaction", "--no-progress", "--prefer-dist")
+	rsTarget := t.TempDir()
+	runCmdEnv(t, ctx, filepath.Join(root, "engine/sdk/rs-kit-engine"),
+		[]string{"CARGO_TARGET_DIR=" + rsTarget},
+		"cargo", "build", "--features", "parity", "--bin", "parity_runner")
+
 	tsScript := writeScript(t, "sdk-parity-*.js", tsParityScript(filepath.Join(tsOutDir, "index.js")))
 	pyScript := writeScript(t, "sdk-parity-*.py", pyParityScript(root))
 
-	tsOut := runSDKScript(t, ctx, root, []string{"node", tsScript}, info)
-	pyOut := runSDKScript(t, ctx, filepath.Join(root, "engine/sdk/py-kit-engine"), []string{"uv", "run", "python", pyScript}, info)
+	runners := []sdkRunner{
+		{"ts", root, []string{"node", tsScript}},
+		{"py", filepath.Join(root, "engine/sdk/py-kit-engine"), []string{"uv", "run", "python", pyScript}},
+		{"php", filepath.Join(root, "engine/sdk/php-kit-engine"), []string{"php", "tests/parity_runner.php"}},
+		{"rs", filepath.Join(root, "engine/sdk/rs-kit-engine"), []string{filepath.Join(rsTarget, "debug", "parity_runner")}},
+	}
+	payloads := map[string]map[string]any{}
+	for _, r := range runners {
+		out := runSDKScript(t, ctx, r.dir, r.argv, info)
+		var p map[string]any
+		if err := json.Unmarshal(out, &p); err != nil {
+			t.Fatalf("decode %s payload: %v\n%s", r.name, err, out)
+		}
+		payloads[r.name] = p
+	}
+	if diffs := diffPayloads(runners, payloads); len(diffs) > 0 {
+		t.Fatalf("SDK parity mismatch (baseline %s):\n%s", runners[0].name, strings.Join(diffs, "\n"))
+	}
+}
 
-	var tsPayload map[string]any
-	if err := json.Unmarshal(tsOut, &tsPayload); err != nil {
-		t.Fatalf("decode ts payload: %v\n%s", err, tsOut)
+type sdkRunner struct {
+	name string
+	dir  string
+	argv []string
+}
+
+// diffPayloads compares every runner against the first (baseline) and
+// returns one line per drifting surface naming the SDK and key.
+func diffPayloads(runners []sdkRunner, payloads map[string]map[string]any) []string {
+	base := runners[0].name
+	var diffs []string
+	for _, r := range runners[1:] {
+		keys := map[string]bool{}
+		for k := range payloads[base] {
+			keys[k] = true
+		}
+		for k := range payloads[r.name] {
+			keys[k] = true
+		}
+		sorted := make([]string, 0, len(keys))
+		for k := range keys {
+			sorted = append(sorted, k)
+		}
+		sort.Strings(sorted)
+		for _, k := range sorted {
+			want, got := payloads[base][k], payloads[r.name][k]
+			if !reflect.DeepEqual(want, got) {
+				diffs = append(diffs, fmt.Sprintf("  surface %q: %s != %s\n    - %s: %s\n    + %s: %s",
+					k, r.name, base, base, mustJSON(want), r.name, mustJSON(got)))
+			}
+		}
 	}
-	var pyPayload map[string]any
-	if err := json.Unmarshal(pyOut, &pyPayload); err != nil {
-		t.Fatalf("decode py payload: %v\n%s", err, pyOut)
+	return diffs
+}
+
+func mustJSON(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("%v", v)
 	}
-	if !reflect.DeepEqual(tsPayload, pyPayload) {
-		t.Fatalf("SDK parity mismatch\nTS: %s\nPY: %s", tsOut, pyOut)
-	}
+	return string(b)
 }
 
 func repoRoot(t *testing.T) string {
@@ -82,8 +139,14 @@ func repoRoot(t *testing.T) string {
 
 func runCmd(t *testing.T, ctx context.Context, dir string, name string, args ...string) {
 	t.Helper()
+	runCmdEnv(t, ctx, dir, nil, name, args...)
+}
+
+func runCmdEnv(t *testing.T, ctx context.Context, dir string, env []string, name string, args ...string) {
+	t.Helper()
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s %v failed: %v\n%s", name, args, err, out)
@@ -216,4 +279,25 @@ print(json.dumps({
     "afterTitles": [v["data"]["title"] for v in after],
 }, separators=(",", ":")))
 `, filepath.Join(root, "engine/sdk/py-kit-engine"))
+}
+
+func TestDiffPayloadsNamesDriftingSurface(t *testing.T) {
+	runners := []sdkRunner{{name: "ts"}, {name: "py"}, {name: "php"}, {name: "rs"}}
+	same := map[string]any{"afterOps": []any{"update"}, "revertedTitle": "v1"}
+	drift := map[string]any{"afterOps": []any{"update"}, "revertedTitle": "v2"}
+	payloads := map[string]map[string]any{"ts": same, "py": same, "php": same, "rs": drift}
+
+	diffs := diffPayloads(runners, payloads)
+	if len(diffs) != 1 {
+		t.Fatalf("want 1 diff, got %d: %v", len(diffs), diffs)
+	}
+	for _, want := range []string{`"revertedTitle"`, "rs", "ts", `"v2"`, `"v1"`} {
+		if !strings.Contains(diffs[0], want) {
+			t.Errorf("diff %q missing %q", diffs[0], want)
+		}
+	}
+	payloads["rs"] = same
+	if d := diffPayloads(runners, payloads); len(d) != 0 {
+		t.Fatalf("want no diffs, got %v", d)
+	}
 }

@@ -31,6 +31,12 @@ events = ["http", "dep:tokio-tungstenite", "dep:futures-util"]
 # inside the parity harness (KIT_BIN names the binary).
 parity = ["http"]
 
+# Cross-SDK parity runner binary; built only with the `parity` feature.
+[[bin]]
+name = "parity_runner"
+path = "src/bin/parity_runner.rs"
+required-features = ["parity"]
+
 # Same dependency set and pins as sdk/rs (hop-top-kit), kept in step with
 # its Cargo.lock.
 [dependencies]
