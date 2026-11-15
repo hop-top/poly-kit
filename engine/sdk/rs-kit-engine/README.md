@@ -18,6 +18,12 @@ API shape matches the [TypeScript](../ts-kit-engine/README.md) and
 
 ```rust
 use hop_top_kit_engine::{KitEngine, KitEngineOptions};
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+struct Note {
+    title: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), hop_top_kit_engine::EngineError> {
@@ -27,6 +33,12 @@ async fn main() -> Result<(), hop_top_kit_engine::EngineError> {
         ..Default::default()
     })
     .await?;
+
+    // Typed collection: CRUD, history, revert.
+    let notes = engine.collection::<Note>("notes");
+    let doc = notes.create(Note { title: "Hello".into() }).await?;
+    let versions = notes.history(&doc.id).await?;
+    notes.revert(&doc.id, 1).await?; // 409 -> EngineError::VersionConflict
 
     let key = engine.identity().public_key().await?;
     let peers = engine.peers().list().await?;
@@ -39,6 +51,9 @@ async fn main() -> Result<(), hop_top_kit_engine::EngineError> {
     Ok(())
 }
 ```
+
+`update` sends its JSON value as the full `PUT` body. `history_with_topology`
+returns the version DAG; `branches(id, live)` lists its tips.
 
 `stop` consumes the handle. A dropped handle kills a spawned child.
 `KitEngineOptions::bin_path` selects the `kit` binary (default: `kit` on

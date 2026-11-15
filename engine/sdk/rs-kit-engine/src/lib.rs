@@ -22,7 +22,9 @@ mod peers;
 mod sync;
 
 #[cfg(feature = "http")]
-pub use collection::Collection;
+pub use collection::{
+    BranchHead, Collection, CollectionQuery, DocumentRecord, HistoryTopology, Version,
+};
 #[cfg(feature = "http")]
 pub use engine::{KitEngine, KitEngineOptions};
 #[cfg(feature = "http")]
