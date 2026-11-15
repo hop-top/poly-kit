@@ -235,7 +235,44 @@ const { KitEngine } = require(%q);
   const before = await notes.history(id);
   const reverted = await notes.revert(id, 1);
   const after = await notes.history(id);
+  // Branch ops on their own doc; errors normalize to the HTTP status.
+  const status = async (fn) => {
+    try { await fn(); return 0; } catch (e) { return Number(/: (\d+)$/.exec(e.message)[1]); }
+  };
+  const seqs = (hs) => hs.map(h => h.seq).sort((a, b) => a - b);
+  const b = (await notes.create({ title: "b1" })).id;
+  await notes.update(b, { title: "b2" });
+  await notes.update(b, { title: "b3" });
+  const forkA = await notes.fork(b, 2);
+  const headsAfterFork = seqs(await notes.branches(b));
+  await notes.abandon(b, forkA.seq);
+  const liveAfterAbandon = seqs(await notes.branches(b, { live: true }));
+  const abandonLastLive = await status(() => notes.abandon(b, 3));
+  const forkB = await notes.fork(b, 2);
+  const merged = await notes.merge(b, forkB.seq, 3, { title: "merged" });
+  const pruneNoPolicy = await status(() => notes.prune(b, {}));
+  const pruned = await notes.prune(b, { max_versions: 1 });
+  const missing = "no-such-doc";
   console.log(JSON.stringify({
+    forkSeq: forkA.seq,
+    forkParents: forkA.parent_ids.length,
+    forkKeys: Object.keys(forkA).sort(),
+    headsAfterFork,
+    liveAfterAbandon,
+    abandonLastLive,
+    forkBSeq: forkB.seq,
+    mergeSeq: merged.seq,
+    mergeParents: merged.parent_ids.length,
+    pruneNoPolicy,
+    pruneRemoved: pruned.versions_removed.length,
+    pruneBlobsFreed: pruned.blobs_freed,
+    pruneBytesFreed: pruned.bytes_freed,
+    forkOutOfRange: await status(() => notes.fork(b, 99)),
+    mergeOutOfRange: await status(() => notes.merge(b, 99, 1, { title: "x" })),
+    forkMissing: await status(() => notes.fork(missing, 1)),
+    mergeMissing: await status(() => notes.merge(missing, 2, 1, { title: "x" })),
+    pruneMissing: await status(() => notes.prune(missing, { max_versions: 1 })),
+    abandonMissing: await status(() => notes.abandon(missing, 1)),
     createdKeys: Object.keys(created).sort(),
     beforeVersions: before.map(v => v.version),
     beforeOps: before.map(v => v.operation),
@@ -255,6 +292,8 @@ import json
 import os
 import sys
 
+import requests
+
 sys.path.insert(0, %q)
 
 from kit_engine import KitEngine
@@ -268,7 +307,53 @@ notes.update(doc_id, {"title": "v3"})
 before = notes.history(doc_id)
 reverted = notes.revert(doc_id, 1)
 after = notes.history(doc_id)
+
+
+def status(fn):
+    try:
+        fn()
+        return 0
+    except requests.HTTPError as e:
+        return e.response.status_code
+
+
+def seqs(heads):
+    return sorted(h["seq"] for h in heads)
+
+
+b = notes.create({"title": "b1"})["id"]
+notes.update(b, {"title": "b2"})
+notes.update(b, {"title": "b3"})
+fork_a = notes.fork(b, 2)
+heads_after_fork = seqs(notes.branches(b))
+notes.abandon(b, fork_a["seq"])
+live_after_abandon = seqs(notes.branches(b, live=True))
+abandon_last_live = status(lambda: notes.abandon(b, 3))
+fork_b = notes.fork(b, 2)
+merged = notes.merge(b, fork_b["seq"], 3, {"title": "merged"})
+prune_no_policy = status(lambda: notes.prune(b))
+pruned = notes.prune(b, max_versions=1)
+missing = "no-such-doc"
 print(json.dumps({
+    "forkSeq": fork_a["seq"],
+    "forkParents": len(fork_a["parent_ids"]),
+    "forkKeys": sorted(fork_a.keys()),
+    "headsAfterFork": heads_after_fork,
+    "liveAfterAbandon": live_after_abandon,
+    "abandonLastLive": abandon_last_live,
+    "forkBSeq": fork_b["seq"],
+    "mergeSeq": merged["seq"],
+    "mergeParents": len(merged["parent_ids"]),
+    "pruneNoPolicy": prune_no_policy,
+    "pruneRemoved": len(pruned["versions_removed"]),
+    "pruneBlobsFreed": pruned["blobs_freed"],
+    "pruneBytesFreed": pruned["bytes_freed"],
+    "forkOutOfRange": status(lambda: notes.fork(b, 99)),
+    "mergeOutOfRange": status(lambda: notes.merge(b, 99, 1, {"title": "x"})),
+    "forkMissing": status(lambda: notes.fork(missing, 1)),
+    "mergeMissing": status(lambda: notes.merge(missing, 2, 1, {"title": "x"})),
+    "pruneMissing": status(lambda: notes.prune(missing, max_versions=1)),
+    "abandonMissing": status(lambda: notes.abandon(missing, 1)),
     "createdKeys": sorted(created.keys()),
     "beforeVersions": [v["version"] for v in before],
     "beforeOps": [v["operation"] for v in before],
