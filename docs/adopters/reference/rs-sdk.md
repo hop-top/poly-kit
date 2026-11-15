@@ -87,7 +87,7 @@ The Rust URI facade is feature-gated:
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.5.0-alpha.6", features = ["uri"] } # x-release-please-version
+hop-top-kit = { version = "0.5.0-alpha.7", features = ["uri"] } # x-release-please-version
 ```
 
 `hop_top_kit::uri` delegates to `hop-top-cite` (`0.1.0`); it does not
@@ -348,7 +348,7 @@ disagree, **the fixtures win**.
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.5.0-alpha.6", features = ["mcp"] } # x-release-please-version
+hop-top-kit = { version = "0.5.0-alpha.7", features = ["mcp"] } # x-release-please-version
 ```
 
 `rmcp` supplies the protocol vocabulary only — version constants, the
@@ -576,7 +576,7 @@ on it, and `httpcache` builds on `kv`.
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.5.0-alpha.6", features = ["kv"] } # x-release-please-version
+hop-top-kit = { version = "0.5.0-alpha.7", features = ["kv"] } # x-release-please-version
 ```
 
 ```bash
@@ -964,7 +964,7 @@ consent file say so.
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.5.0-alpha.6", features = ["telemetry"] } # x-release-please-version
+hop-top-kit = { version = "0.5.0-alpha.7", features = ["telemetry"] } # x-release-please-version
 ```
 
 ```bash
@@ -1066,7 +1066,7 @@ publish/subscribe dispatch.
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.5.0-alpha.6", features = ["bus"] } # x-release-please-version
+hop-top-kit = { version = "0.5.0-alpha.7", features = ["bus"] } # x-release-please-version
 ```
 
 ```bash
@@ -1218,7 +1218,7 @@ reloads with an immutability veto and bus events.
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.5.0-alpha.6", features = ["config"] } # x-release-please-version
+hop-top-kit = { version = "0.5.0-alpha.7", features = ["config"] } # x-release-please-version
 ```
 
 | Feature | Adds |
