@@ -143,6 +143,16 @@ is parsed by `parseTableTag` (renderer.go:262), which defaults missing
 values and clamps to `[0,9]`. Surviving columns keep their relative
 order. This is a Go-only feature today.
 
+**6. Width fitting only happens on a terminal; `id` columns are never
+ellipsized.** When the writer is not a terminal (pipe, file, buffer),
+every column renders with every cell whole, so `cmd | grep <id>` works.
+On a terminal, overlong cells are ellipsized widest-first to fit, except
+columns tagged with the bare `id` option, which keep their full width:
+`table:"ID,priority=9,id"`. Other columns shrink first; if the `id`
+columns plus the others' minimum widths still overflow, non-`id` columns
+drop lowest priority first, and `id` columns only after all of those.
+`id` is Go-only and independent of `priority`.
+
 ### Go vs the payload SDKs
 
 | Capability | Go (reference) | py / ts | rs / php |

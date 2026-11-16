@@ -23,6 +23,14 @@
 // hidden only when their minimum widths (header width, at least 3 cells) do
 // not fit; otherwise overlong cells are ellipsized, never wrapped.
 //
+// The optional bare id option marks an identifier column (UUIDs, keys): its
+// cells are never ellipsized and it is dropped only after every other column.
+//
+//	ID string `table:"ID,priority=9,id"`
+//
+// Width fitting applies only when the writer is a terminal. Any other writer
+// (pipe, file, buffer) gets every column with every cell whole.
+//
 // Render accepts both a single struct and a slice of structs for table mode.
 // For JSON and YAML, v is passed directly to the respective encoder.
 //
@@ -82,9 +90,15 @@ func isTagDriven(format Format) bool {
 // defaultPriority is assigned to columns whose tag omits priority=N.
 const defaultPriority = 5
 
-// fallbackWidth is the width used when stdout is not a TTY (pipes, tests).
-// Wide enough to fit most realistic tables without forcing column hides.
+// fallbackWidth is the width used when w is a terminal whose size cannot be
+// read. Wide enough to fit most realistic tables without forcing column hides.
 const fallbackWidth = 200
+
+// unboundedWidth is the width budget for output that is not a terminal
+// (pipes, files, tests): no column is dropped and no cell is clipped, the
+// ls/gh/kubectl convention. Consumers of piped output (grep, awk, e2e
+// assertions) need whole cells; clipping is a display aid for humans.
+const unboundedWidth = 0
 
 // columnSeparator is the inter-column padding used by the tabwriter and by
 // width estimation. tabwriter.NewWriter passes 2 as padding below.
@@ -225,10 +239,11 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 // reorders as well as selects. With selected empty, column order falls back
 // to struct field order. An unknown name in selected returns an error.
 func renderTable(w io.Writer, v any, selected []string) error {
-	return renderTableAt(w, v, selected, terminalWidth())
+	return renderTableAt(w, v, selected, outputWidth(w))
 }
 
-// renderTableAt is renderTable with an explicit terminal width.
+// renderTableAt is renderTable with an explicit width budget. A width <= 0
+// (unboundedWidth) disables column dropping and cell truncation.
 func renderTableAt(w io.Writer, v any, selected []string, width int) error {
 	rv := reflect.ValueOf(v)
 
@@ -289,10 +304,10 @@ func renderTableAt(w io.Writer, v any, selected []string, width int) error {
 	}
 
 	visible := selectVisibleColumns(cols, rows, width)
-	// Absorb any residual overflow by clipping cell contents. Dropping
-	// columns alone cannot fit a table whose single widest cell already
-	// exceeds the budget, and deleting data to hide that is worse than
-	// showing it elided.
+	// Absorb any residual overflow by clipping cell contents (identifier
+	// columns excepted). Dropping columns alone cannot fit a table whose
+	// single widest cell already exceeds the budget, and deleting data to
+	// hide that is worse than showing it elided.
 	rows = fitCellsToWidth(visible, rows, width)
 
 	tw := tabwriter.NewWriter(w, 0, 0, columnSeparator, ' ', 0)
@@ -320,10 +335,12 @@ type column struct {
 	fieldIdx int
 	colIdx   int // index into the full row before any hiding
 	priority int
+	ident    bool // identifier column: never ellipsized (tag option "id")
 }
 
 // tableColumns returns the columns derived from the `table` tag on each
-// exported field. Tag form: "Header" or "Header,priority=N" (N=0-9).
+// exported field. Tag form: "Header", optionally followed by comma-separated
+// options priority=N (N=0-9) and id (identifier column, never ellipsized).
 // Fields without a tag, or with tag value "-", are excluded.
 func tableColumns(t reflect.Type) []column {
 	if t.Kind() == reflect.Pointer {
@@ -335,12 +352,13 @@ func tableColumns(t reflect.Type) []column {
 		if tag == "" || tag == "-" {
 			continue
 		}
-		header, prio := parseTableTag(tag)
+		header, prio, ident := parseTableTagOpts(tag)
 		cols = append(cols, column{
 			header:   header,
 			fieldIdx: i,
 			colIdx:   len(cols),
 			priority: prio,
+			ident:    ident,
 		})
 	}
 	return cols
@@ -350,11 +368,22 @@ func tableColumns(t reflect.Type) []column {
 // malformed priority defaults to defaultPriority. Out-of-range values are
 // clamped to [0, 9].
 func parseTableTag(tag string) (header string, priority int) {
+	header, priority, _ = parseTableTagOpts(tag)
+	return header, priority
+}
+
+// parseTableTagOpts is parseTableTag plus the bare "id" option, which marks
+// the column as an identifier: its cells are never ellipsized.
+func parseTableTagOpts(tag string) (header string, priority int, ident bool) {
 	priority = defaultPriority
 	parts := strings.Split(tag, ",")
 	header = strings.TrimSpace(parts[0])
 	for _, opt := range parts[1:] {
 		opt = strings.TrimSpace(opt)
+		if opt == "id" {
+			ident = true
+			continue
+		}
 		const prefix = "priority="
 		if !strings.HasPrefix(opt, prefix) {
 			continue
@@ -370,12 +399,12 @@ func parseTableTag(tag string) (header string, priority int) {
 		}
 		priority = n
 	}
-	return header, priority
+	return header, priority, ident
 }
 
 // selectVisibleColumns drops the lowest-priority columns only while the
-// remaining columns' minimum widths (see minColumnWidth) still overflow
-// ttyWidth. Once the minimums fit, the remaining overflow is the job of
+// remaining columns' minimum widths (see columnMinWidths) still overflow
+// ttyWidth. Identifier columns are dropped last. Once the minimums fit, the remaining overflow is the job of
 // fitCellsToWidth, which ellipsizes the widest cells; deleting a column for
 // an overlong cell would hide data that truncation can keep. Column order
 // is preserved (only hides; never reorders).
@@ -389,7 +418,7 @@ func selectVisibleColumns(cols []column, rows [][]string, ttyWidth int) []column
 	if fitsWidth(cols, rows, ttyWidth) {
 		return cols
 	}
-	return dropUntilMinimaFit(cols, ttyWidth, tabSeparators)
+	return dropUntilMinimaFit(cols, rows, ttyWidth, tabSeparators)
 }
 
 // tabSeparators is the layout overhead of the tabwriter renderer for n
@@ -399,9 +428,13 @@ func tabSeparators(n int) int { return columnSeparator * max(n-1, 0) }
 // dropUntilMinimaFit drops lowest-priority columns until the columns'
 // minimum widths plus overhead(n) fit ttyWidth. overhead is the width the
 // renderer spends on separators and borders for n columns.
-func dropUntilMinimaFit(cols []column, ttyWidth int, overhead func(n int) int) []column {
+func dropUntilMinimaFit(cols []column, rows [][]string, ttyWidth int, overhead func(n int) int) []column {
 	visible := append([]column(nil), cols...)
-	for len(visible) > 1 && minContentWidth(visible)+overhead(len(visible)) > ttyWidth {
+	mins := make(map[int]int, len(cols))
+	for i, m := range columnMinWidths(cols, rows) {
+		mins[cols[i].colIdx] = m
+	}
+	for len(visible) > 1 && minContentWidth(visible, mins)+overhead(len(visible)) > ttyWidth {
 		visible = dropColumnAt(visible, lowestPriorityIndex(visible))
 	}
 	return visible
@@ -416,11 +449,18 @@ func dropColumnAt(visible []column, idx int) []column {
 	return out
 }
 
-// lowestPriorityIndex returns the index of the lowest-priority column in
-// visible. Ties broken by rightmost-first (higher index wins among ties).
+// lowestPriorityIndex returns the index of the column to drop next: the
+// lowest-priority column, identifier columns only once no other column
+// remains. Ties broken by rightmost-first (higher index wins among ties).
 func lowestPriorityIndex(visible []column) int {
 	idx := 0
 	for i := 1; i < len(visible); i++ {
+		if visible[i].ident != visible[idx].ident {
+			if visible[idx].ident {
+				idx = i
+			}
+			continue
+		}
 		if visible[i].priority < visible[idx].priority {
 			idx = i
 			continue
@@ -452,12 +492,18 @@ func tableWidth(cols []column, rows [][]string) int {
 	return total
 }
 
-// terminalWidth returns the current stdout terminal width, or fallbackWidth
-// when stdout is not a TTY (pipes, redirects, tests).
-func terminalWidth() int {
-	w, _, err := term.GetSize(os.Stdout.Fd())
-	if err != nil || w <= 0 {
+// outputWidth returns the width budget for w: the terminal width when w is
+// a terminal (fallbackWidth if the size cannot be read), unboundedWidth
+// otherwise. The decision keys on w itself, the same test the styled path
+// uses (writerIsTTY), not on the process's stdout.
+func outputWidth(w io.Writer) int {
+	f, ok := w.(*os.File)
+	if !ok || !writerIsTTY(w) {
+		return unboundedWidth
+	}
+	n, _, err := term.GetSize(f.Fd())
+	if err != nil || n <= 0 {
 		return fallbackWidth
 	}
-	return w
+	return n
 }
