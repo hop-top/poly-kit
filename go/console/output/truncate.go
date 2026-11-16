@@ -30,16 +30,16 @@ func truncateCell(s string, width int) string {
 // returning a new row set and leaving the caller's slices untouched. Rows
 // that already fit are returned as-is.
 //
-// Width is reclaimed from the widest column first, repeatedly, so a single
+// Width is reclaimed from the widest columns first, so a single
 // pathological cell is clipped back toward its neighbors rather than the
 // neighbors being clipped or dropped on its behalf. Columns are never
-// squeezed below minCellWidth, so a budget too small for the whole set
-// leaves a residual overflow for the caller's renderer to wrap — that is
-// strictly better than silently deleting data.
+// squeezed below their minimum width, so a budget smaller than the summed
+// minimums leaves an overflow; selectVisibleColumns drops columns so that
+// does not happen.
 //
-// Header text is honored as a floor per column: clipping a body cell
-// narrower than its own header buys nothing, since the header still sets
-// the column's rendered width.
+// Header text is honored as a floor per column (see minColumnWidth):
+// clipping a body cell narrower than its own header buys nothing, since the
+// header still sets the column's rendered width.
 func fitCellsToWidth(cols []column, rows [][]string, budget int) [][]string {
 	if len(cols) == 0 || len(rows) == 0 || budget <= 0 {
 		return rows
@@ -55,31 +55,35 @@ func fitCellsToWidth(cols []column, rows [][]string, budget int) [][]string {
 		return rows
 	}
 
-	// Reclaim from the widest column each pass. Shrinking the widest by one
-	// cell at a time would be O(overflow); instead drop it to the width of
-	// the runner-up, which converges in at most len(cols) passes.
-	for total > budget {
-		widest, second := 0, 0
+	// Water-fill: find the largest cap L such that clipping every column to
+	// max(floor, min(width, L)) fits the budget. The widest cells are clipped
+	// first and ties clip together, so no column keeps slack while another
+	// is squeezed. When even L=0 (every column at its floor) overflows, the
+	// floors win and the caller has already dropped columns for that case.
+	floors := make([]int, len(cols))
+	for i := range cols {
+		floors[i] = minColumnWidth(cols[i])
+	}
+	fitted := func(limit int) ([]int, int) {
+		out := make([]int, len(widths))
+		sum := columnSeparator * (len(cols) - 1)
 		for i, w := range widths {
-			if w > widths[widest] {
-				widest, second = i, widest
-			} else if i != widest && w > widths[second] {
-				second = i
-			}
+			out[i] = max(floors[i], min(w, limit))
+			sum += out[i]
 		}
-		floor := max(minCellWidth, displayWidth(cols[widest].header))
-		target := max(floor, widths[second])
-		if target >= widths[widest] {
-			// Every column is already at its floor; the remainder cannot
-			// be reclaimed without destroying information.
+		return out, sum
+	}
+	limit := 0
+	for _, w := range widths {
+		limit = max(limit, w)
+	}
+	for limit > 0 {
+		if _, sum := fitted(limit); sum <= budget {
 			break
 		}
-		if reclaimed := widths[widest] - target; reclaimed > total-budget {
-			target = widths[widest] - (total - budget)
-		}
-		total -= widths[widest] - target
-		widths[widest] = target
+		limit--
 	}
+	widths, _ = fitted(limit)
 
 	out := make([][]string, len(rows))
 	for i, row := range rows {
@@ -93,6 +97,22 @@ func fitCellsToWidth(cols []column, rows [][]string, budget int) [][]string {
 		out[i] = clipped
 	}
 	return out
+}
+
+// minColumnWidth is the narrowest a column can render: its header never
+// shrinks, and body cells are not clipped below minCellWidth.
+func minColumnWidth(c column) int {
+	return max(minCellWidth, displayWidth(c.header))
+}
+
+// minContentWidth is the narrowest the given columns' contents can render,
+// excluding separators and borders.
+func minContentWidth(cols []column) int {
+	total := 0
+	for _, c := range cols {
+		total += minColumnWidth(c)
+	}
+	return total
 }
 
 // columnWidths returns the rendered width of each column: the widest of its

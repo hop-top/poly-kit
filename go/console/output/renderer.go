@@ -19,7 +19,9 @@
 //
 // The optional priority=N option (0-9, default 5) controls which columns are
 // hidden first when total content width exceeds terminal width. Lower priority
-// hides first; stable column order (no reordering, only hide).
+// hides first; stable column order (no reordering, only hide). Columns are
+// hidden only when their minimum widths (header width, at least 3 cells) do
+// not fit; otherwise overlong cells are ellipsized, never wrapped.
 //
 // Render accepts both a single struct and a slice of structs for table mode.
 // For JSON and YAML, v is passed directly to the respective encoder.
@@ -223,6 +225,11 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 // reorders as well as selects. With selected empty, column order falls back
 // to struct field order. An unknown name in selected returns an error.
 func renderTable(w io.Writer, v any, selected []string) error {
+	return renderTableAt(w, v, selected, terminalWidth())
+}
+
+// renderTableAt is renderTable with an explicit terminal width.
+func renderTableAt(w io.Writer, v any, selected []string, width int) error {
 	rv := reflect.ValueOf(v)
 
 	var elemType reflect.Type
@@ -281,7 +288,6 @@ func renderTable(w io.Writer, v any, selected []string) error {
 		rows[i] = row
 	}
 
-	width := terminalWidth()
 	visible := selectVisibleColumns(cols, rows, width)
 	// Absorb any residual overflow by clipping cell contents. Dropping
 	// columns alone cannot fit a table whose single widest cell already
@@ -367,18 +373,15 @@ func parseTableTag(tag string) (header string, priority int) {
 	return header, priority
 }
 
-// selectVisibleColumns drops the lowest-priority columns until the total
-// content width fits within ttyWidth. If no subset fits, returns all columns
-// and leaves the overflow to be absorbed by cell truncation downstream.
-// Column order is preserved (only hides; never reorders).
+// selectVisibleColumns drops the lowest-priority columns only while the
+// remaining columns' minimum widths (see minColumnWidth) still overflow
+// ttyWidth. Once the minimums fit, the remaining overflow is the job of
+// fitCellsToWidth, which ellipsizes the widest cells; deleting a column for
+// an overlong cell would hide data that truncation can keep. Column order
+// is preserved (only hides; never reorders).
 //
-// Dropping is attempted only while it can still succeed. A column whose own
-// content exceeds the budget makes every subset containing it unfittable,
-// and since dropping never reorders, that column is retained to the end —
-// so continuing to drop around it would strip the whole table down to one
-// column without ever fitting. Truncation, not deletion, is the remedy for
-// an overlong cell; deletion is reserved for the case it actually solves,
-// namely many narrow columns on a genuinely narrow terminal.
+// Ties on priority drop rightmost-first. If a single column remains and
+// still does not fit, it is kept and clipped.
 func selectVisibleColumns(cols []column, rows [][]string, ttyWidth int) []column {
 	if ttyWidth <= 0 {
 		return cols
@@ -386,28 +389,22 @@ func selectVisibleColumns(cols []column, rows [][]string, ttyWidth int) []column
 	if fitsWidth(cols, rows, ttyWidth) {
 		return cols
 	}
+	return dropUntilMinimaFit(cols, ttyWidth, tabSeparators)
+}
 
-	// Hide columns one at a time, lowest priority first; ties broken by
-	// rightmost-first (later columns drop before earlier ones at same
-	// priority). The candidate is tested BEFORE being adopted, so the
-	// "no subset fits" fallback below is genuinely reachable rather than
-	// bottoming out at a single surviving column.
+// tabSeparators is the layout overhead of the tabwriter renderer for n
+// columns: columnSeparator between each pair.
+func tabSeparators(n int) int { return columnSeparator * max(n-1, 0) }
+
+// dropUntilMinimaFit drops lowest-priority columns until the columns'
+// minimum widths plus overhead(n) fit ttyWidth. overhead is the width the
+// renderer spends on separators and borders for n columns.
+func dropUntilMinimaFit(cols []column, ttyWidth int, overhead func(n int) int) []column {
 	visible := append([]column(nil), cols...)
-	for len(visible) > 1 {
-		candidate := dropColumnAt(visible, lowestPriorityIndex(visible))
-		if !fitsWidth(candidate, rows, ttyWidth) && !canEverFit(candidate, rows, ttyWidth) {
-			// No further dropping can reach the budget; keep the full set
-			// and let truncation absorb the remainder.
-			break
-		}
-		visible = candidate
-		if fitsWidth(visible, rows, ttyWidth) {
-			return visible
-		}
+	for len(visible) > 1 && minContentWidth(visible)+overhead(len(visible)) > ttyWidth {
+		visible = dropColumnAt(visible, lowestPriorityIndex(visible))
 	}
-	// No subset fits — return the original set rather than an arbitrarily
-	// mutilated one. Cell truncation handles the overflow.
-	return cols
+	return visible
 }
 
 // dropColumnAt returns a copy of visible without the column at idx, leaving
@@ -417,25 +414,6 @@ func dropColumnAt(visible []column, idx int) []column {
 	out = append(out, visible[:idx]...)
 	out = append(out, visible[idx+1:]...)
 	return out
-}
-
-// canEverFit reports whether any subset of cols could still fit within
-// ttyWidth. A single column wider than the budget on its own can never be
-// dropped away from (dropping preserves order and sheds by priority), so
-// once one exists no amount of further dropping helps.
-func canEverFit(cols []column, rows [][]string, ttyWidth int) bool {
-	for _, c := range cols {
-		w := displayWidth(c.header)
-		for _, row := range rows {
-			if cw := displayWidth(row[c.colIdx]); cw > w {
-				w = cw
-			}
-		}
-		if w > ttyWidth {
-			return false
-		}
-	}
-	return true
 }
 
 // lowestPriorityIndex returns the index of the lowest-priority column in
