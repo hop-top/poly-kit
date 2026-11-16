@@ -2,10 +2,14 @@
 
 ## [0.5.0-beta.14](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.13...kit/v0.5.0-beta.14) (2026-11-16)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.14. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
 * **output:** whole table cells off-tty; id columns never ellipsized ([29c8a68](https://github.com/hop-top/poly-kit/commit/29c8a687885e2af2e5a94333ca075d3b07f2c4ce))
+
+Full diff: [kit/v0.5.0-beta.13...kit/v0.5.0-beta.14](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.13...kit/v0.5.0-beta.14)
 
 ## [0.5.0-beta.13](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.12...kit/v0.5.0-beta.13) (2026-11-16)
 
