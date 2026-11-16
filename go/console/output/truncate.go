@@ -37,9 +37,10 @@ func truncateCell(s string, width int) string {
 // minimums leaves an overflow; selectVisibleColumns drops columns so that
 // does not happen.
 //
-// Header text is honored as a floor per column (see minColumnWidth):
+// Header text is honored as a floor per column (see columnMinWidths):
 // clipping a body cell narrower than its own header buys nothing, since the
-// header still sets the column's rendered width.
+// header still sets the column's rendered width. Identifier columns are
+// floored at their full width and so are never clipped.
 func fitCellsToWidth(cols []column, rows [][]string, budget int) [][]string {
 	if len(cols) == 0 || len(rows) == 0 || budget <= 0 {
 		return rows
@@ -60,10 +61,7 @@ func fitCellsToWidth(cols []column, rows [][]string, budget int) [][]string {
 	// first and ties clip together, so no column keeps slack while another
 	// is squeezed. When even L=0 (every column at its floor) overflows, the
 	// floors win and the caller has already dropped columns for that case.
-	floors := make([]int, len(cols))
-	for i := range cols {
-		floors[i] = minColumnWidth(cols[i])
-	}
+	floors := columnMinWidths(cols, rows)
 	fitted := func(limit int) ([]int, int) {
 		out := make([]int, len(widths))
 		sum := columnSeparator * (len(cols) - 1)
@@ -99,18 +97,30 @@ func fitCellsToWidth(cols []column, rows [][]string, budget int) [][]string {
 	return out
 }
 
-// minColumnWidth is the narrowest a column can render: its header never
-// shrinks, and body cells are not clipped below minCellWidth.
-func minColumnWidth(c column) int {
-	return max(minCellWidth, displayWidth(c.header))
+// columnMinWidths returns, parallel to cols, the narrowest each column can
+// render: its header never shrinks, and body cells are not clipped below
+// minCellWidth. An identifier column's minimum is its full width, so its
+// cells are never clipped.
+func columnMinWidths(cols []column, rows [][]string) []int {
+	full := columnWidths(cols, rows)
+	mins := make([]int, len(cols))
+	for i, c := range cols {
+		if c.ident {
+			mins[i] = full[i]
+			continue
+		}
+		mins[i] = max(minCellWidth, displayWidth(c.header))
+	}
+	return mins
 }
 
-// minContentWidth is the narrowest the given columns' contents can render,
-// excluding separators and borders.
-func minContentWidth(cols []column) int {
+// minContentWidth is the narrowest the columns can render given their
+// minimums (see columnMinWidths), excluding separators and borders. mins is
+// parallel to the full column set; columns are matched by colIdx.
+func minContentWidth(cols []column, mins map[int]int) int {
 	total := 0
 	for _, c := range cols {
-		total += minColumnWidth(c)
+		total += mins[c.colIdx]
 	}
 	return total
 }

@@ -66,16 +66,17 @@ func TestSelectVisibleColumns_ManyNarrowRowsKeepEveryColumn(t *testing.T) {
 }
 
 // TestRenderTable_OverlongCellKeepsHeaders exercises the same defect through
-// the public render path, where it was originally observed: the header row
-// collapsed to "ID" alone.
+// the render path at the legacy 200-cell budget, where it was originally
+// observed: the header row collapsed to "ID" alone. Buffers render
+// unbounded now, so the budget is passed explicitly.
 func TestRenderTable_OverlongCellKeepsHeaders(t *testing.T) {
 	rows := []truncRow{
 		{"T-0001", strings.Repeat("x", 250), "TODO", "-"},
 		{"T-0002", "short", "TODO", "-"},
 	}
 	var sb strings.Builder
-	if err := renderTable(&sb, rows, nil); err != nil {
-		t.Fatalf("renderTable: %v", err)
+	if err := renderTableAt(&sb, rows, nil, fallbackWidth); err != nil {
+		t.Fatalf("renderTableAt: %v", err)
 	}
 	header := strings.SplitN(sb.String(), "\n", 2)[0]
 	for _, want := range []string{"ID", "Title", "Status", "Blocked"} {
@@ -94,8 +95,8 @@ func TestRenderTable_OverlongCellFitsBudget(t *testing.T) {
 		{"T-0002", "short", "TODO", "-"},
 	}
 	var sb strings.Builder
-	if err := renderTable(&sb, rows, nil); err != nil {
-		t.Fatalf("renderTable: %v", err)
+	if err := renderTableAt(&sb, rows, nil, fallbackWidth); err != nil {
+		t.Fatalf("renderTableAt: %v", err)
 	}
 	for _, line := range strings.Split(strings.TrimRight(sb.String(), "\n"), "\n") {
 		if w := displayWidth(line); w > fallbackWidth {

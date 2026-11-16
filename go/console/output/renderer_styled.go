@@ -19,10 +19,11 @@ import (
 // emphasis is a row-index → EmphasisKind map populated by RowEmphasis
 // options. Missing entries render with default (uncolored) text.
 func renderStyledTable(w io.Writer, v any, selected []string, style TableStyle, emphasis map[int]EmphasisKind) error {
-	return renderStyledTableAt(w, v, selected, style, emphasis, terminalWidth())
+	return renderStyledTableAt(w, v, selected, style, emphasis, outputWidth(w))
 }
 
-// renderStyledTableAt is renderStyledTable with an explicit terminal width.
+// renderStyledTableAt is renderStyledTable with an explicit width budget; width <= 0
+// disables column dropping and cell truncation.
 func renderStyledTableAt(w io.Writer, v any, selected []string, style TableStyle, emphasis map[int]EmphasisKind, width int) error {
 	rv := reflect.ValueOf(v)
 
@@ -77,7 +78,7 @@ func renderStyledTableAt(w io.Writer, v any, selected []string, style TableStyle
 	// are ellipsized to fit, never left for lipgloss to wrap.
 	visible := cols
 	if width > 0 {
-		visible = dropUntilMinimaFit(cols, width, styledBorderOverhead)
+		visible = dropUntilMinimaFit(cols, rows, width, styledBorderOverhead)
 	}
 	if width > 0 {
 		budget := width - styledBorderOverhead(len(visible)) + tabSeparators(len(visible))
@@ -105,7 +106,6 @@ func renderStyledTableAt(w io.Writer, v any, selected []string, style TableStyle
 	t := table.New().
 		Headers(headers...).
 		Rows(projected...).
-		Width(width).
 		Border(border).
 		BorderRow(false).
 		BorderColumn(true).
@@ -139,6 +139,9 @@ func renderStyledTableAt(w io.Writer, v any, selected []string, style TableStyle
 			return lipgloss.NewStyle()
 		})
 
+	if width > 0 {
+		t = t.Width(width)
+	}
 	if style.BorderForeground != nil {
 		t = t.BorderStyle(lipgloss.NewStyle().Foreground(style.BorderForeground))
 	}
