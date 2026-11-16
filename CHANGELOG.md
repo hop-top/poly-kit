@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-beta.12](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.11...kit/v0.5.0-beta.12) (2026-11-16)
+
+
+### Bug Fixes
+
+* **output:** truncate table cells with ellipsis instead of dropping columns ([d8f48e5](https://github.com/hop-top/poly-kit/commit/d8f48e51325325cacf7cceb7737bc72c777b2654))
+
 ## [0.5.0-beta.11](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.10...kit/v0.5.0-beta.11) (2026-11-15)
 
 The hop-top team is happy to announce Kit 0.5.0-beta.11. This release includes new features.
