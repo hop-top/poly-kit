@@ -2,10 +2,14 @@
 
 ## [0.5.0-beta.13](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.12...kit/v0.5.0-beta.13) (2026-11-16)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.13. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
 * **cmdsurface:** emit --flag=false for caller-set false bools ([77cbf2e](https://github.com/hop-top/poly-kit/commit/77cbf2e1293919cc278f27092a3f14b2360116ef))
+
+Full diff: [kit/v0.5.0-beta.12...kit/v0.5.0-beta.13](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.12...kit/v0.5.0-beta.13)
 
 ## [0.5.0-beta.12](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.11...kit/v0.5.0-beta.12) (2026-11-16)
 
