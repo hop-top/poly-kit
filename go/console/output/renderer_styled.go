@@ -19,6 +19,11 @@ import (
 // emphasis is a row-index → EmphasisKind map populated by RowEmphasis
 // options. Missing entries render with default (uncolored) text.
 func renderStyledTable(w io.Writer, v any, selected []string, style TableStyle, emphasis map[int]EmphasisKind) error {
+	return renderStyledTableAt(w, v, selected, style, emphasis, terminalWidth())
+}
+
+// renderStyledTableAt is renderStyledTable with an explicit terminal width.
+func renderStyledTableAt(w io.Writer, v any, selected []string, style TableStyle, emphasis map[int]EmphasisKind, width int) error {
 	rv := reflect.ValueOf(v)
 
 	var elemType reflect.Type
@@ -65,16 +70,19 @@ func renderStyledTable(w io.Writer, v any, selected []string, style TableStyle, 
 		rows[i] = row
 	}
 
-	// The lipgloss table below is given an explicit Width and wraps
-	// overlong cells on its own, so an overflowing cell is already handled
-	// downstream — dropping a column for it would delete data the renderer
-	// was about to display. Dropping is therefore consulted only for the
-	// case it genuinely solves (too many columns for the terminal), and
-	// truncation trims the residue so wrapping stays a line or two rather
-	// than a screenful.
-	width := terminalWidth()
-	visible := selectVisibleColumns(cols, rows, width)
-	rows = fitCellsToWidth(visible, rows, width)
+	// The lipgloss table spends one border cell per column plus one on each
+	// edge, not the tabwriter's two-cell gutters. Drop and clip against the
+	// real overhead, then express the content budget in the unit
+	// fitCellsToWidth counts (content plus columnSeparator gutters). Cells
+	// are ellipsized to fit, never left for lipgloss to wrap.
+	visible := cols
+	if width > 0 {
+		visible = dropUntilMinimaFit(cols, width, styledBorderOverhead)
+	}
+	if width > 0 {
+		budget := width - styledBorderOverhead(len(visible)) + tabSeparators(len(visible))
+		rows = fitCellsToWidth(visible, rows, budget)
+	}
 
 	headers := make([]string, len(visible))
 	projected := make([][]string, len(rows))
@@ -138,6 +146,10 @@ func renderStyledTable(w io.Writer, v any, selected []string, style TableStyle, 
 	_, err := fmt.Fprintln(w, t.Render())
 	return err
 }
+
+// styledBorderOverhead is the width the bordered lipgloss table spends on
+// frame for n columns: n+1 vertical border cells.
+func styledBorderOverhead(n int) int { return n + 1 }
 
 // writerIsTTY reports whether w is an *os.File attached to a terminal.
 // Buffers, pipes, and non-file writers return false. Mirrors the check
