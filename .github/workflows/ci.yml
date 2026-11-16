@@ -1116,6 +1116,6 @@ jobs:
   ci-ok:
     if: always()
     needs: [changes, go-lint, ts-lint, py-lint, rs-lint, repo-lint, bats-tests, templates-e2e, go-test, go-race, ts-test, ts-node-floor, py-test, py-floor, rs-test, rs-engine-test, rs-toolchains, rs-wasm, rs-mobile, rs-features, php-test, parity, nightly-report]
-    uses: hop-top/.github/.github/workflows/ci-gate.yml@9f6dc29c24719bd43fca28f293d439db0d48b21b # main after hop-top/.github#112; re-pin to the release that ships it
+    uses: hop-top/.github/.github/workflows/ci-gate.yml@d4cd3ec6e4499b8828614eb84a8f56f71b3688db # main after hop-top/.github#112; re-pin to the release that ships it
     with:
       needs: ${{ toJSON(needs) }}
