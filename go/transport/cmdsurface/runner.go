@@ -126,8 +126,10 @@ func resolveLeaf(root *cobra.Command, path []string) (*cobra.Command, error) {
 //
 //	[<path...>, --flag=<value>..., --, <args...>]
 //
-// Bool flags whose value is true are emitted as --flag (no value);
-// false bool flags are omitted entirely. An array value ([]any or
+// A bool flag set true is emitted as --flag (no value); one set
+// false is emitted as --flag=false, so a default-true or tri-state
+// flag the caller turned off is not left at its default. Flags the
+// caller did not send are not in the map and emit nothing. An array value ([]any or
 // []string, as a JSON array arrives over MCP or SSE) becomes one
 // --flag=<element> per element, which both pflag slice and array
 // flags accept; an empty array emits nothing, leaving the flag's
@@ -148,6 +150,8 @@ func buildArgs(inv Invocation) []string {
 		case bool:
 			if tv {
 				out = append(out, "--"+k)
+			} else {
+				out = append(out, "--"+k+"=false")
 			}
 		case []any:
 			for _, e := range tv {
