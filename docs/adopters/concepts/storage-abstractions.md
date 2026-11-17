@@ -119,6 +119,8 @@ Use when: file storage, backups, large payloads, media.
 `sqldb.Open()` — shared connection management (not an interface).
 
 - Opens with standard pragmas (WAL, busy_timeout, foreign_keys).
+- Retries BUSY/LOCKED (by SQLite result code) during open for up to
+  `BusyTimeout`, so concurrent first opens survive the WAL switch race.
 - Migration helper included.
 - Used by `domain/sqlite`, `store` (kit serve), `core/upgrade`,
   `runtime/bus/sqlite`.
