@@ -5,14 +5,16 @@ package sqldb
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // registers the "sqlite" driver
 )
 
 var validTable = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`)
@@ -32,7 +34,9 @@ type Options struct {
 	// WAL enables WAL journal mode. Default true.
 	WAL *bool
 
-	// BusyTimeout in milliseconds. Default 5000.
+	// BusyTimeout in milliseconds. Default 5000. It is the per-connection
+	// SQLite busy_timeout and also the window Open keeps retrying a
+	// busy first connection (see Open).
 	BusyTimeout int
 
 	// Synchronous sets PRAGMA synchronous. Empty leaves it unset, so
@@ -89,6 +93,12 @@ func (o Options) busyTimeout() int {
 // modernc.org/sqlite's _pragma= param applies its arguments inside
 // the driver's per-connection Connect path, so every pool entry
 // inherits identical PRAGMA state.
+//
+// Concurrent first opens of one rollback-journal file race to switch
+// it to WAL, and the loser gets SQLITE_BUSY at once, busy_timeout or
+// not. Open therefore retries a BUSY or LOCKED failure (detected by
+// SQLite result code) with backoff for up to BusyTimeout, closing the
+// half-opened pool between attempts; other errors return immediately.
 func Open(opts Options) (*sql.DB, error) {
 	if opts.Path == "" {
 		return nil, fmt.Errorf("sqldb: path required")
@@ -105,19 +115,71 @@ func Open(opts Options) (*sql.DB, error) {
 		return nil, fmt.Errorf("sqldb: build dsn: %w", err)
 	}
 
+	window := time.Duration(opts.busyTimeout()) * time.Millisecond
+	return retryOpen(window, func() (*sql.DB, error) {
+		return openOnce(dsn)
+	})
+}
+
+// openOnce opens the pool and smoke-checks one connection, so a
+// misconfigured DSN surfaces here, not at first query. The half-opened
+// pool is closed on failure.
+func openOnce(dsn string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("sqldb: open: %w", err)
 	}
-
-	// Smoke-check at least one connection so a misconfigured DSN
-	// surfaces here, not at first query.
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("sqldb: ping: %w", err)
 	}
-
 	return db, nil
+}
+
+// SQLite primary result codes treated as transient while opening.
+const (
+	sqliteBusy   = 5 // SQLITE_BUSY
+	sqliteLocked = 6 // SQLITE_LOCKED
+)
+
+// isBusy reports whether err carries a SQLite BUSY or LOCKED result
+// code, extended codes included (the primary code is the low byte).
+// It matches on the driver's typed error, never on message text.
+func isBusy(err error) bool {
+	var coded interface{ Code() int }
+	if !errors.As(err, &coded) {
+		return false
+	}
+	switch coded.Code() & 0xff {
+	case sqliteBusy, sqliteLocked:
+		return true
+	}
+	return false
+}
+
+// retryOpen runs attempt until it succeeds, fails with a non-busy
+// error, or window elapses, backing off 10ms doubling to 200ms.
+//
+// busy_timeout alone is not enough on first open: when several
+// openers switch a rollback-journal file to WAL at once, each holds a
+// shared lock while waiting for exclusive, and SQLite returns BUSY to
+// the loser immediately because running the busy handler there could
+// deadlock. Retrying after the winner finishes the switch succeeds.
+// The last busy error is returned once the window closes; the total
+// wait can exceed window by at most one backoff step and one attempt (itself bounded by
+// busy_timeout).
+func retryOpen(window time.Duration, attempt func() (*sql.DB, error)) (*sql.DB, error) {
+	deadline := time.Now().Add(window)
+	for delay := 10 * time.Millisecond; ; delay = min(delay*2, 200*time.Millisecond) {
+		db, err := attempt()
+		if err == nil {
+			return db, nil
+		}
+		if !isBusy(err) || time.Now().After(deadline) {
+			return nil, err
+		}
+		time.Sleep(delay)
+	}
 }
 
 // buildDSN assembles the connection string for modernc.org/sqlite,
