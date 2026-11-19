@@ -88,6 +88,11 @@ func HostCheck(cfg HostCheckConfig) Middleware {
 // interface under names the process cannot know, so it derives no
 // restriction: wildcard is true and hosts is nil.
 func ListenerHosts(addr string) (hosts []string, wildcard bool) {
+	if IsUnixAddr(addr) {
+		// A unix socket is reachable only from this machine; a client
+		// names the host as it likes, so the loopback names answer.
+		return append([]string(nil), LoopbackHosts...), false
+	}
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		host = addr
