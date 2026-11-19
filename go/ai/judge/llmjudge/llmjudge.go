@@ -108,17 +108,27 @@ type sample struct {
 	value      string
 	confidence float64
 	why        string
+	// box and abstain: grounding replies only.
+	box     *judge.Box
+	abstain bool
 }
 
 // Judge answers every question of c, one model call per sample. Kinds
-// other than choice, score and yes/no fail with an
-// llmerrors.ErrCapabilityNotSupported; a malformed case fails with
+// other than choice, score, yes/no and grounding fail with an
+// llmerrors.ErrCapabilityNotSupported, as does a grounding question in
+// Votes(n > 1) or Logprobs mode (a box has no label distribution to count
+// or read off tokens); a malformed case fails with
 // judge.ErrInvalid; output that never matches the schema fails with
 // llm.ErrSchemaInvalid.
 func (j *judgeImpl) Judge(ctx context.Context, c judge.Case) (judge.Verdict, error) {
 	for _, q := range c.Questions {
 		switch q.Kind {
 		case judge.KindChoice, judge.KindScore, judge.KindYesNo:
+		case judge.KindGrounding:
+			if j.mode.logprobs || j.mode.votes > 1 {
+				return judge.Verdict{}, llmerrors.NewCapabilityNotSupported(
+					fmt.Sprintf("grounding question %q in votes or logprobs mode (use Verbalized)", q.Name), "llmjudge")
+			}
 		default:
 			return judge.Verdict{}, llmerrors.NewCapabilityNotSupported(
 				fmt.Sprintf("question kind %q", q.Kind), "llmjudge")
@@ -192,6 +202,13 @@ func parse(qs []judge.Question, data json.RawMessage) (map[string]sample, error)
 		Value      string  `json:"value"`
 		Confidence float64 `json:"confidence"`
 		Why        string  `json:"why"`
+		Abstain    bool    `json:"abstain"`
+		Box        *struct {
+			Top    float64 `json:"top"`
+			Bottom float64 `json:"bottom"`
+			Left   float64 `json:"left"`
+			Right  float64 `json:"right"`
+		} `json:"box"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("llmjudge: decode reply: %w", err)
@@ -199,7 +216,14 @@ func parse(qs []judge.Question, data json.RawMessage) (map[string]sample, error)
 	out := make(map[string]sample, len(qs))
 	for _, q := range qs {
 		r := raw[q.Name]
-		out[q.Name] = sample{value: r.Value, confidence: r.Confidence, why: r.Why}
+		sm := sample{value: r.Value, confidence: r.Confidence, why: r.Why}
+		if q.Kind == judge.KindGrounding {
+			sm.abstain = q.Abstain && r.Abstain
+			if r.Box != nil && !sm.abstain {
+				sm.box = &judge.Box{Top: r.Box.Top, Bottom: r.Box.Bottom, Left: r.Box.Left, Right: r.Box.Right}
+			}
+		}
+		out[q.Name] = sm
 	}
 	return out, nil
 }
@@ -207,6 +231,14 @@ func parse(qs []judge.Question, data json.RawMessage) (map[string]sample, error)
 // aggregate builds q's Answer. One sample: its value and stated
 // confidence, no Probs. Votes: Probs are each label's share of samples.
 func aggregate(q judge.Question, ss []sample, votes bool) judge.Answer {
+	if !votes && q.Kind == judge.KindGrounding {
+		s := ss[0]
+		a := judge.Answer{Box: s.box, Confidence: s.confidence, Why: s.why, Source: SourceVerbalized}
+		if s.abstain {
+			a.Value, a.Abstained = judge.LabelAbstain, true
+		}
+		return a
+	}
 	if !votes {
 		s := ss[0]
 		a := judge.Answer{

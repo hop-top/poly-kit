@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	"hop.top/kit/go/ai/llm"
 )
 
 // ErrInvalid wraps every Validate* failure; use errors.Is.
@@ -17,12 +19,24 @@ func invalid(format string, a ...any) error {
 // Validate checks a Case is well-formed: at least one question; unique
 // non-empty names; known kinds; kind-specific shape (choice: >= 2 unique
 // non-reserved options, no anchors; score: >= 2 non-empty anchors, no
-// options; yesno: neither). All problems are joined.
+// options; yesno: neither; grounding: non-empty instructions naming the
+// target, neither options nor anchors, and at least one image asset in
+// c.Assets). All problems are joined.
 func Validate(c Case) error {
 	if len(c.Questions) == 0 {
 		return invalid("case has no questions")
 	}
 	var errs []error
+	imgs := map[string]bool{}
+	for _, n := range ImageNames(c.Assets) {
+		if imgs[n] {
+			errs = append(errs, invalid("duplicate image asset name %q", n))
+		}
+		if _, clash := c.State[n]; clash {
+			errs = append(errs, invalid("image asset name %q collides with a State key", n))
+		}
+		imgs[n] = true
+	}
 	seen := map[string]bool{}
 	for i, q := range c.Questions {
 		if q.Name == "" {
@@ -32,8 +46,20 @@ func Validate(c Case) error {
 		}
 		seen[q.Name] = true
 		errs = append(errs, validateQuestion(q)...)
+		if q.Kind == KindGrounding && !hasImage(c.Assets) {
+			errs = append(errs, invalid("question %q: grounding needs an image asset in Case.Assets", q.Name))
+		}
 	}
 	return errors.Join(errs...)
+}
+
+func hasImage(parts []llm.ContentPart) bool {
+	for _, p := range parts {
+		if p.Type == llm.PartTypeImage {
+			return true
+		}
+	}
+	return false
 }
 
 func validateQuestion(q Question) []error {
@@ -77,6 +103,13 @@ func validateQuestion(q Question) []error {
 		if len(q.Options) > 0 || len(q.Anchors) > 0 {
 			bad("yesno takes no options or anchors")
 		}
+	case KindGrounding:
+		if len(q.Options) > 0 || len(q.Anchors) > 0 {
+			bad("grounding takes no options or anchors")
+		}
+		if strings.TrimSpace(q.Instructions) == "" {
+			bad("grounding needs instructions naming the target")
+		}
 	default:
 		bad("unknown kind %q", q.Kind)
 	}
@@ -87,10 +120,19 @@ func validateQuestion(q Question) []error {
 // Value is "abstain", which needs q.Abstain; Probs keys are valid labels,
 // each in [0,1], summing to 1 within ProbEpsilon; Confidence in [0,1] and
 // equal to Probs[Value] when Probs is set; Score in [0,1], and for
-// KindScore with Probs equal to ScoreEV (0 when abstained).
+// KindScore with Probs equal to ScoreEV (0 when abstained). Box is set
+// only for a located KindGrounding answer, which has Value "", no Probs
+// and a Box that is Valid; an abstained grounding answer (q.Abstain) has
+// Value "abstain" and no Box. Confidence 0 is allowed there (unknown).
 func ValidateAnswer(q Question, a Answer) error {
 	if err := errors.Join(validateQuestion(q)...); err != nil {
 		return err
+	}
+	if q.Kind == KindGrounding {
+		return validateGrounding(q, a)
+	}
+	if a.Box != nil {
+		return invalid("answer %q: box only for grounding", q.Name)
 	}
 	labels := map[string]bool{}
 	for _, l := range Labels(q) {
@@ -141,6 +183,44 @@ func ValidateAnswer(q Question, a Answer) error {
 				bad("score %v != expected value %v", a.Score, want)
 			}
 		}
+	}
+	return errors.Join(errs...)
+}
+
+func validateGrounding(q Question, a Answer) error {
+	var errs []error
+	bad := func(format string, args ...any) {
+		errs = append(errs, invalid("answer %q: "+format, append([]any{q.Name}, args...)...))
+	}
+	if a.Abstained {
+		if !q.Abstain {
+			bad("abstain not allowed")
+		}
+		if a.Value != LabelAbstain {
+			bad("Abstained but value %q", a.Value)
+		}
+		if a.Box != nil {
+			bad("abstained answer has a box")
+		}
+	} else {
+		if a.Value != "" {
+			bad("value %q, want empty for a located box", a.Value)
+		}
+		switch {
+		case a.Box == nil:
+			bad("no box and not abstained")
+		case !a.Box.Valid():
+			bad("box %+v not within [0,1] with top<bottom, left<right", *a.Box)
+		}
+	}
+	if len(a.Probs) > 0 {
+		bad("grounding has no probs")
+	}
+	if !unit(a.Confidence) {
+		bad("confidence %v outside [0,1]", a.Confidence)
+	}
+	if a.Score != 0 {
+		bad("score %v on a grounding answer", a.Score)
 	}
 	return errors.Join(errs...)
 }

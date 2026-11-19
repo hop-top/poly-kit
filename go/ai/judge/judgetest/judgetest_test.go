@@ -76,3 +76,15 @@ func TestAnswerBuildersAreValid(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGroundingBuildersAreValid(t *testing.T) {
+	q := judge.Question{Name: "g", Kind: judge.KindGrounding, Abstain: true, Instructions: "the mug"}
+	for name, a := range map[string]judge.Answer{
+		"box":     judgetest.Grounding(judge.Box{Top: 0, Bottom: 1, Left: 0, Right: 0.5}, 0),
+		"abstain": judgetest.GroundingAbstain(),
+	} {
+		if err := judge.ValidateAnswer(q, a); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

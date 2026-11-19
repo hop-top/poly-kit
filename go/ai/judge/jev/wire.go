@@ -2,14 +2,18 @@ package jev
 
 import (
 	"bytes"
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"math"
 	"strconv"
+	"strings"
 
 	"hop.top/kit/go/ai/judge"
 	"hop.top/kit/go/ai/llm"
+	llmerrors "hop.top/kit/go/ai/llm/errors"
 )
 
 // request is the System One request body.
@@ -17,6 +21,71 @@ type request struct {
 	Model     string              `json:"model"`
 	State     map[string]any      `json:"state"`
 	Questions map[string]question `json:"questions"`
+	Assets    map[string]asset    `json:"assets,omitempty"`
+}
+
+// asset is one image, referenced from the state by its ref.
+type asset struct {
+	Type       string `json:"type"`
+	Format     string `json:"format"`
+	DataBase64 string `json:"data_base64"`
+}
+
+func mimeOf(p llm.ContentPart) string {
+	m := p.MimeType
+	if m == "" && p.Source != nil {
+		m = p.Source.MimeType()
+	}
+	return strings.ToLower(strings.TrimSpace(m))
+}
+
+// imageFormat is the service's format name for p's MIME type.
+func imageFormat(p llm.ContentPart) (string, bool) {
+	switch mimeOf(p) {
+	case "image/png":
+		return "png", true
+	case "image/jpeg", "image/jpg":
+		return "jpg", true
+	}
+	return "", false
+}
+
+// addAssets reads the case's images into req: each under ref
+// "asset-<name>", the state pointing its name at the ref.
+func addAssets(ctx context.Context, req *request, c judge.Case) error {
+	names := judge.ImageNames(c.Assets)
+	if len(names) == 0 {
+		return nil
+	}
+	req.Assets = make(map[string]asset, len(names))
+	i := 0
+	for _, p := range c.Assets {
+		if p.Type != llm.PartTypeImage {
+			continue
+		}
+		name := names[i]
+		i++
+		if p.Source == nil {
+			return fmt.Errorf("%w: image %q has no source", judge.ErrInvalid, name)
+		}
+		rc, err := p.Source.Reader(ctx)
+		if err != nil {
+			return fmt.Errorf("jev: read image %q: %w", name, err)
+		}
+		data, err := io.ReadAll(io.LimitReader(rc, maxImage+1))
+		rc.Close()
+		if err != nil {
+			return fmt.Errorf("jev: read image %q: %w", name, err)
+		}
+		if len(data) > maxImage {
+			return llmerrors.NewMediaTooLarge(int64(len(data)), maxImage, Backend, nil)
+		}
+		format, _ := imageFormat(p)
+		ref := "asset-" + name
+		req.State[name] = ref
+		req.Assets[ref] = asset{Type: "image", Format: format, DataBase64: base64.StdEncoding.EncodeToString(data)}
+	}
+	return nil
 }
 
 // question is one System One question. Criteria is a choice's
@@ -28,10 +97,10 @@ type question struct {
 	Criteria     any    `json:"criteria,omitempty"`
 }
 
-func buildRequest(model string, c judge.Case) request {
-	state := c.State
-	if state == nil {
-		state = map[string]any{}
+func buildRequest(ctx context.Context, model string, c judge.Case) (request, error) {
+	state := make(map[string]any, len(c.State)+len(c.Assets))
+	for k, v := range c.State {
+		state[k] = v
 	}
 	qs := make(map[string]question, len(c.Questions))
 	for _, q := range c.Questions {
@@ -53,10 +122,16 @@ func buildRequest(model string, c judge.Case) request {
 			wq.Criteria = q.Anchors
 		case judge.KindYesNo:
 			wq.Type = "noul" // probability of yes; no abstain
+		case judge.KindGrounding:
+			wq.Type = "box" // no criteria; the target is named in instructions
 		}
 		qs[q.Name] = wq
 	}
-	return request{Model: model, State: state, Questions: qs}
+	req := request{Model: model, State: state, Questions: qs}
+	if err := addAssets(ctx, &req, c); err != nil {
+		return request{}, err
+	}
+	return req, nil
 }
 
 // response is the System One response body (OpenRouter adds usage.cost).
@@ -76,8 +151,17 @@ type wireAnswer struct {
 	Choice        string             `json:"choice"`
 	Score         *float64           `json:"score"`
 	Noul          *float64           `json:"noul"`
+	Box           *wireBox           `json:"box"`
 	Confidence    *float64           `json:"confidence"`
 	Probabilities map[string]float64 `json:"probabilities"`
+}
+
+// wireBox is a box answer's edges, fractions of the image.
+type wireBox struct {
+	Top    *float64 `json:"top"`
+	Bottom *float64 `json:"bottom"`
+	Left   *float64 `json:"left"`
+	Right  *float64 `json:"right"`
 }
 
 func malformed(format string, a ...any) error {
@@ -146,6 +230,7 @@ func parseResponse(c judge.Case, model string, body []byte) (judge.Verdict, erro
 func buildAnswer(q judge.Question, w wireAnswer) (judge.Answer, error) {
 	want := map[judge.Kind]string{
 		judge.KindChoice: "choice", judge.KindScore: "score", judge.KindYesNo: "noul",
+		judge.KindGrounding: "box",
 	}[q.Kind]
 	if w.Type != want {
 		return judge.Answer{}, malformed("answer %q: type %q, want %q", q.Name, w.Type, want)
@@ -153,9 +238,37 @@ func buildAnswer(q judge.Question, w wireAnswer) (judge.Answer, error) {
 	switch q.Kind {
 	case judge.KindYesNo:
 		return yesNoAnswer(q, w)
+	case judge.KindGrounding:
+		return boxAnswer(q, w)
 	default:
 		return distAnswer(q, w)
 	}
+}
+
+// boxAnswer reads a box answer. A null confidence is 0 (unknown). With
+// no box the target is absent: an abstention when q allows one, else
+// malformed. A box with any edge missing is malformed.
+func boxAnswer(q judge.Question, w wireAnswer) (judge.Answer, error) {
+	a := judge.Answer{Source: SourceNative}
+	if w.Confidence != nil {
+		if !unit(*w.Confidence) {
+			return a, malformed("answer %q: confidence %v outside [0,1]", q.Name, *w.Confidence)
+		}
+		a.Confidence = *w.Confidence
+	}
+	if w.Box == nil {
+		if !q.Abstain {
+			return a, malformed("answer %q: no box", q.Name)
+		}
+		a.Value, a.Abstained = judge.LabelAbstain, true
+		return a, nil
+	}
+	b := w.Box
+	if b.Top == nil || b.Bottom == nil || b.Left == nil || b.Right == nil {
+		return a, malformed("answer %q: box needs top, bottom, left and right", q.Name)
+	}
+	a.Box = &judge.Box{Top: *b.Top, Bottom: *b.Bottom, Left: *b.Left, Right: *b.Right}
+	return a, nil
 }
 
 // yesNoAnswer: noul is P(yes); P(no) is the rest. Value is the likelier

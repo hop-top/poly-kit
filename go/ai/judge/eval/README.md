@@ -16,6 +16,7 @@ error. Wrong package when you need one judge's output validated on its own
 - you record the incumbent's verdicts as the reference → `eval.Record(ctx, j, cases, parallel)`
 - you replay a candidate against them → `eval.Compare(ctx, ref, cand, entries, eval.Options{})`; `ref` may be nil when every entry is recorded
 - you read the result → `Report.Markdown()`, `Report.JSON()`, `Report.Questions[i]`
+- you score box answers (grounding, preview) → `Reference.Boxes`, `Options.IoU` (default 0.5); `QuestionReport.MeanIoU`
 - you gate a swap → `ok, reasons := report.Pass(eval.Thresholds{AtConfidence: 0.9, MinAgreement: 0.95, MinCoverage: 0.8, MaxECE: 0.05})`
 - you calibrate the candidate from the same run → `calibrate.Fit(report.Samples, opts)`
 

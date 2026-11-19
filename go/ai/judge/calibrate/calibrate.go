@@ -154,10 +154,11 @@ func (p Params) Validate() error {
 }
 
 // Apply calibrates a for question q. Answers without Probs, abstained
-// answers, and questions without params are returned unchanged.
+// answers, grounding answers (a box, no distribution) and questions
+// without params are returned unchanged.
 func (p Params) Apply(q judge.Question, a judge.Answer) (judge.Answer, error) {
 	qp, ok := p.Questions[q.Name]
-	if !ok || len(a.Probs) == 0 || a.Abstained {
+	if !ok || len(a.Probs) == 0 || a.Abstained || q.Kind == judge.KindGrounding {
 		return a, nil
 	}
 	var (

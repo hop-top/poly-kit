@@ -53,6 +53,11 @@ type QuestionReport struct {
 	// the mean absolute error of cand Score vs the reference's.
 	NScore   int     `json:"n_score"`
 	ScoreMAE float64 `json:"score_mae"`
+	// NIoU cases had a box on both sides (KindGrounding only); MeanIoU is
+	// their mean IoU. For grounding, a match is IoU >= Options.IoU (or
+	// both abstaining), and Confusion stays empty.
+	NIoU    int     `json:"n_iou"`
+	MeanIoU float64 `json:"mean_iou"`
 	// Confusion[ref][cand] counts Value pairs.
 	Confusion map[string]map[string]int `json:"confusion"`
 }
@@ -88,18 +93,21 @@ func (r Report) String() string { return r.Markdown() }
 func (r Report) Markdown() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%d cases\n\n", r.N)
-	b.WriteString("| question | kind | n | agree | abstain ref/cand | brier | ece | mae |\n")
-	b.WriteString("|---|---|---|---|---|---|---|---|\n")
+	b.WriteString("| question | kind | n | agree | abstain ref/cand | brier | ece | mae | iou |\n")
+	b.WriteString("|---|---|---|---|---|---|---|---|---|\n")
 	for _, q := range r.Questions {
-		brier, ece, mae := "-", "-", "-"
+		brier, ece, mae, iou := "-", "-", "-", "-"
 		if q.NProbs > 0 {
 			brier, ece = fmt.Sprintf("%.3f", q.Brier), fmt.Sprintf("%.3f", q.ECE)
 		}
 		if q.NScore > 0 {
 			mae = fmt.Sprintf("%.3f", q.ScoreMAE)
 		}
-		fmt.Fprintf(&b, "| %s | %s | %d | %.3f | %d/%d | %s | %s | %s |\n",
-			q.Name, q.Kind, q.N, q.Agreement, q.RefAbstain, q.CandAbstain, brier, ece, mae)
+		if q.NIoU > 0 {
+			iou = fmt.Sprintf("%.3f", q.MeanIoU)
+		}
+		fmt.Fprintf(&b, "| %s | %s | %d | %.3f | %d/%d | %s | %s | %s | %s |\n",
+			q.Name, q.Kind, q.N, q.Agreement, q.RefAbstain, q.CandAbstain, brier, ece, mae, iou)
 	}
 	b.WriteString("\n| question | conf >= | coverage | agree |\n|---|---|---|---|\n")
 	for _, q := range r.Questions {

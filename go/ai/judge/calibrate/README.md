@@ -13,7 +13,7 @@ probabilities.
 - you scale a multi-label answer → `calibrate.Temperature{T}`
 - you rescale a binary answer → `calibrate.Platt{A, B, Positive}`
 - you store and reload parameters → `Params.Marshal`, `calibrate.Parse`
-- you wrap a judge so every answer is calibrated → `calibrate.Calibrated(j, params)`
+- you wrap a judge so every answer is calibrated → `calibrate.Calibrated(j, params)`; grounding answers (boxes) pass through
 
 ## Contents
 
