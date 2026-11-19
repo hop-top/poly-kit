@@ -410,11 +410,18 @@ dependabot_actions_entry() {
       # kit init owns the hop-top/.github reusable-workflow pin and moves
       # it on refresh; a Dependabot bump would mark those callers edited.
       - dependency-name: "hop-top/.github"
+    # Org policy (hop-top/.github templates/dependabot.yml): version
+    # updates wait 14 days after a release; security updates do not.
+    cooldown:
+      default-days: 14
     groups:
       # One PR per run for minor + patch; majors stay separate for review.
       minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
 DEOF
 }
 

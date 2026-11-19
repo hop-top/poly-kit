@@ -1,6 +1,9 @@
 # Org-default Dependabot policy (hop-top/.github templates/dependabot.yml),
 # trimmed to the ecosystems kit scaffolds. Keep the ecosystems the repo uses
 # and fix `directories`: a missing directory fails the Dependabot run.
+# The trailing github-actions entry is templates/lib.sh's
+# dependabot_actions_entry, byte for byte (single source, flat shape shared
+# with the polyglot and conform dependabot.yml); keep it last.
 #
 # Version updates: one PR at a time across every ecosystem (multi-ecosystem
 #   group, open-pull-requests-limit 1). Cooldown 14d after release.
@@ -62,19 +65,24 @@ updates:
   # Workflow `uses:` refs are pinned to commit SHAs with the version in a
   # trailing comment; Dependabot moves the SHA and the comment together.
   - package-ecosystem: github-actions
-    directories:
-      - "/"
-    multi-ecosystem-group: dependencies
-    patterns:
-      - "*"
-    cooldown:
-      default-days: 14
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci(deps):"
     ignore:
       # kit init owns the hop-top/.github reusable-workflow pin and moves
       # it on refresh; a Dependabot bump would mark those callers edited.
       - dependency-name: "hop-top/.github"
+    # Org policy (hop-top/.github templates/dependabot.yml): version
+    # updates wait 14 days after a release; security updates do not.
+    cooldown:
+      default-days: 14
     groups:
+      # One PR per run for minor + patch; majors stay separate for review.
+      minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
       actions-security:
         applies-to: security-updates
-        patterns:
-          - "*"
+        patterns: ["*"]
