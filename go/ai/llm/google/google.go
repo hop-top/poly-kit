@@ -515,6 +515,9 @@ func (a *Adapter) buildBody(
 		gc.StopSequences = req.StopSequences
 		hasConfig = true
 	}
+	if req.Logprobs != nil {
+		return nil, nil, llm.NoLogprobs("google")
+	}
 	if rf := req.ResponseFormat; rf != nil {
 		if err := llm.CheckResponseFormat(rf); err != nil {
 			return nil, nil, fmt.Errorf("gemini: %w", err)

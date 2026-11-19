@@ -22,6 +22,10 @@ func cloneRequest(req Request) Request {
 		out.Messages[i] = m
 	}
 	out.StopSequences = slices.Clone(req.StopSequences)
+	if req.Logprobs != nil {
+		lp := *req.Logprobs
+		out.Logprobs = &lp
+	}
 	if req.ResponseFormat != nil {
 		rf := *req.ResponseFormat
 		rf.Schema = slices.Clone(rf.Schema)
@@ -41,6 +45,7 @@ func cloneResponse(resp Response) Response {
 	out := resp
 	out.OutputParts = slices.Clone(resp.OutputParts)
 	out.Thinking = slices.Clone(resp.Thinking)
+	out.Logprobs = cloneLogprobs(resp.Logprobs)
 	return out
 }
 
@@ -69,12 +74,15 @@ func RedactRequest(r *redact.Redactor) func(Request) Request {
 
 // RedactResponse is [RedactRequest] for the RequestEnd payload's
 // response: Content, text output parts and thinking text through r;
-// media and thinking signatures left out.
+// media, thinking signatures and log-probabilities (token by token
+// they spell out the reply) left out.
 func RedactResponse(r *redact.Redactor) func(Response) Response {
 	return func(resp Response) Response {
 		resp.Content = r.Apply(resp.Content)
 		resp.OutputParts = redactParts(r, resp.OutputParts)
 		resp.Thinking = redactThinking(r, resp.Thinking)
+		// Tokens echo the reply in pieces r cannot match.
+		resp.Logprobs = nil
 		return resp
 	}
 }

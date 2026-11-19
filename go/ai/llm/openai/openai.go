@@ -249,17 +249,28 @@ func (a *Adapter) Complete(
 	if err != nil {
 		return llm.Response{}, err
 	}
+	if err := llm.CheckLogprobs(req.Logprobs); err != nil {
+		return llm.Response{}, fmt.Errorf("%s: %w", a.scheme, err)
+	}
+	applyLogprobs(&params, req.Logprobs)
 	comp, err := a.client.Chat.Completions.New(ctx, params)
 	if err != nil {
 		return llm.Response{}, a.mapError(err, model)
 	}
-	return mapCompletion(comp), nil
+	resp := mapCompletion(comp)
+	if resp.Logprobs, err = a.mapLogprobs(req.Logprobs, comp); err != nil {
+		return llm.Response{}, err
+	}
+	return resp, nil
 }
 
 // Stream returns a TokenIterator wrapping an OpenAI streaming response.
 func (a *Adapter) Stream(
 	ctx context.Context, req llm.Request,
 ) (llm.TokenIterator, error) {
+	if err := a.noStreamLogprobs(req); err != nil {
+		return nil, err
+	}
 	names, err := a.toolNameMap(nil)
 	if err != nil {
 		return nil, err
@@ -277,6 +288,9 @@ func (a *Adapter) Stream(
 func (a *Adapter) StreamWithTools(
 	ctx context.Context, req llm.Request, tools []llm.ToolDef,
 ) (llm.ToolStream, error) {
+	if err := a.noStreamLogprobs(req); err != nil {
+		return nil, err
+	}
 	names, err := a.toolNameMap(tools)
 	if err != nil {
 		return nil, err
@@ -293,6 +307,9 @@ func (a *Adapter) StreamWithTools(
 func (a *Adapter) CallWithTools(
 	ctx context.Context, req llm.Request, tools []llm.ToolDef,
 ) (llm.ToolResponse, error) {
+	if err := a.noStreamLogprobs(req); err != nil {
+		return llm.ToolResponse{}, err
+	}
 	names, err := a.toolNameMap(tools)
 	if err != nil {
 		return llm.ToolResponse{}, err

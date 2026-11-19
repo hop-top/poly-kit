@@ -54,6 +54,8 @@ type RequestStartPayload struct {
 	// ResponseFormat reports a JSON Schema output constraint; the
 	// schema itself is not published.
 	ResponseFormat bool `json:"response_format,omitempty"`
+	// Logprobs reports a log-probability request.
+	Logprobs bool `json:"logprobs,omitempty"`
 	// ExtensionKeys lists [Request.Extensions] keys, sorted; never
 	// their values.
 	ExtensionKeys []string `json:"extension_keys,omitempty"`
@@ -122,6 +124,7 @@ func requestStart(op string, req Request, tools int) RequestStartPayload {
 		Thinking:       req.Thinking != nil,
 		StopSequences:  len(req.StopSequences),
 		ResponseFormat: req.ResponseFormat != nil,
+		Logprobs:       req.Logprobs != nil,
 	}
 	for _, m := range req.Messages {
 		if p.Roles == nil {

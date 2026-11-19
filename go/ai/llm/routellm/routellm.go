@@ -224,8 +224,8 @@ func (a *Adapter) Close() error {
 func (a *Adapter) Complete(
 	ctx context.Context, req llm.Request,
 ) (llm.Response, error) {
-	if req.ResponseFormat != nil {
-		return llm.Response{}, noResponseFormat()
+	if req.ResponseFormat != nil || req.Logprobs != nil {
+		return llm.Response{}, refuseRouted(req)
 	}
 	c, ok := a.inner.(llm.Completer)
 	if !ok {
@@ -240,8 +240,8 @@ func (a *Adapter) Complete(
 func (a *Adapter) Stream(
 	ctx context.Context, req llm.Request,
 ) (llm.TokenIterator, error) {
-	if req.ResponseFormat != nil {
-		return nil, noResponseFormat()
+	if req.ResponseFormat != nil || req.Logprobs != nil {
+		return nil, refuseRouted(req)
 	}
 	s, ok := a.inner.(llm.Streamer)
 	if !ok {
@@ -256,8 +256,8 @@ func (a *Adapter) Stream(
 func (a *Adapter) CallWithTools(
 	ctx context.Context, req llm.Request, tools []llm.ToolDef,
 ) (llm.ToolResponse, error) {
-	if req.ResponseFormat != nil {
-		return llm.ToolResponse{}, noResponseFormat()
+	if req.ResponseFormat != nil || req.Logprobs != nil {
+		return llm.ToolResponse{}, refuseRouted(req)
 	}
 	tc, ok := a.inner.(llm.ToolCaller)
 	if !ok {
@@ -272,8 +272,8 @@ func (a *Adapter) CallWithTools(
 func (a *Adapter) StreamWithTools(
 	ctx context.Context, req llm.Request, tools []llm.ToolDef,
 ) (llm.ToolStream, error) {
-	if req.ResponseFormat != nil {
-		return nil, noResponseFormat()
+	if req.ResponseFormat != nil || req.Logprobs != nil {
+		return nil, refuseRouted(req)
 	}
 	ts, ok := a.inner.(llm.ToolStreamer)
 	if !ok {
@@ -284,8 +284,11 @@ func (a *Adapter) StreamWithTools(
 	return ts.StreamWithTools(ctx, req, tools)
 }
 
-// noResponseFormat: a routed model is not known ahead, so a schema
-// cannot be promised; structured output needs a direct adapter.
-func noResponseFormat() error {
-	return llmerrors.NewCapabilityNotSupported("response_format", "routellm")
+// refuseRouted: a routed model is not known ahead, so a schema or
+// log-probabilities cannot be promised; they need a direct adapter.
+func refuseRouted(req llm.Request) error {
+	if req.ResponseFormat != nil {
+		return llmerrors.NewCapabilityNotSupported("response_format", "routellm")
+	}
+	return llm.NoLogprobs("routellm")
 }
