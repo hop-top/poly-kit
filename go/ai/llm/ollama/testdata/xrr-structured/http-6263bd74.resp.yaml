@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: 6263bd74
+recorded_at: "2026-11-19T00:20:28Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: '{"done":true,"eval_count":3,"message":{"content":"{\"label\":\"pass\",\"score\":7}","role":"assistant"},"prompt_eval_count":2}'

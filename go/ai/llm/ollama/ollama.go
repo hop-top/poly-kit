@@ -104,6 +104,8 @@ type chatRequest struct {
 	Messages []chatMessage  `json:"messages"`
 	Stream   bool           `json:"stream"`
 	Options  map[string]any `json:"options,omitempty"`
+	// Format is a JSON Schema the reply must match (structured output).
+	Format json.RawMessage `json:"format,omitempty"`
 }
 
 type chatMessage struct {
@@ -279,6 +281,9 @@ func (s *streamIterator) Close() error {
 // ---------------------------------------------------------------------------
 
 func (a *Adapter) buildBody(ctx context.Context, req llm.Request, stream bool) ([]byte, error) {
+	if err := llm.CheckResponseFormat(req.ResponseFormat); err != nil {
+		return nil, fmt.Errorf("ollama: %w", err)
+	}
 	// No tool calls go out from here: a tool choice has no tools.
 	if err := llm.CheckToolChoice(req.ToolChoice, nil); err != nil {
 		return nil, fmt.Errorf("ollama: %w", err)
@@ -307,6 +312,10 @@ func (a *Adapter) buildBody(ctx context.Context, req llm.Request, stream bool) (
 		Model:    model,
 		Messages: msgs,
 		Stream:   stream,
+	}
+
+	if rf := req.ResponseFormat; rf != nil {
+		cr.Format = rf.Schema
 	}
 
 	// Map temperature into options.
