@@ -25,7 +25,7 @@ type Job struct {
 
 func (j Job) final() bool {
 	switch j.Status {
-	case "succeeded", "failed", "expired", "cancelled":
+	case "succeeded", "failed", "expired", "cancelled": //nolint:misspell // dek contract job status
 		return true
 	}
 	return false

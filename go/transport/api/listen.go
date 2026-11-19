@@ -25,11 +25,7 @@ func IsUnixAddr(addr string) bool { return strings.HasPrefix(addr, UnixAddrPrefi
 // UnixPath is the socket path of a unix address: addr without its
 // prefix and without a leading "//".
 func UnixPath(addr string) string {
-	p := strings.TrimPrefix(addr, UnixAddrPrefix)
-	if strings.HasPrefix(p, "//") {
-		p = p[2:]
-	}
-	return p
+	return strings.TrimPrefix(strings.TrimPrefix(addr, UnixAddrPrefix), "//")
 }
 
 // ValidateListenAddr reports whether addr is a usable listen address:

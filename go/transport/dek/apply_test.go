@@ -263,7 +263,7 @@ func TestApply_Refusals(t *testing.T) {
 	}
 	res, body := call(t, "POST", url, "alice", `{"min_approvals":2}`)
 	if res.StatusCode != 422 || !strings.Contains(errReason(t, body), "min_approvals") {
-		t.Fatalf("a minimum this core cannot honour must be refused: %d %s", res.StatusCode, body)
+		t.Fatalf("a minimum this core cannot honor must be refused: %d %s", res.StatusCode, body)
 	}
 	if res, _ := call(t, "POST", url, "", ""); res.StatusCode != 401 {
 		t.Fatalf("apply needs the bearer: %d", res.StatusCode)

@@ -266,7 +266,7 @@ func TestAPIDek_DestructiveCommandPlanThenApply(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &plan))
 	require.NotEmpty(t, plan.Body.ID)
 
-	code, body = authedDo(t, c, http.MethodPost, "/v1/dek/plans/"+plan.Body.ID+"/apply", "mallory", "")
+	code, _ = authedDo(t, c, http.MethodPost, "/v1/dek/plans/"+plan.Body.ID+"/apply", "mallory", "")
 	assert.Equal(t, http.StatusNotFound, code)
 
 	code, body = authedDo(t, c, http.MethodPost, "/v1/dek/plans/"+plan.Body.ID+"/apply", "alice", "")
