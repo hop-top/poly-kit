@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: aaeb86e2
+recorded_at: "2026-11-19T00:20:29Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:60048/models/gemini-2.0-flash:generateContent
+    body: '{"contents":[{"role":"user","parts":[{"text":"judge"}]}],"generationConfig":{"responseMimeType":"application/json","responseJsonSchema":{"type":"object","properties":{"label":{"type":"string","enum":["pass","fail"]},"score":{"type":"integer"}},"required":["label","score"],"additionalProperties":false}}}'
