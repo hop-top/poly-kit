@@ -324,6 +324,18 @@ func (a *Adapter) buildParams(
 		p.StopSequences = req.StopSequences
 	}
 
+	if rf := req.ResponseFormat; rf != nil {
+		if err := llm.CheckResponseFormat(rf); err != nil {
+			return anthropic.MessageNewParams{}, fmt.Errorf("anthropic: %w", err)
+		}
+		// Native structured output: output_config.format json_schema.
+		var schema map[string]any
+		if err := json.Unmarshal(rf.Schema, &schema); err != nil {
+			return anthropic.MessageNewParams{}, fmt.Errorf("anthropic: response schema: %w", err)
+		}
+		p.OutputConfig.Format = anthropic.JSONOutputFormatParam{Schema: schema}
+	}
+
 	return p, nil
 }
 

@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 6c79f00f
+recorded_at: "2026-11-19T00:20:29Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:60050/v1/messages
+    body: '{"max_tokens":1024,"messages":[{"content":[{"text":"judge","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-5","output_config":{"format":{"schema":{"additionalProperties":false,"properties":{"label":{"enum":["pass","fail"],"type":"string"},"score":{"type":"integer"}},"required":["label","score"],"type":"object"},"type":"json_schema"}}}'
