@@ -30,11 +30,24 @@ const (
 )
 
 // ModeKind is how a judge turns model replies into answers.
-type ModeKind struct{ votes int }
+type ModeKind struct {
+	votes    int
+	logprobs bool
+}
 
 // Verbalized takes one sample; Answer.Confidence is the model's stated
 // confidence and Answer.Probs is empty.
 var Verbalized = ModeKind{votes: 1}
+
+// Logprobs takes one call per question and reads Answer.Probs off the
+// answer token's top_logprobs: options are relabelled as single-token keys
+// (A, B, ...; Y/N for yes/no; X for abstain) under an enum schema, the
+// keys' log-probabilities are softmaxed and renormalised, and keys missing
+// from the top-k get [LogprobFloor]. Answer.Source is "logprobs", Why is
+// empty. Needs a completer that returns logprobs (see llm.LogprobCompleter)
+// and at most llm.MaxTopLogprobs labels per question; no repair, so
+// MaxRepairs is ignored. Calibrate afterwards with calibrate.Calibrated.
+var Logprobs = ModeKind{votes: 1, logprobs: true}
 
 // Votes takes n samples per case, sequentially; Answer.Probs is each
 // label's share of the samples' values. n < 1 means 1. Any failed sample
@@ -70,7 +83,7 @@ func Price(p llm.Price) Option { return func(j *judgeImpl) { j.price = &p } }
 // wording. The reply schema is enforced either way.
 func Pattern(p *prompt.Pattern) Option { return func(j *judgeImpl) { j.pattern = p } }
 
-// Mode picks Verbalized (default) or Votes(n).
+// Mode picks Verbalized (default), Votes(n) or Logprobs.
 func Mode(m ModeKind) Option { return func(j *judgeImpl) { j.mode = m } }
 
 // Temperature sets the sampling temperature, 0 included. Unset: the
@@ -113,6 +126,9 @@ func (j *judgeImpl) Judge(ctx context.Context, c judge.Case) (judge.Verdict, err
 	}
 	if err := judge.Validate(c); err != nil {
 		return judge.Verdict{}, err
+	}
+	if j.mode.logprobs {
+		return j.judgeLogprobs(ctx, c)
 	}
 
 	schema, err := buildSchema(c.Questions)
