@@ -17,6 +17,10 @@ const (
 	KeyPassthrough = "kit/passthrough"
 	// KeyRetryable marks a command as safely re-runnable.
 	KeyRetryable = "kit/retryable"
+	// KeyLongRunning ("true") marks a command that may outlast a
+	// request. A surface with background jobs (the dek surface) runs
+	// it as a job and answers with the job instead of waiting.
+	KeyLongRunning = "kit/long-running"
 	// KeyOutputSchema holds the JSON Schema bytes for structured
 	// output.
 	KeyOutputSchema = "kit/output-schema"
