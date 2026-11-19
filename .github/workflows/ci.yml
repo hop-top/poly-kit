@@ -291,6 +291,7 @@ jobs:
           lycheeVersion: v${{ steps.pins.outputs.lychee }}
           args: '--config examples/spaced/lychee.toml ${{ steps.docs.outputs.files }}'
           fail: false
+          failIfEmpty: false
       - name: docs-lint (broken internal links)
         if: ${{ !cancelled() && steps.docs.outputs.files != '' }}
         run: make lint-links
