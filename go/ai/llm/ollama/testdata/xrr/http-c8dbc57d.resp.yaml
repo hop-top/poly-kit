@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: c8dbc57d
+recorded_at: "2026-11-19T00:07:36Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: '{"message":{"role":"assistant","content":"recorded hello"},"done":true,"eval_count":3,"prompt_eval_count":2}'

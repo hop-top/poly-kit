@@ -74,7 +74,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		baseURL:   baseURL,
 		modelName: model,
 		apiKey:    apiKey,
-		httpC:     &http.Client{},
+		httpC:     cfg.HTTPClient(),
 	}, nil
 }
 

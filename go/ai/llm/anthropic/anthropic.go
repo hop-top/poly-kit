@@ -81,7 +81,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		option.WithMiddleware(lim.Middleware),
 		// Redirects are not followed: a credential never moves to a
 		// host the server names.
-		option.WithHTTPClient(&http.Client{CheckRedirect: refuseRedirect}),
+		option.WithHTTPClient(httpClient(cfg)),
 	}
 	// A hermetic adapter reads no environment variable.
 	env := os.LookupEnv
@@ -905,6 +905,13 @@ var eventStatus = map[string]int{
 // message: a response body echoing the key never surfaces it.
 func (a *Adapter) mapError(err error, model string) error {
 	return secret.Scrub(mapError(err, model), a.secrets)
+}
+
+// httpClient is the config's client with this adapter's redirect error.
+func httpClient(cfg llm.ResolvedConfig) *http.Client {
+	c := cfg.HTTPClient()
+	c.CheckRedirect = refuseRedirect
+	return c
 }
 
 // refuseRedirect stops the client at a redirect: the 3xx comes back as

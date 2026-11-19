@@ -142,7 +142,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		option.WithMiddleware(lim.Middleware),
 		// Redirects are not followed: a credential never moves to a
 		// host the server names.
-		option.WithHTTPClient(&http.Client{Transport: defaultTransport{}, CheckRedirect: refuseRedirect}),
+		option.WithHTTPClient(httpClient(cfg)),
 	}
 	if cfg.Hermetic {
 		// The SDK reads these from OPENAI_ORG_ID and OPENAI_PROJECT_ID;
@@ -600,16 +600,13 @@ func (a *Adapter) mapError(err error, model string) error {
 	return secret.Scrub(mapError(err, a.scheme, model), a.secrets)
 }
 
-// defaultTransport sends through http.DefaultClient's transport, as
-// read at request time: the client the SDK would use otherwise, so a
-// transport installed there (a proxy, a recorder) still applies.
-type defaultTransport struct{}
-
-func (defaultTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	if rt := http.DefaultClient.Transport; rt != nil {
-		return rt.RoundTrip(r)
-	}
-	return http.DefaultTransport.RoundTrip(r)
+// httpClient is the config's client with this adapter's redirect error.
+// Without a caller transport it sends through http.DefaultClient's, as
+// read at request time, so a process-wide recorder still applies.
+func httpClient(cfg llm.ResolvedConfig) *http.Client {
+	c := cfg.HTTPClient()
+	c.CheckRedirect = refuseRedirect
+	return c
 }
 
 // refuseRedirect stops the client at a redirect: the 3xx comes back as

@@ -102,7 +102,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		baseURL:   base,
 		model:     model,
 		apiKey:    apiKey,
-		client:    http.DefaultClient,
+		client:    cfg.HTTPClient(),
 		toolNames: toolNames,
 	}, nil
 }

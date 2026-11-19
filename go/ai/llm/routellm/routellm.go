@@ -124,7 +124,8 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 			BaseURL: baseURL,
 			Model:   serverModel,
 		},
-		Hermetic: cfg.Hermetic,
+		Hermetic:  cfg.Hermetic,
+		Transport: cfg.Transport,
 	}
 	// The inner adapter applies the tool-name mode and the size caps
 	// the URI asks for.

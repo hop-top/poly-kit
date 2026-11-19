@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: c8dbc57d
+recorded_at: "2026-11-19T00:07:36Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:50241/api/chat
+    body: '{"model":"llama3","messages":[{"role":"user","content":"Hi"}],"stream":false}'
