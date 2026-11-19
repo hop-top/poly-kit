@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"net/http"
 	"strings"
 	"time"
@@ -413,6 +414,7 @@ func descriptorToProjection(d *cmdreflect.Descriptor, b *Bridge, leaf *Leaf) api
 		RequiresConfirmToken: d.Safety.DestructiveTokenRequired,
 		AuthRequired:         d.Safety.AuthRequired,
 		OutputSchema:         d.Output.Schema,
+		LongRunning:          d.Cmd != nil && cmdmeta.ReadBool(d.Cmd, cmdmeta.KeyLongRunning),
 		// The spec declares ETag, Cache-Control and 304 only where the
 		// result cache can answer: a store, and a read leaf with a TTL.
 		Cacheable: b.rcache != nil && leaf != nil && leaf.cacheTTL > 0,
