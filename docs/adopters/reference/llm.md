@@ -664,6 +664,43 @@ host is read by the caller and passed as `llm.FileSource` or
 so it fetches nothing. Vectors: `media_fetch` in
 [contracts/llm-v1](../../../contracts/llm-v1/README.md).
 
+## Recording model calls in tests
+
+`hop.top/kit/go/ai/llm/llmxrr` is a test-only `http.RoundTripper` over an
+[xrr](https://github.com/hop-top/xrr) session. Pass it with
+`llm.WithTransport`; the process default transport is never touched.
+
+```go
+tr, err := llmxrr.New("testdata/cassettes")
+if err != nil { t.Fatal(err) }
+p, err := llm.Resolve("openai://gpt-4o", llm.WithTransport(tr))
+```
+
+Mode follows xrr: `XRR_MODE=record|replay|passthrough`; unset is replay,
+so a plain `go test` never reaches the network. An empty dir falls back to
+`XRR_CASSETTE_DIR`. Record with `XRR_MODE=record go test ./...` and commit
+the cassettes.
+
+| Behaviour | Detail |
+|-----------|--------|
+| Stored | method, path and query, scrubbed bodies, status, content type; never request headers (`Authorization`, `x-api-key`) or the host |
+| Dropped from the URL | `key`, `api_key`, `apikey`, `access_token`, `token` and similar query params |
+| Masked in URLs and bodies | `sk-...`, `AIza...`, `Bearer ...`, JSON fields named `api_key`, `authorization` and similar, the provider env keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...), and any `llmxrr.WithSecrets(...)` value |
+| Fingerprint | taken after scrubbing, so replay matches whatever key the run uses |
+| Failed exchange | record refuses a transport error or non-2xx with `llmxrr.ErrRefused` and writes nothing; replay refuses a stored one with `llmxrr.ErrStoredFailure`; `llmxrr.AllowFailures()` lifts both |
+| Streaming | an SSE body is read whole and replayed whole |
+
+Guard committed cassettes with a plain test in the same package:
+
+```go
+func TestCassettesClean(t *testing.T) {
+    llmxrr.AssertCassettesClean(t, "testdata/cassettes")
+}
+```
+
+It runs `CheckNoSecrets` (credential shapes plus any exact values passed)
+and `CheckNoFailures`; both are exported on their own.
+
 ## Event hooks
 
 ```go
