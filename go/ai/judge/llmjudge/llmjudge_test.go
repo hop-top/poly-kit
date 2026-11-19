@@ -15,6 +15,7 @@ import (
 	"hop.top/kit/go/ai/judge/llmjudge"
 	"hop.top/kit/go/ai/llm"
 	llmerrors "hop.top/kit/go/ai/llm/errors"
+	"hop.top/kit/go/ai/prompt"
 )
 
 // fake is a hermetic llm.Completer: replies in order, records requests.
@@ -48,8 +49,8 @@ func reply(t *testing.T, m map[string]any) string {
 	return string(b)
 }
 
-func ans(probs map[string]any, why string) map[string]any {
-	return map[string]any{"probs": probs, "why": why}
+func ans(value string, conf float64, why string) map[string]any {
+	return map[string]any{"value": value, "confidence": conf, "why": why}
 }
 
 var (
@@ -71,7 +72,7 @@ func run(t *testing.T, f *fake, c judge.Case, opts ...llmjudge.Option) (judge.Ve
 
 func TestChoice(t *testing.T) {
 	f := &fake{replies: []string{reply(t, map[string]any{
-		"route": ans(map[string]any{"a": 0.2, "b": 0.6, "c": 0.2}, "because"),
+		"route": ans("b", 0.6, "because"),
 	})}}
 	c := judge.Case{State: map[string]any{"k": "v"}, Questions: []judge.Question{qChoice}}
 	v, err := run(t, f, c)
@@ -80,6 +81,7 @@ func TestChoice(t *testing.T) {
 	a := v.Answers["route"]
 	assert.Equal(t, "b", a.Value)
 	assert.InDelta(t, 0.6, a.Confidence, 1e-9)
+	assert.Empty(t, a.Probs)
 	assert.Equal(t, "because", a.Why)
 	assert.Equal(t, "verbalized", a.Source)
 	assert.NoError(t, judge.ValidateVerdict(c, v))
@@ -90,7 +92,7 @@ func TestChoice(t *testing.T) {
 	require.Len(t, f.reqs, 1)
 	req := f.reqs[0]
 	require.NotNil(t, req.ResponseFormat)
-	assert.Contains(t, string(req.ResponseFormat.Schema), `"route"`)
+	assert.Contains(t, string(req.ResponseFormat.Schema), `"enum":["a","b","c"]`)
 	var all strings.Builder
 	for _, m := range req.Messages {
 		all.WriteString(m.Content)
@@ -99,42 +101,32 @@ func TestChoice(t *testing.T) {
 	assert.Contains(t, all.String(), "first")
 }
 
-func TestChoiceNormalisesProbs(t *testing.T) {
-	f := &fake{replies: []string{reply(t, map[string]any{
-		"route": ans(map[string]any{"a": 0.5, "b": 0.25, "c": 0.25, "x": 0}, ""),
-	})}}
-	// unknown label "x" violates the schema -> repaired; second reply absent -> err.
+func TestValueOutsideLabelsRepairs(t *testing.T) {
+	bad := reply(t, map[string]any{"route": ans("zzz", 0.5, "")})
+	f := &fake{replies: []string{bad, bad, bad}}
 	_, err := run(t, f, judge.Case{Questions: []judge.Question{qChoice}})
 	require.Error(t, err)
-
-	f = &fake{replies: []string{reply(t, map[string]any{
-		"route": ans(map[string]any{"a": 0.9, "b": 0.9, "c": 0.2}, ""),
-	})}}
-	c := judge.Case{Questions: []judge.Question{qChoice}}
-	v, err := run(t, f, c)
-	require.NoError(t, err)
-	a := v.Answers["route"]
-	assert.InDelta(t, 0.45, a.Probs["a"], 1e-9)
-	assert.Equal(t, "a", a.Value, "tie goes to earlier label")
-	assert.NoError(t, judge.ValidateVerdict(c, v))
+	assert.ErrorIs(t, err, llm.ErrSchemaInvalid)
 }
 
-func TestScoreExpectedValue(t *testing.T) {
-	f := &fake{replies: []string{reply(t, map[string]any{
-		"urgency": ans(map[string]any{"0": 0.0, "1": 0.5, "2": 0.5}, ""),
-	})}}
+func TestConfidenceOutOfRange(t *testing.T) {
+	bad := reply(t, map[string]any{"ok": ans("yes", 1.5, "")})
+	f := &fake{replies: []string{bad, bad, bad}}
+	_, err := run(t, f, judge.Case{Questions: []judge.Question{qYesNo}})
+	assert.ErrorIs(t, err, llm.ErrSchemaInvalid)
+}
+
+func TestScoreFromIndex(t *testing.T) {
+	f := &fake{replies: []string{reply(t, map[string]any{"urgency": ans("1", 0.8, "")})}}
 	c := judge.Case{Questions: []judge.Question{qScore}}
 	v, err := run(t, f, c)
 	require.NoError(t, err)
-	a := v.Answers["urgency"]
-	assert.InDelta(t, 0.75, a.Score, 1e-9)
+	assert.InDelta(t, 0.5, v.Answers["urgency"].Score, 1e-9)
 	assert.NoError(t, judge.ValidateVerdict(c, v))
 }
 
 func TestYesNo(t *testing.T) {
-	f := &fake{replies: []string{reply(t, map[string]any{
-		"ok": ans(map[string]any{"yes": 0.7, "no": 0.3}, ""),
-	})}}
+	f := &fake{replies: []string{reply(t, map[string]any{"ok": ans("yes", 0.7, "")})}}
 	c := judge.Case{Questions: []judge.Question{qYesNo}}
 	v, err := run(t, f, c)
 	require.NoError(t, err)
@@ -145,23 +137,17 @@ func TestYesNo(t *testing.T) {
 func TestAbstain(t *testing.T) {
 	q := qYesNo
 	q.Abstain = true
-	f := &fake{replies: []string{reply(t, map[string]any{
-		"ok": ans(map[string]any{"yes": 0.1, "no": 0.2, "abstain": 0.7}, "unsure"),
-	})}}
+	f := &fake{replies: []string{reply(t, map[string]any{"ok": ans("abstain", 0.7, "unsure")})}}
 	c := judge.Case{Questions: []judge.Question{q}}
 	v, err := run(t, f, c)
 	require.NoError(t, err)
 	a := v.Answers["ok"]
 	assert.True(t, a.Abstained)
-	assert.Equal(t, "abstain", a.Value)
 	assert.NoError(t, judge.ValidateVerdict(c, v))
 
-	// score + abstain: score 0.
 	qs := qScore
 	qs.Abstain = true
-	f = &fake{replies: []string{reply(t, map[string]any{
-		"urgency": ans(map[string]any{"0": 0.1, "1": 0.1, "2": 0.1, "abstain": 0.7}, ""),
-	})}}
+	f = &fake{replies: []string{reply(t, map[string]any{"urgency": ans("abstain", 0.7, "")})}}
 	c = judge.Case{Questions: []judge.Question{qs}}
 	v, err = run(t, f, c)
 	require.NoError(t, err)
@@ -170,9 +156,7 @@ func TestAbstain(t *testing.T) {
 }
 
 func TestAbstainLabelOnlyWhenAllowed(t *testing.T) {
-	bad := reply(t, map[string]any{
-		"ok": ans(map[string]any{"yes": 0.1, "no": 0.2, "abstain": 0.7}, ""),
-	})
+	bad := reply(t, map[string]any{"ok": ans("abstain", 0.7, "")})
 	f := &fake{replies: []string{bad, bad, bad}}
 	_, err := run(t, f, judge.Case{Questions: []judge.Question{qYesNo}})
 	require.Error(t, err)
@@ -181,9 +165,9 @@ func TestAbstainLabelOnlyWhenAllowed(t *testing.T) {
 
 func TestMultipleQuestionsOneCall(t *testing.T) {
 	f := &fake{replies: []string{reply(t, map[string]any{
-		"route":   ans(map[string]any{"a": 1, "b": 0, "c": 0}, ""),
-		"urgency": ans(map[string]any{"0": 0, "1": 0, "2": 1}, ""),
-		"ok":      ans(map[string]any{"yes": 0, "no": 1}, ""),
+		"route":   ans("a", 1, ""),
+		"urgency": ans("2", 1, ""),
+		"ok":      ans("no", 1, ""),
 	})}}
 	c := judge.Case{Questions: []judge.Question{qChoice, qScore, qYesNo}}
 	v, err := run(t, f, c)
@@ -194,12 +178,10 @@ func TestMultipleQuestionsOneCall(t *testing.T) {
 }
 
 func TestVotes(t *testing.T) {
-	r := func(a, b float64) string {
-		return reply(t, map[string]any{"ok": ans(map[string]any{"yes": a, "no": b}, "")})
-	}
-	f := &fake{replies: []string{r(0.9, 0.1), r(0.8, 0.2), r(0.3, 0.7), r(0.6, 0.4)}}
+	r := func(v string) string { return reply(t, map[string]any{"ok": ans(v, 0.9, "why-"+v)}) }
+	f := &fake{replies: []string{r("yes"), r("yes"), r("no"), r("yes")}}
 	c := judge.Case{Questions: []judge.Question{qYesNo}}
-	v, err := run(t, f, c, llmjudge.WithVotes(4), llmjudge.WithTemperature(0.9))
+	v, err := run(t, f, c, llmjudge.Mode(llmjudge.Votes(4)), llmjudge.Temperature(0.9))
 	require.NoError(t, err)
 	assert.Len(t, f.reqs, 4)
 	for _, req := range f.reqs {
@@ -211,33 +193,44 @@ func TestVotes(t *testing.T) {
 	assert.InDelta(t, 0.75, a.Probs["yes"], 1e-9)
 	assert.InDelta(t, 0.75, a.Confidence, 1e-9)
 	assert.Equal(t, "votes", a.Source)
+	assert.Equal(t, "why-yes", a.Why)
 	assert.Equal(t, 60, v.Usage.TotalTokens)
 	assert.NoError(t, judge.ValidateVerdict(c, v))
 }
 
 func TestVotesScore(t *testing.T) {
-	r := func(i string) string {
-		p := map[string]any{"0": 0, "1": 0, "2": 0}
-		p[i] = 1
-		return reply(t, map[string]any{"urgency": ans(p, "")})
-	}
+	r := func(i string) string { return reply(t, map[string]any{"urgency": ans(i, 0.5, "")}) }
 	f := &fake{replies: []string{r("0"), r("2"), r("2"), r("2")}}
 	c := judge.Case{Questions: []judge.Question{qScore}}
-	v, err := run(t, f, c, llmjudge.WithVotes(4))
+	v, err := run(t, f, c, llmjudge.Mode(llmjudge.Votes(4)))
 	require.NoError(t, err)
 	assert.InDelta(t, 0.75, v.Answers["urgency"].Score, 1e-9)
 	assert.NoError(t, judge.ValidateVerdict(c, v))
 }
 
+func TestVoteTieGoesToEarlierLabel(t *testing.T) {
+	r := func(v string) string { return reply(t, map[string]any{"ok": ans(v, 0.9, "")}) }
+	f := &fake{replies: []string{r("no"), r("yes")}}
+	v, err := run(t, f, judge.Case{Questions: []judge.Question{qYesNo}}, llmjudge.Mode(llmjudge.Votes(2)))
+	require.NoError(t, err)
+	assert.Equal(t, "yes", v.Answers["ok"].Value)
+}
+
+func TestVotesFailureFailsCase(t *testing.T) {
+	r := reply(t, map[string]any{"ok": ans("yes", 0.9, "")})
+	f := &fake{replies: []string{r}} // second sample: fake exhausted
+	_, err := run(t, f, judge.Case{Questions: []judge.Question{qYesNo}}, llmjudge.Mode(llmjudge.Votes(2)))
+	require.Error(t, err)
+}
+
 func TestVotesDefaultTemperature(t *testing.T) {
-	r := reply(t, map[string]any{"ok": ans(map[string]any{"yes": 1, "no": 0}, "")})
+	r := reply(t, map[string]any{"ok": ans("yes", 1, "")})
 	f := &fake{replies: []string{r, r, r}}
-	_, err := run(t, f, judge.Case{Questions: []judge.Question{qYesNo}}, llmjudge.WithVotes(3))
+	_, err := run(t, f, judge.Case{Questions: []judge.Question{qYesNo}}, llmjudge.Mode(llmjudge.Votes(3)))
 	require.NoError(t, err)
 	require.NotNil(t, f.reqs[0].Temperature)
 	assert.Greater(t, *f.reqs[0].Temperature, 0.0)
 
-	// single sample leaves provider default.
 	f = &fake{replies: []string{r}}
 	_, err = run(t, f, judge.Case{Questions: []judge.Question{qYesNo}})
 	require.NoError(t, err)
@@ -245,7 +238,7 @@ func TestVotesDefaultTemperature(t *testing.T) {
 }
 
 func TestInvalidOutputRepairs(t *testing.T) {
-	good := reply(t, map[string]any{"ok": ans(map[string]any{"yes": 0.6, "no": 0.4}, "")})
+	good := reply(t, map[string]any{"ok": ans("yes", 0.6, "")})
 	f := &fake{replies: []string{`not json`, good}}
 	c := judge.Case{Questions: []judge.Question{qYesNo}}
 	v, err := run(t, f, c)
@@ -257,19 +250,10 @@ func TestInvalidOutputRepairs(t *testing.T) {
 
 func TestInvalidOutputErrors(t *testing.T) {
 	f := &fake{replies: []string{`x`, `y`, `z`, `w`}}
-	_, err := run(t, f, judge.Case{Questions: []judge.Question{qYesNo}}, llmjudge.WithMaxRepairs(1))
+	_, err := run(t, f, judge.Case{Questions: []judge.Question{qYesNo}}, llmjudge.MaxRepairs(1))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, llm.ErrSchemaInvalid)
 	assert.Len(t, f.reqs, 2)
-}
-
-func TestAllZeroProbsRejected(t *testing.T) {
-	f := &fake{replies: []string{reply(t, map[string]any{
-		"ok": ans(map[string]any{"yes": 0, "no": 0}, ""),
-	})}}
-	_, err := run(t, f, judge.Case{Questions: []judge.Question{qYesNo}})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, judge.ErrInvalid)
 }
 
 func TestUnsupportedKind(t *testing.T) {
@@ -299,20 +283,21 @@ func TestClientError(t *testing.T) {
 func TestCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	f := &fake{}
-	_, err := llmjudge.New(f).Judge(ctx, judge.Case{Questions: []judge.Question{qYesNo}})
+	_, err := llmjudge.New(&fake{}).Judge(ctx, judge.Case{Questions: []judge.Question{qYesNo}})
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-func TestModelAndAssets(t *testing.T) {
-	r := reply(t, map[string]any{"ok": ans(map[string]any{"yes": 1, "no": 0}, "")})
+func TestModelAssetsPrice(t *testing.T) {
+	r := reply(t, map[string]any{"ok": ans("yes", 1, "")})
 	f := &fake{replies: []string{r}}
 	asset := llm.ContentPart{Type: llm.PartTypeImage, MimeType: "image/png"}
 	c := judge.Case{Questions: []judge.Question{qYesNo}, Assets: []llm.ContentPart{asset}}
-	v, err := run(t, f, c, llmjudge.WithModel("m1"))
+	v, err := run(t, f, c, llmjudge.Model("m1"), llmjudge.Price(llm.Price{Input: 2e6, Output: 4e6}))
 	require.NoError(t, err)
 	assert.Equal(t, "m1", f.reqs[0].Model)
 	assert.Equal(t, "m1", v.Model)
+	assert.InDelta(t, 10*2+5*4, v.Cost.USD, 1e-9)
+	assert.Equal(t, int64(15), v.Cost.Tokens)
 	var found bool
 	for _, m := range f.reqs[0].Messages {
 		for _, p := range m.Parts {
@@ -324,14 +309,28 @@ func TestModelAndAssets(t *testing.T) {
 	assert.True(t, found, "asset forwarded as message part")
 }
 
-func TestImplementsJudge(t *testing.T) {
-	var _ judge.Judge = llmjudge.New(&fake{})
+func TestNoPriceZeroUSD(t *testing.T) {
+	f := &fake{replies: []string{reply(t, map[string]any{"ok": ans("yes", 1, "")})}}
+	v, err := run(t, f, judge.Case{Questions: []judge.Question{qYesNo}})
+	require.NoError(t, err)
+	assert.Zero(t, v.Cost.USD)
+}
+
+func TestPatternSystemPrompt(t *testing.T) {
+	f := &fake{replies: []string{reply(t, map[string]any{"ok": ans("yes", 1, "")})}}
+	_, err := run(t, f, judge.Case{Questions: []judge.Question{qYesNo}},
+		llmjudge.Pattern(&prompt.Pattern{Name: "p", System: "CUSTOM SYSTEM"}))
+	require.NoError(t, err)
+	require.Equal(t, "system", f.reqs[0].Messages[0].Role)
+	assert.Equal(t, "CUSTOM SYSTEM", f.reqs[0].Messages[0].Content)
+	assert.NotNil(t, f.reqs[0].ResponseFormat)
 }
 
 func TestVotesBelowOneIsOne(t *testing.T) {
-	r := reply(t, map[string]any{"ok": ans(map[string]any{"yes": 1, "no": 0}, "")})
+	r := reply(t, map[string]any{"ok": ans("yes", 1, "")})
 	f := &fake{replies: []string{r}}
-	_, err := run(t, f, judge.Case{Questions: []judge.Question{qYesNo}}, llmjudge.WithVotes(0))
+	v, err := run(t, f, judge.Case{Questions: []judge.Question{qYesNo}}, llmjudge.Mode(llmjudge.Votes(0)))
 	require.NoError(t, err)
 	assert.Len(t, f.reqs, 1)
+	assert.Equal(t, "verbalized", v.Answers["ok"].Source)
 }

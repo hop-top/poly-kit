@@ -3,8 +3,8 @@
 ## What it answers
 
 How to get a typed judgment (choice, score on anchors, yes / no / abstain)
-from any chat model behind `llm.Completer`: the model states a probability
-per label in schema-constrained JSON, the result is normalised into a
+from any chat model behind `llm.Completer`: the model returns a value, a
+confidence and a reason in schema-constrained JSON, which becomes a
 validated `judge.Answer`. Optional self-consistency votes turn N samples
 into probabilities. Wrong package when you have a logprob-capable model and
 want token probabilities, or need a hosted judgment service.
@@ -12,9 +12,11 @@ want token probabilities, or need a hosted judgment service.
 ## Use it when
 
 - you judge with a chat model → `llmjudge.New(client)`, then `Judge(ctx, c)`
-- you want sample-based probabilities → `llmjudge.WithVotes(n)`; `Source` is `"votes"`
-- you tune sampling → `llmjudge.WithTemperature(t)` (votes default 0.7), `llmjudge.WithModel(m)`
-- you bound schema repair retries → `llmjudge.WithMaxRepairs(n)`
+- you want sample-based probabilities → `llmjudge.Mode(llmjudge.Votes(n))`; `Source` is `"votes"`, samples run one after another, any failed sample fails the case
+- you pick the model or sampling → `llmjudge.Model(m)`, `llmjudge.Temperature(t)` (votes default 0.7)
+- you want `Cost.USD` → `llmjudge.Price(llm.Price{...})`
+- you keep the system prompt in a pattern → `llmjudge.Pattern(p)` (`prompt.Pattern`)
+- you bound schema repair retries → `llmjudge.MaxRepairs(n)`
 - you judge many cases → `judge.Batch(ctx, j, cases, parallel)`; no provider batch call here
 
 ## Contents
