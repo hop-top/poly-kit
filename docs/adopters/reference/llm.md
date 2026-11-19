@@ -969,10 +969,10 @@ c, err := llm.LocalOnlyClient(p, llm.WithFallback(q))
 | Name | Role |
 |------|------|
 | `llm.Endpoint(uri, opts...)` | the base URL `Resolve` would use, highest first: `base_url` param, `host:port`, the scheme's declared default, the aim catalog; failing those, the adapter's declared `Endpoints[0]`. `ErrNoEndpoint` when none (`openai://m`, `google://m`: the adapter picks its own default). `ParseURI` is unchanged |
-| `llm.EndpointLocality(baseURL)` | `loopback`: 127.0.0.0/8, `::1`, `localhost`. `private`: RFC 1918, `fc00::/7`, `*.local`. `remote`: everything else, a DNS name included (never resolved), and CGNAT/tailnet `100.64.0.0/10`, link-local, `0.0.0.0`. Errors on a URL that is not plain http(s) |
+| `llm.EndpointLocality(baseURL)` | `loopback`: 127.0.0.0/8, `::1`, `localhost`. `private`: RFC 1918, `fc00::/7`. `remote`: everything else, any DNS name included (never resolved; `*.local` too, as a name can resolve to anything), and CGNAT/tailnet `100.64.0.0/10`, link-local, `0.0.0.0`. Errors on a URL that is not plain http(s) |
 | `llm.LocalOnly(opts...)` | `ResolveOption`: refuse a non-local endpoint with `*NotLocalError` (`errors.Is(err, llm.ErrNotLocal)`), guard the requests, mark the provider local |
 | `llm.AllowPrivate(bool)` | default `true`; `false` keeps to this host |
-| `llm.AllowHosts(hosts...)` | names, IPs or CIDRs accepted though not local, tailnet for one. Names match exactly; an allowed name's addresses are accepted |
+| `llm.AllowHosts(hosts...)` | names, IPs or CIDRs accepted though not local: a tailnet, or one mDNS name (`AllowHosts("m3.local")`). Names match exactly; an allowed name's addresses are accepted |
 | `llm.IsLocal(p)` | the provider has `Local() bool` returning true |
 | `llm.LocalOnlyClient(primary, opts...)` | `NewClient` that refuses, with `*NotLocalError`, a primary or `WithFallback` provider not marked local |
 | `llm.FilterLocal(entries)` | pool entries whose scheme's default endpoint is local; the rest come back `Enabled: false` |

@@ -15,7 +15,7 @@ type Locality string
 const (
 	// LocalityLoopback is this host: 127.0.0.0/8, ::1, localhost.
 	LocalityLoopback Locality = "loopback"
-	// LocalityPrivate is the local network: RFC 1918, fc00::/7, *.local.
+	// LocalityPrivate is the local network: RFC 1918, fc00::/7.
 	LocalityPrivate Locality = "private"
 	// LocalityRemote is anything else: a public or CGNAT/tailnet
 	// address, link-local, an unspecified address, or a DNS name kit
@@ -72,9 +72,10 @@ func endpointOf(rt route, cfg ResolvedConfig) (string, error) {
 
 // EndpointLocality classifies baseURL by its host alone, with no DNS
 // lookup: loopback for 127.0.0.0/8, ::1 and localhost; private for
-// RFC 1918, fc00::/7 and *.local; remote for every other address
+// RFC 1918 and fc00::/7; remote for every other address
 // (CGNAT and tailnet 100.64.0.0/10 included) and every other name,
-// which is never resolved. An error when baseURL is not an http(s) URL
+// mDNS *.local included, which is never resolved: allow one with [AllowHosts].
+// An error when baseURL is not an http(s) URL
 // kit would send a request to: it must parse, carry a host and no
 // userinfo, backslash, percent-escape, whitespace or control character.
 func EndpointLocality(baseURL string) (Locality, error) {
@@ -93,9 +94,6 @@ func hostLocality(host string) Locality {
 	}
 	if ip := net.ParseIP(h); ip != nil {
 		return ipLocality(ip)
-	}
-	if strings.HasSuffix(h, ".local") {
-		return LocalityPrivate
 	}
 	return LocalityRemote
 }
