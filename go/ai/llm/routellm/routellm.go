@@ -224,6 +224,9 @@ func (a *Adapter) Close() error {
 func (a *Adapter) Complete(
 	ctx context.Context, req llm.Request,
 ) (llm.Response, error) {
+	if req.ResponseFormat != nil {
+		return llm.Response{}, noResponseFormat()
+	}
 	c, ok := a.inner.(llm.Completer)
 	if !ok {
 		return llm.Response{}, llmerrors.NewCapabilityNotSupported(
@@ -237,6 +240,9 @@ func (a *Adapter) Complete(
 func (a *Adapter) Stream(
 	ctx context.Context, req llm.Request,
 ) (llm.TokenIterator, error) {
+	if req.ResponseFormat != nil {
+		return nil, noResponseFormat()
+	}
 	s, ok := a.inner.(llm.Streamer)
 	if !ok {
 		return nil, llmerrors.NewCapabilityNotSupported(
@@ -250,6 +256,9 @@ func (a *Adapter) Stream(
 func (a *Adapter) CallWithTools(
 	ctx context.Context, req llm.Request, tools []llm.ToolDef,
 ) (llm.ToolResponse, error) {
+	if req.ResponseFormat != nil {
+		return llm.ToolResponse{}, noResponseFormat()
+	}
 	tc, ok := a.inner.(llm.ToolCaller)
 	if !ok {
 		return llm.ToolResponse{}, llmerrors.NewCapabilityNotSupported(
@@ -263,6 +272,9 @@ func (a *Adapter) CallWithTools(
 func (a *Adapter) StreamWithTools(
 	ctx context.Context, req llm.Request, tools []llm.ToolDef,
 ) (llm.ToolStream, error) {
+	if req.ResponseFormat != nil {
+		return nil, noResponseFormat()
+	}
 	ts, ok := a.inner.(llm.ToolStreamer)
 	if !ok {
 		return nil, llmerrors.NewCapabilityNotSupported(
@@ -270,4 +282,10 @@ func (a *Adapter) StreamWithTools(
 		)
 	}
 	return ts.StreamWithTools(ctx, req, tools)
+}
+
+// noResponseFormat: a routed model is not known ahead, so a schema
+// cannot be promised; structured output needs a direct adapter.
+func noResponseFormat() error {
+	return llmerrors.NewCapabilityNotSupported("response_format", "routellm")
 }
