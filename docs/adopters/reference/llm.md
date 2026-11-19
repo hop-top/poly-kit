@@ -1084,6 +1084,14 @@ has one claimant, and a second `Register` claiming it panics.
 | [router/](../../../go/ai/llm/router/README.md) | Native routing engine (BERT, intent-based) |
 | [errors/](../../../go/ai/llm/errors/README.md) | Structured error types with fallback semantics |
 
+## Pricing
+
+`llm.PriceOf(ctx, scheme, model) (llm.Price, bool)` gives a model's USD rate per million tokens, for `Usage.Cost`.
+
+- Source: aim catalog cache already on disk (registry from `llm.Default`; `SetDefaultRegistry` redirects it). Never fetches; no cache returns `(Price{}, false)`.
+- Local schemes (`ollama`, `lmstudio`, `routellm`, `triton`, loopback catalog providers): `(Price{}, true)`.
+- Unknown provider, model, or cost: `(Price{}, false)`. Curated aliases (`fireworks`) resolve.
+
 ## Related pages
 
 - [`go-primitives.md`](go-primitives.md): `llm` and its sub-packages among the Go primitives
