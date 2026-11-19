@@ -26,7 +26,7 @@ Backends (registered by blank import, resolved by `secret.Open`): `env`,
 | [`onepassword`](onepassword/README.md) | `Vault`, `ConnectURL`, `Token` | yes | the team already lives in 1Password |
 | [`openbao`](openbao/README.md) | `Addr`, `Token`, `Mount` (default `secret`) | yes | OpenBao or Vault KV v2 |
 
-Not backends: [`local`](local/README.md) is the NaCl `Keeper` for `file`;
+Not backends: [`ref`](ref/README.md) resolves `op://` and `secret:NAME` references in config values; [`local`](local/README.md) is the NaCl `Keeper` for `file`;
 [`composite`](composite/README.md) routes keys across several stores and
 is assembled in code, since its predicates are Go funcs.
 
