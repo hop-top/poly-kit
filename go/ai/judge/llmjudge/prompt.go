@@ -7,36 +7,28 @@ import (
 
 	"hop.top/kit/go/ai/judge"
 	"hop.top/kit/go/ai/llm"
+	"hop.top/kit/go/ai/prompt"
 )
 
 const systemPrompt = `You judge a case by answering typed questions about it.
-For each question give a probability for every listed label, between 0 and 1,
-reflecting how likely that label is the right answer; they should sum to 1.
-Add a one-sentence reason in "why". Reply with JSON only.`
+For each question pick the single most likely label as "value", state your
+confidence in it as a number between 0 and 1, and add a one-sentence reason in
+"why". Reply with JSON only.`
 
 // buildSchema returns the JSON Schema of a reply: per question name, an
-// object with probs (exactly that question's labels) and why.
+// object {value: enum of that question's labels, confidence, why}.
 func buildSchema(qs []judge.Question) (json.RawMessage, error) {
 	props := make(map[string]any, len(qs))
 	names := make([]string, 0, len(qs))
 	for _, q := range qs {
-		labels := judge.Labels(q)
-		lp := make(map[string]any, len(labels))
-		for _, l := range labels {
-			lp[l] = map[string]any{"type": "number", "minimum": 0, "maximum": 1}
-		}
 		props[q.Name] = map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"probs": map[string]any{
-					"type":                 "object",
-					"properties":           lp,
-					"required":             labels,
-					"additionalProperties": false,
-				},
-				"why": map[string]any{"type": "string"},
+				"value":      map[string]any{"type": "string", "enum": judge.Labels(q)},
+				"confidence": map[string]any{"type": "number", "minimum": 0, "maximum": 1},
+				"why":        map[string]any{"type": "string"},
 			},
-			"required":             []string{"probs", "why"},
+			"required":             []string{"value", "confidence", "why"},
 			"additionalProperties": false,
 		}
 		names = append(names, q.Name)
@@ -50,7 +42,7 @@ func buildSchema(qs []judge.Question) (json.RawMessage, error) {
 }
 
 // buildMessages renders state and questions; Assets ride as extra parts.
-func buildMessages(c judge.Case) []llm.Message {
+func buildMessages(c judge.Case, p *prompt.Pattern) []llm.Message {
 	var b strings.Builder
 	if len(c.State) > 0 {
 		st, err := json.MarshalIndent(c.State, "", "  ")
@@ -74,7 +66,11 @@ func buildMessages(c judge.Case) []llm.Message {
 	if len(c.Assets) > 0 {
 		user.Parts = append([]llm.ContentPart{{Type: llm.PartTypeText, Text: b.String()}}, c.Assets...)
 	}
-	return []llm.Message{{Role: "system", Content: systemPrompt}, user}
+	sys := systemPrompt
+	if p != nil {
+		sys = p.System
+	}
+	return []llm.Message{{Role: "system", Content: sys}, user}
 }
 
 func kindText(q judge.Question) string {

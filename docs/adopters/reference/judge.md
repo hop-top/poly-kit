@@ -86,33 +86,44 @@ abstained answers, and questions without params pass through.
 Chat-model backend (`hop.top/kit/go/ai/judge/llmjudge`).
 
 ```go
-j := llmjudge.New(client, llmjudge.WithVotes(5), llmjudge.WithTemperature(0.8))
+j := llmjudge.New(client,
+    llmjudge.Model("m"),
+    llmjudge.Mode(llmjudge.Votes(5)),
+    llmjudge.Temperature(0.8),
+    llmjudge.Price(llm.Price{Input: 0.15, Output: 0.6}))
 v, err := j.Judge(ctx, c)
 ```
 
 `client` is any `llm.Completer` (`*llm.Client` qualifies). One structured
-call per sample answers every question of the case: the reply schema
-requires, per question name, `probs` (exactly `judge.Labels(q)`, each in
-[0,1]) and `why`. Schema violations go through the llm package's repair
-loop (`WithMaxRepairs`); still invalid returns `llm.ErrSchemaInvalid`.
+call per sample answers every question of the case. Reply schema, per
+question name: `{value: enum of judge.Labels(q), confidence: [0,1], why}`.
+Schema violations go through the llm package's repair loop (`MaxRepairs`);
+still invalid returns `llm.ErrSchemaInvalid`.
 
-| Mode | `Probs` | `Source` |
-|------|---------|----------|
-| one sample (default) | stated probs divided by their sum | `verbalized` |
-| `WithVotes(n)`, n > 1 | share of samples whose argmax is the label | `votes` |
+| Mode | `Value` / `Confidence` | `Probs` | `Source` |
+|------|------------------------|---------|----------|
+| `Verbalized` (default) | model's value and stated confidence | none | `verbalized` |
+| `Votes(n)`, n > 1 | most voted value; share of samples | share of samples per label | `votes` |
 
-- Stated probs summing to 0 fail with `judge.ErrInvalid`.
-- Ties go to the label earlier in `judge.Labels` order.
-- `Confidence` = `Probs[Value]`; `Score` (score kind) = `ScoreEV`, 0 on abstain.
-- Temperature: provider default for one sample; 0.7 for votes unless
-  `WithTemperature` is set (0 allowed).
+- Score kind: `value` is the anchor index. `Score` = `ScoreFromIndex` when
+  verbalized, `ScoreEV` over vote shares; 0 on abstain.
+- Votes run sequentially; any failed sample fails the whole case. Ties go
+  to the label earlier in `judge.Labels` order.
+- Temperature: provider default for `Verbalized`; 0.7 for votes unless
+  `Temperature` is set (0 allowed).
+- `Pattern(p)` replaces the built-in system message with `p.System`; the
+  reply schema and the case rendering stay.
+- `Price(p)` sets `Verdict.Cost.USD` from the summed `Usage`; `Cost.Tokens`
+  is always set.
+- `Verdict.Model` is the configured `Model`; responses carry no model name.
+  `Verdict.Usage` sums every sample and repair; `Backend` is `"llm"`.
 - `Case.Assets` ride on the user message as extra parts.
-- `Verdict.Usage` sums every sample and repair; `Backend` is `"llm"`.
-- Question kinds other than choice, score, yes/no fail with
+- Kinds other than choice, score, yes/no fail with
   `llmerrors.ErrCapabilityNotSupported`; malformed cases with
   `judge.ErrInvalid`. Every answer passes `judge.ValidateAnswer`.
 - Not a `BatchJudge`; use `judge.Batch` for concurrent fan-out.
-- Verbalized probabilities are uncalibrated; wrap with `calibrate.Calibrated`.
+- Stated confidence is uncalibrated; verbalized answers carry no `Probs`,
+  so `calibrate.Calibrated` passes them through. Use `Votes` to calibrate.
 
 ## Limitations
 
