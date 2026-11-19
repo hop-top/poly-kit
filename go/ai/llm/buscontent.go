@@ -22,6 +22,11 @@ func cloneRequest(req Request) Request {
 		out.Messages[i] = m
 	}
 	out.StopSequences = slices.Clone(req.StopSequences)
+	if req.ResponseFormat != nil {
+		rf := *req.ResponseFormat
+		rf.Schema = slices.Clone(rf.Schema)
+		out.ResponseFormat = &rf
+	}
 	if req.Extensions != nil {
 		out.Extensions = make(map[string]any, len(req.Extensions))
 		for k, v := range req.Extensions {

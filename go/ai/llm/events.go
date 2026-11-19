@@ -51,6 +51,9 @@ type RequestStartPayload struct {
 	HasTemperature bool `json:"has_temperature"`
 	Thinking       bool `json:"thinking"`
 	StopSequences  int  `json:"stop_sequences"`
+	// ResponseFormat reports a JSON Schema output constraint; the
+	// schema itself is not published.
+	ResponseFormat bool `json:"response_format,omitempty"`
 	// ExtensionKeys lists [Request.Extensions] keys, sorted; never
 	// their values.
 	ExtensionKeys []string `json:"extension_keys,omitempty"`
@@ -118,6 +121,7 @@ func requestStart(op string, req Request, tools int) RequestStartPayload {
 		HasTemperature: req.Temperature != nil,
 		Thinking:       req.Thinking != nil,
 		StopSequences:  len(req.StopSequences),
+		ResponseFormat: req.ResponseFormat != nil,
 	}
 	for _, m := range req.Messages {
 		if p.Roles == nil {
