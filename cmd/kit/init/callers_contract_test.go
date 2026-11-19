@@ -236,7 +236,9 @@ func TestCallersContract_ReleasePleasePreflightDependabot(t *testing.T) {
 	eco := map[string]bool{}
 	for _, u := range dbot.Updates {
 		eco[u.Ecosystem] = true
-		assert.Equal(t, "dependencies", u.Group, u.Ecosystem)
+		if u.Ecosystem != "github-actions" { // shares lib.sh's flat entry
+			assert.Equal(t, "dependencies", u.Group, u.Ecosystem)
+		}
 		assert.Equal(t, 14, u.Cooldown["default-days"], "%s: org policy is a 14d cooldown", u.Ecosystem)
 	}
 	assert.True(t, eco["gomod"] && eco["github-actions"], "%v", eco)
