@@ -1,0 +1,57 @@
+system: >-
+  Write a one-page brief for a meeting from the facts given, in four sections
+  named Event, People & notes, Threads and Open tasks. Use only the facts; an
+  empty section says so in one line. No advice, no invented detail.
+template: |
+  # Brief: {{ .event.title }}
+
+  ## Event
+  - When: {{ .event.start }} to {{ .event.end }}
+  - Where: {{ default "not set" .event.location }}
+  - Organizer: {{ default "not set" .event.organizer }}
+  - Attendees:
+  {{- range .event.attendees }}
+    - {{ default .email .name }} <{{ .email }}>{{ if .status }} ({{ .status }}){{ end }}
+  {{- end }}
+
+  ## People & notes
+  {{- if .unavailable.notes }}
+  source unavailable: ctxt
+  {{- else if .notes }}
+  {{ len .notes }} of {{ .counts.notes }} notes:
+  {{- range .notes }}
+  - [{{ .type }}] {{ trunc 200 (default "(no summary)" .summary) }} ({{ .id }}{{ if .tags }}; {{ join ", " .tags }}{{ end }})
+  {{- end }}
+  {{- else if .counts.notes }}
+  {{ .counts.notes }} notes, none within the size of this brief.
+  {{- else }}
+  Nothing in the knowledge store on these people.
+  {{- end }}
+
+  ## Threads
+  {{- if .unavailable.threads }}
+  source unavailable: heo
+  {{- else if .threads }}
+  {{ len .threads }} of {{ .counts.threads }} conversations in the last 30 days:
+  {{- range .threads }}
+  - {{ .id }} [{{ .status }}] last activity {{ .last_activity }}
+  {{- end }}
+  {{- else if .counts.threads }}
+  {{ .counts.threads }} conversations in the last 30 days, none within the size of this brief.
+  {{- else }}
+  No conversation with these people in the last 30 days.
+  {{- end }}
+
+  ## Open tasks
+  {{- if .unavailable.tasks }}
+  source unavailable: tlc
+  {{- else if .tasks }}
+  {{ len .tasks }} of {{ .counts.tasks }} tasks:
+  {{- range .tasks }}
+  - {{ .id }} [{{ .status }}, {{ .priority }}] {{ .title }}{{ if .due_at }} (due {{ .due_at }}){{ end }}
+  {{- end }}
+  {{- else if .counts.tasks }}
+  {{ .counts.tasks }} tasks, none within the size of this brief.
+  {{- else }}
+  No open task matches "{{ .event.title }}".
+  {{- end }}

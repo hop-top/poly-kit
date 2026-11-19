@@ -1,0 +1,21 @@
+# Brief: Q4 planning
+
+## Event
+- When: 2026-11-20T10:00:00Z to 2026-11-20T11:00:00Z
+- Where: not set
+- Organizer: ann@example.com
+- Attendees:
+  - Ann <ann@example.com> (accepted)
+  - bob@example.com <bob@example.com>
+
+## People & notes
+2 of 3 notes:
+- [meeting] (no summary) (n1; a, b)
+- [person] Ann leads the platform group and has opinions about the roadmap that run long enough to be cut off at two hundred runes, which this sentence deliberately exceeds by a comfortable margin so trunc fires (n2)
+
+## Threads
+1 of 1 conversations in the last 30 days:
+- t1 [open] last activity 2026-11-17
+
+## Open tasks
+No open task matches "Q4 planning".
