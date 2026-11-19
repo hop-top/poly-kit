@@ -9,6 +9,7 @@ A `job.Service` on SQLite: one `jobs` table, atomic FIFO claim, priority orderin
 - a single binary needs jobs that survive restart → `durabletask.New("/var/lib/app/jobs.db")`
 - a test needs real SQL semantics without a file → `durabletask.New("")`
 - a poller must recover jobs from crashed workers → `svc.ReleaseStaleClaims(ctx)`
+- `jobs.db` grows because finished jobs are kept → `svc.Prune(ctx, cutoff)`
 
 ## Quick start
 
@@ -48,6 +49,8 @@ Verified by `example_test.go` in this directory.
 - `Heartbeat` extends the claim expiry; `ReleaseStaleClaims` returns expired active jobs to `pending`.
 - `EnqueueOpts.ClaimTTL` sets the per-job claim lifetime (zero keeps the 5m default).
 - Publishes `job.*` lifecycle events (`JobEvent` payload) when built with `job.WithPublisher`.
+- Job ids are TypeIDs: `dtj_` + 26 base32 chars (`hop.top/kit/go/core/id`). Ids are opaque to the engine, so rows from earlier builds (`dtj_` + 8 hex) still load and run.
+- `Prune(ctx, olderThan, statuses...) (int, error)` (also `job.Pruner`) deletes finished jobs (`succeeded`, `failed`, `timeout`, `canceled`) whose `updated_at` is strictly before `olderThan` and returns the count. No `statuses` = all finished; listing `pending` or `active` returns `domain.ErrValidation` and deletes nothing. Repeat calls are safe. Kit provides the call only: nothing runs it on a schedule and no retention is applied by default, so finished jobs are kept until the caller prunes.
 - Call `Close` to release the connection.
 
 ## Run it locally

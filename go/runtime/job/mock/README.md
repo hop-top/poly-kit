@@ -50,3 +50,5 @@ Verified by `example_test.go` in this directory.
 
 - `hop.top/kit/go/runtime/job`: the interface, poller, and backoff this package implements.
 - `hop.top/kit/go/runtime/job/durabletask`: same semantics on SQLite.
+
+`Prune(ctx, olderThan, statuses...)` mirrors `durabletask`'s (`job.Pruner`).
