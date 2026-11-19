@@ -347,3 +347,56 @@ func TestProjectRules_WithMigrations(t *testing.T) {
 	var fe *config.ErrProjectForbidden
 	require.True(t, errors.As(err, &fe))
 }
+
+func TestProjectRules_NonStringKeyCannotHideForbidden(t *testing.T) {
+	for name, body := range map[string]string{
+		"int":     "1: x\nbos:\n  bin: y\n",
+		"nested":  "ai:\n  1: x\n  models:\n    deny: [a]\n",
+		"bool":    "true: y\n",
+		"complex": "? [a]\n: y\n",
+		"parent":  "ai:\n  models:\n    allow: [a]\n  2: z\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			proj := writeRaw(t, "p.yaml", body)
+			rules := &config.ProjectRules{
+				Forbidden: []string{"bos.bin"},
+				Narrow:    []config.NarrowKey{{Key: "ai.models.allow", Mode: config.Intersect}},
+			}
+			cfg, err := loadRules(t, rules, "", "", proj)
+			require.Error(t, err)
+			assert.Empty(t, cfg.Bos.URL)
+			if name == "complex" {
+				// yaml.v3 cannot build this key at all: still fails closed.
+				return
+			}
+			var fe *config.ErrProjectForbidden
+			require.True(t, errors.As(err, &fe), "got %v", err)
+			assert.Equal(t, proj, fe.File)
+			assert.True(t, fe.NonString)
+		})
+	}
+}
+
+func TestProjectRules_NonStringKeyHidingBosBin(t *testing.T) {
+	// Non-string sibling key turns the parent into map[any]any in yaml.v3.
+	proj := writeRaw(t, "p.yaml", "bos:\n  1: a\n  bin: evil\n")
+	_, err := loadRules(t, &config.ProjectRules{Forbidden: []string{"bos.bin"}}, "", "", proj)
+	var fe *config.ErrProjectForbidden
+	require.True(t, errors.As(err, &fe), "got %v", err)
+}
+
+func TestProjectRules_SecretUnderSequenceElement(t *testing.T) {
+	proj := writeRaw(t, "p.yaml", "servers:\n  - name: a\n    auth:\n      token: abc\n")
+	rules := &config.ProjectRules{SecretKey: regexp.MustCompile(`(?i)token`)}
+	_, err := loadRules(t, rules, "", "", proj)
+	var fe *config.ErrProjectForbidden
+	require.True(t, errors.As(err, &fe), "got %v", err)
+	assert.Equal(t, "servers.auth.token", fe.Key)
+}
+
+func TestProjectRules_ForbiddenUnderSequenceElement(t *testing.T) {
+	proj := writeRaw(t, "p.yaml", "servers:\n  - bos:\n      url: x\n")
+	_, err := loadRules(t, &config.ProjectRules{Forbidden: []string{"servers.bos"}}, "", "", proj)
+	var fe *config.ErrProjectForbidden
+	require.True(t, errors.As(err, &fe), "got %v", err)
+}

@@ -142,7 +142,7 @@ An `Intersect` that leaves nothing returns `*ErrNarrowEmpty` (file, key,
 both lists). It is never turned into an empty list, which a tool would read
 as "no limit". A tool that wants "deny all" maps the error itself.
 
-A rejected project file merges nothing. `ProjectRules.OnNarrow` receives a
+A non-string key (`1:`, `? [a]`) anywhere in a project file is refused with `ErrProjectForbidden` (`NonString`), since rules cannot judge it; rules also descend list elements, where `a.b` covers `a: [{b: x}]`. A rejected project file merges nothing. `ProjectRules.OnNarrow` receives a
 `Narrowed` record (file, key, lower, project, result) per narrowed key, for
 `config show` style output; `Resolved` and `Origin` are unchanged.
 

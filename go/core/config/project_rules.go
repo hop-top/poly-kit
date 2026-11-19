@@ -73,13 +73,19 @@ type ErrProjectForbidden struct {
 	Key  string
 	// Secret is true when SecretKey matched rather than Forbidden.
 	Secret bool
+	// NonString is true when the key is not a plain string (for example
+	// `1:` or `? [a]`): rules cannot judge it, so a project file may not
+	// hold one.
+	NonString bool
 	// Suggestion says where the key belongs.
 	Suggestion string
 }
 
 func (e *ErrProjectForbidden) Error() string {
 	why := "may not be set in a project config"
-	if e.Secret {
+	if e.NonString {
+		why = "is not a string key; project configs may only use string keys"
+	} else if e.Secret {
 		why = "looks like a secret and may not be set in a project config"
 	}
 	return fmt.Sprintf("config %s: key %q %s; %s", e.File, e.Key, why, e.Suggestion)
@@ -110,16 +116,23 @@ func mergeProjectFile(dst any, path string, opts Options) error {
 	if err != nil {
 		return err
 	}
-	var doc map[string]any
-	if err := yaml.Unmarshal(data, &doc); err != nil {
+	// Decode into any so a non-string key anywhere (the root included)
+	// surfaces as map[any]any instead of being coerced.
+	var raw any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	if doc == nil {
+	if raw == nil {
 		return yaml.Unmarshal(data, dst)
 	}
 	rules := opts.Project
-	if err := rules.checkForbidden(path, doc, opts.UserConfigPath); err != nil {
+	if err := rules.checkForbidden(path, raw, opts.UserConfigPath); err != nil {
 		return err
+	}
+	doc, ok := raw.(map[string]any)
+	if !ok {
+		// Not a mapping: let dst's decode report the kind error.
+		return yaml.Unmarshal(data, dst)
 	}
 	if err := rules.narrow(dst, path, doc); err != nil {
 		return err
@@ -131,33 +144,47 @@ func mergeProjectFile(dst any, path string, opts Options) error {
 	return yaml.Unmarshal(out, dst)
 }
 
-func (r *ProjectRules) checkForbidden(file string, doc map[string]any, userPath string) error {
+func (r *ProjectRules) checkForbidden(file string, doc any, userPath string) error {
 	suggest := "move it to the user config"
 	if userPath != "" {
 		suggest = "move it to " + userPath
 	}
-	var walk func(prefix string, m map[string]any) error
-	walk = func(prefix string, m map[string]any) error {
-		keys := make([]string, 0, len(m))
-		for k := range m {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			full := k
-			if prefix != "" {
-				full = prefix + "." + k
-			}
-			for _, f := range r.Forbidden {
-				if full == f {
-					return &ErrProjectForbidden{File: file, Key: full, Suggestion: suggest}
+	var walk func(prefix string, v any) error
+	walk = func(prefix string, v any) error {
+		switch m := v.(type) {
+		case []any:
+			// Elements share the sequence's path: "a.b" covers a: [{b: x}].
+			for _, e := range m {
+				if err := walk(prefix, e); err != nil {
+					return err
 				}
 			}
-			if r.SecretKey != nil && r.SecretKey.MatchString(k) {
-				return &ErrProjectForbidden{File: file, Key: full, Secret: true, Suggestion: suggest}
+		case map[any]any:
+			// yaml.v3 yields this for any non-string key. Fail closed.
+			keys := make([]string, 0, len(m))
+			for k := range m {
+				keys = append(keys, fmt.Sprint(k))
 			}
-			if sub, ok := m[k].(map[string]any); ok {
-				if err := walk(full, sub); err != nil {
+			sort.Strings(keys)
+			return &ErrProjectForbidden{File: file, Key: joinKey(prefix, keys[0]),
+				NonString: true, Suggestion: suggest}
+		case map[string]any:
+			keys := make([]string, 0, len(m))
+			for k := range m {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				full := joinKey(prefix, k)
+				for _, f := range r.Forbidden {
+					if full == f {
+						return &ErrProjectForbidden{File: file, Key: full, Suggestion: suggest}
+					}
+				}
+				if r.SecretKey != nil && r.SecretKey.MatchString(k) {
+					return &ErrProjectForbidden{File: file, Key: full, Secret: true, Suggestion: suggest}
+				}
+				if err := walk(full, m[k]); err != nil {
 					return err
 				}
 			}
@@ -165,6 +192,13 @@ func (r *ProjectRules) checkForbidden(file string, doc map[string]any, userPath 
 		return nil
 	}
 	return walk("", doc)
+}
+
+func joinKey(prefix, k string) string {
+	if prefix == "" {
+		return k
+	}
+	return prefix + "." + k
 }
 
 // narrow rewrites doc's narrow keys against the list dst holds now (every
