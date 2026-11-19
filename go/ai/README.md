@@ -11,6 +11,7 @@ extension points.
 | [`cmdreflect/`](cmdreflect/README.md) | single cobra reflector producing one `Descriptor` per command | you need a fact about a command that both the manifest and help rendering must agree on |
 | [`ext/`](ext/README.md) | extension contract, manager, hook bus, discovery, dispatch, config | you add plugin points to a kit-powered tool |
 | [`llm/`](llm/README.md) | provider-agnostic LLM client, routing, provider drivers | you call a model or route between providers |
+| [`prompt/`](prompt/README.md) | versioned prompt templates, patterns, techniques, fragments, schema DSL | you load, render or compose prompt text for a model |
 | [`toolspec/`](toolspec/README.md) | `ToolSpec` and `Manifest` data types, safety vocabulary, registry | you model a tool's commands, flags, risk and workflows |
 | [`toolspec/adapters/`](toolspec/adapters/README.md) | format adapters (kit-manifest, mcp) and MCP policy gate | you render the manifest or enforce policy on an MCP call |
 | [`toolspec/cli/`](toolspec/cli/README.md) | `<tool> spec` subcommand and cobra walker | your kit-powered CLI should publish its manifest |

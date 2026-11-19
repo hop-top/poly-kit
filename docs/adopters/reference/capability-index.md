@@ -126,6 +126,7 @@ Talking to models, and being legible to agents.
 | Capability | What it does | Go package | Usage docs |
 |---|---|---|---|
 | LLM client | Provider-agnostic config, registry, messages, tool calls, streaming, error taxonomy | `go/ai/llm` | [LLM](llm.md) |
+| Prompts | Versioned templates with content hash, patterns, techniques, fragments, schema DSL | `go/ai/prompt` | [Prompt](prompt.md) |
 | LLM providers | Anthropic, OpenAI, Google, Ollama, Triton adapters | `go/ai/llm/anthropic` | [LLM](llm.md) |
 | LLM routing | Strong/weak model routing, RouteLLM config; `llm router` subcommands | `go/ai/llm/router` | [LLM](llm.md) |
 | Toolspec | Tool manifest, `spec` command, per-harness adapters, risk policy | `go/ai/toolspec` | [Toolspec API](toolspec-api.md); [Adopter guide](../integrations/toolspec-adopter-guide.md); [Harness guide](../integrations/toolspec-harness-guide.md) |
