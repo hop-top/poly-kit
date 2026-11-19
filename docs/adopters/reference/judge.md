@@ -81,7 +81,40 @@ Label}`; `FitTemperature`, `FitPlatt` fit one. `Params` is JSON
 `Confidence` = `P(Value)`, `Score` recomputed. Answers without `Probs`,
 abstained answers, and questions without params pass through.
 
+## llmjudge
+
+Chat-model backend (`hop.top/kit/go/ai/judge/llmjudge`).
+
+```go
+j := llmjudge.New(client, llmjudge.WithVotes(5), llmjudge.WithTemperature(0.8))
+v, err := j.Judge(ctx, c)
+```
+
+`client` is any `llm.Completer` (`*llm.Client` qualifies). One structured
+call per sample answers every question of the case: the reply schema
+requires, per question name, `probs` (exactly `judge.Labels(q)`, each in
+[0,1]) and `why`. Schema violations go through the llm package's repair
+loop (`WithMaxRepairs`); still invalid returns `llm.ErrSchemaInvalid`.
+
+| Mode | `Probs` | `Source` |
+|------|---------|----------|
+| one sample (default) | stated probs divided by their sum | `verbalized` |
+| `WithVotes(n)`, n > 1 | share of samples whose argmax is the label | `votes` |
+
+- Stated probs summing to 0 fail with `judge.ErrInvalid`.
+- Ties go to the label earlier in `judge.Labels` order.
+- `Confidence` = `Probs[Value]`; `Score` (score kind) = `ScoreEV`, 0 on abstain.
+- Temperature: provider default for one sample; 0.7 for votes unless
+  `WithTemperature` is set (0 allowed).
+- `Case.Assets` ride on the user message as extra parts.
+- `Verdict.Usage` sums every sample and repair; `Backend` is `"llm"`.
+- Question kinds other than choice, score, yes/no fail with
+  `llmerrors.ErrCapabilityNotSupported`; malformed cases with
+  `judge.ErrInvalid`. Every answer passes `judge.ValidateAnswer`.
+- Not a `BatchJudge`; use `judge.Batch` for concurrent fan-out.
+- Verbalized probabilities are uncalibrated; wrap with `calibrate.Calibrated`.
+
 ## Limitations
 
-- No backend here; see the llm and jev backends.
+- Other backends (jev, logprob) live in their own packages.
 - Calibration needs labeled samples; Platt is binary only.
