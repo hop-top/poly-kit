@@ -126,9 +126,15 @@ Talking to models, and being legible to agents.
 | Capability | What it does | Go package | Usage docs |
 |---|---|---|---|
 | LLM client | Provider-agnostic config, registry, messages, tool calls, streaming, error taxonomy | `go/ai/llm` | [LLM](llm.md) |
+| LLM structured output | JSON-schema response format, `CompleteStructured`, per-provider native mode | `go/ai/llm` | [LLM](llm.md#structured-output) |
+| LLM usage pricing | Token usage by kind, `Usage.Cost(llm.Price{...})` | `go/ai/llm` | [LLM](llm.md) |
+| LLM logprobs | Per-token log-probabilities and top-k alternatives (OpenAI-compatible, Ollama) | `go/ai/llm` | [LLM](llm.md) |
 | Prompts | Versioned templates with content hash, patterns, techniques, fragments, schema DSL | `go/ai/prompt` | [Prompt](prompt.md) |
 | LLM providers | Anthropic, OpenAI, Google, Ollama, Triton adapters | `go/ai/llm/anthropic` | [LLM](llm.md) |
 | LLM routing | Strong/weak model routing, RouteLLM config; `llm router` subcommands | `go/ai/llm/router` | [LLM](llm.md) |
+| Judge | Typed judgments over a Case: choice, score, yes/no with abstain; validation, batching | `go/ai/judge` | [Judge](judge.md) |
+| Judge calibration | Temperature and Platt calibration of judged probabilities | `go/ai/judge/calibrate` | [Judge](judge.md) |
+| Judge test fake | Deterministic fake judge for tests | `go/ai/judge/judgetest` | [Judge](judge.md) |
 | Toolspec | Tool manifest, `spec` command, per-harness adapters, risk policy | `go/ai/toolspec` | [Toolspec API](toolspec-api.md); [Adopter guide](../integrations/toolspec-adopter-guide.md); [Harness guide](../integrations/toolspec-harness-guide.md) |
 | Command reflection | Single place kit reflects a cobra tree into descriptors | `go/ai/cmdreflect` | [cmdreflect](cmdreflect.md) |
 | Agent CLI invocation | Detect agent CLIs and build native argv from one normalized invocation | `go/core/uxp` | [uxp](uxp.md) |

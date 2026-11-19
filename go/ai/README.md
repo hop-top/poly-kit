@@ -10,6 +10,9 @@ extension points.
 |------|------------|-----------------|
 | [`cmdreflect/`](cmdreflect/README.md) | single cobra reflector producing one `Descriptor` per command | you need a fact about a command that both the manifest and help rendering must agree on |
 | [`ext/`](ext/README.md) | extension contract, manager, hook bus, discovery, dispatch, config | you add plugin points to a kit-powered tool |
+| [`judge/`](judge/README.md) | typed judgments over a case: choice, score, yes/no questions; validation, batching | you need probability-bearing answers from a model or rule engine, not raw text |
+| [`judge/calibrate/`](judge/calibrate/README.md) | temperature and Platt calibration, `Fit`, `Calibrated` | you calibrate a backend's probabilities |
+| [`judge/judgetest/`](judge/judgetest/README.md) | deterministic fake judge | you test code that calls a judge |
 | [`llm/`](llm/README.md) | provider-agnostic LLM client, routing, provider drivers | you call a model or route between providers |
 | [`prompt/`](prompt/README.md) | versioned prompt templates, patterns, techniques, fragments, schema DSL | you load, render or compose prompt text for a model |
 | [`toolspec/`](toolspec/README.md) | `ToolSpec` and `Manifest` data types, safety vocabulary, registry | you model a tool's commands, flags, risk and workflows |
