@@ -239,14 +239,24 @@ Always cloud: every `Judge` call sends the case's state and questions to
 the service. Needs an OpenRouter key.
 
 ```go
-j, err := jev.New() // key via llm.SecretFor("openrouter"): OPENROUTER_API_KEY
+j, err := jev.New() // key: llm.yaml providers.openrouter, OPENROUTER_API_KEY, LLM_API_KEY
 if err != nil { /* llm.ErrMissingKey, llm.ErrKeyEndpoint */ }
 v, err := j.Judge(ctx, c)
 ```
 
 Options: `WithModel` (default `typesafe/jev-1.14`), `WithURL` (default
 `https://openrouter.ai/api/v1/systemone`), `WithAPIKey`, `WithTransport`
-(any `http.RoundTripper`, as `llm.WithTransport`).
+(any `http.RoundTripper`, as `llm.WithTransport`), `Hermetic`.
+
+Key resolution: `WithAPIKey` first; else llm.yaml `providers.openrouter`
+(`api_key`, then the variable `api_key_env` names), then
+`OPENROUTER_API_KEY`, then `LLM_API_KEY`; none fails with
+`llm.ErrMissingKey`. The key goes only to the default endpoint's origin,
+loopback, or an origin llm.yaml `base_url` / `LLM_BASE_URL` names; any
+other fails with `llm.ErrKeyEndpoint`. `Hermetic` reads neither the
+environment nor llm.yaml: it requires `WithAPIKey` and trusts only the
+default origin and loopback. The package registers no llm adapter and
+links no provider SDK, so a tool that passes its own keys can import it.
 
 - One request answers every question. Mapping: choice to
   `{type: choice, criteria: {value: description}}` (a bare value stands in

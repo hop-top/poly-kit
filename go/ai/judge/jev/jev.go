@@ -26,7 +26,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -34,10 +37,6 @@ import (
 	"hop.top/kit/go/ai/judge"
 	"hop.top/kit/go/ai/llm"
 	llmerrors "hop.top/kit/go/ai/llm/errors"
-
-	// Registers the openrouter scheme, so llm.ProviderKeyFor and
-	// llm.SecretFor know where its key lives.
-	_ "hop.top/kit/go/ai/llm/openai"
 )
 
 const (
@@ -54,7 +53,9 @@ const (
 	// chat-listed router model typesafe/jev-router is not served there.
 	DefaultModel = "typesafe/jev-1.14"
 
-	// provider is the llm scheme whose key and endpoint trust apply.
+	// provider is the llm scheme whose key and endpoint trust apply. No
+	// adapter is registered for it here: linking one would pull a
+	// provider SDK into every importer, so the key is resolved below.
 	provider = "openrouter"
 	// maxScoreLevels is the service's cap on score criteria.
 	maxScoreLevels = 10
@@ -80,21 +81,31 @@ type config struct {
 	url       string
 	model     string
 	key       string
+	hermetic  bool
 	transport http.RoundTripper
 }
 
 // WithURL sets the endpoint. The key is sent only to DefaultURL's origin,
-// a loopback host, or an origin llm.yaml base_url / LLM_BASE_URL names;
-// New fails with llm.ErrKeyEndpoint for any other.
+// a loopback host, or an origin llm.yaml base_url / LLM_BASE_URL names
+// (not under Hermetic); New fails with llm.ErrKeyEndpoint for any other.
 func WithURL(u string) Option { return func(c *config) { c.url = u } }
 
 // WithModel sets the model on every request; default DefaultModel.
 func WithModel(m string) Option { return func(c *config) { c.model = m } }
 
-// WithAPIKey sets the OpenRouter key; unset resolves it as
-// llm.SecretFor does for "openrouter" (llm.yaml, secret store, then the
-// names llm.ProviderKeyFor lists, OPENROUTER_API_KEY first).
+// WithAPIKey sets the OpenRouter key; it outranks every other source.
+// Unset (and not Hermetic), the key resolves from llm.yaml
+// providers.openrouter (api_key, then the variable api_key_env names),
+// then OPENROUTER_API_KEY, then LLM_API_KEY. Blank values count as unset.
 func WithAPIKey(k string) Option { return func(c *config) { c.key = k } }
+
+// Hermetic makes the judge read neither the environment nor llm.yaml: the
+// key must come from WithAPIKey (New fails with llm.ErrMissingKey
+// otherwise) and the endpoint is trusted only when it shares DefaultURL's
+// origin or is loopback; a configured base_url or LLM_BASE_URL is not
+// read. For tools that pass their own credentials and take nothing from
+// the host.
+func Hermetic() Option { return func(c *config) { c.hermetic = true } }
 
 // WithTransport sends requests through rt, as llm.WithTransport does: a
 // proxy, a cassette, a fake. Nil keeps the process default. Redirects are
@@ -117,7 +128,7 @@ func New(opts ...Option) (judge.Judge, error) {
 		o(&c)
 	}
 	if strings.TrimSpace(c.key) == "" {
-		k, err := llm.SecretFor(context.Background(), nil, provider)
+		k, err := resolveKey(c.hermetic)
 		if err != nil {
 			return nil, fmt.Errorf("jev: %w", err)
 		}
@@ -126,7 +137,7 @@ func New(opts ...Option) (judge.Judge, error) {
 	if err := llm.CheckKeyEndpoint(provider, c.key, c.url); err != nil {
 		return nil, err
 	}
-	if !llm.CredentialsTrusted(provider, c.url, DefaultURL) {
+	if !trusted(c.url, c.hermetic) {
 		return nil, &llm.KeyEndpointError{Scheme: provider, Endpoint: llm.RedactURI(c.url)}
 	}
 	rt := c.transport
@@ -143,6 +154,55 @@ func New(opts ...Option) (judge.Judge, error) {
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 	}, nil
+}
+
+// keyEnvNames are the environment variables consulted, in order, when
+// llm.yaml names no key.
+var keyEnvNames = []string{"OPENROUTER_API_KEY", llm.FallbackEnvKey}
+
+// resolveKey finds the OpenRouter key without an llm adapter: llm.yaml
+// providers.openrouter (api_key, api_key_env) through llm.SecretFor, then
+// keyEnvNames. Hermetic reads nothing and always fails.
+func resolveKey(hermetic bool) (string, error) {
+	if hermetic {
+		return "", fmt.Errorf("%w: Hermetic needs WithAPIKey", llm.ErrMissingKey)
+	}
+	if k, err := llm.SecretFor(context.Background(), nil, provider); err == nil {
+		return k, nil
+	}
+	for _, name := range keyEnvNames {
+		if k := os.Getenv(name); strings.TrimSpace(k) != "" {
+			return k, nil
+		}
+	}
+	return "", &llm.MissingKeyError{Scheme: provider, EnvVars: keyEnvNames}
+}
+
+// trusted reports whether the key may go to endpoint. Hermetic trusts
+// DefaultURL's origin and loopback only; otherwise llm adds the origins
+// llm.yaml base_url and LLM_BASE_URL name.
+func trusted(endpoint string, hermetic bool) bool {
+	if !hermetic {
+		return llm.CredentialsTrusted(provider, endpoint, DefaultURL)
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	if isLoopback(u.Hostname()) {
+		return true
+	}
+	d, err := url.Parse(DefaultURL)
+	return err == nil && strings.EqualFold(u.Scheme, d.Scheme) &&
+		strings.EqualFold(u.Host, d.Host)
+}
+
+func isLoopback(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // Judge answers every question of c in one request. Question kinds,
