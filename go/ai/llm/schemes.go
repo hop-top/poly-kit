@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
 	"sort"
 	"sync"
@@ -78,7 +79,18 @@ func Resolve(uri string, opts ...ResolveOption) (Provider, error) {
 type ResolveOption func(*resolveOptions)
 
 type resolveOptions struct {
-	hermetic bool
+	hermetic  bool
+	transport http.RoundTripper
+}
+
+// WithTransport makes the adapter [Resolve] builds send its HTTP
+// requests through rt, in place of the process default: a proxy, a
+// record/replay cassette, a counting fake. It reaches the adapter as
+// [ResolvedConfig.Transport]; nil keeps the default. Orthogonal to
+// [Hermetic]: the two combine. Media URL fetches ([Client] media
+// helpers) do not go through it.
+func WithTransport(rt http.RoundTripper) ResolveOption {
+	return func(o *resolveOptions) { o.transport = rt }
 }
 
 // Hermetic makes [Resolve] and the adapter it builds read nothing
@@ -290,7 +302,8 @@ func (r *Registry) Resolve(uri string, opts ...ResolveOption) (Provider, error) 
 		Provider: ProviderConfig{
 			Model: parsed.Model,
 		},
-		Hermetic: o.hermetic,
+		Hermetic:  o.hermetic,
+		Transport: o.transport,
 	}
 	if parsed.Host != "" {
 		cfg.Provider.BaseURL = "http://" + parsed.Host

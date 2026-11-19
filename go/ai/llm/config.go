@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,6 +50,11 @@ type ResolvedConfig struct {
 	// ANTHROPIC_WORKSPACE_ID, the openai SDK's OPENAI_ORG_ID and
 	// OPENAI_PROJECT_ID) and no file (llm.yaml). Only this config counts.
 	Hermetic bool
+	// Transport, set by [WithTransport], is the round tripper every
+	// HTTP request of the adapter goes through. Nil means the adapter's
+	// default, as before. Adapters build their client with
+	// [ResolvedConfig.HTTPClient].
+	Transport http.RoundTripper
 }
 
 // configFile mirrors the on-disk YAML structure.
