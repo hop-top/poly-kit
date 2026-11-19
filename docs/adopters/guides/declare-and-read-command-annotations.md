@@ -56,6 +56,7 @@ Setters worth knowing, by what they declare:
 | tree shape | `cli.SetTopLevelVerb`, `cli.SetHierarchical`, `cli.SetPassthrough` | `kit/top-level-verb`, `kit/hierarchical`, `kit/passthrough` |
 | served-result cache lifetime (read leaves only) | `cli.SetCacheTTL` | `kit/cache-ttl` |
 | kept off named served surfaces | `cli.SetWithholdFrom` | `kit/withhold-from` |
+| may outlast a request (served as a background job on the dek surface) | write `cmdmeta.KeyLongRunning` directly (`"true"`) | `kit/long-running` |
 | dry-run opt-out | `cli.OptOutDryRun`, `cli.SetDryRunRationale` | `kit/dry-run`, `kit/dry-run-rationale` |
 | deprecation | `cli.SetDeprecatedSince`, `cli.SetRemovalTarget` | `kit/deprecated-since`, `kit/removal-target` |
 | positional operands | write `cmdmeta.KeyArgs` directly | `kit/args` |
