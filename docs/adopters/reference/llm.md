@@ -424,6 +424,109 @@ otherwise its last content block. `Usage.CacheReadTokens` and
 turn from `ToolStream.Outcome()`; with `Request.StreamEvents`, tool calls
 and usage also stream as they happen ([Streaming](#tool-call-and-usage-events)).
 
+## Structured output
+
+`Request.ResponseFormat` constrains a reply to a JSON Schema; the
+adapter maps it to the provider's native mode. `llm.CompleteStructured`
+adds what no provider guarantees: it validates the reply locally and,
+when it does not match, asks again.
+
+```go
+rf := llm.ResponseFormat{
+    Name:   "verdict", // letters, digits, _ and -; default "output"
+    Schema: json.RawMessage(`{"type":"object",
+      "properties":{"label":{"type":"string","enum":["pass","fail"]}},
+      "required":["label"],"additionalProperties":false}`),
+}
+res, err := llm.CompleteStructured(ctx, client, req, rf,
+    llm.MaxRepairs(2)) // the default
+// res.Data: validated JSON; res.Attempts; res.Usage sums every attempt
+
+type Verdict struct {
+    Label string `json:"label" jsonschema:"enum=pass,enum=fail"`
+}
+v, res, err := llm.CompleteInto[Verdict](ctx, client, req)
+```
+
+`CompleteInto` reflects the schema from the type
+(`invopop/jsonschema`: json tags, `required` unless `omitempty`,
+`additionalProperties` false, no `$ref`) and decodes the validated
+reply into it. `llm.Strict()` sets `ResponseFormat.Strict` there.
+
+**Repair loop.** On a violation the bad reply goes back as an assistant
+message, followed by a user message listing the violations and asking
+for corrected JSON only. After `MaxRepairs(n)` re-asks (default 2) the
+call returns a `*llm.SchemaError` (`Attempts`, `Violations`, `Last`;
+`errors.Is(err, llm.ErrSchemaInvalid)`) next to the result, whose
+`Usage` still sums the attempts. A `SchemaError` is not fallbackable:
+the model's output failed, not the transport. Any other error
+(a refused request, a transport failure) is returned as is, also with
+the usage spent so far.
+
+`llm.Lenient()` strips a Markdown code fence and any prose around the
+JSON value before validating, and turns the re-ask off unless
+`MaxRepairs` is also given.
+
+`llm.ValidateJSON(schema, data)` is the validator on its own: sorted
+violations as `"<json pointer>: <message>"`, none when `data` conforms,
+an error when the schema does not compile. Schemas compile once and are
+cached by content; a `$ref` never reaches the network or the disk.
+Validation always runs locally, whatever the provider enforced.
+
+### Mapping
+
+| Adapter | Wire |
+|---------|------|
+| `ollama` | `format: <schema>` on `/api/chat` |
+| `openai` and its compatible schemes | `response_format: {type: json_schema, json_schema: {name, schema, strict}}` (`strict` sent only when set) |
+| `anthropic` | `output_config.format: {type: json_schema, schema}` (native structured output) |
+| `google` | `generationConfig.responseMimeType: application/json` and `responseJsonSchema: <schema>` |
+| `routellm` | `ErrCapabilityNotSupported` (`response_format`): the routed model is not known ahead |
+| `triton` | not a `Completer`: it scores, it does not complete |
+
+`name` and `strict` only matter where the provider has them (OpenAI);
+elsewhere they are ignored. Anthropic's forced tool call (one tool whose
+input schema is the schema, `tool_choice` naming it) remains the way to
+get a schema on a model without native structured output; it is not
+what `Request.ResponseFormat` sends.
+
+OpenAI-compatible servers without `json_schema` take the provider param
+`response_format` on the URI or in `llm.yaml`:
+
+| `response_format` | Sends |
+|-------------------|-------|
+| `json_schema` (default) | `response_format` json_schema |
+| `json_object` | `response_format` `{"type":"json_object"}`, the schema in a system message |
+| `none` | no `response_format`, the schema in a system message |
+
+With `json_object` or `none` the repair loop is what enforces the
+schema.
+
+### Schema subset
+
+Local validation implements JSON Schema 2020-12 (or the draft a
+`$schema` names). Providers decode against a smaller subset and refuse
+a schema outside it, with the adapter's own error. The portable core,
+accepted by every adapter:
+
+- root `type: object`
+- `type` of `string`, `number`, `integer`, `boolean`, `null`, `object`,
+  `array`
+- `properties`, `required`, `additionalProperties: false`, `items`
+- `enum`, `description`, `anyOf`
+- nesting of the above
+
+`pattern`, `format`, `minLength`, `minimum`, `minItems`, `oneOf`,
+`allOf`, `$ref` and `$defs` are checked locally but are not portable:
+a provider may refuse them or ignore them while decoding. OpenAI
+`strict` additionally needs every property listed in `required` and
+`additionalProperties: false` on every object; Anthropic needs
+`additionalProperties: false` on objects. kit sends the schema as
+given and never rewrites it.
+
+The bus start payload reports a schema as `response_format: true`
+(omitted otherwise); the schema itself is not published.
+
 ## Errors
 
 Adapters map provider failures to `hop.top/kit/go/ai/llm/errors`
@@ -572,6 +675,7 @@ media calls included; a stream publishes no `response.received`.
 | `Messages`, `Roles`, `Parts` | `messages`, `roles`, `parts` | message count; messages by role; multimodal parts by type |
 | `ContentBytes` | `content_bytes` | UTF-8 length of message text, text parts, tool call arguments and thinking text (media not counted) |
 | `Tools` | `tools` | tools offered |
+| `ResponseFormat` | `response_format` | `true` when the request set a schema, omitted otherwise; never the schema |
 | `MaxTokens`, `HasTemperature`, `Thinking`, `StopSequences` | `max_tokens`, `has_temperature`, `thinking`, `stop_sequences` | settings; stop sequences counted |
 | `ExtensionKeys` | `extension_keys` | `Request.Extensions` keys, sorted, never values |
 
