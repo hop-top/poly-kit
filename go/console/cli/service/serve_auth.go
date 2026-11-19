@@ -11,6 +11,7 @@ import (
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/policy"
 	"hop.top/kit/go/console/output"
+	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/authn"
 	"hop.top/kit/go/transport/cmdsurface"
 )
@@ -389,6 +390,11 @@ func policyCaller(meta cmdsurface.Meta) *policy.Caller {
 // not loopback; the literal "localhost" is accepted by name because
 // it is the address every guide and script uses for the same intent.
 func isLoopbackAddr(addr string) bool {
+	// A unix socket is reachable from this machine only, and its file
+	// mode is the access control.
+	if api.IsUnixAddr(addr) {
+		return true
+	}
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return false
