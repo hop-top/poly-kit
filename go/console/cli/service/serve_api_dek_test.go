@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -10,9 +11,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/transport/api"
+	"hop.top/kit/go/transport/cmdsurface"
 )
 
 // unixClient talks HTTP over the socket at path. The URL host is
@@ -149,4 +156,121 @@ func TestAPIDek_InvokeThroughTheBridge(t *testing.T) {
 		`{"capability":"tool.add","args":{},"dry_run":true,"idempotency_key":"k1"}`)
 	require.Equal(t, http.StatusOK, code, string(body))
 	assert.Contains(t, string(body), `"kind":"plan"`)
+}
+
+// bearerAuth admits "Bearer <name>" and names the caller <name>.
+func bearerAuth(r *http.Request) (any, error) {
+	tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || tok == "" {
+		return nil, errors.New("missing bearer")
+	}
+	return api.Claims{Subject: tok, Tenant: "acme"}, nil
+}
+
+func dekAuthClient(t *testing.T, sock string, extra ...func(*cli.Root)) *http.Client {
+	t.Helper()
+	opts := append([]func(*cli.Root){WithAPI(APIConfig{
+		Addr: "unix:" + sock, Auth: bearerAuth, Dek: &DekConfig{CoreID: "tool-core"},
+		// The dek surface is served like REST: destructive commands
+		// are exposed by the same switch.
+		Policy: cmdsurface.Policy{AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceREST}},
+	})}, extra...)
+	r := authRoot(t, opts...)
+	r.Cmd.AddCommand(&cobra.Command{
+		Use: "slow", Short: "slow thing",
+		RunE: func(cmd *cobra.Command, _ []string) error { cmd.Print("slow done"); return nil },
+		Annotations: map[string]string{
+			"kit/side-effect": "write", "kit/long-running": "true",
+		},
+	})
+	_, stop := serveAPI(t, r)
+	t.Cleanup(stop)
+	return unixClient(sock)
+}
+
+func authedDo(t *testing.T, c *http.Client, method, path, tok, body string) (int, []byte) {
+	t.Helper()
+	req, err := http.NewRequest(method, "http://localhost"+path, strings.NewReader(body))
+	require.NoError(t, err)
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	resp, err := c.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, b
+}
+
+func TestAPIDek_ConnectSequenceBehindAuth(t *testing.T) {
+	c := dekAuthClient(t, shortSock(t))
+
+	code, body := authedDo(t, c, http.MethodGet, "/v1/dek/hello", "", "")
+	require.Equal(t, http.StatusOK, code, "hello answers before a client holds a credential: %s", body)
+
+	code, _ = authedDo(t, c, http.MethodGet, "/v1/dek/capabilities", "", "")
+	assert.Equal(t, http.StatusUnauthorized, code)
+	code, _ = authedDo(t, c, http.MethodGet, "/v1/dek/whoami", "", "")
+	assert.Equal(t, http.StatusUnauthorized, code)
+
+	code, body = authedDo(t, c, http.MethodGet, "/v1/dek/whoami", "alice", "")
+	require.Equal(t, http.StatusOK, code, string(body))
+	assert.Contains(t, string(body), `"id":"alice"`)
+	assert.Contains(t, string(body), `"tenant":"acme"`)
+
+	code, _ = authedDo(t, c, http.MethodGet, "/v1/dek/capabilities", "alice", "")
+	assert.Equal(t, http.StatusOK, code)
+	code, _ = authedDo(t, c, http.MethodGet, "/v1/commands", "", "")
+	assert.Equal(t, http.StatusUnauthorized, code, "only the hello is exempt")
+}
+
+func TestAPIDek_LongRunningCommandRunsAsAJob(t *testing.T) {
+	c := dekAuthClient(t, shortSock(t))
+	code, body := authedDo(t, c, http.MethodPost, "/v1/dek/invoke", "alice",
+		`{"capability":"tool.slow","args":{},"dry_run":false,"idempotency_key":"s1"}`)
+	require.Equal(t, http.StatusOK, code, string(body))
+	require.Contains(t, string(body), `"kind":"accepted"`)
+	var acc struct {
+		Body struct {
+			JobID string `json:"job_id"`
+		} `json:"body"`
+	}
+	require.NoError(t, json.Unmarshal(body, &acc))
+	require.Eventually(t, func() bool {
+		_, b := authedDo(t, c, http.MethodGet, "/v1/dek/jobs/"+acc.Body.JobID, "alice", "")
+		return strings.Contains(string(b), `"succeeded"`) && strings.Contains(string(b), "slow done")
+	}, 5*time.Second, 20*time.Millisecond)
+}
+
+func TestAPIDek_DestructiveCommandPlanThenApply(t *testing.T) {
+	c := dekAuthClient(t, shortSock(t))
+	code, body := authedDo(t, c, http.MethodGet, "/v1/dek/capabilities", "alice", "")
+	require.Equal(t, http.StatusOK, code)
+	require.Contains(t, string(body), `"tool.purge"`)
+
+	code, body = authedDo(t, c, http.MethodPost, "/v1/dek/invoke", "alice",
+		`{"capability":"tool.purge","args":{},"dry_run":false,"idempotency_key":"p0"}`)
+	assert.Equal(t, http.StatusUnprocessableEntity, code, "a destructive command needs a plan: %s", body)
+
+	code, body = authedDo(t, c, http.MethodPost, "/v1/dek/invoke", "alice",
+		`{"capability":"tool.purge","args":{},"dry_run":true,"idempotency_key":"p1"}`)
+	require.Equal(t, http.StatusOK, code, string(body))
+	var plan struct {
+		Body struct {
+			ID string `json:"id"`
+		} `json:"body"`
+	}
+	require.NoError(t, json.Unmarshal(body, &plan))
+	require.NotEmpty(t, plan.Body.ID)
+
+	code, body = authedDo(t, c, http.MethodPost, "/v1/dek/plans/"+plan.Body.ID+"/apply", "mallory", "")
+	assert.Equal(t, http.StatusNotFound, code)
+
+	code, body = authedDo(t, c, http.MethodPost, "/v1/dek/plans/"+plan.Body.ID+"/apply", "alice", "")
+	require.Equal(t, http.StatusOK, code, string(body))
+	assert.Contains(t, string(body), `"kind":"applied"`)
+	assert.Contains(t, string(body), "purged")
 }

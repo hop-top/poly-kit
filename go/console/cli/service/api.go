@@ -192,7 +192,7 @@ type DekConfig struct {
 	// CoreID names the core in the hello. Empty uses the tool name.
 	CoreID string
 	// Gate picks the approval class of a command. Returning "" keeps
-	// the default: free for read and write, review for destructive.
+	// the default: free for read and write, apply for destructive.
 	// Only class "free" runs on a direct call today.
 	Gate func(api.CommandDescriptor) string
 }
