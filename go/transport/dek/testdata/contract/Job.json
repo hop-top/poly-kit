@@ -1,0 +1,99 @@
+{
+  "$defs": {
+    "JobStatus": {
+      "description": "Where a job stands. `succeeded`, `failed`, `expired` and `cancelled` are\nfinal: the job leaves the active list.",
+      "oneOf": [
+        {
+          "enum": [
+            "queued",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "waiting",
+          "description": "Waits for an event (`waiting_for`) or its expiry.",
+          "type": "string"
+        },
+        {
+          "const": "retrying",
+          "description": "An attempt failed; the next one runs at `next_retry_at`.",
+          "type": "string"
+        },
+        {
+          "const": "expired",
+          "description": "`expires_at` came before what it waited for.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One background job. Sent whole on every change\n([`JOB_UPDATED`](crate::bus::JOB_UPDATED)).",
+  "properties": {
+    "attempts": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "expires_at": {
+      "description": "Not every job expires.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "description": "What the job does, e.g. `email.send`.",
+      "type": "string"
+    },
+    "max_attempts": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "next_retry_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "outcome": {
+      "description": "How it ended, once final; a failure's reason included."
+    },
+    "status": {
+      "$ref": "#/$defs/JobStatus"
+    },
+    "subject": {
+      "description": "What it is about, e.g. `lead/7`.",
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string"
+    },
+    "waiting_for": {
+      "description": "Event pattern the job waits for, e.g. `mautic.email.replied`.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "subject",
+    "status",
+    "attempts",
+    "max_attempts",
+    "updated_at"
+  ],
+  "title": "Job",
+  "type": "object"
+}

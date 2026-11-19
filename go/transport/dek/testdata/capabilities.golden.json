@@ -58,8 +58,36 @@
     "scopes": [],
     "dry_run": true,
     "destructive": true,
-    "gate": "review",
+    "gate": "apply",
     "output": "plan",
+    "targets": [
+      "desktop",
+      "tablet",
+      "phone",
+      "web",
+      "terminal"
+    ],
+    "read": false,
+    "granted": true
+  },
+  {
+    "id": "item.import",
+    "noun": "item",
+    "verb": "import",
+    "args_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "src": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "scopes": [],
+    "dry_run": false,
+    "destructive": false,
+    "gate": "free",
+    "output": "record",
     "targets": [
       "desktop",
       "tablet",

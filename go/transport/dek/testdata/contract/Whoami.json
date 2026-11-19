@@ -1,0 +1,53 @@
+{
+  "$defs": {
+    "PrincipalKind": {
+      "description": "A person, or an agent holding a bearer on a person's behalf.",
+      "enum": [
+        "user",
+        "agent"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The reply to `GET /whoami`.",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/PrincipalKind",
+      "default": "user"
+    },
+    "levels": {
+      "default": [],
+      "description": "Approval levels the principal decides proposals at (product-defined\nlevel keys, as a proposal's chain names them). Absent reads as none:\nthe viewer decides nothing. Agents hold none.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "name": {
+      "type": "string"
+    },
+    "roles": {
+      "default": [],
+      "description": "Product-defined roles, e.g. to pick a default workspace. Absent\nreads as none. Display and defaults only: the core enforces access.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "tenant": {
+      "description": "Tenant the principal acts in.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "tenant"
+  ],
+  "title": "Whoami",
+  "type": "object"
+}

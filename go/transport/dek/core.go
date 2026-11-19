@@ -19,11 +19,13 @@ import (
 // Prefix is the mount point of every dek route.
 const Prefix = "/v1/dek"
 
-// Contract version this surface is written against. Major must match
-// the client's; minor only adds.
+// Contract version this surface is written against: the revision of
+// the contract whose schemas the tests check against. A client refuses
+// a different major and gates features on the minor, so it is the
+// revision these types were taken from, not a higher one.
 const (
 	ContractMajor = 1
-	ContractMinor = 34
+	ContractMinor = 33
 )
 
 const maxBody = 1 << 20
@@ -40,6 +42,17 @@ type Config struct {
 	CoreID string
 	// Gate picks an approval class per command; see [Options.Gate].
 	Gate func(api.CommandDescriptor) Gate
+	// Principal names the caller of a request for /whoami. It returns
+	// false to refuse (401). Nil uses the router's verified identity,
+	// or a fixed local principal on a listener with no authentication.
+	Principal func(r *http.Request) (Whoami, bool)
+	// Plans keeps plans between a dry run and its apply. Nil is in
+	// memory.
+	Plans PlanStore
+	// Jobs keeps background jobs. Nil is in memory.
+	Jobs JobStore
+	// MaxJobs bounds jobs running at once; zero is 16.
+	MaxJobs int
 }
 
 // Core is the dek surface of one tool: hello, capabilities, invoke.
@@ -49,6 +62,15 @@ type Core struct {
 	etag   string
 	coreID string
 	exec   api.CommandExecutor
+
+	principal func(r *http.Request) (Whoami, bool)
+	plans     PlanStore
+	jobs      JobStore
+	locks     keyedMutex
+
+	base   context.Context
+	cancel context.CancelFunc
+	slots  chan struct{}
 }
 
 // New builds the manifest and the handlers. It fails when the
@@ -72,8 +94,37 @@ func New(cfg Config) (*Core, error) {
 	for i := range c.caps {
 		c.byID[c.caps[i].ID] = &c.caps[i]
 	}
+	c.principal = cfg.Principal
+	if c.principal == nil {
+		c.principal = defaultPrincipal
+	}
+	if c.plans = cfg.Plans; c.plans == nil {
+		c.plans = NewMemoryPlanStore()
+	}
+	if c.jobs = cfg.Jobs; c.jobs == nil {
+		c.jobs = NewMemoryJobStore()
+	}
+	n := cfg.MaxJobs
+	if n <= 0 {
+		n = 16
+	}
+	c.slots = make(chan struct{}, n)
+	c.base, c.cancel = context.WithCancel(context.Background())
+	if stop := cfg.Projection.Stopping; stop != nil {
+		go func() {
+			select {
+			case <-stop:
+				c.cancel()
+			case <-c.base.Done():
+			}
+		}()
+	}
 	return c, nil
 }
+
+// Close cancels the jobs still running. A core built over a
+// projection with a Stopping channel closes itself when it fires.
+func (c *Core) Close() { c.cancel() }
 
 // ETag is the manifest's ETag, as served on /capabilities and in the
 // hello.
@@ -83,12 +134,17 @@ func (c *Core) ETag() string { return c.etag }
 func (c *Core) Capabilities() []Capability { return c.caps }
 
 // Mount registers the dek routes on r. Authentication is the
-// router's, as for every kit route: with a bearer mode configured the
-// hello needs the credential too (see the package documentation).
+// router's. The hello is the one route a client calls before it holds
+// a credential: a router that authenticates must let GET
+// /v1/dek/hello through (the api service does).
 func (c *Core) Mount(r *api.Router) {
 	r.Handle(http.MethodGet, Prefix+"/hello", c.hello)
 	r.Handle(http.MethodGet, Prefix+"/capabilities", c.capabilities)
 	r.Handle(http.MethodPost, Prefix+"/invoke", c.invoke)
+	r.Handle(http.MethodGet, Prefix+"/whoami", c.whoami)
+	r.Handle(http.MethodPost, Prefix+"/plans/{id}/apply", c.apply)
+	r.Handle(http.MethodGet, Prefix+"/jobs", c.listJobs)
+	r.Handle(http.MethodGet, Prefix+"/jobs/{id}", c.getJob)
 }
 
 type hello struct {
@@ -197,11 +253,14 @@ func (c *Core) invoke(w http.ResponseWriter, r *http.Request) {
 		refuse(w, http.StatusUnprocessableEntity, "idempotency_key required")
 		return
 	}
+	creq.Meta = api.RequestMetaFrom(r)
 	if req.DryRun {
 		creq.Flags["dry-run"] = true
-	}
-	creq.Meta = api.RequestMetaFrom(r)
-	if req.IdempotencyKey != "" {
+		// A dry run carries no idempotency key to the executor: one
+		// that replays by key would answer the real run, later, with
+		// this plan.
+		creq.Meta.IdempotencyKey = ""
+	} else if req.IdempotencyKey != "" {
 		creq.Meta.IdempotencyKey = req.IdempotencyKey
 	}
 
@@ -209,20 +268,20 @@ func (c *Core) invoke(w http.ResponseWriter, r *http.Request) {
 		refuse(w, http.StatusServiceUnavailable, "no executor")
 		return
 	}
-	res, err := c.exec.Execute(r.Context(), creq)
-	if err != nil {
-		writeExecError(w, err)
-		return
-	}
-	if res.ExitCode != 0 {
-		reason := strings.TrimSpace(res.Stderr)
-		if reason == "" {
-			reason = "command failed"
+	if !req.DryRun && cp.desc.LongRunning {
+		job, err := c.startJob(creq.Meta.Principal, cp, creq)
+		if err != nil {
+			refuse(w, http.StatusServiceUnavailable, err.Error())
+			return
 		}
-		refuse(w, api.StatusForExitCode(res.ExitCode), reason)
+		api.JSON(w, http.StatusOK, invokeResponse{Kind: "accepted", Body: map[string]string{"job_id": job.ID}})
 		return
 	}
-	body := resultBody(res)
+	body, status, why := c.execute(r.Context(), creq)
+	if status != 0 {
+		refuse(w, status, why)
+		return
+	}
 	if !req.DryRun {
 		api.JSON(w, http.StatusOK, invokeResponse{Kind: "result", Body: body})
 		return
@@ -232,14 +291,37 @@ func (c *Core) invoke(w http.ResponseWriter, r *http.Request) {
 	if args == nil {
 		args = map[string]any{}
 	}
-	api.JSON(w, http.StatusOK, invokeResponse{Kind: "plan", Body: Plan{
+	plan := Plan{
 		ID:             newPlanID(),
 		Capability:     cp.ID,
 		Args:           args,
 		Rendered:       body,
 		IdempotencyKey: req.IdempotencyKey,
 		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
-	}})
+	}
+	if err := c.plans.Put(r.Context(), StoredPlan{Plan: plan, Owner: creq.Meta.Principal}); err != nil {
+		refuse(w, http.StatusInternalServerError, "plan not stored")
+		return
+	}
+	api.JSON(w, http.StatusOK, invokeResponse{Kind: "plan", Body: plan})
+}
+
+// execute runs one command through the executor. A non-zero status
+// is the HTTP status of a refusal and why its reason.
+func (c *Core) execute(ctx context.Context, creq api.CommandRequest) (body any, status int, why string) {
+	res, err := c.exec.Execute(ctx, creq)
+	if err != nil {
+		status, why = execErrorStatus(err)
+		return nil, status, why
+	}
+	if res.ExitCode != 0 {
+		why = strings.TrimSpace(res.Stderr)
+		if why == "" {
+			why = "command failed"
+		}
+		return nil, api.StatusForExitCode(res.ExitCode), why
+	}
+	return resultBody(res), 0, ""
 }
 
 // decodeArgs checks args against the capability's schema and maps
@@ -335,21 +417,21 @@ func resultBody(res api.CommandResult) any {
 	return map[string]any{"stdout": res.Stdout}
 }
 
-func writeExecError(w http.ResponseWriter, err error) {
+func execErrorStatus(err error) (int, string) {
 	switch {
 	case errors.Is(err, api.ErrUnauthenticated):
-		refuse(w, http.StatusUnauthorized, "authentication required")
+		return http.StatusUnauthorized, "authentication required"
 	case errors.Is(err, api.ErrPermissionDenied):
-		refuse(w, http.StatusForbidden, err.Error())
+		return http.StatusForbidden, err.Error()
 	case errors.Is(err, api.ErrDestructiveBlocked):
-		refuse(w, http.StatusForbidden, "destructive command blocked on this surface")
+		return http.StatusForbidden, "destructive command blocked on this surface"
 	case errors.Is(err, api.ErrCommandNotInvocable):
-		refuse(w, http.StatusNotFound, "no such capability")
+		return http.StatusNotFound, "no such capability"
 	case errors.Is(err, context.Canceled):
-		refuse(w, http.StatusServiceUnavailable, "canceled")
+		return http.StatusServiceUnavailable, "canceled"
 	default:
 		// Not the error text: it may carry what the command saw.
-		refuse(w, http.StatusInternalServerError, "command failed")
+		return http.StatusInternalServerError, "command failed"
 	}
 }
 

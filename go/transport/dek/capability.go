@@ -68,9 +68,10 @@ type Options struct {
 	// path segment (the tool's own verb). Empty uses the segment.
 	ToolName string
 	// Gate picks the approval class of a command. Returning "" keeps
-	// the default: free for read and write, review for destructive.
-	// The class is a promise that the tool enforces it; kit serves
-	// only "free" calls directly (see [Core]).
+	// the default: free for read and write, apply for destructive
+	// (plan first, then apply by id). The class is a promise that the
+	// tool enforces it: kit runs "free" calls directly and "apply"
+	// through a plan, and blocks any other class.
 	Gate func(api.CommandDescriptor) Gate
 }
 
@@ -85,8 +86,8 @@ type Options struct {
 //     takes [Options.ToolName] as noun.
 //   - args_schema: a JSON Schema object whose properties are the
 //     command's flags (typed from the flag type) and positionals
-//     (strings), without the kit-wide dry-run flag: a call carries
-//     that in its dry_run field.
+//     (strings), without kit's global flags (see kitGlobalFlags): a call
+//     carries dry-run in its dry_run field.
 //   - read, destructive: the side-effect tier.
 //   - dry_run (a plan is needed first): destructive commands. Write
 //     commands accept a dry-run call but may also run directly.
@@ -140,7 +141,7 @@ func capabilityFor(d api.CommandDescriptor, opts Options) (Capability, error) {
 
 	c.Gate = GateFree
 	if c.Destructive {
-		c.Gate = GateReview
+		c.Gate = GateApply
 	}
 	if opts.Gate != nil {
 		if g := opts.Gate(d); g != "" {
@@ -160,7 +161,7 @@ func capabilityFor(d api.CommandDescriptor, opts Options) (Capability, error) {
 	c.required = map[string]bool{}
 	var required []string
 	for _, f := range d.Flags {
-		if f.Name == "dry-run" {
+		if kitGlobalFlags[f.Name] {
 			continue
 		}
 		schema, typ := flagSchema(f)
@@ -194,6 +195,19 @@ func capabilityFor(d api.CommandDescriptor, opts Options) (Capability, error) {
 	}
 	c.ArgsSchema = schema
 	return c, nil
+}
+
+// kitGlobalFlags are the flags kit registers on every command's root:
+// output and logging plumbing, and the dry-run switch a call carries
+// as its own field. A command's capability leaves them out.
+var kitGlobalFlags = map[string]bool{
+	"dry-run":  true,
+	"format":   true,
+	"no-color": true,
+	"no-hints": true,
+	"offline":  true,
+	"quiet":    true,
+	"verbose":  true,
 }
 
 // flagSchema maps a pflag type to a JSON Schema property and the
