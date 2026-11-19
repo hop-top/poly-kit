@@ -14,6 +14,25 @@ const (
 	StatusCancelled Status = "canceled"
 )
 
+// FinishedStatuses returns the statuses a job no longer runs in:
+// succeeded, failed, timeout, canceled. Pending and active jobs are
+// never finished.
+func FinishedStatuses() []Status {
+	return []Status{
+		StatusSucceeded, StatusFailed, StatusTimeout, StatusCancelled,
+	}
+}
+
+// IsFinished reports whether s is one of [FinishedStatuses].
+func (s Status) IsFinished() bool {
+	for _, f := range FinishedStatuses() {
+		if s == f {
+			return true
+		}
+	}
+	return false
+}
+
 // transitionRules defines allowed state transitions for jobs.
 //
 //	pending   → active, canceled

@@ -496,6 +496,41 @@ func (e *Engine) ReleaseStaleClaims(ctx context.Context) (int, error) {
 	return released, nil
 }
 
+// Prune deletes finished jobs last updated before olderThan and
+// returns the count. See job.Pruner.
+func (e *Engine) Prune(
+	ctx context.Context, olderThan time.Time, statuses ...job.Status,
+) (int, error) {
+	set, err := job.PruneStatuses(statuses)
+	if err != nil {
+		return 0, err
+	}
+	args := make([]any, 0, len(set)+1)
+	args = append(args, olderThan.UnixNano())
+	marks := make([]byte, 0, 2*len(set))
+	for i, s := range set {
+		if i > 0 {
+			marks = append(marks, ',')
+		}
+		marks = append(marks, '?')
+		args = append(args, string(s))
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	res, err := e.db.ExecContext(ctx,
+		`DELETE FROM jobs WHERE updated_at < ? AND status IN (`+
+			string(marks)+`)`, args...)
+	if err != nil {
+		return 0, fmt.Errorf("durabletask: prune: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("durabletask: prune: %w", err)
+	}
+	return int(n), nil
+}
+
 // jobClaimTTL reads the per-job claim_ttl_ns from the row.
 // Falls back to e.claimTTL if 0 or not found.
 func (e *Engine) jobClaimTTL(ctx context.Context, id string) time.Duration {

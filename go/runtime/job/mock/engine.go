@@ -363,6 +363,34 @@ func (e *Engine) List(_ context.Context, q job.JobQuery) ([]job.Job, error) {
 	return result, nil
 }
 
+// Prune deletes finished jobs last updated before olderThan and
+// returns the count. See job.Pruner.
+func (e *Engine) Prune(
+	_ context.Context, olderThan time.Time, statuses ...job.Status,
+) (int, error) {
+	set, err := job.PruneStatuses(statuses)
+	if err != nil {
+		return 0, err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	n := 0
+	for id, j := range e.jobs {
+		if !j.UpdatedAt.Before(olderThan) {
+			continue
+		}
+		for _, s := range set {
+			if j.Status == s {
+				delete(e.jobs, id)
+				delete(e.ttls, id)
+				n++
+				break
+			}
+		}
+	}
+	return n, nil
+}
+
 // ReleaseStaleClaims returns expired active jobs to pending.
 func (e *Engine) ReleaseStaleClaims(ctx context.Context) (int, error) {
 	e.mu.Lock()

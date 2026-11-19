@@ -2,7 +2,10 @@ package job
 
 import (
 	"context"
+	"fmt"
 	"time"
+
+	"hop.top/kit/go/runtime/domain"
 )
 
 // Service defines operations for managing asynchronous jobs.
@@ -38,6 +41,19 @@ type Service interface {
 	ReleaseStaleClaims(ctx context.Context) (int, error)
 }
 
+// Pruner is implemented by Services that can delete finished jobs.
+// It is separate from Service: server-backed engines own retention
+// themselves. Kit supplies the call only; scheduling and policy
+// belong to the caller.
+type Pruner interface {
+	// Prune deletes finished jobs last updated before olderThan and
+	// returns the number deleted. With no statuses it considers every
+	// status in FinishedStatuses; otherwise only the listed ones. A
+	// status that is not finished (pending, active) is rejected with
+	// domain.ErrValidation and nothing is deleted. Safe to repeat.
+	Prune(ctx context.Context, olderThan time.Time, statuses ...Status) (int, error)
+}
+
 // EnqueueOpts are the parameters for creating a new job.
 type EnqueueOpts struct {
 	Queue       string
@@ -63,4 +79,21 @@ type JobQuery struct {
 	Status string
 	Type   string
 	Limit  int
+}
+
+// PruneStatuses resolves the status filter of [Pruner.Prune]: empty
+// means all finished statuses; a non-finished status is an error.
+// Engines share it so the safety rule lives in one place.
+func PruneStatuses(in []Status) ([]Status, error) {
+	if len(in) == 0 {
+		return FinishedStatuses(), nil
+	}
+	for _, s := range in {
+		if !s.IsFinished() {
+			return nil, fmt.Errorf(
+				"%w: cannot prune %q jobs", domain.ErrValidation, s,
+			)
+		}
+	}
+	return in, nil
 }

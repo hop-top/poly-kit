@@ -105,3 +105,19 @@ func TestAllowedFrom(t *testing.T) {
 		})
 	}
 }
+
+func TestFinishedStatuses(t *testing.T) {
+	for _, s := range []job.Status{
+		job.StatusSucceeded, job.StatusFailed,
+		job.StatusTimeout, job.StatusCancelled,
+	} {
+		if !s.IsFinished() {
+			t.Errorf("%s should be finished", s)
+		}
+	}
+	for _, s := range []job.Status{job.StatusPending, job.StatusActive, "bogus"} {
+		if s.IsFinished() {
+			t.Errorf("%s should not be finished", s)
+		}
+	}
+}

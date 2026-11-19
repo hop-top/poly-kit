@@ -6,11 +6,16 @@ import (
 	"fmt"
 	"time"
 
+	"hop.top/kit/go/core/id"
 	"hop.top/kit/go/runtime/domain"
 	"hop.top/kit/go/runtime/job"
-
-	"github.com/google/uuid"
 )
+
+// idPrefix is the TypeID prefix of job ids ("dtj_<26-char suffix>").
+// Ids are opaque to the engine: rows minted before the TypeID switch
+// ("dtj_" + 8 hex) stay readable because nothing parses or validates
+// them.
+const idPrefix = "dtj"
 
 // schema defines the jobs table DDL.
 const schema = `
@@ -43,9 +48,9 @@ CREATE INDEX IF NOT EXISTS idx_jobs_claim
 	ON jobs (queue, status, scheduled_at, next_run_at, priority, created_at);
 `
 
-// generateID returns a new unique job ID.
+// generateID returns a new unique job ID (full TypeID randomness).
 func generateID() string {
-	return "dtj_" + uuid.NewString()[:8]
+	return id.MustNew(idPrefix)
 }
 
 // nullTime converts *time.Time to nullable int64 (nanoseconds).
