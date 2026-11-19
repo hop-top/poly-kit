@@ -387,8 +387,8 @@ func TestBootstrap_WithoutReleasePlease_NoCaller(t *testing.T) {
 	assertAbsent(t, target, rpCaller)
 	_, ok := findAction(sum.Workflows, rpCaller)
 	assert.False(t, ok)
-	// The other callers are unaffected.
-	assert.FileExists(t, filepath.Join(target, ".github", "workflows", "test-go-caller.yml"))
+	// The preflight caller checks the release-please files: it goes with them.
+	assertAbsent(t, target, ".github/workflows/release-please-preflight.yml")
 }
 
 func TestBootstrap_WithoutGitHubWorkflows_NoReleasePleaseCaller(t *testing.T) {

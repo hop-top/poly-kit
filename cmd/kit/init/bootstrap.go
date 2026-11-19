@@ -175,6 +175,11 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 				return Summary{}, fmt.Errorf("bootstrap: render release-please caller: %w", rerr)
 			}
 			workflowActions = append(workflowActions, rpActions...)
+			pfActions, perr := renderPreflight(target, in, nil)
+			if perr != nil {
+				return Summary{}, fmt.Errorf("bootstrap: render release-please preflight caller: %w", perr)
+			}
+			workflowActions = append(workflowActions, pfActions...)
 		}
 	}
 

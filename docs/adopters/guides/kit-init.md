@@ -207,8 +207,9 @@ single ts, py or rs package publishes without a mirror.
 
 Go in a new repo gets no publish step: its release-please tags are
 bare `v<version>` and proxy.golang.org serves the module straight from
-them. A pure-Go repo therefore has no `publish.yml`, just
-`test-go-caller.yml`. A polyglot repo whose Go package already tags
+them. A pure-Go repo therefore has no `publish.yml`: CI and lint
+run inline in `ci-go.yml`, releases through `release-please.yml` and its
+`release-please-preflight.yml` check. A polyglot repo whose Go package already tags
 `<component>/v<version>` and ships through a mirror repo (a vanity
 import such as `hop.top/<name>`) keeps its mirror-only Go entry.
 

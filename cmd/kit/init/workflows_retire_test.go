@@ -52,7 +52,7 @@ func TestPlanWorkflows_Go_NoReleaseCaller(t *testing.T) {
 		rels = append(rels, p.RelPath)
 	}
 	assert.NotContains(t, rels, retiredGoCaller)
-	assert.Contains(t, rels, ".github/workflows/test-go-caller.yml")
+	assert.NotContains(t, rels, ".github/workflows/test-go-caller.yml")
 	assert.Contains(t, rels, ".github/workflows/test-ts-caller.yml")
 }
 

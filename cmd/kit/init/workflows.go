@@ -115,18 +115,10 @@ type workflowSpec struct {
 // reusable currently published) and carry a TODO because
 // `hop-top/.github` does not yet host a per-language test reusable.
 var runtimeWorkflows = map[string][]workflowSpec{
-	// Go publishes nothing: the Go package is always the repo-root
-	// module, tagged bare v<version> by the starter release-please
-	// config, and proxy.golang.org serves it straight from that tag.
-	"go": {
-		{
-			OutFile:      "test-go-caller.yml",
-			Upstream:     "ci.yml",
-			Trigger:      "test",
-			Notes:        []string{"Runs the hop-top/.github ci reusable workflow (actionlint + meta checks)."},
-			UpstreamTODO: "hop-top/.github does not yet host a per-language test-go.yml; this caller targets the generic ci.yml. Replace `Upstream` once a dedicated reusable lands.",
-		},
-	},
+	// Go has no test caller: its CI and lint run inline in ci-go.yml
+	// (shared/ci), and it publishes nothing (the Go package is the
+	// repo-root module, tagged bare v<version> by the starter
+	// release-please config; proxy.golang.org serves it from the tag).
 	"rs": {
 		{
 			OutFile:      "test-rs-caller.yml",
@@ -170,6 +162,11 @@ var runtimeWorkflows = map[string][]workflowSpec{
 // A copy kit still owns (manifest hash matches) is removed; an edited
 // copy is left in place and reported on every run until deleted.
 var retiredWorkflows = []struct{ OutFile, Why string }{
+	{
+		OutFile: "test-go-caller.yml",
+		Why: "it called hop-top/.github ci.yml, which declares no workflow_call, so every run failed; " +
+			"CI and lint run inline in .github/workflows/ci-go.yml",
+	},
 	{
 		OutFile: "release-go-caller.yml",
 		Why: "Go modules publish through proxy.golang.org straight from their bare v<version> tags; " +
