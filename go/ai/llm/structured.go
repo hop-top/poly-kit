@@ -293,7 +293,7 @@ func formatFor(t reflect.Type, strict bool) (ResponseFormat, error) {
 	if t == nil {
 		return ResponseFormat{}, errors.New("llm: CompleteInto needs a struct type, got an interface")
 	}
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
