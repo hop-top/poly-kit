@@ -522,6 +522,28 @@ func TestSamplesFeedCalibrateFit(t *testing.T) {
 	}
 }
 
+func TestSamplesWithConfidentWrongFeedCalibrateFit(t *testing.T) {
+	cs := ynCases(4, false)
+	rep, err := eval.Compare(context.Background(), nil,
+		byIndex(yn(.95), yn(.7), yn(0), yn(.2)), // case 2: sure "no"; reference says "yes"
+		entries(cs, "yes", "yes", "yes", "no"), eval.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rep.Samples[2].Probs["yes"]; got != 0 {
+		t.Fatalf("setup: P(true label) = %v, want 0", got)
+	}
+	for _, m := range []calibrate.Method{calibrate.MethodTemperature, calibrate.MethodPlatt} {
+		params, err := calibrate.Fit(rep.Samples, calibrate.FitOptions{Method: m})
+		if err != nil {
+			t.Fatalf("%s: calibrate.Fit with confident-wrong sample: %v", m, err)
+		}
+		if _, ok := params.Questions["q"]; !ok {
+			t.Errorf("%s: params = %+v", m, params)
+		}
+	}
+}
+
 func TestParallelDeterministic(t *testing.T) {
 	n := 40
 	cs := ynCases(n, false)

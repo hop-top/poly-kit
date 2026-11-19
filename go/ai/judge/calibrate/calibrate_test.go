@@ -258,3 +258,95 @@ func TestCalibratedBadParams(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// confidentWrong: backend put all mass on "a"; truth was "b" (prob 0).
+func confidentWrong(n int) []calibrate.Sample {
+	out := make([]calibrate.Sample, n)
+	for i := range out {
+		out[i] = calibrate.Sample{
+			Question: "q",
+			Probs:    map[string]float64{"a": 1, "b": 0, "c": 0, "d": 0},
+			Label:    "b",
+		}
+	}
+	return out
+}
+
+func TestFitTemperatureZeroProbTrueLabel(t *testing.T) {
+	clean, err := calibrate.FitTemperature(synthTemperature(1.0, 2000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	samples := append(synthTemperature(1.0, 2000), confidentWrong(40)...)
+	got, err := calibrate.FitTemperature(samples)
+	if err != nil {
+		t.Fatalf("confident-wrong samples must not error: %v", err)
+	}
+	if math.IsNaN(got.T) || math.IsInf(got.T, 0) || got.T <= 0 {
+		t.Fatalf("T = %v, want finite > 0", got.T)
+	}
+	if got.T <= clean.T {
+		t.Errorf("T = %v with confident-wrong samples, want > clean %v (softer)", got.T, clean.T)
+	}
+	if _, err := got.Apply(map[string]float64{"a": 0.7, "b": 0.3}); err != nil {
+		t.Errorf("fitted T unusable: %v", err)
+	}
+}
+
+func TestFitZeroProbTrueLabelViaFitAndPlatt(t *testing.T) {
+	ws := confidentWrong(5)
+	for i := range ws {
+		ws[i].Probs = map[string]float64{"yes": 1, "no": 0}
+		ws[i].Label = "no"
+	}
+	rs := make([]calibrate.Sample, 5)
+	for i := range rs {
+		rs[i] = calibrate.Sample{Question: "q", Probs: map[string]float64{"yes": 0.9, "no": 0.1}, Label: "yes"}
+	}
+	samples := append(rs, ws...)
+	for _, m := range []calibrate.Method{calibrate.MethodTemperature, calibrate.MethodPlatt} {
+		p, err := calibrate.Fit(samples, calibrate.FitOptions{Method: m})
+		if err != nil {
+			t.Fatalf("%s: %v", m, err)
+		}
+		qp := p.Questions["q"]
+		if qp.Temperature == nil && qp.Platt == nil {
+			t.Fatalf("%s: no params", m)
+		}
+		if qp.Platt != nil && (math.IsNaN(qp.Platt.A) || math.IsNaN(qp.Platt.B)) {
+			t.Errorf("platt NaN: %+v", qp.Platt)
+		}
+		if qp.Temperature != nil && (math.IsNaN(qp.Temperature.T) || math.IsInf(qp.Temperature.T, 0)) {
+			t.Errorf("T not finite: %+v", qp.Temperature)
+		}
+	}
+}
+
+func TestFitRejectsInvalidSamples(t *testing.T) {
+	ok := func() calibrate.Sample {
+		return calibrate.Sample{Question: "q", Probs: map[string]float64{"yes": 0.6, "no": 0.4}, Label: "yes"}
+	}
+	for name, mut := range map[string]func(*calibrate.Sample){
+		"NaN":           func(s *calibrate.Sample) { s.Probs["yes"] = math.NaN() },
+		"negative":      func(s *calibrate.Sample) { s.Probs["yes"], s.Probs["no"] = -0.1, 1.1 },
+		"sum != 1":      func(s *calibrate.Sample) { s.Probs["no"] = 0.9 },
+		"all zero":      func(s *calibrate.Sample) { s.Probs["yes"], s.Probs["no"] = 0, 0 },
+		"empty label":   func(s *calibrate.Sample) { s.Label = "" },
+		"label missing": func(s *calibrate.Sample) { s.Label = "maybe" },
+	} {
+		bad := ok()
+		bad.Probs = map[string]float64{"yes": 0.6, "no": 0.4}
+		mut(&bad)
+		if _, err := calibrate.FitTemperature([]calibrate.Sample{ok(), bad}); err == nil {
+			t.Errorf("temperature %s: want error", name)
+		}
+		if name == "label missing" {
+			continue // platt: any non-positive label is y=0 by contract
+		}
+		neg := ok()
+		neg.Label = "no"
+		if _, err := calibrate.FitPlatt([]calibrate.Sample{ok(), neg, bad}, "yes"); err == nil {
+			t.Errorf("platt %s: want error", name)
+		}
+	}
+}

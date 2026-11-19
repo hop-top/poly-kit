@@ -77,17 +77,48 @@ func Fit(samples []Sample, opt FitOptions) (Params, error) {
 	return out, nil
 }
 
+// validateSample rejects genuinely invalid input: empty label, no probs,
+// NaN/Inf/negative/>1 probs, or probs not summing to 1 within
+// judge.ProbEpsilon. A true label with probability 0 is valid (confident
+// wrong answer); fitting clamps it to tiny. needLabel also requires Label
+// to be a key of Probs.
+func validateSample(s Sample, needLabel bool) error {
+	if s.Label == "" {
+		return fmt.Errorf("%w: empty label", ErrParams)
+	}
+	if len(s.Probs) == 0 {
+		return fmt.Errorf("%w: no probabilities", ErrParams)
+	}
+	var sum float64
+	for k, p := range s.Probs {
+		if math.IsNaN(p) || p < 0 || p > 1 {
+			return fmt.Errorf("%w: probability %v for %q not in [0,1]", ErrParams, p, k)
+		}
+		sum += p
+	}
+	if math.Abs(sum-1) > judge.ProbEpsilon {
+		return fmt.Errorf("%w: probabilities sum %v, want 1 +/- %g", ErrParams, sum, judge.ProbEpsilon)
+	}
+	if _, ok := s.Probs[s.Label]; needLabel && !ok {
+		return fmt.Errorf("%w: true label %q missing from probabilities", ErrParams, s.Label)
+	}
+	return nil
+}
+
 // FitTemperature minimizes the negative log-likelihood of the true labels
-// under softmax(log p / T); NLL is convex in 1/T, so a golden-section search
-// over log T in [log 0.01, log 100] converges to the global optimum.
+// under softmax(log p / T). Probabilities are floored at 1e-12 (log-loss
+// convention; a confident-wrong sample costs a large finite loss, not an
+// error, and samples are never dropped). No renormalisation: scaling all
+// p by one constant shifts every log p equally, which softmax cancels.
+// NLL is convex in 1/T, so a golden-section search over log T in
+// [log 0.01, log 100] converges to the global optimum.
 func FitTemperature(samples []Sample) (Temperature, error) {
 	if len(samples) < 2 {
 		return Temperature{}, fmt.Errorf("%w: need >= 2 samples, got %d", ErrParams, len(samples))
 	}
 	for i, s := range samples {
-		if s.Probs[s.Label] <= 0 {
-			// label unreachable at any T: NLL infinite; skipping would bias.
-			return Temperature{}, fmt.Errorf("%w: sample %d: true label %q has probability 0", ErrParams, i, s.Label)
+		if err := validateSample(s, true); err != nil {
+			return Temperature{}, fmt.Errorf("sample %d: %w", i, err)
 		}
 	}
 	nll := func(logT float64) float64 {
@@ -96,17 +127,13 @@ func FitTemperature(samples []Sample) (Temperature, error) {
 		for _, s := range samples {
 			maxz := math.Inf(-1)
 			for _, p := range s.Probs {
-				if p > 0 {
-					maxz = math.Max(maxz, math.Log(p)*inv)
-				}
+				maxz = math.Max(maxz, math.Log(math.Max(p, tiny))*inv)
 			}
 			var sum float64
 			for _, p := range s.Probs {
-				if p > 0 {
-					sum += math.Exp(math.Log(p)*inv - maxz)
-				}
+				sum += math.Exp(math.Log(math.Max(p, tiny))*inv - maxz)
 			}
-			total += math.Log(sum) + maxz - math.Log(s.Probs[s.Label])*inv
+			total += math.Log(sum) + maxz - math.Log(math.Max(s.Probs[s.Label], tiny))*inv
 		}
 		return total / float64(len(samples))
 	}
@@ -135,7 +162,8 @@ func FitTemperature(samples []Sample) (Temperature, error) {
 // method on the logistic log-likelihood (tiny ridge keeps separable data
 // finite). Samples whose Label is neither positive nor another label are
 // still binary: Label == positive is y=1, anything else y=0. Abstain mass
-// is excluded: P(positive) is taken as p/(1-p_abstain).
+// is excluded: P(positive) is taken as p/(1-p_abstain). P(positive) of 0 or
+// 1 is clamped inside logit, so confident-wrong samples fit without error.
 func FitPlatt(samples []Sample, positive string) (Platt, error) {
 	if len(samples) < 2 {
 		return Platt{}, fmt.Errorf("%w: need >= 2 samples, got %d", ErrParams, len(samples))
@@ -143,7 +171,10 @@ func FitPlatt(samples []Sample, positive string) (Platt, error) {
 	xs := make([]float64, 0, len(samples))
 	ys := make([]float64, 0, len(samples))
 	var npos int
-	for _, s := range samples {
+	for i, s := range samples {
+		if err := validateSample(s, false); err != nil {
+			return Platt{}, fmt.Errorf("sample %d: %w", i, err)
+		}
 		live := 1 - s.Probs[judge.LabelAbstain]
 		if live <= tiny || s.Label == judge.LabelAbstain {
 			continue
