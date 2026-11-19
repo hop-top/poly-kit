@@ -168,3 +168,40 @@ token log-probabilities instead of asking for a stated confidence.
 
 - Other backends (jev) live in their own packages.
 - Calibration needs labeled samples; Platt is binary only.
+
+## eval
+
+`hop.top/kit/go/ai/judge/eval` replays a recorded set of cases through a
+candidate judge and scores it against references: the gate for swapping one
+judge for another (for example a cloud judge for a local model).
+
+- Case set: JSONL, one `eval.Entry` per line,
+  `{"case": judge.Case, "reference": {"verdict": ..., "labels": {question: label}}}`.
+  `eval.Load` / `eval.Save` / `LoadFile` / `SaveFile`; unknown fields fail,
+  errors name the line. `eval.Record(ctx, j, cases, parallel)` builds a set
+  whose reference is `j`'s verdicts.
+- `eval.Compare(ctx, ref, cand, entries, eval.Options{Parallel, Thresholds, Bins})`.
+  An entry's recorded `reference` wins; entries without one are judged by
+  `ref` (nil `ref` plus an unrecorded entry is `eval.ErrNoReference`). In a
+  reference, `labels` override `verdict` answers per question; label-only
+  references may skip questions. Both judges run through `judge.Batch`.
+  Reference and candidate must answer exactly the case's questions, else
+  `eval.ErrMismatch`; a question name must keep one kind across the set.
+- Per question: `N`; `Agreement` = exact `Value` match (abstain matches only
+  abstain); `RefAbstain`, `CandAbstain`; `AgreementAnswered` over cases
+  neither side abstained on; `Thresholds` (default 0.5 0.7 0.8 0.9 0.95):
+  coverage and agreement keeping only answers with candidate
+  `Confidence >= t`, abstentions never covered; `Brier` (multi-class, over
+  the question's labels) and `ECE` (top-label confidence vs accuracy, `Bins`
+  default 10) from answers carrying `Probs`, with the reference label as
+  truth; `ScoreMAE` of `Score` for score questions (a label `"2"` scales as
+  `ScoreFromIndex`); `Confusion[ref][cand]`.
+- `Report.Markdown()`, `Report.JSON()`.
+- `Report.Pass(eval.Thresholds{...})` returns `(ok, reasons)`; zero fields
+  are unchecked. `MinAgreement` and `MinCoverage` read at `AtConfidence`
+  (must be one of the report's thresholds; 0 = overall agreement and the
+  share not abstained). Every question must pass; no questions fails.
+- `Report.Samples` are `calibrate.Sample`s (candidate `Probs`, reference
+  label), so `calibrate.Fit(report.Samples, ...)` calibrates the candidate
+  from the same run. `Fit` rejects a sample whose true label has probability
+  0.
