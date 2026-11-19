@@ -200,6 +200,11 @@ type Request struct {
 	// request (CallWithTools, StreamWithTools); nil leaves the provider
 	// default. See [ToolChoice].
 	ToolChoice *ToolChoice
+	// ResponseFormat, when set, constrains the output to a JSON Schema;
+	// adapters map it to the provider's native mode, see [ResponseFormat].
+	// Adapters without one fail with a [llmerrors.ErrCapabilityNotSupported].
+	// Use [CompleteStructured] to also validate and repair the output.
+	ResponseFormat *ResponseFormat
 }
 
 // Response is the result of a completion call.
