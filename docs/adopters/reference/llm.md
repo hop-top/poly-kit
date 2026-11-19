@@ -527,6 +527,54 @@ given and never rewrites it.
 The bus start payload reports a schema as `response_format: true`
 (omitted otherwise); the schema itself is not published.
 
+## Log-probabilities
+
+`Request.Logprobs = &llm.LogprobsConfig{TopK: k}` asks for the
+log-probability of each generated token; the reply carries them in
+`Response.Logprobs`, one `TokenLogprob{Token, Logprob, Top}` per token
+in order. `TopK` (0-20, `llm.MaxTopLogprobs`) also asks for the `k` most
+likely alternatives at each position, best first, in `Top`; 0 asks for
+the sampled token's own value alone.
+
+```go
+resp, err := client.Complete(ctx, llm.Request{
+    Messages: msgs,
+    Logprobs: &llm.LogprobsConfig{TopK: 5},
+})
+for _, t := range resp.Logprobs {
+    fmt.Println(t.Token, math.Exp(t.Logprob)) // probability
+}
+```
+
+`llm.LogprobCompleter` (`Completer` plus `SupportsLogprobs() bool`) is
+the adapter interface; `Client.Capabilities()` lists `logprobs` for a
+primary that has it.
+
+| Adapter | Wire |
+|---------|------|
+| `ollama` | `logprobs: true`, `top_logprobs: k` on `/api/chat`; reply `logprobs[]` (needs a daemon that knows the fields, 0.40 does) |
+| `openai` and compatible schemes | `logprobs: true`, `top_logprobs: k`; reply `choices[0].logprobs.content[]` |
+| `anthropic`, `google`, `routellm` | `ErrCapabilityNotSupported` (`logprobs`), nothing sent |
+
+A server that ignores the request (an old Ollama, a compatible server
+without logprobs) answers with tokens and no logprobs: that fails with
+`ErrCapabilityNotSupported` rather than returning an empty list, which
+would read as "no tokens". An empty reply (no tokens) is no error.
+
+Only `Complete` returns them. A stream or a tool-calling call with
+`Logprobs` set fails with `ErrCapabilityNotSupported`; so does
+`TopK` outside 0-20 before anything is sent. The OpenAI API reports
+`-9999` for a token outside its top 20; kit passes values through
+unchanged. Ollama's reply also spells out each token's bytes, which
+`TokenLogprob` leaves out. A reasoning model's logprobs cover its
+thinking tokens too, which the ollama adapter does not return as text,
+so the tokens may not spell `Content`.
+
+Logprobs spell the reply out token by token, so
+`RedactResponse` leaves them out of the opt-in bus content, and the
+start payload only reports the request as `logprobs: true` (omitted
+otherwise).
+
 ## Errors
 
 Adapters map provider failures to `hop.top/kit/go/ai/llm/errors`
@@ -675,6 +723,7 @@ media calls included; a stream publishes no `response.received`.
 | `Messages`, `Roles`, `Parts` | `messages`, `roles`, `parts` | message count; messages by role; multimodal parts by type |
 | `ContentBytes` | `content_bytes` | UTF-8 length of message text, text parts, tool call arguments and thinking text (media not counted) |
 | `Tools` | `tools` | tools offered |
+| `Logprobs` | `logprobs` | `true` when the request asked for log-probabilities, omitted otherwise |
 | `ResponseFormat` | `response_format` | `true` when the request set a schema, omitted otherwise; never the schema |
 | `MaxTokens`, `HasTemperature`, `Thinking`, `StopSequences` | `max_tokens`, `has_temperature`, `thinking`, `stop_sequences` | settings; stop sequences counted |
 | `ExtensionKeys` | `extension_keys` | `Request.Extensions` keys, sorted, never values |

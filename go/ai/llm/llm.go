@@ -205,6 +205,11 @@ type Request struct {
 	// Adapters without one fail with a [llmerrors.ErrCapabilityNotSupported].
 	// Use [CompleteStructured] to also validate and repair the output.
 	ResponseFormat *ResponseFormat
+	// Logprobs, when set, asks for each generated token's
+	// log-probability in [Response.Logprobs]; see [LogprobCompleter].
+	// Adapters that cannot return them fail with an
+	// [llmerrors.ErrCapabilityNotSupported].
+	Logprobs *LogprobsConfig
 }
 
 // Response is the result of a completion call.
@@ -217,6 +222,9 @@ type Response struct {
 	OutputParts []ContentPart
 	// Thinking holds the turn's thinking blocks, to replay unchanged.
 	Thinking []ThinkingBlock
+	// Logprobs holds the generated tokens' log-probabilities, in order,
+	// when the request set [Request.Logprobs].
+	Logprobs []TokenLogprob
 }
 
 // Usage reports token consumption.
@@ -609,6 +617,9 @@ func (c *Client) Capabilities() []string {
 	}
 	if _, ok := c.primary.(Streamer); ok {
 		caps = append(caps, "stream")
+	}
+	if lc, ok := c.primary.(LogprobCompleter); ok && lc.SupportsLogprobs() {
+		caps = append(caps, "logprobs")
 	}
 	if _, ok := c.primary.(ToolCaller); ok {
 		caps = append(caps, "tool_call")

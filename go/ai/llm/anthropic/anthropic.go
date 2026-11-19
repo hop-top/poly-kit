@@ -324,6 +324,10 @@ func (a *Adapter) buildParams(
 		p.StopSequences = req.StopSequences
 	}
 
+	if req.Logprobs != nil {
+		return anthropic.MessageNewParams{}, llm.NoLogprobs("anthropic")
+	}
+
 	if rf := req.ResponseFormat; rf != nil {
 		if err := llm.CheckResponseFormat(rf); err != nil {
 			return anthropic.MessageNewParams{}, fmt.Errorf("anthropic: %w", err)

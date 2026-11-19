@@ -107,6 +107,10 @@ type chatRequest struct {
 	Options  map[string]any `json:"options,omitempty"`
 	// Format is a JSON Schema the reply must match (structured output).
 	Format json.RawMessage `json:"format,omitempty"`
+	// Logprobs asks for per-token log-probabilities, TopLogprobs for
+	// that many alternatives each (omitted when zero).
+	Logprobs    bool `json:"logprobs,omitempty"`
+	TopLogprobs int  `json:"top_logprobs,omitempty"`
 }
 
 type chatMessage struct {
@@ -136,6 +140,21 @@ type chatResponse struct {
 	TotalDuration int64       `json:"total_duration,omitempty"`
 	EvalCount     int         `json:"eval_count,omitempty"`
 	PromptEval    int         `json:"prompt_eval_count,omitempty"`
+	// Logprobs is absent unless asked for, and from a daemon too old
+	// to know the field: null and [] differ.
+	Logprobs json.RawMessage `json:"logprobs,omitempty"`
+}
+
+// logprob is one entry of the response's logprobs; bytes are dropped.
+type logprob struct {
+	Token       string       `json:"token"`
+	Logprob     float64      `json:"logprob"`
+	TopLogprobs []topLogprob `json:"top_logprobs"`
+}
+
+type topLogprob struct {
+	Token   string  `json:"token"`
+	Logprob float64 `json:"logprob"`
 }
 
 type errorResponse struct {
@@ -180,6 +199,10 @@ func (a *Adapter) Complete(
 		return llm.Response{}, fmt.Errorf("ollama: decode response: %w", err)
 	}
 
+	lps, err := mapLogprobs(req.Logprobs, cr)
+	if err != nil {
+		return llm.Response{}, err
+	}
 	return llm.Response{
 		Content: cr.Message.Content,
 		Role:    cr.Message.Role,
@@ -189,7 +212,42 @@ func (a *Adapter) Complete(
 			TotalTokens:      cr.PromptEval + cr.EvalCount,
 		},
 		FinishReason: "stop",
+		Logprobs:     lps,
 	}, nil
+}
+
+// SupportsLogprobs implements [llm.LogprobCompleter]: /api/chat takes
+// logprobs and top_logprobs. A daemon without them ignores the fields;
+// Complete then fails with a capability error, never returns none.
+func (a *Adapter) SupportsLogprobs() bool { return true }
+
+var _ llm.LogprobCompleter = (*Adapter)(nil)
+
+// mapLogprobs maps the response's logprobs when the request asked.
+// Missing from a reply that generated tokens means the daemon ignored
+// the request (an old one): not supported, not "no tokens".
+func mapLogprobs(want *llm.LogprobsConfig, cr chatResponse) ([]llm.TokenLogprob, error) {
+	if want == nil {
+		return nil, nil
+	}
+	if len(cr.Logprobs) == 0 || string(cr.Logprobs) == "null" {
+		if cr.EvalCount == 0 {
+			return nil, nil
+		}
+		return nil, llm.NoLogprobs(scheme)
+	}
+	var raw []logprob
+	if err := json.Unmarshal(cr.Logprobs, &raw); err != nil {
+		return nil, fmt.Errorf("ollama: decode logprobs: %w", err)
+	}
+	out := make([]llm.TokenLogprob, len(raw))
+	for i, r := range raw {
+		out[i] = llm.TokenLogprob{Token: r.Token, Logprob: r.Logprob}
+		for _, t := range r.TopLogprobs {
+			out[i].Top = append(out[i].Top, llm.TopLogprob{Token: t.Token, Logprob: t.Logprob})
+		}
+	}
+	return out, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +343,12 @@ func (a *Adapter) buildBody(ctx context.Context, req llm.Request, stream bool) (
 	if err := llm.CheckResponseFormat(req.ResponseFormat); err != nil {
 		return nil, fmt.Errorf("ollama: %w", err)
 	}
+	if err := llm.CheckLogprobs(req.Logprobs); err != nil {
+		return nil, fmt.Errorf("ollama: %w", err)
+	}
+	if stream && req.Logprobs != nil {
+		return nil, llm.NoLogprobs(scheme) // chunks carry no logprobs
+	}
 	// No tool calls go out from here: a tool choice has no tools.
 	if err := llm.CheckToolChoice(req.ToolChoice, nil); err != nil {
 		return nil, fmt.Errorf("ollama: %w", err)
@@ -317,6 +381,9 @@ func (a *Adapter) buildBody(ctx context.Context, req llm.Request, stream bool) (
 
 	if rf := req.ResponseFormat; rf != nil {
 		cr.Format = rf.Schema
+	}
+	if lp := req.Logprobs; lp != nil {
+		cr.Logprobs, cr.TopLogprobs = true, lp.TopK
 	}
 
 	// Map temperature into options.
