@@ -341,3 +341,39 @@ func TestAssertCassettesClean(t *testing.T) {
 func TestRoundTripperIsUsableAsLLMTransport(t *testing.T) {
 	var _ http.RoundTripper = (*llmxrr.Transport)(nil)
 }
+
+// A provider's logprobs list tokens under a "token" key; those are model
+// output, not credentials, and a cassette must keep them. A "token" field
+// elsewhere is still masked.
+func TestLogprobTokensSurviveScrub(t *testing.T) {
+	const lp = `{"message":{"content":"B"},"logprobs":[` +
+		`{"token":"B","logprob":-0.1,"bytes":[66],"top_logprobs":[` +
+		`{"token":"B","logprob":-0.1,"bytes":[66]},{"token":"A","logprob":-2.3},` +
+		`{"token":"\"\n\n","logprob":-4.1}]}]}`
+	const mixed = `{"token":"s3cretvalue123","logprobs":[{"token":"B","logprob":-0.1}]}`
+	dir := t.TempDir()
+	srv := newServer(t, 200, lp)
+	rec := newTransport(t, xrr.ModeRecord, dir)
+	if _, _, err := post(t, rec, srv.URL+"/api/chat", chatBody); err != nil {
+		t.Fatal(err)
+	}
+	rep := newTransport(t, xrr.ModeReplay, dir)
+	_, got, err := post(t, rep, srv.URL+"/api/chat", chatBody)
+	if err != nil || got != lp {
+		t.Fatalf("replayed body = %q, err %v; want logprob tokens intact", got, err)
+	}
+
+	dir2 := t.TempDir()
+	srv2 := newServer(t, 200, mixed)
+	rec2 := newTransport(t, xrr.ModeRecord, dir2)
+	if _, _, err := post(t, rec2, srv2.URL+"/api/chat", chatBody); err != nil {
+		t.Fatal(err)
+	}
+	text := cassetteText(t, dir2)
+	if strings.Contains(text, "s3cretvalue123") {
+		t.Fatalf("non-logprob token field leaked:\n%s", text)
+	}
+	if !strings.Contains(text, `\"token\":\"B\"`) && !strings.Contains(text, `"token":"B"`) {
+		t.Fatalf("logprob token masked in mixed body:\n%s", text)
+	}
+}

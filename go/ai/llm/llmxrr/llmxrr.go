@@ -346,8 +346,23 @@ var scrubPatterns = []struct {
 	{regexp.MustCompile(`sk-[A-Za-z0-9_-]{8,}`), placeholder},
 	{regexp.MustCompile(`AIza[A-Za-z0-9_-]{16,}`), placeholder},
 	{regexp.MustCompile(`(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}`), "${1}" + placeholder},
-	{regexp.MustCompile(`(?i)(\\?"(?:api[_-]?key|x-api-key|x-goog-api-key|authorization|access_token|secret|password|token)\\?"\s*:\s*\\?")[^"\\]*`), "${1}" + placeholder},
+	{regexp.MustCompile(`(?i)(\\?"(?:api[_-]?key|x-api-key|x-goog-api-key|authorization|access_token|secret|password)\\?"\s*:\s*\\?")[^"\\]*`), "${1}" + placeholder},
 	{regexp.MustCompile(`(?i)([?&](?:key|api_key|apikey|api-key|access_token|token)=)[^&\s"'\\]*`), "${1}" + placeholder},
+}
+
+// tokenField matches a JSON "token" field, with a following "logprob" key
+// captured when present: that pair is a logprobs entry (model output), not
+// a credential.
+var tokenField = regexp.MustCompile(`(?i)(\\?"token\\?"\s*:\s*\\?")((?:[^"\\]|\\.)*)((?:\\?")\s*,\s*\\?"logprob\\?")?`)
+
+func scrubTokenFields(s string) string {
+	return tokenField.ReplaceAllStringFunc(s, func(m string) string {
+		sub := tokenField.FindStringSubmatch(m)
+		if sub[3] != "" {
+			return m // logprobs entry
+		}
+		return sub[1] + placeholder
+	})
 }
 
 // scrub masks the exact secrets, then the credential shapes.
@@ -358,7 +373,7 @@ func (t *Transport) scrub(s string) string {
 	for _, p := range scrubPatterns {
 		s = p.re.ReplaceAllString(s, p.with)
 	}
-	return s
+	return scrubTokenFields(s)
 }
 
 // transportCause drops the *url.Error wrapper, whose URL can carry a
