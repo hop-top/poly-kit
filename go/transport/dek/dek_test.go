@@ -51,9 +51,15 @@ func descriptors() []api.CommandDescriptor {
 		{
 			Path: []string{"item", "delete"}, Summary: "delete an item",
 			SideEffect: api.SideEffectDestructive, SideEffectSource: api.SideEffectSourceDeclared,
-			Invocable: true,
-			Args:      []api.CommandArg{{Name: "id", Required: true}},
-			Flags:     []api.CommandFlag{dry},
+			Invocable: true, RequiresConfirmation: true,
+			Args:  []api.CommandArg{{Name: "id", Required: true}},
+			Flags: []api.CommandFlag{dry},
+		},
+		{
+			Path: []string{"item", "import"}, Summary: "import items",
+			SideEffect: api.SideEffectWrite, SideEffectSource: api.SideEffectSourceDeclared,
+			Invocable: true, LongRunning: true,
+			Flags: []api.CommandFlag{{Name: "src", Type: "string"}, dry},
 		},
 		{
 			Path: []string{"ping"}, Summary: "ping",
@@ -214,7 +220,7 @@ func TestManifest_Rules(t *testing.T) {
 	if c := by["item.add"]; c.Read || c.Destructive || c.DryRun || c.Gate != "free" {
 		t.Fatalf("item.add: %+v", c)
 	}
-	if c := by["item.delete"]; !c.Destructive || !c.DryRun || c.Gate != "review" || c.Output != dek.OutputPlan {
+	if c := by["item.delete"]; !c.Destructive || !c.DryRun || c.Gate != "apply" || c.Output != dek.OutputPlan {
 		t.Fatalf("item.delete: %+v", c)
 	}
 	if c := by["acme.ping"]; c.Noun != "acme" || c.Verb != "ping" {
@@ -239,7 +245,7 @@ func TestManifest_GateHook(t *testing.T) {
 		if c.ID == "item.add" && c.Gate != "acme.ask" {
 			t.Fatalf("hook ignored: %+v", c)
 		}
-		if c.ID == "item.delete" && c.Gate != "review" {
+		if c.ID == "item.delete" && c.Gate != "apply" {
 			t.Fatalf("empty hook answer must keep default: %+v", c)
 		}
 	}
@@ -281,8 +287,8 @@ func TestCapabilities_ETag(t *testing.T) {
 		t.Fatalf("status %d etag %q want %q", res.StatusCode, res.Header.Get("ETag"), core.ETag())
 	}
 	var arr []json.RawMessage
-	if err := json.Unmarshal(body, &arr); err != nil || len(arr) != 5 {
-		t.Fatalf("want 5 capabilities: %v %s", err, body)
+	if err := json.Unmarshal(body, &arr); err != nil || len(arr) != 6 {
+		t.Fatalf("want 6 capabilities: %v %s", err, body)
 	}
 	for _, c := range arr {
 		validate(t, "Capability", c)
