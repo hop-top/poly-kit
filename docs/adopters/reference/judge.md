@@ -62,7 +62,22 @@ image and answer with a bounding box. Jev calls it `box`.
   "abstain"`, `Box == nil`.
 - `Labels(q)` is empty for grounding, `abstain` included; test `q.Abstain`.
 - Backends: Jev; llmjudge `Verbalized` with a vision model. `Votes(n > 1)`
-  and `Logprobs` refuse with `ErrCapabilityNotSupported`.
+  and `Logprobs` refuse with `ErrCapabilityNotSupported`. Local vision
+  models ground in their own coordinates; see the conventions below.
+
+Box conventions by model family (what the model emits; llmjudge converts
+to `Answer.Box` fractions):
+
+| Model family | Native convention | `llmjudge.BoxFormat` |
+|--------------|-------------------|----------------------|
+| Jev, schema-following hosted models | fractions under a JSON schema | `Fractions` (default) |
+| Qwen3-VL, Qwen2-VL | 0-1000 grid, `[x1, y1, x2, y2]`, origin top-left | `Grid1000` |
+| Qwen2.5-VL | absolute pixels of its (resized) input, same array | `Pixels` |
+| PaliGemma | `<locNNNN>` tokens, 0-1023, y first (`ymin xmin ymax xmax`) | none yet; parse the tokens yourself |
+
+Recommend Qwen3-VL (`qwen3-vl:8b` on Ollama located a test rectangle at
+IoU above 0.7 with `Grid1000`). Qwen2.5-VL is less accurate and its pixel
+coordinates refer to the resized image, so `Pixels` drifts on large inputs.
 - eval scores boxes by IoU; calibrate skips them (see below).
 
 Validators: `Validate(Case)`, `ValidateAnswer(Question, Answer)`,
@@ -156,6 +171,22 @@ still invalid returns `llm.ErrSchemaInvalid`.
   with `ErrCapabilityNotSupported`. Small vision models often miss the
   fractions convention (a 3B model answered 0.5 for every edge), so check
   `Box.IoU` against known cases before relying on one.
+- `BoxFormat(Grid1000 | Pixels)` (`BoxFormatFor(model)` picks by name
+  prefix: `qwen3-vl`, `qwen2-vl` to `Grid1000`; `qwen2.5vl`, `qwen2.5-vl`
+  to `Pixels`; else `Fractions`) asks in free text, with no response
+  schema, because a schema `format` breaks local VLM grounding: `{"bbox_2d":
+  [x1, y1, x2, y2]}` plus `confidence` and `why` (and `{"abstain": true}`
+  when allowed). Every question of the case must be grounding (else
+  `ErrCapabilityNotSupported`); one call per question. The parse is
+  lenient: Markdown fence or prose around the JSON, an array of objects
+  (first box wins), numbers as strings, a string-encoded array, or any key
+  holding four numbers. `Grid1000` divides by 1000; `Pixels` divides by the
+  PNG or JPEG's decoded size and needs exactly one image. The box is
+  clamped to [0,1] and reordered (min before max per axis). No box in the
+  reply: sent back with a corrective message up to `MaxRepairs` (default 2),
+  then `llm.ErrSchemaInvalid`. A box with no area, or covering the whole
+  image (a model fallback), is not repaired: `judge.ErrInvalid`, so a
+  genuinely full-image target needs `Fractions`.
 - Other kinds fail with
   `llmerrors.ErrCapabilityNotSupported`; malformed cases with
   `judge.ErrInvalid`. Every answer passes `judge.ValidateAnswer`.
