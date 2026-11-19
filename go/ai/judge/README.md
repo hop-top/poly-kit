@@ -3,8 +3,9 @@
 ## What it answers
 
 How a Go tool asks for a typed judgment (a choice, a score on ordered
-anchors, or yes / no / abstain) and gets back a validated answer with
-probabilities and a confidence, independent of which backend produced it.
+anchors, yes / no / abstain, or a bounding box in an image) and gets back
+a validated answer with probabilities and a confidence, independent of
+which backend produced it.
 This package holds the types, the validation rules and the batch helper;
 backends live in their own packages. Wrong package when you need raw text
 from a model (`hop.top/kit/go/ai/llm`).
@@ -15,7 +16,8 @@ from a model (`hop.top/kit/go/ai/llm`).
 - you check a case before sending it → `judge.Validate(c)`
 - you check what a backend returned → `judge.ValidateAnswer(q, a)`, `judge.ValidateVerdict(c, v)`
 - you judge many cases → `judge.Batch(ctx, j, cases, parallel)`; order kept, first error cancels the rest
-- you need the label set a backend must answer from → `judge.Labels(q)`
+- you need the label set a backend must answer from → `judge.Labels(q)` (empty for `KindGrounding`)
+- you locate something in an image (preview) → `KindGrounding`, an image in `Case.Assets`, answer in `Answer.Box`; `Box.IoU`
 - you turn score probabilities into a value in [0,1] → `judge.ScoreEV(probs, n)`
 
 ## Contents

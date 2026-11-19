@@ -24,19 +24,27 @@ var (
 // Options.Thresholds is empty.
 var DefaultThresholds = []float64{0.5, 0.7, 0.8, 0.9, 0.95}
 
+// DefaultIoU is the IoU at or above which two boxes agree, when
+// Options.IoU is 0.
+const DefaultIoU = 0.5
+
 // DefaultBins is the ECE bin count when Options.Bins is 0.
 const DefaultBins = 10
 
 // Reference is the ground truth for one case: a recorded verdict (another
 // judge's answers) and/or per-question labels. Labels win per question
-// over Verdict answers.
+// over Verdict answers. Grounding questions (preview) are referenced by a
+// recorded Verdict, by Boxes, or by Labels "abstain" (target absent; only
+// when the question allows abstaining); Boxes and Labels may not both name
+// one question.
 type Reference struct {
-	Verdict *judge.Verdict    `json:"verdict,omitempty"`
-	Labels  map[string]string `json:"labels,omitempty"`
+	Verdict *judge.Verdict       `json:"verdict,omitempty"`
+	Labels  map[string]string    `json:"labels,omitempty"`
+	Boxes   map[string]judge.Box `json:"boxes,omitempty"`
 }
 
 func (r *Reference) empty() bool {
-	return r == nil || (r.Verdict == nil && len(r.Labels) == 0)
+	return r == nil || (r.Verdict == nil && len(r.Labels) == 0 && len(r.Boxes) == 0)
 }
 
 // Entry is one recorded case with its optional reference.
@@ -54,6 +62,12 @@ type Options struct {
 	Thresholds []float64
 	// Bins is the ECE bin count; default DefaultBins.
 	Bins int
+	// IoU is the intersection-over-union at or above which a grounding
+	// answer's box agrees with the reference's; default DefaultIoU. In
+	// (0,1]. Grounding questions have no Probs: they add no Brier, ECE or
+	// calibration samples, and Confidence 0 (unknown) is never covered by
+	// a threshold above 0.
+	IoU float64
 }
 
 // Compare replays set through cand and scores it against the references.
@@ -66,7 +80,7 @@ func Compare(ctx context.Context, ref, cand judge.Judge, set []Entry, opt Option
 	if cand == nil {
 		return Report{}, errors.New("eval: nil candidate judge")
 	}
-	ths, bins, err := opt.resolve()
+	ths, bins, iou, err := opt.resolve()
 	if err != nil {
 		return Report{}, err
 	}
@@ -84,7 +98,7 @@ func Compare(ctx context.Context, ref, cand judge.Judge, set []Entry, opt Option
 		return Report{}, fmt.Errorf("eval: candidate: %w", err)
 	}
 
-	acc := newAccumulator(ths, bins)
+	acc := newAccumulator(ths, bins, iou)
 	for i, e := range set {
 		refs, err := resolveRef(e.Case, e.Reference, judged[i])
 		if err != nil {
@@ -115,25 +129,32 @@ func Record(ctx context.Context, j judge.Judge, cases []judge.Case, parallel int
 	return out, nil
 }
 
-func (o Options) resolve() ([]float64, int, error) {
+func (o Options) resolve() ([]float64, int, float64, error) {
 	ths := slices.Clone(o.Thresholds)
 	if len(ths) == 0 {
 		ths = slices.Clone(DefaultThresholds)
 	}
 	for _, t := range ths {
 		if t < 0 || t > 1 || t != t {
-			return nil, 0, fmt.Errorf("eval: threshold %v outside [0,1]", t)
+			return nil, 0, 0, fmt.Errorf("eval: threshold %v outside [0,1]", t)
 		}
 	}
 	slices.Sort(ths)
 	bins := o.Bins
 	if bins < 0 {
-		return nil, 0, fmt.Errorf("eval: bins %d < 0", bins)
+		return nil, 0, 0, fmt.Errorf("eval: bins %d < 0", bins)
 	}
 	if bins == 0 {
 		bins = DefaultBins
 	}
-	return ths, bins, nil
+	iou := o.IoU
+	if iou < 0 || iou > 1 || iou != iou {
+		return nil, 0, 0, fmt.Errorf("eval: iou %v outside [0,1]", iou)
+	}
+	if iou == 0 {
+		iou = DefaultIoU
+	}
+	return ths, bins, iou, nil
 }
 
 // judgeUnrecorded runs ref on entries lacking a reference; the result is
@@ -169,6 +190,7 @@ type refAnswer struct {
 	label    string
 	score    float64
 	hasScore bool
+	box      *judge.Box // grounding only
 }
 
 func resolveRef(c judge.Case, r *Reference, judged *judge.Verdict) (map[string]refAnswer, error) {
@@ -185,6 +207,7 @@ func resolveRef(c judge.Case, r *Reference, judged *judge.Verdict) (map[string]r
 			a := v.Answers[q.Name]
 			out[q.Name] = refAnswer{
 				label:    a.Value,
+				box:      a.Box,
 				score:    a.Score,
 				hasScore: q.Kind == judge.KindScore && !a.Abstained,
 			}
@@ -202,6 +225,16 @@ func resolveRef(c judge.Case, r *Reference, judged *judge.Verdict) (map[string]r
 		if !ok {
 			return nil, fmt.Errorf("%w: label for unknown question %q", ErrMismatch, name)
 		}
+		if q.Kind == judge.KindGrounding {
+			if label != judge.LabelAbstain || !q.Abstain {
+				return nil, fmt.Errorf("%w: label %q not valid for grounding question %q (Boxes, or abstain when allowed)", ErrMismatch, label, name)
+			}
+			if _, dup := r.Boxes[name]; dup {
+				return nil, fmt.Errorf("%w: question %q has both a label and a box", ErrMismatch, name)
+			}
+			out[name] = refAnswer{label: label}
+			continue
+		}
 		if !slices.Contains(judge.Labels(q), label) {
 			return nil, fmt.Errorf("%w: label %q not valid for question %q", ErrMismatch, label, name)
 		}
@@ -214,6 +247,20 @@ func resolveRef(c judge.Case, r *Reference, judged *judge.Verdict) (map[string]r
 			ra.score, ra.hasScore = judge.ScoreFromIndex(float64(idx), len(q.Anchors)), true
 		}
 		out[name] = ra
+	}
+	for name, b := range r.Boxes {
+		q, ok := qs[name]
+		if !ok {
+			return nil, fmt.Errorf("%w: box for unknown question %q", ErrMismatch, name)
+		}
+		if q.Kind != judge.KindGrounding {
+			return nil, fmt.Errorf("%w: box for %s question %q", ErrMismatch, q.Kind, name)
+		}
+		if !b.Valid() {
+			return nil, fmt.Errorf("%w: box for question %q not within [0,1] with top<bottom, left<right", ErrMismatch, name)
+		}
+		b := b
+		out[name] = refAnswer{box: &b}
 	}
 	return out, nil
 }

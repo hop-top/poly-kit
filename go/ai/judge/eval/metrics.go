@@ -12,6 +12,7 @@ import (
 type accumulator struct {
 	ths     []float64
 	bins    int
+	iou     float64
 	order   []string
 	qs      map[string]*qAcc
 	samples []calibrate.Sample
@@ -30,10 +31,12 @@ type qAcc struct {
 	nScore                int
 	scoreErr              float64
 	confusion             map[string]map[string]int
+	nIoU                  int
+	iouSum                float64
 }
 
-func newAccumulator(ths []float64, bins int) *accumulator {
-	return &accumulator{ths: ths, bins: bins, qs: map[string]*qAcc{}}
+func newAccumulator(ths []float64, bins int, iou float64) *accumulator {
+	return &accumulator{ths: ths, bins: bins, iou: iou, qs: map[string]*qAcc{}}
 }
 
 func (a *accumulator) get(q judge.Question) (*qAcc, error) {
@@ -70,6 +73,10 @@ func (a *accumulator) add(c judge.Case, refs map[string]refAnswer, v judge.Verdi
 		ca := v.Answers[q.Name]
 		s.n++
 		match := ca.Value == r.label
+		var iou float64
+		if q.Kind == judge.KindGrounding {
+			match, iou = a.groundingMatch(r, ca)
+		}
 		if match {
 			s.matches++
 		}
@@ -86,10 +93,17 @@ func (a *accumulator) add(c judge.Case, refs map[string]refAnswer, v judge.Verdi
 				s.bothMatch++
 			}
 		}
-		if s.confusion[r.label] == nil {
-			s.confusion[r.label] = map[string]int{}
+		if q.Kind == judge.KindGrounding {
+			if !refAbs && !candAbs {
+				s.nIoU++
+				s.iouSum += iou
+			}
+		} else {
+			if s.confusion[r.label] == nil {
+				s.confusion[r.label] = map[string]int{}
+			}
+			s.confusion[r.label][ca.Value]++
 		}
-		s.confusion[r.label][ca.Value]++
 
 		if !candAbs {
 			for i, t := range a.ths {
@@ -111,6 +125,20 @@ func (a *accumulator) add(c judge.Case, refs map[string]refAnswer, v judge.Verdi
 		}
 	}
 	return nil
+}
+
+// groundingMatch: both abstain, or both boxed with IoU >= a.iou. The IoU
+// is returned when both boxed.
+func (a *accumulator) groundingMatch(r refAnswer, ca judge.Answer) (bool, float64) {
+	refAbs := r.label == judge.LabelAbstain
+	if refAbs || ca.Abstained {
+		return refAbs && ca.Abstained, 0
+	}
+	if r.box == nil || ca.Box == nil {
+		return false, 0
+	}
+	iou := r.box.IoU(*ca.Box)
+	return iou >= a.iou, iou
 }
 
 func (s *qAcc) addProbs(q judge.Question, ca judge.Answer, label string, match bool, bins int) {
@@ -151,6 +179,7 @@ func (a *accumulator) report(n int) Report {
 			AgreementAnswered: ratio(s.bothMatch, s.bothAns),
 			NProbs:            s.nProbs,
 			NScore:            s.nScore,
+			NIoU:              s.nIoU,
 			Confusion:         s.confusion,
 		}
 		for i, t := range a.ths {
@@ -175,6 +204,9 @@ func (a *accumulator) report(n int) Report {
 		}
 		if s.nScore > 0 {
 			q.ScoreMAE = s.scoreErr / float64(s.nScore)
+		}
+		if s.nIoU > 0 {
+			q.MeanIoU = s.iouSum / float64(s.nIoU)
 		}
 		r.Questions = append(r.Questions, q)
 	}

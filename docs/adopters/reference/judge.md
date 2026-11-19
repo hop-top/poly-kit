@@ -15,10 +15,11 @@ model text.
 
 | Type | Role |
 |------|------|
-| `Kind` | `KindChoice`, `KindScore`, `KindYesNo` |
+| `Kind` | `KindChoice`, `KindScore`, `KindYesNo`, `KindGrounding` (preview) |
 | `Question` | `Name`, `Instructions`, `Kind`, `Options` (choice), `Anchors` (score), `Abstain` |
 | `Case` | `State`, `Questions`, `Assets []llm.ContentPart` |
-| `Answer` | `Value`, `Abstained`, `Score`, `Probs`, `Confidence`, `Why`, `Source` |
+| `Answer` | `Value`, `Abstained`, `Score`, `Box`, `Probs`, `Confidence`, `Why`, `Source` |
+| `Box` | `Top`, `Bottom`, `Left`, `Right` fractions of the image; `Valid()`, `IoU(o)` |
 | `Verdict` | `Answers` by question name, `Usage`, `Cost`, `Backend`, `Model` |
 | `Judge` | `Judge(ctx, Case) (Verdict, error)` |
 | `BatchJudge` | optional: `JudgeBatch(ctx, []Case) ([]Verdict, error)` |
@@ -40,6 +41,30 @@ model text.
   [0,1] by `n-1`; 0 when abstained. `ScoreEV` excludes abstain mass and
   divides the rest by `1-P(abstain)`.
 
+### Grounding (preview)
+
+`KindGrounding` is visual grounding (referring-expression localization):
+locate what `Question.Instructions` name ("the mug in `photo`") in an
+image and answer with a bounding box. Jev calls it `box`.
+
+- `Case.Assets` needs at least one image part (`llm.PartTypeImage`).
+  Name an image with `Metadata[judge.AssetNameKey]` (`"name"`); unnamed
+  images are `image`, or `image1`, `image2`, ... among several
+  (`judge.ImageNames`). Names must be unique and not collide with `State`
+  keys. `Instructions` must be set; no options or anchors.
+- `Answer.Box` edges are fractions in [0,1]: `Top`, `Bottom` of the image
+  height, `Left`, `Right` of its width, origin top-left, `Top < Bottom`,
+  `Left < Right`. A located answer has `Value == ""`, no `Probs`, no
+  `Score`.
+- `Confidence` is the backend's confidence in the box; 0 when it gives none
+  (unknown, not "certainly wrong"). It is not a probability distribution.
+- With `Question.Abstain` the target may be absent: `Abstained`, `Value ==
+  "abstain"`, `Box == nil`.
+- `Labels(q)` is empty for grounding, `abstain` included; test `q.Abstain`.
+- Backends: Jev; llmjudge `Verbalized` with a vision model. `Votes(n > 1)`
+  and `Logprobs` refuse with `ErrCapabilityNotSupported`.
+- eval scores boxes by IoU; calibrate skips them (see below).
+
 Validators: `Validate(Case)`, `ValidateAnswer(Question, Answer)`,
 `ValidateVerdict(Case, Verdict)`. All wrap `ErrInvalid` and join every
 problem.
@@ -56,7 +81,8 @@ ctx returns `ctx.Err()`.
 
 `Fixed(v)`, `Scripted(v...)`, or `Fake{Fn / Script}`; `Calls()` returns the
 call log. `NewBatch(f)` adds `BatchJudge` and `Batches()`. Builders
-`Choice`, `Score`, `Abstain` produce answers that pass `ValidateAnswer`.
+`Choice`, `Score`, `Abstain`, `Grounding`, `GroundingAbstain` produce answers
+that pass `ValidateAnswer`.
 
 ## calibrate
 
@@ -79,7 +105,8 @@ Label}`; `FitTemperature`, `FitPlatt` fit one. `Params` is JSON
 `Calibrated(j, params)` wraps a `Judge` (and `BatchJudge` when present):
 `Probs` replaced, `Value` re-picked as argmax (ties keep the original),
 `Confidence` = `P(Value)`, `Score` recomputed. Answers without `Probs`,
-abstained answers, and questions without params pass through.
+abstained answers, grounding answers (a box, no distribution), and
+questions without params pass through.
 
 ## llmjudge
 
@@ -119,7 +146,17 @@ still invalid returns `llm.ErrSchemaInvalid`.
 - `Verdict.Model` is the configured `Model`; responses carry no model name.
   `Verdict.Usage` sums every sample and repair; `Backend` is `"llm"`.
 - `Case.Assets` ride on the user message as extra parts.
-- Kinds other than choice, score, yes/no fail with
+- Grounding (preview): `Verbalized` only, with a vision model that takes
+  image parts and structured output. Reply per question:
+  `{box: {top, bottom, left, right}, confidence, why}`, plus a required
+  `abstain` boolean when `Question.Abstain` (box ignored when true).
+  Each image follows a text part "Image `name`:" so instructions can point
+  at it. `Source` is `verbalized`, `Value` empty, no `Probs`. An invalid
+  box fails with `judge.ErrInvalid`. `Votes(n > 1)` and `Logprobs` refuse
+  with `ErrCapabilityNotSupported`. Small vision models often miss the
+  fractions convention (a 3B model answered 0.5 for every edge), so check
+  `Box.IoU` against known cases before relying on one.
+- Other kinds fail with
   `llmerrors.ErrCapabilityNotSupported`; malformed cases with
   `judge.ErrInvalid`. Every answer passes `judge.ValidateAnswer`.
 - Not a `BatchJudge`; use `judge.Batch` for concurrent fan-out.
@@ -196,7 +233,18 @@ Options: `WithModel` (default `typesafe/jev-1.14`), `WithURL` (default
 - `usage.cost` becomes `Verdict.Cost.USD`; `usage.input_tokens` and
   `output_tokens` become `Verdict.Usage`, their sum `Cost.Tokens`.
   `Backend` is `"jev"`, `Model` the model the service names.
-- Box (image localization) questions and `Case.Assets` fail with
+- Grounding (preview; Jev's `box`) maps to `{type: box, instructions}`,
+  no criteria. Each image in `Case.Assets` (PNG or JPEG, at most 20 MiB)
+  goes base64 under `assets` as `{type: image, format: png|jpg,
+  data_base64}`, keyed `asset-<name>` and referenced from `state[<name>]`
+  (see `judge.ImageNames`); the request then carries
+  `TypeSafe-Danger-Zone-Images: true`, only when images are present. Any
+  question kind may ride with an image. Answer `{type: box, box: {top,
+  bottom, left, right}, confidence}`: edges are fractions of the image,
+  `confidence` null or absent is 0, no probabilities. A null or missing box
+  is an abstention when `Question.Abstain`, else `jev.ErrMalformed`. The
+  service marks images and box preview.
+- Other asset types, other image formats and unknown kinds fail with
   `llmerrors.ErrCapabilityNotSupported` before anything is sent.
 - The key goes only to the default endpoint's origin, a loopback host, or an
   origin llm.yaml `base_url` / `LLM_BASE_URL` names; `New` fails with
@@ -212,7 +260,8 @@ Options: `WithModel` (default `typesafe/jev-1.14`), `WithURL` (default
 
 ## Limitations
 
-- Backends live in their own packages; the Jev backend is cloud only and has no box or image support.
+- Backends live in their own packages; the Jev backend is cloud only, and its image and box support is preview.
+- Grounding needs an image in `Case.Assets`; an `eval` case-set file (JSONL) cannot carry image assets, so grounding sets live in code.
 - Calibration needs labeled samples; Platt is binary only.
 
 ## eval
@@ -222,11 +271,11 @@ candidate judge and scores it against references: the gate for swapping one
 judge for another (for example a cloud judge for a local model).
 
 - Case set: JSONL, one `eval.Entry` per line,
-  `{"case": judge.Case, "reference": {"verdict": ..., "labels": {question: label}}}`.
+  `{"case": judge.Case, "reference": {"verdict": ..., "labels": {question: label}, "boxes": {question: box}}}`.
   `eval.Load` / `eval.Save` / `LoadFile` / `SaveFile`; unknown fields fail,
   errors name the line. `eval.Record(ctx, j, cases, parallel)` builds a set
   whose reference is `j`'s verdicts.
-- `eval.Compare(ctx, ref, cand, entries, eval.Options{Parallel, Thresholds, Bins})`.
+- `eval.Compare(ctx, ref, cand, entries, eval.Options{Parallel, Thresholds, Bins, IoU})`.
   An entry's recorded `reference` wins; entries without one are judged by
   `ref` (nil `ref` plus an unrecorded entry is `eval.ErrNoReference`). In a
   reference, `labels` override `verdict` answers per question; label-only
@@ -242,6 +291,12 @@ judge for another (for example a cloud judge for a local model).
   default 10) from answers carrying `Probs`, with the reference label as
   truth; `ScoreMAE` of `Score` for score questions (a label `"2"` scales as
   `ScoreFromIndex`); `Confusion[ref][cand]`.
+- Grounding questions (preview): a match is both abstaining, or both boxed
+  with IoU >= `Options.IoU` (default 0.5, `eval.DefaultIoU`). The reference
+  is a recorded verdict, `boxes: {question: box}`, or label `abstain` when
+  allowed. `NIoU` and `MeanIoU` cover cases with a box on both sides. No
+  `Probs`: no Brier, ECE, confusion or calibration samples; `Confidence` 0
+  (unknown) is never covered by a threshold above 0.
 - `Report.Markdown()`, `Report.JSON()`.
 - `Report.Pass(eval.Thresholds{...})` returns `(ok, reasons)`; zero fields
   are unchecked. `MinAgreement` and `MinCoverage` read at `AtConfidence`

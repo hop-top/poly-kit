@@ -144,3 +144,13 @@ func Abstain() judge.Answer {
 		Confidence: 1, Source: "judgetest",
 	}
 }
+
+// Grounding builds a valid located KindGrounding answer; conf 0 is unknown.
+func Grounding(b judge.Box, conf float64) judge.Answer {
+	return judge.Answer{Box: &b, Confidence: conf, Source: "judgetest"}
+}
+
+// GroundingAbstain builds an abstained KindGrounding answer (target absent).
+func GroundingAbstain() judge.Answer {
+	return judge.Answer{Value: judge.LabelAbstain, Abstained: true, Source: "judgetest"}
+}

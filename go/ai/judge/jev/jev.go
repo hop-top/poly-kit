@@ -6,9 +6,17 @@
 //
 // Question mapping: choice sends {type: choice, criteria: {value:
 // description}}; score sends {type: score, criteria: anchors}; yes/no
-// sends {type: noul}. Jev has no abstain and no box (image localization)
-// support here; a box question or a case with assets fails with an
-// llmerrors.ErrCapabilityNotSupported before anything is sent.
+// sends {type: noul}; grounding (visual grounding, Jev's "box", preview)
+// sends {type: box} and answers with a bounding box. Jev has no abstain:
+// a grounding question that allows it abstains when the service returns no
+// box.
+//
+// Images: every image in Case.Assets is sent base64 (PNG or JPEG) under
+// "assets", referenced from the state by its name (see judge.ImageNames),
+// with the TypeSafe-Danger-Zone-Images header the service requires for
+// images (an early feature, preview). Other asset types and image formats
+// fail with an llmerrors.ErrCapabilityNotSupported before anything is
+// sent.
 package jev
 
 import (
@@ -50,6 +58,10 @@ const (
 	provider = "openrouter"
 	// maxScoreLevels is the service's cap on score criteria.
 	maxScoreLevels = 10
+	// imagesHeader opts a request into the service's image handling.
+	imagesHeader = "TypeSafe-Danger-Zone-Images"
+	// maxImage bounds one image's bytes.
+	maxImage = 20 << 20
 	// maxBody bounds a response body.
 	maxBody = 4 << 20
 	// maxDetail bounds the error body quoted in an error message.
@@ -133,8 +145,9 @@ func New(opts ...Option) (judge.Judge, error) {
 	}, nil
 }
 
-// Judge answers every question of c in one request. Box questions and
-// assets fail with an llmerrors.ErrCapabilityNotSupported; a malformed
+// Judge answers every question of c in one request. Question kinds,
+// asset types and image formats the service cannot take fail with an
+// llmerrors.ErrCapabilityNotSupported; a malformed
 // case fails with judge.ErrInvalid; a response that does not answer the
 // case fails with ErrMalformed. HTTP failures map to llm errors: 401 and
 // 403 to ErrAuth and ErrPermissionDenied, 404 to ErrModel, 429 to
@@ -143,14 +156,21 @@ func New(opts ...Option) (judge.Judge, error) {
 func (j *jevJudge) Judge(ctx context.Context, c judge.Case) (judge.Verdict, error) {
 	for _, q := range c.Questions {
 		switch q.Kind {
-		case judge.KindChoice, judge.KindScore, judge.KindYesNo:
+		case judge.KindChoice, judge.KindScore, judge.KindYesNo, judge.KindGrounding:
 		default:
 			return judge.Verdict{}, llmerrors.NewCapabilityNotSupported(
 				fmt.Sprintf("question kind %q", q.Kind), Backend)
 		}
 	}
-	if len(c.Assets) > 0 {
-		return judge.Verdict{}, llmerrors.NewCapabilityNotSupported("assets", Backend)
+	for _, a := range c.Assets {
+		if a.Type != llm.PartTypeImage {
+			return judge.Verdict{}, llmerrors.NewCapabilityNotSupported(
+				fmt.Sprintf("asset type %q", a.Type), Backend)
+		}
+		if _, ok := imageFormat(a); !ok {
+			return judge.Verdict{}, llmerrors.NewCapabilityNotSupported(
+				fmt.Sprintf("image type %q (png and jpeg only)", mimeOf(a)), Backend)
+		}
 	}
 	if err := judge.Validate(c); err != nil {
 		return judge.Verdict{}, err
@@ -162,11 +182,15 @@ func (j *jevJudge) Judge(ctx context.Context, c judge.Case) (judge.Verdict, erro
 		}
 	}
 
-	payload, err := json.Marshal(buildRequest(j.model, c))
+	req, err := buildRequest(ctx, j.model, c)
+	if err != nil {
+		return judge.Verdict{}, err
+	}
+	payload, err := json.Marshal(req)
 	if err != nil {
 		return judge.Verdict{}, fmt.Errorf("jev: encode request: %w", err)
 	}
-	status, header, body, err := j.post(ctx, payload)
+	status, header, body, err := j.post(ctx, payload, len(req.Assets) > 0)
 	if err != nil {
 		return judge.Verdict{}, err
 	}
@@ -177,13 +201,16 @@ func (j *jevJudge) Judge(ctx context.Context, c judge.Case) (judge.Verdict, erro
 }
 
 // post sends payload and returns the status, headers and bounded body.
-func (j *jevJudge) post(ctx context.Context, payload []byte) (int, http.Header, []byte, error) {
+func (j *jevJudge) post(ctx context.Context, payload []byte, images bool) (int, http.Header, []byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, j.url, bytes.NewReader(payload))
 	if err != nil {
 		return 0, nil, nil, fmt.Errorf("jev: build request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+j.key)
 	req.Header.Set("Content-Type", "application/json")
+	if images {
+		req.Header.Set(imagesHeader, "true")
+	}
 	resp, err := j.client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {

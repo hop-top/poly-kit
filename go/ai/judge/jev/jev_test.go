@@ -2,6 +2,7 @@ package jev_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -260,22 +261,146 @@ func TestNoCostIsZero(t *testing.T) {
 	assert.Equal(t, int64(4), v.Cost.Tokens)
 }
 
-func TestBoxRefused(t *testing.T) {
-	f := &fakeTransport{body: allKindsResponse}
-	c := judge.Case{State: state, Questions: []judge.Question{
-		qYesNo, {Name: "logo", Kind: judge.Kind("box"), Instructions: "the logo"},
-	}}
-	_, err := newJudge(t, f).Judge(context.Background(), c)
-	var cap *llmerrors.ErrCapabilityNotSupported
-	require.ErrorAs(t, err, &cap)
-	assert.Equal(t, "jev", cap.Provider)
-	assert.Empty(t, f.reqs, "nothing sent for a refused case")
+var pngBytes = []byte("\x89PNG\r\n\x1a\nfake")
+
+func image(mime, name string) llm.ContentPart {
+	p := llm.ContentPart{Type: llm.PartTypeImage, Source: llm.InlineSource(pngBytes, mime)}
+	if name != "" {
+		p.Metadata = map[string]any{judge.AssetNameKey: name}
+	}
+	return p
 }
 
-func TestAssetsRefused(t *testing.T) {
+var qBox = judge.Question{Name: "mug", Kind: judge.KindGrounding, Instructions: "the mug in `photo`"}
+
+func groundCase(q judge.Question, assets ...llm.ContentPart) judge.Case {
+	return judge.Case{Questions: []judge.Question{q}, Assets: assets}
+}
+
+func TestGroundingRequestShape(t *testing.T) {
+	f := &fakeTransport{body: `{"answers":{"mug":{"type":"box","box":{"top":0.1,"bottom":0.6,"left":0.2,"right":0.7},"confidence":0.9}}}`}
+	_, err := newJudge(t, f).Judge(context.Background(), groundCase(qBox, image("image/png", "photo")))
+	require.NoError(t, err)
+
+	r := f.last(t)
+	assert.Equal(t, "true", r.headers.Get("TypeSafe-Danger-Zone-Images"))
+	assert.Equal(t, map[string]any{"photo": "asset-photo"}, r.body["state"])
+	assert.Equal(t, map[string]any{
+		"asset-photo": map[string]any{
+			"type": "image", "format": "png",
+			"data_base64": base64.StdEncoding.EncodeToString(pngBytes),
+		},
+	}, r.body["assets"])
+	assert.Equal(t, map[string]any{
+		"mug": map[string]any{"type": "box", "instructions": "the mug in `photo`"},
+	}, r.body["questions"], "box sends no criteria")
+}
+
+func TestImageDefaultNameAndJPEG(t *testing.T) {
+	f := &fakeTransport{body: `{"answers":{"mug":{"type":"box","box":{"top":0,"bottom":1,"left":0,"right":1}}}}`}
+	_, err := newJudge(t, f).Judge(context.Background(), groundCase(qBox, image("image/jpeg", "")))
+	require.NoError(t, err)
+	r := f.last(t)
+	assert.Equal(t, map[string]any{"image": "asset-image"}, r.body["state"])
+	assert.Equal(t, "jpg", r.body["assets"].(map[string]any)["asset-image"].(map[string]any)["format"])
+}
+
+func TestStateKeptAlongsideImage(t *testing.T) {
 	f := &fakeTransport{body: allKindsResponse}
 	c := allKindsCase()
-	c.Assets = []llm.ContentPart{{Type: llm.PartTypeImage}}
+	c.Assets = []llm.ContentPart{image("image/png", "")}
+	_, err := newJudge(t, f).Judge(context.Background(), c)
+	require.NoError(t, err)
+	r := f.last(t)
+	assert.Equal(t, "true", r.headers.Get("TypeSafe-Danger-Zone-Images"), "any question may carry an image")
+	st := r.body["state"].(map[string]any)
+	assert.Equal(t, "asset-image", st["image"])
+	assert.Equal(t, "I was charged twice for my subscription.", st["message"])
+}
+
+func TestGroundingAnswers(t *testing.T) {
+	tests := []struct {
+		name string
+		q    judge.Question
+		body string
+		want judge.Answer
+		err  string
+	}{
+		{"box", qBox,
+			`{"answers":{"mug":{"type":"box","box":{"top":0.1,"bottom":0.6,"left":0.2,"right":0.7},"confidence":0.9}}}`,
+			judge.Answer{Box: &judge.Box{Top: 0.1, Bottom: 0.6, Left: 0.2, Right: 0.7}, Confidence: 0.9, Source: jev.SourceNative}, ""},
+		{"null confidence", qBox,
+			`{"answers":{"mug":{"type":"box","box":{"top":0.1,"bottom":0.6,"left":0.2,"right":0.7},"confidence":null}}}`,
+			judge.Answer{Box: &judge.Box{Top: 0.1, Bottom: 0.6, Left: 0.2, Right: 0.7}, Source: jev.SourceNative}, ""},
+		{"no confidence", qBox,
+			`{"answers":{"mug":{"type":"box","box":{"top":0.1,"bottom":0.6,"left":0.2,"right":0.7}}}}`,
+			judge.Answer{Box: &judge.Box{Top: 0.1, Bottom: 0.6, Left: 0.2, Right: 0.7}, Source: jev.SourceNative}, ""},
+		{"abstain on null box", withAbstain(qBox),
+			`{"answers":{"mug":{"type":"box","box":null,"confidence":0.4}}}`,
+			judge.Answer{Value: judge.LabelAbstain, Abstained: true, Confidence: 0.4, Source: jev.SourceNative}, ""},
+		{"abstain on missing box", withAbstain(qBox),
+			`{"answers":{"mug":{"type":"box"}}}`,
+			judge.Answer{Value: judge.LabelAbstain, Abstained: true, Source: jev.SourceNative}, ""},
+		{"null box, abstain not allowed", qBox,
+			`{"answers":{"mug":{"type":"box","box":null}}}`, judge.Answer{}, "no box"},
+		{"partial box", qBox,
+			`{"answers":{"mug":{"type":"box","box":{"top":0.1,"bottom":0.6,"left":0.2}}}}`, judge.Answer{}, "box"},
+		{"inverted", qBox,
+			`{"answers":{"mug":{"type":"box","box":{"top":0.6,"bottom":0.1,"left":0.2,"right":0.7}}}}`, judge.Answer{}, "top<bottom"},
+		{"out of range", qBox,
+			`{"answers":{"mug":{"type":"box","box":{"top":0.1,"bottom":1.6,"left":0.2,"right":0.7}}}}`, judge.Answer{}, "within [0,1]"},
+		{"bad confidence", qBox,
+			`{"answers":{"mug":{"type":"box","box":{"top":0.1,"bottom":0.6,"left":0.2,"right":0.7},"confidence":2}}}`, judge.Answer{}, "confidence"},
+		{"wrong type", qBox,
+			`{"answers":{"mug":{"type":"choice","choice":"a"}}}`, judge.Answer{}, "type"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeTransport{body: tc.body}
+			v, err := newJudge(t, f).Judge(context.Background(), groundCase(tc.q, image("image/png", "photo")))
+			if tc.err != "" {
+				require.ErrorIs(t, err, jev.ErrMalformed)
+				assert.Contains(t, err.Error(), tc.err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, v.Answers["mug"])
+		})
+	}
+}
+
+func withAbstain(q judge.Question) judge.Question { q.Abstain = true; return q }
+
+func TestGroundingNeedsImage(t *testing.T) {
+	f := &fakeTransport{}
+	_, err := newJudge(t, f).Judge(context.Background(), groundCase(qBox))
+	require.ErrorIs(t, err, judge.ErrInvalid)
+	assert.Empty(t, f.reqs)
+}
+
+func TestUnsendableAssetsRefused(t *testing.T) {
+	for name, part := range map[string]llm.ContentPart{
+		"webp":    image("image/webp", "photo"),
+		"no mime": {Type: llm.PartTypeImage, Source: llm.InlineSource(pngBytes, "")},
+		"audio":   {Type: llm.PartTypeAudio, Source: llm.InlineSource(pngBytes, "audio/wav")},
+		"text":    {Type: llm.PartTypeText, Text: "note"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := &fakeTransport{body: allKindsResponse}
+			c := allKindsCase()
+			c.Assets = []llm.ContentPart{part}
+			_, err := newJudge(t, f).Judge(context.Background(), c)
+			var cap *llmerrors.ErrCapabilityNotSupported
+			require.ErrorAs(t, err, &cap)
+			assert.Equal(t, "jev", cap.Provider)
+			assert.Empty(t, f.reqs, "nothing sent for a refused case")
+		})
+	}
+}
+
+func TestUnknownKindRefused(t *testing.T) {
+	f := &fakeTransport{body: allKindsResponse}
+	c := judge.Case{State: state, Questions: []judge.Question{qYesNo, {Name: "x", Kind: judge.Kind("region")}}}
 	_, err := newJudge(t, f).Judge(context.Background(), c)
 	var cap *llmerrors.ErrCapabilityNotSupported
 	require.ErrorAs(t, err, &cap)
