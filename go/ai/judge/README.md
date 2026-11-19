@@ -28,6 +28,7 @@ from a model (`hop.top/kit/go/ai/llm`).
 | [`calibrate/`](calibrate/) | temperature and Platt calibration, `Fit`, `Calibrated` | you calibrate a backend's probabilities |
 | [`judgetest/`](judgetest/) | deterministic fake judge | you test code that calls a judge |
 | [`eval/`](eval/) | replay a recorded case set through a candidate judge: agreement, coverage, Brier, ECE, gate | you check a judge can replace another |
+| [`jev/`](jev/) | Jev backend (TypeSafe System One via OpenRouter): native probabilities, USD cost; cloud only | you judge with Jev |
 | [`llmjudge/`](llmjudge/) | chat-model backend: verbalized, votes, logprobs | you judge with a chat model |
 
 ## Related

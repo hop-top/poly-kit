@@ -164,9 +164,55 @@ token log-probabilities instead of asking for a stated confidence.
   `calibrate.Calibrated(j, params)`; nothing is calibrated inside llmjudge.
 - Test with `llmxrr` cassettes; the package replays a real Ollama exchange.
 
+## Jev
+
+TypeSafe's Jev model through OpenRouter (`hop.top/kit/go/ai/judge/jev`).
+Always cloud: every `Judge` call sends the case's state and questions to
+the service. Needs an OpenRouter key.
+
+```go
+j, err := jev.New() // key via llm.SecretFor("openrouter"): OPENROUTER_API_KEY
+if err != nil { /* llm.ErrMissingKey, llm.ErrKeyEndpoint */ }
+v, err := j.Judge(ctx, c)
+```
+
+Options: `WithModel` (default `typesafe/jev-1.14`), `WithURL` (default
+`https://openrouter.ai/api/v1/systemone`), `WithAPIKey`, `WithTransport`
+(any `http.RoundTripper`, as `llm.WithTransport`).
+
+- One request answers every question. Mapping: choice to
+  `{type: choice, criteria: {value: description}}` (a bare value stands in
+  for a missing description); score to `{type: score, criteria: anchors}`,
+  at most 10 anchors; yes/no to `{type: noul}`.
+- Answers are native: `Source` is `"native"`, `Why` empty. Choice and score
+  `probabilities` become `Answer.Probs` (score keys are anchor indexes),
+  renormalised since the service rounds; `Value` is the argmax and
+  `Confidence` is `Probs[Value]`, not the service's own confidence figure.
+  Score kind: `Score` is `judge.ScoreEV`. Yes/no: the service returns only
+  P(yes); `Probs` is `{yes: p, no: 1-p}`, `Value` the likelier side (yes on
+  a tie). Jev never abstains.
+- With empty `probabilities` the reported choice or score (rounded to an
+  anchor index) stands, with the reported confidence and no `Probs`.
+- `usage.cost` becomes `Verdict.Cost.USD`; `usage.input_tokens` and
+  `output_tokens` become `Verdict.Usage`, their sum `Cost.Tokens`.
+  `Backend` is `"jev"`, `Model` the model the service names.
+- Box (image localization) questions and `Case.Assets` fail with
+  `llmerrors.ErrCapabilityNotSupported` before anything is sent.
+- The key goes only to the default endpoint's origin, a loopback host, or an
+  origin llm.yaml `base_url` / `LLM_BASE_URL` names; `New` fails with
+  `llm.ErrKeyEndpoint` otherwise. Redirects are not followed.
+- HTTP failures map to llm errors: 401 `ErrAuth`, 403 `ErrPermissionDenied`,
+  404 `ErrModel`, 429 `ErrRateLimit` (Retry-After seconds), 5xx
+  `HTTPStatusError`. No retry inside the backend. A response that does not
+  answer the case fails with `jev.ErrMalformed`. Every answer passes
+  `judge.ValidateAnswer`.
+- Not a `BatchJudge`; use `judge.Batch`.
+- Tests: hermetic fake `http.RoundTripper` over the documented shapes; no
+  live call, no cassette.
+
 ## Limitations
 
-- Other backends (jev) live in their own packages.
+- Backends live in their own packages; the Jev backend is cloud only and has no box or image support.
 - Calibration needs labeled samples; Platt is binary only.
 
 ## eval

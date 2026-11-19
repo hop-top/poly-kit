@@ -20,7 +20,7 @@ a documentation-status column and a parity matrix beside it.
 - Usage docs link a page under `docs/`. `not yet documented` means no page
   under `docs/` covers the capability; a package README, when it is
   substantial, is linked as the interim pointer and does not count as docs.
-- 74 capabilities; 57 have docs under `docs/`, 17 do not yet.
+- 75 capabilities; 58 have docs under `docs/`, 17 do not yet.
 - Parity status per SDK: see [`capability-parity`](capability-parity.md).
 
 ## CLI and console
@@ -138,6 +138,7 @@ Talking to models, and being legible to agents.
 | Judge calibration | Temperature and Platt calibration of judged probabilities | `go/ai/judge/calibrate` | [Judge](judge.md) |
 | Judge test fake | Deterministic fake judge for tests | `go/ai/judge/judgetest` | [Judge](judge.md) |
 | Judge eval | Replay a recorded case set through a candidate judge; agreement, Brier, ECE, pass/fail gate | `go/ai/judge/eval` | [Judge](judge.md) |
+| Judge Jev backend | Typed judgments from TypeSafe's Jev model over OpenRouter: native probabilities and USD cost; cloud only | `go/ai/judge/jev` | [Judge](judge.md#jev) |
 | Toolspec | Tool manifest, `spec` command, per-harness adapters, risk policy | `go/ai/toolspec` | [Toolspec API](toolspec-api.md); [Adopter guide](../integrations/toolspec-adopter-guide.md); [Harness guide](../integrations/toolspec-harness-guide.md) |
 | Command reflection | Single place kit reflects a cobra tree into descriptors | `go/ai/cmdreflect` | [cmdreflect](cmdreflect.md) |
 | Agent CLI invocation | Detect agent CLIs and build native argv from one normalized invocation | `go/core/uxp` | [uxp](uxp.md) |
