@@ -43,13 +43,33 @@ type NarrowKey struct {
 type ProjectRules struct {
 	// Forbidden keys a project file may not set: exact dotted keys or
 	// prefixes ("bos" forbids "bos" and every "bos.*"). Matching is on whole
-	// dotted segments.
+	// dotted segments, case-folded unless CaseSensitive.
+	//
+	// A mapping key containing '.' in a project file is read as its dotted
+	// path, as viper reads it: `"bos.url": x` is `bos: {url: x}` for every
+	// rule here. Forbidden and SecretKey apply to that path. A dotted key
+	// that overlaps a Narrow key (same path, an ancestor or a descendant)
+	// is refused, since it cannot be narrowed in place; write it as a
+	// nested mapping instead. Other dotted keys (such as a host name used
+	// as a map key) pass.
 	Forbidden []string
 	// SecretKey, when non-nil, is matched against each segment of every key
-	// in the project file; a match is forbidden like a Forbidden key.
+	// in the project file (raw and case-folded); a match is forbidden like
+	// a Forbidden key.
 	SecretKey *regexp.Regexp
 	// Narrow lists keys a project file may only narrow.
 	Narrow []NarrowKey
+	// CaseSensitive turns off case folding. By default every rule matches
+	// the case-folded key path: each segment is lower-cased with
+	// strings.ToLower on both sides, so "Owner_Profile" is forbidden by
+	// "owner_profile" and "AI: {MODELS: {ALLOW: ...}}" is narrowed by
+	// "ai.models.allow". Folding is the safe default because viper-based
+	// tools lower-case keys on merge, so a differently-cased key reaches
+	// them as the rule's key. It only ever refuses or narrows more: kit's
+	// own struct decode (yaml.v3) matches tags case-sensitively, so a
+	// mis-cased key never sets a struct field anyway. Set CaseSensitive only
+	// when every consumer of the merged result matches keys exactly.
+	CaseSensitive bool
 	// OnNarrow, when non-nil, is called once per narrowed key present in
 	// the project file, after the result is computed.
 	OnNarrow func(Narrowed)
@@ -73,6 +93,9 @@ type ErrProjectForbidden struct {
 	Key  string
 	// Secret is true when SecretKey matched rather than Forbidden.
 	Secret bool
+	// Dotted is true when the key is a dotted mapping key that overlaps a
+	// narrow-only key and so cannot be narrowed in place.
+	Dotted bool
 	// NonString is true when the key is not a plain string (for example
 	// `1:` or `? [a]`): rules cannot judge it, so a project file may not
 	// hold one.
@@ -85,6 +108,8 @@ func (e *ErrProjectForbidden) Error() string {
 	why := "may not be set in a project config"
 	if e.NonString {
 		why = "is not a string key; project configs may only use string keys"
+	} else if e.Dotted {
+		why = "is a dotted key overlapping a narrow-only key; write it as a nested mapping"
 	} else if e.Secret {
 		why = "looks like a secret and may not be set in a project config"
 	}
@@ -144,18 +169,42 @@ func mergeProjectFile(dst any, path string, opts Options) error {
 	return yaml.Unmarshal(out, dst)
 }
 
+func (r *ProjectRules) fold(s string) string {
+	if r.CaseSensitive {
+		return s
+	}
+	return strings.ToLower(s)
+}
+
+// segs splits a dotted key into folded segments.
+func (r *ProjectRules) segs(key string) []string {
+	return strings.Split(r.fold(key), ".")
+}
+
+func hasPrefix(path, prefix []string) bool {
+	return len(prefix) <= len(path) && slices.Equal(path[:len(prefix)], prefix)
+}
+
 func (r *ProjectRules) checkForbidden(file string, doc any, userPath string) error {
 	suggest := "move it to the user config"
 	if userPath != "" {
 		suggest = "move it to " + userPath
 	}
-	var walk func(prefix string, v any) error
-	walk = func(prefix string, v any) error {
+	forbidden := make([][]string, len(r.Forbidden))
+	for i, f := range r.Forbidden {
+		forbidden[i] = r.segs(f)
+	}
+	narrow := make([][]string, len(r.Narrow))
+	for i, nk := range r.Narrow {
+		narrow[i] = r.segs(nk.Key)
+	}
+	var walk func(prefix string, path []string, dotted bool, v any) error
+	walk = func(prefix string, path []string, dotted bool, v any) error {
 		switch m := v.(type) {
 		case []any:
 			// Elements share the sequence's path: "a.b" covers a: [{b: x}].
 			for _, e := range m {
-				if err := walk(prefix, e); err != nil {
+				if err := walk(prefix, path, dotted, e); err != nil {
 					return err
 				}
 			}
@@ -176,22 +225,36 @@ func (r *ProjectRules) checkForbidden(file string, doc any, userPath string) err
 			sort.Strings(keys)
 			for _, k := range keys {
 				full := joinKey(prefix, k)
-				for _, f := range r.Forbidden {
-					if full == f {
+				own := r.segs(k)
+				p := append(slices.Clone(path), own...)
+				d := dotted || len(own) > 1
+				for _, f := range forbidden {
+					if hasPrefix(p, f) {
 						return &ErrProjectForbidden{File: file, Key: full, Suggestion: suggest}
 					}
 				}
-				if r.SecretKey != nil && r.SecretKey.MatchString(k) {
-					return &ErrProjectForbidden{File: file, Key: full, Secret: true, Suggestion: suggest}
+				if r.SecretKey != nil {
+					for _, raw := range strings.Split(k, ".") {
+						if r.SecretKey.MatchString(raw) || r.SecretKey.MatchString(r.fold(raw)) {
+							return &ErrProjectForbidden{File: file, Key: full, Secret: true, Suggestion: suggest}
+						}
+					}
 				}
-				if err := walk(full, m[k]); err != nil {
+				if d {
+					for _, n := range narrow {
+						if hasPrefix(p, n) || hasPrefix(n, p) {
+							return &ErrProjectForbidden{File: file, Key: full, Dotted: true, Suggestion: suggest}
+						}
+					}
+				}
+				if err := walk(full, p, d, m[k]); err != nil {
 					return err
 				}
 			}
 		}
 		return nil
 	}
-	return walk("", doc)
+	return walk("", nil, false, doc)
 }
 
 func joinKey(prefix, k string) string {
@@ -201,55 +264,92 @@ func joinKey(prefix, k string) string {
 	return prefix + "." + k
 }
 
+// slot is one map entry located by a case-folded path.
+type slot struct {
+	parent map[string]any
+	key    string
+}
+
+// locate returns every entry whose folded path is segs: case variants of a
+// key ("AI" and "ai") are all returned, in key order.
+func (r *ProjectRules) locate(m map[string]any, segs []string) []slot {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		if r.fold(k) == segs[0] {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	var out []slot
+	for _, k := range keys {
+		if len(segs) == 1 {
+			out = append(out, slot{m, k})
+			continue
+		}
+		if next, ok := m[k].(map[string]any); ok {
+			out = append(out, r.locate(next, segs[1:])...)
+		}
+	}
+	return out
+}
+
 // narrow rewrites doc's narrow keys against the list dst holds now (every
 // layer merged so far: defaults, system, user).
 func (r *ProjectRules) narrow(dst any, file string, doc map[string]any) error {
 	var lowerDoc map[string]any
-	for _, nk := range r.Narrow {
-		if nk.Mode != Union && nk.Mode != Intersect {
-			return fmt.Errorf("config %s: narrow key %q: invalid mode %d", file, nk.Key, nk.Mode)
-		}
-		raw, ok := getDotted(doc, nk.Key)
-		if !ok {
-			continue
-		}
-		if raw == nil {
-			// A null would clear the lower list, widening it: keep lower.
-			deleteDotted(doc, nk.Key)
-			continue
-		}
-		project, err := scalarList(raw)
-		if err != nil {
-			return fmt.Errorf("config %s: key %q: %w", file, nk.Key, err)
-		}
+	lowerList := func(nk NarrowKey) ([]string, error) {
 		if lowerDoc == nil {
 			data, err := yaml.Marshal(dst)
 			if err != nil {
-				return fmt.Errorf("config %s: read merged layers: %w", file, err)
+				return nil, fmt.Errorf("config %s: read merged layers: %w", file, err)
 			}
 			if err := yaml.Unmarshal(data, &lowerDoc); err != nil {
-				return fmt.Errorf("config %s: read merged layers: %w", file, err)
+				return nil, fmt.Errorf("config %s: read merged layers: %w", file, err)
 			}
 			if lowerDoc == nil {
 				lowerDoc = map[string]any{}
 			}
 		}
-		var lower []string
-		if lv, ok := getDotted(lowerDoc, nk.Key); ok && lv != nil {
-			if lower, err = scalarList(lv); err != nil {
-				return fmt.Errorf("config %s: key %q in lower layers: %w", file, nk.Key, err)
+		// Case variants in the lower layers: first in key order stands.
+		ls := r.locate(lowerDoc, r.segs(nk.Key))
+		if len(ls) == 0 || ls[0].parent[ls[0].key] == nil {
+			return nil, nil
+		}
+		lower, err := scalarList(ls[0].parent[ls[0].key])
+		if err != nil {
+			return nil, fmt.Errorf("config %s: key %q in lower layers: %w", file, nk.Key, err)
+		}
+		return lower, nil
+	}
+	for _, nk := range r.Narrow {
+		if nk.Mode != Union && nk.Mode != Intersect {
+			return fmt.Errorf("config %s: narrow key %q: invalid mode %d", file, nk.Key, nk.Mode)
+		}
+		// Every case variant of the key in the project file is narrowed.
+		for _, sl := range r.locate(doc, r.segs(nk.Key)) {
+			raw := sl.parent[sl.key]
+			if raw == nil {
+				// A null would clear the lower list, widening it: keep lower.
+				delete(sl.parent, sl.key)
+				continue
 			}
-		}
-		result := narrowList(nk, lower, project)
-		if nk.Mode == Intersect && len(result) == 0 {
-			return &ErrNarrowEmpty{File: file, Key: nk.Key, Lower: lower, Project: project}
-		}
-		if err := setDottedKey(doc, nk.Key, result); err != nil {
-			return fmt.Errorf("config %s: key %q: %w", file, nk.Key, err)
-		}
-		if r.OnNarrow != nil {
-			r.OnNarrow(Narrowed{File: file, Key: nk.Key, Mode: nk.Mode,
-				Lower: lower, Project: project, Result: result})
+			project, err := scalarList(raw)
+			if err != nil {
+				return fmt.Errorf("config %s: key %q: %w", file, nk.Key, err)
+			}
+			lower, err := lowerList(nk)
+			if err != nil {
+				return err
+			}
+			result := narrowList(nk, lower, project)
+			if nk.Mode == Intersect && len(result) == 0 {
+				return &ErrNarrowEmpty{File: file, Key: nk.Key, Lower: lower, Project: project}
+			}
+			sl.parent[sl.key] = result
+			if r.OnNarrow != nil {
+				r.OnNarrow(Narrowed{File: file, Key: nk.Key, Mode: nk.Mode,
+					Lower: lower, Project: project, Result: result})
+			}
 		}
 	}
 	return nil
@@ -308,31 +408,4 @@ func scalarList(v any) ([]string, error) {
 		out = append(out, fmt.Sprint(e))
 	}
 	return out, nil
-}
-
-func getDotted(m map[string]any, key string) (any, bool) {
-	segs := strings.Split(key, ".")
-	cur := m
-	for _, s := range segs[:len(segs)-1] {
-		next, ok := cur[s].(map[string]any)
-		if !ok {
-			return nil, false
-		}
-		cur = next
-	}
-	v, ok := cur[segs[len(segs)-1]]
-	return v, ok
-}
-
-func deleteDotted(m map[string]any, key string) {
-	segs := strings.Split(key, ".")
-	cur := m
-	for _, s := range segs[:len(segs)-1] {
-		next, ok := cur[s].(map[string]any)
-		if !ok {
-			return
-		}
-		cur = next
-	}
-	delete(cur, segs[len(segs)-1])
 }
