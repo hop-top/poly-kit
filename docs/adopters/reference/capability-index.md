@@ -132,6 +132,7 @@ Talking to models, and being legible to agents.
 | Prompts | Versioned templates with content hash, patterns, techniques, fragments, schema DSL | `go/ai/prompt` | [Prompt](prompt.md) |
 | LLM providers | Anthropic, OpenAI, Google, Ollama, Triton adapters | `go/ai/llm/anthropic` | [LLM](llm.md) |
 | LLM routing | Strong/weak model routing, RouteLLM config; `llm router` subcommands | `go/ai/llm/router` | [LLM](llm.md) |
+| LLM test cassettes | Test-only record/replay transport for model calls; scrubs keys, refuses failed exchanges, scans cassettes for leaks | `go/ai/llm/llmxrr` | [LLM](llm.md#recording-model-calls-in-tests) |
 | Judge | Typed judgments over a Case: choice, score, yes/no with abstain; validation, batching | `go/ai/judge` | [Judge](judge.md) |
 | Judge calibration | Temperature and Platt calibration of judged probabilities | `go/ai/judge/calibrate` | [Judge](judge.md) |
 | Judge test fake | Deterministic fake judge for tests | `go/ai/judge/judgetest` | [Judge](judge.md) |
