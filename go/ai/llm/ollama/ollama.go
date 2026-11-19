@@ -34,7 +34,8 @@ const (
 // local ollama entry, only the hosted ollama-cloud.
 func init() {
 	llm.Register(scheme, New, llm.Declaration{
-		Key: &llm.ProviderKey{EnvVars: []string{"OLLAMA_API_KEY"}, Optional: true},
+		Key:       &llm.ProviderKey{EnvVars: []string{"OLLAMA_API_KEY"}, Optional: true},
+		Endpoints: []string{defaultBaseURL},
 	})
 }
 

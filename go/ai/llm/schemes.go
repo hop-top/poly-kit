@@ -81,6 +81,7 @@ type ResolveOption func(*resolveOptions)
 type resolveOptions struct {
 	hermetic  bool
 	transport http.RoundTripper
+	local     *localConfig // set by LocalOnly
 }
 
 // WithTransport makes the adapter [Resolve] builds send its HTTP
@@ -278,9 +279,34 @@ func (r *Registry) Resolve(uri string, opts ...ResolveOption) (Provider, error) 
 	for _, opt := range opts {
 		opt(&o)
 	}
+	rt, cfg, err := r.resolveConfig(uri, o)
+	if err != nil {
+		return nil, err
+	}
+	if o.local != nil {
+		if err := o.local.guard(uri, rt, &cfg); err != nil {
+			return nil, err
+		}
+	}
+
+	// A key never crosses the network in clear.
+	if err := CheckKeyEndpoint(cfg.URI.Scheme, cfg.Provider.APIKey, cfg.Provider.BaseURL); err != nil {
+		return nil, err
+	}
+	p, err := rt.factory(cfg)
+	if err != nil || o.local == nil {
+		return p, err
+	}
+	return markLocal(p), nil
+}
+
+// resolveConfig is [Registry.Resolve] up to the factory: the route and
+// the configuration it would build the adapter from, nothing built and
+// no network read. [Endpoint] shares it, so the two never disagree.
+func (r *Registry) resolveConfig(uri string, o resolveOptions) (route, ResolvedConfig, error) {
 	parsed, err := ParseURI(uri)
 	if err != nil {
-		return nil, fmt.Errorf("llm: invalid URI %q: %w", RedactURI(uri), err)
+		return route{}, ResolvedConfig{}, fmt.Errorf("llm: invalid URI %q: %w", RedactURI(uri), err)
 	}
 
 	var rt route
@@ -291,7 +317,7 @@ func (r *Registry) Resolve(uri string, opts ...ResolveOption) (Provider, error) 
 		rt, ok = r.route(context.Background(), parsed.Scheme)
 	}
 	if !ok {
-		return nil, llmerrors.NewProviderNotFound(parsed.Scheme)
+		return route{}, ResolvedConfig{}, llmerrors.NewProviderNotFound(parsed.Scheme)
 	}
 	// A blank api_key is no key: the adapter gets none, and no blank
 	// param among its params.
@@ -320,14 +346,9 @@ func (r *Registry) Resolve(uri string, opts ...ResolveOption) (Provider, error) 
 	if cfg.Provider.BaseURL == "" {
 		base, err := rt.baseURL(parsed.Scheme)
 		if err != nil {
-			return nil, err
+			return route{}, ResolvedConfig{}, err
 		}
 		cfg.Provider.BaseURL = base
 	}
-
-	// A key never crosses the network in clear.
-	if err := CheckKeyEndpoint(parsed.Scheme, cfg.Provider.APIKey, cfg.Provider.BaseURL); err != nil {
-		return nil, err
-	}
-	return rt.factory(cfg)
+	return rt, cfg, nil
 }
