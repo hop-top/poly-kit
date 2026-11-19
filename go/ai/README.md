@@ -15,6 +15,7 @@ extension points.
 | [`judge/judgetest/`](judge/judgetest/README.md) | deterministic fake judge | you test code that calls a judge |
 | [`llm/`](llm/README.md) | provider-agnostic LLM client, routing, provider drivers | you call a model or route between providers |
 | [`llm/llmxrr/`](llm/llmxrr/README.md) | test-only record/replay transport for model calls, secret scrubbing, cassette leak scan | you test code that calls a model against recorded responses |
+| [`llm/strategy/`](llm/strategy/README.md) | self-consistency voting, best-of-n, cascade over a sampler; summed usage | you call a model several times and combine the answers |
 | [`prompt/`](prompt/README.md) | versioned prompt templates, patterns, techniques, fragments, schema DSL | you load, render or compose prompt text for a model |
 | [`toolspec/`](toolspec/README.md) | `ToolSpec` and `Manifest` data types, safety vocabulary, registry | you model a tool's commands, flags, risk and workflows |
 | [`toolspec/adapters/`](toolspec/adapters/README.md) | format adapters (kit-manifest, mcp) and MCP policy gate | you render the manifest or enforce policy on an MCP call |

@@ -104,18 +104,15 @@ func vote(cs []Candidate, u llm.Usage, calls int) Result {
 	}
 	r.Tally = make(map[string]int)
 	r.Shares = make(map[string]float64)
-	best := -1
-	for i, c := range cs {
+	max := 0
+	for _, c := range cs {
 		r.Tally[c.Key]++
-		// Strictly greater keeps the first-seen key on a tie, because a
-		// key reaches its final count only after an earlier key did.
-		if best < 0 || r.Tally[c.Key] > r.Tally[cs[best].Key] {
-			best = i
+		if r.Tally[c.Key] > max {
+			max = r.Tally[c.Key]
 		}
 	}
-	// best is the last index to set a new maximum; resolve to the first
-	// candidate of that key, and a tie to the key seen first.
-	max := r.Tally[cs[best].Key]
+	// First candidate whose key has the top count: a tie goes to the key
+	// seen first.
 	for _, c := range cs {
 		if r.Tally[c.Key] == max {
 			r.Winner = c

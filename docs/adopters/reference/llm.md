@@ -701,6 +701,49 @@ func TestCassettesClean(t *testing.T) {
 It runs `CheckNoSecrets` (credential shapes plus any exact values passed)
 and `CheckNoFailures`; both are exported on their own.
 
+## Strategies
+
+`hop.top/kit/go/ai/llm/strategy` runs a model several times and combines
+the answers. A `Sampler` is one call; the strategy never sees a client.
+
+```go
+s := strategy.StructuredSampler(client, req, rf, func(d json.RawMessage) string {
+    var v struct{ Label string }
+    _ = json.Unmarshal(d, &v)
+    return v.Label // votes group by this
+})
+r, err := strategy.SelfConsistency(ctx, s, 5) // r.Winner, r.Shares, r.Usage
+```
+
+Set `req.Temperature` above zero, or the samples agree trivially.
+
+| Strategy | Returns | Notes |
+|----------|---------|-------|
+| `SelfConsistency(ctx, s, n)` | the `Key` most samples share | tie goes to the key seen first; `Shares` are vote probabilities; `n=1` is one call |
+| `Vote(cs)` | the same, over candidates you hold | no calls made |
+| `BestOfN(ctx, s, n, score)` | the highest-scored candidate | tie goes to the first; the score lands in `Confidence`; scorer tokens are not in `Usage` |
+| `Cascade(ctx, stages...)` | the first candidate a stage's `Accept` takes | later stages never run; none accepted returns `ErrNoneAccepted` with the last candidate |
+
+Rules shared by all four:
+
+- Calls run in order, one at a time; a canceled context stops before the next call.
+- A sampler or scorer error ends the run. The `Result` returned with it holds the candidates and the `Usage` spent so far.
+- `Result.Usage` sums every call, repair attempts and failed calls included; `Calls` counts sampler calls.
+- A cascade stage error ends the cascade; to escalate on failure, wrap the sampler to return a low-confidence candidate.
+
+Cascade and locality: a cascade orders samplers and does not know where they
+run. Escalating from a local stage to a cloud one under `llm.LocalOnly` is
+refused at resolve time: resolving the cloud client with `LocalOnly` fails
+with `*NotLocalError` before any stage is called.
+
+`strategy.Lookup` maps a config string to a runner: `self-consistency:5`
+(N samples, default 5) and `cascade:3:0.8` (N stages, default 2, minimum
+`Confidence`, default 0.8; the sampler gets the stage index and picks the
+model). `BestOfN` needs a scorer, so it is code only.
+
+For typed judgments with probabilities over a label set, use
+`go/ai/judge/llmjudge` (`Votes(n)`) instead.
+
 ## Event hooks
 
 ```go
