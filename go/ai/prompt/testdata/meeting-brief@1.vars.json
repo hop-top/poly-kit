@@ -1,0 +1,9 @@
+{
+  "event": {"title": "Q4 planning", "start": "2026-11-20T10:00:00Z", "end": "2026-11-20T11:00:00Z", "location": "", "organizer": "ann@example.com",
+    "attendees": [{"email": "ann@example.com", "name": "Ann", "status": "accepted"}, {"email": "bob@example.com", "name": "", "status": ""}]},
+  "unavailable": {"notes": false, "threads": false, "tasks": false},
+  "counts": {"notes": 3, "threads": 1, "tasks": 0},
+  "notes": [{"type": "meeting", "summary": "", "id": "n1", "tags": ["a", "b"]}, {"type": "person", "summary": "Ann leads the platform group and has opinions about the roadmap that run long enough to be cut off at two hundred runes, which this sentence deliberately exceeds by a comfortable margin so trunc fires on it for sure and the golden pins it.", "id": "n2", "tags": []}],
+  "threads": [{"id": "t1", "status": "open", "last_activity": "2026-11-17"}],
+  "tasks": []
+}
