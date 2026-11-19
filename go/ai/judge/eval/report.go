@@ -17,8 +17,9 @@ type Report struct {
 	Questions []QuestionReport `json:"questions"`
 	// Samples are the candidate's probabilities against reference labels,
 	// one per answer that carries Probs, in case order: feed calibrate.Fit
-	// to calibrate the candidate from the same run. Fit rejects a sample
-	// whose true label has probability 0; drop those first if you see it.
+	// to calibrate the candidate from the same run. A sample whose true
+	// label has probability 0 (confident wrong) is kept: Fit floors
+	// probabilities at 1e-12 instead of rejecting it.
 	Samples []calibrate.Sample `json:"samples,omitempty"`
 }
 

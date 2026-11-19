@@ -304,5 +304,6 @@ judge for another (for example a cloud judge for a local model).
   share not abstained). Every question must pass; no questions fails.
 - `Report.Samples` are `calibrate.Sample`s (candidate `Probs`, reference
   label), so `calibrate.Fit(report.Samples, ...)` calibrates the candidate
-  from the same run. `Fit` rejects a sample whose true label has probability
-  0.
+  from the same run. A sample whose true label has probability 0 (confident
+  wrong) is kept: `Fit` floors probabilities at 1e-12; NaN, negative, or
+  non-normalised probs are still rejected.
