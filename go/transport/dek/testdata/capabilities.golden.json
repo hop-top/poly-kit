@@ -1,0 +1,158 @@
+[
+  {
+    "id": "item.add",
+    "noun": "item",
+    "verb": "add",
+    "args_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "force": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "tag": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "scopes": [],
+    "dry_run": false,
+    "destructive": false,
+    "gate": "free",
+    "output": "record",
+    "targets": [
+      "desktop",
+      "tablet",
+      "phone",
+      "web",
+      "terminal"
+    ],
+    "read": false,
+    "granted": true
+  },
+  {
+    "id": "item.delete",
+    "noun": "item",
+    "verb": "delete",
+    "args_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "scopes": [],
+    "dry_run": true,
+    "destructive": true,
+    "gate": "review",
+    "output": "plan",
+    "targets": [
+      "desktop",
+      "tablet",
+      "phone",
+      "web",
+      "terminal"
+    ],
+    "read": false,
+    "granted": true
+  },
+  {
+    "id": "item.list",
+    "noun": "item",
+    "verb": "list",
+    "args_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 20,
+          "description": "max rows",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "scopes": [],
+    "dry_run": false,
+    "destructive": false,
+    "gate": "free",
+    "output": "list",
+    "targets": [
+      "desktop",
+      "tablet",
+      "phone",
+      "web",
+      "terminal"
+    ],
+    "read": true,
+    "granted": true
+  },
+  {
+    "id": "item.show",
+    "noun": "item",
+    "verb": "show",
+    "args_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "scopes": [],
+    "dry_run": false,
+    "destructive": false,
+    "gate": "free",
+    "output": "record",
+    "targets": [
+      "desktop",
+      "tablet",
+      "phone",
+      "web",
+      "terminal"
+    ],
+    "read": true,
+    "granted": true
+  },
+  {
+    "id": "ping",
+    "noun": "ping",
+    "verb": "ping",
+    "args_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "scopes": [],
+    "dry_run": false,
+    "destructive": false,
+    "gate": "free",
+    "output": "record",
+    "targets": [
+      "desktop",
+      "tablet",
+      "phone",
+      "web",
+      "terminal"
+    ],
+    "read": true,
+    "granted": true
+  }
+]

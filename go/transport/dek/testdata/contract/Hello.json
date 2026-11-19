@@ -1,0 +1,75 @@
+{
+  "$defs": {
+    "ContractVersion": {
+      "description": "Contract revision: `major` breaks, `minor` adds. Before the first release\nminor bumps may also break shape, as all components ship together.",
+      "properties": {
+        "major": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "minor": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "major",
+        "minor"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "First message a core sends after connect: the reply to `GET /hello`,\nand the first frame on the bus socket after the client's\n[`Subscribe`](crate::Subscribe).",
+  "properties": {
+    "contract": {
+      "$ref": "#/$defs/ContractVersion"
+    },
+    "core_id": {
+      "type": "string"
+    },
+    "head": {
+      "description": "The stream's latest offset when the hello was sent; 0 before any\nevent. On the bus socket, events after it follow (live or replayed\nfrom `resume_from`). Same wire form as `CloudEvent.dekoffset`.",
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "heartbeat_ms": {
+      "description": "How often, in milliseconds, the core sends a heartbeat (a ping) on\nthe bus socket; a core advertises 1000 to 30000 (1-30 s). Clients\nclamp the value to that range (0 or absent: their own default) and\ndrop a link silent for three intervals of the clamped value, so a\ncore pinging less often than every 30 s gets its links dropped.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "manifest_etag": {
+      "type": "string"
+    },
+    "storage": {
+      "description": "The storage the core serves (contract 1.22): the same id across\nrestarts over the same storage, a new one for new or restored storage\n(a backup read back is new storage). At most [`STORAGE_MAX_BYTES`]\nbytes. Absent from an older core: dek then cannot tell fresh storage\nfrom a restart.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "stream": {
+      "description": "The core's bus stream: with an offset, the position a client resumes\nfrom (`Subscribe.stream`). New on every core start.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "contract",
+    "core_id",
+    "manifest_etag"
+  ],
+  "title": "Hello",
+  "type": "object"
+}
