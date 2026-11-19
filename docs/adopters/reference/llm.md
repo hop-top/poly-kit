@@ -948,6 +948,79 @@ p, err := llm.Resolve("ollama://llama3", llm.WithTransport(rt), llm.Hermetic())
 - Calling an adapter's `New` directly: set `ResolvedConfig.Transport`
   yourself.
 
+### Local-only
+
+For a node that must not send a prompt off the machine (or, by
+default, off the local network). Three pieces: read where a URI points,
+classify it, and refuse anything else.
+
+```go
+// Where does this URI go? Same decision as Resolve; builds nothing.
+base, err := llm.Endpoint("ollama://llama3")      // http://localhost:11434
+loc, err := llm.EndpointLocality(base)            // loopback | private | remote
+
+// Resolve refuses a non-local endpoint and guards every request.
+p, err := llm.Resolve(uri, llm.LocalOnly(), llm.Hermetic())
+
+// A chain that cannot hold a cloud provider.
+c, err := llm.LocalOnlyClient(p, llm.WithFallback(q))
+```
+
+| Name | Role |
+|------|------|
+| `llm.Endpoint(uri, opts...)` | the base URL `Resolve` would use, highest first: `base_url` param, `host:port`, the scheme's declared default, the aim catalog; failing those, the adapter's declared `Endpoints[0]`. `ErrNoEndpoint` when none (`openai://m`, `google://m`: the adapter picks its own default). `ParseURI` is unchanged |
+| `llm.EndpointLocality(baseURL)` | `loopback`: 127.0.0.0/8, `::1`, `localhost`. `private`: RFC 1918, `fc00::/7`, `*.local`. `remote`: everything else, a DNS name included (never resolved), and CGNAT/tailnet `100.64.0.0/10`, link-local, `0.0.0.0`. Errors on a URL that is not plain http(s) |
+| `llm.LocalOnly(opts...)` | `ResolveOption`: refuse a non-local endpoint with `*NotLocalError` (`errors.Is(err, llm.ErrNotLocal)`), guard the requests, mark the provider local |
+| `llm.AllowPrivate(bool)` | default `true`; `false` keeps to this host |
+| `llm.AllowHosts(hosts...)` | names, IPs or CIDRs accepted though not local, tailnet for one. Names match exactly; an allowed name's addresses are accepted |
+| `llm.IsLocal(p)` | the provider has `Local() bool` returning true |
+| `llm.LocalOnlyClient(primary, opts...)` | `NewClient` that refuses, with `*NotLocalError`, a primary or `WithFallback` provider not marked local |
+| `llm.FilterLocal(entries)` | pool entries whose scheme's default endpoint is local; the rest come back `Enabled: false` |
+
+`Endpoint` decides as `Resolve` does, so the base-URL leak is caught:
+`openai://localhost:8000/m?base_url=https://api.openai.com/v1` is
+`remote` and refused, though its host is loopback.
+
+What `LocalOnly` holds, in order:
+
+1. `Resolve` refuses a URI whose endpoint is not local, or names none
+   kit can check.
+2. Each request's URL host is checked again, on whatever transport
+   carries it, a `WithTransport` one included (the check wraps it, and
+   option order does not matter). This catches an endpoint an adapter
+   settled on from its own environment variable; `Hermetic()` closes
+   that source.
+3. With no `WithTransport`, kit builds the transport and guards the
+   dial: a name is resolved, every address must be loopback, private
+   (unless `AllowPrivate(false)`) or allowed, and the checked address is
+   the one dialed, so a name that resolves to a public address, or is
+   rebound after the check, cannot connect. That transport ignores
+   proxy environment variables. With a caller transport, (2) is the
+   guard: the dial is the caller's.
+4. Redirects are never followed.
+
+`Resolve` with `LocalOnly` returns a provider marked local. It forwards
+every capability interface (an absent one answers
+`ErrCapabilityNotSupported`) and has `Unwrap() llm.Provider` for the
+adapter. Build the client with `LocalOnlyClient`, which unwraps, so
+`Capabilities()` and `Provider()` are the adapter's own.
+
+Not covered:
+
+- `PickProvider`, `PickProviderInPool`, `ResolvedConfig.Fallbacks` and the
+  llm.yaml `pool` hand back names and models, not providers. Resolve each
+  with `LocalOnly` before it reaches `LocalOnlyClient`. `FilterLocal`
+  narrows a pool by scheme default only: it does not see a host or
+  `base_url` a URI adds later. It returns the pool as long as it came,
+  with non-local entries disabled, because the picker reads an empty
+  pool as "accept everything"; with no pool at all, give the picker an
+  explicit one.
+- Media URL fetches (`MediaSource` URLs) use their own client and can
+  reach a remote host: pass media as bytes.
+- An adapter built by calling its `New` directly.
+- A provider you write: `LocalOnlyClient` accepts one only if it has
+  `Local() bool` returning true, a claim kit does not verify.
+
 ## Model registry
 
 `aim` (`hop.top/aim`, `v0.1.0-alpha.6`) is the source of truth for model
