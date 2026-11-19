@@ -76,6 +76,23 @@ type Options struct {
 	// the plain merge.
 	Project *ProjectRules
 
+	// PathKeys lists dotted keys whose values are filesystem paths. A
+	// relative value is resolved to an absolute path: against the directory
+	// of the file that supplied it (a project ".tool/config.yaml" resolves
+	// against the project root, the parent of ".tool"; ".tool.yaml" against
+	// its own directory), or against the cwd when it came from EnvOverride
+	// or Overrides (-c key=value). Absolute and "~"-prefixed values are left
+	// as written. Keys match case-folded per segment; "*" matches any one
+	// segment. Values may be a string or a list of strings.
+	PathKeys []string
+
+	// DeepMergeMaps, when true and dst is a *map[string]any, merges nested
+	// mappings key by key across layers instead of replacing each top-level
+	// entry whole. Scalars, lists and nulls still replace. Off by default
+	// (the documented whole-entry replacement); it has no effect on struct
+	// dst, where map-typed fields keep replacing entry by entry.
+	DeepMergeMaps bool
+
 	// Viper, when non-nil, gets:
 	//   - Defaults seeded via SeedDefaults before files load (typed defaults
 	//     also reach viper.Get* callers).
@@ -116,8 +133,23 @@ type Options struct {
 // them up via syncToViper at the end (only for keys present in env at the
 // time of sync).
 func Load(dst any, opts Options) error {
-	if err := applyDefaults(dst, opts.Defaults); err != nil {
+	return load(dst, opts, nil)
+}
+
+// load is Load with an optional origin recorder.
+func load(dst any, opts Options, rec *originRec) error {
+	target := mergeTarget(dst, opts)
+	if err := applyDefaults(target, opts.Defaults); err != nil {
 		return err
+	}
+	if rec != nil && opts.Defaults != nil {
+		defs, err := leafValues(opts.Defaults)
+		if err != nil {
+			return fmt.Errorf("marshal defaults: %w", err)
+		}
+		for p := range defs {
+			rec.setLeaf(p, LayerDefault, "")
+		}
 	}
 	if opts.Viper != nil {
 		if opts.Defaults != nil {
@@ -132,9 +164,16 @@ func Load(dst any, opts Options) error {
 		}
 	}
 
-	for _, path := range []string{
-		opts.SystemConfigPath, opts.UserConfigPath, opts.ProjectConfigPath,
-	} {
+	slots := []struct {
+		path  string
+		layer LayerName
+	}{
+		{opts.SystemConfigPath, LayerSystem},
+		{opts.UserConfigPath, LayerUser},
+		{opts.ProjectConfigPath, LayerProject},
+	}
+	for _, s := range slots {
+		path := s.path
 		if path == "" {
 			continue
 		}
@@ -142,8 +181,14 @@ func Load(dst any, opts Options) error {
 		if path == opts.ProjectConfigPath && opts.Project != nil {
 			merge = mergeProjectFile
 		}
-		if err := merge(dst, path, opts); err != nil &&
-			!errors.Is(err, os.ErrNotExist) {
+		err := merge(target, path, opts)
+		if err == nil {
+			if err := recordFile(rec, path, s.layer, opts); err != nil {
+				return err
+			}
+			continue
+		}
+		if !errors.Is(err, os.ErrNotExist) {
 			var fe *ErrProjectForbidden
 			var ne *ErrNarrowEmpty
 			if errors.As(err, &fe) || errors.As(err, &ne) {
@@ -153,15 +198,48 @@ func Load(dst any, opts Options) error {
 		}
 	}
 	for _, path := range opts.ExtraConfigPaths {
-		if err := mergeFileWithMigrations(dst, path, opts); err != nil {
+		if err := mergeFileWithMigrations(target, path, opts); err != nil {
 			return fmt.Errorf("load config %s: %w", path, err)
+		}
+		if err := recordFile(rec, path, LayerExtra, opts); err != nil {
+			return err
 		}
 	}
 	if opts.EnvOverride != nil {
+		var before map[string]any
+		track := rec != nil || len(opts.PathKeys) > 0
+		if track {
+			var err error
+			if before, err = leafValues(dst); err != nil {
+				return fmt.Errorf("read merged config: %w", err)
+			}
+		}
 		opts.EnvOverride(dst)
+		if track {
+			after, err := leafValues(dst)
+			if err != nil {
+				return fmt.Errorf("read merged config: %w", err)
+			}
+			changed := changedLeaves(before, after)
+			if err := resolveEnvPaths(dst, changed, opts.PathKeys); err != nil {
+				return fmt.Errorf("resolve env paths: %w", err)
+			}
+			if rec != nil {
+				for _, p := range changed {
+					rec.setLeaf(p, LayerEnv, "")
+				}
+			}
+		}
 	}
-	if err := ApplyOverrides(dst, opts.Overrides); err != nil {
+	overrides, err := resolveOverridePaths(opts.Overrides, opts.PathKeys)
+	if err != nil {
 		return fmt.Errorf("apply CLI overrides: %w", err)
+	}
+	if err := ApplyOverrides(target, overrides); err != nil {
+		return fmt.Errorf("apply CLI overrides: %w", err)
+	}
+	if rec != nil {
+		rec.set(opts.Overrides, LayerOverride, "")
 	}
 	// We do NOT sync the merged dst back into viper at "Set" precedence —
 	// doing so would clobber env-bound values that AutomaticEnv resolves at
@@ -198,16 +276,40 @@ func mergeFileWithMigrations(dst any, path string, opts Options) error {
 // fileData is the YAML bytes of path, migrated when Options supplies
 // migrations.
 func fileData(path string, opts Options) ([]byte, error) {
+	var data []byte
+	var err error
 	if len(opts.Migrations) == 0 {
-		return os.ReadFile(path)
+		data, err = os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		migrated, err := Migrate(path, opts.Migrations, opts.MigrateOptions)
+		if err != nil {
+			return nil, err
+		}
+		data, err = yaml.Marshal(migrated)
+		if err != nil {
+			return nil, fmt.Errorf("re-marshal migrated %s: %w", path, err)
+		}
 	}
-	migrated, err := Migrate(path, opts.Migrations, opts.MigrateOptions)
+	return resolveFilePaths(data, path, opts)
+}
+
+// recordFile notes every key path supplies as coming from layer; a no-op
+// without a recorder.
+func recordFile(rec *originRec, path string, layer LayerName, opts Options) error {
+	if rec == nil {
+		return nil
+	}
+	data, err := fileData(path, opts)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("load config %s: %w", path, err)
 	}
-	data, err := yaml.Marshal(migrated)
-	if err != nil {
-		return nil, fmt.Errorf("re-marshal migrated %s: %w", path, err)
+	var doc any
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return fmt.Errorf("load config %s: %w", path, err)
 	}
-	return data, nil
+	rec.set(doc, layer, path)
+	return nil
 }
