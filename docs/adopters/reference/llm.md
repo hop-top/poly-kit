@@ -913,6 +913,41 @@ yourself when you call an adapter's `New` directly. Without a
 `ApplyAPIKey`, `ResolveAPIKey` and `SecretFor` exist to read `llm.yaml`
 and the environment: a hermetic app does not call them.
 
+### HTTP transport
+
+`llm.WithTransport(rt)` makes the adapter `Resolve` builds send its
+requests through `rt`, an `http.RoundTripper`: a proxy, a record/replay
+cassette, a counting fake in a test. It combines with `Hermetic()`.
+
+```go
+p, err := llm.Resolve("ollama://llama3", llm.WithTransport(rt), llm.Hermetic())
+```
+
+| Name | Role |
+|------|------|
+| `llm.WithTransport(rt)` | `ResolveOption`; sets `ResolvedConfig.Transport` |
+| `ResolvedConfig.Transport` | the round tripper; nil keeps today's behavior |
+| `(ResolvedConfig).HTTPClient()` | the client an adapter uses: `Transport` or the default, redirects refused |
+| `llm.Doer`, `llm.DoerTransport(d)` | wrap anything with `Do(*http.Request)` (an `*http.Client`, a recorder) as a transport |
+
+- Covers `anthropic`, `openai` and its schemes, `routellm` (through its
+  `openai` core), `ollama` (chat and image generation), `google` /
+  `gemini`, and `triton`. An adapter you write calls `cfg.HTTPClient()`
+  to honor it.
+- With no transport, requests go through `http.DefaultClient`'s
+  transport as read at request time, then `http.DefaultTransport`; a
+  process-wide proxy or recorder installed there still applies.
+- Redirects are never followed, whatever the transport: the 3xx is an
+  error, so a key does not move to a host the server names. The
+  transport sees only the first hop.
+- Body limits, key scrubbing and `Hermetic` behave as without a
+  transport.
+- Media URL fetches (`media_fetch.go`, for `MediaSource` URLs) do not go
+  through the caller's transport: they use their own egress-restricted
+  client.
+- Calling an adapter's `New` directly: set `ResolvedConfig.Transport`
+  yourself.
+
 ## Model registry
 
 `aim` (`hop.top/aim`, `v0.1.0-alpha.6`) is the source of truth for model
