@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: 6c79f00f
+recorded_at: "2026-11-19T00:20:29Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: '{"content":[{"text":"{\"label\":\"pass\",\"score\":7}","type":"text"}],"id":"msg_test123","model":"claude-sonnet-4-20250514","role":"assistant","stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"input_tokens":4,"output_tokens":6}}'
