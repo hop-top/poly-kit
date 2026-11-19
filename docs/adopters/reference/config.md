@@ -103,6 +103,49 @@ aliasing`. TypeScript also caps nesting at 100 collections, counted through
 aliases (`config: failed to parse <path>: nesting exceeded maxDepth (100)`);
 Go's parser allows 10000 levels of text nesting.
 
+## Project-layer restrictions
+
+A project file is committed next to the code, so a repo you clone can set
+keys the file's author should not control. `Options.Project` takes a
+`*ProjectRules` that applies only to `ProjectConfigPath` (the nearest cwd or
+walked-up project marker). System, user, `-c` files, env and `-c key=value`
+overrides are never checked, and the precedence order does not change.
+
+```go
+err := config.Load(&cfg, config.Options{
+    UserConfigPath:    userPath,
+    ProjectConfigPath: projectPath,
+    Project: &config.ProjectRules{
+        Forbidden: []string{"owner_profile", "bos"},
+        SecretKey: regexp.MustCompile(`(?i)secret|token|passw|api[_-]?key`),
+        Narrow: []config.NarrowKey{
+            {Key: "ai.models.deny", Mode: config.Union},
+            {Key: "ai.models.allow", Mode: config.Intersect, Match: globMatch},
+        },
+    },
+})
+```
+
+| Rule | Behaviour |
+|------|-----------|
+| `Forbidden` | Exact dotted key or prefix on whole segments (`bos` forbids `bos` and `bos.url`, not `bosun`). Load returns `*ErrProjectForbidden` with `File`, `Key` and a `Suggestion` naming `UserConfigPath`. |
+| `SecretKey` | Regexp matched against each key segment; a hit is forbidden the same way (`Secret` is true). |
+| `Narrow` + `Union` | Deny-style list: project entries are added to the list the lower layers produced, without repeats. |
+| `Narrow` + `Intersect` | Allow-style list: a project entry survives when a lower entry admits it, a lower entry when a project entry admits it, so the result never permits more than the lower list. `Match(pattern, value)` defaults to equality; pass a glob or URI matcher. |
+
+Lower layers are defaults, system and user, merged as usual. With no lower
+list the project list stands. A project `null` for a narrow key is ignored,
+since it would clear the lower list. A narrow key that is not a list of
+scalars is an error naming the file.
+
+An `Intersect` that leaves nothing returns `*ErrNarrowEmpty` (file, key,
+both lists). It is never turned into an empty list, which a tool would read
+as "no limit". A tool that wants "deny all" maps the error itself.
+
+A rejected project file merges nothing. `ProjectRules.OnNarrow` receives a
+`Narrowed` record (file, key, lower, project, result) per narrowed key, for
+`config show` style output; `Resolved` and `Origin` are unchanged.
+
 ## Writing values
 
 Use `SetValue` when the value has a Go type; use `Set` only when the value

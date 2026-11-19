@@ -71,6 +71,11 @@ type Options struct {
 	// over every other layer. Build it from CLI flags via ParseConfigArgs.
 	Overrides map[string]any
 
+	// Project, when non-nil, restricts ProjectConfigPath only (forbidden
+	// keys, narrow-only lists); every other layer is unaffected. Nil keeps
+	// the plain merge.
+	Project *ProjectRules
+
 	// Viper, when non-nil, gets:
 	//   - Defaults seeded via SeedDefaults before files load (typed defaults
 	//     also reach viper.Get* callers).
@@ -133,8 +138,17 @@ func Load(dst any, opts Options) error {
 		if path == "" {
 			continue
 		}
-		if err := mergeFileWithMigrations(dst, path, opts); err != nil &&
+		merge := mergeFileWithMigrations
+		if path == opts.ProjectConfigPath && opts.Project != nil {
+			merge = mergeProjectFile
+		}
+		if err := merge(dst, path, opts); err != nil &&
 			!errors.Is(err, os.ErrNotExist) {
+			var fe *ErrProjectForbidden
+			var ne *ErrNarrowEmpty
+			if errors.As(err, &fe) || errors.As(err, &ne) {
+				return err // already names the file
+			}
 			return fmt.Errorf("load config %s: %w", path, err)
 		}
 	}
@@ -174,24 +188,26 @@ func SyncToViper(v *viper.Viper, src any) error {
 // re-marshaled to YAML and unmarshalled into dst. Without migrations this
 // reduces to the legacy mergeFile path.
 func mergeFileWithMigrations(dst any, path string, opts Options) error {
-	if len(opts.Migrations) == 0 {
-		return mergeFile(dst, path)
-	}
-	migrated, err := Migrate(path, opts.Migrations, opts.MigrateOptions)
+	data, err := fileData(path, opts)
 	if err != nil {
 		return err
-	}
-	data, err := yaml.Marshal(migrated)
-	if err != nil {
-		return fmt.Errorf("re-marshal migrated %s: %w", path, err)
 	}
 	return yaml.Unmarshal(data, dst)
 }
 
-func mergeFile(dst any, path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
+// fileData is the YAML bytes of path, migrated when Options supplies
+// migrations.
+func fileData(path string, opts Options) ([]byte, error) {
+	if len(opts.Migrations) == 0 {
+		return os.ReadFile(path)
 	}
-	return yaml.Unmarshal(data, dst)
+	migrated, err := Migrate(path, opts.Migrations, opts.MigrateOptions)
+	if err != nil {
+		return nil, err
+	}
+	data, err := yaml.Marshal(migrated)
+	if err != nil {
+		return nil, fmt.Errorf("re-marshal migrated %s: %w", path, err)
+	}
+	return data, nil
 }
