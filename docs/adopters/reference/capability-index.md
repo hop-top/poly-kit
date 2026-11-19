@@ -53,7 +53,7 @@ Where configuration resolves from and where state and secrets live.
 
 | Capability | What it does | Go package | Usage docs |
 |---|---|---|---|
-| Layered config | System, user, project, env layers; hot reload; PKL schema support | `go/core/config` | [Config](config.md); [Inspect config paths](../guides/inspect-config-paths.md) |
+| Layered config | System, user, project, env layers; project-layer restrictions (forbidden keys, narrow-only lists); hot reload; PKL schema support | `go/core/config` | [Config](config.md); [Inspect config paths](../guides/inspect-config-paths.md) |
 | XDG paths | XDG Base Directory resolution for config, data, cache, state | `go/core/xdg` | [XDG](xdg.md) |
 | Project registry | Reader/writer for the shared project registry | `go/core/projects` | [use-the-project-registry](../guides/use-the-project-registry.md) |
 | Key-value store | KV interface, TTL store, memory/SQLite/Badger/etcd/TiDB drivers | `go/storage/kv` | [Storage abstractions](../concepts/storage-abstractions.md) |

@@ -13,6 +13,7 @@ schema with wizard, completion and validation is [`pkl/`](pkl/README.md).
 - load in `PersistentPreRunE` → `config.Load(&cfg, config.Options{...})` fed by `root.ConfigArgs()`
 - write a value that has a Go type → `config.SetValue(key, value, scope, opts)`; a genuine string → `config.Set(...)`
 - write a value typed from a raw CLI arg → `config.SetValue(key, config.ParseScalar(raw), scope, opts)`
+- keep a committed project file from setting secrets or widening a policy → `Options.Project: &config.ProjectRules{...}` (forbidden keys, narrow-only lists)
 - hot reload → `config.New(&cfg, opts, config.WithReloadPublisher(pub))`, read via `Snapshot()`, `go r.WatchSignal(ctx, syscall.SIGHUP)`
 
 ## Quick start
@@ -34,6 +35,7 @@ err = config.Load(&cfg, config.Options{
 - Layers merge as yaml.v3 decodes into an existing value: struct fields merge per field at any depth; scalars, slices, each map entry and `any` values are replaced whole; a null clears pointer, slice, map and `any` fields only; a wrong-kind value for a typed field is an error. Pinned by `contracts/config-v1/load.json`.
 - `Set` writes every scalar as `!!str`, so `Set("k", "0.9", ...)` emits `k: "0.9"` and a consumer decoding into `float64` fails at the next load. `SetValue` infers the tag from the Go type.
 - `ParseScalar` recognises floats, ints, bools and null only; oversized numbers (`9223372036854775808`, `1e400`) and YAML 1.1 lookalikes (`yes`, `on`, `off`, `no`) stay strings.
+- `Options.Project` restricts `ProjectConfigPath` only; system, user, `-c` files, env and overrides merge as usual, and precedence is unchanged. A forbidden key (exact, prefix or secret-name segment) returns `*ErrProjectForbidden` naming file, key and the user config path. A `Narrow` list key merges against what the layers below project produced: `Union` adds, `Intersect` keeps entries both sides admit (`Match` defaults to equality). No lower list: the project list stands. Empty `Intersect` returns `*ErrNarrowEmpty`, never "no limit". A null project list cannot clear a lower one.
 - Reload: fields are immutable unless tagged `reload:"true"`; a changed immutable field returns `*ErrImmutableChanged` and keeps the old snapshot. Treat every `*T` from `Snapshot()` as immutable.
 - Reload events `kit.config.snapshot.reloaded` / `kit.config.snapshot.reload_failed` publish only when `WithReloadPublisher` is set; `SourcePaths` order is system, user, project, then `ExtraConfigPaths`.
 
