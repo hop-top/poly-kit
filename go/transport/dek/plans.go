@@ -93,8 +93,8 @@ func (c *Core) apply(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if ask.MinApprovals != nil {
-		// A core at this contract minor honours the request or
-		// refuses it; this one has no approval levels to honour it.
+		// A core at this contract minor honors the request or
+		// refuses it; this one has no approval levels to honor it.
 		refuse(w, http.StatusUnprocessableEntity, "min_approvals is not supported: this core has no approval levels")
 		return
 	}

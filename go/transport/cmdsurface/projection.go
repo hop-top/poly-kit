@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"hop.top/kit/go/console/cli/cmdmeta"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"hop.top/kit/go/ai/cmdreflect"
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/transport/api"
 )
 
