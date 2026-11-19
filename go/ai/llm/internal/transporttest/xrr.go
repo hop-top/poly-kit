@@ -158,7 +158,7 @@ func (c Cassette) Run(t *testing.T, call func(llm.Provider) error) {
 		rec := XRRTransport{Session: xrr.NewSession(xrr.ModeRecord, xrr.NewFileCassette(c.Dir)), Inner: &http.Transport{}}
 		p, err := llm.Resolve(c.URI(fake.URL), llm.WithTransport(rec))
 		require.NoError(t, err)
-		defer p.Close()
+		defer func() { _ = p.Close() }()
 		require.NoError(t, call(p))
 		return
 	}
@@ -166,7 +166,7 @@ func (c Cassette) Run(t *testing.T, call func(llm.Provider) error) {
 	rep := XRRTransport{Session: xrr.NewSession(xrr.ModeReplay, xrr.NewFileCassette(c.Dir))}
 	p, err := llm.Resolve(c.URI(replayBase), llm.WithTransport(rep), llm.Hermetic())
 	require.NoError(t, err)
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 	require.NoError(t, call(p))
 	assert.Zero(t, defHits())
 }
