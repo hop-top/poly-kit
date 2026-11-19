@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 13e04467
+recorded_at: "2026-11-19T00:20:29Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:60046/chat/completions
+    body: '{"messages":[{"content":"judge","role":"user"}],"model":"gpt-4o","response_format":{"json_schema":{"name":"verdict","strict":true,"schema":{"type":"object","properties":{"label":{"type":"string","enum":["pass","fail"]},"score":{"type":"integer"}},"required":["label","score"],"additionalProperties":false}},"type":"json_schema"}}'

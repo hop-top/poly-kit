@@ -1,0 +1,25 @@
+xrr: "1"
+adapter: http
+fingerprint: 13e04467
+recorded_at: "2026-11-19T00:20:29Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |-
+        {
+        		"id": "chatcmpl-test",
+        		"object": "chat.completion",
+        		"created": 1700000000,
+        		"model": "gpt-4o",
+        		"choices": [{
+        			"index": 0,
+        			"message": {"role": "assistant", "content": "{\"label\":\"pass\",\"score\":7}"},
+        			"finish_reason": "stop"
+        		}],
+        		"usage": {
+        			"prompt_tokens": 10,
+        			"completion_tokens": 20,
+        			"total_tokens": 30
+        		}
+        	}

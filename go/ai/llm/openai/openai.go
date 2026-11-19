@@ -106,6 +106,8 @@ type Adapter struct {
 	// toolNames is the tool_names param: how tool names the API
 	// rejects are handled.
 	toolNames llm.ToolNameMode
+	// format is the response_format param: how a schema goes out.
+	format string
 	// secrets are the credential values sent; errors carry none of
 	// them ([Adapter.mapError]).
 	secrets []string
@@ -178,11 +180,17 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		return nil, fmt.Errorf("openai: %w", err)
 	}
 
+	format, err := formatModeOf(cfg.Provider.Params)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Adapter{
 		client:    oai.NewClient(opts...),
 		model:     model,
 		scheme:    cfg.URI.Scheme,
 		toolNames: toolNames,
+		format:    format,
 		secrets:   secret.Of(cfg.Provider.APIKey),
 	}, nil
 }
@@ -346,6 +354,9 @@ func (a *Adapter) buildParams(
 	}
 	if c := req.ToolChoice; c != nil {
 		p.ToolChoice = toolChoice(c, names)
+	}
+	if err := a.applyResponseFormat(&p, req.ResponseFormat); err != nil {
+		return oai.ChatCompletionNewParams{}, err
 	}
 	return p, nil
 }
