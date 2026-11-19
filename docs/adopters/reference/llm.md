@@ -686,6 +686,7 @@ the cassettes.
 | Stored | method, path and query, scrubbed bodies, status, content type; never request headers (`Authorization`, `x-api-key`) or the host |
 | Dropped from the URL | `key`, `api_key`, `apikey`, `access_token`, `token` and similar query params |
 | Masked in URLs and bodies | `sk-...`, `AIza...`, `Bearer ...`, JSON fields named `api_key`, `authorization` and similar, the provider env keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...), and any `llmxrr.WithSecrets(...)` value |
+| Kept | logprobs entries (`"token"` next to `"logprob"`); any other `token` field is masked |
 | Fingerprint | taken after scrubbing, so replay matches whatever key the run uses |
 | Failed exchange | record refuses a transport error or non-2xx with `llmxrr.ErrRefused` and writes nothing; replay refuses a stored one with `llmxrr.ErrStoredFailure`; `llmxrr.AllowFailures()` lifts both |
 | Streaming | an SSE body is read whole and replayed whole |
