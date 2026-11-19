@@ -13,6 +13,7 @@ extension points.
 | [`judge/`](judge/README.md) | typed judgments over a case: choice, score, yes/no questions; validation, batching | you need probability-bearing answers from a model or rule engine, not raw text |
 | [`judge/calibrate/`](judge/calibrate/README.md) | temperature and Platt calibration, `Fit`, `Calibrated` | you calibrate a backend's probabilities |
 | [`judge/judgetest/`](judge/judgetest/README.md) | deterministic fake judge | you test code that calls a judge |
+| [`judge/jev/`](judge/jev/README.md) | Jev backend: native probabilities and USD cost via OpenRouter; cloud only | you judge with TypeSafe's Jev model |
 | [`llm/`](llm/README.md) | provider-agnostic LLM client, routing, provider drivers | you call a model or route between providers |
 | [`llm/llmxrr/`](llm/llmxrr/README.md) | test-only record/replay transport for model calls, secret scrubbing, cassette leak scan | you test code that calls a model against recorded responses |
 | [`llm/strategy/`](llm/strategy/README.md) | self-consistency voting, best-of-n, cascade over a sampler; summed usage | you call a model several times and combine the answers |
