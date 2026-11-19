@@ -76,6 +76,7 @@ func e2eInputs(name string, withBus bool) Inputs {
 		WithPrePrHook:         true,
 		WithGithookPostPROpen: true,
 		WithBusWorkflows:      withBus,
+		WithReleasePlease:     true,
 		Vars: map[string]any{
 			"Name":          name,
 			"name":          name,
@@ -140,10 +141,12 @@ func e2eBootstrap(t *testing.T, in Inputs) (target string, summary Summary) {
 func TestE2E_Bootstrap_DefaultFlags_WiresAllNonBusGenerators(t *testing.T) {
 	target, summary := e2eBootstrap(t, e2eInputs("demo", false))
 
-	// Workflow callers. Default Runtime = ["go"] → test caller only: the
-	// root Go module publishes via proxy.golang.org from its bare tags.
+	// Workflow callers. Default Runtime = ["go"] → release-please +
+	// preflight callers; CI runs inline (ci-go.yml) and the root Go module
+	// publishes via proxy.golang.org from its bare tags.
 	assert.NoFileExists(t, filepath.Join(target, ".github", "workflows", "release-go-caller.yml"))
-	assert.FileExists(t, filepath.Join(target, ".github", "workflows", "test-go-caller.yml"))
+	assert.NoFileExists(t, filepath.Join(target, ".github", "workflows", "test-go-caller.yml"))
+	assert.FileExists(t, filepath.Join(target, ".github", "workflows", "release-please-preflight.yml"))
 
 	// Before-PR hook — bash + ps1 companion.
 	assert.FileExists(t, filepath.Join(target, ".githooks", "pre-pr"))
@@ -229,7 +232,7 @@ func TestE2E_Bootstrap_ManifestSchemaAndHashes(t *testing.T) {
 	mustMatch := []string{
 		PrePrHookPath,
 		PrePrHookPs1Path,
-		".github/workflows/test-go-caller.yml",
+		".github/workflows/release-please-preflight.yml",
 	}
 	for _, rel := range mustMatch {
 		t.Run(rel, func(t *testing.T) {
@@ -257,7 +260,7 @@ func TestE2E_Bootstrap_WithBusWorkflows_AllFourLand(t *testing.T) {
 	}
 
 	// Workflow callers + hooks still land in lockstep.
-	assert.FileExists(t, filepath.Join(target, ".github", "workflows", "test-go-caller.yml"))
+	assert.FileExists(t, filepath.Join(target, ".github", "workflows", "release-please-preflight.yml"))
 	assert.FileExists(t, filepath.Join(target, ".githooks", "pre-pr"))
 	assert.FileExists(t, filepath.Join(target, ".githooks", "post-pr-open"))
 
@@ -384,7 +387,7 @@ func TestE2E_Augment_HashMatch_RefreshesAndKeepsAllGenerators(t *testing.T) {
 func TestE2E_Augment_UserEdited_WritesSuggestSibling(t *testing.T) {
 	target, _ := e2eBootstrap(t, e2eInputs("demo", false))
 
-	relPath := ".github/workflows/test-go-caller.yml"
+	relPath := ".github/workflows/release-please-preflight.yml"
 	absPath := filepath.Join(target, filepath.FromSlash(relPath))
 
 	// Snapshot kit's would-be content so we can verify the sibling
@@ -396,7 +399,7 @@ func TestE2E_Augment_UserEdited_WritesSuggestSibling(t *testing.T) {
 	require.NoError(t, os.WriteFile(absPath, userEdit, 0o644))
 
 	in := e2eInputs("demo", false)
-	actions, err := renderWorkflows(target, in.Runtime, in, nil)
+	actions, err := renderPreflight(target, in, nil)
 	require.NoError(t, err)
 
 	// Locate the action for the user-edited path.
@@ -451,7 +454,7 @@ func TestE2E_Augment_UserEdited_WritesSuggestSibling(t *testing.T) {
 func TestE2E_Augment_SuggestionCleanup_RemovesAcceptedSibling(t *testing.T) {
 	target, _ := e2eBootstrap(t, e2eInputs("demo", false))
 
-	relPath := ".github/workflows/test-go-caller.yml"
+	relPath := ".github/workflows/release-please-preflight.yml"
 	absPath := filepath.Join(target, filepath.FromSlash(relPath))
 
 	// Seed a stale .kit-suggested sibling whose content equals the live
@@ -463,7 +466,7 @@ func TestE2E_Augment_SuggestionCleanup_RemovesAcceptedSibling(t *testing.T) {
 	require.NoError(t, os.WriteFile(suggested, kitBytes, 0o644))
 
 	in := e2eInputs("demo", false)
-	_, err = renderWorkflows(target, in.Runtime, in, nil)
+	_, err = renderPreflight(target, in, nil)
 	require.NoError(t, err)
 
 	// Sibling must be gone — accepted suggestion was reclaimed.
@@ -534,7 +537,7 @@ func TestE2E_DryRun_AllGenerators_NoFileSystemChanges(t *testing.T) {
 	// Workflow callers, bus workflows, and hook scripts: zero files on disk.
 	for _, rel := range []string{
 		".github/workflows/release-go-caller.yml",
-		".github/workflows/test-go-caller.yml",
+		".github/workflows/release-please-preflight.yml",
 		".githooks/pre-pr",
 		".githooks/pre-pr.ps1",
 		".githooks/post-pr-open",

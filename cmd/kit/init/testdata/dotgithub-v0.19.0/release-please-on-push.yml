@@ -1,0 +1,167 @@
+# Vendored from hop-top/.github d493bd1f094e193ae836324cfe5ffc7773004997 (v0.19.0): header through the on: block.
+# Used offline by the caller-contract test; refresh when workflowCallerRef moves.
+name: release-please-on-push (reusable)
+
+# Runs release-please for an adopter repo: keeps the standing release
+# PR(s) current and, once one merges, cuts the tag + GitHub Release.
+# One shared implementation of the job every hop-top repo used to
+# hand-roll in its own release-please.yml.
+#
+# What it adds over a hand-rolled job:
+#
+#   - Concurrency guard. One release-please run per branch, newest
+#     push wins. A run that started before a release PR merged still
+#     sees the old latest release; if it finishes after the merge it
+#     no longer finds that PR open and re-opens a release PR for the
+#     version just tagged. Cancelling it on the next push closes that
+#     window. The guard is JOB-level on purpose: in a called workflow
+#     that is the supported place (`github.ref` resolves to the
+#     caller's ref), and it cancels only the stale release-please job,
+#     never a publish job the caller chained on an earlier run's
+#     outputs. The group name is distinct from the
+#     `release-please-${{ github.ref }}` group hand-written callers
+#     carry — equal caller/callee groups with cancel-in-progress cancel
+#     the run itself — so a caller keeping its own guard stays safe.
+#   - release-bot App token (release PRs authored by release-bot[bot]:
+#     they trigger downstream workflows, and sidestep the CODEOWNERS
+#     self-approval block on the changelogs). GITHUB_TOKEN stays
+#     read-only. Minted from RELEASE_BOT_APP_ID through
+#     create-github-app-token's `client-id` input (its `app-id` input
+#     is deprecated): the action accepts an App ID or a Client ID there.
+#   - Config check: a missing / malformed config or manifest fails with
+#     the path named instead of release-please's generic error. A repo
+#     with NEITHER file (wired, not yet adopted — e.g. fresh from
+#     `kit init`) gets a warning and a skipped run instead of a red one.
+#   - target-branch defaults to the branch that triggered the run, so a
+#     caller pushing on several integration branches (main + next)
+#     releases each against itself.
+#   - Opt-in target versioning (`versioning-extension: true`): the run
+#     uses this repository's release-please extension
+#     (scripts/release-please-target, release-please pinned exactly)
+#     through an action-equivalent runner instead of
+#     googleapis/release-please-action — same inputs, secrets and
+#     outputs. Required by a config using `versioning: "target"`; see
+#     references/how-to/target-versioning.md. The extension is checked
+#     out at this workflow's own commit (`job.workflow_sha`), so the
+#     runner and the workflow always ship together; `tooling-ref` is the
+#     fallback when the runner does not expose that SHA (a git ref or
+#     SHA, one line; anything else fails the step). A run that leaves a
+#     package blocked (feat on a release/x.y branch, a linked group that
+#     cannot move, a change needing more than the rc) fails after every
+#     package was processed: a caller chaining jobs on the outputs should
+#     gate them on `!cancelled()` as well. A package the branch does not
+#     release (an alpha/beta on the stable branch) is a notice only.
+#
+# Caller template (.github/workflows/release-please.yml):
+#
+#   name: release-please
+#   on:
+#     push:
+#       branches: [main]
+#     workflow_dispatch: {}
+#   permissions:
+#     contents: read
+#   jobs:
+#     release-please:
+#       uses: hop-top/.github/.github/workflows/release-please-on-push.yml@v0
+#       secrets:
+#         RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
+#         RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+#       # with:
+#       #   versioning-extension: true   # config uses versioning "target"
+#
+# Chaining a publish job on the outputs (in the caller). Outputs keep
+# release-please-action's names; per-path outputs of a manifest with
+# several packages (`<path>--release_created`, ...) are in `json`:
+#
+#     publish:
+#       needs: release-please
+#       if: needs.release-please.outputs.releases_created == 'true'
+#       # or: fromJSON(needs.release-please.outputs.json)['ts--release_created']
+
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: Path to release-please-config.json
+        type: string
+        default: .github/release-please-config.json
+      manifest-file:
+        description: Path to .release-please-manifest.json
+        type: string
+        default: .github/.release-please-manifest.json
+      target-branch:
+        description: |
+          Branch release PRs are opened against. Empty (default) = the
+          branch that triggered the caller (`github.ref_name`).
+        type: string
+        default: ""
+      versioning-extension:
+        description: |
+          Run release-please with hop-top/.github's target-versioning
+          extension (scripts/release-please-target) instead of
+          googleapis/release-please-action. Needed when the config uses
+          `versioning: "target"`. Same inputs, secrets and outputs.
+        type: boolean
+        default: false
+      tooling-ref:
+        description: Ref of hop-top/.github to check the extension out at when the runner does not expose the running workflow's SHA (normally never used; only read with versioning-extension)
+        type: string
+        default: v0
+    secrets:
+      RELEASE_BOT_APP_ID:
+        required: true
+        description: GitHub App ID of the hop-top release-bot (see references/secrets.md); passed to create-github-app-token's client-id, which accepts an App ID or a Client ID
+      RELEASE_BOT_PRIVATE_KEY:
+        required: true
+        description: Private key paired with RELEASE_BOT_APP_ID
+    outputs:
+      releases_created:
+        description: "'true' when any release was created by this run"
+        value: ${{ jobs.release-please.outputs.releases_created }}
+      paths_released:
+        description: JSON array of the package paths released by this run
+        value: ${{ jobs.release-please.outputs.paths_released }}
+      prs_created:
+        description: "'true' when any release PR was created or updated"
+        value: ${{ jobs.release-please.outputs.prs_created }}
+      pr:
+        description: JSON of the (first) release PR
+        value: ${{ jobs.release-please.outputs.pr }}
+      prs:
+        description: JSON array of the release PRs
+        value: ${{ jobs.release-please.outputs.prs }}
+      release_created:
+        description: "'true' when the root package (`.`) was released"
+        value: ${{ jobs.release-please.outputs.release_created }}
+      tag_name:
+        description: Tag of the root package's release
+        value: ${{ jobs.release-please.outputs.tag_name }}
+      version:
+        description: Version of the root package's release
+        value: ${{ jobs.release-please.outputs.version }}
+      major:
+        description: Major version of the root package's release
+        value: ${{ jobs.release-please.outputs.major }}
+      minor:
+        description: Minor version of the root package's release
+        value: ${{ jobs.release-please.outputs.minor }}
+      patch:
+        description: Patch version of the root package's release
+        value: ${{ jobs.release-please.outputs.patch }}
+      sha:
+        description: Commit the root package's release was tagged at
+        value: ${{ jobs.release-please.outputs.sha }}
+      upload_url:
+        description: Asset upload URL of the root package's release
+        value: ${{ jobs.release-please.outputs.upload_url }}
+      html_url:
+        description: Web URL of the root package's release
+        value: ${{ jobs.release-please.outputs.html_url }}
+      json:
+        description: |
+          Every release-please-action output as a JSON object, including
+          the per-path ones (`<path>--release_created`, `<path>--tag_name`,
+          ...). Read with `fromJSON(...)['<path>--<output>']`.
+        value: ${{ jobs.release-please.outputs.json }}
+

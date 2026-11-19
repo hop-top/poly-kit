@@ -191,6 +191,11 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 				return Summary{}, fmt.Errorf("augment: render release-please caller: %w", rerr)
 			}
 			workflowActions = append(workflowActions, rpActions...)
+			pfActions, perr := renderPreflight(cwd, in, nil)
+			if perr != nil {
+				return Summary{}, fmt.Errorf("augment: render release-please preflight caller: %w", perr)
+			}
+			workflowActions = append(workflowActions, pfActions...)
 		}
 	}
 

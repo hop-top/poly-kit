@@ -438,7 +438,11 @@ always the repo-root module (`cli-go`; the starter release-please
 config puts Go at `.`), tagged bare `v<version>`, which
 proxy.golang.org serves directly — there is nothing to publish, and the
 caller sent those tags to `publish-on-tag.yml`, which only routes
-`<component>/v<version>`. Go keeps `test-go-caller.yml`.
+`<component>/v<version>`. And `test-go-caller.yml`: it called hop-top/.github
+`ci.yml`, which declares no `workflow_call`, so every run failed. Go CI
+and lint run inline in `ci-go.yml` (shared template); `release-please.yml`
+and `release-please-preflight.yml` (the preflight caller, rendered with
+`--with-release-please`) complete the Go set.
 
 ### publish.yml
 

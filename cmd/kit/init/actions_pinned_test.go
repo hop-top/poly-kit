@@ -62,7 +62,7 @@ func TestBootstrap_GeneratedWorkflowsArePinned(t *testing.T) {
 	for _, wf := range wfs {
 		names[filepath.Base(wf)] = true
 	}
-	want := []string{"release-please.yml", "test-go-caller.yml"}
+	want := []string{"release-please.yml", "release-please-preflight.yml"}
 	for _, rt := range in.Runtime {
 		want = append(want, "ci-"+rt+".yml")
 	}

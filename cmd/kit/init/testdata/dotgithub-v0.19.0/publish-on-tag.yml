@@ -1,0 +1,130 @@
+# Vendored from hop-top/.github d493bd1f094e193ae836324cfe5ffc7773004997 (v0.19.0): header through the on: block.
+# Used offline by the caller-contract test; refresh when workflowCallerRef moves.
+name: publish-on-tag (reusable)
+
+# Routes a `<component>/v<version>` tag push to the right ecosystem workflow
+# and mirror push. The caller's `ecosystems` map defines per-component
+# config; each component can override the default test/build commands and
+# runtime versions, or accept the defaults from the per-ecosystem reusable
+# workflows.
+#
+# SUB-WORKFLOW REFS ARE PINNED TO @v0 — keep them that way.
+#
+# Adopters call this workflow as `...publish-on-tag.yml@v0`. GitHub does
+# NOT propagate the caller's ref to the `uses:` below, and `uses:` takes
+# no expressions (`@${{ github.ref_name }}` is rejected: "no context is
+# available here"), so the ref has to be written literally. At `@main`
+# the adopter's `@v0` pin covered only this router — every publish and
+# mirror step silently tracked `main`. Pinning to the same rolling major
+# makes the pin transitive: `roll-major-tag.yml` force-moves `v0` to the
+# released commit, so router and sub-workflows advance in one operation
+# and a caller never sees a half-updated pair.
+#
+# Cutting v1 (breaking) means bumping these four refs to `@v1` in the
+# same commit that ships it.
+#
+# Future: GitHub's `$/` self-repository syntax (2026-07-30) resolves to
+# the called workflow's own repo at the running commit, which would make
+# this exact rather than approximate. Blocked for now — actionlint (CI
+# pins 1.7.7) rejects `$/` as malformed, and it needs runner >= 2.336.0
+# and is absent on GHES. Revisit when the lint gate accepts it. Note
+# `./` is NOT a substitute: for a cross-repo call it resolves against
+# the CALLER's repo, so adopters would need these files themselves.
+
+on:
+  workflow_call:
+    inputs:
+      ecosystems:
+        description: |
+          YAML map of component -> per-component config.
+
+          Required fields per component:
+            dir          subdirectory in the repo (e.g. "ts")
+            ecosystem    one of: ts | py | rs | php | go | none
+                         `go` and `none` have no publish job: Go releases
+                         through the mirror plus the module proxy, and
+                         `none` is a payload with no registry at all (a
+                         spec tree, say). Both still run the mirror job.
+                         Use `none` rather than omitting `ecosystem`:
+                         an absent entry yields an empty output, which
+                         the mirror job's `!= ''` guard reads as an
+                         umbrella tag and skips.
+            mirror       full slug of the read-only mirror
+
+          Optional override fields (empty = use built-in defaults):
+            target-prefix    path on the mirror to publish under (e.g.
+                             "specs/v0.1"); empty publishes at the mirror
+                             root, which is the default
+            allow-mirror-redirect
+                             true lets the mirror push follow a rename /
+                             transfer redirect on `mirror` (default false:
+                             a redirected slug fails the mirror job). A
+                             slug that resolves to this repo always fails
+            mirror-mode      `mirror` (default) | `tag-only`. `tag-only`
+                             is for a nested Go module inside a tree that
+                             another component already mirrors: it only
+                             pushes the tag `<mirror-tag-prefix><version>`
+                             to `mirror`, at the mirror commit holding
+                             this commit's `dir` tree, and never pushes a
+                             branch or touches the mirror's description,
+                             settings or releases. `go` / `none` only.
+                             Tag the enclosing component no later than
+                             this one
+            mirror-tag-prefix
+                             `tag-only`: the module's path on the mirror,
+                             which is Go's tag prefix (e.g. "sdk/go/")
+            mirror-wait-seconds
+                             `tag-only`: how long to wait for the
+                             enclosing release's mirror push (default 600)
+            package          registry name (informational)
+            test-command     override default test step
+            build-command    override default build step (ts, py)
+            node-version     override default Node version (ts; default 22)
+            python-version   override default Python version (py; default 3.11)
+            rust-toolchain   override default Rust toolchain (rs; default stable)
+            protoc-version   protobuf release whose protoc to install before
+                             cargo runs (rs; default none). Quote it:
+                             YAML reads 36.10 as 36.1
+            protoc-sha256    sha256 of the protoc zip, for a protoc-version
+                             publish-rs has no pin for (rs)
+            access           override npm access level (ts; default public)
+            pypi-environment override default GitHub Environment for PyPI OIDC (py; default pypi)
+            pypi-auth        override default PyPI auth mode (py; "oidc" | "token"; default "oidc")
+        type: string
+        required: true
+      homepage:
+        description: Homepage URL (passed to mirror creation)
+        type: string
+        default: ""
+      description-prefix:
+        description: Prefix for mirror repo descriptions
+        type: string
+        default: "READ-ONLY MIRROR"
+      enable-mirror:
+        description: |
+          Run the subtree mirror push after publishing. Defaults to true
+          for back-compat. Set to false for single-language `ts`/`py`/`rs`
+          adopters that publish to a registry but have no canonical
+          second-slot mirror repo. See SKILL.md "Single-language repos".
+        type: boolean
+        default: true
+    secrets:
+      NPM_REGISTRY_TOKEN:
+        description: npm publish token (required only if any component uses ecosystem ts)
+        required: false
+      CARGO_REGISTRY_TOKEN:
+        description: crates.io token (optional fallback for ecosystem rs; unused when the crate has a trusted publisher)
+        required: false
+      PYPI_REGISTRY_TOKEN:
+        description: 'PyPI API token (required only if a py component sets `pypi-auth: token`)'
+        required: false
+      PACKAGIST_USERNAME:
+        description: Packagist account username (required only if any component uses ecosystem php)
+        required: false
+      PACKAGIST_TOKEN:
+        description: Packagist API token (required only if any component uses ecosystem php)
+        required: false
+      GH_MIRROR_PAT:
+        description: PAT with Administration+Contents write on every mirror repo
+        required: true
+

@@ -1,0 +1,61 @@
+# Vendored from hop-top/.github d493bd1f094e193ae836324cfe5ffc7773004997 (v0.19.0): header through the on: block.
+# Used offline by the caller-contract test; refresh when workflowCallerRef moves.
+name: release-please-preflight (reusable)
+
+# Pre-merge sanity checks for adopter repos using hop-top/.github's
+# release-please + publish-on-tag setup. Reports specific resolution
+# steps when something's misconfigured.
+#
+# Adopter usage (minimal — gets full smart-default checks):
+#
+#   # .github/workflows/release-please-preflight.yml
+#   name: release-please-preflight
+#   on:
+#     pull_request:
+#       paths:
+#         - '.github/release-please-config.json'
+#         - '.github/.release-please-manifest.json'
+#         - '.github/workflows/release-please.yml'
+#         - '.github/workflows/publish.yml'
+#         - 'pyproject.toml'
+#         - 'package.json'
+#         - 'Cargo.toml'
+#     workflow_dispatch: {}
+#   jobs:
+#     preflight:
+#       uses: hop-top/.github/.github/workflows/release-please-preflight.yml@v0
+#
+# Override examples:
+#
+#   with:
+#     fail-on: any              # default 'breaking' — also fails on warnings
+#     config-path: custom/path  # default '.github/release-please-config.json'
+
+on:
+  workflow_call:
+    inputs:
+      fail-on:
+        description: |
+          When to exit non-zero.
+            breaking - only fail on broken config / missing infra (default)
+            any      - also fail on informational warnings
+            never    - annotation-only; always exit 0
+        type: string
+        default: breaking
+      config-path:
+        description: Path to release-please-config.json (default .github/release-please-config.json)
+        type: string
+        default: .github/release-please-config.json
+      manifest-path:
+        description: Path to manifest (default .github/.release-please-manifest.json)
+        type: string
+        default: .github/.release-please-manifest.json
+      publish-workflow-path:
+        description: Path to caller publish.yml (default .github/workflows/publish.yml)
+        type: string
+        default: .github/workflows/publish.yml
+      release-please-workflow-path:
+        description: Path to caller release-please.yml (default .github/workflows/release-please.yml)
+        type: string
+        default: .github/workflows/release-please.yml
+

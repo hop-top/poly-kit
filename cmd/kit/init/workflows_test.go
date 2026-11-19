@@ -21,7 +21,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -48,26 +47,20 @@ func readManifestFile(t *testing.T, target string) Manifest {
 	return m
 }
 
-func TestPlanWorkflows_GoRuntime_EmitsTestOnly(t *testing.T) {
-	plans := planWorkflows("/tmp/repo", []string{"go"})
-	var rels []string
-	for _, p := range plans {
-		rels = append(rels, p.RelPath)
-	}
-	sort.Strings(rels)
-	assert.Equal(t, []string{
-		".github/workflows/test-go-caller.yml",
-	}, rels)
+// Go renders no caller from this table: CI + lint are inline (ci-go.yml,
+// shared template), release-please and its preflight have their own
+// generators.
+func TestPlanWorkflows_GoRuntime_EmitsNothing(t *testing.T) {
+	assert.Empty(t, planWorkflows("/tmp/repo", []string{"go"}))
 }
 
 func TestPlanWorkflows_AllSupportedRuntimes(t *testing.T) {
-	plans := planWorkflows("/tmp/repo", []string{"go", "rs", "ts", "php", "py"})
+	plans := planWorkflows("/tmp/repo", []string{"rs", "ts", "php", "py"})
 	got := make(map[string]bool, len(plans))
 	for _, p := range plans {
 		got[p.RelPath] = true
 	}
 	for _, want := range []string{
-		".github/workflows/test-go-caller.yml",
 		".github/workflows/test-rs-caller.yml",
 		".github/workflows/test-ts-caller.yml",
 		".github/workflows/test-php-caller.yml",
@@ -78,12 +71,12 @@ func TestPlanWorkflows_AllSupportedRuntimes(t *testing.T) {
 }
 
 func TestPlanWorkflows_UnknownRuntime_Skipped(t *testing.T) {
-	plans := planWorkflows("/tmp/repo", []string{"go", "swift", "kotlin"})
+	plans := planWorkflows("/tmp/repo", []string{"rs", "swift", "kotlin"})
 	for _, p := range plans {
 		assert.NotContains(t, p.RelPath, "swift")
 		assert.NotContains(t, p.RelPath, "kotlin")
 	}
-	// Still produces the Go callers.
+	// Still produces the Rust callers.
 	assert.NotEmpty(t, plans)
 }
 
@@ -149,7 +142,7 @@ func TestRenderWorkflows_Bootstrap_WritesFilesAndManifest(t *testing.T) {
 
 func TestRenderWorkflows_DryRun_NoDiskWrites(t *testing.T) {
 	target := t.TempDir()
-	in := Inputs{Runtime: []string{"go"}, WithGitHubWorkflows: true, DryRun: true}
+	in := Inputs{Runtime: []string{"rs"}, WithGitHubWorkflows: true, DryRun: true}
 
 	actions, err := renderWorkflows(target, in.Runtime, in, fixedNow())
 	require.NoError(t, err)
@@ -271,7 +264,7 @@ func TestRenderWorkflows_RefreshInPlace_WhenManifestHashMatches(t *testing.T) {
 
 func TestRenderWorkflows_IdempotentRerun_SkipsUnchanged(t *testing.T) {
 	target := t.TempDir()
-	in := Inputs{Runtime: []string{"go"}, WithGitHubWorkflows: true}
+	in := Inputs{Runtime: []string{"rs"}, WithGitHubWorkflows: true}
 
 	_, err := renderWorkflows(target, in.Runtime, in, fixedNow())
 	require.NoError(t, err)
@@ -579,6 +572,7 @@ func TestBootstrap_WithGitHubWorkflows(t *testing.T) {
 		NoGitHub:            true,
 		NoPush:              true,
 		WithGitHubWorkflows: true,
+		WithReleasePlease:   true,
 		Vars: map[string]any{
 			"Name":          name,
 			"name":          name,
@@ -606,12 +600,12 @@ func TestBootstrap_WithGitHubWorkflows(t *testing.T) {
 	require.NotEmpty(t, summary.Workflows, "summary must surface workflow actions")
 	for _, a := range summary.Workflows {
 		assert.Equal(t, "write", a.Action)
-		assert.Equal(t, "new", a.Reason)
 	}
 
 	target := filepath.Join(tmpDir, name)
 	for _, rel := range []string{
-		".github/workflows/test-go-caller.yml",
+		".github/workflows/release-please.yml",
+		".github/workflows/release-please-preflight.yml",
 		".kit/generated.json",
 	} {
 		assert.FileExists(t, filepath.Join(target, filepath.FromSlash(rel)))
@@ -619,7 +613,7 @@ func TestBootstrap_WithGitHubWorkflows(t *testing.T) {
 
 	// Manifest entries match the on-disk file count for the generated paths.
 	m := readManifestFile(t, target)
-	assert.Len(t, m.Files, 1)
+	assert.Len(t, m.Files, 2)
 }
 
 // TestBootstrap_WithoutGitHubWorkflows confirms the opt-out path: when
@@ -689,7 +683,7 @@ func TestBootstrap_WithoutGitHubWorkflows(t *testing.T) {
 
 func TestRenderWorkflows_ManifestRoundtrip(t *testing.T) {
 	target := t.TempDir()
-	in := Inputs{Runtime: []string{"go"}, WithGitHubWorkflows: true}
+	in := Inputs{Runtime: []string{"rs"}, WithGitHubWorkflows: true}
 
 	_, err := renderWorkflows(target, in.Runtime, in, fixedNow())
 	require.NoError(t, err)
