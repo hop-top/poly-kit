@@ -191,6 +191,9 @@ type generationConfig struct {
 	Temperature   *float64 `json:"temperature,omitempty"`
 	MaxTokens     *int     `json:"maxOutputTokens,omitempty"`
 	StopSequences []string `json:"stopSequences,omitempty"`
+	// ResponseMIMEType and ResponseJSONSchema are structured output.
+	ResponseMIMEType   string          `json:"responseMimeType,omitempty"`
+	ResponseJSONSchema json.RawMessage `json:"responseJsonSchema,omitempty"`
 }
 
 type toolDecl struct {
@@ -510,6 +513,14 @@ func (a *Adapter) buildBody(
 	}
 	if len(req.StopSequences) > 0 {
 		gc.StopSequences = req.StopSequences
+		hasConfig = true
+	}
+	if rf := req.ResponseFormat; rf != nil {
+		if err := llm.CheckResponseFormat(rf); err != nil {
+			return nil, nil, fmt.Errorf("gemini: %w", err)
+		}
+		gc.ResponseMIMEType = "application/json"
+		gc.ResponseJSONSchema = rf.Schema
 		hasConfig = true
 	}
 	if hasConfig {

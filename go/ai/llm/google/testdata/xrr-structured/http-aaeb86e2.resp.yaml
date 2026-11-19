@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: aaeb86e2
+recorded_at: "2026-11-19T00:20:29Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: '{"candidates":[{"content":{"parts":[{"text":"{\"label\":\"pass\",\"score\":7}"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":2,"totalTokenCount":5}}'
