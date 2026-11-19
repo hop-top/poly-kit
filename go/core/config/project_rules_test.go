@@ -400,3 +400,141 @@ func TestProjectRules_ForbiddenUnderSequenceElement(t *testing.T) {
 	var fe *config.ErrProjectForbidden
 	require.True(t, errors.As(err, &fe), "got %v", err)
 }
+
+func loadMap(t *testing.T, rules *config.ProjectRules, user, project string) (map[string]any, error) {
+	t.Helper()
+	cfg := map[string]any{}
+	err := config.Load(&cfg, config.Options{
+		UserConfigPath:    user,
+		ProjectConfigPath: project,
+		Project:           rules,
+	})
+	return cfg, err
+}
+
+func TestProjectRules_ForbiddenMixedCase(t *testing.T) {
+	for _, body := range []string{
+		"Owner_Profile: evil\n",
+		"OWNER_PROFILE: evil\n",
+		"BOS:\n  url: x\n",
+		"ai:\n  Models:\n    DENY: [a]\n",
+	} {
+		proj := writeRaw(t, "p.yaml", body)
+		rules := &config.ProjectRules{Forbidden: []string{"owner_profile", "bos", "ai.models.deny"}}
+		_, err := loadMap(t, rules, "", proj)
+		var fe *config.ErrProjectForbidden
+		require.True(t, errors.As(err, &fe), body)
+		assert.Equal(t, proj, fe.File)
+	}
+}
+
+func TestProjectRules_ForbiddenRuleCaseFolded(t *testing.T) {
+	// The rule itself may be written in any case.
+	proj := writeRaw(t, "p.yaml", "owner_profile: evil\n")
+	_, err := loadMap(t, &config.ProjectRules{Forbidden: []string{"Owner_Profile"}}, "", proj)
+	var fe *config.ErrProjectForbidden
+	require.True(t, errors.As(err, &fe))
+}
+
+func TestProjectRules_SecretKeyMixedCase(t *testing.T) {
+	proj := writeRaw(t, "p.yaml", "AI:\n  TOKEN: abc\n")
+	rules := &config.ProjectRules{SecretKey: regexp.MustCompile(`^token$`)}
+	_, err := loadMap(t, rules, "", proj)
+	var fe *config.ErrProjectForbidden
+	require.True(t, errors.As(err, &fe))
+	assert.True(t, fe.Secret)
+	assert.Equal(t, "AI.TOKEN", fe.Key)
+}
+
+func TestProjectRules_NarrowMixedCaseParent(t *testing.T) {
+	user := writeRaw(t, "u.yaml", "ai:\n  models:\n    allow: [a, b]\n")
+	proj := writeRaw(t, "p.yaml", "AI:\n  MODELS:\n    ALLOW: [b, c]\n")
+	cfg, err := loadMap(t, narrow("ai.models.allow", config.Intersect, nil), user, proj)
+	require.NoError(t, err)
+	got := cfg["AI"].(map[string]any)["MODELS"].(map[string]any)["ALLOW"]
+	assert.Equal(t, []any{"b"}, got)
+}
+
+func TestProjectRules_NarrowMixedCaseUnion(t *testing.T) {
+	user := writeRaw(t, "u.yaml", "ai:\n  models:\n    deny: [a]\n")
+	proj := writeRaw(t, "p.yaml", "Ai:\n  Models:\n    Deny: [b]\n")
+	cfg, err := loadMap(t, narrow("ai.models.deny", config.Union, nil), user, proj)
+	require.NoError(t, err)
+	got := cfg["Ai"].(map[string]any)["Models"].(map[string]any)["Deny"]
+	assert.Equal(t, []any{"a", "b"}, got)
+}
+
+func TestProjectRules_NarrowMixedCaseEmptyIsError(t *testing.T) {
+	user := writeRaw(t, "u.yaml", "ai:\n  models:\n    allow: [a]\n")
+	proj := writeRaw(t, "p.yaml", "AI:\n  MODELS:\n    ALLOW: [z]\n")
+	_, err := loadMap(t, narrow("ai.models.allow", config.Intersect, nil), user, proj)
+	var ee *config.ErrNarrowEmpty
+	require.True(t, errors.As(err, &ee))
+}
+
+func TestProjectRules_NarrowBothCaseVariantsNarrowed(t *testing.T) {
+	user := writeRaw(t, "u.yaml", "ai:\n  models:\n    allow: [a]\n")
+	proj := writeRaw(t, "p.yaml", "AI:\n  models:\n    allow: [a]\nai:\n  models:\n    allow: [a, z]\n")
+	cfg, err := loadMap(t, narrow("ai.models.allow", config.Intersect, nil), user, proj)
+	require.NoError(t, err)
+	assert.Equal(t, []any{"a"}, cfg["AI"].(map[string]any)["models"].(map[string]any)["allow"])
+	assert.Equal(t, []any{"a"}, cfg["ai"].(map[string]any)["models"].(map[string]any)["allow"])
+}
+
+func TestProjectRules_DottedKeyForbidden(t *testing.T) {
+	for _, body := range []string{
+		"\"owner_profile.x\": v\n",
+		"\"Owner_Profile.X\": v\n",
+		"\"bos.url\": http://x\n",
+		"ai:\n  \"models.deny\": [a]\n",
+	} {
+		proj := writeRaw(t, "p.yaml", body)
+		rules := &config.ProjectRules{Forbidden: []string{"owner_profile", "bos.url", "ai.models.deny"}}
+		_, err := loadMap(t, rules, "", proj)
+		var fe *config.ErrProjectForbidden
+		require.True(t, errors.As(err, &fe), body)
+	}
+}
+
+func TestProjectRules_DottedKeySecretSegment(t *testing.T) {
+	proj := writeRaw(t, "p.yaml", "\"ai.token\": abc\n")
+	_, err := loadMap(t, &config.ProjectRules{SecretKey: regexp.MustCompile(`^token$`)}, "", proj)
+	var fe *config.ErrProjectForbidden
+	require.True(t, errors.As(err, &fe))
+	assert.True(t, fe.Secret)
+}
+
+func TestProjectRules_DottedKeyOverlappingNarrowRefused(t *testing.T) {
+	for _, body := range []string{
+		"\"ai.models.allow\": [z]\n",
+		"\"AI.Models\":\n  allow: [z]\n",
+		"ai:\n  \"models.allow\": [z]\n",
+	} {
+		user := writeRaw(t, "u.yaml", "ai:\n  models:\n    allow: [a]\n")
+		proj := writeRaw(t, "p.yaml", body)
+		_, err := loadMap(t, narrow("ai.models.allow", config.Intersect, nil), user, proj)
+		var fe *config.ErrProjectForbidden
+		require.True(t, errors.As(err, &fe), body)
+		assert.True(t, fe.Dotted)
+		assert.Contains(t, err.Error(), proj)
+	}
+}
+
+func TestProjectRules_DottedKeyUnrelatedPasses(t *testing.T) {
+	proj := writeRaw(t, "p.yaml", "hosts:\n  \"github.com\": x\n")
+	rules := &config.ProjectRules{
+		Forbidden: []string{"bos"},
+		Narrow:    []config.NarrowKey{{Key: "ai.models.allow", Mode: config.Intersect}},
+	}
+	cfg, err := loadMap(t, rules, "", proj)
+	require.NoError(t, err)
+	assert.Equal(t, "x", cfg["hosts"].(map[string]any)["github.com"])
+}
+
+func TestProjectRules_CaseSensitiveOptOut(t *testing.T) {
+	proj := writeRaw(t, "p.yaml", "Owner_Profile: ok\n")
+	rules := &config.ProjectRules{Forbidden: []string{"owner_profile"}, CaseSensitive: true}
+	cfg, err := loadMap(t, rules, "", proj)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", cfg["Owner_Profile"])
+}
