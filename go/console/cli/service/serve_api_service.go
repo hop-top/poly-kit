@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"sync"
 
@@ -14,6 +13,7 @@ import (
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
+	"hop.top/kit/go/transport/dek"
 )
 
 // APIServiceName is the identifier the built-in HTTP API registers
@@ -122,7 +122,7 @@ func (a *apiService) Validate() error {
 	if addr == "" {
 		return errors.New("addr: empty listen address")
 	}
-	if _, _, err := net.SplitHostPort(addr); err != nil {
+	if err := api.ValidateListenAddr(addr); err != nil {
 		return fmt.Errorf("addr: %w", err)
 	}
 	t, err := ResolveServeTLS(a.root, APIServiceName)
@@ -333,7 +333,7 @@ func (a *apiService) Start(ctx context.Context, ready func()) (err error) {
 		}
 	}()
 
-	ln, err := net.Listen("tcp", listen)
+	ln, err := api.Listen(listen)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -560,7 +560,7 @@ func (a *apiService) mountProjection(
 	if bridge == nil {
 		return nil
 	}
-	return cmdsurface.MountProjection(bridge, router,
+	opts := []cmdsurface.ProjectionOption{
 		cmdsurface.WithProjectionTool(a.root.Config.Name, a.root.Config.Version),
 		cmdsurface.WithProjectionReserved(a.root),
 		cmdsurface.WithProjectionStopping(stopping),
@@ -568,7 +568,38 @@ func (a *apiService) mountProjection(
 		// bodyLimit caps every route on the router, the projection's
 		// included; a second cap here would shadow its limit.
 		cmdsurface.WithProjectionMaxBodyBytes(-1),
-	)
+	}
+	if err := cmdsurface.MountProjection(bridge, router, opts...); err != nil {
+		return err
+	}
+	return a.mountDek(bridge, router, opts)
+}
+
+// mountDek serves the dek surface under /v1/dek when APIConfig.Dek is
+// set: the same reflected commands and executor as the REST
+// projection, so the manifest lists what REST serves and a call meets
+// the same gates. It runs after the projection and the adopter's
+// routes, so an adopter route at a /v1/dek path wins.
+func (a *apiService) mountDek(
+	bridge *cmdsurface.Bridge, router *api.Router, opts []cmdsurface.ProjectionOption,
+) error {
+	if a.cfg.Dek == nil {
+		return nil
+	}
+	pcfg, err := cmdsurface.Projection(bridge, opts...)
+	if err != nil {
+		return err
+	}
+	core, err := dek.New(dek.Config{
+		Projection: pcfg,
+		CoreID:     a.cfg.Dek.CoreID,
+		Gate:       a.cfg.Dek.Gate,
+	})
+	if err != nil {
+		return err
+	}
+	core.Mount(router)
+	return nil
 }
 
 // applyAPICompat maps the leaf `service start` command's own flags onto the
