@@ -67,6 +67,7 @@ type judgeImpl struct {
 	maxRepairs *int
 	price      *llm.Price
 	pattern    *prompt.Pattern
+	boxFormat  BoxConvention
 }
 
 // Option configures a judge.
@@ -121,7 +122,12 @@ type sample struct {
 // judge.ErrInvalid; output that never matches the schema fails with
 // llm.ErrSchemaInvalid.
 func (j *judgeImpl) Judge(ctx context.Context, c judge.Case) (judge.Verdict, error) {
+	free := j.boxFormat != Fractions && hasKind(c.Questions, judge.KindGrounding)
 	for _, q := range c.Questions {
+		if free && q.Kind != judge.KindGrounding {
+			return judge.Verdict{}, llmerrors.NewCapabilityNotSupported(
+				fmt.Sprintf("question %q (%s) beside a grounding question under a Grid1000 or Pixels box format", q.Name, q.Kind), "llmjudge")
+		}
 		switch q.Kind {
 		case judge.KindChoice, judge.KindScore, judge.KindYesNo:
 		case judge.KindGrounding:
@@ -136,6 +142,9 @@ func (j *judgeImpl) Judge(ctx context.Context, c judge.Case) (judge.Verdict, err
 	}
 	if err := judge.Validate(c); err != nil {
 		return judge.Verdict{}, err
+	}
+	if free {
+		return j.judgeFreeBoxes(ctx, c)
 	}
 	if j.mode.logprobs {
 		return j.judgeLogprobs(ctx, c)
@@ -194,6 +203,15 @@ func (j *judgeImpl) Judge(ctx context.Context, c judge.Case) (judge.Verdict, err
 		v.Answers[q.Name] = a
 	}
 	return v, nil
+}
+
+func hasKind(qs []judge.Question, k judge.Kind) bool {
+	for _, q := range qs {
+		if q.Kind == k {
+			return true
+		}
+	}
+	return false
 }
 
 // parse decodes one reply into a sample per question.
