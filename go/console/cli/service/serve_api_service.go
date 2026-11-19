@@ -456,9 +456,9 @@ func (a *apiService) buildHandler(ctx context.Context) (_ http.Handler, err erro
 		// every refusal names it (RFC 9728).
 		refused := api.OnAuthRefused(cmdsurface.ProjectionAuthRefusal(bridge))
 		if pr := a.tls.ProtectedResource(); pr != nil {
-			guards = append(guards, pr.Guard(a.authFunc(), refused))
+			guards = append(guards, a.exemptDekHello(pr.Guard(a.authFunc(), refused)))
 		} else {
-			guards = append(guards, api.Auth(a.authFunc(), refused))
+			guards = append(guards, a.exemptDekHello(api.Auth(a.authFunc(), refused)))
 		}
 	}
 
@@ -573,6 +573,26 @@ func (a *apiService) mountProjection(
 		return err
 	}
 	return a.mountDek(bridge, router, opts)
+}
+
+// exemptDekHello lets GET /v1/dek/hello past the authentication
+// guard when the dek surface is served. It is the one route a dek
+// client calls before it holds a credential: it names the core, the
+// contract revision and the manifest ETag, and nothing else.
+func (a *apiService) exemptDekHello(guard api.Middleware) api.Middleware {
+	if a.cfg.Dek == nil {
+		return guard
+	}
+	return func(next http.Handler) http.Handler {
+		guarded := guard(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet && r.URL.Path == dek.Prefix+"/hello" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			guarded.ServeHTTP(w, r)
+		})
+	}
 }
 
 // mountDek serves the dek surface under /v1/dek when APIConfig.Dek is
