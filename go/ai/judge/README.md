@@ -27,7 +27,7 @@ from a model (`hop.top/kit/go/ai/llm`).
 | [`batch.go`](batch.go) | `Batch` | you change how cases are fanned out |
 | [`calibrate/`](calibrate/) | temperature and Platt calibration, `Fit`, `Calibrated` | you calibrate a backend's probabilities |
 | [`judgetest/`](judgetest/) | deterministic fake judge | you test code that calls a judge |
-| [`llmjudge/`](llmjudge/) | chat-model backend: verbalized probabilities, votes | you judge with a chat model |
+| [`llmjudge/`](llmjudge/) | chat-model backend: verbalized, votes, logprobs | you judge with a chat model |
 
 ## Related
 

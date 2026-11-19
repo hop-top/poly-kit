@@ -104,6 +104,7 @@ still invalid returns `llm.ErrSchemaInvalid`.
 |------|------------------------|---------|----------|
 | `Verbalized` (default) | model's value and stated confidence | none | `verbalized` |
 | `Votes(n)`, n > 1 | most voted value; share of samples | share of samples per label | `votes` |
+| `Logprobs` | argmax label; its probability | full distribution from top_logprobs | `logprobs` |
 
 - Score kind: `value` is the anchor index. `Score` = `ScoreFromIndex` when
   verbalized, `ScoreEV` over vote shares; 0 on abstain.
@@ -125,7 +126,45 @@ still invalid returns `llm.ErrSchemaInvalid`.
 - Stated confidence is uncalibrated; verbalized answers carry no `Probs`,
   so `calibrate.Calibrated` passes them through. Use `Votes` to calibrate.
 
+### Logprobs mode
+
+`llmjudge.Mode(llmjudge.Logprobs)` reads probabilities off the model's
+token log-probabilities instead of asking for a stated confidence.
+
+- Labels become single-token keys under an enum schema: `A`, `B`, ... for
+  choice options and score anchors in order; `Y` / `N` for yes/no; `X` for
+  abstain. The prompt shows `key: label`; `Answer.Probs` maps keys back to
+  labels.
+- The request sets `Logprobs{TopK: llm.MaxTopLogprobs}` (20, the cap every
+  kit adapter and Ollama enforce). Probability per label = softmax over the
+  keys' log-probs found in the answer token's top-k (every token spelling of
+  a key adds up, the sampled token counts even if absent from the list),
+  renormalised.
+- A key missing from the top-k gets `llmjudge.LogprobFloor` (1e-6) before
+  renormalising: tiny, never 0, so the distribution stays valid and
+  `calibrate` can still scale it.
+- `Value` = argmax, `Confidence` = `Probs[Value]`, `Why` empty. Score kind:
+  `Score` = `ScoreEV` over `Probs`; 0 on abstain.
+- Answer token: the token holding the first character of the reply's last
+  `"answer"` string value (last, so a reasoning model's quoted JSON in its
+  thinking tokens is skipped), trimmed of quotes, braces, colons and
+  whitespace, must equal a key. Otherwise the call fails with an error that
+  says repair is not applicable.
+- One call per question, not one per case: with several questions in one
+  reply each has its own value position, and a mislocated token would
+  silently skew another question's distribution. `Usage` and `Cost` sum
+  the calls.
+- No repair loop (`MaxRepairs` is ignored): logprobs describe one reply.
+  Schema-invalid output returns `llm.ErrSchemaInvalid`.
+- More than 20 labels (abstain included) in one question fails with
+  `llmerrors.ErrCapabilityNotSupported`, never truncated; so does a
+  completer that does not return logprobs.
+- Needs a `llm.LogprobCompleter` (OpenAI-compatible, Ollama) and a server
+  that applies structured output. Calibrate after the fact:
+  `calibrate.Calibrated(j, params)`; nothing is calibrated inside llmjudge.
+- Test with `llmxrr` cassettes; the package replays a real Ollama exchange.
+
 ## Limitations
 
-- Other backends (jev, logprob) live in their own packages.
+- Other backends (jev) live in their own packages.
 - Calibration needs labeled samples; Platt is binary only.

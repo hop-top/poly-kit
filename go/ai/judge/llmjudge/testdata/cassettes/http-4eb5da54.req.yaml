@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 4eb5da54
+recorded_at: "2026-11-19T01:42:38Z"
+payload:
+    method: POST
+    url: /api/chat
+    body: '{"model":"qwen2.5vl:3b","messages":[{"role":"system","content":"You judge a case by answering one typed question about it.\nEach label has a one-letter key. Reply with JSON only: {\"answer\": \"\u003ckey\u003e\"}\nholding the key of the single most likely label."},{"role":"user","content":"State:\n{\n  \"body\": \"Payment is 30 days late; supplier threatens to pause delivery.\",\n  \"subject\": \"Invoice 4411 overdue\"\n}\n\nQuestion: route (choose one)\nWhere does this message go?\nLabels:\nA: act_now: needs action today\nB: schedule: can wait for a planned slot\nC: ignore: no action needed\n"}],"stream":false,"options":{"temperature":0},"format":{"additionalProperties":false,"properties":{"answer":{"enum":["A","B","C"],"type":"string"}},"required":["answer"],"type":"object"},"logprobs":true,"top_logprobs":20}'
