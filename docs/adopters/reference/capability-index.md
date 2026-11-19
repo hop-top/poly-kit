@@ -137,6 +137,7 @@ Talking to models, and being legible to agents.
 | Judge | Typed judgments over a Case: choice, score, yes/no with abstain; validation, batching | `go/ai/judge` | [Judge](judge.md) |
 | Judge calibration | Temperature and Platt calibration of judged probabilities | `go/ai/judge/calibrate` | [Judge](judge.md) |
 | Judge test fake | Deterministic fake judge for tests | `go/ai/judge/judgetest` | [Judge](judge.md) |
+| Judge eval | Replay a recorded case set through a candidate judge; agreement, Brier, ECE, pass/fail gate | `go/ai/judge/eval` | [Judge](judge.md) |
 | Toolspec | Tool manifest, `spec` command, per-harness adapters, risk policy | `go/ai/toolspec` | [Toolspec API](toolspec-api.md); [Adopter guide](../integrations/toolspec-adopter-guide.md); [Harness guide](../integrations/toolspec-harness-guide.md) |
 | Command reflection | Single place kit reflects a cobra tree into descriptors | `go/ai/cmdreflect` | [cmdreflect](cmdreflect.md) |
 | Agent CLI invocation | Detect agent CLIs and build native argv from one normalized invocation | `go/core/uxp` | [uxp](uxp.md) |
