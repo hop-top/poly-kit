@@ -90,8 +90,8 @@ func TestEndpointLocality(t *testing.T) {
 		{"http://172.32.0.1", llm.LocalityRemote},
 		{"http://192.168.1.9", llm.LocalityPrivate},
 		{"http://[fd12::1]", llm.LocalityPrivate},
-		{"http://box.local:1", llm.LocalityPrivate},
-		{"http://100.64.0.1", llm.LocalityRemote}, // CGNAT / tailnet
+		{"http://box.local:1", llm.LocalityRemote}, // a name can resolve to anything
+		{"http://100.64.0.1", llm.LocalityRemote},  // CGNAT / tailnet
 		{"http://169.254.169.254", llm.LocalityRemote},
 		{"http://0.0.0.0:8000", llm.LocalityRemote},
 		{"http://8.8.8.8", llm.LocalityRemote},
@@ -130,7 +130,9 @@ func TestLocalOnlyResolve(t *testing.T) {
 		{"private IP by default", "openai://10.0.0.5:8000/m", nil, true},
 		{"private IP refused when disallowed", "openai://10.0.0.5:8000/m", []llm.LocalOption{llm.AllowPrivate(false)}, false},
 		{"loopback still ok when private disallowed", "ollama://m", []llm.LocalOption{llm.AllowPrivate(false)}, true},
-		{"mdns name", "ollama://box.local:11434/m", nil, true},
+		{"mdns name refused by default", "ollama://box.local:11434/m", nil, false},
+		{"mdns name allowed", "ollama://box.local:11434/m", []llm.LocalOption{llm.AllowHosts("box.local")}, true},
+		{"mdns name, other one not allowed", "ollama://other.local:11434/m", []llm.LocalOption{llm.AllowHosts("box.local")}, false},
 		{"tailnet IP remote", "ollama://100.100.1.1:11434/m", nil, false},
 		{"tailnet IP allowed by CIDR", "ollama://100.100.1.1:11434/m", []llm.LocalOption{llm.AllowHosts("100.64.0.0/10")}, true},
 		{"tailnet IP allowed literally", "ollama://100.100.1.1:11434/m", []llm.LocalOption{llm.AllowHosts("100.100.1.1")}, true},
@@ -293,19 +295,19 @@ func TestLocalOnlyGuardsTheDial(t *testing.T) {
 		return dialed, get(t, got[0], "http://"+host+":8000/x")
 	}
 
-	t.Run("a local name resolving to a public IP is refused before dialing", func(t *testing.T) {
+	t.Run("a name that is local resolving to a public IP is refused before dialing", func(t *testing.T) {
 		var dialed []string
-		dialed, err := run(t, "h.local", []string{"8.8.8.8"})
+		dialed, err := run(t, "localhost", []string{"8.8.8.8"})
 		require.ErrorIs(t, err, llm.ErrNotLocal)
 		assert.Empty(t, dialed)
 	})
 	t.Run("one public address among private ones refuses", func(t *testing.T) {
-		dialed, err := run(t, "h.local", []string{"192.168.0.9", "1.1.1.1"})
+		dialed, err := run(t, "localhost", []string{"192.168.0.9", "1.1.1.1"})
 		require.ErrorIs(t, err, llm.ErrNotLocal)
 		assert.Empty(t, dialed)
 	})
 	t.Run("a private address is dialed, as checked", func(t *testing.T) {
-		dialed, err := run(t, "h.local", []string{"192.168.0.9"})
+		dialed, err := run(t, "localhost", []string{"192.168.0.9"})
 		assert.ErrorContains(t, err, "dialed")
 		assert.NotErrorIs(t, err, llm.ErrNotLocal)
 		assert.Equal(t, []string{"192.168.0.9:8000"}, dialed)

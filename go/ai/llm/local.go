@@ -60,7 +60,7 @@ type localConfig struct {
 }
 
 // AllowPrivate sets whether the local network counts as local: RFC 1918
-// and fc00::/7 addresses and *.local names. The default is true; false
+// and fc00::/7 addresses. The default is true; false
 // keeps requests on this host.
 func AllowPrivate(allow bool) LocalOption {
 	return func(c *localConfig) { c.allowPrivate = allow }
