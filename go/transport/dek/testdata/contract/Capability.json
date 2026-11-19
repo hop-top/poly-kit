@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "Gate": {
+      "description": "Approval class id. `free`, `apply` and `review` are dek's; an app's are\n`<namespace>.<local>`. The core enforces the class. dek runs the flow\nthe class was registered with before anything reaches the core, and\ntreats an id that nothing registered as `review`. dek never asks the\ncore to waive a class, and cannot check that the core enforces an app's\nclass as its builder meant: that is the core's job.\n\nA core sends an app's class ids only to a dek that registered them; any\nother dek shows them as unknown, handled as `review`.",
+      "type": "string"
+    },
+    "OutputKind": {
+      "description": "Shape of a capability's result.",
+      "enum": [
+        "list",
+        "record",
+        "plan",
+        "stream"
+      ],
+      "type": "string"
+    },
+    "Target": {
+      "description": "Platform a feature or pane works on.",
+      "enum": [
+        "desktop",
+        "tablet",
+        "phone",
+        "web",
+        "terminal"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One manifest entry: a noun-verb action a core offers.",
+  "properties": {
+    "args_schema": true,
+    "destructive": {
+      "type": "boolean"
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "gate": {
+      "$ref": "#/$defs/Gate",
+      "description": "Approval class: see [`Gate`]."
+    },
+    "granted": {
+      "default": true,
+      "description": "The viewer may invoke it at the scope the manifest was fetched for.\nAbsent reads as true. A catalog action bound to an ungranted\ncapability renders disabled with the reason, not an error on click.",
+      "type": "boolean"
+    },
+    "id": {
+      "type": "string"
+    },
+    "noun": {
+      "type": "string"
+    },
+    "output": {
+      "$ref": "#/$defs/OutputKind"
+    },
+    "read": {
+      "default": false,
+      "description": "A side-effect-free read: only these may back a catalog query.\nAbsent reads as false, so an unmarked capability is never queried.",
+      "type": "boolean"
+    },
+    "scopes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "targets": {
+      "items": {
+        "$ref": "#/$defs/Target"
+      },
+      "type": "array"
+    },
+    "verb": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "noun",
+    "verb",
+    "args_schema",
+    "scopes",
+    "dry_run",
+    "destructive",
+    "gate",
+    "output",
+    "targets"
+  ],
+  "title": "Capability",
+  "type": "object"
+}
