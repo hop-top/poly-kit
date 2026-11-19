@@ -68,7 +68,6 @@ fmt.Println(resp.Content)
   provider adapters
 - [`router/`](router/README.md): native routing engine (BERT, intent-based)
 - [`errors/`](errors/README.md): structured error types with fallback semantics
-- [`llmxrr/`](llmxrr/README.md): test-only record/replay transport for model calls, via `WithTransport`
 - `hop.top/kit/go/runtime/bus`: the bus `WithBus` publishes to
 
 ## See also
