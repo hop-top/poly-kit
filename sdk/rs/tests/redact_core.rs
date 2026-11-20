@@ -437,3 +437,100 @@ mod credit_card {
         assert_eq!(r.apply("cc_4111111111111111"), "cc_***REDACTED***");
     }
 }
+
+// Digit rules: token boundary plus SSN/ITIN structure (mirrors
+// go/core/redact/validate_test.go).
+mod digit_rules {
+    use hop_top_kit::redact;
+
+    // (real value, label-joined form, token-embedded or invalid forms)
+    const CASES: &[(&str, &str, &[&str])] = &[
+        (
+            "123-45-6789",
+            "ssn-123-45-6789",
+            &[
+                "ORD123-45-6789",
+                "123-45-6789ab",
+                "000-12-3456",
+                "666-12-3456",
+                "900-12-3456",
+                "999-12-3456",
+                "123-00-6789",
+                "123-45-0000",
+            ],
+        ),
+        (
+            "912-70-1234",
+            "itin-912-70-1234",
+            &[
+                "ORD912-70-1234",
+                "912-70-1234ab",
+                "912-49-1234",
+                "912-66-1234",
+                "912-69-1234",
+                "912-89-1234",
+                "912-93-1234",
+                "912-00-1234",
+            ],
+        ),
+        (
+            "415-555-2671",
+            "tel-415-555-2671",
+            &["ORD415-555-2671", "415-555-2671ab"],
+        ),
+        (
+            "+14155552671",
+            "tel_+14155552671",
+            &["id9+14155552671", "+14155552671abc"],
+        ),
+        (
+            "123456789",
+            "passport-123456789",
+            &[
+                "id123456789",
+                "123456789ab",
+                "bffab4c3-9d88-43ab-4111-123456789012",
+            ],
+        ),
+        ("D1234567", "dl-D1234567", &["ORD1234567", "D1234567ab"]),
+    ];
+
+    #[test]
+    fn token_boundary() {
+        let r = redact::shared();
+        for (real, label, kept) in CASES {
+            assert_eq!(
+                r.apply(&format!("ref {real} end")),
+                "ref ***REDACTED*** end",
+                "{real}"
+            );
+            assert_eq!(r.apply(real), "***REDACTED***", "{real}");
+            assert_eq!(
+                r.apply(label),
+                label.replace(real, "***REDACTED***"),
+                "{label}"
+            );
+            for k in *kept {
+                assert_eq!(r.apply(k), *k, "must round-trip: {k}");
+                let s = format!("ref {k} end");
+                assert_eq!(r.apply(&s), s, "must round-trip: {s}");
+            }
+        }
+    }
+
+    #[test]
+    fn itin_group_ranges() {
+        let r = redact::shared();
+        for g in ["50", "65", "70", "88", "90", "92", "94", "99"] {
+            assert_eq!(r.apply(&format!("912-{g}-1234")), "***REDACTED***", "{g}");
+        }
+    }
+
+    #[test]
+    fn ssn_area_boundaries() {
+        let r = redact::shared();
+        for s in ["001-01-0001", "665-12-3456", "667-12-3456", "899-12-3456"] {
+            assert_eq!(r.apply(s), "***REDACTED***", "{s}");
+        }
+    }
+}

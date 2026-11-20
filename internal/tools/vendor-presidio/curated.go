@@ -22,26 +22,26 @@ replacement = "<EMAIL>"
 
 [[rule]]
 id = "phone-e164"
-description = "International phone number in E.164 format (+CCNNNNNNNNN)."
-pattern = '''\+[1-9]\d{6,14}\b'''
+description = "International phone number in E.164 format (+CCNNNNNNNNN); token boundary checked in code."
+pattern = '''\+[1-9]\d{6,14}'''
 replacement = "<PHONE>"
 
 [[rule]]
 id = "phone-us"
-description = "US phone number with optional country code, dashes/dots/parens."
-pattern = '''\b(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b'''
+description = "US phone number with optional country code, dashes/dots/parens; token boundary checked in code."
+pattern = '''(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}'''
 replacement = "<PHONE>"
 
 [[rule]]
 id = "us-ssn"
-description = "US Social Security Number (NNN-NN-NNNN)."
-pattern = '''\b\d{3}-\d{2}-\d{4}\b'''
+description = "US Social Security Number (NNN-NN-NNNN; token boundary and area/group/serial checked in code)."
+pattern = '''\d{3}-\d{2}-\d{4}'''
 replacement = "<SSN>"
 
 [[rule]]
 id = "us-itin"
-description = "US Individual Taxpayer Identification Number (9XX-NN-NNNN)."
-pattern = '''\b9\d{2}-\d{2}-\d{4}\b'''
+description = "US Individual Taxpayer Identification Number (9XX-NN-NNNN; token boundary and IRS group range checked in code)."
+pattern = '''9\d{2}-\d{2}-\d{4}'''
 replacement = "<ITIN>"
 
 [[rule]]
@@ -70,14 +70,14 @@ replacement = "<IP>"
 
 [[rule]]
 id = "us-passport"
-description = "US passport number (9 digits, may be prefixed with letter)."
-pattern = '''\b[A-Z]?\d{9}\b'''
+description = "US passport number (9 digits, may be prefixed with letter; token boundary checked in code)."
+pattern = '''[A-Z]?\d{9}'''
 replacement = "<US_PASSPORT>"
 
 [[rule]]
 id = "us-driver-license"
-description = "US driver license — generic 7-13 alphanumeric. State-specific patterns vary widely; this is a coarse catch."
-pattern = '''\b[A-Z]\d{7,13}\b'''
+description = "US driver license — generic 7-13 alphanumeric. State-specific patterns vary widely; this is a coarse catch; token boundary checked in code."
+pattern = '''[A-Z]\d{7,13}'''
 replacement = "<US_DRIVER_LICENSE>"
 `
 
@@ -121,8 +121,10 @@ tagged release. Same tag → byte-identical output (idempotent). See
 
 ## Coverage (v1)
 
-email, phone (US + E.164), us-ssn, us-itin, credit-card (Luhn and token-boundary
-checked in code), iban, ipv4, ipv6, us-passport, us-driver-license.
+email, phone (US + E.164; token boundary checked in code), us-ssn and us-itin
+(token boundary and structure checked in code), credit-card (Luhn and
+token-boundary checked in code), iban, ipv4, ipv6, us-passport and us-driver-license (token boundary checked
+in code).
 
 ## Dropped Patterns
 

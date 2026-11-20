@@ -3974,29 +3974,29 @@
     },
     {
       "id": "phone-e164",
-      "description": "International phone number in E.164 format (+CCNNNNNNNNN).",
-      "regex": "\\+[1-9]\\d{6,14}\\b",
+      "description": "International phone number in E.164 format (+CCNNNNNNNNN); token boundary checked in code.",
+      "regex": "\\+[1-9]\\d{6,14}",
       "replacement": "<PHONE>",
       "distinctive": false
     },
     {
       "id": "phone-us",
-      "description": "US phone number with optional country code, dashes/dots/parens.",
-      "regex": "\\b(?:\\+?1[\\s.\\-]?)?\\(?\\d{3}\\)?[\\s.\\-]\\d{3}[\\s.\\-]\\d{4}\\b",
+      "description": "US phone number with optional country code, dashes/dots/parens; token boundary checked in code.",
+      "regex": "(?:\\+?1[\\s.\\-]?)?\\(?\\d{3}\\)?[\\s.\\-]\\d{3}[\\s.\\-]\\d{4}",
       "replacement": "<PHONE>",
       "distinctive": false
     },
     {
       "id": "us-ssn",
-      "description": "US Social Security Number (NNN-NN-NNNN).",
-      "regex": "\\b\\d{3}-\\d{2}-\\d{4}\\b",
+      "description": "US Social Security Number (NNN-NN-NNNN; token boundary and area/group/serial checked in code).",
+      "regex": "\\d{3}-\\d{2}-\\d{4}",
       "replacement": "<SSN>",
       "distinctive": false
     },
     {
       "id": "us-itin",
-      "description": "US Individual Taxpayer Identification Number (9XX-NN-NNNN).",
-      "regex": "\\b9\\d{2}-\\d{2}-\\d{4}\\b",
+      "description": "US Individual Taxpayer Identification Number (9XX-NN-NNNN; token boundary and IRS group range checked in code).",
+      "regex": "9\\d{2}-\\d{2}-\\d{4}",
       "replacement": "<ITIN>",
       "distinctive": false
     },
@@ -4030,15 +4030,15 @@
     },
     {
       "id": "us-passport",
-      "description": "US passport number (9 digits, may be prefixed with letter).",
-      "regex": "\\b[A-Z]?\\d{9}\\b",
+      "description": "US passport number (9 digits, may be prefixed with letter; token boundary checked in code).",
+      "regex": "[A-Z]?\\d{9}",
       "replacement": "<US_PASSPORT>",
       "distinctive": false
     },
     {
       "id": "us-driver-license",
-      "description": "US driver license — generic 7-13 alphanumeric. State-specific patterns vary widely; this is a coarse catch.",
-      "regex": "\\b[A-Z]\\d{7,13}\\b",
+      "description": "US driver license — generic 7-13 alphanumeric. State-specific patterns vary widely; this is a coarse catch; token boundary checked in code.",
+      "regex": "[A-Z]\\d{7,13}",
       "replacement": "<US_DRIVER_LICENSE>",
       "distinctive": false
     }

@@ -1,6 +1,7 @@
 package redact_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -84,5 +85,71 @@ func TestCreditCard_NonLuhnRunNotRedacted(t *testing.T) {
 		"id 000000000000",
 	} {
 		assert.Equal(t, in, r.Apply(in), in)
+	}
+}
+
+// digitCases: per rule, a real-shaped value that must be redacted and
+// token-embedded forms that must round-trip.
+var digitCases = []struct {
+	rule  string
+	real  string
+	label string // label-joined form, still redacted
+	kept  []string
+}{
+	{"us-ssn", "123-45-6789", "ssn-123-45-6789", []string{
+		"ORD123-45-6789", "123-45-6789ab",
+		"000-12-3456", "666-12-3456", "900-12-3456", "999-12-3456",
+		"123-00-6789", "123-45-0000",
+	}},
+	{"us-itin", "912-70-1234", "itin-912-70-1234", []string{
+		"ORD912-70-1234", "912-70-1234ab",
+		// groups outside 50-65, 70-88, 90-92, 94-99
+		"912-49-1234", "912-66-1234", "912-69-1234", "912-89-1234", "912-93-1234", "912-00-1234",
+	}},
+	{"phone-us", "415-555-2671", "tel-415-555-2671", []string{
+		"ORD415-555-2671", "415-555-2671ab",
+	}},
+	{"phone-e164", "+14155552671", "tel_+14155552671", []string{
+		"id9+14155552671", "+14155552671abc",
+	}},
+	{"us-passport", "123456789", "passport-123456789", []string{
+		"id123456789", "123456789ab", "bffab4c3-9d88-43ab-4111-123456789012",
+	}},
+	{"us-driver-license", "D1234567", "dl-D1234567", []string{
+		"ORD1234567", "D1234567ab",
+	}},
+}
+
+func TestDigitRules_TokenBoundary(t *testing.T) {
+	r := cardRedactor(t)
+	for _, c := range digitCases {
+		t.Run(c.rule, func(t *testing.T) {
+			in := "ref " + c.real + " end"
+			assert.Equal(t, "ref ***REDACTED*** end", r.Apply(in), "real value")
+			assert.Equal(t, "***REDACTED***", r.Apply(c.real))
+			assert.Equal(t, strings.Replace(c.label, c.real, "***REDACTED***", 1), r.Apply(c.label), "label joined")
+			for _, k := range c.kept {
+				assert.Equal(t, k, r.Apply(k), "must round-trip: %s", k)
+				in := "ref " + k + " end"
+				assert.Equal(t, in, r.Apply(in), "must round-trip: %s", in)
+			}
+		})
+	}
+}
+
+// ITIN group boundaries from the IRS ranges 50-65, 70-88, 90-92, 94-99.
+func TestITIN_GroupRanges(t *testing.T) {
+	r := cardRedactor(t)
+	for _, g := range []string{"50", "65", "70", "88", "90", "92", "94", "99"} {
+		in := "912-" + g + "-1234"
+		assert.Equal(t, "***REDACTED***", r.Apply(in), in)
+	}
+}
+
+// 9xx is not an SSN area, so an SSN-shaped 9xx number is only ever an ITIN.
+func TestSSN_AreaBoundaries(t *testing.T) {
+	r := cardRedactor(t)
+	for _, in := range []string{"001-01-0001", "665-12-3456", "667-12-3456", "899-12-3456"} {
+		assert.Equal(t, "***REDACTED***", r.Apply(in), in)
 	}
 }
