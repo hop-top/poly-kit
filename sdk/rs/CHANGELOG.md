@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.8...kit-rs/v0.5.0-alpha.9) (2026-11-20)
 
+The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.9. This release includes maintenance release with bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -16,6 +18,8 @@
 ### Refactored
 
 * **timeutil:** move relative-date parsing from chrono to jiff ([2715c07](https://github.com/hop-top/poly-kit/commit/2715c079583ca767a0cf7febfdc957ae0261f8e5))
+
+Full diff: [kit-rs/v0.5.0-alpha.8...kit-rs/v0.5.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.8...kit-rs/v0.5.0-alpha.9)
 
 ## [0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.7...kit-rs/v0.5.0-alpha.8) (2026-11-15)
 
