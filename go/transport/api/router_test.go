@@ -144,3 +144,22 @@ func TestRouter_NotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
+
+func TestRouterServes_ExactRegistrationOnly(t *testing.T) {
+	r := api.NewRouter()
+	r.Handle(http.MethodGet, "/a/b", func(http.ResponseWriter, *http.Request) {})
+	r.Handle(http.MethodGet, "/w/{id}", func(http.ResponseWriter, *http.Request) {})
+
+	if !r.Serves(http.MethodGet, "/a/b") {
+		t.Error("registered route not reported")
+	}
+	if r.Serves(http.MethodPost, "/a/b") {
+		t.Error("other method reported")
+	}
+	if r.Serves(http.MethodGet, "/a/b/c") {
+		t.Error("longer path reported")
+	}
+	if r.Serves(http.MethodGet, "/w/1") {
+		t.Error("a wildcard match is not the registration of /w/1")
+	}
+}

@@ -64,6 +64,19 @@ func WithOuterMiddleware(mws ...Middleware) RouterOption {
 	}
 }
 
+// Serves reports whether a route registered with exactly this method
+// and path pattern answers on the router. A pattern with wildcards or
+// a catch-all that would merely match the path does not count: it is
+// the registration itself that is asked about.
+func (r *Router) Serves(method, path string) bool {
+	req, err := http.NewRequest(method, path, nil)
+	if err != nil {
+		return false
+	}
+	_, pattern := r.mux.Handler(req)
+	return pattern == method+" "+path
+}
+
 // Handle registers a handler for the given method and path.
 // Method and path are combined into a Go 1.22+ ServeMux pattern
 // (e.g. "GET /api/items/{id}").

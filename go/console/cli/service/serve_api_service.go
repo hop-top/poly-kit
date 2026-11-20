@@ -13,7 +13,6 @@ import (
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
-	"hop.top/kit/go/transport/dek"
 )
 
 // APIServiceName is the identifier the built-in HTTP API registers
@@ -124,6 +123,9 @@ func (a *apiService) Validate() error {
 	}
 	if err := api.ValidateListenAddr(addr); err != nil {
 		return fmt.Errorf("addr: %w", err)
+	}
+	if err := validateSurfaces(a.cfg.Surfaces); err != nil {
+		return fmt.Errorf("surfaces: %w", err)
 	}
 	t, err := ResolveServeTLS(a.root, APIServiceName)
 	if err != nil {
@@ -456,9 +458,9 @@ func (a *apiService) buildHandler(ctx context.Context) (_ http.Handler, err erro
 		// every refusal names it (RFC 9728).
 		refused := api.OnAuthRefused(cmdsurface.ProjectionAuthRefusal(bridge))
 		if pr := a.tls.ProtectedResource(); pr != nil {
-			guards = append(guards, a.exemptDekHello(pr.Guard(a.authFunc(), refused)))
+			guards = append(guards, exemptPublic(pr.Guard(a.authFunc(), refused), publicRoutes(a.cfg.Surfaces)))
 		} else {
-			guards = append(guards, a.exemptDekHello(api.Auth(a.authFunc(), refused)))
+			guards = append(guards, exemptPublic(api.Auth(a.authFunc(), refused), publicRoutes(a.cfg.Surfaces)))
 		}
 	}
 
@@ -572,54 +574,24 @@ func (a *apiService) mountProjection(
 	if err := cmdsurface.MountProjection(bridge, router, opts...); err != nil {
 		return err
 	}
-	return a.mountDek(bridge, router, opts)
+	return a.mountSurfaces(bridge, router, opts)
 }
 
-// exemptDekHello lets GET /v1/dek/hello past the authentication
-// guard when the dek surface is served. It is the one route a dek
-// client calls before it holds a credential: it names the core, the
-// contract revision and the manifest ETag, and nothing else.
-func (a *apiService) exemptDekHello(guard api.Middleware) api.Middleware {
-	if a.cfg.Dek == nil {
-		return guard
-	}
-	return func(next http.Handler) http.Handler {
-		guarded := guard(next)
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodGet && r.URL.Path == dek.Prefix+"/hello" {
-				next.ServeHTTP(w, r)
-				return
-			}
-			guarded.ServeHTTP(w, r)
-		})
-	}
-}
-
-// mountDek serves the dek surface under /v1/dek when APIConfig.Dek is
-// set: the same reflected commands and executor as the REST
-// projection, so the manifest lists what REST serves and a call meets
-// the same gates. It runs after the projection and the adopter's
-// routes, so an adopter route at a /v1/dek path wins.
-func (a *apiService) mountDek(
+// mountSurfaces serves APIConfig.Surfaces: the same reflected
+// commands and executor as the REST projection, so a surface lists
+// what REST serves and a call meets the same gates. It runs after the
+// projection and the adopter's routes, so those win a collision.
+func (a *apiService) mountSurfaces(
 	bridge *cmdsurface.Bridge, router *api.Router, opts []cmdsurface.ProjectionOption,
 ) error {
-	if a.cfg.Dek == nil {
+	if len(a.cfg.Surfaces) == 0 {
 		return nil
 	}
 	pcfg, err := cmdsurface.Projection(bridge, opts...)
 	if err != nil {
 		return err
 	}
-	core, err := dek.New(dek.Config{
-		Projection: pcfg,
-		CoreID:     a.cfg.Dek.CoreID,
-		Gate:       a.cfg.Dek.Gate,
-	})
-	if err != nil {
-		return err
-	}
-	core.Mount(router)
-	return nil
+	return mountSurfaces(router, pcfg, a.cfg.Surfaces)
 }
 
 // applyAPICompat maps the leaf `service start` command's own flags onto the

@@ -8,7 +8,7 @@ Exact details per API: signatures, flags, exit codes, config shapes, wire format
 - **Flags and completion:** [`flag-enums`](flag-enums.md) · [`completion-api`](completion-api.md) · [`alias-api`](alias-api.md) · [`setflag-textflag-api`](setflag-textflag-api.md)
 - **Console:** [`output`](output.md) · [`log-api`](log-api.md) · [`hay`](hay.md) · [`wizard-api`](wizard-api.md) · [`ps`](ps.md)
 - **Config and paths:** [`config`](config.md) · [`xdg`](xdg.md)
-- **Command surfaces (REST, RPC, socket wire, transports):** [`cmdsurface`](cmdsurface.md) · [`cmdreflect`](cmdreflect.md) · [`transport-api`](transport-api.md) · [`transportsvc`](transportsvc.md) · [`socket-wire`](socket-wire.md) · [`dek-surface`](dek-surface.md)
+- **Command surfaces (REST, RPC, socket wire, transports):** [`cmdsurface`](cmdsurface.md) · [`cmdreflect`](cmdreflect.md) · [`transport-api`](transport-api.md) · [`transportsvc`](transportsvc.md) · [`socket-wire`](socket-wire.md) · [`api-surfaces`](api-surfaces.md)
 - **MCP:** [`mcpsdk`](mcpsdk.md) · [`mcp-tasks`](mcp-tasks.md)
 - **Served middleware:** [`served-middleware`](served-middleware.md) · [`served-observability`](served-observability.md)
 - **Guardrails (paths, rate, egress, dry-run, mode, provenance):** [`scope`](scope.md) · [`breaker`](breaker.md) · [`redact`](redact.md) · [`sideeffect`](sideeffect.md) · [`stage`](stage.md) · [`provenance`](provenance.md)
