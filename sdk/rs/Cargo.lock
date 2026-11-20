@@ -1358,7 +1358,6 @@ dependencies = [
  "regex-syntax",
  "reqwest",
  "ring",
- "rmcp",
  "rusqlite",
  "rustls",
  "rustls-native-certs",
@@ -1653,8 +1652,6 @@ checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
 dependencies = [
  "equivalent",
  "hashbrown 0.17.1",
- "serde",
- "serde_core",
 ]
 
 [[package]]
@@ -2597,26 +2594,6 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "rmcp"
-version = "3.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d24a7e92f4bcaa36b97fa93c4fa7ca8f3e669eced949345b3462dba333c7f909"
-dependencies = [
- "chrono",
- "futures",
- "indexmap",
- "libc",
- "pin-project-lite",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "thiserror 2.0.21",
- "tokio",
- "tokio-util",
- "tracing",
 ]
 
 [[package]]

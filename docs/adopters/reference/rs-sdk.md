@@ -351,10 +351,10 @@ disagree, **the fixtures win**.
 hop-top-kit = { version = "0.5.0-alpha.8", features = ["mcp"] } # x-release-please-version
 ```
 
-`rmcp` supplies the protocol vocabulary only — version constants, the
-`-3202x` error codes, reserved `_meta` keys — with `default-features =
-false`, so its server/tokio/hyper stack stays out of the tree. This port
-hosts via a plain request-to-response function, not rmcp's transports.
+The protocol vocabulary — version constants, the `-3202x` error codes,
+reserved `_meta` keys — is defined in this crate and pinned to the supported
+spec revisions by a test, so no MCP SDK is in the tree. This port hosts via a
+plain request-to-response function.
 
 ### Hosting
 

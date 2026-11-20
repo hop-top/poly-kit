@@ -44,7 +44,7 @@ assert!(response.body_str().contains("pong"));
 
 ## Contract
 
-- Feature `mcp` pulls in `rmcp` (default features off, vocabulary only), `serde`, `serde_json`; no server,
+- Feature `mcp` pulls in `serde`, `serde_json`; no server,
   no tokio. Authority: the crate [feature table](../../README.md#features).
 - `Surface::call` is a synchronous request to response function; the crate binds no HTTP server.
 - `Surface::serve_stdio`: newline-delimited JSON-RPC, concurrent on scoped threads; notifications never

@@ -42,14 +42,12 @@ use super::HandlerConfig;
 
 /// The protocol revision this handler speaks.
 ///
-/// `rmcp` is the protocol layer (official SDKs only), so this string is not
-/// an independent spelling: `protocol_version_matches_sdk` below asserts
-/// it equals `rmcp::model::ProtocolVersion::V_2026_07_28`, which cannot
-/// be used directly in const position (it wraps a `Cow`).
+/// The MCP revision of 2026-07-28 (SEP-2575: stateless requests, per-request
+/// `_meta` protocol version). `spec_vocabulary_is_pinned` below pins it, with
+/// the legacy revision, the error codes and the `_meta` keys.
 pub const PROTOCOL_VERSION: &str = "2026-07-28";
 
-/// Reserved `_meta` keys, as fixed by the spec and mirrored in
-/// `rmcp::model`.
+/// Reserved `_meta` keys, as fixed by the spec (SEP-2575).
 pub mod meta_keys {
     /// Per-request protocol version. Its presence is marker M3.
     pub const PROTOCOL_VERSION: &str = "io.modelcontextprotocol/protocolVersion";
@@ -863,36 +861,40 @@ mod tests {
 
     const META: &str = r#""_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}"#;
 
+    /// Pins every protocol constant to the MCP revisions kit supports.
+    ///
+    /// The literals below are the spec values, checked against `rmcp`
+    /// 3.9.0 (`src/model.rs`: `ProtocolVersion::V_2026_07_28` and
+    /// `V_2024_11_05`, `ErrorCode` at lines 636-645; `src/model/task.rs`:
+    /// `TASKS_EXTENSION_ID`; `src/model/meta.rs` and `src/model.rs`
+    /// `SERVER_INFO_META_KEY` for the `_meta` keys) and against JSON-RPC
+    /// 2.0 section 5.1 for the classic codes. Editing a constant without
+    /// the spec moving fails here.
     #[test]
-    fn protocol_version_matches_sdk() {
-        // rmcp is the protocol layer. The const above
-        // cannot reference ProtocolVersion directly (it wraps a Cow),
-        // so this pins the two together instead.
-        assert_eq!(
-            PROTOCOL_VERSION,
-            rmcp::model::ProtocolVersion::V_2026_07_28.as_str()
-        );
-        assert_eq!(
-            crate::mcp::legacy::PROTOCOL_VERSION,
-            rmcp::model::ProtocolVersion::V_2024_11_05.as_str()
-        );
-    }
+    fn spec_vocabulary_is_pinned() {
+        assert_eq!(PROTOCOL_VERSION, "2026-07-28");
+        assert_eq!(crate::mcp::legacy::PROTOCOL_VERSION, "2024-11-05");
 
-    #[test]
-    fn error_codes_match_sdk() {
-        use rmcp::model::ErrorCode;
+        assert_eq!(codes::PARSE, -32700);
+        assert_eq!(codes::INVALID_REQUEST, -32600);
+        assert_eq!(codes::METHOD_NOT_FOUND, -32601);
+        assert_eq!(codes::INVALID_PARAMS, -32602);
+        assert_eq!(codes::INTERNAL, -32603);
+        assert_eq!(codes::HEADER_MISMATCH, -32020);
+        assert_eq!(codes::MISSING_CLIENT_CAPABILITY, -32021);
+        assert_eq!(codes::UNSUPPORTED_VERSION, -32022);
+
         assert_eq!(
-            codes::HEADER_MISMATCH,
-            i64::from(ErrorCode::HEADER_MISMATCH.0)
+            meta_keys::PROTOCOL_VERSION,
+            "io.modelcontextprotocol/protocolVersion"
         );
+        assert_eq!(meta_keys::CLIENT_INFO, "io.modelcontextprotocol/clientInfo");
         assert_eq!(
-            codes::UNSUPPORTED_VERSION,
-            i64::from(ErrorCode::UNSUPPORTED_PROTOCOL_VERSION.0)
+            meta_keys::CLIENT_CAPABILITIES,
+            "io.modelcontextprotocol/clientCapabilities"
         );
-        assert_eq!(
-            codes::MISSING_CLIENT_CAPABILITY,
-            i64::from(ErrorCode::MISSING_REQUIRED_CLIENT_CAPABILITY.0)
-        );
+        assert_eq!(meta_keys::SERVER_INFO, "io.modelcontextprotocol/serverInfo");
+        assert_eq!(tasks::TASKS_EXTENSION_ID, "io.modelcontextprotocol/tasks");
     }
 
     #[test]

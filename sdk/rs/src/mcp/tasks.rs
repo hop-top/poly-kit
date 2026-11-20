@@ -54,8 +54,8 @@ const STATE_TTL_SECS: u64 = 300;
 /// (rather than misparses) old state.
 const STATE_VERSION: &str = "v1";
 
-/// The official tasks-extension identifier (SEP-2663), matching
-/// `rmcp::model::task::TASKS_EXTENSION_ID`.
+/// The official tasks-extension identifier (SEP-2663); pinned by
+/// `modern::tests::spec_vocabulary_is_pinned`.
 pub const TASKS_EXTENSION_ID: &str = "io.modelcontextprotocol/tasks";
 
 /// Declares the tasks extension on a `server/discover` result.

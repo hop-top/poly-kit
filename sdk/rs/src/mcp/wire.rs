@@ -31,30 +31,28 @@ use serde_json::{Map, Value};
 
 /// JSON-RPC error codes this surface emits.
 ///
-/// Every value is taken from `rmcp::model::ErrorCode` rather than
-/// spelled locally: the official SDK is the protocol
-/// layer, so the `-3202x` codes reserved by MCP 2026-07-28 and the
-/// classic JSON-RPC range have exactly one source of truth.
+/// The classic five are fixed by JSON-RPC 2.0 section 5.1. The `-3202x`
+/// codes are reserved by MCP 2026-07-28 (SEP-2575). Both groups are
+/// spelled here, once, and pinned by `mcp::modern::tests::spec_vocabulary_is_pinned`
+/// against the values `rmcp` 3.9.0 defines in `src/model.rs`
+/// (`ErrorCode`), the same codes the Go surface emits.
 pub mod codes {
-    use rmcp::model::ErrorCode;
-
     /// Malformed JSON in the request body.
-    pub const PARSE: i64 = ErrorCode::PARSE_ERROR.0 as i64;
+    pub const PARSE: i64 = -32700;
     /// Envelope is not a valid request.
-    pub const INVALID_REQUEST: i64 = ErrorCode::INVALID_REQUEST.0 as i64;
+    pub const INVALID_REQUEST: i64 = -32600;
     /// Unknown method.
-    pub const METHOD_NOT_FOUND: i64 = ErrorCode::METHOD_NOT_FOUND.0 as i64;
+    pub const METHOD_NOT_FOUND: i64 = -32601;
     /// Bad or missing params.
-    pub const INVALID_PARAMS: i64 = ErrorCode::INVALID_PARAMS.0 as i64;
+    pub const INVALID_PARAMS: i64 = -32602;
     /// Server-side failure.
-    pub const INTERNAL: i64 = ErrorCode::INTERNAL_ERROR.0 as i64;
+    pub const INTERNAL: i64 = -32603;
     /// A routing header disagrees with the body (2026-07-28).
-    pub const HEADER_MISMATCH: i64 = ErrorCode::HEADER_MISMATCH.0 as i64;
+    pub const HEADER_MISMATCH: i64 = -32020;
     /// A required client capability was not declared (2026-07-28).
-    pub const MISSING_CLIENT_CAPABILITY: i64 =
-        ErrorCode::MISSING_REQUIRED_CLIENT_CAPABILITY.0 as i64;
+    pub const MISSING_CLIENT_CAPABILITY: i64 = -32021;
     /// The requested protocol version is not served (2026-07-28).
-    pub const UNSUPPORTED_VERSION: i64 = ErrorCode::UNSUPPORTED_PROTOCOL_VERSION.0 as i64;
+    pub const UNSUPPORTED_VERSION: i64 = -32022;
 }
 
 /// A decoded JSON-RPC request envelope.
