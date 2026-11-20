@@ -202,8 +202,9 @@ type CommandDescriptor struct {
 	// kit/auth-required.
 	AuthRequired bool `json:"auth_required,omitempty"`
 	// LongRunning reports that the command declares
-	// kit/long-running: a surface with jobs runs it in the background
-	// and answers with the job, not the result.
+	// kit/long-running: a surface with a background-job model may run
+	// it in the background and answer with the job, not the result.
+	// The REST projection does not serve it.
 	LongRunning bool `json:"-"`
 
 	// Cacheable reports that the command's GET route may answer from a

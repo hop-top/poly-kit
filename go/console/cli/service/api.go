@@ -27,11 +27,11 @@ type APIConfig struct {
 	// Auth is set or InsecureRemote opts in, and refused again
 	// unless a --policy is in force or InsecureNoPolicy opts in.
 	Addr string
-	// Dek, when set, serves the tool's commands as the core side of the
-	// dek contract under /v1/dek (hello, capabilities, invoke),
-	// generated from the same tree as the REST projection and run
-	// through the same executor. Nil serves nothing there.
-	Dek *DekConfig
+	// Surfaces are additional protocol surfaces served on the same
+	// listener, router, guard chain and executor as the REST
+	// projection; see [Surface]. Each mounts after the projection and
+	// the adopter's routes, so those win a path collision.
+	Surfaces []Surface
 	// OpenAPI configures OpenAPI spec generation (nil = disabled).
 	OpenAPI *api.OpenAPIConfig
 	// Auth validates requests (nil = no auth). It gates every
@@ -184,15 +184,4 @@ func mountAPIServeFlags(r *cli.Root) {
 				"Serve the api service on a non-loopback address with no delegation policy, rather than kit-default")
 		}
 	}
-}
-
-// DekConfig configures the dek surface of the api service; see
-// [APIConfig.Dek].
-type DekConfig struct {
-	// CoreID names the core in the hello. Empty uses the tool name.
-	CoreID string
-	// Gate picks the approval class of a command. Returning "" keeps
-	// the default: free for read and write, apply for destructive.
-	// Only class "free" runs on a direct call today.
-	Gate func(api.CommandDescriptor) string
 }
