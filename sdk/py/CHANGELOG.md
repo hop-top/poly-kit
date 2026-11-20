@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-alpha.11](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.10...kit-py/v0.5.0-alpha.11) (2026-11-20)
+
+
+### Bug Fixes
+
+* **php/serve:** read cancel afresh after a tick ([0272e4a](https://github.com/hop-top/poly-kit/commit/0272e4a98dc2ac2a2e220d96379b98c1e6e024a3))
+
 ## [0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.9...kit-py/v0.5.0-alpha.10) (2026-11-15)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.10. This release includes new features and bug fixes.
