@@ -1,21 +1,21 @@
 //! Forward-looking parsing — the port of Go's `until.go`.
 
-use chrono::{DateTime, Days, Utc};
+use jiff::Timestamp;
 
 use super::common::{
     days_until_weekday, parse_count_unit, parse_natural, parse_short, shift, weekday_from_name,
 };
-use super::{Direction, TimeError};
+use super::{Direction, TimeError, Unit};
 
-/// Parse a forward-looking date string relative to [`Utc::now`].
+/// Parse a forward-looking date string relative to [`Timestamp::now`].
 ///
 /// See [`parse_until_at`] for the supported formats.
 ///
 /// # Errors
 ///
 /// Returns [`TimeError`] when the input is empty or matches no supported form.
-pub fn parse_until(s: &str) -> Result<DateTime<Utc>, TimeError> {
-    parse_until_at(s, Utc::now())
+pub fn parse_until(s: &str) -> Result<Timestamp, TimeError> {
+    parse_until_at(s, Timestamp::now())
 }
 
 /// Parse a forward-looking date string relative to the given reference time.
@@ -43,23 +43,20 @@ pub fn parse_until(s: &str) -> Result<DateTime<Utc>, TimeError> {
 /// # Examples
 ///
 /// ```
-/// use chrono::{TimeZone, Utc};
 /// use hop_top_kit::timeutil::parse_until_at;
 ///
-/// let now = Utc.with_ymd_and_hms(2026, 4, 19, 12, 0, 0).unwrap();
+/// let now: jiff::Timestamp = "2026-04-19T12:00:00Z".parse().unwrap();
 /// let got = parse_until_at("in 3 days", now).unwrap();
-/// assert_eq!(got, Utc.with_ymd_and_hms(2026, 4, 22, 12, 0, 0).unwrap());
+/// assert_eq!(got, "2026-04-22T12:00:00Z".parse().unwrap());
 /// ```
-pub fn parse_until_at(s: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>, TimeError> {
+pub fn parse_until_at(s: &str, now: Timestamp) -> Result<Timestamp, TimeError> {
     let s = s.trim();
     if s.is_empty() {
         return Err(TimeError::Empty);
     }
 
     if s == "tomorrow" {
-        return now
-            .checked_add_days(Days::new(1))
-            .ok_or_else(|| TimeError::OutOfRange(s.to_string()));
+        return shift(now, 1, Unit::Day, Direction::Forward, s);
     }
 
     // "in N <unit>" — dispatched on the prefix, so a malformed tail is a hard
@@ -78,9 +75,7 @@ pub fn parse_until_at(s: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>, Time
 
     if let Some(weekday) = weekday_from_name(s) {
         let days = days_until_weekday(now, weekday);
-        return now
-            .checked_add_days(Days::new(days))
-            .ok_or_else(|| TimeError::OutOfRange(s.to_string()));
+        return shift(now, days, Unit::Day, Direction::Forward, s);
     }
 
     parse_natural(s, now)

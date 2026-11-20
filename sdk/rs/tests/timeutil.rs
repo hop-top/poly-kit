@@ -9,32 +9,73 @@
 
 #![cfg(feature = "timeutil")]
 
-use chrono::{DateTime, Days, Duration, Months, TimeZone, Utc};
 use hop_top_kit::timeutil::{parse_since, parse_since_at, parse_until, parse_until_at};
+use jiff::{civil, tz::TimeZone, SignedDuration, Span, Timestamp};
+
+/// A UTC wall-clock reading as an instant.
+fn at(y: i16, m: i8, d: i8, hh: i8, mm: i8, ss: i8) -> Timestamp {
+    civil::date(y, m, d)
+        .at(hh, mm, ss, 0)
+        .to_zoned(TimeZone::UTC)
+        .unwrap()
+        .timestamp()
+}
 
 /// The fixed reference instant shared with the Go tests: Sunday 2026-04-19 12:00 UTC.
-fn now() -> DateTime<Utc> {
-    Utc.with_ymd_and_hms(2026, 4, 19, 12, 0, 0).unwrap()
+fn now() -> Timestamp {
+    at(2026, 4, 19, 12, 0, 0)
 }
 
-fn at(y: i32, m: u32, d: u32, hh: u32, mm: u32, ss: u32) -> DateTime<Utc> {
-    Utc.with_ymd_and_hms(y, m, d, hh, mm, ss).unwrap()
+/// `now()` moved by whole calendar days or months through civil arithmetic,
+/// which is independent of the `Zoned` path the parsers take.
+fn civil_shift(span: Span) -> Timestamp {
+    let base = now().to_zoned(TimeZone::UTC).datetime();
+    base.checked_add(span)
+        .unwrap()
+        .to_zoned(TimeZone::UTC)
+        .unwrap()
+        .timestamp()
 }
 
-fn plus_days(n: u64) -> DateTime<Utc> {
-    now().checked_add_days(Days::new(n)).unwrap()
+fn plus_days(n: i64) -> Timestamp {
+    civil_shift(Span::new().days(n))
 }
 
-fn minus_days(n: u64) -> DateTime<Utc> {
-    now().checked_sub_days(Days::new(n)).unwrap()
+fn minus_days(n: i64) -> Timestamp {
+    civil_shift(Span::new().days(-n))
 }
 
-fn plus_months(n: u32) -> DateTime<Utc> {
-    now().checked_add_months(Months::new(n)).unwrap()
+fn plus_months(n: i64) -> Timestamp {
+    civil_shift(Span::new().months(n))
 }
 
-fn minus_months(n: u32) -> DateTime<Utc> {
-    now().checked_sub_months(Months::new(n)).unwrap()
+fn minus_months(n: i64) -> Timestamp {
+    civil_shift(Span::new().months(-n))
+}
+
+fn hours(n: i64) -> SignedDuration {
+    SignedDuration::from_hours(n)
+}
+
+fn minutes(n: i64) -> SignedDuration {
+    SignedDuration::from_mins(n)
+}
+
+fn seconds(n: i64) -> SignedDuration {
+    SignedDuration::from_secs(n)
+}
+
+fn milliseconds(n: i64) -> SignedDuration {
+    SignedDuration::from_millis(n)
+}
+
+/// Elapsed time from `earlier` to `later`.
+fn between(earlier: Timestamp, later: Timestamp) -> SignedDuration {
+    later.duration_since(earlier)
+}
+
+fn ymd(ts: Timestamp) -> String {
+    ts.strftime("%Y-%m-%d").to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -43,7 +84,7 @@ fn minus_months(n: u32) -> DateTime<Utc> {
 
 #[test]
 fn parse_until_table() {
-    let cases: Vec<(&str, &str, DateTime<Utc>)> = vec![
+    let cases: Vec<(&str, &str, Timestamp)> = vec![
         // named relative
         ("tomorrow", "tomorrow", plus_days(1)),
         // "in N <unit>"
@@ -55,22 +96,18 @@ fn parse_until_table() {
         ("in 6 months", "in 6 months", plus_months(6)),
         ("in 1 year", "in 1 year", plus_months(12)),
         ("in 2 years", "in 2 years", plus_months(24)),
-        ("in 1 hour", "in 1 hour", now() + Duration::hours(1)),
-        ("in 3 hours", "in 3 hours", now() + Duration::hours(3)),
-        (
-            "in 30 minutes",
-            "in 30 minutes",
-            now() + Duration::minutes(30),
-        ),
-        ("in 5 seconds", "in 5 seconds", now() + Duration::seconds(5)),
+        ("in 1 hour", "in 1 hour", now() + hours(1)),
+        ("in 3 hours", "in 3 hours", now() + hours(3)),
+        ("in 30 minutes", "in 30 minutes", now() + minutes(30)),
+        ("in 5 seconds", "in 5 seconds", now() + seconds(5)),
         // short relative: +Nd, +Nh, ...
         ("+3d", "+3d", plus_days(3)),
-        ("+24h", "+24h", now() + Duration::hours(24)),
-        ("+30m", "+30m", now() + Duration::minutes(30)),
+        ("+24h", "+24h", now() + hours(24)),
+        ("+30m", "+30m", now() + minutes(30)),
         ("+2w", "+2w", plus_days(14)),
         ("+3M", "+3M", plus_months(3)),
         ("+1y", "+1y", plus_months(12)),
-        ("+10s", "+10s", now() + Duration::seconds(10)),
+        ("+10s", "+10s", now() + seconds(10)),
         // weekday names (now = Sunday 2026-04-19)
         ("monday", "monday", plus_days(1)),
         ("tuesday", "tuesday", plus_days(2)),
@@ -165,41 +202,39 @@ fn parse_until_errors() {
 #[test]
 fn parse_until_convenience_uses_now() {
     let got = parse_until("in 1 day").expect("in 1 day should parse");
-    let delta = got - Utc::now();
+    let delta = between(Timestamp::now(), got);
     assert!(
-        (delta - Duration::hours(24)).abs() < Duration::minutes(1),
+        (delta - hours(24)).abs() < minutes(1),
         "in 1 day should land ~24h out, got {delta}"
     );
 }
 
 #[test]
 fn parse_until_integration() {
-    let reference = Utc::now();
+    let reference = Timestamp::now();
 
     let got = parse_until("tomorrow").expect("tomorrow should parse");
     assert!(
-        ((got - reference) - Duration::hours(24)).abs() < Duration::minutes(1),
+        (between(reference, got) - hours(24)).abs() < minutes(1),
         "tomorrow should be ~24h from now"
     );
 
     let got = parse_until("+1h").expect("+1h should parse");
     assert!(
-        ((got - reference) - Duration::hours(1)).abs() < Duration::minutes(1),
+        (between(reference, got) - hours(1)).abs() < minutes(1),
         "+1h should be ~1h from now"
     );
 
     // ISO roundtrip: a future date parses back to itself.
-    let future = (reference + Duration::hours(48))
-        .format("%Y-%m-%d")
-        .to_string();
+    let future = ymd(reference + hours(48));
     let got = parse_until(&future).expect("future ISO date should parse");
-    assert_eq!(got.format("%Y-%m-%d").to_string(), future);
+    assert_eq!(ymd(got), future);
 
     // since and until are symmetric around now.
     let since = parse_since("1 day ago").expect("1 day ago should parse");
     let until = parse_until("in 1 day").expect("in 1 day should parse");
     assert!(
-        ((until - since) - Duration::hours(48)).abs() < Duration::minutes(1),
+        (between(since, until) - hours(48)).abs() < minutes(1),
         "since(-1d) to until(+1d) should span ~48h"
     );
 }
@@ -210,7 +245,7 @@ fn parse_until_integration() {
 
 #[test]
 fn parse_since_table() {
-    let cases: Vec<(&str, &str, DateTime<Utc>)> = vec![
+    let cases: Vec<(&str, &str, Timestamp)> = vec![
         // git-style relative: "N <unit> ago"
         ("1 day ago", "1 day ago", minus_days(1)),
         ("3 days ago", "3 days ago", minus_days(3)),
@@ -220,26 +255,18 @@ fn parse_since_table() {
         ("6 months ago", "6 months ago", minus_months(6)),
         ("1 year ago", "1 year ago", minus_months(12)),
         ("2 years ago", "2 years ago", minus_months(24)),
-        ("1 hour ago", "1 hour ago", now() - Duration::hours(1)),
-        ("3 hours ago", "3 hours ago", now() - Duration::hours(3)),
-        (
-            "30 minutes ago",
-            "30 minutes ago",
-            now() - Duration::minutes(30),
-        ),
-        (
-            "5 seconds ago",
-            "5 seconds ago",
-            now() - Duration::seconds(5),
-        ),
+        ("1 hour ago", "1 hour ago", now() - hours(1)),
+        ("3 hours ago", "3 hours ago", now() - hours(3)),
+        ("30 minutes ago", "30 minutes ago", now() - minutes(30)),
+        ("5 seconds ago", "5 seconds ago", now() - seconds(5)),
         // named relative
         ("yesterday", "yesterday", minus_days(1)),
         // natural language relative dates
         ("last friday", "last friday", at(2026, 4, 17, 0, 0, 0)),
         // short relative
         ("7d", "7d", minus_days(7)),
-        ("24h", "24h", now() - Duration::hours(24)),
-        ("30m", "30m", now() - Duration::minutes(30)),
+        ("24h", "24h", now() - hours(24)),
+        ("30m", "30m", now() - minutes(30)),
         ("2w", "2w", minus_days(14)),
         ("3M", "3M", minus_months(3)),
         ("1y", "1y", minus_months(12)),
@@ -301,9 +328,9 @@ fn parse_since_errors() {
 #[test]
 fn parse_since_convenience_uses_now() {
     let got = parse_since("1 day ago").expect("1 day ago should parse");
-    let delta = Utc::now() - got;
+    let delta = between(got, Timestamp::now());
     assert!(
-        (delta - Duration::hours(24)).abs() < Duration::minutes(1),
+        (delta - hours(24)).abs() < minutes(1),
         "1 day ago should land ~24h back, got {delta}"
     );
 }
@@ -319,7 +346,7 @@ fn parse_since_convenience_uses_now() {
 fn short_form_m_is_minutes_and_capital_m_is_months() {
     assert_eq!(
         parse_until_at("+3m", now()).unwrap(),
-        now() + Duration::minutes(3),
+        now() + minutes(3),
         "+3m must be three MINUTES"
     );
     assert_eq!(
@@ -329,7 +356,7 @@ fn short_form_m_is_minutes_and_capital_m_is_months() {
     );
     assert_eq!(
         parse_since_at("3m", now()).unwrap(),
-        now() - Duration::minutes(3),
+        now() - minutes(3),
         "3m must be three MINUTES"
     );
     assert_eq!(
@@ -350,32 +377,32 @@ fn short_form_m_is_minutes_and_capital_m_is_months() {
 /// Go's `time.AddDate`; see the module docs. Pinned so it cannot drift.
 #[test]
 fn month_arithmetic_clamps_it_does_not_normalise() {
-    let jan31 = Utc.with_ymd_and_hms(2026, 1, 31, 12, 0, 0).unwrap();
+    let jan31 = at(2026, 1, 31, 12, 0, 0);
 
-    // Go's AddDate(0, 1, 0) would yield 2026-03-03; chrono clamps to Feb 28.
+    // Go's AddDate(0, 1, 0) would yield 2026-03-03; jiff clamps to Feb 28.
     assert_eq!(
         parse_until_at("in 1 month", jan31).unwrap(),
-        Utc.with_ymd_and_hms(2026, 2, 28, 12, 0, 0).unwrap(),
+        at(2026, 2, 28, 12, 0, 0),
         "Jan 31 + 1 month must clamp to Feb 28, not roll into March"
     );
     assert_eq!(
         parse_until_at("+1M", jan31).unwrap(),
-        Utc.with_ymd_and_hms(2026, 2, 28, 12, 0, 0).unwrap()
+        at(2026, 2, 28, 12, 0, 0)
     );
 
     // Backward direction clamps too: Mar 31 - 1 month = Feb 28.
-    let mar31 = Utc.with_ymd_and_hms(2026, 3, 31, 12, 0, 0).unwrap();
+    let mar31 = at(2026, 3, 31, 12, 0, 0);
     assert_eq!(
         parse_since_at("1 month ago", mar31).unwrap(),
-        Utc.with_ymd_and_hms(2026, 2, 28, 12, 0, 0).unwrap(),
+        at(2026, 2, 28, 12, 0, 0),
         "Mar 31 - 1 month must clamp to Feb 28"
     );
 
     // Leap day + 1 year clamps to Feb 28 of the common year.
-    let leap = Utc.with_ymd_and_hms(2024, 2, 29, 12, 0, 0).unwrap();
+    let leap = at(2024, 2, 29, 12, 0, 0);
     assert_eq!(
         parse_until_at("in 1 year", leap).unwrap(),
-        Utc.with_ymd_and_hms(2025, 2, 28, 12, 0, 0).unwrap(),
+        at(2025, 2, 28, 12, 0, 0),
         "2024-02-29 + 1 year must clamp to 2025-02-28"
     );
 }
@@ -416,4 +443,79 @@ fn plural_and_singular_units_agree() {
         parse_since_at("2 week ago", now()).unwrap(),
         parse_since_at("2 weeks ago", now()).unwrap()
     );
+}
+
+/// Absolute forms the Go `isoLayouts` table accepts, spelled the ways the
+/// chrono-based parser accepted them: single-digit fields, a lowercase `z`,
+/// an offset of `+hh`, `+hhmm` or `+hh:mm`, a space where `T` goes, and a
+/// leap second landing on the next minute.
+#[test]
+fn iso_layouts_accept_the_documented_spellings() {
+    let cases = [
+        ("2026-5-1", at(2026, 5, 1, 0, 0, 0)),
+        ("2026-5-1T1:30", at(2026, 5, 1, 1, 30, 0)),
+        ("2026-05-01T10:30:00z", at(2026, 5, 1, 10, 30, 0)),
+        ("2026-05-01T10:30:00+05", at(2026, 5, 1, 5, 30, 0)),
+        ("2026-05-01T10:30:00+0530", at(2026, 5, 1, 5, 0, 0)),
+        ("2026-05-01T10:30-04", at(2026, 5, 1, 14, 30, 0)),
+        (
+            "2026-05-01T10:30:00.123+05:00",
+            at(2026, 5, 1, 5, 30, 0) + milliseconds(123),
+        ),
+        ("2026-05-01  10:30:00", at(2026, 5, 1, 10, 30, 0)),
+        ("2026-05-01T23:59:60Z", at(2026, 5, 2, 0, 0, 0)),
+    ];
+    for (input, expected) in cases {
+        let got =
+            parse_until_at(input, now()).unwrap_or_else(|e| panic!("input {input:?} errored: {e}"));
+        assert_eq!(got, expected, "input {input:?}");
+    }
+
+    for input in [
+        "2026-02-29",
+        "2026-13-01",
+        "2026-05-01T24:00",
+        "2026-05-01T10:30:00+24:00",
+        "2026-05-01T10:30:00Zextra",
+        "2026-05-01T10:30:00.Z",
+    ] {
+        assert!(
+            parse_until_at(input, now()).is_err(),
+            "input {input:?} should error"
+        );
+    }
+}
+
+/// Fractions in a space-separated stamp reach `interim`, which must read
+/// `.5` as half a second, as Go's `time.Parse` does.
+#[test]
+fn fractional_seconds_in_natural_path_are_fractions_of_a_second() {
+    assert_eq!(
+        parse_until_at("2026-05-01 10:30:00.5", now()).unwrap(),
+        at(2026, 5, 1, 10, 30, 0) + milliseconds(500)
+    );
+}
+
+/// Instants are `jiff::Timestamp`s, so the range ends at the year 9999
+/// where chrono's reached year 262143. Past it the parsers return an error;
+/// none of them panic, including through `interim`.
+#[test]
+fn instants_past_the_jiff_range_error_instead_of_panicking() {
+    for input in [
+        "in 5000000 days",
+        "in 99999 months",
+        "9999-12-31 10:30",
+        "9999-12-31T10:30:00Z",
+    ] {
+        assert!(
+            parse_until_at(input, now()).is_err(),
+            "input {input:?} should error"
+        );
+    }
+    assert!(matches!(
+        parse_until_at("in 5000000 days", now()),
+        Err(hop_top_kit::timeutil::TimeError::OutOfRange(_))
+    ));
+    let late = at(9998, 12, 31, 12, 0, 0);
+    assert!(parse_until_at("next year", late).is_err());
 }

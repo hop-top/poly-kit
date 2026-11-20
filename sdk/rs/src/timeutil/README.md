@@ -16,23 +16,23 @@ timeouts are parsed by `hop_top_kit::serve` config.
 ## Quick start
 
 ```rust
-use chrono::{TimeZone, Utc};
 use hop_top_kit::timeutil::{parse_since_at, parse_until_at, TimeError};
+use jiff::Timestamp;
 
-let now = Utc.with_ymd_and_hms(2026, 4, 19, 12, 0, 0).unwrap();
+let now: Timestamp = "2026-04-19T12:00:00Z".parse().unwrap();
 
 let until = parse_until_at("in 3 days", now).unwrap();
-assert_eq!(until, Utc.with_ymd_and_hms(2026, 4, 22, 12, 0, 0).unwrap());
+assert_eq!(until, "2026-04-22T12:00:00Z".parse().unwrap());
 
 let since = parse_since_at("2h", now).unwrap();
-assert_eq!(since, Utc.with_ymd_and_hms(2026, 4, 19, 10, 0, 0).unwrap());
+assert_eq!(since, "2026-04-19T10:00:00Z".parse().unwrap());
 
 assert_eq!(parse_until_at("in 0 days", now), Err(TimeError::InvalidCount("0".into())));
 ```
 
 ## Contract
 
-- Feature `timeutil` pulls in `chrono`, `interim`, `thiserror`. Authority: the crate
+- Feature `timeutil` pulls in `jiff`, `interim`, `thiserror`. Instants are `jiff::Timestamp`. Authority: the crate
   [feature table](../../README.md#features).
 - Short units are case-sensitive: `m` is minutes, `M` is months.
 - Counts must be positive; `in 0 days`, `+0d` and `-3 days ago` are errors.
@@ -40,6 +40,8 @@ assert_eq!(parse_until_at("in 0 days", now), Err(TimeError::InvalidCount("0".int
 - Month arithmetic clamps: `2026-01-31` plus one month is `2026-02-28`, never March.
 - Deterministic forms are parsed natively; only `next monday`, `last week` and month-name dates
   fall through to `interim` in the US dialect.
+- Range: instants are `jiff::Timestamp`, so years -9999 to 9999 (the last day of 9999 excluded);
+  anything past it is `TimeError::OutOfRange` or `Unrecognized`, never a panic.
 - Parity: none recorded; Go `go/core/util` (`until.go`, `since.go`) is the reference, and
   `tests/timeutil.rs` ports its tables case for case.
 

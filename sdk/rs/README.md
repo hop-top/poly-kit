@@ -66,7 +66,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `webhook` (`webhook-sha1`) | `api-server` + `kv` + `hmac`, `subtle`, `sha2`, `base64` (native only; + `sha1`, legacy senders opt-in) | 115 (116) |
 | `output` | `serde`, `serde_json`, `serde_norway`, `comfy-table`, `thiserror` | 22 |
 | `sqlstore` (`sqlstore-blob`, `sqlstore-encrypt`) | `sqldb` + `serde`, `serde_json` (+ `blob`, nothing of its own; + `crypto_secretbox`, `hkdf`, `sha2`) | 22 (22, 50) |
-| `id`; `timeutil` | `type-safe-id`, `uuid`, `serde`, `thiserror`; `chrono`, `interim`, `thiserror` | 25; 19 |
+| `id`; `timeutil` | `type-safe-id`, `uuid`, `serde`, `thiserror`; `jiff`, `interim`, `thiserror` | 25; 19 |
 | `httpcache` | `kv` + `serde`, `serde_json`, `sha2`, `base64` | 33 |
 | `cli` (`cli-permissions`); `tui`; `compliance` | `output` + `clap` (+ `cel`, `serde_json`); nothing (std only); `output` | 35 (76); 0; 22 |
 | `rpc-server` | `api-server` + `connectrpc`, `buffa`, `buffa-types`, `serde` (native only) | `api-server` + 31 (171) |

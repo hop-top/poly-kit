@@ -1,19 +1,19 @@
 //! Backward-looking parsing — the port of Go's `since.go`.
 
-use chrono::{DateTime, Days, Utc};
+use jiff::Timestamp;
 
 use super::common::{parse_count_unit, parse_natural, parse_short, shift};
-use super::{Direction, TimeError};
+use super::{Direction, TimeError, Unit};
 
-/// Parse a `git --since`/`--after` compatible string relative to [`Utc::now`].
+/// Parse a `git --since`/`--after` compatible string relative to [`Timestamp::now`].
 ///
 /// See [`parse_since_at`] for the supported formats.
 ///
 /// # Errors
 ///
 /// Returns [`TimeError`] when the input is empty or matches no supported form.
-pub fn parse_since(s: &str) -> Result<DateTime<Utc>, TimeError> {
-    parse_since_at(s, Utc::now())
+pub fn parse_since(s: &str) -> Result<Timestamp, TimeError> {
+    parse_since_at(s, Timestamp::now())
 }
 
 /// Parse a datetime string relative to the given reference time.
@@ -39,23 +39,20 @@ pub fn parse_since(s: &str) -> Result<DateTime<Utc>, TimeError> {
 /// # Examples
 ///
 /// ```
-/// use chrono::{TimeZone, Utc};
 /// use hop_top_kit::timeutil::parse_since_at;
 ///
-/// let now = Utc.with_ymd_and_hms(2026, 4, 19, 12, 0, 0).unwrap();
+/// let now: jiff::Timestamp = "2026-04-19T12:00:00Z".parse().unwrap();
 /// let got = parse_since_at("3 days ago", now).unwrap();
-/// assert_eq!(got, Utc.with_ymd_and_hms(2026, 4, 16, 12, 0, 0).unwrap());
+/// assert_eq!(got, "2026-04-16T12:00:00Z".parse().unwrap());
 /// ```
-pub fn parse_since_at(s: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>, TimeError> {
+pub fn parse_since_at(s: &str, now: Timestamp) -> Result<Timestamp, TimeError> {
     let s = s.trim();
     if s.is_empty() {
         return Err(TimeError::Empty);
     }
 
     if s == "yesterday" {
-        return now
-            .checked_sub_days(Days::new(1))
-            .ok_or_else(|| TimeError::OutOfRange(s.to_string()));
+        return shift(now, 1, Unit::Day, Direction::Backward, s);
     }
 
     // "N <unit> ago" — dispatched on the suffix, so a malformed head is a hard
