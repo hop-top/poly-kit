@@ -2632,6 +2632,412 @@
         }
       ],
       "output": "card-<CREDIT_CARD> and cc_<CREDIT_CARD>"
+    },
+    {
+      "name": "us-ssn-free-text-redacted",
+      "note": "real-shaped SSN",
+      "strategy": "tag",
+      "input": "ssn 123-45-6789 on file",
+      "findings": [
+        {
+          "rule": "us-ssn",
+          "start": 4,
+          "end": 15
+        }
+      ],
+      "spans": [
+        {
+          "rule": "us-ssn",
+          "start": 4,
+          "end": 15
+        }
+      ],
+      "output": "ssn <SSN> on file"
+    },
+    {
+      "name": "us-ssn-order-id-kept",
+      "note": "SSN-shaped digits glued to alphanumerics in an order id",
+      "strategy": "tag",
+      "input": "order ORD123-45-6789 shipped",
+      "findings": [],
+      "spans": [],
+      "output": "order ORD123-45-6789 shipped"
+    },
+    {
+      "name": "us-ssn-glued-trailing-kept",
+      "note": "trailing alphanumerics: part of a token",
+      "strategy": "tag",
+      "input": "ref 123-45-6789ab ok",
+      "findings": [],
+      "spans": [],
+      "output": "ref 123-45-6789ab ok"
+    },
+    {
+      "name": "us-ssn-label-joined-redacted",
+      "note": "a label joined by hyphen or underscore is a boundary",
+      "strategy": "tag",
+      "input": "ssn-123-45-6789 and ssn_123-45-6789",
+      "findings": [
+        {
+          "rule": "us-ssn",
+          "start": 4,
+          "end": 15
+        },
+        {
+          "rule": "us-ssn",
+          "start": 24,
+          "end": 35
+        }
+      ],
+      "spans": [
+        {
+          "rule": "us-ssn",
+          "start": 4,
+          "end": 15
+        },
+        {
+          "rule": "us-ssn",
+          "start": 24,
+          "end": 35
+        }
+      ],
+      "output": "ssn-<SSN> and ssn_<SSN>"
+    },
+    {
+      "name": "us-ssn-invalid-area-000-kept",
+      "note": "area 000 is never issued",
+      "strategy": "tag",
+      "input": "ref 000-12-3456 end",
+      "findings": [],
+      "spans": [],
+      "output": "ref 000-12-3456 end"
+    },
+    {
+      "name": "us-ssn-invalid-area-666-kept",
+      "note": "area 666 is never issued",
+      "strategy": "tag",
+      "input": "ref 666-12-3456 end",
+      "findings": [],
+      "spans": [],
+      "output": "ref 666-12-3456 end"
+    },
+    {
+      "name": "us-ssn-invalid-area-9xx-kept",
+      "note": "area 900-999 is ITIN/IRSN space, not an SSN (group 12 is no ITIN range)",
+      "strategy": "tag",
+      "input": "ref 912-12-3456 end",
+      "findings": [],
+      "spans": [],
+      "output": "ref 912-12-3456 end"
+    },
+    {
+      "name": "us-ssn-invalid-group-kept",
+      "note": "group 00 is never issued",
+      "strategy": "tag",
+      "input": "ref 123-00-6789 end",
+      "findings": [],
+      "spans": [],
+      "output": "ref 123-00-6789 end"
+    },
+    {
+      "name": "us-ssn-invalid-serial-kept",
+      "note": "serial 0000 is never issued",
+      "strategy": "tag",
+      "input": "ref 123-45-0000 end",
+      "findings": [],
+      "spans": [],
+      "output": "ref 123-45-0000 end"
+    },
+    {
+      "name": "us-itin-free-text-redacted",
+      "note": "real-shaped ITIN, group 70",
+      "strategy": "tag",
+      "input": "itin 912-70-1234 on file",
+      "findings": [
+        {
+          "rule": "us-itin",
+          "start": 5,
+          "end": 16
+        }
+      ],
+      "spans": [
+        {
+          "rule": "us-itin",
+          "start": 5,
+          "end": 16
+        }
+      ],
+      "output": "itin <ITIN> on file"
+    },
+    {
+      "name": "us-itin-order-id-kept",
+      "note": "ITIN-shaped digits glued to alphanumerics",
+      "strategy": "tag",
+      "input": "order ORD912-70-1234 shipped",
+      "findings": [],
+      "spans": [],
+      "output": "order ORD912-70-1234 shipped"
+    },
+    {
+      "name": "us-itin-label-joined-redacted",
+      "note": "a label joined by hyphen is a boundary",
+      "strategy": "tag",
+      "input": "itin-912-70-1234",
+      "findings": [
+        {
+          "rule": "us-itin",
+          "start": 5,
+          "end": 16
+        }
+      ],
+      "spans": [
+        {
+          "rule": "us-itin",
+          "start": 5,
+          "end": 16
+        }
+      ],
+      "output": "itin-<ITIN>"
+    },
+    {
+      "name": "us-itin-invalid-group-69-kept",
+      "note": "group 69 is outside every IRS ITIN range",
+      "strategy": "tag",
+      "input": "ref 912-69-1234 end",
+      "findings": [],
+      "spans": [],
+      "output": "ref 912-69-1234 end"
+    },
+    {
+      "name": "us-itin-invalid-group-89-kept",
+      "note": "group 89 is reserved for other programs",
+      "strategy": "tag",
+      "input": "ref 912-89-1234 end",
+      "findings": [],
+      "spans": [],
+      "output": "ref 912-89-1234 end"
+    },
+    {
+      "name": "us-itin-invalid-group-93-kept",
+      "note": "group 93 is reserved for adoption TINs",
+      "strategy": "tag",
+      "input": "ref 912-93-1234 end",
+      "findings": [],
+      "spans": [],
+      "output": "ref 912-93-1234 end"
+    },
+    {
+      "name": "phone-us-free-text-redacted",
+      "note": "real-shaped US phone",
+      "strategy": "tag",
+      "input": "call 415-555-2671 now",
+      "findings": [
+        {
+          "rule": "phone-us",
+          "start": 5,
+          "end": 17
+        }
+      ],
+      "spans": [
+        {
+          "rule": "phone-us",
+          "start": 5,
+          "end": 17
+        }
+      ],
+      "output": "call <PHONE> now"
+    },
+    {
+      "name": "phone-us-order-id-kept",
+      "note": "phone-shaped digits glued to alphanumerics",
+      "strategy": "tag",
+      "input": "order ORD415-555-2671 shipped",
+      "findings": [],
+      "spans": [],
+      "output": "order ORD415-555-2671 shipped"
+    },
+    {
+      "name": "phone-us-label-joined-redacted",
+      "note": "a label joined by hyphen is a boundary",
+      "strategy": "tag",
+      "input": "tel-415-555-2671",
+      "findings": [
+        {
+          "rule": "phone-us",
+          "start": 4,
+          "end": 16
+        }
+      ],
+      "spans": [
+        {
+          "rule": "phone-us",
+          "start": 4,
+          "end": 16
+        }
+      ],
+      "output": "tel-<PHONE>"
+    },
+    {
+      "name": "phone-e164-free-text-redacted",
+      "note": "real-shaped E.164 phone",
+      "strategy": "tag",
+      "input": "call +14155552671 now",
+      "findings": [
+        {
+          "rule": "phone-e164",
+          "start": 5,
+          "end": 17
+        }
+      ],
+      "spans": [
+        {
+          "rule": "phone-e164",
+          "start": 5,
+          "end": 17
+        }
+      ],
+      "output": "call <PHONE> now"
+    },
+    {
+      "name": "phone-e164-glued-kept",
+      "note": "alphanumerics glued to the digit run",
+      "strategy": "tag",
+      "input": "ref +14155552671abc ok",
+      "findings": [],
+      "spans": [],
+      "output": "ref +14155552671abc ok"
+    },
+    {
+      "name": "phone-e164-label-joined-redacted",
+      "note": "a label joined by underscore is a boundary",
+      "strategy": "tag",
+      "input": "tel_+14155552671",
+      "findings": [
+        {
+          "rule": "phone-e164",
+          "start": 4,
+          "end": 16
+        }
+      ],
+      "spans": [
+        {
+          "rule": "phone-e164",
+          "start": 4,
+          "end": 16
+        }
+      ],
+      "output": "tel_<PHONE>"
+    },
+    {
+      "name": "us-passport-free-text-redacted",
+      "note": "real-shaped passport number",
+      "strategy": "tag",
+      "input": "passport 123456789 issued",
+      "findings": [
+        {
+          "rule": "us-passport",
+          "start": 9,
+          "end": 18
+        }
+      ],
+      "spans": [
+        {
+          "rule": "us-passport",
+          "start": 9,
+          "end": 18
+        }
+      ],
+      "output": "passport <US_PASSPORT> issued"
+    },
+    {
+      "name": "us-passport-uuid-tail-kept",
+      "note": "9 digits inside the 12-digit tail of a UUID",
+      "strategy": "tag",
+      "input": "id bffab4c3-9d88-43ab-4111-123456789012 ok",
+      "findings": [],
+      "spans": [],
+      "output": "id bffab4c3-9d88-43ab-4111-123456789012 ok"
+    },
+    {
+      "name": "us-passport-glued-kept",
+      "note": "alphanumerics glued to the digit run",
+      "strategy": "tag",
+      "input": "ref id123456789 ok",
+      "findings": [],
+      "spans": [],
+      "output": "ref id123456789 ok"
+    },
+    {
+      "name": "us-passport-label-joined-redacted",
+      "note": "a label joined by hyphen is a boundary",
+      "strategy": "tag",
+      "input": "passport-123456789",
+      "findings": [
+        {
+          "rule": "us-passport",
+          "start": 9,
+          "end": 18
+        }
+      ],
+      "spans": [
+        {
+          "rule": "us-passport",
+          "start": 9,
+          "end": 18
+        }
+      ],
+      "output": "passport-<US_PASSPORT>"
+    },
+    {
+      "name": "us-driver-license-free-text-redacted",
+      "note": "real-shaped driver license",
+      "strategy": "tag",
+      "input": "license D1234567 issued",
+      "findings": [
+        {
+          "rule": "us-driver-license",
+          "start": 8,
+          "end": 16
+        }
+      ],
+      "spans": [
+        {
+          "rule": "us-driver-license",
+          "start": 8,
+          "end": 16
+        }
+      ],
+      "output": "license <US_DRIVER_LICENSE> issued"
+    },
+    {
+      "name": "us-driver-license-order-id-kept",
+      "note": "letter+digits at the tail of an alphabetic order id",
+      "strategy": "tag",
+      "input": "order ORD1234567 shipped",
+      "findings": [],
+      "spans": [],
+      "output": "order ORD1234567 shipped"
+    },
+    {
+      "name": "us-driver-license-label-joined-redacted",
+      "note": "a label joined by hyphen is a boundary",
+      "strategy": "tag",
+      "input": "dl-D1234567",
+      "findings": [
+        {
+          "rule": "us-driver-license",
+          "start": 3,
+          "end": 11
+        }
+      ],
+      "spans": [
+        {
+          "rule": "us-driver-license",
+          "start": 3,
+          "end": 11
+        }
+      ],
+      "output": "dl-<US_DRIVER_LICENSE>"
     }
   ]
 }

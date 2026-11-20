@@ -20,8 +20,43 @@ func plausible(ruleID, s string, start, end int) bool {
 	switch strings.TrimSuffix(ruleID, "-pii") {
 	case "credit-card":
 		return luhnValid(s[start:end]) && !insideToken(s, start, end)
+	case "us-ssn":
+		return ssnValid(s[start:end]) && !insideToken(s, start, end)
+	case "us-itin":
+		return itinValid(s[start:end]) && !insideToken(s, start, end)
+	case "phone-us", "phone-e164", "us-passport", "us-driver-license":
+		return !insideToken(s, start, end)
 	}
 	return true
+}
+
+// ssnValid reports whether s is NNN-NN-NNNN with a structurally
+// possible SSN: area not 000, 666 or 900-999; group not 00; serial not
+// 0000 (SSA assignment rules).
+func ssnValid(s string) bool {
+	if len(s) != 11 {
+		return false
+	}
+	area, group, serial := s[0:3], s[4:6], s[7:11]
+	if area == "000" || area == "666" || area[0] == '9' {
+		return false
+	}
+	return group != "00" && serial != "0000"
+}
+
+// itinValid reports whether s is 9NN-GG-NNNN with GG in an IRS-issued
+// ITIN group range.
+//
+// Source: IRS Internal Revenue Manual 3.21.263 (ITIN Real-Time System),
+// https://www.irs.gov/irm/part3/irm_03-021-263r: an ITIN begins with 9
+// and "the fourth and fifth numbers will range from 50-65, 70-88,
+// 90-92, 94-99"; 89 and 93 are reserved for other programs.
+func itinValid(s string) bool {
+	if len(s) != 11 || s[0] != '9' {
+		return false
+	}
+	g := int(s[4]-'0')*10 + int(s[5]-'0')
+	return g >= 50 && g <= 65 || g >= 70 && g <= 88 || g >= 90 && g <= 92 || g >= 94 && g <= 99
 }
 
 // luhnValid reports whether the digits of s (separators ignored) number

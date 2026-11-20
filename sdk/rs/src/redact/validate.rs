@@ -6,14 +6,51 @@
 //! identifier, not a card. A label joined by a hyphen or underscore
 //! (`card-4111...`, `cc_4111...`) is a boundary: the number is still
 //! redacted.
+//!
+//! us-ssn, us-itin: the same boundary plus structural checks. phone-us,
+//! phone-e164, us-passport, us-driver-license: boundary only.
 
 /// Whether `s[start..end]` of the rule `rule_id` is a real finding.
 /// Rules without a validator always pass.
 pub(crate) fn plausible(rule_id: &str, s: &str, start: usize, end: usize) -> bool {
     match rule_id.strip_suffix("-pii").unwrap_or(rule_id) {
         "credit-card" => luhn_valid(&s[start..end]) && !inside_token(s, start, end),
+        "us-ssn" => ssn_valid(&s[start..end]) && !inside_token(s, start, end),
+        "us-itin" => itin_valid(&s[start..end]) && !inside_token(s, start, end),
+        "phone-us" | "phone-e164" | "us-passport" | "us-driver-license" => {
+            !inside_token(s, start, end)
+        }
         _ => true,
     }
+}
+
+/// `s` is NNN-NN-NNNN with a structurally possible SSN: area not 000,
+/// 666 or 900-999; group not 00; serial not 0000.
+fn ssn_valid(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() != 11 {
+        return false;
+    }
+    let (area, group, serial) = (&s[0..3], &s[4..6], &s[7..11]);
+    if area == "000" || area == "666" || b[0] == b'9' {
+        return false;
+    }
+    group != "00" && serial != "0000"
+}
+
+/// `s` is 9NN-GG-NNNN with GG in an IRS-issued ITIN group range.
+///
+/// Source: IRS Internal Revenue Manual 3.21.263 (ITIN Real-Time System),
+/// <https://www.irs.gov/irm/part3/irm_03-021-263r>: an ITIN begins with
+/// 9 and "the fourth and fifth numbers will range from 50-65, 70-88,
+/// 90-92, 94-99"; 89 and 93 are reserved for other programs.
+fn itin_valid(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() != 11 || b[0] != b'9' {
+        return false;
+    }
+    let g = u32::from(b[4] - b'0') * 10 + u32::from(b[5] - b'0');
+    matches!(g, 50..=65 | 70..=88 | 90..=92 | 94..=99)
 }
 
 /// Digits of `s` (separators ignored) number at least 13 and pass the
@@ -98,7 +135,38 @@ mod tests {
     }
 
     #[test]
-    fn other_rules_pass() {
-        assert!(plausible("us-ssn", "abc123-45-6789", 3, 14));
+    fn ssn_structure() {
+        assert!(ssn_valid("123-45-6789"));
+        for bad in [
+            "000-45-6789",
+            "666-45-6789",
+            "900-45-6789",
+            "999-45-6789",
+            "123-00-6789",
+            "123-45-0000",
+        ] {
+            assert!(!ssn_valid(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn itin_groups() {
+        for g in [50, 65, 70, 88, 90, 92, 94, 99] {
+            assert!(itin_valid(&format!("912-{g}-1234")), "{g}");
+        }
+        for g in [0, 49, 66, 69, 89, 93] {
+            assert!(!itin_valid(&format!("912-{g:02}-1234")), "{g}");
+        }
+        assert!(!itin_valid("812-70-1234"));
+    }
+
+    #[test]
+    fn boundary_only_rules() {
+        for id in ["phone-us", "phone-e164", "us-passport", "us-driver-license"] {
+            assert!(!plausible(id, "abc123456789", 3, 12), "{id}");
+            assert!(plausible(id, "x-123456789", 2, 11), "{id}");
+        }
+        assert!(plausible("us-ssn", "ssn-123-45-6789", 4, 15));
+        assert!(!plausible("us-ssn", "abc123-45-6789", 3, 14));
     }
 }
