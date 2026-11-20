@@ -2544,6 +2544,94 @@
         }
       ],
       "output": "mail ***REDACTED*** from ***REDACTED***"
+    },
+    {
+      "name": "credit-card-uuid-tail-kept",
+      "note": "Luhn-valid 4+12 digit UUID tail is part of a token",
+      "strategy": "tag",
+      "input": "id bffab4c3-9d88-43ab-4111-111111111111 ok",
+      "findings": [],
+      "spans": [],
+      "output": "id bffab4c3-9d88-43ab-4111-111111111111 ok"
+    },
+    {
+      "name": "credit-card-uuid-digit-tail-kept",
+      "note": "all-digit UUID tail, not Luhn-valid",
+      "strategy": "tag",
+      "input": "ref evt-bffab4c3-9d88-4349-9131-824401265021 ok",
+      "findings": [],
+      "spans": [],
+      "output": "ref evt-bffab4c3-9d88-4349-9131-824401265021 ok"
+    },
+    {
+      "name": "credit-card-glued-alnum-kept",
+      "note": "alphanumerics glued to a Luhn-valid run: a token, not a card",
+      "strategy": "tag",
+      "input": "tok4111111111111111 and 4111111111111111abc",
+      "findings": [],
+      "spans": [],
+      "output": "tok4111111111111111 and 4111111111111111abc"
+    },
+    {
+      "name": "credit-card-non-luhn-kept",
+      "note": "16 digits failing Luhn",
+      "strategy": "tag",
+      "input": "ref 1234 5678 9012 3456 end",
+      "findings": [],
+      "spans": [],
+      "output": "ref 1234 5678 9012 3456 end"
+    },
+    {
+      "name": "credit-card-free-text-redacted",
+      "note": "free text, space-separated",
+      "strategy": "tag",
+      "input": "card 4111 1111 1111 1111 on file",
+      "findings": [
+        {
+          "rule": "credit-card",
+          "start": 5,
+          "end": 24
+        }
+      ],
+      "spans": [
+        {
+          "rule": "credit-card",
+          "start": 5,
+          "end": 24
+        }
+      ],
+      "output": "card <CREDIT_CARD> on file"
+    },
+    {
+      "name": "credit-card-label-joined-redacted",
+      "note": "a label joined by hyphen or underscore is a boundary",
+      "strategy": "tag",
+      "input": "card-4111111111111111 and cc_4111111111111111",
+      "findings": [
+        {
+          "rule": "credit-card",
+          "start": 5,
+          "end": 21
+        },
+        {
+          "rule": "credit-card",
+          "start": 29,
+          "end": 45
+        }
+      ],
+      "spans": [
+        {
+          "rule": "credit-card",
+          "start": 5,
+          "end": 21
+        },
+        {
+          "rule": "credit-card",
+          "start": 29,
+          "end": 45
+        }
+      ],
+      "output": "card-<CREDIT_CARD> and cc_<CREDIT_CARD>"
     }
   ]
 }

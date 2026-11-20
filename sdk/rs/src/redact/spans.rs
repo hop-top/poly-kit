@@ -1,7 +1,7 @@
 //! Finding, judging and merging spans; see the steps in `go/core/redact/spans.go`.
 
 use super::rule::{go_lower, shannon_entropy, Finding};
-use super::{Redactor, Rule};
+use super::{validate, Redactor, Rule};
 
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Mode {
@@ -91,6 +91,9 @@ fn rule_hits(r: &Redactor, s: &str, i: usize, rule: &Rule, mode: Mode, hits: &mu
             }
         }
         if se <= ss {
+            return;
+        }
+        if !validate::plausible(&rule.spec.id, s, ss, se) {
             return;
         }
         let secret = &s[ss..se];

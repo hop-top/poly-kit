@@ -144,6 +144,9 @@ func (r *Redactor) judge(s string, rule *Rule, i int, locs, subs [][]int, hits [
 		if se <= ss {
 			continue
 		}
+		if !plausible(rule.spec.ID, s, ss, se) {
+			continue
+		}
 		secret := s[ss:se]
 		trusted := mode != detect && rule.spec.Distinctive
 		if !trusted && rule.spec.Entropy != 0 && shannonEntropy(secret) <= rule.spec.Entropy {

@@ -381,3 +381,59 @@ fn generated_keys_leave_no_fragments() {
         r.rules().len()
     );
 }
+
+// credit-card: Luhn plus token boundary (mirrors go/core/redact/validate_test.go).
+mod credit_card {
+    use hop_top_kit::redact;
+
+    #[test]
+    fn kept_inside_token() {
+        let r = redact::shared();
+        for s in [
+            // Luhn-valid 4+12 UUID tail: only the UUID check saves it.
+            "bffab4c3-9d88-43ab-4111-111111111111",
+            "evt-bffab4c3-9d88-43ab-4111-111111111111",
+            "BFFAB4C3-9D88-43A9-4111-111111111111",
+            "xbffab4c3-9d88-43ab-4111-111111111111",
+            r#"{"id":"bffab4c3-9d88-43ab-4111-111111111111"}"#,
+            // All-digit tail, not Luhn-valid.
+            "evt-bffab4c3-9d88-4349-9131-824401265021",
+            // Alphanumerics glued to a Luhn-valid run.
+            "abc4111111111111111",
+            "4111111111111111abc",
+            "deadbeef4111111111111111cafe",
+            "41111111111111111111",
+            // Fails Luhn.
+            "ref 1234 5678 9012 3456",
+            "card-1234567890123456",
+        ] {
+            assert_eq!(r.apply(s), s, "must round-trip: {s}");
+        }
+    }
+
+    #[test]
+    fn redacted_real_cards() {
+        let r = redact::shared();
+        for (s, digits) in [
+            ("card 4111 1111 1111 1111 on file", "4111 1111 1111 1111"),
+            ("card 4111-1111-1111-1111.", "4111-1111-1111-1111"),
+            (r#"{"pan":"4111111111111111"}"#, "4111111111111111"),
+            ("amex 378282246310005", "378282246310005"),
+            ("card-4111111111111111", "4111111111111111"),
+            ("cc_4111111111111111", "4111111111111111"),
+            ("4111111111111111_cc", "4111111111111111"),
+            ("4111111111111111-card", "4111111111111111"),
+        ] {
+            let out = r.apply(s);
+            assert!(!out.contains(digits), "must redact: {s} -> {out}");
+            assert!(out.contains("***REDACTED***"), "{s} -> {out}");
+        }
+    }
+
+    #[test]
+    fn label_kept() {
+        let r = redact::shared();
+        assert_eq!(r.apply("card-4111111111111111"), "card-***REDACTED***");
+        assert_eq!(r.apply("cc_4111111111111111"), "cc_***REDACTED***");
+    }
+}
