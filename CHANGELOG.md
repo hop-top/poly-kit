@@ -2,6 +2,8 @@
 
 ## [0.5.0-beta.15](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.14...kit/v0.5.0-beta.15) (2026-11-20)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.15. This release includes new features and bug fixes.
+
 
 ### Features
 
@@ -52,6 +54,8 @@
 * **llm:** *.local not local by default ([d302aa0](https://github.com/hop-top/poly-kit/commit/d302aa046b43cc44a46f9a9921f974bc036cb594))
 * **storage:** sqldb.Open retries busy during first WAL switch ([183253c](https://github.com/hop-top/poly-kit/commit/183253c787880db9ff00dc9a4c588b908dea92e6))
 * **templates:** shared dependabot github-actions entry stays lib.sh's ([eb6de75](https://github.com/hop-top/poly-kit/commit/eb6de758ea679bace31ae74cb7bfa1fbc7168226))
+
+Full diff: [kit/v0.5.0-beta.14...kit/v0.5.0-beta.15](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.14...kit/v0.5.0-beta.15)
 
 ## [0.5.0-beta.14](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.13...kit/v0.5.0-beta.14) (2026-11-16)
 
