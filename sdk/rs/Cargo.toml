@@ -147,12 +147,12 @@ sync = ["domain", "dep:serde", "dep:serde_json", "dep:base64"]
 sync-http = ["sync", "api", "dep:tokio", "tokio/rt", "tokio/time"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
 httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
-# Dual-spec MCP surface. `rmcp` supplies the protocol vocabulary (version
-# constants, the -3202x error codes, reserved _meta keys) with
-# default-features off, so the server/tokio/hyper stack stays out of the
-# tree: this port hosts via a plain request->response fn, not rmcp's
-# transports. Consumers who do not serve MCP compile none of it.
-mcp = ["dep:serde", "dep:serde_json", "dep:rmcp"]
+# Dual-spec MCP surface. The protocol vocabulary (version constants, the
+# -3202x error codes, reserved _meta keys) is spelled in this crate and
+# pinned to the supported spec revisions by a test; no MCP SDK is linked.
+# This port hosts via a plain request->response fn. Consumers who do not
+# serve MCP compile none of it.
+mcp = ["dep:serde", "dep:serde_json"]
 # Builds on sqldb for connection setup, pragmas and the SQLite engine —
 # no dependencies of its own.
 kv = ["sqldb"]
@@ -587,7 +587,6 @@ thiserror = { version = "2", optional = true }
 # `matches` function; chrono/chrono-tz (timestamp functions) and the
 # base64 encoders are not needed by guard rules.
 cel = { version = "=0.15.0", default-features = false, features = ["regex"], optional = true }
-rmcp = { version = "3.9.0", default-features = false, optional = true }
 clap = { version = "4", features = ["derive", "string"], optional = true }
 comfy-table = { version = "8", default-features = false, optional = true }
 # TypeID codec. Exact pin: the wire form is a cross-language contract

@@ -72,7 +72,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `rpc-server` | `api-server` + `connectrpc`, `buffa`, `buffa-types`, `serde` (native only) | `api-server` + 31 (171) |
 | `socket` | `serve` + `serde`, `getrandom`, tokio `net`/`io-util` (unix only) | 0 beyond `serve` |
 | `serve` (`serve-cli`) | `output` + `tokio`, `serde_json` (+ `cli`) | 37 (50) |
-| `mcp`; `uri` | `rmcp` (default-features off) + `serde`, `serde_json`; `hop-top-cite` | 39; 41 |
+| `mcp`; `uri` | `serde`, `serde_json`; `hop-top-cite` | 39; 41 |
 | `policy` | `domain` + `cel`, `serde`, `serde_json`, `serde_norway` (`PolicyDeniedError::to_cli_error` with `output`) | 48 |
 | `llm` (`llm-anthropic`, `llm-openai`, `llm-google`, `llm-ollama`, `llm-triton`, `llm-routellm`; `llm-picker`; `llm-router`) | `config` + `netpolicy` + `url`, `sha2` (+ `api`, `base64`, `tokio` time via `llm-http`; native only; `llm-routellm` adds `llm-openai`; `llm-picker`: nothing of its own, wasm-safe; `llm-router`: `llm-triton` + `llm-picker`) | 53 (114) |
 | `telemetry` | `api` + `serde_norway`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
