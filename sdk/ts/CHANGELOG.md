@@ -4,6 +4,13 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha.13](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.12...kit-ts/v0.5.0-alpha.13) (2026-11-20)
+
+
+### Bug Fixes
+
+* **php/serve:** read cancel afresh after a tick ([0272e4a](https://github.com/hop-top/poly-kit/commit/0272e4a98dc2ac2a2e220d96379b98c1e6e024a3))
+
 ## [0.5.0-alpha.12](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.11...kit-ts/v0.5.0-alpha.12) (2026-11-15)
 
 The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.12. This release includes new features and bug fixes.
