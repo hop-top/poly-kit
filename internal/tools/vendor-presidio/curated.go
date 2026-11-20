@@ -46,8 +46,8 @@ replacement = "<ITIN>"
 
 [[rule]]
 id = "credit-card"
-description = "Credit card number (Visa/MC/Amex/Discover; 13-19 digits with optional separators). Luhn validation deferred to v2."
-pattern = '''\b(?:\d[ \-]?){12,18}\d\b'''
+description = "Credit card number (Visa/MC/Amex/Discover; 13-19 digits with optional separators; Luhn and token boundary checked in code)."
+pattern = '''(?:\d[ \-]?){12,18}\d'''
 replacement = "<CREDIT_CARD>"
 
 [[rule]]
@@ -121,8 +121,8 @@ tagged release. Same tag → byte-identical output (idempotent). See
 
 ## Coverage (v1)
 
-email, phone (US + E.164), us-ssn, us-itin, credit-card (regex-only,
-no Luhn validation), iban, ipv4, ipv6, us-passport, us-driver-license.
+email, phone (US + E.164), us-ssn, us-itin, credit-card (Luhn and token-boundary
+checked in code), iban, ipv4, ipv6, us-passport, us-driver-license.
 
 ## Dropped Patterns
 

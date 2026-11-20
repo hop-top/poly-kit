@@ -26,6 +26,7 @@ mod distinctive;
 mod rule;
 mod spans;
 mod syntax;
+mod validate;
 
 use std::borrow::Cow;
 use std::collections::HashMap;

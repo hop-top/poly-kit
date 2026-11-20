@@ -42,8 +42,8 @@ replacement = "<ITIN>"
 
 [[rule]]
 id = "credit-card"
-description = "Credit card number (Visa/MC/Amex/Discover; 13-19 digits with optional separators). Luhn validation deferred to v2."
-pattern = '''\b(?:\d[ \-]?){12,18}\d\b'''
+description = "Credit card number (Visa/MC/Amex/Discover; 13-19 digits with optional separators; Luhn and token boundary checked in code)."
+pattern = '''(?:\d[ \-]?){12,18}\d'''
 replacement = "<CREDIT_CARD>"
 
 [[rule]]

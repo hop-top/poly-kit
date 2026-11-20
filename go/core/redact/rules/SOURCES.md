@@ -22,8 +22,8 @@ tagged release. Same tag → byte-identical output (idempotent). See
 
 ## Coverage (v1)
 
-email, phone (US + E.164), us-ssn, us-itin, credit-card (regex-only,
-no Luhn validation), iban, ipv4, ipv6, us-passport, us-driver-license.
+email, phone (US + E.164), us-ssn, us-itin, credit-card (Luhn and token-boundary
+checked in code), iban, ipv4, ipv6, us-passport, us-driver-license.
 
 ## Dropped Patterns
 
