@@ -806,9 +806,9 @@ mockito = "1"
 tempfile = "3"
 # blob-s3 cassettes: records and replays the S3 HTTP exchanges so the
 # default test run needs neither network nor LocalStack. Exact pin: xrr is
-# alpha and breaks between alphas. 0.1.0-alpha.6, hop-top/poly-xrr (owned
+# alpha and breaks between alphas. 0.1.0-alpha.7, hop-top/poly-xrr (owned
 # dep, exempt from the 14-day age rule), MIT; dev only, never shipped.
-hop-top-xrr = "=0.1.0-alpha.6"
+hop-top-xrr = "=0.1.0-alpha.7"
 # The rpc-server tests drive the server with connectrpc's own client over
 # all three protocols; `client` is test-only, the server needs none of it.
 connectrpc = { version = "=0.9.1", default-features = false, features = [
