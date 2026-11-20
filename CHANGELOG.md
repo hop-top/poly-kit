@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.5.0-beta.15](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.14...kit/v0.5.0-beta.15) (2026-11-20)
+
+
+### Features
+
+* **ai/judge/eval:** replay recorded cases through two judges ([161b28a](https://github.com/hop-top/poly-kit/commit/161b28a80c9512ec88673c655ad190126c8ba544))
+* **ai/judge/jev:** Jev backend over OpenRouter systemone ([c2b4a6b](https://github.com/hop-top/poly-kit/commit/c2b4a6b6d93a40e97eee8417ce752b0d615af768))
+* **ai/judge/llmjudge:** BoxFormat for local VLM grounding conventions ([11917ca](https://github.com/hop-top/poly-kit/commit/11917cac977aee018de1b0d9bc044dc4c3cb0ef3))
+* **ai/judge/llmjudge:** logprobs scoring mode ([fa66e37](https://github.com/hop-top/poly-kit/commit/fa66e37a5e25d33297c81efd4baa8b91a59d2fa0))
+* **ai/judge:** visual grounding kind (preview) ([2e190d9](https://github.com/hop-top/poly-kit/commit/2e190d9e8410f0becf9e7312e03c83dd855b093e))
+* **ai/llm:** add strategy pkg: self-consistency, vote, best-of-n, cascade ([6615562](https://github.com/hop-top/poly-kit/commit/6615562517fb04e2a04a7d284fa9767d0c5c360e))
+* **ai/llm:** llmxrr test-only model-call cassette transport ([750efa5](https://github.com/hop-top/poly-kit/commit/750efa516d8bcf0cb7c448cad1f26efd1a936cab))
+* **cmdmeta:** kit/long-running annotation ([3fe3cc5](https://github.com/hop-top/poly-kit/commit/3fe3cc51a27f4a802c810468cd5cfd3996b6ce77))
+* **config:** path-typed keys, per-key origin, map dst deep merge ([ba080b1](https://github.com/hop-top/poly-kit/commit/ba080b165aa79f0bf5b258100340e432ad4c88f1))
+* **config:** project-layer restrictions option ([60564fc](https://github.com/hop-top/poly-kit/commit/60564fcb2bc0a72bb6b8afa6441c60944d6f664f))
+* **judge:** Batch helper + judgetest fake ([6fde149](https://github.com/hop-top/poly-kit/commit/6fde149b191d01309b4e3dbf8dd93f135101f039))
+* **judge:** calibrate temperature + Platt ([10e9f84](https://github.com/hop-top/poly-kit/commit/10e9f84883c9b0211d61b46aa5a8546ec3207f02))
+* **judge:** core types, Validate, ScoreEV ([2e1af58](https://github.com/hop-top/poly-kit/commit/2e1af58a85b3e3d2b073899f56e506075217a44e))
+* **judge:** llmjudge backend, verbalized probs + votes ([2d6a0d5](https://github.com/hop-top/poly-kit/commit/2d6a0d5ce60f8ddba7bbfbbebb025a3d397deb5b))
+* **llm:** adapters send through caller transport ([eb40b25](https://github.com/hop-top/poly-kit/commit/eb40b25bb248e27c9e5e81b49e03508e91babd26))
+* **llm:** anthropic native output_config.format ([fe666e0](https://github.com/hop-top/poly-kit/commit/fe666e0b94c6a2714230d6a6fbd9e5471270d505))
+* **llm:** Endpoint, EndpointLocality, LocalOnly ([99ca7b5](https://github.com/hop-top/poly-kit/commit/99ca7b559e53b6ea1f1d3779fb5864a64b14ae47))
+* **llm:** google responseMimeType + responseJsonSchema ([36e5fc2](https://github.com/hop-top/poly-kit/commit/36e5fc2fad7e81189d7c80be58c455f3b1c6aa08))
+* **llm:** log-probabilities on ollama and openai ([2c04e9c](https://github.com/hop-top/poly-kit/commit/2c04e9c16c9453342a14ca36c69913c72ce3917b))
+* **llm:** ollama sends ResponseFormat as format ([983e5a8](https://github.com/hop-top/poly-kit/commit/983e5a838d33df0995ec5f871052a734535805f2))
+* **llm:** openai json_schema response_format ([886f6ca](https://github.com/hop-top/poly-kit/commit/886f6ca7cdd6f3edb1b627af23a19d3dc01e9ab2))
+* **llm:** PriceOf price lookup from aim catalog cache ([981270f](https://github.com/hop-top/poly-kit/commit/981270fcca499b356afef9fed70611e24f10f241))
+* **llm:** routellm refuses ResponseFormat ([6e6082f](https://github.com/hop-top/poly-kit/commit/6e6082f957291a8325c2d987e86b0c8a0d10e742))
+* **llm:** structured output core, schema validation, repair loop ([0e13fb2](https://github.com/hop-top/poly-kit/commit/0e13fb24c18da8bf62fae75624c8776ca3927253))
+* **llm:** WithTransport resolve option, ResolvedConfig.Transport, HTTPClient ([de917bc](https://github.com/hop-top/poly-kit/commit/de917bcdb5ee2be51671d39e70d3aa6ea06ddf12))
+* **prompt:** versioned templates, patterns, techniques, fragments, schema DSL ([db41da8](https://github.com/hop-top/poly-kit/commit/db41da82518e1cb245ee1eb39f71311040161587))
+* **secret/ref:** resolve op:// and secret:NAME references in config values ([6d4b7dd](https://github.com/hop-top/poly-kit/commit/6d4b7dd362b4a9aba505afcc50d02d342713b499))
+* **service:** api listens on unix socket; optional dek surface ([5306fd5](https://github.com/hop-top/poly-kit/commit/5306fd583b23ead346a50bbcd3dbc10761932303))
+* **service:** dek hello passes auth guard ([b650bb3](https://github.com/hop-top/poly-kit/commit/b650bb36855e4d49655e2d673a62a239e5ff4ccf))
+* **service:** extra-surface hook for the api service ([9c2dd93](https://github.com/hop-top/poly-kit/commit/9c2dd9366af4177b7b9a27fcb9b7ddaede4ba66a))
+* **transport/api:** unix socket listen address ([e97d2e4](https://github.com/hop-top/poly-kit/commit/e97d2e4a6c8691c02a6930237921438296079f75))
+* **transport/dek:** capability manifest and invoke from reflected commands ([09efec8](https://github.com/hop-top/poly-kit/commit/09efec84420373763a9ba8ce0e5ab8a85751e3ea))
+* **transport/dek:** whoami, plans apply, jobs ([50f2e23](https://github.com/hop-top/poly-kit/commit/50f2e232b3af3e9c36a34c1fbb79d9bdcb54d123))
+
+
+### Bug Fixes
+
+* **ai/judge/calibrate:** Fit floors zero-prob true labels instead of rejecting ([9eaa26d](https://github.com/hop-top/poly-kit/commit/9eaa26dcdf9968a8e96845070848b434f3a7c348))
+* **ai/judge/jev:** drop llm/openai blank import; resolve key in-package ([276efdd](https://github.com/hop-top/poly-kit/commit/276efdd425d8f88a6722843a9d3ce1990a608045))
+* **ai/llm/llmxrr:** keep logprob tokens when scrubbing ([e3c5b68](https://github.com/hop-top/poly-kit/commit/e3c5b68aae970a776da26b8cef0ec54161b24a8e))
+* **config:** project rules fail closed on non-string keys ([53a15bf](https://github.com/hop-top/poly-kit/commit/53a15bf7ef56a82b38f5eec0a2933da4dad3dd0e))
+* **config:** project rules match case-folded key path ([7cf2bc3](https://github.com/hop-top/poly-kit/commit/7cf2bc3e1f276540b83a0d95d31f6df58164bd77))
+* **init:** cli-go CI callers satisfy hop-top/.github contracts ([41d9436](https://github.com/hop-top/poly-kit/commit/41d9436d7d177f12547f41d1ecdfc7d41c4f4aad))
+* **job/durabletask:** typeid job ids; add Prune for finished jobs ([dc9ec7e](https://github.com/hop-top/poly-kit/commit/dc9ec7e17750a7f93f16e12050c59ca070993b2d))
+* **llm:** *.local not local by default ([d302aa0](https://github.com/hop-top/poly-kit/commit/d302aa046b43cc44a46f9a9921f974bc036cb594))
+* **storage:** sqldb.Open retries busy during first WAL switch ([183253c](https://github.com/hop-top/poly-kit/commit/183253c787880db9ff00dc9a4c588b908dea92e6))
+* **templates:** shared dependabot github-actions entry stays lib.sh's ([eb6de75](https://github.com/hop-top/poly-kit/commit/eb6de758ea679bace31ae74cb7bfa1fbc7168226))
+
 ## [0.5.0-beta.14](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.13...kit/v0.5.0-beta.14) (2026-11-16)
 
 The hop-top team is happy to announce Kit 0.5.0-beta.14. This release includes maintenance release with bug fixes.
