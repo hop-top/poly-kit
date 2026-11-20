@@ -1,66 +1,47 @@
 //! Shared internals: calendar arithmetic, ISO parsing, and the heuristics
 //! that gate the natural-language fallback.
 
-use chrono::{DateTime, Datelike, Days, Duration, Months, NaiveDate, NaiveDateTime, Utc};
 use interim::{parse_date_string, Dialect};
+use jiff::{civil::Weekday, tz::TimeZone, Span, Timestamp};
 
+use super::iso::parse_iso;
 use super::{Direction, TimeError, Unit};
 
 /// Apply `n` units of `unit` to `base` in the given direction.
 ///
-/// Sub-day units use exact [`Duration`] arithmetic; day and week units use
-/// [`Days`]; month and year units use [`Months`], which **clamps** overflow
-/// (see the module-level docs for why clamping is the chosen semantics).
+/// Arithmetic runs on the instant seen in UTC, where a day is 24 hours.
+/// Sub-day units are exact; day and week units move whole calendar days;
+/// month and year units move calendar months and **clamp** overflow (see the
+/// module-level docs for why clamping is the chosen semantics). A count or
+/// result outside [`jiff`]'s range is [`TimeError::OutOfRange`].
 pub(crate) fn shift(
-    base: DateTime<Utc>,
+    base: Timestamp,
     n: u32,
     unit: Unit,
     dir: Direction,
     input: &str,
-) -> Result<DateTime<Utc>, TimeError> {
+) -> Result<Timestamp, TimeError> {
     let out_of_range = || TimeError::OutOfRange(input.to_string());
-    let n64 = i64::from(n);
-
-    let result = match unit {
-        Unit::Second | Unit::Minute | Unit::Hour => {
-            let span = match unit {
-                Unit::Second => Duration::try_seconds(n64),
-                Unit::Minute => Duration::try_minutes(n64),
-                _ => Duration::try_hours(n64),
-            }
-            .ok_or_else(out_of_range)?;
-            match dir {
-                Direction::Forward => base.checked_add_signed(span),
-                Direction::Backward => base.checked_sub_signed(span),
-            }
-        }
-        Unit::Day | Unit::Week => {
-            let days = if unit == Unit::Week {
-                n64.checked_mul(7).ok_or_else(out_of_range)?
-            } else {
-                n64
-            };
-            let days = Days::new(u64::try_from(days).map_err(|_| out_of_range())?);
-            match dir {
-                Direction::Forward => base.checked_add_days(days),
-                Direction::Backward => base.checked_sub_days(days),
-            }
-        }
-        Unit::Month | Unit::Year => {
-            let months = if unit == Unit::Year {
-                n.checked_mul(12).ok_or_else(out_of_range)?
-            } else {
-                n
-            };
-            let months = Months::new(months);
-            match dir {
-                Direction::Forward => base.checked_add_months(months),
-                Direction::Backward => base.checked_sub_months(months),
-            }
-        }
+    let n = match dir {
+        Direction::Forward => i64::from(n),
+        Direction::Backward => -i64::from(n),
     };
 
-    result.ok_or_else(out_of_range)
+    let span = match unit {
+        Unit::Second => Span::new().try_seconds(n),
+        Unit::Minute => Span::new().try_minutes(n),
+        Unit::Hour => Span::new().try_hours(n),
+        Unit::Day => Span::new().try_days(n),
+        Unit::Week => Span::new().try_weeks(n),
+        Unit::Month => Span::new().try_months(n),
+        Unit::Year => Span::new().try_years(n),
+    }
+    .map_err(|_| out_of_range())?;
+
+    base.to_zoned(TimeZone::UTC)
+        .checked_add(span)
+        .map(|zoned| zoned.timestamp())
+        .map_err(|_| out_of_range())
 }
 
 /// Parse the count/unit pair shared by `"in N unit"` and `"N unit ago"`.
@@ -112,56 +93,6 @@ pub(crate) fn parse_short(body: &str) -> Result<(u32, Unit), TimeError> {
         Unit::from_suffix(suffix).ok_or_else(|| TimeError::Unrecognized(body.to_string()))?;
 
     Ok((n, unit))
-}
-
-/// Absolute layouts tried in order, mirroring the Go `isoLayouts` table.
-///
-/// Layouts carrying an explicit offset are tried as [`DateTime`]; the rest are
-/// parsed as naive local wall-clock time and interpreted as UTC, matching Go's
-/// `time.Parse` behaviour for layouts without a zone.
-const OFFSET_LAYOUTS: &[&str] = &[
-    "%Y-%m-%dT%H:%M:%S%.f%:z",
-    "%Y-%m-%dT%H:%M:%S%#z",
-    "%Y-%m-%dT%H:%M%:z",
-    "%Y-%m-%dT%H:%M%#z",
-];
-
-const NAIVE_LAYOUTS: &[&str] = &[
-    "%Y-%m-%dT%H:%M:%S%.f",
-    "%Y-%m-%dT%H:%M",
-    "%Y-%m-%d %H:%M:%S%.f",
-    "%Y-%m-%d %H:%M",
-];
-
-/// Parse an absolute ISO-8601-ish timestamp.
-///
-/// Handles the offset-bearing forms (`Z`, `+05:00`) as well as the
-/// offset-less forms, which are interpreted as UTC. Date-only input
-/// (`"2026-05-01"`) resolves to midnight UTC.
-pub(crate) fn parse_iso(s: &str) -> Result<DateTime<Utc>, TimeError> {
-    for layout in OFFSET_LAYOUTS {
-        if let Ok(dt) = DateTime::parse_from_str(s, layout) {
-            return Ok(dt.with_timezone(&Utc));
-        }
-    }
-
-    for layout in NAIVE_LAYOUTS {
-        if let Ok(naive) = NaiveDateTime::parse_from_str(s, layout) {
-            return naive
-                .and_local_timezone(Utc)
-                .single()
-                .ok_or_else(|| TimeError::Unrecognized(s.to_string()));
-        }
-    }
-
-    if let Ok(date) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        return date
-            .and_hms_opt(0, 0, 0)
-            .and_then(|naive| naive.and_local_timezone(Utc).single())
-            .ok_or_else(|| TimeError::Unrecognized(s.to_string()));
-    }
-
-    Err(TimeError::Unrecognized(s.to_string()))
 }
 
 /// Month names and abbreviations recognised by [`looks_like_date`].
@@ -224,9 +155,10 @@ pub(crate) fn looks_like_date(s: &str) -> bool {
 ///    for inputs it does not really understand (`"now"`, `"today"`,
 ///    `"this week"`), so accepting that result would turn unparseable input
 ///    into a silent "right now" rather than an error.
-pub(crate) fn parse_natural(s: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>, TimeError> {
+pub(crate) fn parse_natural(s: &str, now: Timestamp) -> Result<Timestamp, TimeError> {
     if s.contains(' ') && looks_like_date(s) {
-        if let Ok(parsed) = parse_date_string(s, now, Dialect::Us) {
+        if let Ok(parsed) = parse_date_string(s, now.to_zoned(TimeZone::UTC), Dialect::Us) {
+            let parsed = parsed.timestamp();
             if parsed != now {
                 return Ok(truncate_bare_week_phrase(s, parsed));
             }
@@ -247,28 +179,28 @@ pub(crate) fn parse_natural(s: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>
 /// result would also flatten the day-offset forms that are *supposed* to
 /// preserve the time of day (`"3 days ago"` from 12:00 is 12:00 in both
 /// implementations).
-fn truncate_bare_week_phrase(s: &str, parsed: DateTime<Utc>) -> DateTime<Utc> {
+fn truncate_bare_week_phrase(s: &str, parsed: Timestamp) -> Timestamp {
     let lower = s.trim().to_lowercase();
     if matches!(lower.as_str(), "next week" | "last week") {
         return parsed
-            .date_naive()
-            .and_hms_opt(0, 0, 0)
-            .map(|naive| naive.and_utc())
+            .to_zoned(TimeZone::UTC)
+            .start_of_day()
+            .map(|zoned| zoned.timestamp())
             .unwrap_or(parsed);
     }
     parsed
 }
 
-/// Resolve a weekday name to its [`chrono::Weekday`], case-insensitively.
-pub(crate) fn weekday_from_name(s: &str) -> Option<chrono::Weekday> {
+/// Resolve a weekday name to its [`Weekday`], case-insensitively.
+pub(crate) fn weekday_from_name(s: &str) -> Option<Weekday> {
     match s.to_lowercase().as_str() {
-        "sunday" => Some(chrono::Weekday::Sun),
-        "monday" => Some(chrono::Weekday::Mon),
-        "tuesday" => Some(chrono::Weekday::Tue),
-        "wednesday" => Some(chrono::Weekday::Wed),
-        "thursday" => Some(chrono::Weekday::Thu),
-        "friday" => Some(chrono::Weekday::Fri),
-        "saturday" => Some(chrono::Weekday::Sat),
+        "sunday" => Some(Weekday::Sunday),
+        "monday" => Some(Weekday::Monday),
+        "tuesday" => Some(Weekday::Tuesday),
+        "wednesday" => Some(Weekday::Wednesday),
+        "thursday" => Some(Weekday::Thursday),
+        "friday" => Some(Weekday::Friday),
+        "saturday" => Some(Weekday::Saturday),
         _ => None,
     }
 }
@@ -278,9 +210,13 @@ pub(crate) fn weekday_from_name(s: &str) -> Option<chrono::Weekday> {
 /// Ports the Go `days := int(target - current); if days <= 0 { days += 7 }`
 /// rule. Note the consequence: asking for today's own weekday yields `7`, not
 /// `0` — "friday" said on a Friday means *next* Friday.
-pub(crate) fn days_until_weekday(now: DateTime<Utc>, target: chrono::Weekday) -> u64 {
-    let current = i64::from(now.weekday().num_days_from_sunday());
-    let target = i64::from(target.num_days_from_sunday());
+pub(crate) fn days_until_weekday(now: Timestamp, target: Weekday) -> u32 {
+    let current = i32::from(
+        now.to_zoned(TimeZone::UTC)
+            .weekday()
+            .to_sunday_zero_offset(),
+    );
+    let target = i32::from(target.to_sunday_zero_offset());
     let diff = target - current;
-    u64::try_from(if diff <= 0 { diff + 7 } else { diff }).unwrap_or(7)
+    u32::try_from(if diff <= 0 { diff + 7 } else { diff }).unwrap_or(7)
 }

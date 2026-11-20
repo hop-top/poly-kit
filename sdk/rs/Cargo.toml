@@ -163,7 +163,7 @@ sqlstore-blob = ["sqlstore", "blob"]
 # At-rest value encryption. Opt-in so the base store stays free of the
 # crypto dependency tree.
 sqlstore-encrypt = ["sqlstore", "dep:crypto_secretbox", "crypto_secretbox/getrandom", "dep:hkdf", "dep:sha2"]
-timeutil = ["dep:chrono", "dep:interim", "dep:thiserror"]
+timeutil = ["dep:jiff", "dep:interim", "dep:thiserror"]
 # Serve hierarchy + service lifecycle. Builds on `output` for the
 # exit-code taxonomy (CliError) and on tokio for the async supervisor:
 # `serve` is by definition a long-running concurrent surface, so there
@@ -506,13 +506,22 @@ notify-os = ["notify", "breaker", "redact"]
 
 [dependencies]
 hop-top-cite = { version = "0.1.0", optional = true }
-chrono = { version = "0.4", default-features = false, features = [
+# timeutil: calendar arithmetic and ISO parsing. jiff 0.2.38
+# (BurntSushi/jiff, Unlicense OR MIT, published 2026-10-06), `std` only:
+# no tz database, no system-tz, no serde. Already in the lock through
+# buffa-types, so it adds no crate. Chosen over `time` 0.3 for `Span`
+# arithmetic that clamps month overflow, which the module documents as
+# its semantics, and a `Timestamp` that is the UTC instant the API
+# returns. rsx: PASS 6.1/10 (time: 6.4); no advisories at this version.
+jiff = { version = "0.2", default-features = false, features = ["std"], optional = true }
+# interim 0.2.2 (conradludgate/interim, MIT, published 2026-11-05, 15 days
+# old at the pin): natural-language dates; its `jiff_0_2` feature replaces
+# `chrono_0_4`. 0.2.2 is the floor: 0.2.1's jiff support panics on a date
+# past jiff's range and reads fractional seconds as nanoseconds, not
+# microseconds. rsx: PASS 4.7/10, no advisories.
+interim = { version = "0.2.2", default-features = false, features = [
     "std",
-    "clock",
-], optional = true }
-interim = { version = "0.2", default-features = false, features = [
-    "std",
-    "chrono_0_4",
+    "jiff_0_2",
 ], optional = true }
 # Proxies come from the environment only (HTTP_PROXY etc.), as with Go net/http;
 # no system-proxy, which pulls macOS/Windows proxy settings and an old core-foundation.

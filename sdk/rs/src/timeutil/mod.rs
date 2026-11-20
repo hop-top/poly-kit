@@ -8,11 +8,11 @@
 //!   `"3 days ago"`, `"3d"`, `"last week"`).
 //!
 //! The `*_at` variants take an explicit reference instant; the bare ones use
-//! `Utc::now`. Keeping the split is what makes the test suite deterministic.
+//! `Timestamp::now`. Keeping the split is what makes the test suite deterministic.
 //!
 //! Natural-language phrases (`"next monday"`, `"last week"`, `"1 May 2026"`)
 //! are delegated to the [`interim`] crate — a maintained fork of
-//! `chrono-english`. The deterministic forms are parsed natively and tried
+//! `chrono-english`, run here on its `jiff_0_2` feature. The deterministic forms are parsed natively and tried
 //! first; see the seam table below.
 //!
 //! # Calendar arithmetic: month overflow clamps
@@ -58,12 +58,13 @@
 //!
 //! `interim` is configured with [`Dialect::Us`]; the UK dialect reads
 //! `"next monday"` as the Monday of *next* week and does not match the Go
-//! reference. Only its `chrono_0_4` feature is enabled, so its single
-//! meaningful transitive dependency is the `logos` lexer.
+//! reference. Only its `jiff_0_2` feature is enabled, so its single
+//! meaningful transitive dependency besides `jiff` is the `logos` lexer.
 //!
 //! [`Dialect::Us`]: interim::Dialect::Us
 
 mod common;
+mod iso;
 mod since;
 mod until;
 
@@ -95,7 +96,7 @@ pub enum TimeError {
     #[error("timeutil: unrecognized format {0:?}")]
     Unrecognized(String),
 
-    /// The computed instant fell outside the range chrono can represent.
+    /// The computed instant fell outside the range [`jiff`] can represent (years -9999 to 9999).
     #[error("timeutil: date out of range for {0:?}")]
     OutOfRange(String),
 }
