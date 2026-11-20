@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
@@ -95,7 +96,8 @@ func (p *Poller) Run(ctx context.Context) error {
 
 		// Stale check (throttled).
 		if time.Since(lastStale) >= staleInterval {
-			if _, err := p.Service.ReleaseStaleClaims(ctx); err != nil {
+			if _, err := p.Service.ReleaseStaleClaims(ctx); err != nil &&
+				!shutdown(ctx, err) {
 				log.ErrorContext(ctx, "job poller: release stale claims",
 					"queue", p.Queue, "error", err)
 			}
@@ -105,6 +107,9 @@ func (p *Poller) Run(ctx context.Context) error {
 		// Claim.
 		j, err := p.Service.Claim(ctx, p.Queue, p.WorkerID)
 		if err != nil {
+			if shutdown(ctx, err) {
+				return ctx.Err()
+			}
 			log.ErrorContext(ctx, "job poller: claim",
 				"queue", p.Queue, "worker", p.WorkerID, "error", err)
 			p.sleep(ctx, interval)
@@ -138,8 +143,7 @@ func (p *Poller) Run(ctx context.Context) error {
 			}
 			p.fail(ctx, j, FailOpts{Error: herr.Error(), Retry: true})
 		} else if cerr := p.Service.Complete(ctx, j.ID, nil); cerr != nil {
-			log.ErrorContext(ctx, "job poller: complete",
-				"job", j.ID, "type", j.Type, "error", cerr)
+			p.logSettle(ctx, "complete", j, cerr)
 		}
 
 		// Always sleep between jobs to avoid tight loop under load.
@@ -150,9 +154,22 @@ func (p *Poller) Run(ctx context.Context) error {
 // fail marks j failed and logs a Fail error instead of dropping it.
 func (p *Poller) fail(ctx context.Context, j *Job, opts FailOpts) {
 	if err := p.Service.Fail(ctx, j.ID, opts); err != nil {
-		p.logger().ErrorContext(ctx, "job poller: fail",
-			"job", j.ID, "type", j.Type, "error", err)
+		p.logSettle(ctx, "fail", j, err)
 	}
+}
+
+// logSettle logs a failed Complete or Fail. When ctx ended mid-job the
+// worker was shut down, not the queue broken: log at Warn, since the
+// outcome is unrecorded and the claim stays until stale release. Any
+// other error is an ERROR.
+func (p *Poller) logSettle(ctx context.Context, op string, j *Job, err error) {
+	if shutdown(ctx, err) {
+		p.logger().WarnContext(ctx, "job poller: "+op+" interrupted by shutdown",
+			"job", j.ID, "type", j.Type, "error", err)
+		return
+	}
+	p.logger().ErrorContext(ctx, "job poller: "+op,
+		"job", j.ID, "type", j.Type, "error", err)
 }
 
 // sleep waits for the interval with ±25% jitter, respecting ctx.
@@ -168,4 +185,11 @@ func (p *Poller) sleep(ctx context.Context, d time.Duration) {
 	case <-ctx.Done():
 	case <-t.C:
 	}
+}
+
+// shutdown reports whether err is ctx ending (cancel or deadline), as
+// opposed to a Service failure. Such errors are the normal end of Run.
+func shutdown(ctx context.Context, err error) bool {
+	return ctx.Err() != nil &&
+		(errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
 }
