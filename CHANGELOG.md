@@ -2,12 +2,16 @@
 
 ## [0.5.0-beta.16](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.15...kit/v0.5.0-beta.16) (2026-11-20)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.16. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
 * **job:** poller no longer logs own shutdown at error ([407b3d5](https://github.com/hop-top/poly-kit/commit/407b3d50c0bb49b46405e97574627c0839651fd0))
 * **redact:** token boundary and structure checks for digit rules ([3c9af04](https://github.com/hop-top/poly-kit/commit/3c9af045baf50d18d9006052449cf55bc9171452))
 * **redact:** validate credit-card matches with Luhn and token boundary ([a6c1ec7](https://github.com/hop-top/poly-kit/commit/a6c1ec702e6c5fa01a28f9a19fbb1b165bda7c1b))
+
+Full diff: [kit/v0.5.0-beta.15...kit/v0.5.0-beta.16](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.15...kit/v0.5.0-beta.16)
 
 ## [0.5.0-beta.15](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.14...kit/v0.5.0-beta.15) (2026-11-20)
 
