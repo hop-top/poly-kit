@@ -2,10 +2,14 @@
 
 ## [0.5.0-alpha.11](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.10...kit-py/v0.5.0-alpha.11) (2026-11-20)
 
+The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.11. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
 * **php/serve:** read cancel afresh after a tick ([0272e4a](https://github.com/hop-top/poly-kit/commit/0272e4a98dc2ac2a2e220d96379b98c1e6e024a3))
+
+Full diff: [kit-py/v0.5.0-alpha.10...kit-py/v0.5.0-alpha.11](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.10...kit-py/v0.5.0-alpha.11)
 
 ## [0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.9...kit-py/v0.5.0-alpha.10) (2026-11-15)
 
