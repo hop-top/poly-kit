@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.8...kit-rs/v0.5.0-alpha.9) (2026-11-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* **timeutil:** timeutil returns and takes jiff::Timestamp instead of
+
+### Bug Fixes
+
+* **redact:** token boundary and structure checks for digit rules ([3c9af04](https://github.com/hop-top/poly-kit/commit/3c9af045baf50d18d9006052449cf55bc9171452))
+* **redact:** validate credit-card matches with Luhn and token boundary ([a6c1ec7](https://github.com/hop-top/poly-kit/commit/a6c1ec702e6c5fa01a28f9a19fbb1b165bda7c1b))
+
+
+### Refactored
+
+* **timeutil:** move relative-date parsing from chrono to jiff ([2715c07](https://github.com/hop-top/poly-kit/commit/2715c079583ca767a0cf7febfdc957ae0261f8e5))
+
 ## [0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.7...kit-rs/v0.5.0-alpha.8) (2026-11-15)
 
 The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.8. This release includes maintenance release with bug fixes.
