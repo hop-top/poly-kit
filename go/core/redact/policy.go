@@ -37,8 +37,11 @@ func NewFromPolicy(p Policy, opts ...Option) (*Redactor, error) {
 	return r.AddRules(rules...), nil
 }
 
-// Policy returns r's configuration as data. Strategy and observers
-// are not part of it.
+// Policy returns r's configuration as data. Strategy, observers and
+// validators (WithValidator) are not part of it, so
+// NewFromPolicy(r.Policy()) drops the validators: it redacts a
+// superset of what r did. That is safe but easy to miss; pass the
+// options again to NewFromPolicy.
 func (r *Redactor) Policy() Policy {
 	p := Policy{Version: PolicyVersion, AllowlistExact: slices.Clone(r.exactAllowlist)}
 	for _, a := range r.allowlistSpecs {

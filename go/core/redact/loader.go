@@ -3,6 +3,7 @@ package redact
 import (
 	_ "embed"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -258,6 +259,12 @@ func loadPresidioSpecs(path string) ([]RuleSpec, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parsePresidio(data)
+}
+
+// parsePresidio decodes Presidio TOML into specs; shared by the path
+// and reader loaders.
+func parsePresidio(data []byte) ([]RuleSpec, error) {
 	var f presidioFile
 	if _, err := toml.Decode(string(data), &f); err != nil {
 		return nil, fmt.Errorf("redact: parse presidio rules: %w", err)
@@ -281,6 +288,22 @@ func loadPresidioSpecs(path string) ([]RuleSpec, error) {
 // silently (the corpus is curated to be RE2-clean).
 func LoadPresidio(path string) ([]Rule, error) {
 	specs, err := loadPresidioSpecs(path)
+	if err != nil {
+		return nil, err
+	}
+	return compileSpecs(specs, true)
+}
+
+// LoadPresidioReader is LoadPresidio for a TOML document read from r:
+// the same layout, the same RE2 skipping and the same compiled rules.
+// It reads r to EOF and does not close it. Use it for rules held in
+// memory, embedded in another module or fetched without a file.
+func LoadPresidioReader(r io.Reader) ([]Rule, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("redact: read presidio rules: %w", err)
+	}
+	specs, err := parsePresidio(data)
 	if err != nil {
 		return nil, err
 	}
