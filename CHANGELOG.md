@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-beta.17](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.16...kit/v0.5.0-beta.17) (2026-11-21)
+
+
+### Features
+
+* **redact:** PII validators, WithValidator hook, LoadPresidioReader ([793ffa8](https://github.com/hop-top/poly-kit/commit/793ffa84a37347ed2aafc0355e174708bf01ebab))
+
 ## [0.5.0-beta.16](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.15...kit/v0.5.0-beta.16) (2026-11-20)
 
 The hop-top team is happy to announce Kit 0.5.0-beta.16. This release includes maintenance release with bug fixes.
