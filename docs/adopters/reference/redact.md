@@ -28,6 +28,9 @@ anything user-facing that may have absorbed sensitive data.
 | Allowlists for every rule | `Redactor.AddAllowlists(specs...)` |
 | Pick a replacement strategy | `Redactor.SetReplacement(redact.Tag)` |
 | Pass-through known-safe values | `Redactor.AllowExact("AKIAIOSFODNN7EXAMPLE")` |
+| Check a PII match beyond its regex (checksum, structure) | `redact.New(redact.WithValidator(ruleID, fn))` with `ValidateIBAN`, `ValidatePhone`, `ValidateNIR`, `ValidateSIN` |
+| Normalise a phone number to E.164 | `redact.NormalizeE164(s)` |
+| Load Presidio-layout TOML from memory | `redact.LoadPresidioReader(r)` |
 | Audit hook (per match) | `Redactor.OnMatch(func(m){...})` |
 | Audit hook (allowlisted pass-through) | `Redactor.OnAllowed(func(m){...})` |
 | Snapshot counters | `Redactor.Stats()` |
@@ -315,3 +318,24 @@ Both refresh targets are independent and safe to run in any order.
 - [scope.md](scope.md): sibling guardrail for FS paths
 - [breaker.md](breaker.md): egress volume and rate control
 - [go-primitives.md](go-primitives.md#i-need-guardrails-on-what-my-tool-can-do): guardrail primitives index
+
+## Caller validators
+
+`WithValidator(ruleID, fn)` narrows one rule: a match is redacted only when `fn(match)` is true, with `match` the secret span (`Match.Original`). It runs in addition to the checks kit applies itself (token boundary, Luhn, SSN and ITIN structure), never instead, so a validator on a kit rule id only removes findings. Ids compare exactly (a Presidio rule renamed at load is `-pii` suffixed). Several validators on one id must all accept. A panicking `fn` counts as accepting (fail closed).
+
+Validators are set at `New` and read-only afterwards, so a `Redactor` stays safe for concurrent `Apply`, `Scan` and `Spans` and `fn` must be concurrency-safe. There is no runtime registration: `AddRule` is already unsafe alongside `Apply`. `New` panics on an empty id or nil `fn`. `NewEmbedded(opts...)` and `NewFromPolicy(p, opts...)` forward options, so `redact.NewEmbedded(redact.WithValidator("iban", redact.ValidateIBAN))` is the way to checksum the built-in IBAN rule. Only `Default()` has none. Validators are not part of a `Policy`: `NewFromPolicy(r.Policy())` drops them, which redacts more than `r` did. No built-in rule uses the exported validators, so default output and the cross-SDK vectors are unchanged.
+
+| Validator | Accepts |
+|-----------|---------|
+| `ValidateIBAN(s)` | registry country and length (SWIFT release 101), check digits 02-98, ISO 7064 mod-97-10; spaces and case ignored; territory prefixes GF, GP, MQ, RE, YT, PM, BL, MF, NC, PF, TF, WF (as FR), GG, IM, JE (as GB) and AX (as FI) use the parent's length and accept the parent's or their own check |
+| `ValidatePhone(s)` | digits plus space, hyphen, dot, non-empty parentheses, optional leading `+`; 7-15 digits with `+`, else 8-15; one leading `00` not counted; `+0...` and `+00...` rejected |
+| `NormalizeE164(s)` | `+` or single `00` prefixed input to `+<digits>`, same digit counts as `ValidatePhone`, country code not 0; national numbers report false |
+| `ValidateNIR(s)` | FR NIR: 13 characters plus key `97 - (n mod 97)`, Corsica 2A/2B as 19/18; spaces and dots ignored; first digit 1, 2, 7 or 8; month 01-12, 20-42 or 50-99 |
+| `ValidateSIN(s)` | CA SIN: 9 digits, Luhn, first digit not 0 or 8; spaces and hyphens ignored |
+
+```go
+r := redact.New(redact.WithValidator("iban", redact.ValidateIBAN))
+r.AddRule("iban", `\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b`, "")
+```
+
+`LoadPresidioReader(r io.Reader)` parses the same TOML layout as `LoadPresidio(path)` from any reader and compiles it the same way.

@@ -19,6 +19,9 @@
 //     reason this can run on adversarial input — LLM outputs, scraped pages,
 //     attacker-supplied prompts.
 //
+// WithValidator attaches a caller check (ValidateIBAN, ValidateSIN, ...) to
+// a rule at construction.
+//
 // Default() lazily loads the vendored gitleaks corpus + Presidio PII pack
 // at first use.
 package redact
@@ -89,6 +92,12 @@ type Redactor struct {
 	rules    []Rule
 	strategy Replacement
 	custom   func(Match) string
+
+	// validators are caller checks per rule id, set by WithValidator at
+	// construction and read-only afterwards.
+	validators map[string][]func(string) bool
+	// validatorPanics records rule ids whose validator panic was logged.
+	validatorPanics sync.Map
 
 	exactAllowlist []string
 	allowlists     []allowlist

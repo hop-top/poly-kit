@@ -144,7 +144,7 @@ func (r *Redactor) judge(s string, rule *Rule, i int, locs, subs [][]int, hits [
 		if se <= ss {
 			continue
 		}
-		if !plausible(rule.spec.ID, s, ss, se) {
+		if !plausible(rule.spec.ID, s, ss, se) || !r.validated(rule.spec.ID, s[ss:se]) {
 			continue
 		}
 		secret := s[ss:se]
@@ -294,4 +294,31 @@ func keywordGate(keywords []string, lower any) bool {
 		}
 	}
 	return false
+}
+
+// validated runs the caller validators registered for id on the match.
+// A panicking validator counts as accepting, so the match is redacted;
+// it is logged once per rule id, naming the rule only, never the match.
+func (r *Redactor) validated(id string, match string) bool {
+	for _, fn := range r.validators[id] {
+		ok, panicked := callValidator(fn, match)
+		if panicked {
+			if _, seen := r.validatorPanics.LoadOrStore(id, struct{}{}); !seen {
+				r.logger.Warn("redact: validator panicked; treating match as valid", "rule", id)
+			}
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func callValidator(fn func(string) bool, match string) (ok, panicked bool) {
+	defer func() {
+		if recover() != nil {
+			ok, panicked = true, true
+		}
+	}()
+	return fn(match), false
 }
