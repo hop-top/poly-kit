@@ -576,7 +576,7 @@ ed25519-dalek = { version = "=3.0.0", default-features = false, features = [
 # editor behind `set`/`unset`; scalars resolve through this crate's own
 # yaml.v3-compatible rules, not the parser's. Exact pin: 0.x and the
 # editor depends on span semantics.
-saphyr-parser = { version = "=0.3.2", optional = true }
+saphyr-parser = { version = "=0.3.3", optional = true }
 dirs = { version = "7", optional = true }
 # No crate-wide features: each feature that uses tokio names the pieces it
 # needs, so `full` (and its socket, process and multi-thread runtime
@@ -601,7 +601,7 @@ comfy-table = { version = "8", default-features = false, optional = true }
 # TypeID codec. Exact pin: the wire form is a cross-language contract
 # (contracts/typeid-v1). Needs only uuid's `v7`; the previous codec
 # enabled v1-v7, and v3 pulled md-5 and block-buffer 0.10.
-type-safe-id = { version = "=0.3.3", optional = true }
+type-safe-id = { version = "=0.3.4", optional = true }
 uuid = { version = "1", features = ["v7", "serde"], optional = true }
 # `bundled` compiles SQLite from source: no libsqlite3 on the build host,
 # and a pinned engine version so pragma/WAL behaviour is identical across
