@@ -293,13 +293,16 @@ func TestReload_ConcurrentReadersSafe(t *testing.T) {
 	require.NoError(t, config.Load(&loaded, opts))
 	r := config.New(&loaded, opts)
 
+	const readers = 4
 	stop := make(chan struct{})
-	var reads int64
-	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
+	var reads, torn int64
+	var wg, started sync.WaitGroup
+	for i := 0; i < readers; i++ {
 		wg.Add(1)
+		started.Add(1)
 		go func() {
 			defer wg.Done()
+			var once sync.Once
 			for {
 				select {
 				case <-stop:
@@ -307,13 +310,22 @@ func TestReload_ConcurrentReadersSafe(t *testing.T) {
 				default:
 				}
 				snap := r.Snapshot()
-				// Exercise both string and int leaves.
-				_ = snap.Endpoint
-				_ = snap.Sub.Threshold
+				// Exercise both string and int leaves. Every snapshot
+				// must be one fully applied state: the initial pair or
+				// the pair written by one reload iteration.
+				ep, th := snap.Endpoint, snap.Sub.Threshold
+				initialPair := ep == "https://a" && th == 1
+				if !initialPair && ep != "https://"+itoa(th-1) {
+					atomic.AddInt64(&torn, 1)
+				}
 				atomic.AddInt64(&reads, 1)
+				once.Do(started.Done)
 			}
 		}()
 	}
+	// Hold the reload loop until every reader has taken a snapshot, so
+	// the test does not depend on goroutine scheduling.
+	started.Wait()
 
 	for i := 0; i < 50; i++ {
 		updated := initial
@@ -325,7 +337,8 @@ func TestReload_ConcurrentReadersSafe(t *testing.T) {
 	close(stop)
 	wg.Wait()
 
-	assert.Greater(t, atomic.LoadInt64(&reads), int64(0))
+	assert.GreaterOrEqual(t, atomic.LoadInt64(&reads), int64(readers))
+	assert.Zero(t, atomic.LoadInt64(&torn))
 	final := r.Snapshot()
 	assert.Equal(t, "https://49", final.Endpoint)
 }
