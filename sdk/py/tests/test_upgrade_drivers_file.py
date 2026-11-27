@@ -251,7 +251,7 @@ def test_fsdir_restore_creates_missing_target_and_parent(tmp_path: Path) -> None
     assert _snapshot(target) == want
 
 
-@pytest.mark.skipif(not POSIX, reason="symlinks")
+@pytest.mark.skipif(not POSIX or not hasattr(tarfile, "data_filter"), reason="symlinks, filters")
 def test_fsdir_keeps_internal_symlinks(tmp_path: Path) -> None:
     root = tmp_path / "mydata"
     (root / "sub").mkdir(parents=True)
@@ -470,6 +470,8 @@ def test_fsdir_restore_rejects_unsafe_members_and_changes_nothing(
 
 @pytest.mark.skipif(not POSIX, reason="posix archive members")
 def test_fsdir_accepts_links_that_stay_inside(tmp_path: Path, extraction_path: str) -> None:
+    if extraction_path == "no-filter":
+        pytest.skip("without filters every link is refused, see the refusal test below")
     bk = tmp_path / "bk"
     bk.mkdir()
     _evil(
@@ -600,3 +602,102 @@ def test_migrator_restores_fsdir_after_a_failed_migration(tmp_path: Path) -> Non
         (root / "added").mkdir()
 
     _failing_run(tmp_path, d, "store", mutate, lambda: _snapshot(root))
+
+
+# --- links through a symlink to the root
+
+# ``d`` points at the directory being extracted, so ``d/..`` is its parent:
+# lexically harmless, really an escape.
+ROOT_LINK_ATTACKS = {
+    "write-through-symlink": [
+        ("d", S, b"."),
+        ("f", S, b"d/../outside.txt"),
+        ("f", R, b"PWNED"),
+    ],
+    "write-through-dangling-first": [
+        ("f", S, b"d/../outside.txt"),
+        ("d", S, b"."),
+        ("f", R, b"PWNED"),
+    ],
+    "hardlink-through-symlink": [
+        ("d", S, b"."),
+        ("s", S, b"d/.."),
+        ("leak", H, b"s/outside.txt"),
+    ],
+    "escaping-symlink-left-in-tree": [("d", S, b"."), ("s", S, b"d/..")],
+    "escaping-symlink-dangling-first": [("s", S, b"d/.."), ("d", S, b".")],
+}
+
+
+@pytest.mark.skipif(not POSIX, reason="posix archive members")
+@pytest.mark.parametrize("case", sorted(ROOT_LINK_ATTACKS))
+def test_fsdir_restore_refuses_links_through_a_symlink_to_the_root(
+    tmp_path: Path, case: str, extraction_path: str
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    root = home / "mydata"
+    root.mkdir()
+    (root / "keep.txt").write_text("keep")
+    outside = home / "outside.txt"  # beside the restore target
+    outside.write_text("ORIG")
+    links = outside.stat().st_nlink
+    bk = tmp_path / "bk"
+    bk.mkdir()
+    _evil(bk / "mydata.tar.gz", ROOT_LINK_ATTACKS[case])
+
+    with pytest.raises(UnsafeArchiveError):
+        FsDirDriver("mydata", root).restore(bk)
+
+    assert _snapshot(root) == {"keep.txt": ("file", "keep")}, "current directory untouched"
+    assert outside.read_text() == "ORIG"
+    assert outside.stat().st_nlink == links
+    assert sorted(p.name for p in home.iterdir()) == ["mydata", "outside.txt"], "no temp directory"
+
+
+@pytest.mark.skipif(not POSIX, reason="symlinks")
+def test_fsdir_without_filters_refuses_even_a_harmless_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(fsdir, "_HAS_DATA_FILTER", False)
+    root = tmp_path / "mydata"
+    root.mkdir()
+    (root / "keep.txt").write_text("keep")
+    bk = tmp_path / "bk"
+    bk.mkdir()
+    _evil(bk / "mydata.tar.gz", [("l", S, b"good.txt")])
+    with pytest.raises(UnsafeArchiveError, match=r"3\.11\.4"):
+        FsDirDriver("mydata", root).restore(bk)
+    assert _snapshot(root) == {"keep.txt": ("file", "keep")}
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["bk", "mydata"]
+
+
+@pytest.mark.skipif(not POSIX, reason="symlinks")
+def test_fsdir_without_filters_backup_refuses_symlinks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A backup its own restore would refuse is not written."""
+    monkeypatch.setattr(fsdir, "_HAS_DATA_FILTER", False)
+    root = tmp_path / "mydata"
+    root.mkdir()
+    (root / "file.txt").write_text("x")
+    (root / "l").symlink_to("file.txt")
+    bk = tmp_path / "bk"
+    with pytest.raises(OSError, match=r"3\.11\.4"):
+        FsDirDriver("mydata", root).backup(bk)
+    assert list(bk.iterdir()) == []
+
+
+def test_fsdir_without_filters_round_trips_plain_trees(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(fsdir, "_HAS_DATA_FILTER", False)
+    root = tmp_path / "mydata"
+    root.mkdir()
+    _tree(root)
+    want = _snapshot(root)
+    d = FsDirDriver("mydata", root)
+    d.backup(tmp_path / "bk")
+    (root / "file.txt").write_text("changed")
+    d.restore(tmp_path / "bk")
+    assert _snapshot(root) == want

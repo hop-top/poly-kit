@@ -8,10 +8,18 @@ children in name order, empty directories kept. Go and Python archives
 restore with either port.
 
 Restore never trusts the archive: it refuses absolute names, ``..``
-components, links that leave the directory, hard or symbolic, and device,
+components, links that leave the directory, hard or symbolic, links whose
+target climbs with ``..`` after a named component (``d/..``: ``d`` may be a
+link back to the root), a member named like an earlier link, and device,
 fifo or other special members. It extracts into a sibling temp directory and
 swaps it in only when extraction succeeded, so a failed restore leaves the
 current directory as it was.
+
+Python 3.11.0 to 3.11.3 have no ``tarfile`` extraction filters, and their
+extraction follows links already on disk. There the driver handles no links
+at all: ``backup`` raises :class:`OSError` on a symbolic link and ``restore``
+raises :class:`UnsafeArchiveError` on any link member. Use 3.11.4 or later
+for trees that hold links.
 """
 
 from __future__ import annotations
@@ -46,10 +54,27 @@ def _escapes(path: str) -> bool:
     return n == ".." or n.startswith("../") or posixpath.isabs(n)
 
 
+def _bad_link_target(linkname: str) -> bool:
+    """A target that is empty, absolute, or climbs with ``..`` after a named
+    component. Lexically ``d/..`` is ``.``; on disk it is the parent of
+    wherever ``d`` points, and ``d`` may be a link to the root."""
+    if not linkname or "\x00" in linkname or os.path.isabs(linkname):
+        return True
+    parts = [p for p in linkname.split("/") if p not in ("", ".")]
+    named = False
+    for p in parts:
+        if p == "..":
+            if named:
+                return True
+        else:
+            named = True
+    return False
+
+
 def _check_member(m: tarfile.TarInfo, symlinks: set[str]) -> None:
     """Raise :class:`UnsafeArchiveError` unless *m* is a regular file,
     directory, or a link that stays inside the directory. *symlinks* holds the
-    symbolic links seen so far: no member may sit below one."""
+    symbolic links seen so far: no member may sit below one or bear its name."""
     name = m.name
     if not name or "\x00" in name:
         raise UnsafeArchiveError(f"path traversal blocked: {name!r}")
@@ -66,23 +91,29 @@ def _check_member(m: tarfile.TarInfo, symlinks: set[str]) -> None:
     for i in range(1, len(parts)):
         if "/".join(parts[:i]) in symlinks:
             raise UnsafeArchiveError(f"path traversal blocked: {name} below a symbolic link")
+    if rel in symlinks:
+        raise UnsafeArchiveError(f"path traversal blocked: {name} repeats a symbolic link's name")
     if m.isdir() or m.isreg():
         return
     if m.issym():
         target = posixpath.join(posixpath.dirname(rel), m.linkname)
-        if not m.linkname or "\x00" in m.linkname or os.path.isabs(m.linkname) or _escapes(target):
+        if _bad_link_target(m.linkname) or _escapes(target):
             raise UnsafeArchiveError(f"link target escapes: {name} -> {m.linkname}")
         symlinks.add(rel)
         return
     if m.islnk():
         target = posixpath.normpath(m.linkname)
-        if not m.linkname or "\x00" in m.linkname or os.path.isabs(m.linkname) or _escapes(target):
+        if _bad_link_target(m.linkname) or _escapes(target):
             raise UnsafeArchiveError(f"link target escapes: {name} -> {m.linkname}")
+        src = _parts(target)
+        if any("/".join(src[:i]) in symlinks for i in range(1, len(src) + 1)):
+            raise UnsafeArchiveError(f"link source below a symbolic link: {name} -> {m.linkname}")
         return
     raise UnsafeArchiveError(f"special file not allowed: {name}")
 
 
 _HAS_DATA_FILTER = hasattr(tarfile, "data_filter")
+_LINKS_NEED = "Python 3.11.4 or later (tarfile extraction filters)"
 
 
 def _keep_dir_mode(member: tarfile.TarInfo, dest: str) -> tarfile.TarInfo | None:
@@ -100,12 +131,15 @@ def _extract(archive: Path, dest: Path) -> None:
     checked before any is written. Python 3.12 and 3.11.4 and later also
     extract through the stdlib ``data`` filter (no setuid bits, no
     group/other write, no ownership); on 3.11.0 to 3.11.3, which have no
-    filters, the same bits are cleared here."""
+    filters, the same bits are cleared here and any link member is refused:
+    their extraction writes through links already on disk."""
     with tarfile.open(archive, "r:gz") as tar:
         members = tar.getmembers()
         symlinks: set[str] = set()
         for m in members:
             _check_member(m, symlinks)
+            if not _HAS_DATA_FILTER and (m.issym() or m.islnk()):
+                raise UnsafeArchiveError(f"link member needs {_LINKS_NEED}: {m.name}")
         if _HAS_DATA_FILTER:
             tar.extractall(dest, members=members, filter=_keep_dir_mode)
             return
@@ -124,6 +158,8 @@ def _add_tree(tar: tarfile.TarFile, root: Path) -> None:
         info = tar.gettarinfo(str(path), arcname)
         if info is None or not (info.isdir() or info.isreg() or info.issym()):
             raise OSError(f"unsupported file type: {path}")
+        if info.issym() and not _HAS_DATA_FILTER:
+            raise OSError(f"symbolic link needs {_LINKS_NEED}, or restore refuses it: {path}")
         info.mtime = int(info.mtime)  # no pax record for a fractional time
         if info.isreg():
             with path.open("rb") as f:
