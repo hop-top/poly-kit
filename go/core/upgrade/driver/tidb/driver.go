@@ -4,6 +4,7 @@ package tidb
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"regexp"
 
@@ -27,9 +28,12 @@ type Driver struct {
 	db    *sql.DB
 	name  string
 	table string
+	owned bool // db was opened by New; Close closes it
 }
 
 // New opens a TiDB/MySQL connection and ensures the version table exists.
+// The driver owns that connection pool and Close closes it. To share the
+// application's pool, use NewWithDB.
 func New(dsn string, table string, opts ...Option) (*Driver, error) {
 	if err := validateTable(table); err != nil {
 		return nil, err
@@ -43,25 +47,47 @@ func New(dsn string, table string, opts ...Option) (*Driver, error) {
 		return nil, fmt.Errorf("tidb upgrade: ping: %w", err)
 	}
 
-	d := &Driver{
-		db:    db,
-		name:  "tidb",
-		table: table,
-	}
+	d := &Driver{db: db, name: "tidb", table: table, owned: true}
 	for _, o := range opts {
 		o(d)
 	}
+	if err := d.ensureTable(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return d, nil
+}
 
+// NewWithDB builds a driver on the caller's handle and ensures the version
+// table exists. It neither opens nor closes db: Close leaves it open, and
+// the caller closes it. Lock takes one extra connection from db for the
+// whole run, so db must allow at least two open connections.
+func NewWithDB(db *sql.DB, table string, opts ...Option) (*Driver, error) {
+	if db == nil {
+		return nil, errors.New("tidb upgrade: nil db")
+	}
+	if err := validateTable(table); err != nil {
+		return nil, err
+	}
+	d := &Driver{db: db, name: "tidb", table: table}
+	for _, o := range opts {
+		o(d)
+	}
+	if err := d.ensureTable(); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+func (d *Driver) ensureTable() error {
 	ddl := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 		schema_name VARCHAR(255) PRIMARY KEY,
 		version VARCHAR(255) NOT NULL DEFAULT ''
 	)`, d.table)
-	if _, err := db.Exec(ddl); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("tidb upgrade: migrate: %w", err)
+	if _, err := d.db.Exec(ddl); err != nil {
+		return fmt.Errorf("tidb upgrade: migrate: %w", err)
 	}
-
-	return d, nil
+	return nil
 }
 
 // Option configures a TiDB driver.
@@ -113,10 +139,17 @@ func (d *Driver) Backup(dest string) error { return upgrade.ErrBackupUnsupported
 // a rollback that needs it ends as upgrade.ErrNotRestored.
 func (d *Driver) Restore(src string) error { return upgrade.ErrBackupUnsupported }
 
-// Close releases the underlying database connection.
-func (d *Driver) Close() error { return d.db.Close() }
+// Close closes the database handle when New opened it. A handle given to
+// NewWithDB belongs to the caller and stays open.
+func (d *Driver) Close() error {
+	if !d.owned {
+		return nil
+	}
+	return d.db.Close()
+}
 
 var (
 	_ upgrade.SchemaDriver  = (*Driver)(nil)
+	_ upgrade.Locker        = (*Driver)(nil)
 	_ upgrade.VersionStorer = (*Driver)(nil)
 )

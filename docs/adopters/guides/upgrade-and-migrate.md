@@ -126,7 +126,7 @@ Shipped drivers (details in the
 | Config files | `driver/configfile` | `New(paths...)` |
 | Data directory | `driver/fsdir` | `New(name, dirPath)` |
 | SQLite file | `driver/sqlite` | `New(dbPath, opts...)`, `WithDB(db)` to use your handle |
-| Shared TiDB/MySQL | `driver/tidb` | `New(dsn, table, opts...)` (no backup: `ErrBackupUnsupported`) |
+| Shared TiDB/MySQL | `driver/tidb` | `New(dsn, table, opts...)` or `NewWithDB(db, table, opts...)`; locks with `GET_LOCK`, needs a pool of 2 or more (no backup: `ErrBackupUnsupported`) |
 | Shared PostgreSQL | `driver/postgres` | `New(db, table, opts...)` over your `*sql.DB`; advisory lock (needs two or more connections, no transaction-mode pooler); no backup: `ErrBackupUnsupported` |
 
 The driver's `Name()` is the key that ties migrations to it
