@@ -142,7 +142,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ steps.pins.outputs.node }}
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           version: ${{ steps.pins.outputs.pnpm }}
       - run: pnpm install --frozen-lockfile --ignore-scripts
@@ -241,7 +241,7 @@ jobs:
         with:
           node-version: ${{ steps.pins.outputs.node }}
       # buf only; lint, format and generate run inside `make proto-check`.
-      - uses: bufbuild/buf-action@85aebf73123b5c15fd5528aaecbf9129cddf7fa7 # v1.6.0
+      - uses: bufbuild/buf-action@37ac33d8960807670a6e9719080e885197b09cc6 # v1.7.0
         with:
           version: ${{ steps.pins.outputs.buf }}
           setup_only: true
@@ -326,7 +326,7 @@ jobs:
           # History for the merge-base of the change; the pre-push hook
           # suite also diffs HEAD against earlier commits.
           fetch-depth: 0
-      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+      - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
         with:
           version: 2026.10.8
           install_args: go bats shellcheck
@@ -430,7 +430,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ steps.pins.outputs.node }}
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           version: ${{ steps.pins.outputs.pnpm }}
       - run: pnpm install --frozen-lockfile --ignore-scripts
@@ -455,7 +455,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22.12'  # toolchain-parity: allow (engines.node floor of sdk/ts and ts-kit-engine)
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           version: ${{ steps.pins.outputs.pnpm }}
       - run: pnpm install --frozen-lockfile --ignore-scripts
@@ -991,7 +991,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ steps.pins.outputs.node }}
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           version: ${{ steps.pins.outputs.pnpm }}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -1117,6 +1117,6 @@ jobs:
   ci-ok:
     if: always()
     needs: [changes, go-lint, ts-lint, py-lint, rs-lint, repo-lint, bats-tests, templates-e2e, go-test, go-race, ts-test, ts-node-floor, py-test, py-floor, rs-test, rs-engine-test, rs-toolchains, rs-wasm, rs-mobile, rs-features, php-test, parity, nightly-report]
-    uses: hop-top/.github/.github/workflows/ci-gate.yml@d4cd3ec6e4499b8828614eb84a8f56f71b3688db # main after hop-top/.github#112; re-pin to the release that ships it
+    uses: hop-top/.github/.github/workflows/ci-gate.yml@895393467cd6c819fb07a2ad88ca3e60e620be9a # v0.20.0
     with:
       needs: ${{ toJSON(needs) }}
