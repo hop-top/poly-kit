@@ -22,6 +22,7 @@ go test ./go/core/upgrade/ -run '^TestConformanceUpgrade'
 cargo test --features upgrade --test upgrade_conformance   # from sdk/rs
 pytest tests/test_upgrade_conformance.py                    # from sdk/py
 pnpm vitest run src/upgrade/conformance.test.ts            # from sdk/ts
+vendor/bin/phpunit tests/Upgrade/UpgradeConformanceTest.php   # from sdk/experimental/php
 ```
 
 ## Contract
@@ -50,7 +51,8 @@ refused `set_version` leaves the file at the new version.
 
 Rust has no default registry, so its runner treats every scenario as `registry: own`. Equal versions have
 no defined order (Go sorts unstably), so no vector holds a tie. Runners are strict:
-unknown fields, a `version` other than `v1` and a corpus file no runner consumes all fail the run.
+unknown fields, a `version` other than `v1` and a corpus file no runner consumes all fail the run. A port that has not
+ported a file yet lists it in its runner as pending by name, with a reason, until it consumes it.
 
 ## Runners
 
@@ -60,6 +62,7 @@ unknown fields, a `version` other than `v1` and a corpus file no runner consumes
 | Rust | `sdk/rs/tests/upgrade_conformance.rs` |
 | Python | `sdk/py/tests/test_upgrade_conformance.py` (`versions.json`, `document.json`; `migrator.json` listed as pending) |
 | TypeScript | `sdk/ts/src/upgrade/conformance.test.ts`: `versions.json`, `document.json`; `migrator.json` listed pending |
+| PHP | `sdk/experimental/php/tests/Upgrade/UpgradeConformanceTest.php` (`migrator.json` listed as pending) |
 
 ## See also
 

@@ -556,7 +556,7 @@ test-parity-statemachine: ## statemachine-v1 conformance corpus (Go and Rust run
 
 # Versioned state migrations: version order, pending selection, and the
 # runner's backup, apply, rollback and prune sequence on a recording driver.
-test-parity-upgrade: ## upgrade-v1 conformance corpus (Go, Rust, Python and TypeScript runners)
+test-parity-upgrade: ## upgrade-v1 conformance corpus (Go, Rust, Python, TypeScript and PHP runners)
 	@echo "==> upgrade-v1 conformance: Go"
 	go test ./go/core/upgrade/ -run '^TestConformanceUpgrade' -count=1
 	@echo "==> upgrade-v1 conformance: Rust"
@@ -565,6 +565,12 @@ test-parity-upgrade: ## upgrade-v1 conformance corpus (Go, Rust, Python and Type
 	cd sdk/py && uv sync --all-extras -q && uv run pytest tests/test_upgrade_conformance.py
 	@echo "==> upgrade-v1 conformance: TypeScript"
 	cd sdk/ts && pnpm vitest run src/upgrade/conformance.test.ts
+	@if command -v php >/dev/null 2>&1 && command -v composer >/dev/null 2>&1; then \
+		echo "==> upgrade-v1 conformance: PHP"; \
+		cd sdk/experimental/php && composer install --no-progress --quiet && vendor/bin/phpunit tests/Upgrade/UpgradeConformanceTest.php; \
+	else \
+		echo "==> upgrade-v1 conformance: PHP toolchain not present, skipping (experimental SDK)"; \
+	fi
 
 # After a cobra bump: rewrite the completion-v1 script goldens and the
 # Rust and TS script templates from the cobra version in go.mod, then run

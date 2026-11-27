@@ -1,0 +1,57 @@
+# Upgrade
+
+## What it answers
+
+In what order do versioned migrations run, which are pending between a stored and a target version,
+and how does one JSON document migrate by its own version field? `Semver` orders versions leniently,
+`Registry` holds `Migration`s, `DocumentMigrator` chains `DocStep`s over an in-memory document. The
+`Migrator` (backup, apply, rollback) and drivers are not ported yet; self-update (check, download,
+replace) stays Go-only.
+
+## Use it when
+
+- you register schema migrations and need the pending ones: `Registry::default()->pending(...)`
+- a JSON document carries an integer version and must be brought to the latest shape
+- you compare versions the way kit does, not the way `version_compare` does: `Semver::compare()`
+
+## Quick start
+
+```php
+// after require vendor/autoload.php
+use HopTop\Kit\Upgrade\{DocStep, DocumentMigrator, Migration, Registry, Semver};
+
+$up = static function (): void {};
+$reg = new Registry();
+$reg->register(new Migration('1.2.0', 'db', $up));
+$reg->register(new Migration('1.1.0', 'db', $up));
+echo count($reg->pending('db', '1.0.0', '1.2.0')), "\n"; // 2, ascending
+
+echo Semver::compare('v1.9.0', '1.10.0'), "\n"; // -1
+
+$rename = new DocStep(1, 2, static function (array $doc): array {
+    $doc['title'] = $doc['name'];
+    unset($doc['name']);
+
+    return $doc;
+}, note: 'rename name to title');
+$r = DocumentMigrator::migrate('{"version":1,"name":"x"}', [$rename]);
+echo $r->document, "\n"; // {"title":"x","version":2}
+```
+
+## Contract
+
+- Versions: a leading `v` and `+build` are dropped; major, minor and patch are the leading digits of
+  their part (missing or non-numeric is 0); a release sorts above its pre-releases
+- `pending($schema, $from, $to)`: `from < version <= to`, ascending, versions as registered
+- Documents: steps chain by `from`, never downgrade, refuse gaps, a missing or non-integer version
+  (unless `missingIsZero`) and malformed steps; on error the input is untouched
+- Errors extend `UpgradeException`: `DocNewerException`, `DocVersionException`, `DocGapException`,
+  `DocApplyException`, `DocInvalidException`, and `VerifyException` for a failed verify
+- An empty JSON object inside a document is an empty `stdClass`, so it re-encodes as `{}`; objects whose
+  keys are `0..n-1` decode as lists. Integers beyond `PHP_INT_MAX` are floats
+- Parity: [`contracts/upgrade-v1`](../../../../../contracts/upgrade-v1/README.md), `versions.json` and
+  `document.json`, run by `tests/Upgrade/UpgradeConformanceTest.php`; `migrator.json` is listed there as pending
+
+## See also
+
+- [Go reference: `go/core/upgrade`](../../../../../go/core/upgrade/README.md)
