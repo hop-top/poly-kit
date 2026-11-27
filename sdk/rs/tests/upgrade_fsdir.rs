@@ -312,6 +312,123 @@ fn traversal_is_rejected_and_the_original_survives() {
     }
 }
 
+/// Hard-link members: the source must be a regular file reached through
+/// real directories. `d -> .` and `s -> d/..` look inside the tree
+/// lexically but `s` really is the restore target's parent, so the
+/// hard link `leak` would pull `outside.txt` into the tree; the later
+/// regular file `s` replaces the link the final scan would have caught.
+#[test]
+fn hard_link_source_outside_the_tree_is_refused() {
+    use std::os::unix::fs::MetadataExt;
+    use EntryType::{Link, Regular, Symlink};
+    let tmp = tempfile::tempdir().unwrap();
+    let area = tmp.path().join("area");
+    let dir = area.join("mydata");
+    write(&dir.join("keep.txt"), "original", 0o600);
+    let outside = area.join("outside.txt");
+    write(&outside, "secret", 0o600);
+
+    // The path the archive relies on does reach `outside.txt`: from a
+    // staging directory beside the target, `s -> d/..` is `area`.
+    let probe = area.join("probe");
+    mkdir(&probe);
+    std::os::unix::fs::symlink(".", probe.join("d")).unwrap();
+    std::os::unix::fs::symlink("d/..", probe.join("s")).unwrap();
+    assert_eq!(
+        fs::read_to_string(probe.join("s/outside.txt")).unwrap(),
+        "secret"
+    );
+    fs::remove_dir_all(&probe).unwrap();
+
+    let bk = tmp.path().join("bk");
+    fs::create_dir_all(&bk).unwrap();
+    evil_archive(
+        &bk,
+        &[
+            ("d", Symlink, ".", ""),
+            ("s", Symlink, "d/..", ""),
+            ("leak", Link, "s/outside.txt", ""),
+            ("s", Regular, "", "plain"),
+        ],
+    );
+
+    let err = FsDirDriver::new("mydata", &dir)
+        .restore(&bk)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("blocked") || err.contains("escapes"), "{err}");
+    assert_eq!(
+        tree(&dir),
+        vec![("keep.txt".into(), "file original".into())]
+    );
+    let mut left: Vec<_> = fs::read_dir(&area)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    left.sort();
+    assert_eq!(left, ["mydata", "outside.txt"], "no staging left");
+    assert_eq!(
+        fs::metadata(&outside).unwrap().nlink(),
+        1,
+        "outside.txt was hard-linked"
+    );
+}
+
+/// A hard link whose source is itself a symlink is refused, whatever it
+/// points at.
+#[test]
+fn hard_link_to_a_symlink_is_refused() {
+    use EntryType::{Link, Regular, Symlink};
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("mydata");
+    write(&dir.join("keep.txt"), "original", 0o600);
+    let bk = tmp.path().join("bk");
+    fs::create_dir_all(&bk).unwrap();
+    evil_archive(
+        &bk,
+        &[
+            ("a", Regular, "", "x"),
+            ("l", Symlink, "a", ""),
+            ("h", Link, "l", ""),
+        ],
+    );
+    let err = FsDirDriver::new("mydata", &dir)
+        .restore(&bk)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("blocked") || err.contains("escapes"), "{err}");
+    assert_eq!(
+        tree(&dir),
+        vec![("keep.txt".into(), "file original".into())]
+    );
+}
+
+/// A hard link to a regular file inside the tree (what tar makes of
+/// hard-linked files) restores as a hard link.
+#[test]
+fn hard_link_to_a_file_in_the_tree_is_kept() {
+    use std::os::unix::fs::MetadataExt;
+    use EntryType::{Directory, Link, Regular};
+    let tmp = tempfile::tempdir().unwrap();
+    let bk = tmp.path().join("bk");
+    fs::create_dir_all(&bk).unwrap();
+    evil_archive(
+        &bk,
+        &[
+            ("sub", Directory, "", ""),
+            ("sub/a.txt", Regular, "", "a"),
+            ("b.txt", Link, "sub/a.txt", ""),
+        ],
+    );
+    let dir = tmp.path().join("mydata");
+    FsDirDriver::new("mydata", &dir).restore(&bk).unwrap();
+    let (a, b) = (
+        fs::metadata(dir.join("sub/a.txt")).unwrap(),
+        fs::metadata(dir.join("b.txt")).unwrap(),
+    );
+    assert_eq!((a.ino(), a.nlink()), (b.ino(), 2));
+}
+
 /// A name that merely starts with dots is a file name, not a traversal
 /// (Go's prefix test rejected it).
 #[test]
