@@ -65,8 +65,12 @@ func (d *Driver) SetVersion(version string) error {
 	return nil
 }
 
-// Backup creates a tar.gz archive of the directory in dest.
-func (d *Driver) Backup(dest string) error {
+// Backup creates a tar.gz archive of the directory in dest. Only
+// directories and regular files are archived: a symbolic link, device,
+// fifo or socket fails the backup, naming the path, because Restore
+// recreates nothing else. The archive is written beside its final name and
+// renamed into place, so a failed backup leaves nothing in dest.
+func (d *Driver) Backup(dest string) (err error) {
 	if err := os.MkdirAll(dest, 0o750); err != nil {
 		return fmt.Errorf("create backup dir: %w", err)
 	}
@@ -76,21 +80,40 @@ func (d *Driver) Backup(dest string) error {
 	}
 
 	archivePath := filepath.Join(dest, d.name+".tar.gz")
-	f, err := os.Create(archivePath)
+	tmpPath := archivePath + ".tmp"
+	f, err := os.Create(tmpPath)
 	if err != nil {
 		return fmt.Errorf("create archive: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err != nil {
+			_ = os.Remove(tmpPath)
+		}
+	}()
 
 	gw := gzip.NewWriter(f)
-	defer gw.Close()
-
 	tw := tar.NewWriter(gw)
-	defer tw.Close()
+	err = d.writeTree(tw)
+	// Close in order; keep the first failure.
+	for _, closeFn := range []func() error{tw.Close, gw.Close, f.Close} {
+		if cerr := closeFn(); err == nil {
+			err = cerr
+		}
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, archivePath)
+}
 
+func (d *Driver) writeTree(tw *tar.Writer) error {
 	return filepath.Walk(d.dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+
+		if !info.IsDir() && !info.Mode().IsRegular() {
+			return fmt.Errorf("unsupported file type %s: %s", fileKind(info.Mode()), path)
 		}
 
 		rel, err := filepath.Rel(d.dirPath, path)
@@ -121,6 +144,21 @@ func (d *Driver) Backup(dest string) error {
 		_, err = io.Copy(tw, file)
 		return err
 	})
+}
+
+// fileKind names a non-regular file mode for an error message.
+func fileKind(m os.FileMode) string {
+	switch {
+	case m&os.ModeSymlink != 0:
+		return "symbolic link"
+	case m&os.ModeNamedPipe != 0:
+		return "named pipe"
+	case m&os.ModeSocket != 0:
+		return "socket"
+	case m&os.ModeDevice != 0:
+		return "device"
+	}
+	return m.Type().String()
 }
 
 // Restore removes the current directory and extracts the archive.
