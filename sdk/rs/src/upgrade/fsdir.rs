@@ -307,7 +307,14 @@ fn extract(archive: &Path, root: &Path) -> Result<(), BoxError> {
                     fs_util::create_dir_all(p)?;
                 }
                 if ty == EntryType::Link {
-                    let from = root.join(clean_name(&link)?);
+                    // The source must be a regular file reached through real
+                    // directories: a link in its path could point outside.
+                    let rel_from = clean_name(&link)?;
+                    parents_are_real(root, &rel_from)?;
+                    let from = root.join(&rel_from);
+                    if !fs::symlink_metadata(&from).is_ok_and(|m| m.is_file()) {
+                        return Err(format!("link escapes directory: {}", name.display()).into());
+                    }
                     remove_existing(&target)?;
                     fs::hard_link(&from, &target)?;
                 } else {
