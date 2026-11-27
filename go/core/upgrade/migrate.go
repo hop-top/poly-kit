@@ -198,6 +198,9 @@ func (m *Migrator) backups(schema string) *backupOrchestrator {
 // the version the run that took it started at (saved beside the backup).
 // A backup without that record (taken before it was saved) is still
 // restored, but the version is left as it is and the error says so.
+// A driver that is a Locker is locked while its schema is rolled back
+// (Lock, backup lookup, Restore, version record, unlock; a Lock error
+// fails that schema's rollback, "lock: ..."). The version is not read.
 // A schema with no backup, or whose Restore returns ErrBackupUnsupported,
 // fails with an error matching ErrNotRestored and ErrBackupUnsupported;
 // nothing is recorded for it.
@@ -207,29 +210,64 @@ func (m *Migrator) RollbackLatest() error {
 		return fmt.Errorf("rollback: only available in manual rollback mode")
 	}
 	for _, d := range m.drivers {
-		latest, err := m.backups(d.Name()).latestBackup()
-		if err != nil {
+		if err := m.rollbackLatest(d); err != nil {
 			return fmt.Errorf("rollback %s: %w", d.Name(), err)
-		}
-		preRun, recorded, err := readPreRun(latest)
-		if err != nil {
-			return fmt.Errorf("rollback %s: %w", d.Name(), err)
-		}
-		if err := d.Restore(latest); err != nil {
-			if errors.Is(err, ErrBackupUnsupported) {
-				err = notRestored{text: errRestoreUnsupported, cause: err}
-			}
-			return fmt.Errorf("rollback %s: %w", d.Name(), err)
-		}
-		if !recorded {
-			return fmt.Errorf("rollback %s: restored %s but it records no pre-run version; "+
-				"version left as is", d.Name(), filepath.Base(latest))
-		}
-		if err := m.setVersion(d, preRun); err != nil {
-			return fmt.Errorf("rollback %s: %w", d.Name(), recordError(preRun, err))
 		}
 	}
 	return nil
+}
+
+// rollbackLatest restores one driver from its latest backup and records
+// the version saved beside it, under the driver's lock when it has one.
+// The version is not read: the lock is taken, then the backup looked up.
+func (m *Migrator) rollbackLatest(d SchemaDriver) error {
+	release, err := lockDriver(context.Background(), d)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	latest, err := m.backups(d.Name()).latestBackup()
+	if err != nil {
+		return err
+	}
+	preRun, recorded, err := readPreRun(latest)
+	if err != nil {
+		return err
+	}
+	if err := d.Restore(latest); err != nil {
+		if errors.Is(err, ErrBackupUnsupported) {
+			err = notRestored{text: errRestoreUnsupported, cause: err}
+		}
+		return err
+	}
+	if !recorded {
+		return fmt.Errorf("restored %s but it records no pre-run version; "+
+			"version left as is", filepath.Base(latest))
+	}
+	if err := m.setVersion(d, preRun); err != nil {
+		return recordError(preRun, err)
+	}
+	return nil
+}
+
+// lockDriver takes the driver's lock when it is a Locker and returns what
+// releases it; a failed unlock is logged. A driver that is not a Locker
+// gets a release that does nothing. A Lock error is "lock: <error>".
+func lockDriver(ctx context.Context, d SchemaDriver) (release func(), err error) {
+	l, ok := d.(Locker)
+	if !ok {
+		return func() {}, nil
+	}
+	unlock, err := l.Lock(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("lock: %w", err)
+	}
+	return func() {
+		if err := unlock(); err != nil {
+			log.Printf("warning: unlock %s: %v", d.Name(), err)
+		}
+	}, nil
 }
 
 // Texts of a rollback that restored nothing; ports pin the same words.
@@ -271,17 +309,11 @@ func recordError(version string, err error) error {
 }
 
 func (m *Migrator) runSchema(ctx context.Context, d SchemaDriver) (int, error) {
-	if l, ok := d.(Locker); ok {
-		unlock, err := l.Lock(ctx)
-		if err != nil {
-			return 0, fmt.Errorf("lock: %w", err)
-		}
-		defer func() {
-			if err := unlock(); err != nil {
-				log.Printf("warning: unlock %s: %v", d.Name(), err)
-			}
-		}()
+	release, err := lockDriver(ctx, d)
+	if err != nil {
+		return 0, err
 	}
+	defer release()
 
 	current, err := d.Version()
 	if err != nil {

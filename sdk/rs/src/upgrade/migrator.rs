@@ -453,7 +453,11 @@ impl Migrator {
     /// Restores every driver from its newest backup, then records the
     /// version the run that took it started at (saved beside the
     /// backup). A backup without that record is still restored, but the
-    /// version is left as it is and the error says so. Manual mode only.
+    /// version is left as it is and the error says so. A driver with a
+    /// [`Locker`](super::Locker) is locked for its schema's rollback (lock,
+    /// backup lookup, restore, record, unlock; a lock error is
+    /// `rollback <schema>: lock: <error>`); the version is not read. Manual
+    /// mode only.
     pub fn rollback_latest(&mut self) -> Result<(), MigrateError> {
         if self.auto_rollback {
             return Err(MigrateError::RollbackUnavailable);
@@ -465,6 +469,10 @@ impl Migrator {
                 schema: schema.clone(),
                 source,
             };
+            // Held until the end of this schema's iteration: the backup
+            // lookup, the restore and the version record are under the lock.
+            let _held = Held::acquire(d.as_locker(), &schema, &Context::background(), &*self.warn)
+                .map_err(|e| fail(format!("lock: {e}").into()))?;
             let latest = Backups::new(&data_dir, &schema, self.retention)
                 .latest()
                 .map_err(|e: LatestError| match e {

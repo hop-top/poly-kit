@@ -58,7 +58,7 @@ m.run(&Context::background()).unwrap(); // nothing pending
   (`is_verify`, `is_canceled`), stops the run; in auto mode applied `down`s run newest first on a fresh
   context, each followed by a record of the version before it, else the backup is restored and the starting
   version recorded. A failed verify undoes its own step too. Manual mode keeps the last applied version;
-  `rollback_latest` records the version saved beside the backup. Texts match Go's.
+  `rollback_latest` records the version saved beside the backup, under the driver's lock. Texts match Go's.
 - A `backup` returning `BackupUnsupported` (boxed) runs without a backup: no directory, no prune. A rollback
   needing a restore it cannot run (no backup, or `restore` unsupported) restores nothing:
   `MigrateError::is_not_restored()` (the step's `rollback` is a `NotRestored`), no reverted event, the

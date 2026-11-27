@@ -25,7 +25,7 @@ the vector. Each file carries `version: "v1"` and a `description` of its rules.
 | File, section | Pins |
 |---------------|------|
 | `versions.json` `compare[]` `{a, b, cmp}` | lenient semver order: `v` and build metadata dropped, missing or non-numeric parts 0, pre-release identifier rules; checked both ways |
-| `versions.json` `pending[]` | `from < version <= to` for one schema, ascending, versions as registered |
+| `versions.json` `pending[]` | `from < version <= to` for one schema, ascending, versions as registered; no vector has equal versions (Go sorts them unstably) |
 | `document.json` `scenarios[]` | the in-memory JSON document migrator: chain by version field, refusing newer documents, missing or non-integer versions, gaps, invalid steps, step and verify failures (input untouched), byte-identical when current |
 | `migrator.json` `scenarios[]` | `run`, `rollback_latest` and `status` steps against a recording driver (optionally version-storing, lockable or with unsupported backup or restore): calls in order, error text, history, version files, stored versions, backup directories and their saved starting versions, events, warnings |
 
@@ -34,7 +34,7 @@ migration's `up` and `verify`, before the next `up` (a stopped run leaves the la
 applies only what is left); a failure runs applied `down`s newest first and restores the backup the moment
 one is missing or fails; a failed `verify` (per migration or final) rolls back including the verified step; a
 context canceled between steps stops before the next `up` (rollbacks still run); an explicit data dir
-replaces XDG; an own registry ignores the default one; a prune failure is logged, never fatal; events come in
+replaces XDG; an own registry ignores the default; a prune failure is logged, never fatal; events come in
 order under `kit.core.migration.*`; history keeps migrations a later failure rolled back; a failing first
 `up` rolls nothing back.
 
@@ -47,22 +47,22 @@ mode undoes and records nothing after a failure or a cancel. The starting versio
 in `<backup dir>.version`; `rollback_latest` restores, then records it (without the file: restored, version
 left as it is, the error says so); pruning removes the file too. A failed `set_version` is that
 step's failure (`record <version> failed: <error>`, stage `record`): the rollback includes the step, not in
-`history`; the file, written first, ends at the starting version in auto mode, ahead of the driver in manual.
+`history`; the file, written first, ends at the starting version (auto) or ahead of the driver (manual).
 A scenario's `baseline` map gives the baseline function, run for a store reporting `""` after the read, before
-pending and backup; a non-empty answer is recorded and publishes `baselined`, a failure is `baseline: <error>`. A `lock` driver is locked before its version is read and unlocked after its run ends,
-rollback included, on every path once held; `lock: <error>` means no unlock, `unlock_fail` only logs
-`warning: unlock <schema>: <error>`. Field detail: the `description` in `migrator.json`.
-A driver's `backup_unsupported` or `restore_unsupported` makes that call (still logged) report the sentinel
+pending and backup; a non-empty answer is recorded and publishes `baselined`, a failure is `baseline: <error>`.
+A `lock` driver is locked before its version is read, unlocked after its run (rollback included) on every path
+once held; `lock: <error>` means no unlock, `unlock_fail` only logs `warning: unlock <schema>: <error>`.
+`rollback_latest` locks it too, per schema: `lock`, restore, `set_version`, `unlock`, no `version` read; a lock
+error is `rollback <schema>: lock: <error>`. A driver's `backup_unsupported` or `restore_unsupported` makes that call (still logged) report the sentinel
 (Go `ErrBackupUnsupported`, Rust `BackupUnsupported`). An unsupported backup is no failure: the run goes on,
 leaves no backup directory or `.version` file and prunes nothing for that schema. A rollback needing a
 restore it cannot run (`down` missing or failing, and no backup or `restore` unsupported) restores nothing:
 no `reverted` event, the error ends `(rollback also failed: not restored: no backup was taken)` or `(...: not
 restored: restore unsupported)` (Go `ErrNotRestored`, Rust `is_not_restored`), the version stays at the last
 step still applied. `rollback_latest` fails `no backups found for <schema>` (no backup dir) or `not restored:
-restore unsupported`; no record.
-Rust has no default registry (scenarios run as `registry: own`); no vector holds equal versions (Go sorts
-them unstably). Runners are strict: unknown fields, a `version` other than `v1` and an unconsumed corpus
-file fail the run; an unported file is listed pending by name (Python, TypeScript, PHP: `migrator.json`).
+restore unsupported`; no record. Rust has no default registry (scenarios run as `registry: own`). Runners are strict: unknown fields, a `version`
+other than `v1` and an unconsumed corpus file fail the run; an unported file is listed pending by name (Python,
+TypeScript, PHP: `migrator.json`).
 
 ## Runners
 
