@@ -36,6 +36,48 @@ adapter there and pass `root.ConfigArgs()` through directly. Avoid reading
 repeatable config layers and key overrides, and can collide with Kit's built-in
 flag registration.
 
+## Legacy user config locations
+
+A tool that shipped its own loader before adopting this package can keep
+its users' existing file. List the old locations in order:
+
+```go
+opts := config.OptionsForTool("mytool")
+opts.LegacyUserConfigPaths = []string{
+    config.LegacyDotConfigPath("mytool", "config.json"), // ~/.config/mytool/config.json
+    config.LegacyDotConfigPath("mytool", "config.yaml"),
+}
+opts.OnLegacyConfig = func(used, canonical string) {
+    fmt.Fprintf(os.Stderr, "mytool: reading %s; new location is %s\n", used, canonical)
+}
+```
+
+- Consulted only when no file exists at `UserConfigPath`. The first existing
+  regular file becomes the user layer: same merge, `Migrations`, `PathKeys`
+  (relative values resolve against the legacy file's directory) and
+  `LoadWithOrigins` entries (`File` is the legacy path). Later candidates are
+  not read; when `UserConfigPath` exists, none are.
+- The file may be any format yaml.v3 parses, JSON included.
+- A candidate that is a directory, unreadable or unparseable is an error
+  naming it; the next candidate is not tried.
+- `""` is skipped, `~` and `~/` expand to the home directory, other entries
+  (relative too) are used as written. An empty `UserConfigPath` disables the
+  user layer and the legacy list with it.
+- `OnLegacyConfig(used, canonical)` fires once per `Load`, `LoadWithOrigins`
+  or `Reloadable` reload that uses a legacy file, not from `Get`, `List`,
+  `Set`, `Unset` or path listings.
+- `MigrateOptions.WriteBack` never rewrites a legacy file; the migration
+  still applies in memory.
+- `Set`, `SetValue` and `Unset` on `ScopeUser` write `UserConfigPath`,
+  seeded from the legacy file's content first, so an unset key stays unset.
+  The legacy file is never modified, moved or deleted. Once the canonical
+  file exists it shadows the legacy one.
+- `config.PathsForToolWithLegacy(cwd, tool, legacy)` (or
+  `config.WithLegacyUserPaths(chain, legacy)` for a marker-parameterized
+  chain) lists the candidates as `user-legacy` entries after `user`.
+  `Paths` and `PathsForTool` are unchanged. Project markers have no
+  equivalent.
+
 ## Layer merge rules
 
 Each layer (defaults, files, `-c` overrides) decodes into the same struct

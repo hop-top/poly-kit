@@ -17,7 +17,10 @@ const (
 // ErrEmptyScope is returned when the target scope has no path configured.
 var ErrEmptyScope = errors.New("config: scope path is empty")
 
-// ScopePath returns the file path for the given scope from Options.
+// ScopePath returns the file path for the given scope from Options. It is
+// the write target: for ScopeUser that is always UserConfigPath, never a
+// legacy file (see Options.LegacyUserConfigPaths; Set, SetValue and Unset
+// seed it from the legacy file when only that exists).
 func ScopePath(opts Options, scope Scope) (string, error) {
 	switch scope {
 	case ScopeSystem:

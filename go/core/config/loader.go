@@ -41,7 +41,40 @@ type Options struct {
 	// SystemConfigPath is the path to the system-wide config file (e.g. /etc/tool/config.yaml).
 	SystemConfigPath string
 	// UserConfigPath is the path to the per-user config file (e.g. ~/.config/tool/config.yaml).
+	// It is the canonical user file and the write target for [ScopeUser];
+	// see LegacyUserConfigPaths for fallbacks when it does not exist.
 	UserConfigPath string
+	// LegacyUserConfigPaths lists fallback locations for the user config,
+	// for a tool that shipped its own loader before adopting this package
+	// (an old directory, or a different file name such as config.json).
+	// They are consulted in order only when no file exists at
+	// UserConfigPath; the first existing regular file fills the user layer
+	// exactly as UserConfigPath would (merge, Migrations, PathKeys, origin
+	// recording, which reports that file's real path). The rest are not
+	// read. When UserConfigPath exists they are ignored entirely. A
+	// candidate that exists but is a directory, is unreadable or fails to
+	// parse is an error naming it, never a fall-through. The file may be
+	// any format yaml.v3 reads, JSON included.
+	//
+	// Entries: "" is skipped; "~" and a "~/" prefix expand to the home
+	// directory; any other path, relative included, is used as written
+	// (relative to the process working directory, like UserConfigPath).
+	// An empty UserConfigPath disables the user layer and these with it.
+	// Nil or empty keeps the plain behavior. [LegacyDotConfigPath] builds
+	// the common ~/.config/<tool>/<name> candidate.
+	//
+	// The legacy file is never modified, moved or deleted. A [Set],
+	// [SetValue] or [Unset] on [ScopeUser] while only a legacy file exists
+	// writes the canonical file, seeded from the legacy content first; the
+	// canonical file then shadows the legacy one. A Migrations write-back
+	// (MigrateOptions.WriteBack) is skipped for a legacy file.
+	LegacyUserConfigPaths []string
+	// OnLegacyConfig, when non-nil, is called as (used, canonical) each
+	// time a Load, LoadWithOrigins or Reloadable reload takes the user
+	// layer from a legacy file, after that file merged successfully: once
+	// per call, not once per process. Use it to print a notice. It does
+	// not fire for Get, List, Set, Unset or the Paths* listings.
+	OnLegacyConfig func(used, canonical string)
 	// ProjectConfigPath is the path to the project-level config file (e.g. .tool.yaml).
 	ProjectConfigPath string
 	// ExtraConfigPaths is an ordered list of additional config files merged
@@ -121,7 +154,8 @@ type Options struct {
 // Layer order:
 //
 //	Defaults (struct seed)
-//	  → SystemConfigPath → UserConfigPath → ProjectConfigPath
+//	  → SystemConfigPath → UserConfigPath (or the first existing
+//	    LegacyUserConfigPaths entry when it is absent) → ProjectConfigPath
 //	  → ExtraConfigPaths (in order)
 //	  → EnvOverride callback (if set)
 //	  → Overrides (-c key=value)
@@ -164,13 +198,19 @@ func load(dst any, opts Options, rec *originRec) error {
 		}
 	}
 
+	userPath, userOpts, userLegacy, err := userSlot(opts)
+	if err != nil {
+		return err
+	}
 	slots := []struct {
-		path  string
-		layer LayerName
+		path   string
+		layer  LayerName
+		o      Options
+		legacy bool
 	}{
-		{opts.SystemConfigPath, LayerSystem},
-		{opts.UserConfigPath, LayerUser},
-		{opts.ProjectConfigPath, LayerProject},
+		{opts.SystemConfigPath, LayerSystem, opts, false},
+		{userPath, LayerUser, userOpts, userLegacy},
+		{opts.ProjectConfigPath, LayerProject, opts, false},
 	}
 	for _, s := range slots {
 		path := s.path
@@ -181,10 +221,13 @@ func load(dst any, opts Options, rec *originRec) error {
 		if path == opts.ProjectConfigPath && opts.Project != nil {
 			merge = mergeProjectFile
 		}
-		err := merge(target, path, opts)
+		err := merge(target, path, s.o)
 		if err == nil {
-			if err := recordFile(rec, path, s.layer, opts); err != nil {
+			if err := recordFile(rec, path, s.layer, s.o); err != nil {
 				return err
+			}
+			if s.legacy && opts.OnLegacyConfig != nil {
+				opts.OnLegacyConfig(path, opts.UserConfigPath)
 			}
 			continue
 		}

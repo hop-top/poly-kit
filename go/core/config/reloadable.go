@@ -312,12 +312,17 @@ func (r *Reloadable[T]) publishLoadFailed(opts Options, err error) {
 }
 
 // collectSourcePaths returns the ordered set of file paths Load
-// considered for opts. Empty slots are preserved so subscribers can tell
+// considered for opts; the user slot is the file in use (a legacy file when
+// that is the user layer). Empty slots are preserved so subscribers can tell
 // which layer was unset.
 func collectSourcePaths(opts Options) []string {
+	user, _, err := effectiveUserPath(opts)
+	if err != nil {
+		user = opts.UserConfigPath
+	}
 	out := []string{
 		opts.SystemConfigPath,
-		opts.UserConfigPath,
+		user,
 		opts.ProjectConfigPath,
 	}
 	out = append(out, opts.ExtraConfigPaths...)

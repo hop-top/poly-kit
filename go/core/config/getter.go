@@ -23,7 +23,10 @@ var ErrKeyNotFound = errors.New("config: key not found")
 // Sequences come back as []any and mappings as map[string]any, with the
 // same rules applied to each element.
 func Get(key string, opts Options) (any, error) {
-	paths := layerPaths(opts)
+	paths, err := layerPaths(opts)
+	if err != nil {
+		return nil, fmt.Errorf("config get: %w", err)
+	}
 
 	var result any
 	found := false
@@ -53,6 +56,11 @@ func Get(key string, opts Options) (any, error) {
 }
 
 // layerPaths returns file paths in precedence order (lowest to highest).
-func layerPaths(opts Options) []string {
-	return []string{opts.SystemConfigPath, opts.UserConfigPath, opts.ProjectConfigPath}
+// The user slot is the effective user file (see effectiveUserPath).
+func layerPaths(opts Options) ([]string, error) {
+	user, _, err := effectiveUserPath(opts)
+	if err != nil {
+		return nil, err
+	}
+	return []string{opts.SystemConfigPath, user, opts.ProjectConfigPath}, nil
 }
