@@ -6,7 +6,7 @@
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
 	completion-regen test-parity test-parity-api test-parity-webhook test-parity-authn test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-cli-root test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-oauth-token test-parity-i18n test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-rpc test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-oauth-token test-parity-i18n test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-identity test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
-	test-php test-php-sdk test-php-engine test-py test-py-sdk test-py-engine \
+	test-php test-php-sdk test-php-engine test-py test-py-sdk test-py-engine test-py-upgrade-integration \
 	test-release test-rs test-rs-engine test-rs-wasm test-templates test-ts test-ts-sdk test-ts-engine \
 	test-affected test-bats test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
 	vuln vuln-go vuln-go-binary vuln-osv
@@ -266,6 +266,12 @@ test-py-sdk: ## Python tests: sdk/py
 
 test-py-engine: ## Python tests: engine/sdk/py-kit-engine
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q && uv run pytest
+
+# Needs Docker (a Postgres 16 container, removed afterwards). Not part of
+# test-py: a missing Docker fails here instead of skipping.
+test-py-upgrade-integration: ## Python upgrade postgres driver vs real Postgres (Docker)
+	@command -v docker >/dev/null || { echo "test-py-upgrade-integration: docker is required" >&2; exit 1; }
+	cd sdk/py && uv sync --all-extras -q && uv run pytest -m integration tests/test_upgrade_postgres_integration.py
 
 test-php: test-php-sdk test-php-engine ## PHP tests (phpunit)
 

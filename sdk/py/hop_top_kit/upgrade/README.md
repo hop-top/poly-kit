@@ -2,7 +2,7 @@
 
 ## What it answers
 
-How a Python tool checks for a newer release, orders versions the way kit does, registers versioned migrations, migrates one JSON document by its own version field and runs migrations across schema drivers with a `Migrator`. Wrong module for self-update (download and replace): that half of `go/core/upgrade` is Go-only. Ships the driver protocol and the drivers in [`drivers/`](drivers/README.md): `ConfigFileDriver`, `FsDirDriver` and `SqliteDriver`.
+How a Python tool checks for a newer release, orders versions the way kit does, registers versioned migrations, migrates one JSON document by its own version field and runs migrations across schema drivers with a `Migrator`. Wrong module for self-update (download and replace): that half of `go/core/upgrade` is Go-only. Ships the driver protocol and the drivers in [`drivers/`](drivers/README.md): `ConfigFileDriver`, `FsDirDriver`, `SqliteDriver` and `PostgresDriver`.
 
 ## Use it when
 
@@ -61,7 +61,7 @@ m.run(threading.Event())
 
 ## Neighbours
 
-- Go reference: `go/core/upgrade`; Rust port: [`sdk/rs/src/upgrade`](../../../rs/src/upgrade/README.md)
+- Go reference: `go/core/upgrade` (`driver/postgres` is the Postgres driver's twin); Rust port: [`sdk/rs/src/upgrade`](../../../rs/src/upgrade/README.md)
 
 ## See also
 

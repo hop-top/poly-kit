@@ -11,10 +11,12 @@ Which store holds a schema's version and how it is backed up, restored and locke
 | `ConfigFileDriver` | `ConfigFileDriver(paths, *, name="config", tool="", data_dir=None)` | version file | copies each file under its flattened name; a missing file is skipped |
 | `FsDirDriver` | `FsDirDriver(name, path, *, tool="", data_dir=None)` | version file | `<name>.tar.gz` of the directory; restore swaps a checked copy in |
 | `SqliteDriver` | `SqliteDriver(db_path=None, *, connect=None, name="sqlite", tool="", data_dir=None)` | version file | `VACUUM INTO` snapshot; restore swaps the file, or is unsupported with `connect` |
+| `PostgresDriver` | `PostgresDriver(connect, table, *, name="postgres", lock_poll=0.1, probe_timeout=10.0)` | table row (version storer: no version file) | both raise `BackupUnsupported`; back up outside kit |
 
 - pick `ConfigFileDriver` for YAML/TOML/JSON config a migration rewrites in place
 - pick `FsDirDriver` for a data directory (caches, per-project state)
 - pick `SqliteDriver(db_path)` for a SQLite file, or `SqliteDriver(db_path, connect=engine.raw_connection)` when the app keeps it open through a pool
+- pick `PostgresDriver(connect, table)` when several installs or replicas share one database and must apply each migration once; a Go and a Python migrator on the same `table` and `name` exclude each other
 
 ## Quick start
 
@@ -37,6 +39,9 @@ m.run()
 - `SqliteDriver` backup is `VACUUM INTO` with a bound parameter, via a `.tmp` file renamed into `<dest>/<db file name>`; WAL rows are included. A missing file means nothing to back up; without `db_path` the backup file is `<name>.db`.
 - `SqliteDriver` path only: restore copies the backup beside the file, renames it over, then removes `-wal`, `-shm` and `-journal`; no open handle may exist on the file. With `connect`: backup runs on the connection it returns and never closes it; restore raises `BackupUnsupported`. A connection inside a transaction, or opened with `autocommit=False`, makes backup raise `UpgradeError` and changes nothing.
 - `SqliteDriver` lock: `flock(2)` on `<data dir>/<name>/.lock`, created by the driver; the Go driver locks the same file, so both exclude each other. Windows uses `msvcrt.locking` (untested).
+- `PostgresDriver`: `table` must match `^[a-zA-Z_][a-zA-Z0-9_]{0,63}$` (`ValueError` before any I/O). `connect()` returns a new connection each call; the driver closes only those and never touches any other. SQL uses `%s` (psycopg2, psycopg 3). Table, upsert and lock key `kit-upgrade:<table>:<name>` are those of `go/core/upgrade/driver/postgres`.
+- `PostgresDriver.lock(cancel)` polls `pg_try_advisory_lock` on one dedicated connection until acquired or cancelled (`Canceled`, nothing held), and unlocks with `pg_advisory_unlock` on that connection before releasing it: `close()` on a pooled connection would return it with the session lock still held. A failed unlock calls `invalidate()` when the connection has it (SQLAlchemy), else `close()`.
+- `PostgresDriver` limits: `connect` must supply at least two connections at once (refused at `lock` otherwise, within `probe_timeout`); no transaction-mode pooler in front. Tests: `make test-py-upgrade-integration` (Docker, Postgres 16).
 
 ## Neighbours
 
