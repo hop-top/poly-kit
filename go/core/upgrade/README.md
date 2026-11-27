@@ -38,10 +38,18 @@ goroutine — it never blocks or fails the upgrade flow.
 ## Migrations
 
 `Migrator.Run(ctx)` brings each `SchemaDriver` from its stored version
-to the target: backup, `Up` then `Verify` per pending migration in
-semver order, the `WithVerify` final check, then the version file.
-A failure (`ErrVerify` for checks, `context.Canceled` between steps)
-rolls back: `Down`s newest first, else the backup.
+to the target: backup, then per pending migration in semver order `Up`,
+`Verify` and a record of that migration's version, then the `WithVerify`
+final check. A crash between an `Up` and its record re-applies that one
+migration on the next run: keep migrations idempotent. A failure
+(`ErrVerify` for checks, `context.Canceled` between steps, a refused
+`SetVersion`) rolls back: `Down`s newest first, each followed by a
+record of the version before it, else the backup, then a record of the
+starting version. Manual mode leaves the last applied version; the
+backup keeps the starting version beside it (`pre-<v>.version`) so
+`RollbackLatest` records it after `Restore`. A driver implementing
+`VersionStorer` keeps its own version: only `SetVersion` is called,
+no version file is written.
 
 | Option | Effect |
 |--------|--------|

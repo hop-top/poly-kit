@@ -153,7 +153,8 @@ fn failure_runs_down_of_applied_migrations() {
     );
     let log = entries(&log);
     assert_eq!(&log[1..], ["up 1.1.0", "down 1.1.0"]);
-    assert_eq!(read_version_file_in(tmp.path(), "testdb").unwrap(), "");
+    // 1.1.0 was recorded after its up; the rollback recorded the start.
+    assert_eq!(read_version_file_in(tmp.path(), "testdb").unwrap(), "1.0.0");
 }
 
 #[test]
@@ -455,7 +456,9 @@ fn e2e_prune_keeps_retention_backups() {
     m.run(&bg()).unwrap();
     let mut names: Vec<_> = fs::read_dir(data.join("backups/db"))
         .unwrap()
-        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .map(|e| e.unwrap())
+        .filter(|e| e.file_type().unwrap().is_dir())
+        .map(|e| e.file_name().into_string().unwrap())
         .collect();
     names.sort();
     assert_eq!(names, ["pre-1.3.0", "pre-2.0.0", "pre-3.0.0"]);

@@ -62,6 +62,9 @@ type upgradeConfDriver struct {
 	RestoreFail    string `json:"restore_fail"`
 	VersionFail    string `json:"version_fail"`
 	SetVersionFail string `json:"set_version_fail"`
+	// SetVersionFailFor limits SetVersionFail to that one version.
+	SetVersionFailFor string `json:"set_version_fail_for"`
+	StoresVersion     bool   `json:"stores_version"`
 }
 
 type upgradeConfMigration struct {
@@ -89,35 +92,43 @@ type upgradeConfStatus struct {
 }
 
 type upgradeConfStep struct {
-	Op       string               `json:"op"`
-	Canceled bool                 `json:"canceled"`
-	Events   *[]upgradeConfEvent  `json:"events"`
-	Warnings []string             `json:"warnings"`
-	Error    *string              `json:"error"`
-	Calls    *[]string            `json:"calls"`
-	History  *[]AppliedMigration  `json:"history"`
-	Versions map[string]string    `json:"versions"`
-	Backups  map[string][]string  `json:"backups"`
-	Status   *[]upgradeConfStatus `json:"status"`
+	Op       string              `json:"op"`
+	Canceled bool                `json:"canceled"`
+	Events   *[]upgradeConfEvent `json:"events"`
+	Warnings []string            `json:"warnings"`
+	Error    *string             `json:"error"`
+	Calls    *[]string           `json:"calls"`
+	History  *[]AppliedMigration `json:"history"`
+	Versions map[string]string   `json:"versions"`
+	Backups  map[string][]string `json:"backups"`
+	// Stored is each driver's Version() after the step.
+	Stored map[string]string `json:"stored"`
+	// PreRunVersions is, per schema, the pre-run version saved beside
+	// each backup directory (exactly these, none else).
+	PreRunVersions map[string]map[string]string `json:"pre_run_versions"`
+	// NoVersionDir lists schemas that must have no version directory.
+	NoVersionDir []string             `json:"no_version_dir"`
+	Status       *[]upgradeConfStatus `json:"status"`
 }
 
 type upgradeConfMigrator struct {
 	upgradeConfHeader
 	Scenarios []struct {
-		Name              string                 `json:"name"`
-		Target            string                 `json:"target"`
-		ManualRollback    bool                   `json:"manual_rollback"`
-		Retention         int                    `json:"retention"`
-		Drivers           []upgradeConfDriver    `json:"drivers"`
-		Migrations        []upgradeConfMigration `json:"migrations"`
-		Backups           map[string][]string    `json:"backups"`
-		LockedBackups     map[string][]string    `json:"locked_backups"`
-		FinalVerify       bool                   `json:"final_verify"`
-		FinalVerifyFail   string                 `json:"final_verify_fail"`
-		DataDir           bool                   `json:"data_dir"`
-		Registry          string                 `json:"registry"`
-		DefaultMigrations []upgradeConfMigration `json:"default_migrations"`
-		Steps             []upgradeConfStep      `json:"steps"`
+		Name              string                       `json:"name"`
+		Target            string                       `json:"target"`
+		ManualRollback    bool                         `json:"manual_rollback"`
+		Retention         int                          `json:"retention"`
+		Drivers           []upgradeConfDriver          `json:"drivers"`
+		Migrations        []upgradeConfMigration       `json:"migrations"`
+		Backups           map[string][]string          `json:"backups"`
+		RecordedBackups   map[string]map[string]string `json:"recorded_backups"`
+		LockedBackups     map[string][]string          `json:"locked_backups"`
+		FinalVerify       bool                         `json:"final_verify"`
+		FinalVerifyFail   string                       `json:"final_verify_fail"`
+		DataDir           bool                         `json:"data_dir"`
+		Registry          string                       `json:"registry"`
+		DefaultMigrations []upgradeConfMigration       `json:"default_migrations"`
+		Steps             []upgradeConfStep            `json:"steps"`
 	} `json:"scenarios"`
 }
 
@@ -229,9 +240,14 @@ func (d *recordingDriver) Version() (string, error) {
 	return d.upgradeConfDriver.Version, nil
 }
 
+// storingDriver is a recordingDriver that keeps its own version.
+type storingDriver struct{ *recordingDriver }
+
+func (storingDriver) StoresVersion() bool { return true }
+
 func (d *recordingDriver) SetVersion(v string) error {
 	d.record(d.Name() + " set_version " + v)
-	if d.SetVersionFail != "" {
+	if d.SetVersionFail != "" && (d.SetVersionFailFor == "" || d.SetVersionFailFor == v) {
 		return errors.New(d.SetVersionFail)
 	}
 	d.upgradeConfDriver.Version = v
@@ -259,10 +275,38 @@ func listBackups(t *testing.T, base, schema string) []string {
 	}
 	names := []string{}
 	for _, e := range entries {
-		names = append(names, e.Name())
+		if e.IsDir() {
+			names = append(names, e.Name())
+		}
 	}
 	sort.Strings(names)
 	return names
+}
+
+// listPreRun reads the pre-run version saved beside each backup
+// directory: <backup dir>.version.
+func listPreRun(t *testing.T, base, schema string) map[string]string {
+	t.Helper()
+	dir := filepath.Join(base, "backups", schema)
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]string{}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]string{}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".version") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out[strings.TrimSuffix(e.Name(), ".version")] = string(raw)
+	}
+	return out
 }
 
 func TestConformanceUpgradeMigrator(t *testing.T) {
@@ -307,6 +351,20 @@ func TestConformanceUpgradeMigrator(t *testing.T) {
 							t.Fatal(err)
 						}
 						t.Cleanup(func() { _ = os.Chmod(inner, 0o750) })
+					}
+				}
+			}
+			for schema, recorded := range sc.RecordedBackups {
+				dir := filepath.Join(base, "backups", schema)
+				if err := os.MkdirAll(dir, 0o750); err != nil {
+					t.Fatal(err)
+				}
+				for name, pre := range recorded {
+					if err := os.MkdirAll(filepath.Join(dir, name), 0o750); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(dir, name+".version"), []byte(pre), 0o600); err != nil {
+						t.Fatal(err)
 					}
 				}
 			}
@@ -395,7 +453,12 @@ func TestConformanceUpgradeMigrator(t *testing.T) {
 			})))
 			m := NewMigrator(upgradeConfTool, sc.Target, opts...)
 			for _, dc := range sc.Drivers {
-				m.AddDriver(&recordingDriver{upgradeConfDriver: dc, record: record})
+				rd := &recordingDriver{upgradeConfDriver: dc, record: record}
+				if dc.StoresVersion {
+					m.AddDriver(storingDriver{rd})
+				} else {
+					m.AddDriver(rd)
+				}
 			}
 
 			var logBuf bytes.Buffer
@@ -494,6 +557,29 @@ func TestConformanceUpgradeMigrator(t *testing.T) {
 				for schema, want := range st.Backups {
 					if got := listBackups(t, base, schema); !reflect.DeepEqual(got, want) {
 						t.Errorf("step %d: %s backups = %q, want %q", i, schema, got, want)
+					}
+				}
+				if st.Stored != nil {
+					got := map[string]string{}
+					for _, s := range m.Status() {
+						got[s.Schema] = s.Current
+					}
+					for schema, want := range st.Stored {
+						if got[schema] != want {
+							t.Errorf("step %d: %s stored version = %q, want %q", i, schema, got[schema], want)
+						}
+					}
+				}
+				if st.PreRunVersions != nil {
+					for schema, want := range st.PreRunVersions {
+						if got := listPreRun(t, base, schema); !reflect.DeepEqual(got, want) {
+							t.Errorf("step %d: %s pre-run versions = %q, want %q", i, schema, got, want)
+						}
+					}
+				}
+				for _, schema := range st.NoVersionDir {
+					if _, err := os.Stat(filepath.Join(base, schema)); !errors.Is(err, os.ErrNotExist) {
+						t.Errorf("step %d: %s has a version dir: %v", i, schema, err)
 					}
 				}
 				if sc.DataDir {

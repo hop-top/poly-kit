@@ -10,7 +10,10 @@ type SchemaDriver interface {
 	// Version returns the currently applied version, or "" if no version is set.
 	Version() (string, error)
 
-	// SetVersion records a new version after successful migration.
+	// SetVersion records a version: after each applied migration, and
+	// the earlier one again after a rollback or restore. A driver that
+	// is not a VersionStorer is called after the Migrator wrote the
+	// version file.
 	SetVersion(version string) error
 
 	// Backup copies the current state to dest directory.
@@ -18,4 +21,12 @@ type SchemaDriver interface {
 
 	// Restore replaces the current state from a backup at src directory.
 	Restore(src string) error
+}
+
+// VersionStorer is an optional marker for a driver that keeps its version
+// itself (a database table). For such a driver the Migrator calls only
+// SetVersion to record a version and writes no version file; Version is
+// the one authority. StoresVersion reports whether the marker applies.
+type VersionStorer interface {
+	StoresVersion() bool
 }

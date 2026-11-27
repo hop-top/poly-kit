@@ -53,8 +53,9 @@ func WithDataDir(dir string) MigratorOption {
 }
 
 // WithVerify checks each schema's final state after its last pending
-// migration and before the version is recorded. A failure (ErrVerify)
-// rolls back every migration applied to that schema in the run.
+// migration, once that migration's version is recorded. A failure
+// (ErrVerify) rolls back every migration applied to that schema in the
+// run and records the version the run started at.
 func WithVerify(fn func(ctx context.Context, schema, version string) error) MigratorOption {
 	return func(m *Migrator) { m.verify = fn }
 }
@@ -111,10 +112,14 @@ func (m *Migrator) AddDriver(d SchemaDriver) {
 }
 
 // Run executes pending migrations for all registered drivers.
-// For each schema: read current version, collect pending, backup,
-// apply Up (then Verify) in order, run the final verify, record the
-// version. On failure: rollback (Down in reverse, then Restore). A
-// context canceled between steps stops before the next Up.
+// For each schema: read current version, collect pending, backup (and
+// save the version the run starts at beside it), then per migration Up,
+// Verify and record that migration's version, then the final verify.
+// A crash re-applies at most the one migration whose Up had not been
+// recorded, so migrations should stay idempotent. On failure: rollback
+// (Down in reverse, recording the version before each, else Restore and
+// record the starting version). A context canceled between steps stops
+// before the next Up.
 func (m *Migrator) Run(ctx context.Context) error {
 	start := time.Now()
 	quiet := context.WithoutCancel(ctx)
@@ -169,7 +174,10 @@ func (m *Migrator) backups(schema string) *backupOrchestrator {
 	return o
 }
 
-// RollbackLatest restores the latest backup for each driver.
+// RollbackLatest restores the latest backup for each driver, then records
+// the version the run that took it started at (saved beside the backup).
+// A backup without that record (taken before it was saved) is still
+// restored, but the version is left as it is and the error says so.
 // Only works when auto-rollback is disabled (manual mode).
 func (m *Migrator) RollbackLatest() error {
 	if m.autoRollback {
@@ -180,8 +188,19 @@ func (m *Migrator) RollbackLatest() error {
 		if err != nil {
 			return fmt.Errorf("rollback %s: %w", d.Name(), err)
 		}
+		preRun, recorded, err := readPreRun(latest)
+		if err != nil {
+			return fmt.Errorf("rollback %s: %w", d.Name(), err)
+		}
 		if err := d.Restore(latest); err != nil {
 			return fmt.Errorf("rollback %s: %w", d.Name(), err)
+		}
+		if !recorded {
+			return fmt.Errorf("rollback %s: restored %s but it records no pre-run version; "+
+				"version left as is", d.Name(), filepath.Base(latest))
+		}
+		if err := m.setVersion(d, preRun); err != nil {
+			return fmt.Errorf("rollback %s: %w", d.Name(), recordError(preRun, err))
 		}
 	}
 	return nil
@@ -189,7 +208,7 @@ func (m *Migrator) RollbackLatest() error {
 
 // stepFailure is what stopped a schema's run, with what to roll back.
 type stepFailure struct {
-	stage   string // up, verify, final, canceled
+	stage   string // up, verify, record, final, canceled
 	version string // the version being attempted
 	from    string
 	err     error
@@ -200,12 +219,23 @@ func (f stepFailure) wrap() error {
 	switch f.stage {
 	case "verify":
 		return fmt.Errorf("verify %s failed: %w", f.version, verifyError{f.err})
+	case "record":
+		return recordError(f.version, f.err)
 	case "final":
 		return fmt.Errorf("final verify %s failed: %w", f.version, verifyError{f.err})
 	case "canceled":
 		return fmt.Errorf("up %s canceled: %w", f.version, f.err)
 	}
 	return fmt.Errorf("up %s failed: %w", f.version, f.err)
+}
+
+// recordError names a failed version record; an empty version (the
+// store read back as unversioned) is quoted.
+func recordError(version string, err error) error {
+	if version == "" {
+		version = `""`
+	}
+	return fmt.Errorf("record %s failed: %w", version, err)
 }
 
 func (m *Migrator) runSchema(ctx context.Context, d SchemaDriver) (int, error) {
@@ -229,16 +259,15 @@ func (m *Migrator) runSchema(ctx context.Context, d SchemaDriver) (int, error) {
 	if err := d.Backup(backupPath); err != nil {
 		return 0, fmt.Errorf("backup: %w", err)
 	}
-
-	fail, n := m.applyAll(ctx, d.Name(), current, pending)
-	if fail != nil {
-		return n, m.fail(ctx, d, current, backupPath, *fail)
+	// The directory is named after the first pending version; keep the
+	// version the run starts at so RollbackLatest can record it.
+	if err := savePreRun(backupPath, current); err != nil {
+		return 0, fmt.Errorf("prepare backup: %w", err)
 	}
 
-	// Record new version.
-	lastVersion := pending[len(pending)-1].Version
-	if err := m.setVersion(d, lastVersion); err != nil {
-		return n, fmt.Errorf("set version: %w", err)
+	fail, n := m.applyAll(ctx, d, current, pending)
+	if fail != nil {
+		return n, m.fail(ctx, d, current, backupPath, *fail)
 	}
 
 	// Prune old backups on success (non-fatal).
@@ -249,9 +278,11 @@ func (m *Migrator) runSchema(ctx context.Context, d SchemaDriver) (int, error) {
 	return n, nil
 }
 
-// applyAll runs Up and Verify for each pending migration, then the
-// final verify. It returns the failure, if any, and how many applied.
-func (m *Migrator) applyAll(ctx context.Context, schema, current string, pending []Migration) (*stepFailure, int) {
+// applyAll runs Up, Verify and the version record for each pending
+// migration, then the final verify. It returns the failure, if any, and
+// how many applied.
+func (m *Migrator) applyAll(ctx context.Context, d SchemaDriver, current string, pending []Migration) (*stepFailure, int) {
+	schema := d.Name()
 	quiet := context.WithoutCancel(ctx)
 	from := current
 	var applied []Migration
@@ -273,6 +304,11 @@ func (m *Migrator) applyAll(ctx context.Context, schema, current string, pending
 				return m.failed(quiet, withDuration(ev, t), "verify", err, append(applied, mig)), len(applied)
 			}
 			m.emit(quiet, m.topics.Verified, withDuration(ev, t))
+		}
+		t = time.Now()
+		if err := m.setVersion(d, mig.Version); err != nil {
+			// Up completed: the rollback must undo this step too.
+			return m.failed(quiet, withDuration(ev, t), "record", err, append(applied, mig)), len(applied)
 		}
 		applied = append(applied, mig)
 		m.history = append(m.history, AppliedMigration{Version: mig.Version, Schema: mig.Schema})
@@ -310,7 +346,7 @@ func (m *Migrator) fail(ctx context.Context, d SchemaDriver, current, backupPath
 	}
 	quiet := context.WithoutCancel(ctx)
 	t := time.Now()
-	method, rollbackErr := m.rollback(quiet, d, f.undo, backupPath)
+	method, rollbackErr := m.rollback(quiet, d, current, f.undo, backupPath)
 	if rollbackErr != nil {
 		return fmt.Errorf("%w (rollback also failed: %v)", err, rollbackErr)
 	}
@@ -319,30 +355,50 @@ func (m *Migrator) fail(ctx context.Context, d SchemaDriver, current, backupPath
 	return err
 }
 
-// rollback runs Down in reverse order; falls back to Restore if a Down
-// is missing or fails. It reports which of the two undid the changes.
+// rollback runs Down in reverse order, recording the version before each
+// migration once its Down succeeded; falls back to Restore (and records
+// the starting version) if a Down is missing or fails. It reports which
+// of the two undid the changes. A failed record stops the rollback: the
+// store would not describe the data.
 func (m *Migrator) rollback(
 	ctx context.Context,
 	d SchemaDriver,
+	current string,
 	applied []Migration,
 	backupPath string,
 ) (string, error) {
 	for i := len(applied) - 1; i >= 0; i-- {
 		mig := applied[i]
 		if mig.Down == nil || mig.Down(ctx) != nil {
-			return "restore", d.Restore(backupPath)
+			if err := d.Restore(backupPath); err != nil {
+				return "restore", err
+			}
+			if err := m.setVersion(d, current); err != nil {
+				return "restore", recordError(current, err)
+			}
+			return "restore", nil
+		}
+		prev := current
+		if i > 0 {
+			prev = applied[i-1].Version
+		}
+		if err := m.setVersion(d, prev); err != nil {
+			return "down", recordError(prev, err)
 		}
 	}
 	return "down", nil
 }
 
-// setVersion writes the version file and also calls driver.SetVersion.
-//
-// The Migrator owns the canonical version via ReadVersionFile/writeVersionFile
-// (XDG-based, or WithDataDir). driver.SetVersion is called as a notification
-// so that drivers can update internal state (e.g. in-memory cache); the two
-// calls are not redundant — they serve different responsibilities.
+// setVersion records version for the driver. A VersionStorer owns its
+// version: only SetVersion is called, no version file is read or written.
+// Any other driver gets the version file first (the Migrator's canonical
+// copy, XDG-based or WithDataDir; drivers read it back with
+// ReadVersionFile) and then SetVersion as a notification, so a refused
+// SetVersion leaves the file at the new version.
 func (m *Migrator) setVersion(d SchemaDriver, version string) error {
+	if vs, ok := d.(VersionStorer); ok && vs.StoresVersion() {
+		return d.SetVersion(version)
+	}
 	base, err := m.resolvedDataDir()
 	if err != nil {
 		return err

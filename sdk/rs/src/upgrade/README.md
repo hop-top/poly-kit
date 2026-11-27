@@ -4,7 +4,7 @@
 
 How does stored state (a database, config, saved documents, caches) move forward when a new build
 ships? The migration half of Go `go/core/upgrade`: versioned `Migration`s per schema, a `Migrator` that
-backs up, applies the pending ones in semver order, records the version reached and rolls back on
+backs up, applies the pending ones in semver order, records the version after each and rolls back on
 failure. The release check (`check`) tells a tool a newer build is out. Self-update (download, binary replace) is not ported.
 
 ## Use it when
@@ -51,11 +51,16 @@ m.run(&Context::background()).unwrap(); // nothing pending
   serde_json `preserve_order` in the build (the `output` feature has it), else they come back sorted.
 - `compare_versions`, `pending`, `Migration`, `SchemaDriver` and `document` build on wasm32; `Migrator`,
   `configfile` and the version-file helpers are compiled off wasm32 only.
-- Pending is `stored < version <= target` per schema, in semver order; the version recorded is the
-  last applied migration's, under the data dir (default `<XDG data home>/hop/<tool>`, or `data_dir`).
-- A failed `up` or `verify`, or a context done before the next `up` (`is_verify`, `is_canceled`),
-  stops the run; in auto mode applied `down`s run newest first on a fresh context, else the backup
-  is restored. A failed verify undoes its own step too. Error texts match Go's.
+- Pending is `stored < version <= target` per schema, in semver order; each migration's version is
+  recorded after its `up` and `verify`, under the data dir (default `<XDG data home>/hop/<tool>`, or
+  `data_dir`), unless the driver's `stores_version` is true (no file). A crash re-applies at most
+  the one migration not yet recorded: keep migrations idempotent.
+- A failed `up`, `verify` or record (`StepKind::Record`), or a context done before the next `up`
+  (`is_verify`, `is_canceled`), stops the run; in auto mode applied `down`s run newest first on a
+  fresh context, each followed by a record of the version before it, else the backup is restored
+  and the starting version recorded. A failed verify undoes its own step too. Manual mode keeps the
+  last applied version; `rollback_latest` records the version saved beside the backup. Error texts
+  match Go's.
 - `check` never fails: errors sit in `CheckResult::error`, a fresh cache (default 4h) answers without a request, and an offline check returns `Skipped::Offline` touching neither transport, cache nor state dir.
 - in a repository that tags several components, `CheckConfig::tag_prefix("xray/v")` keeps only this tool's releases and `include_prereleases(true)` offers prereleases; either lists releases (3 pages of 100 at most, highest semver, drafts skipped), calling the transport once per page, and `CheckResult::tag` carries the tag the notice links.
 - A prune failure goes to `on_warning` (default stderr, Go's `log.Printf` text); never fatal.
