@@ -33,12 +33,21 @@ pub mod check;
 pub mod configfile;
 #[cfg(not(target_arch = "wasm32"))]
 mod events;
+#[cfg(all(
+    any(feature = "upgrade-sqlite", feature = "upgrade-fsdir"),
+    not(target_arch = "wasm32")
+))]
+mod filelock;
 #[cfg(not(target_arch = "wasm32"))]
 mod fs_util;
+#[cfg(all(feature = "upgrade-fsdir", not(target_arch = "wasm32")))]
+pub mod fsdir;
 #[cfg(not(target_arch = "wasm32"))]
 mod migrator;
 #[cfg(not(target_arch = "wasm32"))]
 mod rollback;
+#[cfg(all(feature = "upgrade-sqlite", not(target_arch = "wasm32")))]
+pub mod sqlite;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use events::{MigrationPublisher, MigrationTopics};

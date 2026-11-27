@@ -415,6 +415,10 @@ config-signal = [
 # the runner, its version files and backups are compiled off wasm32.
 # Builds on `bus` for the step context and lifecycle events.
 upgrade = ["bus", "dep:thiserror"]
+# SQLite and directory drivers for the Migrator (Go upgrade/driver/sqlite
+# and upgrade/driver/fsdir). Native only; each locks with std `File::lock`.
+upgrade-sqlite = ["upgrade", "sqldb"]
+upgrade-fsdir = ["upgrade", "dep:tar", "dep:flate2"]
 # The 12-factor AI CLI compliance check, a port of the static pass of
 # go/core/compliance: the toolspec YAML loader, factors 1 to 13 and the
 # text/json report. Rides on `output` for serde, serde_json (reports),
@@ -611,6 +615,13 @@ uuid = { version = "1", features = ["v7", "serde"], optional = true }
 rusqlite = { version = "0.41", default-features = false, features = [
     "bundled",
 ], optional = true }
+# upgrade-fsdir: tar.gz backups. tar 0.4.46 (composefs/tar-rs, MIT OR
+# Apache-2.0, published 2026-05-18), no xattr; adds filetime 0.2.29 and
+# libc (already locked). flate2 1.1.10 (rust-lang/
+# flate2-rs, MIT OR Apache-2.0, published 2026-08-28), pure-Rust backend,
+# already in the lock (compression-codecs). rsx: PASS 5.7 and 6.5; no advisories.
+tar = { version = "0.4.46", default-features = false, optional = true }
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"], optional = true }
 # bus-network and api-server-ws. Exact pins: both depend on their close,
 # timeout and capacity semantics. Default features off, `handshake`
 # (the HTTP upgrade) only here; `bus-network` adds `connect` (dials over
