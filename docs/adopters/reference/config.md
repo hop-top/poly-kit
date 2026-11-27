@@ -77,6 +77,15 @@ opts.OnLegacyConfig = func(used, canonical string) {
   chain) lists the candidates as `user-legacy` entries after `user`.
   `Paths` and `PathsForTool` are unchanged. Project markers have no
   equivalent.
+- A CLI built on `cli.Root` declares the list once, as
+  `cli.Config.LegacyUserConfigPaths`. `serve` reads the user file's
+  `services.*` block from the same effective file
+  (`config.EffectiveUserPath(opts)` returns it and whether it is a legacy
+  file), and `kitcliconfig.WithRootConfig(cfg)` gives `config path` /
+  `config paths` a chain with the `user-legacy` entries, so `config path`
+  prints the legacy file while it is the one in use. Pass the same list as
+  `Options.LegacyUserConfigPaths` when loading the tool's own config. An
+  empty list means no legacy lookup.
 
 ## Layer merge rules
 

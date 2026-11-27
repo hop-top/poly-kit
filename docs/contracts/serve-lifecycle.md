@@ -772,7 +772,9 @@ flag and a `-c <path>` file as a config file.
 `service start` layers every `services.*` key from these sources itself,
 before any service reads one, whether or not the tool loads its own
 configuration: the `services` block of the tool's system, user
-(`~/.config/<tool>/config.yaml`) and project config files and of each
+(`~/.config/<tool>/config.yaml`, or the first existing
+`cli.Config.LegacyUserConfigPaths` entry in Go when that file is absent)
+and project config files and of each
 `-c <path>`, every `<TOOL>_SERVICES_*` variable, and every
 `-c services.<key>=<value>`. Keys outside `services` resolve exactly
 as the tool wired them. A service configured only by environment

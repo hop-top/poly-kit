@@ -27,6 +27,9 @@ package config
 
 import (
 	"github.com/spf13/cobra"
+
+	kitcli "hop.top/kit/go/console/cli"
+	coreconfig "hop.top/kit/go/core/config"
 )
 
 // ResolvedPath describes one rung of the config precedence chain.
@@ -65,6 +68,37 @@ type options struct {
 //	})
 func WithResolver(r Resolver) Option {
 	return func(o *options) { o.resolver = r }
+}
+
+// WithRootConfig wires the resolver from the root configuration a tool
+// already declares: the chain for cfg.Name (user and system files, project
+// files for cfg.ProjectMarker when set, else kit's defaults) plus
+// cfg.LegacyUserConfigPaths as "user-legacy" entries right after "user".
+// `config path` then prints the legacy file when it is the one that would
+// load. With an empty cfg.Name the chain is empty.
+func WithRootConfig(cfg kitcli.Config) Option {
+	return WithResolver(RootResolver(cfg))
+}
+
+// RootResolver is the [Resolver] behind [WithRootConfig].
+func RootResolver(cfg kitcli.Config) Resolver {
+	return func(cwd string) []ResolvedPath {
+		if cfg.Name == "" {
+			return nil
+		}
+		var raw []coreconfig.ResolvedPath
+		if cfg.ProjectMarker != "" {
+			raw = coreconfig.PathsForToolWithMarkers(cwd, cfg.Name, []string{cfg.ProjectMarker})
+		} else {
+			raw = coreconfig.PathsForTool(cwd, cfg.Name)
+		}
+		raw = coreconfig.WithLegacyUserPaths(raw, cfg.LegacyUserConfigPaths)
+		out := make([]ResolvedPath, len(raw))
+		for i, r := range raw {
+			out[i] = ResolvedPath{Path: r.Path, Source: r.Source, Scope: r.Scope, Exists: r.Exists}
+		}
+		return out
+	}
 }
 
 func newOptions(opts ...Option) *options {

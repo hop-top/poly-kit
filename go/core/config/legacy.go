@@ -88,6 +88,17 @@ func effectiveUserPath(opts Options) (path string, legacy bool, err error) {
 	return canon, false, nil
 }
 
+// EffectiveUserPath reports which file is the user layer for opts: the
+// canonical [Options.UserConfigPath] unless that file does not exist and one
+// of [Options.LegacyUserConfigPaths] does, in which case path is that
+// legacy file and legacy is true. It is the resolver Load, Get, List, the
+// writers and reload use, exported so other readers of the user layer (a
+// service config loader) agree with them. A candidate that is a directory
+// or cannot be stat'ed is an error naming it, with no fall-through.
+func EffectiveUserPath(opts Options) (path string, legacy bool, err error) {
+	return effectiveUserPath(opts)
+}
+
 // userSlot resolves the user layer for Load. When a legacy file is in use,
 // the returned Options never write migrations back: the file belongs to
 // another tool layout (possibly another format) and must not be rewritten.
