@@ -1,4 +1,4 @@
-# Vendored from hop-top/.github d493bd1f094e193ae836324cfe5ffc7773004997 (v0.19.0): header through the on: block.
+# Vendored from hop-top/.github 895393467cd6c819fb07a2ad88ca3e60e620be9a (v0.20.0): header through the on: block.
 # Used offline by the caller-contract test; refresh when workflowCallerRef moves.
 name: release-please-preflight (reusable)
 
@@ -12,18 +12,16 @@ name: release-please-preflight (reusable)
 #   name: release-please-preflight
 #   on:
 #     pull_request:
-#       paths:
-#         - '.github/release-please-config.json'
-#         - '.github/.release-please-manifest.json'
-#         - '.github/workflows/release-please.yml'
-#         - '.github/workflows/publish.yml'
-#         - 'pyproject.toml'
-#         - 'package.json'
-#         - 'Cargo.toml'
 #     workflow_dispatch: {}
 #   jobs:
 #     preflight:
 #       uses: hop-top/.github/.github/workflows/release-please-preflight.yml@v0
+#
+# No trigger-level `paths:` filter: a required check whose workflow is
+# filtered out never reports and leaves the PR pending. To skip PRs that
+# touch no release file, gate the caller job with `if:` on a changes
+# job's output (references/how-to/single-required-check.md); a job
+# skipped that way reports as skipped, which passes.
 #
 # Override examples:
 #
