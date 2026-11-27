@@ -33,16 +33,15 @@ from hop_top_kit.upgrade import (
     migrate_document,
     migrate_document_map,
 )
+from tests.upgrade_recording import DRIVER_FIELDS, run_scenario
 
 #: Corpus files this runner consumes.
-CONSUMED = {"versions.json", "document.json"}
+CONSUMED = {"versions.json", "document.json", "migrator.json"}
 
 #: Corpus files this runner lists but does not consume yet, with the
-#: reason. A file here is reported as pending in the test run, never
-#: silently ignored. Removing an entry means consuming the file.
-PENDING = {
-    "migrator.json": "Migrator not ported to this runner yet",
-}
+#: reason. A file here would be a hole in coverage and must say why;
+#: nothing is pending now. Removing an entry means consuming the file.
+PENDING: dict[str, str] = {}
 
 HEADER = {"$schema", "$id", "version", "description"}
 
@@ -81,13 +80,6 @@ def test_every_corpus_file_is_accounted_for() -> None:
     names = {p.name for p in _corpus().glob("*.json")}
     assert names == CONSUMED | set(PENDING)
     assert not CONSUMED & set(PENDING)
-
-
-@pytest.mark.parametrize("name", sorted(PENDING))
-def test_pending_file(name: str) -> None:
-    data = json.loads((_corpus() / name).read_text())
-    assert data["version"] == "v1"
-    pytest.skip(f"{name} pending: {PENDING[name]}")
 
 
 # -- versions.json -----------------------------------------------------------
@@ -278,3 +270,86 @@ def test_document_surface_is_exported() -> None:
     assert issubclass(DocVerifyError, DocumentError)
     assert issubclass(DocVerifyError, VerifyError)
     assert DocApplied(from_version=1, to_version=2, note="n").note == "n"
+
+
+# -- migrator.json -----------------------------------------------------------
+
+_MIGRATOR = _load("migrator.json")
+_strict(_MIGRATOR, HEADER | {"scenarios"}, "migrator.json")
+_MSCENARIOS = _MIGRATOR["scenarios"]
+
+_SCENARIO_FIELDS = {
+    "name",
+    "target",
+    "manual_rollback",
+    "retention",
+    "drivers",
+    "migrations",
+    "backups",
+    "recorded_backups",
+    "locked_backups",
+    "baseline",
+    "final_verify",
+    "final_verify_fail",
+    "data_dir",
+    "registry",
+    "default_migrations",
+    "steps",
+}
+_MIGRATION_FIELDS = {
+    "schema",
+    "version",
+    "fail",
+    "down",
+    "down_fail",
+    "verify",
+    "verify_fail",
+    "cancel",
+}
+_STEP_FIELDS = {
+    "op",
+    "canceled",
+    "events",
+    "warnings",
+    "error",
+    "calls",
+    "history",
+    "versions",
+    "backups",
+    "stored",
+    "pre_run_versions",
+    "no_version_dir",
+    "status",
+}
+_OPS = {"run", "rollback_latest", "status"}
+
+
+def _check_migrator_scenario(sc: dict[str, Any]) -> None:
+    name = sc["name"]
+    _strict(sc, _SCENARIO_FIELDS, name)
+    for d in sc["drivers"]:
+        _strict(d, DRIVER_FIELDS, name)
+    for m in [*sc["migrations"], *sc.get("default_migrations", [])]:
+        _strict(m, _MIGRATION_FIELDS, name)
+    for b in sc.get("baseline", {}).values():
+        _strict(b, {"version", "error"}, name)
+    assert sc.get("registry", "own") == "own", f"{name}: registry {sc['registry']!r}"
+    for st in sc["steps"]:
+        _strict(st, _STEP_FIELDS, name)
+        assert st["op"] in _OPS, f"{name}: op {st['op']!r}"
+        for e in st.get("events", []):
+            _strict(e, {"topic", "payload"}, name)
+        for h in st.get("history", []):
+            _strict(h, {"schema", "version"}, name)
+        for s in st.get("status", []):
+            _strict(s, {"schema", "current", "target", "pending", "error"}, name)
+
+
+def test_migrator_corpus_not_empty() -> None:
+    assert _MSCENARIOS
+
+
+@pytest.mark.parametrize("sc", _MSCENARIOS, ids=[s["name"] for s in _MSCENARIOS])
+def test_migrator(sc: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _check_migrator_scenario(sc)
+    run_scenario(sc, tmp_path, monkeypatch)
