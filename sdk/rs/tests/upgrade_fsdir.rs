@@ -570,3 +570,114 @@ fn rollback_latest_restores_the_directory() {
     assert_eq!(tree(&dir), before);
     assert_eq!(read_version_file_in(&data, "mydata").unwrap(), "1.0.0");
 }
+
+// ---- backup refuses what restore would refuse ----
+
+/// `(case, link at, target)`: a link restore refuses must not be backed up.
+const UNRESTORABLE: &[(&str, &str, &str)] = &[
+    ("absolute", "l", "{abs}"),
+    ("up from root", "l", "../outside"),
+    ("up from nested", "sub/l", "../../outside"),
+    ("up after a name", "l", "sub/../../outside"),
+];
+
+/// Every link kind restore accepts: it still backs up and round-trips.
+const RESTORABLE: &[(&str, &str, &str)] = &[
+    ("sibling file", "l", "file.txt"),
+    ("dot prefixed", "l", "./file.txt"),
+    ("up then down", "sub/l", "../file.txt"),
+    ("to a directory", "l", "sub"),
+    ("to the root", "l", "."),
+    ("dangling", "l", "missing"),
+    ("to a link", "l", "other"),
+    ("named then up", "l", "sub/.."),
+];
+
+fn link_tree(tmp: &Path, at: &str, target: &str) -> PathBuf {
+    let dir = tmp.join("mydata");
+    mkdir(&dir);
+    mkdir(&dir.join("sub"));
+    write(&dir.join("file.txt"), "hello", 0o600);
+    std::os::unix::fs::symlink("file.txt", dir.join("other")).unwrap();
+    let target = target.replace("{abs}", &tmp.join("outside").to_string_lossy());
+    std::os::unix::fs::symlink(target, dir.join(at)).unwrap();
+    dir
+}
+
+#[test]
+fn backup_refuses_a_link_restore_would_refuse() {
+    for (case, at, target) in UNRESTORABLE {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = link_tree(tmp.path(), at, target);
+        let bk = tmp.path().join("bk");
+        let err = FsDirDriver::new("mydata", &dir).backup(&bk).unwrap_err();
+        let text = err.to_string();
+        assert!(
+            text.contains(&dir.join(at).to_string_lossy().into_owned()),
+            "{case}: error names the path: {text}"
+        );
+        assert!(text.contains("link escapes directory"), "{case}: {text}");
+        assert_eq!(
+            fs::read_dir(&bk).unwrap().count(),
+            0,
+            "{case}: no leftovers"
+        );
+    }
+}
+
+/// A link that stays inside until a link in its path is followed: restore
+/// refuses it after extraction, so backup refuses it too.
+#[test]
+fn backup_refuses_a_link_that_escapes_through_a_link_to_the_root() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("mydata");
+    mkdir(&dir);
+    std::os::unix::fs::symlink(".", dir.join("d")).unwrap();
+    std::os::unix::fs::symlink("d/..", dir.join("s")).unwrap();
+    let bk = tmp.path().join("bk");
+    let err = FsDirDriver::new("mydata", &dir).backup(&bk).unwrap_err();
+    assert!(err.to_string().contains("link escapes directory"), "{err}");
+    assert!(err.to_string().contains("mydata/s"), "{err}");
+    assert_eq!(fs::read_dir(&bk).unwrap().count(), 0);
+}
+
+#[test]
+fn backup_keeps_every_link_restore_accepts() {
+    for (case, at, target) in RESTORABLE {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = link_tree(tmp.path(), at, target);
+        let want = tree(&dir);
+        let bk = tmp.path().join("bk");
+        let mut d = FsDirDriver::new("mydata", &dir);
+        d.backup(&bk).unwrap_or_else(|e| panic!("{case}: {e}"));
+        fs::remove_file(dir.join(at)).unwrap();
+        fs::write(dir.join("file.txt"), "changed").unwrap();
+        d.restore(&bk).unwrap_or_else(|e| panic!("{case}: {e}"));
+        assert_eq!(
+            fs::read_link(dir.join(at)).unwrap(),
+            Path::new(target),
+            "{case}"
+        );
+        assert_eq!(tree(&dir), want, "{case}");
+    }
+}
+
+/// An unrestorable link fails the schema before any migration runs.
+#[test]
+fn migrator_fails_the_schema_before_any_up_when_backup_refuses_a_link() {
+    let (_tmp, dir, data) = run_env();
+    std::os::unix::fs::symlink("/etc", dir.join("abs")).unwrap();
+    let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = ran.clone();
+    let mut m = Migrator::new("tool", "1.1.0").data_dir(&data);
+    m.register(Migration::new("1.1.0", "mydata", move |_| {
+        flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }));
+    m.add_driver(FsDirDriver::new("mydata", &dir).with_data_dir(&data));
+    let err = m.run(&bg()).unwrap_err();
+    let text = err.to_string();
+    assert!(text.starts_with("migrate mydata: backup: "), "{text}");
+    assert!(text.contains("mydata/abs"), "{text}");
+    assert!(!ran.load(std::sync::atomic::Ordering::SeqCst), "no Up ran");
+}
