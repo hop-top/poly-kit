@@ -11,6 +11,8 @@
  * `sqlstore` is intentionally NOT re-exported here: an eager re-export
  * would load better-sqlite3 native bindings on every bare import of the
  * package. Use the dedicated subpath instead: `@hop-top/kit/sqlstore`.
+ * The upgrade drivers (`@hop-top/kit/upgrade/drivers/{configfile,fsdir,sqlite}`)
+ * stay out for the same reason: `sqlite` loads better-sqlite3, `fsdir` loads `tar`.
  */
 
 export * as aim from './aim.js';

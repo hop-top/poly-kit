@@ -46,6 +46,21 @@
       "require": "./dist/upgrade/index.js",
       "default": "./dist/upgrade/index.js"
     },
+    "./upgrade/drivers/configfile": {
+      "types": "./dist/upgrade/drivers/configfile.d.ts",
+      "require": "./dist/upgrade/drivers/configfile.js",
+      "default": "./dist/upgrade/drivers/configfile.js"
+    },
+    "./upgrade/drivers/fsdir": {
+      "types": "./dist/upgrade/drivers/fsdir.d.ts",
+      "require": "./dist/upgrade/drivers/fsdir.js",
+      "default": "./dist/upgrade/drivers/fsdir.js"
+    },
+    "./upgrade/drivers/sqlite": {
+      "types": "./dist/upgrade/drivers/sqlite.d.ts",
+      "require": "./dist/upgrade/drivers/sqlite.js",
+      "default": "./dist/upgrade/drivers/sqlite.js"
+    },
     "./upgrade/drivers/postgres": {
       "types": "./dist/upgrade/drivers/postgres.d.ts",
       "require": "./dist/upgrade/drivers/postgres.js",
@@ -202,6 +217,15 @@
       "upgrade": [
         "./dist/upgrade/index.d.ts"
       ],
+      "upgrade/drivers/configfile": [
+        "./dist/upgrade/drivers/configfile.d.ts"
+      ],
+      "upgrade/drivers/fsdir": [
+        "./dist/upgrade/drivers/fsdir.d.ts"
+      ],
+      "upgrade/drivers/sqlite": [
+        "./dist/upgrade/drivers/sqlite.d.ts"
+      ],
       "upgrade/drivers/postgres": [
         "./dist/upgrade/drivers/postgres.d.ts"
       ],
@@ -286,7 +310,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/alias.ts src/cli.ts src/output.ts src/xdg.ts src/config.ts src/sqlstore.ts src/upgrade/index.ts src/upgrade/drivers/postgres.ts src/llm.ts src/llm-anthropic.ts src/llm-openai.ts src/routellm.ts src/tui/index.ts src/errcorrect.ts src/safety.ts src/provenance.ts src/stream.ts src/progress.ts src/auth.ts src/api.ts src/rpc.ts src/aim.ts src/netpolicy.ts src/scope.ts src/serve.ts src/telemetry/index.ts src/id/index.ts src/mcp/index.ts src/log.ts src/completion.ts src/toolspec.ts src/completion-values.ts src/compliance.ts --format cjs --splitting --dts",
+    "build": "tsup src/index.ts src/alias.ts src/cli.ts src/output.ts src/xdg.ts src/config.ts src/sqlstore.ts src/upgrade/index.ts src/upgrade/drivers/configfile.ts src/upgrade/drivers/fsdir.ts src/upgrade/drivers/sqlite.ts src/upgrade/drivers/postgres.ts src/llm.ts src/llm-anthropic.ts src/llm-openai.ts src/routellm.ts src/tui/index.ts src/errcorrect.ts src/safety.ts src/provenance.ts src/stream.ts src/progress.ts src/auth.ts src/api.ts src/rpc.ts src/aim.ts src/netpolicy.ts src/scope.ts src/serve.ts src/telemetry/index.ts src/id/index.ts src/mcp/index.ts src/log.ts src/completion.ts src/toolspec.ts src/completion-values.ts src/compliance.ts --format cjs --splitting --dts",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p tsconfig.test.json",
@@ -317,6 +341,7 @@
     "picomatch": "^4.0.7",
     "pino": "^10.4.0",
     "semver": "^7.8.6",
+    "tar": "7.5.23",
     "zod": "^4.6.7"
   },
   "devDependencies": {

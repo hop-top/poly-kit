@@ -54,11 +54,11 @@ describe('exports map contract', () => {
 });
 
 describe('root barrel', () => {
-  it('re-exports every public subpath except sqlstore as a namespace', () => {
+  it('re-exports every public subpath except sqlstore and the upgrade drivers as a namespace', () => {
     // Kebab-case subpaths become camelCase namespaces (completion-values -> completionValues).
     const expected = Object.keys(pkg.exports)
-      // Driver subpaths (`upgrade/drivers/<name>`) are opt-in entries for a
-      // caller-provided client; they are nested, so they have no namespace.
+      // Driver subpaths (`upgrade/drivers/<name>`) are opt-in entries (a caller-provided
+      // client, or a native or heavy module); they are nested, so they have no namespace.
       .filter((p) => p !== '.' && p !== './sqlstore' && !p.startsWith('./upgrade/drivers/'))
       .map((p) => p.replace(/^\.\//, '').replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()));
     for (const name of expected) {
@@ -69,5 +69,11 @@ describe('root barrel', () => {
 
   it('does not eagerly expose sqlstore (native deps stay behind the subpath)', () => {
     expect(kit).not.toHaveProperty('sqlstore');
+  });
+
+  it('does not expose the upgrade drivers (better-sqlite3 and tar stay behind their subpaths)', () => {
+    expect(kit.upgrade).not.toHaveProperty('SqliteDriver');
+    expect(kit.upgrade).not.toHaveProperty('FsDirDriver');
+    expect(kit.upgrade).not.toHaveProperty('ConfigFileDriver');
   });
 });

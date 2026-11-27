@@ -308,6 +308,11 @@ Subpath imports follow the package's `exports` map (see
   document migrator (`migrateDocument`) and the `Migrator` (`SchemaDriver`
   with optional `lock` and `storesVersion`, `BackupUnsupportedError`,
   `NotRestoredError`, `VerifyError`, `isNotRestored`, `isBackupUnsupported`).
+- `@hop-top/kit/upgrade/drivers/{configfile,fsdir,sqlite}` — `ConfigFileDriver`,
+  `FsDirDriver` (loads `tar`) and `SqliteDriver` (loads `better-sqlite3`; its
+  types need `@types/better-sqlite3` like `sqlstore`), kept out of the main
+  entry. `SqliteDriver` locks with `BEGIN EXCLUSIVE` on `.lock.db`, which does
+  not exclude the other ports' `flock` on `.lock`.
 - `@hop-top/kit/upgrade/drivers/postgres` — `openPostgresDriver({ db, connect,
   table, name? })` returns a `SchemaDriver` that keeps the version in a table
   and locks with a session advisory lock (interoperates with Go
