@@ -13,7 +13,7 @@ import (
 //
 // Run level: RunStarted, then RunCompleted or RunFailed. Per migration:
 // Started, then Applied (Up succeeded) and Verified (its Verify passed),
-// or Failed. Reverted follows a rollback that succeeded. The final
+// or Failed (stage "record": the version could not be recorded). Reverted follows a rollback that succeeded. The final
 // verify (WithVerify) publishes Verified with "final": true, or Failed
 // with stage "final".
 type MigrationTopics struct {
@@ -64,7 +64,7 @@ type MigrationPayload struct {
 	Schema     string `json:"schema"`
 	From       string `json:"from"`
 	To         string `json:"to"`
-	Stage      string `json:"stage,omitempty"`  // failed: up, verify, final, canceled
+	Stage      string `json:"stage,omitempty"`  // failed: up, verify, record, final, canceled
 	Method     string `json:"method,omitempty"` // reverted: down, restore
 	Final      bool   `json:"final,omitempty"`  // verified by WithVerify
 	Error      string `json:"error,omitempty"`

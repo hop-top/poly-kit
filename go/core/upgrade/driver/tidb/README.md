@@ -24,6 +24,7 @@ With a valid table name `New` pings the server and creates the table;
 ## Contract
 
 - `New` opens the connection, pings it, and creates `<table>(schema_name VARCHAR(255) PRIMARY KEY, version VARCHAR(255) NOT NULL DEFAULT '')` if absent. The table name must match `^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`.
+- The driver is a `upgrade.VersionStorer`: the table row is the only version; the Migrator writes no version file for it.
 - `Backup` and `Restore` are no-ops: database backup is managed outside kit.
 - Call `Close` when done; the driver owns its `*sql.DB`.
 - Imports `github.com/go-sql-driver/mysql`; the DSN follows that driver's format.

@@ -13,9 +13,9 @@ type Migration struct {
 	Schema  string // matches SchemaDriver.Name()
 	Up      func(ctx context.Context) error
 	Down    func(ctx context.Context) error // nil = no rollback
-	// Verify, when set, runs after Up and before the version is
-	// recorded. A failure counts as a failed step (ErrVerify) and the
-	// rollback includes this migration.
+	// Verify, when set, runs after Up and before this migration's
+	// version is recorded. A failure counts as a failed step (ErrVerify)
+	// and the rollback includes this migration.
 	Verify func(ctx context.Context) error
 }
 

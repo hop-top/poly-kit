@@ -1,6 +1,7 @@
 package upgrade
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,6 +56,32 @@ func (o *backupOrchestrator) backupDir(version string) (string, error) {
 		return "", fmt.Errorf("create backup dir: %w", err)
 	}
 	return dir, nil
+}
+
+// preRunSuffix names the file beside a backup directory that holds the
+// version the run was at when the backup was taken: pre-<v>.version.
+const preRunSuffix = ".version"
+
+// savePreRun records, beside the backup directory, the version the run
+// that took it started at ("" is recorded as an empty file).
+func savePreRun(backupPath, version string) error {
+	if err := os.WriteFile(backupPath+preRunSuffix, []byte(version), 0o600); err != nil {
+		return fmt.Errorf("write pre-run version: %w", err)
+	}
+	return nil
+}
+
+// readPreRun returns the version saved beside backupPath; recorded is
+// false for a backup taken before it was saved.
+func readPreRun(backupPath string) (version string, recorded bool, err error) {
+	data, err := os.ReadFile(backupPath + preRunSuffix)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("read pre-run version: %w", err)
+	}
+	return strings.TrimSpace(string(data)), true, nil
 }
 
 // latestBackup returns the path to the most recent backup directory.
@@ -141,6 +168,9 @@ func (o *backupOrchestrator) prune() error {
 	for _, d := range toRemove {
 		p := filepath.Join(schemaDir, d.name)
 		if err := os.RemoveAll(p); err != nil {
+			return fmt.Errorf("prune backup %s: %w", d.name, err)
+		}
+		if err := os.Remove(p + preRunSuffix); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("prune backup %s: %w", d.name, err)
 		}
 	}

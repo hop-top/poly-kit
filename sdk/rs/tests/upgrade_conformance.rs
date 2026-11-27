@@ -84,6 +84,11 @@ struct DriverCase {
     version_fail: String,
     #[serde(default)]
     set_version_fail: String,
+    /// Limits `set_version_fail` to that one version.
+    #[serde(default)]
+    set_version_fail_for: String,
+    #[serde(default)]
+    stores_version: bool,
 }
 
 #[derive(Deserialize)]
@@ -144,6 +149,16 @@ struct Step {
     versions: BTreeMap<String, String>,
     #[serde(default)]
     backups: BTreeMap<String, Vec<String>>,
+    /// Each driver's stored version after the step.
+    #[serde(default)]
+    stored: BTreeMap<String, String>,
+    /// Per schema, the pre-run version saved beside each backup
+    /// directory (exactly these, none else).
+    #[serde(default)]
+    pre_run_versions: BTreeMap<String, BTreeMap<String, String>>,
+    /// Schemas that must have no version directory.
+    #[serde(default)]
+    no_version_dir: Vec<String>,
     status: Option<Vec<StatusCase>>,
 }
 
@@ -160,6 +175,8 @@ struct Scenario {
     migrations: Vec<MigrationCase>,
     #[serde(default)]
     backups: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    recorded_backups: BTreeMap<String, BTreeMap<String, String>>,
     #[serde(default)]
     locked_backups: BTreeMap<String, Vec<String>>,
     #[serde(default)]
@@ -295,9 +312,16 @@ impl SchemaDriver for Recording {
 
     fn set_version(&mut self, version: &str) -> Result<(), BoxError> {
         self.record(format!("{} set_version {version}", self.case.name));
-        fail_if(&self.case.set_version_fail)?;
+        let only = &self.case.set_version_fail_for;
+        if only.is_empty() || only == version {
+            fail_if(&self.case.set_version_fail)?;
+        }
         self.case.version = version.to_string();
         Ok(())
+    }
+
+    fn stores_version(&self) -> bool {
+        self.case.stores_version
     }
 
     fn backup(&self, dest: &Path) -> Result<(), BoxError> {
@@ -316,10 +340,32 @@ fn list_backups(base: &Path, schema: &str) -> Vec<String> {
         return Vec::new();
     };
     let mut names: Vec<String> = entries
-        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .map(|e| e.unwrap())
+        .filter(|e| e.file_type().unwrap().is_dir())
+        .map(|e| e.file_name().into_string().unwrap())
         .collect();
     names.sort();
     names
+}
+
+/// The pre-run version saved beside each backup directory:
+/// `<backup dir>.version`.
+fn list_pre_run(base: &Path, schema: &str) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    let Ok(entries) = fs::read_dir(base.join("backups").join(schema)) else {
+        return out;
+    };
+    for e in entries {
+        let e = e.unwrap();
+        let name = e.file_name().into_string().unwrap();
+        if e.file_type().unwrap().is_dir() {
+            continue;
+        }
+        if let Some(dir) = name.strip_suffix(".version") {
+            out.insert(dir.to_string(), fs::read_to_string(e.path()).unwrap());
+        }
+    }
+    out
 }
 
 fn logged(log: &Log, entry: String, fail: String) -> impl Fn(&Context) -> Result<(), BoxError> {
@@ -411,6 +457,14 @@ fn run_scenario(sc: &Scenario) {
         fs::create_dir_all(base.join("backups").join(schema)).unwrap();
         for d in dirs {
             fs::create_dir_all(base.join("backups").join(schema).join(d)).unwrap();
+        }
+    }
+    for (schema, recorded) in &sc.recorded_backups {
+        let dir = base.join("backups").join(schema);
+        fs::create_dir_all(&dir).unwrap();
+        for (name, pre) in recorded {
+            fs::create_dir_all(dir.join(name)).unwrap();
+            fs::write(dir.join(format!("{name}.version")), pre).unwrap();
         }
     }
     let locked = lock_backups(&base, &sc.locked_backups);
@@ -521,6 +575,33 @@ fn run_scenario(sc: &Scenario) {
                 &list_backups(&base, schema),
                 want,
                 "{ctx_name}: {schema} backups"
+            );
+        }
+        if !st.stored.is_empty() {
+            let got: BTreeMap<String, String> = m
+                .status()
+                .into_iter()
+                .map(|s| (s.schema, s.current))
+                .collect();
+            for (schema, want) in &st.stored {
+                assert_eq!(
+                    got.get(schema),
+                    Some(want),
+                    "{ctx_name}: {schema} stored version"
+                );
+            }
+        }
+        for (schema, want) in &st.pre_run_versions {
+            assert_eq!(
+                &list_pre_run(&base, schema),
+                want,
+                "{ctx_name}: {schema} pre-run versions"
+            );
+        }
+        for schema in &st.no_version_dir {
+            assert!(
+                !base.join(schema).exists(),
+                "{ctx_name}: {schema} has a version dir"
             );
         }
     }

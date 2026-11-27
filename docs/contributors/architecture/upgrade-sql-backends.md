@@ -93,18 +93,23 @@ Observable consequences:
 - a failed `Verify` (per migration) fails before that migration's record,
   so a migration that fails its own verify is never recorded
 - the stored version describes the data after any rollback:
-  - after every `Down` of the run succeeded, the Migrator records the
-    pre-run version
+  - after each successful `Down`, the Migrator records the version that
+    preceded that migration (the pre-run version for the first one)
   - after a `Restore` succeeded, the Migrator records the pre-run version
   - a final `WithVerify` failure rolls back every migration of the schema
-    applied in the run, then records the pre-run version, even though each
+    applied in the run and ends at the pre-run version, even though each
     step was recorded on the way
   - an empty pre-run version is recorded as empty: the store reads back as
     unversioned
+  - a failed record during the rollback stops it (no `Restore` follows a
+    `Down` whose record failed) and the error reports both failures
 - with `WithManualRollback()` nothing is undone and nothing is recorded
   after a failure: the stored version stays at the last applied
-  migration. `RollbackLatest` restores the latest backup, then records the
-  version that backup was taken at; the backup carries that version
+  migration. The Migrator saves the pre-run version beside each backup
+  (`pre-<v>.version`, next to the `pre-<v>` directory, which is named after
+  the first pending version, not the pre-run version); `RollbackLatest`
+  restores the latest backup, then records that version. A backup without
+  the file is restored, the version is left as it is and the error says so
 - a context canceled between steps stops before the next `Up`; recorded
   steps stay recorded, and auto rollback then runs as for any failure, so
   the stored version ends at the pre-run version (auto) or the last
@@ -114,9 +119,12 @@ Observable consequences:
 
 Failure: when recording a migration's version fails, the step counts as
 failed after its `Up` completed: the rollback includes that migration, the
-error names the recording failure, and the stored version afterwards is the
-pre-run version when the rollback completes. If the follow-up record of the
-pre-run version fails too, the error reports both.
+error names the recording failure, and in auto mode the stored version
+afterwards is the pre-run version when the rollback completes. The version
+file is written before the driver is called, so it ends at the pre-run
+version even when the driver keeps refusing; if a follow-up record fails
+too, the error reports both. In manual mode nothing is undone: the version
+file holds the failed step's version, ahead of the driver's.
 
 ## 3. Baseline
 
@@ -279,7 +287,7 @@ Rules 1 to 5 are the behaviour the `migrator.json` scenarios pin against a
 recording driver, whose `calls` log lists every driver call in order
 (`db backup pre-1.1.0`, `db up 1.1.0`, `db set_version 1.2.0`). The rules
 add driver calls (`lock`, `unlock`, one `set_version` per applied
-migration) and driver settings per scenario: whether the driver is a
+migration and per rolled-back one) and driver settings per scenario: whether the driver is a
 `VersionStorer`, whether it is a `Locker` and whether `Lock` or `unlock`
 fails, what `Backup` and `Restore` return, and whether a baseline function
 is given. Expectations also cover the version files on disk (none for a

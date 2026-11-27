@@ -1,5 +1,6 @@
-//! Backup directories per schema: `<data dir>/backups/<schema>/pre-<version>/`.
-//! Go `backupOrchestrator`.
+//! Backup directories per schema: `<data dir>/backups/<schema>/pre-<version>/`,
+//! each with the version the run started at saved beside it in
+//! `pre-<version>.version`. Go `backupOrchestrator`.
 
 use std::fs;
 use std::io;
@@ -33,6 +34,22 @@ impl Backups {
         let dir = self.dir.join(format!("pre-{version}"));
         super::fs_util::create_dir_all(&dir)?;
         Ok(dir)
+    }
+
+    /// Saves, beside `backup`, the version the run that took it started
+    /// at (`""` is an empty file).
+    pub(super) fn save_pre_run(backup: &Path, version: &str) -> io::Result<()> {
+        super::fs_util::write_private(&sidecar(backup), version.as_bytes())
+    }
+
+    /// The version saved beside `backup`; `None` for a backup taken
+    /// before it was saved.
+    pub(super) fn read_pre_run(backup: &Path) -> io::Result<Option<String>> {
+        match fs::read_to_string(sidecar(backup)) {
+            Ok(s) => Ok(Some(s.trim().to_string())),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 
     /// `pre-*` directories, ascending by the version they name.
@@ -74,9 +91,20 @@ impl Backups {
         let excess = dirs.len().saturating_sub(self.retention);
         for name in &dirs[..excess] {
             fs::remove_dir_all(self.dir.join(name))?;
+            match fs::remove_file(sidecar(&self.dir.join(name))) {
+                Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
+                _ => {}
+            }
         }
         Ok(())
     }
+}
+
+/// The file holding a backup's pre-run version: `<backup dir>.version`.
+fn sidecar(backup: &Path) -> PathBuf {
+    let mut s = backup.as_os_str().to_owned();
+    s.push(".version");
+    PathBuf::from(s)
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -216,5 +216,11 @@ func TestIntegration_RetentionPrunes(t *testing.T) {
 
 	entries, err := os.ReadDir(backupBase)
 	require.NoError(t, err)
-	assert.LessOrEqual(t, len(entries), 3, "should have pruned to retention limit")
+	dirs := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			dirs++
+		}
+	}
+	assert.LessOrEqual(t, dirs, 3, "should have pruned to retention limit")
 }

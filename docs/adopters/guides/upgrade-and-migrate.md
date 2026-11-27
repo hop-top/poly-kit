@@ -168,9 +168,12 @@ if err := m.Run(ctx); err != nil {
 
 Per schema, `Run` reads the stored version, backs the store up (under
 `<data dir>/backups/<schema>/pre-<version>/`), applies each `Up` then
-its `Verify`, runs the `WithVerify` check, then records the new
-version. On failure it runs the applied `Down`s newest first, else
-restores the backup. A failed verification satisfies
+its `Verify`, records that migration's version, then runs the
+`WithVerify` check. A crash between an `Up` and its record re-applies
+that one migration on the next run, so keep migrations idempotent. On
+failure it runs the applied `Down`s newest first, recording the
+version before each, else restores the backup and records the version
+the run started at. A failed verification satisfies
 `errors.Is(err, upgrade.ErrVerify)`; a cancelled context is checked
 between steps and wraps `context.Canceled`. `WithManualRollback()`
 turns automatic rollback off. Old backups beyond the retention are

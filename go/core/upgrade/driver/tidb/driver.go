@@ -100,6 +100,10 @@ func (d *Driver) SetVersion(version string) error {
 	return nil
 }
 
+// StoresVersion marks the driver as the only authority for its version:
+// the Migrator calls SetVersion and writes no version file.
+func (d *Driver) StoresVersion() bool { return true }
+
 // Backup is a no-op; TiDB backup is managed externally.
 func (d *Driver) Backup(dest string) error { return nil }
 
@@ -109,4 +113,7 @@ func (d *Driver) Restore(src string) error { return nil }
 // Close releases the underlying database connection.
 func (d *Driver) Close() error { return d.db.Close() }
 
-var _ upgrade.SchemaDriver = (*Driver)(nil)
+var (
+	_ upgrade.SchemaDriver  = (*Driver)(nil)
+	_ upgrade.VersionStorer = (*Driver)(nil)
+)

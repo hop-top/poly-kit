@@ -13,7 +13,7 @@ restored, for one `upgrade.Migration.Schema`. Every backend implements
 | `configfile/` | `hop.top/kit/go/core/upgrade/driver/configfile` | `New(paths...)`, `NewWithOptions(opts, paths...)` | version file | copies each managed file to and from `dest` |
 | `fsdir/` | `hop.top/kit/go/core/upgrade/driver/fsdir` | `New(name, dirPath)`, `NewWithOptions(name, dirPath, opts...)` | version file | tar.gz of the directory; `Restore` removes the directory first |
 | `sqlite/` | `hop.top/kit/go/core/upgrade/driver/sqlite` | `New(dbPath, opts...)` | version file | copies the database file |
-| [`tidb/`](tidb/README.md) | `hop.top/kit/go/core/upgrade/driver/tidb` | `New(dsn, table, opts...)` | table row | no-ops; managed outside kit |
+| [`tidb/`](tidb/README.md) | `hop.top/kit/go/core/upgrade/driver/tidb` | `New(dsn, table, opts...)` | table row (`VersionStorer`: no version file) | no-ops; managed outside kit |
 
 - pick `configfile` for YAML/TOML config the migration rewrites in place
 - pick `fsdir` for a data directory (caches, per-project state)
