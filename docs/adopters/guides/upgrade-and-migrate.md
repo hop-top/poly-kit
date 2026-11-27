@@ -125,7 +125,7 @@ Shipped drivers (details in the
 |-------|---------|-------------|
 | Config files | `driver/configfile` | `New(paths...)` |
 | Data directory | `driver/fsdir` | `New(name, dirPath)` |
-| SQLite file | `driver/sqlite` | `New(dbPath, opts...)` |
+| SQLite file | `driver/sqlite` | `New(dbPath, opts...)`, `WithDB(db)` to use your handle |
 | Shared TiDB/MySQL | `driver/tidb` | `New(dsn, table, opts...)` (no backup: `ErrBackupUnsupported`) |
 | Shared PostgreSQL | `driver/postgres` | `New(db, table, opts...)` over your `*sql.DB`; advisory lock (needs two or more connections, no transaction-mode pooler); no backup: `ErrBackupUnsupported` |
 
@@ -258,6 +258,17 @@ record, so a manual rollback waits for a migrating process; a lock error
 fails that schema's rollback (`rollback <schema>: lock: ...`). A driver
 without `Locker` runs unlocked. In Rust the driver returns a `Locker` from
 `SchemaDriver::as_locker`.
+
+The SQLite driver is a `Locker` in both modes: an exclusive `flock` on
+`.lock` beside its version file (`<data dir>/<name>/.lock`), so two
+processes on one database exclude each other; the wait ends with the
+context. Its backup is `VACUUM INTO`, which includes rows still in the
+WAL. `New(dbPath)` opens its own connection for it and `Restore` swaps
+the file back (close every handle on it first; `-wal`, `-shm` and
+`-journal` are removed). `New(dbPath, sqlite.WithDB(db))` snapshots
+through your handle, never closes it, and cannot restore under a live
+pool: `Restore` returns `upgrade.ErrBackupUnsupported`, so give each
+migration a `Down` and keep the snapshot for manual recovery.
 
 ### 4. Give users a `migrate` command
 

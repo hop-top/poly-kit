@@ -1,25 +1,33 @@
 // Package sqlite provides a SchemaDriver for SQLite database files.
+//
+// Two modes. Path only: New(dbPath) opens its own short-lived connection
+// for Backup and swaps the file on Restore. Handle: New(dbPath,
+// WithDB(db)) backs up through the caller's *sql.DB, never closes it, and
+// cannot restore (the file cannot be replaced under a live pool).
 package sqlite
 
 import (
+	"database/sql"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 
 	"hop.top/kit/go/core/upgrade"
+	"hop.top/kit/go/core/xdg"
 )
 
-// Driver implements upgrade.SchemaDriver for a SQLite database file.
+// Driver implements upgrade.SchemaDriver and upgrade.Locker for a SQLite
+// database file.
 type Driver struct {
 	name    string
 	dbPath  string
 	tool    string
 	dataDir string
+	db      *sql.DB
 }
 
-// New creates a SQLite schema driver.
+// New creates a SQLite schema driver for the database file at dbPath.
 // The name defaults to "sqlite" and tool to "" if not set via options.
+// With WithDB, dbPath only names the backup file (and may be empty).
 func New(dbPath string, opts ...Option) *Driver {
 	d := &Driver{
 		name:   "sqlite",
@@ -50,6 +58,14 @@ func WithTool(tool string) Option {
 	return func(d *Driver) { d.tool = tool }
 }
 
+// WithDB runs Backup on the caller's handle instead of a connection of
+// the driver's own. The driver never closes db. Restore then returns
+// upgrade.ErrBackupUnsupported: the file cannot be swapped under a live
+// pool, and the backup file stays for manual recovery.
+func WithDB(db *sql.DB) Option {
+	return func(d *Driver) { d.db = db }
+}
+
 func (d *Driver) Name() string { return d.name }
 
 func (d *Driver) Version() (string, error) {
@@ -64,52 +80,21 @@ func (d *Driver) SetVersion(version string) error {
 	return nil
 }
 
-// Backup copies the database file to the dest directory.
-func (d *Driver) Backup(dest string) error {
-	if err := os.MkdirAll(dest, 0o750); err != nil {
-		return fmt.Errorf("create backup dir: %w", err)
+// stateDir is the directory the driver's version file lives in:
+// <data dir>/<name>, the data dir being WithDataDir's or
+// xdg.DataDir("hop/<tool>"). The lock file sits here.
+func (d *Driver) stateDir() (string, error) {
+	if d.dataDir != "" {
+		return filepath.Join(d.dataDir, d.name), nil
 	}
-	src, err := os.Open(d.dbPath)
+	base, err := xdg.DataDir(filepath.Join("hop", d.tool))
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // nothing to back up
-		}
-		return fmt.Errorf("open db: %w", err)
+		return "", fmt.Errorf("resolve data dir: %w", err)
 	}
-	defer src.Close()
-
-	dstPath := filepath.Join(dest, filepath.Base(d.dbPath))
-	dst, err := os.Create(dstPath)
-	if err != nil {
-		return fmt.Errorf("create backup file: %w", err)
-	}
-	defer dst.Close()
-
-	if _, err := io.Copy(dst, src); err != nil {
-		return fmt.Errorf("copy db: %w", err)
-	}
-	return dst.Close()
+	return filepath.Join(base, d.name), nil
 }
 
-// Restore copies the backup database over the current one.
-func (d *Driver) Restore(src string) error {
-	backupPath := filepath.Join(src, filepath.Base(d.dbPath))
-	in, err := os.Open(backupPath)
-	if err != nil {
-		return fmt.Errorf("open backup: %w", err)
-	}
-	defer in.Close()
-
-	out, err := os.Create(d.dbPath)
-	if err != nil {
-		return fmt.Errorf("create db: %w", err)
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, in); err != nil {
-		return fmt.Errorf("restore db: %w", err)
-	}
-	return out.Close()
-}
-
-var _ upgrade.SchemaDriver = (*Driver)(nil)
+var (
+	_ upgrade.SchemaDriver = (*Driver)(nil)
+	_ upgrade.Locker       = (*Driver)(nil)
+)

@@ -105,6 +105,8 @@ func TestIntegration_FailureRollbackRestoresState(t *testing.T) {
 		Version: "1.2.0",
 		Schema:  "appdb",
 		Up: func(ctx context.Context) error {
+			// Path-only Restore needs no open handle on the file.
+			_ = db.Close()
 			return errors.New("simulated failure")
 		},
 	})
@@ -171,8 +173,17 @@ func TestIntegration_BackupFileExists(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, entries, "backup directory should contain at least one entry")
 
-	// Verify backup contains the db file.
-	backupDB := filepath.Join(backupBase, entries[0].Name(), "app.db")
+	// A backup directory sits beside its pre-<v>.version file: pick dirs.
+	var dirs []string
+	for _, e := range entries {
+		if e.IsDir() {
+			dirs = append(dirs, e.Name())
+		}
+	}
+	require.Len(t, dirs, 1)
+
+	// Verify backup contains the db file, and it holds the rows.
+	backupDB := filepath.Join(backupBase, dirs[0], "app.db")
 	_, err = os.Stat(backupDB)
 	require.NoError(t, err)
 }
