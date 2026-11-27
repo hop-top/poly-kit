@@ -88,32 +88,20 @@ per-run or per-language and are NOT part of the contract this harness
 asserts:
 
 - `occurred_at` (varies per run)
-- `sdk_lang` (varies per language — `"py"`, `"ts"`, `"rs"`)
-- `sdk_version` (each SDK ships its own crate / npm / pypi version)
-- PHP-only aliases: `ts` (→ occurred_at), `sdk` (→ sdk_lang)
+- `sdk_lang` (varies per language — `"py"`, `"ts"`, `"rs"`, `"php"`)
+- `sdk_version` (each SDK ships its own crate / npm / pypi / composer version)
 
-`install_id` (PHP) is renamed to `installation_id` (canonical) so the
-key-level diff is meaningful.
+The orchestrator also drops the legacy PHP aliases `ts` and `sdk` and renames
+`install_id` to `installation_id` if present. PHP no longer emits them; the
+shim only keeps an old checkout comparable.
 
-## Known parity gaps (surfaced — NOT fixed by this task)
+## Known parity gaps
 
-These appear in the diff output today; they are documented here so the
-follow-up parity work can target the exact discrepancies:
-
-- **PHP omits `schema_version`** from its envelope entirely (every other
-  SDK ships `schema_version: "1"`).
-- **PHP envelope keys diverge**: `event`, `ts`, `install_id`, `mode`,
-  `sdk`, `attrs` vs the py/ts/rs canonical `schema_version`, `sdk_lang`,
-  `sdk_version`, `installation_id`, `mode`, `occurred_at`, `event`,
-  `attrs`. The orchestrator normalises a subset of these for diff
-  purposes; the gaps remain visible in the raw JSONL under the temp
-  dir.
-- **PHP IPv6 regex uses a different shape** (lookbehind-based) than the
-  py/ts/rs `\b...\b` boundary. Edge cases may diverge; the fixture's
-  fully-expanded IPv6 hits both.
-
-These are real cross-lang bugs. Fixes belong in the SDK source — out of
-scope for the harness itself.
+None. py, ts, rs and php all emit the canonical envelope keys
+(`schema_version`, `sdk_lang`, `sdk_version`, `installation_id`, `mode`,
+`occurred_at`, `event`, `attrs`) and share one IPv6 redaction shape
+(lookaround-anchored, per `redact` in each SDK). A new divergence appears as
+a unified diff from `run.sh`; record it here when found.
 
 ## Adding a new language
 
@@ -210,7 +198,6 @@ runners/php/order.php
 | py   | `python3>=3.11` + pyyaml (`uv sync` in `sdk/py/`) |
 | rs   | `cargo` |
 | ts   | `node` + a **current** `sdk/ts/dist/output.js` (`pnpm build` in `sdk/ts/`) |
-| rs   | `cargo` |
 | php  | `php` + `vendor/autoload.php` (`composer install` in `sdk/experimental/php/`) |
 
 The ts precondition rejects a *stale* bundle as well as a missing one: it
