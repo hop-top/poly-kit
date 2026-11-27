@@ -303,7 +303,9 @@ Subpath imports follow the package's `exports` map (see
   reference `better-sqlite3`: install `@types/better-sqlite3` (an optional
   peer dependency) or type-checking with `skipLibCheck: false` fails with
   TS7016.
-- `@hop-top/kit/upgrade` — semver upgrade detection.
+- `@hop-top/kit/upgrade` — semver upgrade detection (`createChecker`), plus
+  lenient semver (`compareVersions`), `Migration`, `Registry` and the JSON
+  document migrator (`migrateDocument`).
 - `@hop-top/kit/llm` — LLM client, registry, fallback and typed errors;
   `@hop-top/kit/anthropic`, `@hop-top/kit/openai` and
   `@hop-top/kit/routellm` register their URI schemes on import (see

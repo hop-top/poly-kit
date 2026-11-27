@@ -122,7 +122,7 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | Audit log | done | none | none | none | none | no module in any SDK |
 | Identity | done | none | none | partial | none | make test-parity-identity (Go/Rs, contracts/identity-v1 derive-key corpus); rs:identity/ (keypair, JWT, encryption; `cli.WithIdentity` not ported), rs:sqlstore/crypto.rs |
 | TypeID | done | done | done | done | done | make test-parity-typeid (5 ports, contracts/typeid-v1); ts:id/ py:id/ rs:id/ php:Id/ |
-| Upgrade and migrations | done | unverified | unverified | partial | none | make test-parity-upgrade (Go/Rs); rs:upgrade/ is migrations plus the offline-aware release check (download and replace not ported); ts:upgrade.ts py:upgrade.py |
+| Upgrade and migrations | done | partial | unverified | partial | none | make test-parity-upgrade (Go/Rs/TS); rs:upgrade/ is migrations plus the offline-aware release check (download and replace not ported); ts:upgrade/ has the release check, lenient semver, Migration, Registry and the document migrator (no Migrator yet), `versions.json` and `document.json` only; py:upgrade.py |
 | Utilities | done | none | none | partial | none | make test-parity-retry (Go/Rs); rs:util/retry.rs |
 | Avatars | done | none | none | none | none | no module in any SDK |
 

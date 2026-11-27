@@ -42,9 +42,9 @@
       "default": "./dist/sqlstore.js"
     },
     "./upgrade": {
-      "types": "./dist/upgrade.d.ts",
-      "require": "./dist/upgrade.js",
-      "default": "./dist/upgrade.js"
+      "types": "./dist/upgrade/index.d.ts",
+      "require": "./dist/upgrade/index.js",
+      "default": "./dist/upgrade/index.js"
     },
     "./llm": {
       "types": "./dist/llm.d.ts",
@@ -195,7 +195,7 @@
         "./dist/sqlstore.d.ts"
       ],
       "upgrade": [
-        "./dist/upgrade.d.ts"
+        "./dist/upgrade/index.d.ts"
       ],
       "llm": [
         "./dist/llm.d.ts"
@@ -278,7 +278,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/alias.ts src/cli.ts src/output.ts src/xdg.ts src/config.ts src/sqlstore.ts src/upgrade.ts src/llm.ts src/llm-anthropic.ts src/llm-openai.ts src/routellm.ts src/tui/index.ts src/errcorrect.ts src/safety.ts src/provenance.ts src/stream.ts src/progress.ts src/auth.ts src/api.ts src/rpc.ts src/aim.ts src/netpolicy.ts src/scope.ts src/serve.ts src/telemetry/index.ts src/id/index.ts src/mcp/index.ts src/log.ts src/completion.ts src/toolspec.ts src/completion-values.ts src/compliance.ts --format cjs --splitting --dts",
+    "build": "tsup src/index.ts src/alias.ts src/cli.ts src/output.ts src/xdg.ts src/config.ts src/sqlstore.ts src/upgrade/index.ts src/llm.ts src/llm-anthropic.ts src/llm-openai.ts src/routellm.ts src/tui/index.ts src/errcorrect.ts src/safety.ts src/provenance.ts src/stream.ts src/progress.ts src/auth.ts src/api.ts src/rpc.ts src/aim.ts src/netpolicy.ts src/scope.ts src/serve.ts src/telemetry/index.ts src/id/index.ts src/mcp/index.ts src/log.ts src/completion.ts src/toolspec.ts src/completion-values.ts src/compliance.ts --format cjs --splitting --dts",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p tsconfig.test.json",
