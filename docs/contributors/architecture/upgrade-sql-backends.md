@@ -9,37 +9,38 @@ SDK port are written against one text. Go is canonical.
 Defines seven rules: who owns the version, when it is recorded, how an
 existing database is adopted, locking, backup and rollback honesty, how a
 driver gets its connection, and how `core/upgrade` relates to
-`storage/sqldb`. Behaviour the rules add is stated as the design; the
-Context section lists what the code does today.
+`storage/sqldb`. The Context section lists what the code did before these
+rules; the Go implementation and the SDK ports now follow them.
 
 ## Context
 
 [`go/core/upgrade`](../../../go/core/upgrade/README.md) runs versioned
 migrations per schema through a `SchemaDriver` (`Name`, `Version`,
-`SetVersion`, `Backup`, `Restore`). Per schema, `Migrator.Run` reads the
-stored version, selects the pending migrations, backs up, applies each
-`Up` and its `Verify`, runs the `WithVerify` check, then records the last
-applied version once. On failure it runs the applied `Down`s newest first,
-and restores the backup when a `Down` is missing or fails.
+`SetVersion`, `Backup`, `Restore`). Before these rules, `Migrator.Run`
+read the stored version, selected the pending migrations, backed up,
+applied each `Up` and its `Verify`, ran the `WithVerify` check, then
+recorded the last applied version once. On failure it ran the applied
+`Down`s newest first, and restored the backup when a `Down` was missing or
+failed.
 
-That fits a file or a directory a single process owns. It leaves gaps for
-a shared SQL database:
+That fit a file or a directory a single process owns. It left gaps for a
+shared SQL database:
 
-- the version is written once, after the last migration, so a process that
-  dies mid-run leaves applied migrations unrecorded and the next run
-  applies them again
-- the Migrator writes a version file for every driver, then calls
+- the version was written once, after the last migration, so a process
+  that died mid-run left applied migrations unrecorded and the next run
+  applied them again
+- the Migrator wrote a version file for every driver, then called
   `SetVersion`; the TiDB driver keeps the version in its own table, so
-  its version has two homes and a read-only data directory fails it
-- an empty version makes every migration pending, so a database whose
-  tables already exist at the current shape is migrated again
+  its version had two homes and a read-only data directory failed it
+- an empty version made every migration pending, so a database whose
+  tables already existed at the current shape was migrated again
 - two processes starting together both read the same version and both
-  apply the migrations
-- the TiDB driver's `Backup` and `Restore` return nil without doing
-  anything, so a rollback that falls through to `Restore` is reported as a
+  applied the migrations
+- the TiDB driver's `Backup` and `Restore` returned nil without doing
+  anything, so a rollback that fell through to `Restore` was reported as a
   restore that never happened
-- the SQLite and TiDB drivers open their own connection; an application
-  that already holds a pool cannot hand it over
+- the SQLite and TiDB drivers opened their own connection; an application
+  that already held a pool could not hand it over
 
 ## Terms
 
@@ -62,7 +63,7 @@ A driver that stores the version itself implements the marker capability
 - a read-only or missing data dir cannot fail a run for that driver, except
   through backups it still takes
 
-Every other driver keeps today's behaviour: the Migrator writes
+Every other driver keeps the version-file behaviour: the Migrator writes
 `<data dir>/<driver name>/version` and then calls `SetVersion`; the driver
 reads the same file back (`ReadVersionFile`, `ReadVersionFileIn`) or ignores
 `SetVersion`. If writing the file fails, `SetVersion` is not called.
@@ -161,7 +162,7 @@ the driver at `""`; nothing is undone. `Status()` never calls `fn`.
 
 Locking is an optional driver capability: `Locker`, with
 `Lock(ctx) (unlock func() error, err error)`. A driver without it runs
-unlocked, as today.
+unlocked, as before.
 
 Per schema, in this order:
 
@@ -225,7 +226,7 @@ Observable behaviour:
   already existed is not removed), and nothing is pruned for that schema,
   whatever backups it holds from earlier runs
 - any other `Backup` error fails the schema before any `Up` (`backup: ...`)
-- when a failure triggers rollback, `Down`s run newest first as today.
+- when a failure triggers rollback, `Down`s run newest first, as before.
   `Restore` is called only if a `Down` is missing or fails
 - a rollback that needs `Restore` and has none to run (no backup was taken,
   or `Restore` returns `ErrBackupUnsupported`) fails: the returned error
