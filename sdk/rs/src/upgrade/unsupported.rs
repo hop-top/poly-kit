@@ -39,6 +39,8 @@ pub struct NotRestored {
     cause: BoxError,
 }
 
+// Built by the Migrator and its rollback, which are compiled off wasm32.
+#[cfg(not(target_arch = "wasm32"))]
 impl NotRestored {
     pub(super) fn new(text: impl Into<String>, cause: BoxError) -> NotRestored {
         NotRestored {
@@ -95,6 +97,7 @@ fn chain_has(err: &(dyn Error + 'static), pred: impl Fn(&(dyn Error + 'static)) 
 
 /// Wraps an unsupported `restore` error as [`NotRestored`]; other errors
 /// pass through.
+#[cfg(not(target_arch = "wasm32"))]
 pub(super) fn restore_error(err: BoxError) -> BoxError {
     if is_backup_unsupported(&*err) {
         Box::new(NotRestored::restore_unsupported(err))
