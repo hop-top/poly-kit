@@ -473,14 +473,22 @@ test-parity-taxonomy: ## exit-code taxonomy across Go + 4 SDKs
 		echo "==> exit-taxonomy parity: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
 
+# Telemetry envelope (run.sh: py, ts, rs, php) and column-ordering
+# (run-order.sh: go, py, ts, rs, php) harnesses, every runtime, one
+# invocation each. Strict: a leg that cannot run fails, since an unrun leg
+# is not a passing one, and PHP is no exception. Expects node and pnpm
+# deps installed (`pnpm install`), python 3.11+ with uv, cargo, go and
+# php 8.4 with composer on PATH; installs what the legs read: the Python
+# venv, the TypeScript dist bundle and the PHP vendor dir.
+test-parity-cross-lang: ## cross-lang envelope and ordering harnesses, strict, every runtime incl. PHP
+	cd sdk/py && uv sync --all-extras -q
+	cd sdk/ts && pnpm build
+	cd sdk/experimental/php && composer install --no-progress --quiet
+	KIT_CROSS_LANG_STRICT=1 sdk/tests/cross-lang/run.sh
+	KIT_CROSS_LANG_STRICT=1 sdk/tests/cross-lang/run-order.sh
+
 # Alias bridge corpus over contracts/alias-v1: bridge options, standalone
 # name validation and cycle detection, one runner per port.
-# Telemetry envelope and column-ordering harnesses, Rust legs. Strict:
-# a skipped leg fails, since an unrun leg is not a passing one.
-test-parity-cross-lang: ## cross-lang envelope and ordering harnesses (Rust legs)
-	KIT_CROSS_LANG_STRICT=1 sdk/tests/cross-lang/run.sh rs
-	KIT_CROSS_LANG_STRICT=1 sdk/tests/cross-lang/run-order.sh rs
-
 test-parity-alias: ## alias-v1 conformance corpus (Go, Rust, TypeScript and Python runners)
 	@echo "==> alias-v1 conformance: Go"
 	go test ./go/console/alias/ ./go/console/cli/ -run '^TestConformanceAlias' -count=1

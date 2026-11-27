@@ -78,8 +78,8 @@ Per-language skips when prerequisites are missing:
 
 The harness exits 0 when every language that ran passed; skips do NOT
 fail, unless `KIT_CROSS_LANG_STRICT=1`, which turns any skip into a failure.
-CI's parity job runs the rs legs of both harnesses through
-`make test-parity-cross-lang`, strict.
+CI's parity job runs both harnesses, every runtime including php,
+through `make test-parity-cross-lang`, strict: a skipped leg fails the job.
 
 ## Normalisation
 

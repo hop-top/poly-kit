@@ -119,8 +119,9 @@ func User() int { return store.Store() }
 @test "b" { cat docs/guide.md; }'
     w .github/tests/c.bats '#!/usr/bin/env bats
 @test "c" { go build ./...; }'
-    w Makefile 'test-parity: test-parity-typeid test-parity-mcp test-parity-new test-parity-engine ## parity
+    w Makefile 'test-parity: test-parity-typeid test-parity-mcp test-parity-new test-parity-engine test-parity-cross-lang ## parity
 '
+    w sdk/tests/cross-lang/run.sh '#!/usr/bin/env bash'
     git -C "$REPO" add -A
     git -C "$REPO" commit -qm base
     git -C "$REPO" update-ref refs/remotes/origin/next HEAD
@@ -437,7 +438,18 @@ test-parity-engine" ]
     [ "$status" -eq 0 ]
     [ "$output" = "test-parity-typeid
 test-parity-mcp
-test-parity-new" ]
+test-parity-new
+test-parity-cross-lang" ]
+}
+
+@test "parity: a cross-language harness change runs its target, unknown targets always" {
+    touch_ sdk/tests/cross-lang/run.sh
+    ts parity
+    [ "$status" -eq 0 ]
+    [ "$output" = "test-parity-new
+test-parity-cross-lang" ]
+    ts --gate parity
+    [ "$output" = "sdk/tests/cross-lang/run.sh" ]
 }
 
 @test "parity: a Go change runs the targets whose Go half it reaches" {

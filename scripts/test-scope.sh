@@ -30,6 +30,7 @@
 #            file, the suites that build Go when Go changed
 #   parity   a make target from `test-parity`'s list: its Go half
 #            affected (go, with -tags parity) or one of its SDK packages
+#            (the cross-language harness dir sdk/tests/cross-lang counts)
 #
 #   --gate   file level only, no toolchain needed: the changed files that
 #            make the suite relevant, one per line (empty: skip). CI runs
@@ -67,6 +68,10 @@ PHP_PKGS=(sdk/experimental/php engine/sdk/php-kit-engine)
 # subtree> <SDK package dirs, comma-separated>". A test-parity
 # prerequisite missing here always runs.
 RS=sdk/rs TS=sdk/ts PY=sdk/py PHP=sdk/experimental/php
+# The cross-language harness dir counts as a package of its own: a change
+# to its scripts, runners, fixtures or expected files selects the targets
+# that list it.
+XL=sdk/tests/cross-lang
 PARITY_TABLE="
 test-parity-typeid go/core/id/... $RS,$TS,$PY,$PHP
 test-parity-consent go/core/consent $RS
@@ -93,7 +98,7 @@ test-parity-upgrade go/core/upgrade $RS,$PY,$TS,$PHP
 test-parity-cli go/console/cli/... $RS,$TS,$PY,examples/spaced/rs
 test-parity-engine engine/sdk/parity/... engine/sdk/ts-kit-engine,engine/sdk/py-kit-engine,engine/sdk/php-kit-engine,engine/sdk/rs-kit-engine
 test-parity-alias go/console/alias,go/console/cli $RS,$TS,$PY
-test-parity-cross-lang sdk/tests/cross-lang $RS
+test-parity-cross-lang $XL/runners/go/order $RS,$TS,$PY,$PHP,$XL
 "
 
 SELF=(scripts/test-scope.sh scripts/path-refs.awk scripts/go-affected.awk
@@ -343,7 +348,8 @@ parity_targets() {
 parity_scope() {
     local go_out sdk_out t row gopk sdks hit
     if [ "$gate" -eq 1 ]; then
-        { go_gate; for l in rs rs-engine ts py php; do pkg_scope "$l"; done; } | sort -u
+        { go_gate; for l in rs rs-engine ts py php; do pkg_scope "$l"; done
+          grep -E "^$XL/" "$tmp/changed" || true; } | sort -u
         return
     fi
     go_gate >"$tmp/parity-go-gate"
@@ -351,7 +357,8 @@ parity_scope() {
     if [ -s "$tmp/parity-go-gate" ]; then
         go_out=$(go_scope -tags parity | awk -F'\t' '$1 == "." { print $2 }')
     fi
-    sdk_out=$(for l in rs rs-engine ts py php; do pkg_scope "$l"; done)
+    sdk_out=$(for l in rs rs-engine ts py php; do pkg_scope "$l"; done
+        if grep -qE "^$XL/" "$tmp/changed"; then echo "$XL"; fi)
     for t in $(parity_targets); do
         row=$(printf '%s\n' "$PARITY_TABLE" | awk -v t="$t" '$1 == t')
         if [ -z "$row" ]; then
