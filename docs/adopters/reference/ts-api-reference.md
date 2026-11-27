@@ -308,6 +308,12 @@ Subpath imports follow the package's `exports` map (see
   document migrator (`migrateDocument`) and the `Migrator` (`SchemaDriver`
   with optional `lock` and `storesVersion`, `BackupUnsupportedError`,
   `NotRestoredError`, `VerifyError`, `isNotRestored`, `isBackupUnsupported`).
+- `@hop-top/kit/upgrade/drivers/postgres` — `openPostgresDriver({ db, connect,
+  table, name? })` returns a `SchemaDriver` that keeps the version in a table
+  and locks with a session advisory lock (interoperates with Go
+  `driver/postgres`). Kit imports no Postgres client: pass a `pg` `Pool` as
+  `db` and `() => pool.connect()` as `connect`; the pool needs at least two
+  connections. No backup or restore.
 - `@hop-top/kit/llm` — LLM client, registry, fallback and typed errors;
   `@hop-top/kit/anthropic`, `@hop-top/kit/openai` and
   `@hop-top/kit/routellm` register their URI schemes on import (see
