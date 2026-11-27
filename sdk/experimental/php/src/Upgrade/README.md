@@ -6,7 +6,7 @@ In what order do versioned migrations run, which are pending between a stored an
 and how does one JSON document migrate by its own version field? `Semver` orders versions leniently,
 `Registry` holds `Migration`s, `DocumentMigrator` chains `DocStep`s over an in-memory document, and
 `Migrator` runs them per schema driver (lock, baseline, backup, apply, record, rollback). Drivers:
-`Driver\ConfigFile`, `Driver\FsDir` (SQL drivers not ported yet). Self-update stays Go-only.
+`Driver\ConfigFile`, `FsDir`, `Sqlite`, `Postgres`. Self-update stays Go-only.
 
 ## Use it when
 
@@ -71,7 +71,7 @@ try {
   ends `NotRestored`. `UpgradeErrors::isNotRestored/isBackupUnsupported/isVerify/isCanceled` search the
   `getPrevious()` chain and the failed rollback
 - Events go to an optional `EventPublisher` (`kit.core.migration.*`); warnings to a `warn` closure (`error_log`)
-- Drivers `ConfigFile` and `FsDir`: [Driver](Driver/README.md)
+- Drivers `ConfigFile`, `FsDir`, `Sqlite` (PDO) and `Postgres` (PDO): [Driver](Driver/README.md)
 - Parity: [`contracts/upgrade-v1`](../../../../../contracts/upgrade-v1/README.md), `versions.json`,
   `document.json` and `migrator.json`, run by `tests/Upgrade/Upgrade*ConformanceTest.php`
 
