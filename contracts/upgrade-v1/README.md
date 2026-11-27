@@ -61,8 +61,7 @@ no `reverted` event, the error ends `(rollback also failed: not restored: no bac
 restored: restore unsupported)` (Go `ErrNotRestored`, Rust `is_not_restored`), the version stays at the last
 step still applied. `rollback_latest` fails `no backups found for <schema>` (no backup dir) or `not restored:
 restore unsupported`; no record. Rust has no default registry (scenarios run as `registry: own`). Runners are strict: unknown fields, a `version`
-other than `v1` and an unconsumed corpus file fail the run; an unported file is listed pending by name (today
-PHP: `migrator.json`).
+other than `v1` and an unconsumed corpus file fail the run; an unported file is listed pending by name (none today).
 
 ## Runners
 
@@ -72,7 +71,7 @@ PHP: `migrator.json`).
 | Rust | `sdk/rs/tests/upgrade_conformance.rs` | `cargo test --features upgrade --test upgrade_conformance`, from `sdk/rs` |
 | Python | `sdk/py/tests/test_upgrade_conformance.py` | `pytest tests/test_upgrade_conformance.py`, from `sdk/py` |
 | TypeScript | `sdk/ts/src/upgrade/conformance.test.ts` | `pnpm vitest run src/upgrade/conformance.test.ts`, from `sdk/ts` |
-| PHP | `sdk/experimental/php/tests/Upgrade/UpgradeConformanceTest.php` | `vendor/bin/phpunit tests/Upgrade/UpgradeConformanceTest.php`, from `sdk/experimental/php` |
+| PHP | `sdk/experimental/php/tests/Upgrade/Upgrade{,Migrator}ConformanceTest.php` | `vendor/bin/phpunit tests/Upgrade --filter Conformance`, from `sdk/experimental/php` |
 
 ## See also
 

@@ -567,7 +567,7 @@ test-parity-upgrade: ## upgrade-v1 conformance corpus (Go, Rust, Python, TypeScr
 	cd sdk/ts && pnpm vitest run src/upgrade/conformance.test.ts
 	@if command -v php >/dev/null 2>&1 && command -v composer >/dev/null 2>&1; then \
 		echo "==> upgrade-v1 conformance: PHP"; \
-		cd sdk/experimental/php && composer install --no-progress --quiet && vendor/bin/phpunit tests/Upgrade/UpgradeConformanceTest.php; \
+		cd sdk/experimental/php && composer install --no-progress --quiet && vendor/bin/phpunit tests/Upgrade --filter Conformance; \
 	else \
 		echo "==> upgrade-v1 conformance: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
