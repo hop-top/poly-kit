@@ -4,9 +4,8 @@
 
 "Which config file does this tool actually load, and what is the full
 precedence chain?" This package ships the `config path` and `config paths`
-cobra subcommands only. The chain itself is computed by
-`hop.top/kit/go/core/config` (`Paths`, `PathsForTool`, `PathsForToolWithLegacy`); loading and merging
-config values is also not here.
+cobra subcommands only. The chain is computed by `hop.top/kit/go/core/config`
+(`Paths`, `PathsForTool`, `PathsForToolWithLegacy`); loading config is not here.
 
 ## Use it when
 
@@ -14,7 +13,7 @@ config values is also not here.
 - host has no `config` parent yet → `root.AddCommand(config.Command("<tool>", opts...))`
 - attach one subcommand at a time → `config.PathCommand(...)` / `config.PathsCommand(...)`
 - wire the chain from the root config (name, marker, legacy user paths) → `config.WithRootConfig(rootCfg)`
-- wire a custom chain → `config.WithResolver(func(cwd string) []config.ResolvedPath { ... })`
+- wire a custom chain → `config.WithResolver(...)`; add legacy paths with `core/config.WithLegacyUserPaths(chain, legacy)`
 - root error bridge must map "no config file" to exit 1 → `config.IsNoConfig(err)`
 
 ## Quick start
@@ -60,9 +59,10 @@ paths, highest precedence first. Production hosts adapt
   back to text.
 - `ResolvedPath` is field-for-field and tag-for-tag compatible with
   `core/config.ResolvedPath`, so a direct conversion works.
-- `WithRootConfig(cfg)` / `RootResolver(cfg)` build the chain from `cli.Config`
-  (name, `ProjectMarker`, `LegacyUserConfigPaths` as `user-legacy` entries after
-  `user`); `path` prints a legacy file only while the `user` file is absent.
+- `WithRootConfig(cfg)` / `RootResolver(cfg)` return `cfg.ConfigPathsFrom(cwd)`
+  (name, `ProjectMarker`, `LegacyUserConfigPaths` as `user-legacy` after
+  `user`); `path` prints a legacy file only while `user` is absent. Load with
+  `cfg.ConfigOptions()` for the same user file.
 - Both leaves are annotated read-only and idempotent.
 
 ## Neighbours

@@ -64,7 +64,8 @@ right after `user`, and apply only while the `user` file is absent; `exists`
 is the file's real state either way. A tool built on `cli.Root` gets these
 rows by declaring `cli.Config.LegacyUserConfigPaths` and registering the
 commands with `kitcliconfig.WithRootConfig(cfg)`; `config path` then prints the
-legacy file while it is the one that loads.
+legacy file while it is the one that loads. Loading with `cfg.ConfigOptions()`
+keeps the tool's own loader on the same file.
 
 The row with `WINS = *` is the highest-precedence file that exists.
 That is the file to edit (or override via env/flag) to change a
