@@ -2,7 +2,7 @@
 
 Python implementation of the hop-top kit library: a Typer-based CLI factory, output formatting
 with a `Formatter` Protocol and registry, XDG paths, config files, a dual-spec MCP surface, a
-serve lifecycle, a URI facade and consent-gated telemetry.
+serve lifecycle, a URI facade, consent-gated telemetry and versioned state migrations.
 
 ## Install
 
@@ -57,11 +57,9 @@ mytool list -o out.csv      # extension infers the formatter
 | [`hop_top_kit/telemetry/`](hop_top_kit/telemetry/README.md) | consent-gated usage events, redaction, sinks | you record usage under user consent |
 | [`hop_top_kit/id/`](hop_top_kit/id/README.md) | TypeID primitive, cross-language | you mint or parse prefixed identifiers |
 | [`hop_top_kit/tui/`](hop_top_kit/tui/README.md) | TUI toolkit | you build an interactive terminal surface |
+| [`hop_top_kit/upgrade/`](hop_top_kit/upgrade/README.md) | release check, `Migrator` with configfile, fsdir, sqlite and postgres drivers | a tool migrates its stores across versions: [guide](../../docs/adopters/guides/upgrade-and-migrate.md) |
 
-Non-directory modules: `hop_top_kit.cli` (CLI factory), `hop_top_kit.serve`
-(serve hierarchy and service lifecycle, cross-language, see [the
-contract](../../docs/contracts/serve-lifecycle.md)), `hop_top_kit.uri` (facade
-over `hop-top-cite`), `hop_top_kit.safety` (the Factor 10 `--force` TTY check), `hop_top_kit.gate` / `hop_top_kit.policy` / `hop_top_kit.sideeffect` (the root delegation gate: `--confirm`, `--confirm-token`, `--max-ops`, `--policy`, `--dry-run`, destructive-by-name inference; see [Delegation gate](../../docs/adopters/reference/py-sdk.md#delegation-gate)), `hop_top_kit.llm` (LLM types, client, the `anthropic://`, `openai://` (and OpenAI-compatible) and `routellm://` adapters with tool calling; see [LLM messages](../../docs/adopters/reference/py-sdk.md#llm-messages) and [Provider adapters](../../docs/adopters/reference/py-sdk.md#provider-adapters)), `hop_top_kit.llm_toolnames` (provider tool-name rules and the reversible sanitizer; see [Tool names](../../docs/adopters/reference/py-sdk.md#tool-names)), `hop_top_kit.llm_events` (metadata-only llm event payloads; see [Provider adapters](../../docs/adopters/reference/py-sdk.md#provider-adapters)), `hop_top_kit.netpolicy` (the `--offline` guard beneath `urllib`; see [Offline enforcement](../../docs/adopters/reference/py-sdk.md#offline-enforcement)).
+Non-directory modules: `hop_top_kit.cli` (CLI factory), `hop_top_kit.serve` (serve hierarchy and service lifecycle, cross-language, see [the contract](../../docs/contracts/serve-lifecycle.md)), `hop_top_kit.uri` (facade over `hop-top-cite`), `hop_top_kit.safety` (the Factor 10 `--force` TTY check), `hop_top_kit.gate` / `hop_top_kit.policy` / `hop_top_kit.sideeffect` (the root delegation gate: `--confirm`, `--confirm-token`, `--max-ops`, `--policy`, `--dry-run`, destructive-by-name inference; see [Delegation gate](../../docs/adopters/reference/py-sdk.md#delegation-gate)), `hop_top_kit.llm` (LLM types, client, the `anthropic://`, `openai://` (and OpenAI-compatible) and `routellm://` adapters with tool calling; see [LLM messages](../../docs/adopters/reference/py-sdk.md#llm-messages) and [Provider adapters](../../docs/adopters/reference/py-sdk.md#provider-adapters)), `hop_top_kit.llm_toolnames` (provider tool-name rules and the reversible sanitizer; see [Tool names](../../docs/adopters/reference/py-sdk.md#tool-names)), `hop_top_kit.llm_events` (metadata-only llm event payloads; see [Provider adapters](../../docs/adopters/reference/py-sdk.md#provider-adapters)), `hop_top_kit.netpolicy` (the `--offline` guard beneath `urllib`; see [Offline enforcement](../../docs/adopters/reference/py-sdk.md#offline-enforcement)).
 
 ## Contract
 
@@ -71,6 +69,7 @@ over `hop-top-cite`), `hop_top_kit.safety` (the Factor 10 `--force` TTY check), 
 - Destructive commands are gated by the root: `--confirm` (no terminal means no), a typed `--confirm-token` where annotated, `--policy`, `--max-ops`; an unannotated `delete`/`remove`/`rm`/`destroy`/`purge`/`drop` leaf counts as destructive, and a malformed `kit/side-effect` fails closed.
 - MCP exposure is default-closed: `default_policy()` leaves `allow_destructive_on` empty, and empty means block-all.
 - Telemetry is default-denied: nothing emits without both a granted consent decision and a non-`off` `KIT_TELEMETRY_MODE`.
+- Migrations: `Migrator.run(cancel)` is synchronous; the Postgres driver needs a `connect` callable that supplies two connections at once; `migrate` CLI and `tidb` driver are not ported.
 
 ## See also
 
