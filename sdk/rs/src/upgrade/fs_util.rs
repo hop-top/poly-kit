@@ -12,6 +12,15 @@ pub(super) fn create_dir_all(dir: &Path) -> io::Result<()> {
     b.create(dir)
 }
 
+/// One new directory (it must not exist), mode 0o750 on unix.
+#[cfg(feature = "upgrade-fsdir")]
+pub(super) fn create_dir(dir: &Path) -> io::Result<()> {
+    let mut b = fs::DirBuilder::new();
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut b, 0o750);
+    b.create(dir)
+}
+
 pub(super) fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut o = fs::OpenOptions::new();
     o.write(true).create(true).truncate(true);
