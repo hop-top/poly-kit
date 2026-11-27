@@ -2,7 +2,7 @@
 
 ## What it answers
 
-How a TypeScript tool checks for a newer release, orders migration versions leniently, registers versioned schema migrations and migrates one JSON document by its own version field, and runs migrations across schema drivers with backup, lock, baseline and rollback (`Migrator`). Same semantics as Go `core/upgrade`. One driver ships: Postgres (`@hop-top/kit/upgrade/drivers/postgres`); write others against `SchemaDriver`. Wrong module for self-update (download, replace): Go only.
+How a TypeScript tool checks for a newer release, orders migration versions leniently, registers versioned schema migrations and migrates one JSON document by its own version field, and runs migrations across schema drivers with backup, lock, baseline and rollback (`Migrator`). Same semantics as Go `core/upgrade`. Drivers for config files, directories, SQLite and Postgres live in [`drivers/`](drivers/README.md), one subpath import each; write others against `SchemaDriver`. Wrong module for self-update (download, replace): Go only.
 
 ## Use it when
 
