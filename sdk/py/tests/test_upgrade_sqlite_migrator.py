@@ -147,7 +147,8 @@ def test_manual_rollback_latest_connect_mode_is_not_restored(tmp_path: Path) -> 
     d = SqliteDriver(db, connect=lambda: live, name=SCHEMA, data_dir=data)
     m = migrator(data, reg, d, manual_rollback=True)
     m.run(threading.Event())
-    backup = next((data / "backups" / SCHEMA).glob("pre-*"))
+    # pre-<v> is the backup directory; pre-<v>.version beside it is a file.
+    backup = next(p for p in (data / "backups" / SCHEMA).glob("pre-*") if p.is_dir())
     assert rows(backup / "app.db") == [0]  # the backup was taken on the live handle
 
     with pytest.raises(MigrateError) as ei:
