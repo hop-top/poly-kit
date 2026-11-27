@@ -49,13 +49,17 @@ starting version. Manual mode leaves the last applied version; the
 backup keeps the starting version beside it (`pre-<v>.version`) so
 `RollbackLatest` records it after `Restore`. A driver implementing
 `VersionStorer` keeps its own version: only `SetVersion` is called,
-no version file is written.
+no version file is written. `WithBaseline(fn)` stamps a store that
+reports `""` before anything is selected: a non-empty answer is
+recorded (`kit.core.migration.baselined`), `""` changes nothing, an
+error fails that schema before any backup.
 
 | Option | Effect |
 |--------|--------|
 | `WithRegistry(NewRegistry())` | own migrations; default: `RegisterMigration`'s registry |
 | `WithDataDir(dir)` | version files and backups under `dir`, not XDG |
 | `WithVerify(fn)` | final-state check per schema |
+| `WithBaseline(fn)` | version of a store that reports none |
 | `WithEventPublisher(p)` | `kit.core.migration.*` events, in order |
 | `WithManualRollback()`, `WithBackupRetention(n)` | no auto rollback; backups kept |
 

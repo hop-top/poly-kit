@@ -151,8 +151,11 @@ created at the current shape by the application, from re-applying additive
 migrations. It runs inside the lock (rule 4), so two processes that both
 read `""` cannot both stamp and apply.
 
-Failure: an error from `fn` fails the schema (`baseline: ...`); no backup,
-no migration and no record happen for it.
+Failure: an error from `fn`, or from recording its answer
+(`baseline: record <v> failed: ...`), fails the schema (`baseline: ...`);
+no backup, no migration and no `baselined` event happen for it. A failed
+record leaves the version file at the baseline (it is written first) and
+the driver at `""`; nothing is undone. `Status()` never calls `fn`.
 
 ## 4. Locking
 

@@ -60,6 +60,18 @@ func WithVerify(fn func(ctx context.Context, schema, version string) error) Migr
 	return func(m *Migrator) { m.verify = fn }
 }
 
+// WithBaseline sets what an unversioned store is already at. When a
+// driver's Version() returns "", the Migrator calls fn(ctx, schema)
+// before it selects pending migrations. A non-empty result is recorded
+// like any version (event baselined) and used as the stored version, so
+// the migrations at or below it are not applied; "" leaves the store
+// unversioned (every migration pending). An error fails that schema's
+// run ("baseline: ..."), before any backup or Up. fn is not called when
+// a version is stored or when reading it failed, and Status never calls it.
+func WithBaseline(fn func(ctx context.Context, schema string) (string, error)) MigratorOption {
+	return func(m *Migrator) { m.baseline = fn }
+}
+
 // AppliedMigration records a successfully applied migration.
 type AppliedMigration struct {
 	Version string `json:"version"   table:"VERSION"`
@@ -86,6 +98,7 @@ type Migrator struct {
 	registry     *Registry
 	dataDir      string
 	verify       func(ctx context.Context, schema, version string) error
+	baseline     func(ctx context.Context, schema string) (string, error)
 	pub          domain.EventPublisher
 	topics       MigrationTopics
 }
@@ -112,7 +125,8 @@ func (m *Migrator) AddDriver(d SchemaDriver) {
 }
 
 // Run executes pending migrations for all registered drivers.
-// For each schema: read current version, collect pending, backup (and
+// For each schema: read current version (when none is stored, ask the
+// WithBaseline function and record its answer), collect pending, backup (and
 // save the version the run starts at beside it), then per migration Up,
 // Verify and record that migration's version, then the final verify.
 // A crash re-applies at most the one migration whose Up had not been
@@ -244,6 +258,12 @@ func (m *Migrator) runSchema(ctx context.Context, d SchemaDriver) (int, error) {
 		return 0, fmt.Errorf("read version: %w", err)
 	}
 
+	if current == "" && m.baseline != nil {
+		if current, err = m.stampBaseline(ctx, d); err != nil {
+			return 0, err
+		}
+	}
+
 	pending := m.registry.pending(d.Name(), current, m.version)
 	if len(pending) == 0 {
 		return 0, nil
@@ -276,6 +296,26 @@ func (m *Migrator) runSchema(ctx context.Context, d SchemaDriver) (int, error) {
 	}
 
 	return n, nil
+}
+
+// stampBaseline asks the baseline function what the unversioned store is
+// at and records a non-empty answer. It returns the version the run
+// continues from. A lock held for the schema covers this call: it sits
+// between the version read and the pending selection in runSchema.
+func (m *Migrator) stampBaseline(ctx context.Context, d SchemaDriver) (string, error) {
+	v, err := m.baseline(ctx, d.Name())
+	if err != nil {
+		return "", fmt.Errorf("baseline: %w", err)
+	}
+	if v == "" {
+		return "", nil
+	}
+	if err := m.setVersion(d, v); err != nil {
+		return "", fmt.Errorf("baseline: %w", recordError(v, err))
+	}
+	m.emit(context.WithoutCancel(ctx), m.topics.Baselined,
+		MigrationPayload{Tool: m.tool, Schema: d.Name(), From: "", To: v})
+	return v, nil
 }
 
 // applyAll runs Up, Verify and the version record for each pending

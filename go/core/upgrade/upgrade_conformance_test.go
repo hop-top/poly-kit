@@ -78,6 +78,13 @@ type upgradeConfMigration struct {
 	Cancel     bool   `json:"cancel"`
 }
 
+// upgradeConfBaseline is one schema's baseline function: it returns
+// Version, or fails with Error.
+type upgradeConfBaseline struct {
+	Version string `json:"version"`
+	Error   string `json:"error"`
+}
+
 type upgradeConfEvent struct {
 	Topic   string         `json:"topic"`
 	Payload map[string]any `json:"payload"`
@@ -114,21 +121,22 @@ type upgradeConfStep struct {
 type upgradeConfMigrator struct {
 	upgradeConfHeader
 	Scenarios []struct {
-		Name              string                       `json:"name"`
-		Target            string                       `json:"target"`
-		ManualRollback    bool                         `json:"manual_rollback"`
-		Retention         int                          `json:"retention"`
-		Drivers           []upgradeConfDriver          `json:"drivers"`
-		Migrations        []upgradeConfMigration       `json:"migrations"`
-		Backups           map[string][]string          `json:"backups"`
-		RecordedBackups   map[string]map[string]string `json:"recorded_backups"`
-		LockedBackups     map[string][]string          `json:"locked_backups"`
-		FinalVerify       bool                         `json:"final_verify"`
-		FinalVerifyFail   string                       `json:"final_verify_fail"`
-		DataDir           bool                         `json:"data_dir"`
-		Registry          string                       `json:"registry"`
-		DefaultMigrations []upgradeConfMigration       `json:"default_migrations"`
-		Steps             []upgradeConfStep            `json:"steps"`
+		Name              string                         `json:"name"`
+		Target            string                         `json:"target"`
+		ManualRollback    bool                           `json:"manual_rollback"`
+		Retention         int                            `json:"retention"`
+		Drivers           []upgradeConfDriver            `json:"drivers"`
+		Migrations        []upgradeConfMigration         `json:"migrations"`
+		Backups           map[string][]string            `json:"backups"`
+		RecordedBackups   map[string]map[string]string   `json:"recorded_backups"`
+		LockedBackups     map[string][]string            `json:"locked_backups"`
+		Baseline          map[string]upgradeConfBaseline `json:"baseline"`
+		FinalVerify       bool                           `json:"final_verify"`
+		FinalVerifyFail   string                         `json:"final_verify_fail"`
+		DataDir           bool                           `json:"data_dir"`
+		Registry          string                         `json:"registry"`
+		DefaultMigrations []upgradeConfMigration         `json:"default_migrations"`
+		Steps             []upgradeConfStep              `json:"steps"`
 	} `json:"scenarios"`
 }
 
@@ -427,6 +435,13 @@ func TestConformanceUpgradeMigrator(t *testing.T) {
 				opts = append(opts, WithVerify(func(_ context.Context, schema, version string) error {
 					record(schema + " final_verify " + version)
 					return failIf(sc.FinalVerifyFail)
+				}))
+			}
+			if sc.Baseline != nil {
+				opts = append(opts, WithBaseline(func(_ context.Context, schema string) (string, error) {
+					record(schema + " baseline")
+					b := sc.Baseline[schema]
+					return b.Version, failIf(b.Error)
 				}))
 			}
 			var events []upgradeConfEvent

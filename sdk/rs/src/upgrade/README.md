@@ -15,6 +15,7 @@ failure. The release check (`check`) tells a tool a newer build is out. Self-upd
 - one JSON document carries its own integer version (a saved layout) → `migrate_value` / `migrate_document` with `DocStep`s, pure, wasm-safe
 - a step must be checked before the version is recorded → `with_verify` per migration, `Migrator::verify` for the final state
 - other parts of the app react to migrations → `publisher(bus)`: `kit.core.migration.*` events, in order
+- a store that predates the migrator is already at some version → `baseline(|ctx, schema| ..)`: stamped before anything is selected
 - a failure must be inspected before undoing it → `manual_rollback()`, then `rollback_latest()`
 - the tool should say a newer release exists → `check::Checker::check` with the request in your transport (route it through `GuardedClient`), `notify` to print the notice; set `CheckConfig::offline(globals.offline)` so `--offline` skips it before any request or cache read
 - a `migrate status` view → `Migrator::status` (stored, target, pending per schema)

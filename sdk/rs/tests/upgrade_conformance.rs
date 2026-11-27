@@ -91,6 +91,16 @@ struct DriverCase {
     stores_version: bool,
 }
 
+/// One schema's baseline function: returns `version`, or fails with `error`.
+#[derive(Deserialize, Clone, Default)]
+#[serde(deny_unknown_fields)]
+struct BaselineCase {
+    #[serde(default)]
+    version: String,
+    #[serde(default)]
+    error: String,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MigrationCase {
@@ -179,6 +189,9 @@ struct Scenario {
     recorded_backups: BTreeMap<String, BTreeMap<String, String>>,
     #[serde(default)]
     locked_backups: BTreeMap<String, Vec<String>>,
+    /// Present: the migrator gets a baseline function (a schema without an
+    /// entry returns empty).
+    baseline: Option<BTreeMap<String, BaselineCase>>,
     #[serde(default)]
     final_verify: bool,
     #[serde(default)]
@@ -493,6 +506,14 @@ fn run_scenario(sc: &Scenario) {
                 .unwrap()
                 .push(format!("{schema} final_verify {version}"));
             fail_if(&fail)
+        });
+    }
+    if let Some(cases) = &sc.baseline {
+        let (log, cases) = (log.clone(), cases.clone());
+        m = m.baseline(move |_, schema| {
+            log.lock().unwrap().push(format!("{schema} baseline"));
+            let c = cases.get(schema).cloned().unwrap_or_default();
+            fail_if(&c.error).map(|()| c.version)
         });
     }
     for mc in &sc.migrations {

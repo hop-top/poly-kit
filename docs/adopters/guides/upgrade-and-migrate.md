@@ -182,6 +182,56 @@ pruned after success.
 `Status()` returns per-schema `Current`, `Target`, `Pending`;
 `History()` the migrations applied this session.
 
+#### Fresh and existing stores
+
+A store that predates the migrator reports no version, so every
+migration looks pending. The usual app creates its tables at the
+current shape on first start, then runs the migrator. On a database it
+just created, an additive migration (`ALTER TABLE ... ADD COLUMN`)
+would apply on top of a table that already has the column and fail.
+`WithBaseline` is what prevents that: when a driver reports `""`, the
+Migrator calls it before it selects pending migrations, and records the
+version it returns.
+
+```go
+func ensureTables(db *sql.DB) error { /* CREATE TABLE IF NOT EXISTS at the current shape */ }
+
+m := upgrade.NewMigrator("mytool", version,
+    upgrade.WithBaseline(func(ctx context.Context, schema string) (string, error) {
+        // Inspect the live store: which shape is it at?
+        has, err := columnExists(ctx, db, "versions", "live")
+        if err != nil {
+            return "", err // fails this schema's run, nothing applied
+        }
+        if has {
+            return "1.2.0", nil // already at the shape of 1.2.0: stamp it
+        }
+        return "", nil // unversioned and older: every migration applies
+    }),
+)
+if err := ensureTables(db); err != nil {
+    return err
+}
+if err := m.Run(ctx); err != nil {
+    return err
+}
+```
+
+The function runs only for a store with no recorded version, once per
+schema per run, never when a version exists. A non-empty answer is
+recorded through the same path as a migration's version and publishes
+`kit.core.migration.baselined`; migrations at or below it are not
+applied, later ones run as usual. An empty answer changes nothing. An
+error fails that schema (`baseline: ...`) before any backup or `Up`.
+
+The introspection to copy is the one the document store already uses
+(`engine/store/document.go`): its `live` column migration reads
+`PRAGMA table_info(versions)` and adds the column only when it is
+missing, because a fresh database got it from `CREATE TABLE`. Your
+baseline function asks the same question of the live store and turns
+the answer into a version. A fresh database and an upgraded one then
+end at the same version with the same shape.
+
 ### 4. Give users a `migrate` command
 
 ```go
