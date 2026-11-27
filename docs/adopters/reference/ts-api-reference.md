@@ -304,8 +304,10 @@ Subpath imports follow the package's `exports` map (see
   peer dependency) or type-checking with `skipLibCheck: false` fails with
   TS7016.
 - `@hop-top/kit/upgrade` — semver upgrade detection (`createChecker`), plus
-  lenient semver (`compareVersions`), `Migration`, `Registry` and the JSON
-  document migrator (`migrateDocument`).
+  lenient semver (`compareVersions`), `Migration`, `Registry`, the JSON
+  document migrator (`migrateDocument`) and the `Migrator` (`SchemaDriver`
+  with optional `lock` and `storesVersion`, `BackupUnsupportedError`,
+  `NotRestoredError`, `VerifyError`, `isNotRestored`, `isBackupUnsupported`).
 - `@hop-top/kit/llm` — LLM client, registry, fallback and typed errors;
   `@hop-top/kit/anthropic`, `@hop-top/kit/openai` and
   `@hop-top/kit/routellm` register their URI schemes on import (see

@@ -5,10 +5,12 @@
 // v1 and a corpus file nobody consumes all fail the run.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 import { describe, it, expect } from 'vitest';
+
+import { DIR, strict, type Shape } from '../../test/upgrade/conformance-support';
+import { MIGRATOR_SHAPE, runMigratorScenario, type MigratorFile } from '../../test/upgrade/conformance-migrator';
 
 import {
   DocError,
@@ -22,52 +24,13 @@ import {
   type JsonObject,
 } from './index';
 
-function corpusDir(): string {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 10; i++) {
-    const cand = join(dir, 'contracts', 'upgrade-v1');
-    if (existsSync(join(cand, 'versions.json'))) return cand;
-    dir = resolve(dir, '..');
-  }
-  throw new Error('contracts/upgrade-v1 not found above ' + dirname(fileURLToPath(import.meta.url)));
-}
-
-const DIR = corpusDir();
-
 // Files this runner consumes.
-const CONSUMED = new Set(['versions.json', 'document.json']);
+const CONSUMED = new Set(['versions.json', 'document.json', 'migrator.json']);
 // Files it knows about but does not consume yet: listed by name with the
-// reason, never silently ignored. Remove an entry when its section is
-// consumed.
-const PENDING: Record<string, string> = {
-  'migrator.json': 'Migrator is not ported to TypeScript yet',
-};
+// reason, never silently ignored. Nothing is pending for TypeScript.
+const PENDING: Record<string, string> = {};
 
 // ─── strict loading ───────────────────────────────────────────────────
-
-interface Shape {
-  [key: string]: Shape | true | readonly [Shape | true];
-}
-
-function strict(value: unknown, shape: Shape, where: string): void {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`${where}: not an object`);
-  }
-  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-    const spec = shape[key];
-    if (spec === undefined) throw new Error(`${where}: unknown field "${key}"`);
-    if (spec === true) continue;
-    if (Array.isArray(spec)) {
-      if (!Array.isArray(val)) throw new Error(`${where}.${key}: not an array`);
-      const item = spec[0] as Shape | true;
-      val.forEach((v, i) => {
-        if (item !== true) strict(v, item, `${where}.${key}[${i}]`);
-      });
-    } else {
-      strict(val, spec as Shape, `${where}.${key}`);
-    }
-  }
-}
 
 const HEADER: Shape = { $schema: true, $id: true, version: true, description: true };
 
@@ -102,10 +65,6 @@ describe('upgrade-v1 corpus', () => {
   it('no file is both consumed and pending', () => {
     for (const f of Object.keys(PENDING)) expect(CONSUMED.has(f)).toBe(false);
   });
-
-  for (const [file, reason] of Object.entries(PENDING)) {
-    it.skip(`${file}: pending, ${reason}`, () => {});
-  }
 });
 
 // ─── versions.json ────────────────────────────────────────────────────
@@ -330,6 +289,22 @@ describe('upgrade-v1 document.json', () => {
         });
         expect(JSON.stringify(doc), "caller's document changed").toBe(snapshot);
       }
+    });
+  }
+});
+
+// ─── migrator.json ────────────────────────────────────────────────────
+
+describe('upgrade-v1 migrator.json', () => {
+  const f = load<MigratorFile>('migrator.json', MIGRATOR_SHAPE);
+
+  it('has scenarios', () => {
+    expect(f.scenarios.length).toBeGreaterThan(0);
+  });
+
+  for (const sc of f.scenarios) {
+    it(sc.name, async () => {
+      await runMigratorScenario(sc);
     });
   }
 });
