@@ -57,7 +57,7 @@ Every path is relative to `src/`; namespaces sit under `HopTop\Kit`.
 | [`Net/`](src/Net/README.md) | `--offline` marker and Guzzle enforcement | a request must honour `--offline` |
 | [`Api/`](src/Api/README.md) | JSON API client with the offline guard pre-installed | you call an HTTP API from a kit CLI |
 | [`Id/`](src/Id/README.md) | TypeID primitive | you mint or parse prefixed identifiers |
-| [`Upgrade/`](src/Upgrade/README.md) | lenient semver, migration registry, JSON document migrator | you order migrations or migrate a versioned JSON document |
+| [`Upgrade/`](src/Upgrade/README.md) | lenient semver, migration registry, JSON document migrator, `Migrator` with file and directory drivers | you order migrations or migrate a versioned JSON document |
 | [`Telemetry/`](src/Telemetry/README.md) | consent-gated usage events and redaction | you record usage under user consent |
 | [`Telemetry/Sink/`](src/Telemetry/Sink/README.md) | JSONL, HTTPS and null sinks | you choose where envelopes go |
 | [`Uri/`](src/Uri/README.md) | URI facade delegating to `hop-top/cite` | you parse or format kit URIs |

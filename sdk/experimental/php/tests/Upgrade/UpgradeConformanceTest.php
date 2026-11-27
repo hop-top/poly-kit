@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace HopTop\Kit\Tests\Upgrade;
 
+use HopTop\Kit\Tests\Upgrade\Support\Corpus;
 use HopTop\Kit\Upgrade\DocApplied;
 use HopTop\Kit\Upgrade\DocApplyException;
 use HopTop\Kit\Upgrade\DocGapException;
@@ -31,19 +32,13 @@ use PHPUnit\Framework\TestCase;
  */
 final class UpgradeConformanceTest extends TestCase
 {
-    /** Corpus files this runner consumes. */
-    private const CONSUMED = ['versions.json', 'document.json'];
+    use Corpus;
 
-    /**
-     * Corpus files a later change consumes: file => why it is not run yet.
-     * The Migrator change moves `migrator.json` to CONSUMED and deletes
-     * migratorJsonIsPending().
-     */
-    private const PENDING = [
-        'migrator.json' => 'the PHP Migrator is not ported yet; this runner consumes the file once it is',
-    ];
+    /** Corpus files this runner consumes; `UpgradeMigratorConformanceTest` runs `migrator.json`. */
+    private const CONSUMED = ['versions.json', 'document.json', 'migrator.json'];
 
-    private const HEADER = ['$schema', '$id', 'version', 'description'];
+    /** Corpus files a later change consumes: file => why it is not run yet. Nothing is pending. */
+    private const PENDING = [];
 
     private const KINDS = [
         'newer' => DocNewerException::class,
@@ -54,45 +49,6 @@ final class UpgradeConformanceTest extends TestCase
         'invalid' => DocInvalidException::class,
     ];
 
-    private static function dir(): string
-    {
-        $dir = __DIR__;
-        while (!is_dir($dir . '/contracts/upgrade-v1')) {
-            $parent = dirname($dir);
-            if ($parent === $dir) {
-                throw new \RuntimeException('contracts/upgrade-v1 not found');
-            }
-            $dir = $parent;
-        }
-
-        return $dir . '/contracts/upgrade-v1';
-    }
-
-    /**
-     * @param list<string> $allowed
-     * @param array<mixed> $obj
-     */
-    private static function strict(array $obj, array $allowed, string $where): void
-    {
-        self::assertSame([], array_values(array_diff(array_map('strval', array_keys($obj)), $allowed)), "$where: unknown field");
-    }
-
-    /** @return array{0: array<string, mixed>, 1: \stdClass} decoded as arrays, and as objects */
-    private static function load(string $file): array
-    {
-        $text = (string) file_get_contents(self::dir() . '/' . $file);
-        /** @var array<string, mixed> $arr */
-        $arr = json_decode($text, true, 512, JSON_THROW_ON_ERROR);
-        /** @var \stdClass $obj */
-        $obj = json_decode($text, false, 512, JSON_THROW_ON_ERROR);
-        self::assertSame('v1', $arr['version'] ?? null, "$file: version");
-        foreach (['description', '$schema', '$id'] as $k) {
-            self::assertIsString($arr[$k] ?? null, "$file: $k");
-        }
-
-        return [$arr, $obj];
-    }
-
     #[Test]
     public function everyCorpusFileIsConsumedOrPending(): void
     {
@@ -101,15 +57,6 @@ final class UpgradeConformanceTest extends TestCase
         $known = array_merge(self::CONSUMED, array_keys(self::PENDING));
         sort($known);
         self::assertSame($known, $found, 'corpus files and runner classification differ');
-    }
-
-    #[Test]
-    public function migratorJsonIsPending(): void
-    {
-        self::assertArrayHasKey('migrator.json', self::PENDING);
-        [$arr] = self::load('migrator.json');
-        self::assertNotEmpty($arr['scenarios'] ?? null);
-        self::markTestSkipped('migrator.json pending: ' . self::PENDING['migrator.json']);
     }
 
     /** @return iterable<string, array{array<string, mixed>}> */

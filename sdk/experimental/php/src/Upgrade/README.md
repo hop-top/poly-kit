@@ -4,9 +4,9 @@
 
 In what order do versioned migrations run, which are pending between a stored and a target version,
 and how does one JSON document migrate by its own version field? `Semver` orders versions leniently,
-`Registry` holds `Migration`s, `DocumentMigrator` chains `DocStep`s over an in-memory document. The
-`Migrator` (backup, apply, rollback) and drivers are not ported yet; self-update (check, download,
-replace) stays Go-only.
+`Registry` holds `Migration`s, `DocumentMigrator` chains `DocStep`s over an in-memory document, and
+`Migrator` runs them per schema driver (lock, baseline, backup, apply, record, rollback). Drivers:
+`Driver\ConfigFile`, `Driver\FsDir` (SQL drivers not ported yet). Self-update stays Go-only.
 
 ## Use it when
 
@@ -38,6 +38,19 @@ $r = DocumentMigrator::migrate('{"version":1,"name":"x"}', [$rename]);
 echo $r->document, "\n"; // {"title":"x","version":2}
 ```
 
+Migrator, in short:
+```php
+use HopTop\Kit\Upgrade\{Migrator, MigrateException, UpgradeErrors};
+use HopTop\Kit\Upgrade\Driver\FsDir;
+$m = new Migrator('mytool', '1.2.0', registry: $reg, dataDir: $dir); // null: $XDG_DATA_HOME/hop/mytool
+$m->addDriver(new FsDir('assets', '/srv/assets', dataDir: $dir));
+try {
+    $m->run($cancellation); // optional HopTop\Kit\Serve\Cancellation, checked before each up
+} catch (MigrateException $e) {
+    if (UpgradeErrors::isNotRestored($e)) { /* nothing could undo the run */ }
+}
+```
+
 ## Contract
 
 - Versions: a leading `v` and `+build` are dropped; major, minor and patch are the leading digits of
@@ -49,8 +62,18 @@ echo $r->document, "\n"; // {"title":"x","version":2}
   `DocApplyException`, `DocInvalidException`, and `VerifyException` for a failed verify
 - An empty JSON object inside a document is an empty `stdClass`, so it re-encodes as `{}`; objects whose
   keys are `0..n-1` decode as lists. Integers beyond `PHP_INT_MAX` are floats
-- Parity: [`contracts/upgrade-v1`](../../../../../contracts/upgrade-v1/README.md), `versions.json` and
-  `document.json`, run by `tests/Upgrade/UpgradeConformanceTest.php`; `migrator.json` is listed there as pending
+- `run()`: per schema `Locker::lock`, `version()`, baseline, pending, `backup`, each `up`, `verify`, version
+  record, final verify, rollback (`down` in reverse, else `restore`), prune, unlock (always, `finally`). A
+  version is recorded after each step: in `<dataDir>/<schema>/version` (0600), unless the driver is a
+  `VersionStorer`. Backups: `<dataDir>/backups/<schema>/pre-<v>/` plus `pre-<v>.version`
+- Capabilities are interfaces checked with `instanceof`: `VersionStorer`, `Locker`. A driver throws
+  `BackupUnsupported` from `backup`/`restore`; the run goes on without a backup, and a rollback that needs it
+  ends `NotRestored`. `UpgradeErrors::isNotRestored/isBackupUnsupported/isVerify/isCanceled` search the
+  `getPrevious()` chain and the failed rollback
+- Events go to an optional `EventPublisher` (`kit.core.migration.*`); warnings to a `warn` closure (`error_log`)
+- Drivers `ConfigFile` and `FsDir`: [Driver](Driver/README.md)
+- Parity: [`contracts/upgrade-v1`](../../../../../contracts/upgrade-v1/README.md), `versions.json`,
+  `document.json` and `migrator.json`, run by `tests/Upgrade/Upgrade*ConformanceTest.php`
 
 ## See also
 
