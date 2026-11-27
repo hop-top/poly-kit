@@ -361,3 +361,9 @@ export function createChecker(opts: CheckerOptions): Checker {
 
   return { check, notifyIfAvailable };
 }
+
+// ─── Migrations ───────────────────────────────────────────────────────────────
+
+export * from './semver';
+export * from './migration';
+export * from './document';

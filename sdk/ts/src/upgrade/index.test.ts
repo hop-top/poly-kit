@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
-import { createChecker, UpgradeCheckError } from './upgrade';
+import { createChecker, UpgradeCheckError } from './index';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 

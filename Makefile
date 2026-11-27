@@ -556,11 +556,13 @@ test-parity-statemachine: ## statemachine-v1 conformance corpus (Go and Rust run
 
 # Versioned state migrations: version order, pending selection, and the
 # runner's backup, apply, rollback and prune sequence on a recording driver.
-test-parity-upgrade: ## upgrade-v1 conformance corpus (Go and Rust runners)
+test-parity-upgrade: ## upgrade-v1 conformance corpus (Go, Rust and TypeScript runners)
 	@echo "==> upgrade-v1 conformance: Go"
 	go test ./go/core/upgrade/ -run '^TestConformanceUpgrade' -count=1
 	@echo "==> upgrade-v1 conformance: Rust"
 	cd sdk/rs && cargo test --features upgrade --test upgrade_conformance --locked
+	@echo "==> upgrade-v1 conformance: TypeScript"
+	cd sdk/ts && pnpm vitest run src/upgrade/conformance.test.ts
 
 # After a cobra bump: rewrite the completion-v1 script goldens and the
 # Rust and TS script templates from the cobra version in go.mod, then run

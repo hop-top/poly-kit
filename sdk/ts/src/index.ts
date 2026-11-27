@@ -42,5 +42,5 @@ export * as stream from './stream.js';
 export * as telemetry from './telemetry/index.js';
 export * as toolspec from './toolspec.js';
 export * as tui from './tui/index.js';
-export * as upgrade from './upgrade.js';
+export * as upgrade from './upgrade/index.js';
 export * as xdg from './xdg.js';
