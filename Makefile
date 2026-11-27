@@ -6,7 +6,7 @@
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
 	completion-regen test-parity test-parity-api test-parity-webhook test-parity-authn test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-cli-root test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-oauth-token test-parity-i18n test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-rpc test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-oauth-token test-parity-i18n test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-identity test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
-	test-php test-php-sdk test-php-engine test-py test-py-sdk test-py-engine test-py-upgrade-integration \
+	test-php test-php-sdk test-php-upgrade-integration test-php-engine test-py test-py-sdk test-py-engine test-py-upgrade-integration \
 	test-release test-rs test-rs-engine test-rs-wasm test-templates test-ts test-ts-sdk test-ts-engine test-ts-upgrade-integration \
 	test-affected test-bats test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
 	vuln vuln-go vuln-go-binary vuln-osv
@@ -281,6 +281,25 @@ test-php: test-php-sdk test-php-engine ## PHP tests (phpunit)
 test-php-sdk: ## PHP tests: sdk/experimental/php (phpunit)
 	cd sdk/experimental/php && composer install --no-progress
 	cd sdk/experimental/php && vendor/bin/phpunit
+
+# Docker-backed, so never part of test-php-sdk (its phpunit.xml excludes the
+# `integration` group). A missing docker or pdo_pgsql fails; it is not a skip.
+# The container has a unique name and a random loopback port, and is removed
+# when the run ends.
+test-php-upgrade-integration: ## PHP upgrade postgres driver vs Postgres 16 in Docker (needs docker, pdo_pgsql)
+	cd sdk/experimental/php && composer install --no-progress
+	@php -m | grep -qx pdo_pgsql || { echo "pdo_pgsql is not loaded: the integration group needs it"; exit 1; }
+	@command -v docker >/dev/null || { echo "docker is required for the integration group"; exit 1; }
+	@set -e; name=kit-php-upgrade-pg-$$$$; \
+	docker run -d --rm --name $$name -e POSTGRES_USER=kit -e POSTGRES_PASSWORD=kit -e POSTGRES_DB=kit \
+		-p 127.0.0.1::5432 postgres:16-alpine >/dev/null; \
+	trap 'docker rm -f $$name >/dev/null 2>&1' EXIT; \
+	export KIT_UPGRADE_PG_USER=kit KIT_UPGRADE_PG_PASSWORD=kit; \
+	export KIT_UPGRADE_PG_DSN="pgsql:host=127.0.0.1;port=$$(docker port $$name 5432/tcp | head -n1 | sed 's/.*://');dbname=kit"; \
+	n=0; until php -r 'try { new PDO(getenv("KIT_UPGRADE_PG_DSN"), "kit", "kit"); } catch (Throwable $$e) { exit(1); }'; do \
+		n=$$((n+1)); [ $$n -lt 90 ] || { echo "postgres did not become ready"; exit 1; }; sleep 1; \
+	done; \
+	cd sdk/experimental/php && vendor/bin/phpunit --group integration
 
 # The real-kit test skips without KIT_BIN; the parity harness
 # (test-parity-engine) runs the engine against a live kit serve.
