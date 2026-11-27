@@ -67,9 +67,11 @@ jobs:
           mirror: hop-top/kit-ts
           node-version: '24.22.1'
           # --exclude sqlstore.test.ts: depends on better-sqlite3
-          # native bindings; --ignore-scripts blocks them. Mirrors
-          # local `make test-ts`.
-          test-command: pnpm install --frozen-lockfile --ignore-scripts && pnpm vitest run --exclude src/sqlstore.test.ts
+          # native bindings; --ignore-scripts blocks them. The upgrade
+          # driver integration tests need the same bindings or Docker
+          # (`make test-ts-upgrade-integration`). Mirrors local
+          # `make test-ts-sdk`.
+          test-command: pnpm install --frozen-lockfile --ignore-scripts && pnpm vitest run --exclude src/sqlstore.test.ts --exclude 'src/upgrade/drivers/*.integration.test.ts'
         qmochi:
           dir: incubator/qmochi
           ecosystem: go
