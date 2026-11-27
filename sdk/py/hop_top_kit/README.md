@@ -12,4 +12,5 @@ Python implementation of the kit library.
 | [`output/formatters/`](output/formatters/README.md) | built-in json, yaml, table, csv, text | you need one formatter or add one |
 | [`telemetry/`](telemetry/README.md) | mode gate, install id, consent, redactor, `Client` | you emit usage telemetry |
 | [`tui/`](tui/README.md) | Rich-backed status, badge, spinner, progress, prompts | a TTY needs styled widgets |
+| [`upgrade/`](upgrade/README.md) | release check, lenient version order, Migration, Registry, document migrator | a tool checks for releases or migrates versioned state |
 | top-level modules (`cli.py`, `serve.py`, `scope.py`, ...) | single-file ports, one per Go package | see [`../README.md`](../README.md), section "Modules" |

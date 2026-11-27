@@ -20,6 +20,7 @@ make test-parity-upgrade
 # or separately:
 go test ./go/core/upgrade/ -run '^TestConformanceUpgrade'
 cargo test --features upgrade --test upgrade_conformance   # from sdk/rs
+pytest tests/test_upgrade_conformance.py                    # from sdk/py
 pnpm vitest run src/upgrade/conformance.test.ts            # from sdk/ts
 ```
 
@@ -57,6 +58,7 @@ unknown fields, a `version` other than `v1` and a corpus file no runner consumes
 |------|--------|
 | Go | `go/core/upgrade/upgrade_conformance_test.go` (`TestConformanceUpgrade*`) |
 | Rust | `sdk/rs/tests/upgrade_conformance.rs` |
+| Python | `sdk/py/tests/test_upgrade_conformance.py` (`versions.json`, `document.json`; `migrator.json` listed as pending) |
 | TypeScript | `sdk/ts/src/upgrade/conformance.test.ts`: `versions.json`, `document.json`; `migrator.json` listed pending |
 
 ## See also

@@ -27,7 +27,7 @@ Corpora bind every port, Go included; detail lives in each corpus README.
 - [webhook-v1/](webhook-v1/README.md): kit/transport/webhook receiver: Graph, Pipedrive v2 and generic HMAC request sequences, HMAC digests. Go, Rust.
 - [redact-v1/](redact-v1/README.md): kit/core/redact policy dump, spans, output. Go, Rust.
 - [upgrade-v1/](upgrade-v1/README.md): kit/core/upgrade versioned state migrations: version order, pending
-  range, run, rollback, prune and error texts. Go, Rust and TypeScript runners.
+  range, run, rollback, prune and error texts. Go and Rust runners; Python and TypeScript run versions and document.
 - [kv-v1/](kv-v1/README.md): kit/storage/kv keys bind to SQLite as TEXT; one SDK writes, another reads.
 - [identity-v1/](identity-v1/README.md): kit/core/identity HKDF-SHA256 key derivation over an Ed25519 seed.
 - [typeid-v1/](typeid-v1/README.md): kit `typeid`: the string every SDK makes from `(prefix, uuid)` and back.
