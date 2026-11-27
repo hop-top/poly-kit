@@ -36,27 +36,27 @@ Publishing is best-effort on a goroutine; it never blocks or fails the flow.
 
 `Migrator.Run(ctx)` brings each `SchemaDriver` from its stored version
 to the target: backup, then per pending migration in semver order `Up`,
-`Verify` and a record of that migration's version, then the `WithVerify`
-final check. A crash between an `Up` and its record re-applies that one
-migration on the next run: keep migrations idempotent. A failure
+`Verify` and a record of its version, then the `WithVerify` final check.
+A crash between an `Up` and its record re-applies that migration on the
+next run: keep migrations idempotent. A failure
 (`ErrVerify` for checks, `context.Canceled` between steps, a refused
 `SetVersion`) rolls back: `Down`s newest first, each followed by a
 record of the version before it, else the backup, then a record of the
 starting version. Manual mode leaves the last applied version; the
 backup keeps the starting version beside it (`pre-<v>.version`) so
 `RollbackLatest` records it after `Restore`. A `VersionStorer` keeps its
-own version: only `SetVersion` is called, no version file. `WithBaseline(fn)`
-stamps a store that reports `""` before anything is selected: a non-empty
-answer is recorded (`kit.core.migration.baselined`), an error fails that
-schema before any backup. A driver that is also a `Locker`
+own version: only `SetVersion` is called, no version file. A non-empty
+`WithBaseline` answer for a store reporting `""` is recorded
+(`kit.core.migration.baselined`); an error fails the schema. A driver that is also a `Locker`
 (`Lock(ctx) (unlock func() error, err error)`) is locked before `Version()`
-and unlocked once its run ends, rollback included; a `Lock` error fails
+and unlocked once its run ends, rollback included; `RollbackLatest` locks
+it too (lookup, `Restore`, record; no `Version()` read). A `Lock` error fails
 the schema (`lock: ...`), an unlock error is logged. A `Backup` that
 returns `ErrBackupUnsupported` runs without a backup (no directory, no
 prune); a rollback that then needs a restore, or whose `Restore` returns
 it, reverts nothing: the error matches `ErrNotRestored` (cause kept, no
-`reverted` event) and the version stays at the last step still applied.
-`RollbackLatest` with no backup fails the same way.
+`reverted` event), the version stays at the last step still applied;
+`RollbackLatest` with no backup fails alike.
 
 | Option | Effect |
 |--------|--------|

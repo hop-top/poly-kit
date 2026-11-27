@@ -178,6 +178,18 @@ alike. `unlock` takes no context, so a canceled run still releases.
 `Lock` blocks until acquired or the run's context is done, and then
 returns the context's error. `Status()` takes no lock.
 
+`RollbackLatest` (manual mode) takes the lock too, so a manual rollback
+never runs alongside a migrating process. Per schema: `Lock`, the backup
+lookup, `Restore`, the version record, `unlock`. It does not read
+`Version()`: it restores a backup and records what the backup says, and it
+has no baseline or pending selection to protect. It has no context, so
+`Lock` is called with a background context and waits as long as the holder
+does. A `Lock` error fails that schema's rollback before anything else
+(`rollback <schema>: lock: ...`); the lock is released after a refused
+rollback (no backup, unsupported backup or restore), a failed `Restore`
+and a failed record alike; an unlock error is the same warning as for a
+run.
+
 Locks are per schema, not per run: the Migrator holds one at a time and
 releases it before the next driver starts. Two Migrators serialise only on
 drivers that name the same lock.

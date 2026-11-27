@@ -251,8 +251,11 @@ record, a rollback and the backup prune all happen under the lock. A
 second process blocks in `Lock` until the first unlocks (or its
 context is done, which fails that schema with `lock: ...`), then reads
 the version the first one recorded and finds nothing pending. An
-`unlock` error is logged, not returned. A driver without `Locker` runs
-unlocked. In Rust the driver returns a `Locker` from
+`unlock` error is logged, not returned. `RollbackLatest` (the `migrate
+rollback` command) takes the same lock around the restore and the version
+record, so a manual rollback waits for a migrating process; a lock error
+fails that schema's rollback (`rollback <schema>: lock: ...`). A driver
+without `Locker` runs unlocked. In Rust the driver returns a `Locker` from
 `SchemaDriver::as_locker`.
 
 ### 4. Give users a `migrate` command
