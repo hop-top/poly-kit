@@ -16,13 +16,7 @@ that half of the package is Go-only and has no vectors.
 ## Quick start
 
 ```sh
-make test-parity-upgrade
-# or separately:
-go test ./go/core/upgrade/ -run '^TestConformanceUpgrade'
-cargo test --features upgrade --test upgrade_conformance   # from sdk/rs
-pytest tests/test_upgrade_conformance.py                    # from sdk/py
-pnpm vitest run src/upgrade/conformance.test.ts            # from sdk/ts
-vendor/bin/phpunit tests/Upgrade/UpgradeConformanceTest.php   # from sdk/experimental/php
+make test-parity-upgrade   # every runner; one alone: see Runners
 ```
 
 ## Contract
@@ -65,17 +59,17 @@ nothing back (no `down`, no restore); the version file is written before the dri
 
 Rust has no default registry: its runner treats every scenario as `registry: own`. No vector holds equal
 versions (Go sorts them unstably). Runners are strict: unknown fields, a `version` other than `v1` and a corpus file no runner consumes fail the run. A port that has not
-ported a file yet lists it in its runner as pending by name, with a reason, until it consumes it.
+ported a file yet lists it in its runner as pending by name, with a reason, until it consumes it: Python, TypeScript and PHP list `migrator.json` today.
 
 ## Runners
 
-| Port | Runner |
-|------|--------|
-| Go | `go/core/upgrade/upgrade_conformance_test.go` (`TestConformanceUpgrade*`) |
-| Rust | `sdk/rs/tests/upgrade_conformance.rs` |
-| Python | `sdk/py/tests/test_upgrade_conformance.py` (`versions.json`, `document.json`; `migrator.json` listed as pending) |
-| TypeScript | `sdk/ts/src/upgrade/conformance.test.ts`: `versions.json`, `document.json`; `migrator.json` listed pending |
-| PHP | `sdk/experimental/php/tests/Upgrade/UpgradeConformanceTest.php` (`migrator.json` listed as pending) |
+| Port | Runner | Run alone |
+|------|--------|-----------|
+| Go | `go/core/upgrade/upgrade_conformance_test.go` | `go test ./go/core/upgrade/ -run '^TestConformanceUpgrade'` |
+| Rust | `sdk/rs/tests/upgrade_conformance.rs` | `cargo test --features upgrade --test upgrade_conformance`, from `sdk/rs` |
+| Python | `sdk/py/tests/test_upgrade_conformance.py` | `pytest tests/test_upgrade_conformance.py`, from `sdk/py` |
+| TypeScript | `sdk/ts/src/upgrade/conformance.test.ts` | `pnpm vitest run src/upgrade/conformance.test.ts`, from `sdk/ts` |
+| PHP | `sdk/experimental/php/tests/Upgrade/UpgradeConformanceTest.php` | `vendor/bin/phpunit tests/Upgrade/UpgradeConformanceTest.php`, from `sdk/experimental/php` |
 
 ## See also
 
