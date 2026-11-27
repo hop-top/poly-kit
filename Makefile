@@ -7,7 +7,7 @@
 	completion-regen test-parity test-parity-api test-parity-webhook test-parity-authn test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-cli-root test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-oauth-token test-parity-i18n test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-rpc test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-oauth-token test-parity-i18n test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-identity test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	test-php test-php-sdk test-php-engine test-py test-py-sdk test-py-engine test-py-upgrade-integration \
-	test-release test-rs test-rs-engine test-rs-wasm test-templates test-ts test-ts-sdk test-ts-engine \
+	test-release test-rs test-rs-engine test-rs-wasm test-templates test-ts test-ts-sdk test-ts-engine test-ts-upgrade-integration \
 	test-affected test-bats test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
 	vuln vuln-go vuln-go-binary vuln-osv
 
@@ -254,7 +254,10 @@ test-go-race: ## Go tests under the race detector (go/, cmd/, internal/, example
 test-ts: test-ts-sdk test-ts-engine ## TypeScript tests
 
 test-ts-sdk: ## TypeScript tests: sdk/ts
-	cd sdk/ts && pnpm vitest run --exclude src/sqlstore.test.ts
+	cd sdk/ts && pnpm vitest run --exclude src/sqlstore.test.ts --exclude 'src/upgrade/drivers/*.integration.test.ts'
+
+test-ts-upgrade-integration: ## TypeScript upgrade driver tests that need better-sqlite3 or Docker
+	cd sdk/ts && pnpm vitest run src/upgrade/drivers/ --testNamePattern '' --passWithNoTests=false
 
 test-ts-engine: ## TypeScript tests: engine/sdk/ts-kit-engine
 	cd engine/sdk/ts-kit-engine && ./node_modules/.bin/vitest run
