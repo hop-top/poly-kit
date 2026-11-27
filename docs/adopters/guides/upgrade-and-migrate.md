@@ -4,6 +4,8 @@
 > releases, replace itself, and move its on-disk state (databases,
 > config, data dirs, JSON documents) forward across versions. Package
 > reference: [`go/core/upgrade` README](../../../go/core/upgrade/README.md).
+> Python adopters migrating state: go to
+> [Python: versioned state migrations](#python-versioned-state-migrations).
 
 `hop.top/kit/go/core/upgrade` has two independent halves:
 
