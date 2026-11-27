@@ -6,8 +6,9 @@
 //! with their mode bits. A Go backup restores here and the reverse.
 //! `restore` extracts into a temporary directory beside the target and
 //! swaps it in, so a failed extraction leaves the original intact; it
-//! refuses archives that would write outside the directory. The driver
-//! locks `<data dir>/<name>/.lock`.
+//! refuses archives that would write outside the directory. `backup` runs
+//! the same link check on every symlink and fails on one `restore` would
+//! refuse. The driver locks `<data dir>/<name>/.lock`.
 
 use std::fs::{self, File};
 use std::io;
@@ -88,8 +89,9 @@ impl SchemaDriver for FsDirDriver {
     }
 
     /// Writes `<dest>/<name>.tar.gz`; a missing directory is "nothing to
-    /// back up" (`Ok`, no archive). Symlinks are stored as links; sockets,
-    /// devices and pipes are an error.
+    /// back up" (`Ok`, no archive). Symlinks are stored as links unless
+    /// `restore` would refuse them (then the backup fails, naming the link);
+    /// sockets, devices and pipes are an error.
     fn backup(&self, dest: &Path) -> Result<(), BoxError> {
         fs_util::create_dir_all(dest).map_err(|e| format!("create backup dir: {e}"))?;
         match fs::symlink_metadata(&self.dir_path) {
@@ -180,16 +182,23 @@ fn swap(stage: &Path, target: &Path, parent: &Path, base: &str) -> io::Result<()
 // ---- backup ----
 
 fn write_archive(root: &Path, archive: &Path) -> io::Result<()> {
+    let canon = fs::canonicalize(root)?;
     let gz = GzEncoder::new(File::create(archive)?, Compression::default());
     let mut tar = Builder::new(gz);
-    append_tree(&mut tar, root, Path::new("."))?;
+    append_tree(&mut tar, &canon, root, Path::new("."))?;
     let file = tar.into_inner()?.finish()?;
     file.sync_all()
 }
 
 /// Appends `path` (relative name `rel`), then, for a directory, its
-/// entries in name order: Go's `filepath.Walk` order.
-fn append_tree(tar: &mut Builder<GzEncoder<File>>, path: &Path, rel: &Path) -> io::Result<()> {
+/// entries in name order: Go's `filepath.Walk` order. A symlink must pass
+/// the checks `restore` applies, or the backup fails.
+fn append_tree(
+    tar: &mut Builder<GzEncoder<File>>,
+    canon: &Path,
+    path: &Path,
+    rel: &Path,
+) -> io::Result<()> {
     let meta = fs::symlink_metadata(path)?;
     let mut h = Header::new_gnu();
     h.set_metadata(&meta);
@@ -206,13 +215,21 @@ fn append_tree(tar: &mut Builder<GzEncoder<File>>, path: &Path, rel: &Path) -> i
             } else {
                 rel.join(&n)
             };
-            append_tree(tar, &path.join(&n), &child)?;
+            append_tree(tar, canon, &path.join(&n), &child)?;
         }
     } else if ty.is_file() {
         tar.append_data(&mut h, rel, File::open(path)?)?;
     } else if ty.is_symlink() {
+        let link = fs::read_link(path)?;
+        if !link_stays_inside(rel, &link) || resolves_outside(canon, path) {
+            return Err(io::Error::other(format!(
+                "restore would refuse link {} -> {}: link escapes directory",
+                path.display(),
+                link.display()
+            )));
+        }
         h.set_size(0);
-        tar.append_link(&mut h, rel, fs::read_link(path)?)?;
+        tar.append_link(&mut h, rel, link)?;
     } else {
         return Err(io::Error::other(format!(
             "unsupported file type: {}",
@@ -254,6 +271,14 @@ fn link_stays_inside(at: &Path, link: &Path) -> bool {
         }
     }
     true
+}
+
+/// Whether the symlink at `link` resolves, on disk, outside `canon` (the
+/// canonical root). A link that does not resolve (dangling, a loop) is not
+/// "outside". `restore` runs this on every extracted link, `backup` on
+/// every link it is about to store.
+fn resolves_outside(canon: &Path, link: &Path) -> bool {
+    matches!(fs::canonicalize(link), Ok(real) if !real.starts_with(canon))
 }
 
 /// Fails when a parent of `rel` under `root` is a symlink: a member must
@@ -337,11 +362,8 @@ fn extract(archive: &Path, root: &Path) -> Result<(), BoxError> {
     // inside the root.
     let canon = fs::canonicalize(root)?;
     for l in &links {
-        match fs::canonicalize(l) {
-            Ok(real) if !real.starts_with(&canon) => {
-                return Err(format!("link escapes directory: {}", l.display()).into())
-            }
-            _ => {}
+        if resolves_outside(&canon, l) {
+            return Err(format!("link escapes directory: {}", l.display()).into());
         }
     }
     apply_dir_modes(dir_modes)?;
