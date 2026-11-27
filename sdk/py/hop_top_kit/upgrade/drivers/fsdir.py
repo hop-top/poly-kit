@@ -13,7 +13,9 @@ target climbs with ``..`` after a named component (``d/..``: ``d`` may be a
 link back to the root), a member named like an earlier link, and device,
 fifo or other special members. It extracts into a sibling temp directory and
 swaps it in only when extraction succeeded, so a failed restore leaves the
-current directory as it was.
+current directory as it was. Backup runs the same check on every symbolic link
+and fails, naming the path, on one restore would refuse: a backup never holds
+what its own rollback cannot restore.
 
 Python 3.11.0 to 3.11.3 have no ``tarfile`` extraction filters, and their
 extraction follows links already on disk. There the driver handles no links
@@ -152,7 +154,10 @@ def _extract(archive: Path, dest: Path) -> None:
 
 def _add_tree(tar: tarfile.TarFile, root: Path) -> None:
     """Add *root* itself as ``.`` and everything below it, depth first in
-    name order, as Go's ``filepath.Walk`` visits it."""
+    name order, as Go's ``filepath.Walk`` visits it. A symbolic link goes
+    through the check restore applies to it, so a backup never holds a link its
+    own restore would refuse."""
+    symlinks: set[str] = set()
 
     def add(path: Path, arcname: str) -> None:
         info = tar.gettarinfo(str(path), arcname)
@@ -160,6 +165,11 @@ def _add_tree(tar: tarfile.TarFile, root: Path) -> None:
             raise OSError(f"unsupported file type: {path}")
         if info.issym() and not _HAS_DATA_FILTER:
             raise OSError(f"symbolic link needs {_LINKS_NEED}, or restore refuses it: {path}")
+        if info.issym():
+            try:
+                _check_member(info, symlinks)
+            except UnsafeArchiveError as e:
+                raise UnsafeArchiveError(f"{path}: restore would refuse this link: {e}") from e
         info.mtime = int(info.mtime)  # no pax record for a fractional time
         if info.isreg():
             with path.open("rb") as f:

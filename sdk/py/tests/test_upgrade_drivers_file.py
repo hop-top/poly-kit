@@ -265,6 +265,64 @@ def test_fsdir_keeps_internal_symlinks(tmp_path: Path) -> None:
     assert os.readlink(root / "sub" / "up") == "../file.txt"
 
 
+# A link the restore check refuses must not be backed up: a rollback would fail
+# at the worst moment. ``(where, target)``: the link sits at ``where``.
+UNRESTORABLE_LINKS = {
+    "absolute": ("l", "{abs}"),
+    "up-from-root": ("l", "../outside"),
+    "up-from-nested": ("sub/l", "../../outside"),
+    "up-after-name": ("l", "sub/../../outside"),
+    "named-then-up": ("l", "sub/.."),
+}
+
+# Every link kind the restore check accepts: it still backs up and round-trips.
+RESTORABLE_LINKS = {
+    "sibling-file": ("l", "file.txt"),
+    "up-then-down": ("sub/l", "../file.txt"),
+    "to-dir": ("l", "sub"),
+    "to-root": ("l", "."),
+    "dangling": ("l", "missing"),
+    "to-link": ("l", "other"),
+}
+
+
+def _link_tree(tmp_path: Path, where: str, target: str) -> Path:
+    root = tmp_path / "mydata"
+    (root / "sub").mkdir(parents=True)
+    (root / "file.txt").write_text("hello")
+    (root / "other").symlink_to("file.txt")
+    (root / where).symlink_to(target.replace("{abs}", str(tmp_path / "outside")))
+    return root
+
+
+@pytest.mark.skipif(not POSIX or not hasattr(tarfile, "data_filter"), reason="symlinks, filters")
+@pytest.mark.parametrize("case", sorted(UNRESTORABLE_LINKS))
+def test_fsdir_backup_refuses_a_link_its_restore_would_refuse(tmp_path: Path, case: str) -> None:
+    where, target = UNRESTORABLE_LINKS[case]
+    root = _link_tree(tmp_path, where, target)
+    bk = tmp_path / "bk"
+    with pytest.raises(UnsafeArchiveError, match=f"{root / where}"):
+        FsDirDriver("mydata", root).backup(bk)
+    assert list(bk.iterdir()) == [], "no archive, no partial file"
+
+
+@pytest.mark.skipif(not POSIX or not hasattr(tarfile, "data_filter"), reason="symlinks, filters")
+@pytest.mark.parametrize("case", sorted(RESTORABLE_LINKS))
+def test_fsdir_backup_keeps_every_link_its_restore_accepts(tmp_path: Path, case: str) -> None:
+    where, target = RESTORABLE_LINKS[case]
+    root = _link_tree(tmp_path, where, target)
+    want = _snapshot(root)
+    d = FsDirDriver("mydata", root)
+    bk = tmp_path / "bk"
+    d.backup(bk)
+    assert [p.name for p in bk.iterdir()] == ["mydata.tar.gz"]
+    os.unlink(root / where)
+    (root / "file.txt").write_text("changed")
+    d.restore(bk)
+    assert os.readlink(root / where) == target
+    assert _snapshot(root) == want
+
+
 @pytest.mark.skipif(not POSIX, reason="fifo")
 def test_fsdir_backup_refuses_special_files_and_leaves_no_partial_archive(
     tmp_path: Path,
@@ -602,6 +660,24 @@ def test_migrator_restores_fsdir_after_a_failed_migration(tmp_path: Path) -> Non
         (root / "added").mkdir()
 
     _failing_run(tmp_path, d, "store", mutate, lambda: _snapshot(root))
+
+
+@pytest.mark.skipif(not POSIX or not hasattr(tarfile, "data_filter"), reason="symlinks, filters")
+def test_migrator_fails_the_schema_before_any_up_when_backup_refuses_a_link(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "store"
+    root.mkdir()
+    (root / "abs").symlink_to(str(tmp_path / "outside"))
+    ran: list[str] = []
+    r = Registry()
+    r.register(Migration("1.0.0", "store", lambda: ran.append("up")))
+    m = Migrator("demo", "1.0.0", data_dir=tmp_path / "data", registry=r)
+    m.add_driver(FsDirDriver("store", root, data_dir=tmp_path / "data"))
+    with pytest.raises(MigrateError, match=r"^migrate store: backup: .*abs") as ei:
+        m.run()
+    assert ran == [], "no migration ran"
+    assert "backup:" in str(ei.value)
 
 
 # --- links through a symlink to the root
