@@ -9,7 +9,10 @@ import (
 )
 
 // Compile-time interface assertion (runs without build tag).
-var _ upgrade.SchemaDriver = (*Driver)(nil)
+var (
+	_ upgrade.SchemaDriver = (*Driver)(nil)
+	_ upgrade.Locker       = (*Driver)(nil)
+)
 
 func TestDriver_Name(t *testing.T) {
 	// Cannot instantiate without a real DB; verify name via struct.
@@ -37,11 +40,18 @@ func TestDriver_BackupRestoreUnsupported(t *testing.T) {
 }
 
 // memVersion keeps the version in memory, so the migrator can run a
-// zero Driver whose Backup and Restore are the real ones.
+// zero Driver whose Backup and Restore are the real ones. It forwards
+// those explicitly: embedding the Driver would also promote Lock, which
+// needs a database.
 type memVersion struct {
-	*Driver
+	d       *Driver
 	version string
 }
+
+func (m *memVersion) Name() string           { return m.d.Name() }
+func (m *memVersion) Backup(p string) error  { return m.d.Backup(p) }
+func (m *memVersion) Restore(p string) error { return m.d.Restore(p) }
+func (m *memVersion) StoresVersion() bool    { return m.d.StoresVersion() }
 
 func (m *memVersion) Version() (string, error)  { return m.version, nil }
 func (m *memVersion) SetVersion(v string) error { m.version = v; return nil }
@@ -61,7 +71,7 @@ func TestDriver_RunWithoutDownIsNotRestored(t *testing.T) {
 		topics = append(topics, topic)
 		return nil
 	})
-	d := &memVersion{Driver: &Driver{name: "tidb"}, version: "1.0.0"}
+	d := &memVersion{d: &Driver{name: "tidb"}, version: "1.0.0"}
 	m := upgrade.NewMigrator("tidbtest", "1.2.0", upgrade.WithRegistry(reg),
 		upgrade.WithDataDir(t.TempDir()), upgrade.WithEventPublisher(pub))
 	m.AddDriver(d)

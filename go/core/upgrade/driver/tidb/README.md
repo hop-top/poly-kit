@@ -8,6 +8,8 @@ Local stores use the sibling drivers listed in [driver/README.md](../README.md).
 ## Use it when
 
 - several installs share one database and must agree on the applied version: `New(dsn, table)`
+- the application already holds a `*sql.DB` and the driver should share it: `NewWithDB(db, table)`
+- several processes may migrate at startup and only one must run: the driver is an `upgrade.Locker`
 - the schema name must differ from the default `tidb`: `WithName(name)`
 
 ## Quick start
@@ -26,7 +28,12 @@ With a valid table name `New` pings the server and creates the table;
 - `New` opens the connection, pings it, and creates `<table>(schema_name VARCHAR(255) PRIMARY KEY, version VARCHAR(255) NOT NULL DEFAULT '')` if absent. The table name must match `^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`.
 - The driver is a `upgrade.VersionStorer`: the table row is the only version; the Migrator writes no version file for it.
 - `Backup` and `Restore` return `upgrade.ErrBackupUnsupported`: kit does not back up a database. A run goes on without a backup; a failed migration whose `Down` is missing or fails is not restored (`upgrade.ErrNotRestored`) and the table keeps the last step still applied. Write a `Down` for each migration, or back up outside kit.
-- Call `Close` when done; the driver owns its `*sql.DB`.
+- `NewWithDB(db *sql.DB, table string, opts ...Option)` neither opens nor closes `db`; it ensures the table exists. `Close` closes only a handle `New` opened and never one the caller passed.
+- `Lock` holds `GET_LOCK(name, 1)` on a dedicated `*sql.Conn` for the whole run, polling until it returns 1 or the context is done (each attempt waits at most one second on the server; a query in flight is interrupted when the context ends, and a cancelled `Lock` holds nothing). `unlock` runs `RELEASE_LOCK` on that connection ignoring cancellation; if that fails the physical connection is discarded, which ends the session and the lock. Calling `unlock` twice is safe.
+- The lock name is `<table>:<schema>`, `<schema>` being `Name()`. The server accepts 64 characters: a longer name is cut to fit and ends in `#` plus 16 hex digits of the SHA-256 of the full name, so it stays deterministic and distinct.
+- Limit: the handle must allow two open connections. `Lock` returns an error when `db.Stats().MaxOpenConnections` is 1 (0, unlimited, is fine); the held connection would leave none for `Version` and `SetVersion`.
+- Limit: server lock names are server-wide, not per database. Two databases on one server that use the same table and schema names exclude each other; give them different table names. The lock covers kit's migrators only: it does not stop other clients from writing the schema.
+- Call `Close` when done with a driver from `New`; it owns its `*sql.DB`.
 - Imports `github.com/go-sql-driver/mysql`; the DSN follows that driver's format.
 
 ## Neighbours
