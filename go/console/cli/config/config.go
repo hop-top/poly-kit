@@ -32,9 +32,9 @@ import (
 )
 
 // ResolvedPath describes one rung of the config precedence chain.
-// Field ordering and JSON/YAML tag names match the core/config.ResolvedPath
-// contract (Agent A) so the two types are wire-compatible: callers can
-// pass core/config values straight through via a small adapter.
+// Field ordering and JSON/YAML tag names match core/config.ResolvedPath,
+// so the two types are wire-compatible: callers can pass core/config
+// values straight through via a small adapter.
 type ResolvedPath struct {
 	Path   string `json:"path" yaml:"path"`
 	Source string `json:"source" yaml:"source"`
@@ -55,7 +55,7 @@ type options struct {
 }
 
 // WithResolver overrides the default (no-op) resolver. Hosts pass an
-// adapter around core/config.Paths once Agent A's API is available:
+// adapter around core/config.Paths:
 //
 //	kitcliconfig.WithResolver(func(cwd string) []kitcliconfig.ResolvedPath {
 //	    raw := coreconfig.Paths(cwd)
