@@ -2,13 +2,14 @@
 
 ## What it answers
 
-How a TypeScript tool checks for a newer release, orders migration versions leniently, registers versioned schema migrations and migrates one JSON document by its own version field. Same semantics as Go `core/upgrade`. The `Migrator` (backup, apply, rollback) is not ported yet. Wrong module for self-update (download, replace): Go only.
+How a TypeScript tool checks for a newer release, orders migration versions leniently, registers versioned schema migrations and migrates one JSON document by its own version field, and runs migrations across schema drivers with backup, lock, baseline and rollback (`Migrator`). Same semantics as Go `core/upgrade`. No driver ships yet: write one against `SchemaDriver`. Wrong module for self-update (download, replace): Go only.
 
 ## Use it when
 
 - announce a newer release: `createChecker({ name, currentVersion, owner, repo })`, then `notifyIfAvailable(process.stderr)`
 - order or select migrations: `compareVersions('v1.9.0', '1.10.0')`, `new Registry().pending(schema, from, to)`
 - migrate a JSON document: `migrateDocument(text, steps, { latest: 3 })`
+- migrate stores: `new Migrator(tool, version, opts)`, `addDriver(d)`, `await run(signal?)`, `status()`, `rollbackLatest()`
 
 ## Quick start
 
@@ -25,7 +26,10 @@ const { doc, report } = migrateDocument('{"version":1,"name":"x"}', steps);
 
 - Versions: a leading `v` and `+build` are dropped; missing or non-numeric parts are 0; a release sorts above its pre-releases. Not the strict `semver` package.
 - Documents: the chain follows versions, not step order; newer, versionless or gapped documents fail with a `DocError` whose `kind` says why; the input is never modified; a current document comes back byte for byte.
-- Parity: [`contracts/upgrade-v1`](../../../../contracts/upgrade-v1/README.md) `versions.json` and `document.json`, replayed by [`conformance.test.ts`](conformance.test.ts); `migrator.json` is listed there as pending.
+- Migrator: per schema, lock, read version, baseline, backup, each `up` then `verify` then the version record, rollback, prune, unlock. `run` and `status` return Promises; `signal` aborts between steps (`context canceled`).
+- Drivers: `SchemaDriver` methods may be sync or async. Optional `lock(signal)` returns an unlock; `storesVersion: true` means the driver owns its version, else the Migrator writes `<data dir>/<schema>/version`. Backups: `<data dir>/backups/<schema>/pre-<v>/` plus `pre-<v>.version`.
+- Errors: a driver throws `BackupUnsupportedError` when it cannot back up or restore; `isBackupUnsupported`, `isNotRestored`, `isVerifyError`, `isCanceled` walk the run error's `cause` chain. Events go to any `{ publish(event) }` (a kit `Bus`).
+- Parity: [`contracts/upgrade-v1`](../../../../contracts/upgrade-v1/README.md) `versions.json`, `document.json` and `migrator.json`, replayed by [`conformance.test.ts`](conformance.test.ts).
 
 ## Neighbours
 

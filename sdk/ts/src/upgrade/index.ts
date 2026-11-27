@@ -367,3 +367,17 @@ export function createChecker(opts: CheckerOptions): Checker {
 export * from './semver';
 export * from './migration';
 export * from './document';
+export * from './errors';
+export * from './driver';
+export {
+  DEFAULT_MIGRATION_TOPICS,
+  PUBLISH_SOURCE,
+  topicsFromPrefix,
+  type EventPublisher,
+  type MigrationPayload,
+  type MigrationRunPayload,
+  type MigrationTopics,
+} from './events';
+export * from './options';
+export * from './migrator';
+export { readVersionFile, writeVersionFile, defaultDataDir } from './backup';
