@@ -2,10 +2,10 @@
 
 ## What it answers
 
-How does stored state (a database, config, saved documents, caches) move forward when a new build
-ships? The migration half of Go `go/core/upgrade`: versioned `Migration`s per schema, a `Migrator` that
-backs up, applies the pending ones in semver order, records the version after each and rolls back on
-failure. The release check (`check`) tells a tool a newer build is out. Self-update (download, binary replace) is not ported.
+How does stored state (a database, config, saved documents, caches) move forward when a new build ships?
+The migration half of Go `go/core/upgrade`: versioned `Migration`s per schema, a `Migrator` that backs up,
+applies the pending ones in semver order, records the version after each and rolls back on failure. The
+release check (`check`) says a newer build is out. Self-update (download, binary replace) is not ported.
 
 ## Use it when
 
@@ -15,11 +15,9 @@ failure. The release check (`check`) tells a tool a newer build is out. Self-upd
 - one JSON document carries its own integer version (a saved layout) → `migrate_value` / `migrate_document` with `DocStep`s, pure, wasm-safe
 - a step must be checked before the version is recorded → `with_verify` per migration, `Migrator::verify` for the final state
 - other parts of the app react to migrations → `publisher(bus)`: `kit.core.migration.*` events, in order
-- a store that predates the migrator is already at some version → `baseline(|ctx, schema| ..)`: stamped before anything is selected
-- several processes may migrate one store → `SchemaDriver::as_locker` returns a `Locker`: held for the schema's whole run
-- a failure must be inspected before undoing it → `manual_rollback()`, then `rollback_latest()`
-- the tool should say a newer release exists → `check::Checker::check` with the request in your transport (route it through `GuardedClient`), `notify` to print the notice; set `CheckConfig::offline(globals.offline)` so `--offline` skips it before any request or cache read
-- a `migrate status` view → `Migrator::status` (stored, target, pending per schema)
+- a store predating the migrator is already at some version → `baseline(|ctx, schema| ..)`; several processes may migrate one store → `SchemaDriver::as_locker` returns a `Locker`, held for the schema's whole run
+- a failure must be inspected before undoing it → `manual_rollback()`, then `rollback_latest()`; a `migrate status` view → `Migrator::status`
+- the tool should say a newer release exists → `check::Checker::check` with the request in your transport (route it through `GuardedClient`), `notify` to print the notice; `CheckConfig::offline(globals.offline)` makes `--offline` skip it before any request or cache read
 
 ## Quick start
 
@@ -48,27 +46,29 @@ m.run(&Context::background()).unwrap(); // nothing pending
 ## Contract
 
 - Feature `upgrade` builds on `bus` (context, events) plus `thiserror`. Authority: the crate [feature table](../../README.md#features).
-- `migrate_value` refuses newer documents and leaves the value untouched on any error; a current
-  document returns from `migrate_document` borrowed, byte for byte. Keys stay ordered only with
-  serde_json `preserve_order` in the build (the `output` feature has it), else they come back sorted.
-- `compare_versions`, `pending`, `Migration`, `SchemaDriver` and `document` build on wasm32; `Migrator`,
-  `configfile` and the version-file helpers are compiled off wasm32 only.
-- Pending is `stored < version <= target` per schema, in semver order; each migration's version is
-  recorded after its `up` and `verify`, under the data dir (default `<XDG data home>/hop/<tool>`, or
-  `data_dir`), unless the driver's `stores_version` is true (no file). A crash re-applies at most
-  the one migration not yet recorded: keep migrations idempotent.
+- `migrate_value` refuses newer documents and leaves the value untouched on any error; a current document
+  returns from `migrate_document` borrowed, byte for byte. Keys stay ordered only with serde_json
+  `preserve_order` (the `output` feature has it), else sorted.
+- `compare_versions`, `pending`, `Migration`, `SchemaDriver`, `document` and the unsupported-backup errors
+  build on wasm32; `Migrator`, `configfile` and the version-file helpers do not.
+- Pending is `stored < version <= target` per schema, in semver order; each version is recorded after
+  its `up` and `verify` under the data dir (default `<XDG data home>/hop/<tool>`, or `data_dir`) unless
+  `stores_version` (no file). A crash re-applies at most the unrecorded migration: keep them idempotent.
 - A failed `up`, `verify` or record (`StepKind::Record`), or a context done before the next `up`
-  (`is_verify`, `is_canceled`), stops the run; in auto mode applied `down`s run newest first on a
-  fresh context, each followed by a record of the version before it, else the backup is restored
-  and the starting version recorded. A failed verify undoes its own step too. Manual mode keeps the
-  last applied version; `rollback_latest` records the version saved beside the backup. Error texts
-  match Go's.
+  (`is_verify`, `is_canceled`), stops the run; in auto mode applied `down`s run newest first on a fresh
+  context, each followed by a record of the version before it, else the backup is restored and the starting
+  version recorded. A failed verify undoes its own step too. Manual mode keeps the last applied version;
+  `rollback_latest` records the version saved beside the backup. Texts match Go's.
+- A `backup` returning `BackupUnsupported` (boxed) runs without a backup: no directory, no prune. A rollback
+  needing a restore it cannot run (no backup, or `restore` unsupported) restores nothing:
+  `MigrateError::is_not_restored()` (the step's `rollback` is a `NotRestored`), no reverted event, the
+  version stays at the last step still applied; `is_backup_unsupported()` finds the cause; `rollback_latest`
+  with no backup fails alike. Free fns `is_not_restored`, `is_backup_unsupported` take any error.
 - `check` never fails: errors sit in `CheckResult::error`, a fresh cache (default 4h) answers without a request, and an offline check returns `Skipped::Offline` touching neither transport, cache nor state dir.
-- in a repository that tags several components, `CheckConfig::tag_prefix("xray/v")` keeps only this tool's releases and `include_prereleases(true)` offers prereleases; either lists releases (3 pages of 100 at most, highest semver, drafts skipped), calling the transport once per page, and `CheckResult::tag` carries the tag the notice links.
-- A prune failure goes to `on_warning` (default stderr, Go's `log.Printf` text); never fatal.
-- Registration is per `Migrator` (no default registry: Rust has no `init()` to fill one). Only the `configfile` driver is ported.
-- Parity: [`contracts/upgrade-v1`](../../../../contracts/upgrade-v1/README.md), run by
-  `tests/upgrade_conformance.rs` (`make test-parity-upgrade`).
+- in a repository tagging several components, `CheckConfig::tag_prefix("xray/v")` keeps only this tool's releases and `include_prereleases(true)` offers prereleases; either lists releases (3 pages of 100 at most, highest semver, drafts skipped), one transport call per page, and `CheckResult::tag` carries the tag the notice links.
+- A prune failure goes to `on_warning` (default stderr, Go's `log.Printf` text); never fatal. Registration
+  is per `Migrator` (no `init()` for a default registry). Only `configfile` is ported.
+- Parity: [`contracts/upgrade-v1`](../../../../contracts/upgrade-v1/README.md), run by `tests/upgrade_conformance.rs`.
 
 ## Neighbours
 

@@ -2,16 +2,14 @@
 
 ## What it answers
 
-What versioned state migrations in `kit/core/upgrade` must do, independent of language: how migration
-versions order, which migrations are pending between a stored and a target version, and what the runner
-does around them: the backup it takes, the order it applies and rolls back in, the version it records after each migration,
-the backups it prunes and the exact error texts; and how one JSON document migrates by its own version field. Wrong place for self-update (check, download, replace);
-that half of the package is Go-only and has no vectors.
+What versioned state migrations in `kit/core/upgrade` must do in any language: version order, pending
+selection, and what the runner does around them (backup, apply and rollback order, versions recorded,
+pruning, exact error texts); and how one JSON document migrates by its own version field. Not self-update
+(check, download, replace): that half is Go-only, with no vectors.
 
 ## Use it when
 
-- you port or change `Migration`, `Migrator`, `SchemaDriver` or the version order in any SDK: run both runners
-- you change migration behaviour in Go: add a vector first, then make every port pass it
+- you port or change `Migration`, `Migrator`, `SchemaDriver` or version order: run every runner; change Go behaviour: add a vector first
 
 ## Quick start
 
@@ -21,48 +19,50 @@ make test-parity-upgrade   # every runner; one alone: see Runners
 
 ## Contract
 
-Go is canonical. The vectors are the source of truth: a runner failure means the implementation drifted,
-not that the vector should be edited. Each file carries `version: "v1"` and a `description` stating the
-rules it pins.
+Go is canonical; the vectors are the source of truth: a runner failure means the implementation drifted, not
+the vector. Each file carries `version: "v1"` and a `description` of its rules.
 
 | File, section | Pins |
 |---------------|------|
 | `versions.json` `compare[]` `{a, b, cmp}` | lenient semver order: `v` and build metadata dropped, missing or non-numeric parts 0, pre-release identifier rules; checked both ways |
 | `versions.json` `pending[]` | `from < version <= to` for one schema, ascending, versions as registered |
 | `document.json` `scenarios[]` | the in-memory JSON document migrator: chain by version field, refusing newer documents, missing or non-integer versions, gaps, invalid steps, step and verify failures (input untouched), byte-identical when current |
-| `migrator.json` `scenarios[]` | `run`, `rollback_latest` and `status` steps against a recording driver (optionally version-storing or lockable): calls in order, error text, history, version files, stored versions, backup directories and their saved starting versions, published events, logged warnings |
+| `migrator.json` `scenarios[]` | `run`, `rollback_latest` and `status` steps against a recording driver (optionally version-storing, lockable or with unsupported backup or restore): calls in order, error text, history, version files, stored versions, backup directories and their saved starting versions, events, warnings |
 
 What the scenarios pin, beyond order: a re-run applies nothing; the version is recorded after each
-migration's `up` and `verify`, before the next `up` (a stopped run leaves the last applied version, and a
-re-run applies only what is left); a failure runs applied `down`s newest first and restores the backup the
-moment one is missing or fails; a failed `verify` (per migration or final) rolls back including the verified
-step; a context canceled between steps stops before the next `up` (rollbacks still run); an explicit data
-dir replaces XDG; an own registry ignores the default one; a prune failure is logged, never fatal; events
-come in order under `kit.core.migration.*`.
+migration's `up` and `verify`, before the next `up` (a stopped run leaves the last applied version, a re-run
+applies only what is left); a failure runs applied `down`s newest first and restores the backup the moment
+one is missing or fails; a failed `verify` (per migration or final) rolls back including the verified step; a
+context canceled between steps stops before the next `up` (rollbacks still run); an explicit data dir
+replaces XDG; an own registry ignores the default one; a prune failure is logged, never fatal; events come in
+order under `kit.core.migration.*`; history keeps migrations a later failure rolled back; a failing first
+`up` rolls nothing back.
 
 The recorded version describes the data after any rollback. Each record writes the version file, then calls
-the driver's `set_version`; a driver with `stores_version` gets only `set_version`, no version file. In auto
-mode each successful `down` records the version before that migration (the starting version for the first),
-a restore records the starting version (`""` too: logged as `set_version ` with nothing after it), and a
-final-verify failure rolls back every step to the starting version. A failed record stops a rollback (no
-restore after a `down`) and the error carries both failures. Manual mode undoes and records nothing after a
-failure or a cancel: the version stays the last applied migration's. The Migrator saves the starting version
-beside each backup in `<backup dir>.version`; `rollback_latest` restores, then records it. A backup without
-that file is restored, the version left as it is, and the error says so. Pruning removes the file too.
-A scenario's `baseline` map gives the baseline function: for a store reporting `""` it runs after the read,
-before pending, backup and any `up`. A non-empty answer is recorded like any version and publishes
-`baselined`; `""` changes nothing; a failing function or record is `baseline: <error>`, with no backup.
-A failed `set_version` is that step's failure (`record <version> failed: <error>`, event stage `record`):
-`up` completed, so the rollback includes the step, which is not in `history`. The file is written first, so
-it ends at the starting version in auto mode and at the failed step's version, ahead of the driver, in manual mode.
-A driver with `lock` is locked before its version is read and unlocked after its run ends, rollback included, on every
-path once held (`lock` and `unlock` are logged, as is each `version` read). A `lock` error is `lock: <error>`, no
-unlock; `lock_blocked` fails with the context's error; `unlock_fail` only logs `warning: unlock <schema>: <error>`.
-Kept from Go: history keeps migrations a later failure rolled back; a failing first `up` rolls nothing back.
-
-Rust has no default registry: its runner treats every scenario as `registry: own`. No vector holds equal
-versions (Go sorts them unstably). Runners are strict: unknown fields, a `version` other than `v1` and a corpus file no runner consumes fail the run. A port that has not
-ported a file yet lists it in its runner as pending by name, with a reason, until it consumes it: Python, TypeScript and PHP list `migrator.json` today.
+`set_version`; a `stores_version` driver gets only `set_version`, no file. In auto mode each successful `down`
+records the version before that migration, a restore records the starting version (`""` too, logged as
+`set_version ` with nothing after it), a final-verify failure rolls back every step to the starting version,
+and a failed record stops a rollback (no restore after a `down`), the error carrying both failures. Manual
+mode undoes and records nothing after a failure or a cancel. The starting version is saved beside each backup
+in `<backup dir>.version`; `rollback_latest` restores, then records it (without the file: restored, version
+left as it is, the error says so); pruning removes the file too. A failed `set_version` is that
+step's failure (`record <version> failed: <error>`, stage `record`): the rollback includes the step, not in
+`history`; the file, written first, ends at the starting version in auto mode, ahead of the driver in manual.
+A scenario's `baseline` map gives the baseline function, run for a store reporting `""` after the read, before
+pending and backup; a non-empty answer is recorded and publishes `baselined`, a failure is `baseline: <error>`. A `lock` driver is locked before its version is read and unlocked after its run ends,
+rollback included, on every path once held; `lock: <error>` means no unlock, `unlock_fail` only logs
+`warning: unlock <schema>: <error>`. Field detail: the `description` in `migrator.json`.
+A driver's `backup_unsupported` or `restore_unsupported` makes that call (still logged) report the sentinel
+(Go `ErrBackupUnsupported`, Rust `BackupUnsupported`). An unsupported backup is no failure: the run goes on,
+leaves no backup directory or `.version` file and prunes nothing for that schema. A rollback needing a
+restore it cannot run (`down` missing or failing, and no backup or `restore` unsupported) restores nothing:
+no `reverted` event, the error ends `(rollback also failed: not restored: no backup was taken)` or `(...: not
+restored: restore unsupported)` (Go `ErrNotRestored`, Rust `is_not_restored`), the version stays at the last
+step still applied. `rollback_latest` fails `no backups found for <schema>` (no backup dir) or `not restored:
+restore unsupported`; no record.
+Rust has no default registry (scenarios run as `registry: own`); no vector holds equal versions (Go sorts
+them unstably). Runners are strict: unknown fields, a `version` other than `v1` and an unconsumed corpus
+file fail the run; an unported file is listed pending by name (Python, TypeScript, PHP: `migrator.json`).
 
 ## Runners
 

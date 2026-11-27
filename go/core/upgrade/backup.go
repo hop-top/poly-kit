@@ -58,6 +58,16 @@ func (o *backupOrchestrator) backupDir(version string) (string, error) {
 	return dir, nil
 }
 
+// hasBackup reports whether the backup directory for version exists.
+func (o *backupOrchestrator) hasBackup(version string) bool {
+	base, err := o.dataDir()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(base, "backups", o.schema, "pre-"+version))
+	return err == nil
+}
+
 // preRunSuffix names the file beside a backup directory that holds the
 // version the run was at when the backup was taken: pre-<v>.version.
 const preRunSuffix = ".version"
@@ -92,6 +102,9 @@ func (o *backupOrchestrator) latestBackup() (string, error) {
 	}
 	schemaDir := filepath.Join(base, "backups", o.schema)
 	entries, err := os.ReadDir(schemaDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", o.noBackups()
+	}
 	if err != nil {
 		return "", fmt.Errorf("read backup dir: %w", err)
 	}
@@ -111,12 +124,18 @@ func (o *backupOrchestrator) latestBackup() (string, error) {
 		dirs = append(dirs, versionedDir{name: e.Name(), ver: v})
 	}
 	if len(dirs) == 0 {
-		return "", fmt.Errorf("no backups found for %s", o.schema)
+		return "", o.noBackups()
 	}
 	sort.Slice(dirs, func(i, j int) bool {
 		return compareSemver(dirs[i].ver, dirs[j].ver) > 0
 	})
 	return filepath.Join(schemaDir, dirs[0].name), nil
+}
+
+// noBackups is the error for a schema with no backup directory: it
+// matches ErrNotRestored, and ErrBackupUnsupported as its cause.
+func (o *backupOrchestrator) noBackups() error {
+	return notRestored{text: "no backups found for " + o.schema, cause: ErrBackupUnsupported}
 }
 
 // prune keeps only the N most recent backups (by semver), removing the rest.

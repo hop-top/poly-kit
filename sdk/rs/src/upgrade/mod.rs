@@ -12,6 +12,7 @@ pub mod document;
 mod driver;
 mod lock;
 mod migration;
+mod unsupported;
 mod version;
 
 pub use document::{
@@ -21,6 +22,7 @@ pub use document::{
 pub use driver::SchemaDriver;
 pub use lock::{Locker, Unlock};
 pub use migration::{pending, Migration, StepFn};
+pub use unsupported::{is_backup_unsupported, is_not_restored, BackupUnsupported, NotRestored};
 pub use version::compare_versions;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -35,6 +37,8 @@ mod events;
 mod fs_util;
 #[cfg(not(target_arch = "wasm32"))]
 mod migrator;
+#[cfg(not(target_arch = "wasm32"))]
+mod rollback;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use events::{MigrationPublisher, MigrationTopics};

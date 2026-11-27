@@ -29,9 +29,14 @@ impl Backups {
         }
     }
 
+    /// The backup directory taken before `version`.
+    pub(super) fn path(&self, version: &str) -> PathBuf {
+        self.dir.join(format!("pre-{version}"))
+    }
+
     /// Creates and returns the backup directory taken before `version`.
     pub(super) fn create(&self, version: &str) -> io::Result<PathBuf> {
-        let dir = self.dir.join(format!("pre-{version}"));
+        let dir = self.path(version);
         super::fs_util::create_dir_all(&dir)?;
         Ok(dir)
     }
@@ -73,11 +78,19 @@ impl Backups {
 
     /// The backup with the highest version.
     pub(super) fn latest(&self) -> Result<PathBuf, LatestError> {
-        let dirs = self.sorted().map_err(LatestError::Read)?;
+        let dirs = match self.sorted() {
+            Ok(d) => d,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Err(self.empty()),
+            Err(e) => return Err(LatestError::Read(e)),
+        };
         match dirs.last() {
             Some(name) => Ok(self.dir.join(name)),
-            None => Err(LatestError::Empty(self.schema.clone())),
+            None => Err(self.empty()),
         }
+    }
+
+    fn empty(&self) -> LatestError {
+        LatestError::Empty(self.schema.clone())
     }
 
     /// Removes all but the `retention` newest backups. A missing
