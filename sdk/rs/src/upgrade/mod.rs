@@ -44,6 +44,8 @@ mod fs_util;
 pub mod fsdir;
 #[cfg(not(target_arch = "wasm32"))]
 mod migrator;
+#[cfg(all(feature = "upgrade-postgres", not(target_arch = "wasm32")))]
+pub mod postgres;
 #[cfg(not(target_arch = "wasm32"))]
 mod rollback;
 #[cfg(all(feature = "upgrade-sqlite", not(target_arch = "wasm32")))]

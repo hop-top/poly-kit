@@ -419,6 +419,9 @@ upgrade = ["bus", "dep:thiserror"]
 # and upgrade/driver/fsdir). Native only; each locks with std `File::lock`.
 upgrade-sqlite = ["upgrade", "sqldb"]
 upgrade-fsdir = ["upgrade", "dep:tar", "dep:flate2"]
+# PostgreSQL driver for the Migrator (Go upgrade/driver/postgres) over a
+# caller-provided `postgres::Client`; TLS is the caller's business. Native only.
+upgrade-postgres = ["upgrade", "dep:postgres"]
 # The 12-factor AI CLI compliance check, a port of the static pass of
 # go/core/compliance: the toolspec YAML loader, factors 1 to 13 and the
 # text/json report. Rides on `output` for serde, serde_json (reports),
@@ -622,6 +625,19 @@ rusqlite = { version = "0.41", default-features = false, features = [
 # already in the lock (compression-codecs). rsx: PASS 5.7 and 6.5; no advisories.
 tar = { version = "0.4.46", default-features = false, optional = true }
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"], optional = true }
+# upgrade-postgres: the blocking client the driver takes from the caller.
+# postgres 0.19.14 (rust-postgres/rust-postgres, MIT OR Apache-2.0,
+# published 2026-06-12), no advisories (OSV). It has no feature to drop that
+# matters here (`with-*` type crates stay off); TLS is the caller's: they
+# connect and hand the client over. Adds tokio-postgres 0.7.18 and
+# postgres-protocol 0.6.12, postgres-types 0.2.14 (same release, 2026-06-12),
+# fallible-iterator 0.2.0, md-5 0.11.0, phf and phf_shared 0.13.1,
+# siphasher 1.0.4, stringprep 0.1.5, unicode-bidi 0.3.18,
+# unicode-normalization 0.1.26, unicode-properties 0.1.5, whoami 2.1.3,
+# wasite 1.0.2, wasi 0.14.7, objc2-core-foundation and
+# objc2-system-configuration 0.3.2; all over 14 days old, MIT or Apache-2.0
+# (some also Zlib, BSL-1.0, Unicode-3.0), no advisories. rsx: PASS 5.7.
+postgres = { version = "0.19.14", optional = true }
 # bus-network and api-server-ws. Exact pins: both depend on their close,
 # timeout and capacity semantics. Default features off, `handshake`
 # (the HTTP upgrade) only here; `bus-network` adds `connect` (dials over

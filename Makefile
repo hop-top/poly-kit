@@ -7,7 +7,7 @@
 	completion-regen test-parity test-parity-api test-parity-webhook test-parity-authn test-parity-breaker test-parity-bus test-parity-blob test-parity-bus-network test-parity-cli-root test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-oauth-token test-parity-i18n test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-rpc test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	completion-regen test-parity test-parity-breaker test-parity-bus test-parity-bus-network test-parity-completion test-parity-completion-spec test-parity-config test-parity-consent test-parity-kv test-parity-oauth-token test-parity-i18n test-parity-llm test-parity-mcp test-parity-netpolicy test-parity-identity test-parity-redact test-parity-retry test-parity-statemachine test-parity-taxonomy test-parity-typeid test-parity-upgrade test-parity-cli test-parity-engine \
 	test-php test-php-sdk test-php-upgrade-integration test-php-engine test-py test-py-sdk test-py-engine test-py-upgrade-integration \
-	test-release test-rs test-rs-engine test-rs-wasm test-templates test-ts test-ts-sdk test-ts-engine test-ts-upgrade-integration \
+	test-release test-rs test-rs-engine test-rs-upgrade-integration test-rs-wasm test-templates test-ts test-ts-sdk test-ts-engine test-ts-upgrade-integration \
 	test-affected test-bats test-workflow tools tools-golangci-lint tools-govulncheck tools-osv-scanner \
 	vuln vuln-go vuln-go-binary vuln-osv
 
@@ -315,6 +315,23 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# All features ensures the api integration test (gated on feature=api)
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/rs && cargo test --all-features --locked
+
+# Docker-backed, so its tests are #[ignore]d and never part of test-rs (which
+# runs --all-features): this target runs them with --ignored. A missing
+# docker fails here, and a missing KIT_UPGRADE_PG_DSN fails the tests; neither
+# is a skip. The container has a unique name and a random loopback port, and
+# is removed when the run ends.
+test-rs-upgrade-integration: ## Rust upgrade postgres driver vs Postgres 16 in Docker (needs docker)
+	@command -v docker >/dev/null || { echo "test-rs-upgrade-integration: docker is required" >&2; exit 1; }
+	@set -e; name=kit-rs-upgrade-pg-$$$$; \
+	docker run -d --rm --name $$name -e POSTGRES_USER=kit -e POSTGRES_PASSWORD=kit -e POSTGRES_DB=kit \
+		-p 127.0.0.1::5432 postgres:16-alpine >/dev/null; \
+	trap 'docker rm -f $$name >/dev/null 2>&1' EXIT; \
+	n=0; until docker exec -e PGPASSWORD=kit $$name psql -h 127.0.0.1 -U kit -d kit -tAc 'select 1' >/dev/null 2>&1; do \
+		n=$$((n+1)); [ $$n -lt 90 ] || { echo "postgres did not become ready"; exit 1; }; sleep 1; \
+	done; \
+	export KIT_UPGRADE_PG_DSN="postgres://kit:kit@127.0.0.1:$$(docker port $$name 5432/tcp | head -n1 | sed 's/.*://')/kit"; \
+	cd sdk/rs && cargo test --locked --features upgrade-postgres --test upgrade_postgres -- --ignored
 
 # Default features, then the events feature. The `parity` feature needs a
 # kit binary and runs in test-parity-engine; the crate has no committed
