@@ -19,7 +19,7 @@ func Set(key, value string, scope Scope, opts Options) error {
 		return err
 	}
 
-	doc, err := parseOrCreateDoc(path)
+	doc, err := parseWriteDoc(path, opts, scope)
 	if err != nil {
 		return fmt.Errorf("config set: %w", err)
 	}
@@ -73,7 +73,7 @@ func SetValue(key string, value any, scope Scope, opts Options) error {
 		return fmt.Errorf("config set: encode value for %q: %w", key, err)
 	}
 
-	doc, err := parseOrCreateDoc(path)
+	doc, err := parseWriteDoc(path, opts, scope)
 	if err != nil {
 		return fmt.Errorf("config set: %w", err)
 	}

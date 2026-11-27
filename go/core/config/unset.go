@@ -16,7 +16,7 @@ func Unset(key string, scope Scope, opts Options) error {
 		return err
 	}
 
-	doc, err := parseOrCreateDoc(path)
+	doc, err := parseWriteDoc(path, opts, scope)
 	if err != nil {
 		return fmt.Errorf("config unset %s: %w", path, err)
 	}

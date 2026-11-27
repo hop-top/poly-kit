@@ -21,9 +21,13 @@ func List(opts Options) ([]Entry, error) {
 		path  string
 	}
 
+	userPath, _, err := effectiveUserPath(opts)
+	if err != nil {
+		return nil, fmt.Errorf("config list: %w", err)
+	}
 	layers := []scopedPath{
 		{ScopeSystem, opts.SystemConfigPath},
-		{ScopeUser, opts.UserConfigPath},
+		{ScopeUser, userPath},
 		{ScopeProject, opts.ProjectConfigPath},
 	}
 

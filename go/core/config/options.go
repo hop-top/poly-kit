@@ -21,6 +21,10 @@ import (
 // or no project marker found) the corresponding field is left
 // empty. Load skips empty paths, so partial resolution is safe.
 //
+// Legacy user locations are never added here: a tool that shipped its own
+// loader opts in by setting [Options.LegacyUserConfigPaths] on the result
+// (see [LegacyDotConfigPath]).
+//
 // The tool name parameterizes the user/system layers — passing
 // "c12n" yields ~/.config/c12n/config.yaml and /etc/c12n/config.yaml,
 // not the package-default "kit". Project markers are kit-shaped by
@@ -66,7 +70,8 @@ func optionsForToolFrom(cwd, tool string) Options {
 //
 // PathsForTool exists so callers that want the chain (for "config
 // paths" output, audits, or cascade visualization) can use the same
-// tool name they pass to [OptionsForTool] and stay consistent.
+// tool name they pass to [OptionsForTool] and stay consistent. The chain
+// has no legacy user entries; [PathsForToolWithLegacy] adds them.
 func PathsForTool(cwd, tool string) []ResolvedPath {
 	out := Paths(cwd)
 	if tool == "" || tool == pathsTool {

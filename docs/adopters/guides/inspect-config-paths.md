@@ -30,7 +30,10 @@ Order, lowest precedence first (matches `core/config.Loader`):
 
 1. Built-in defaults (no file)
 2. System: `/etc/<tool>/config.yaml`
-3. User: `$XDG_CONFIG_HOME/<tool>/config.yaml`
+3. User: `$XDG_CONFIG_HOME/<tool>/config.yaml` (on macOS without
+   `XDG_CONFIG_HOME`, `~/Library/Application Support/<tool>/config.yaml`),
+   falling back to the first existing `Options.LegacyUserConfigPaths` entry
+   when absent
 4. Project: `./.<tool>.yaml` (in CWD or first ancestor)
 5. `--config <path>` flag (explicit override)
 6. Env vars: `<TOOL>_<KEY>`
@@ -53,6 +56,12 @@ user      /Users/alice/.config/tlc/config.yaml               yes     -
 project   /Users/alice/src/my-repo/.tlc/config.yaml          yes     *
 flag      (--config not set)                                 -       -
 ```
+
+A tool that migrated from its own loader can also list its old user
+locations (`config.PathsForToolWithLegacy`, fed the same list as
+`Options.LegacyUserConfigPaths`). Those rows have source `user-legacy`, sit
+right after `user`, and apply only while the `user` file is absent; `exists`
+is the file's real state either way.
 
 The row with `WINS = *` is the highest-precedence file that exists.
 That is the file to edit (or override via env/flag) to change a

@@ -13,7 +13,11 @@ type ResolvedPath struct {
 	// For the synthetic "default" entry, Path is the sentinel "<defaults>".
 	Path string
 	// Source labels where the path comes from in the precedence chain.
-	// One of: "cwd", "project", "workspace", "user", "system", "default".
+	// One of: "cwd", "project", "workspace", "user", "user-legacy",
+	// "system", "default". "user-legacy" ([SourceUserLegacy]) only appears
+	// in chains built with [WithLegacyUserPaths] or
+	// [PathsForToolWithLegacy], right after "user"; such a file is
+	// consulted only while the "user" file does not exist.
 	Source string
 	// Scope is the user-facing scope label (project name, etc.). May be empty.
 	Scope string
@@ -52,7 +56,8 @@ var projectMarkers = []string{
 // The chain is: cwd-marker(s) → walk-up to project root → user
 // (~/.config/<tool>/config.yaml) → system (/etc/<tool>/config.yaml) →
 // synthetic "default" entry. The walk-up stops at the user's home dir so
-// user-scope discovery never escapes ~.
+// user-scope discovery never escapes ~. Legacy user locations are not
+// listed here; see [PathsForToolWithLegacy].
 func Paths(cwd string) []ResolvedPath {
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
