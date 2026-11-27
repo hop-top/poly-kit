@@ -11,7 +11,7 @@ restored, for one `upgrade.Migration.Schema`. Every backend implements
 | Backend | Import | Constructor | Version lives in | Backup / Restore |
 |---------|--------|-------------|------------------|------------------|
 | `configfile/` | `hop.top/kit/go/core/upgrade/driver/configfile` | `New(paths...)`, `NewWithOptions(opts, paths...)` | version file | copies each managed file to and from `dest` |
-| `fsdir/` | `hop.top/kit/go/core/upgrade/driver/fsdir` | `New(name, dirPath)`, `NewWithOptions(name, dirPath, opts...)` | version file | tar.gz of the directory; `Restore` removes the directory first |
+| `fsdir/` | `hop.top/kit/go/core/upgrade/driver/fsdir` | `New(name, dirPath)`, `NewWithOptions(name, dirPath, opts...)` | version file | tar.gz of the directory (files and directories only: `Backup` fails on a symlink or special file, naming it); `Restore` removes the directory first |
 | `sqlite/` | `hop.top/kit/go/core/upgrade/driver/sqlite` | `New(dbPath, opts...)`; `WithDB(*sql.DB)` option | version file | `VACUUM INTO` snapshot (WAL-safe); `Restore` swaps the file and drops `-wal`/`-shm`/`-journal`, needs no open handle on it; with `WithDB`, `Restore` returns `upgrade.ErrBackupUnsupported`; locks `<version dir>/.lock` |
 | [`tidb/`](tidb/README.md) | `hop.top/kit/go/core/upgrade/driver/tidb` | `New(dsn, table, opts...)`, `NewWithDB(db, table, opts...)`; locks with `GET_LOCK` | table row (`VersionStorer`: no version file) | both return `upgrade.ErrBackupUnsupported`; back up outside kit |
 | [`postgres/`](postgres/README.md) | `hop.top/kit/go/core/upgrade/driver/postgres` | `New(db, table, opts...)` over your `*sql.DB` | table row (`VersionStorer`: no version file); advisory `Locker` | both return `upgrade.ErrBackupUnsupported`; back up outside kit |
