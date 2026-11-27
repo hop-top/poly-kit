@@ -576,7 +576,7 @@ ed25519-dalek = { version = "=3.0.0", default-features = false, features = [
 # editor behind `set`/`unset`; scalars resolve through this crate's own
 # yaml.v3-compatible rules, not the parser's. Exact pin: 0.x and the
 # editor depends on span semantics.
-saphyr-parser = { version = "=0.3.2", optional = true }
+saphyr-parser = { version = "=0.3.3", optional = true }
 dirs = { version = "7", optional = true }
 # No crate-wide features: each feature that uses tokio names the pieces it
 # needs, so `full` (and its socket, process and multi-thread runtime
@@ -601,7 +601,7 @@ comfy-table = { version = "8", default-features = false, optional = true }
 # TypeID codec. Exact pin: the wire form is a cross-language contract
 # (contracts/typeid-v1). Needs only uuid's `v7`; the previous codec
 # enabled v1-v7, and v3 pulled md-5 and block-buffer 0.10.
-type-safe-id = { version = "=0.3.3", optional = true }
+type-safe-id = { version = "=0.3.4", optional = true }
 uuid = { version = "1", features = ["v7", "serde"], optional = true }
 # `bundled` compiles SQLite from source: no libsqlite3 on the build host,
 # and a pinned engine version so pragma/WAL behaviour is identical across
@@ -758,10 +758,9 @@ tower = { version = "0.5", default-features = false, features = [
 # Transitive additions to the lock (all published >14 days before the
 # pin, none yanked; no existing pin moved): buffa pulls foldhash 0.1.5,
 # hashbrown 0.15.5, smoothutf8 0.2.3, base64 0.22.1; buffa-types pulls
-# jiff 0.2.38 (+ jiff-core, jiff-static) and portable-atomic 1.15.0 /
-# portable-atomic-util 0.2.8 / defmt 1.2.0 (2026-10-15, 15 days old at
-# the pin: hold, do not bump); connectrpc pulls pin-project 1.1.13 and
-# bitflags 1.3.2. No aws-lc-rs, no tokio `full`, no second hyper/axum.
+# jiff 0.2.41 (+ jiff-core 0.1.4, jiff-static) and portable-atomic 1.15.0 /
+# portable-atomic-util 0.2.8; connectrpc pulls pin-project 1.1.13. No
+# aws-lc-rs, no tokio `full`, no second hyper/axum.
 # Generated code is committed (src/rpc/gen), produced by the pinned
 # plugins in contracts/proto/crud/v1/buf.gen.rs.yaml; no build.rs.
 connectrpc = { version = "=0.9.1", default-features = false, features = [
