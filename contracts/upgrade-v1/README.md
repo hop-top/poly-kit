@@ -49,6 +49,9 @@ restore after a `down`) and the error carries both failures. Manual mode undoes 
 failure or a cancel: the version stays the last applied migration's. The Migrator saves the starting version
 beside each backup in `<backup dir>.version`; `rollback_latest` restores, then records it. A backup without
 that file is restored, the version left as it is, and the error says so. Pruning removes the file too.
+A scenario's `baseline` map gives the baseline function: for a store reporting `""` it runs after the read,
+before pending, backup and any `up`. A non-empty answer is recorded like any version and publishes
+`baselined`; `""` changes nothing; a failing function or record is `baseline: <error>`, with no backup.
 A failed `set_version` is that step's failure (`record <version> failed: <error>`, event stage `record`):
 `up` completed, so the rollback includes the step, which is not in `history`. The file is written first, so
 it ends at the starting version in auto mode (even when `set_version` keeps failing) and at the failed

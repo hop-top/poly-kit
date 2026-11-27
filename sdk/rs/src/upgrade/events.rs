@@ -9,7 +9,7 @@ use crate::bus::{prefix_topics, Bus, Context, DynBus, Event, SharedBus, Topic};
 pub const SOURCE: &str = "core.upgrade";
 
 /// The actions a prefix expands with, in Go's order.
-const ACTIONS: [&str; 8] = [
+const ACTIONS: [&str; 9] = [
     "run_started",
     "run_completed",
     "run_failed",
@@ -18,6 +18,7 @@ const ACTIONS: [&str; 8] = [
     "verified",
     "failed",
     "reverted",
+    "baselined",
 ];
 
 /// The topics a [`Migrator`](super::Migrator) publishes on. Go
@@ -32,6 +33,8 @@ pub struct MigrationTopics {
     pub verified: Topic,
     pub failed: Topic,
     pub reverted: Topic,
+    /// An unversioned schema stamped by the baseline function.
+    pub baselined: Topic,
 }
 
 impl MigrationTopics {
@@ -56,6 +59,7 @@ impl MigrationTopics {
             verified: take("verified"),
             failed: take("failed"),
             reverted: take("reverted"),
+            baselined: take("baselined"),
         }
     }
 
@@ -72,6 +76,7 @@ impl MigrationTopics {
             verified: pick(self.verified, d.verified),
             failed: pick(self.failed, d.failed),
             reverted: pick(self.reverted, d.reverted),
+            baselined: pick(self.baselined, d.baselined),
         }
     }
 }

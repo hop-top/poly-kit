@@ -11,7 +11,9 @@ import (
 
 // MigrationTopics holds the topics a Migrator publishes on.
 //
-// Run level: RunStarted, then RunCompleted or RunFailed. Per migration:
+// Run level: RunStarted, then RunCompleted or RunFailed. Baselined
+// follows a WithBaseline stamp of an unversioned schema, before that
+// schema's migrations. Per migration:
 // Started, then Applied (Up succeeded) and Verified (its Verify passed),
 // or Failed (stage "record": the version could not be recorded). Reverted follows a rollback that succeeded. The final
 // verify (WithVerify) publishes Verified with "final": true, or Failed
@@ -25,6 +27,7 @@ type MigrationTopics struct {
 	Verified     bus.Topic
 	Failed       bus.Topic
 	Reverted     bus.Topic
+	Baselined    bus.Topic
 }
 
 // DefaultMigrationTopics is the kit baseline. Each topic passes
@@ -38,12 +41,13 @@ var DefaultMigrationTopics = MigrationTopics{
 	Verified:     "kit.core.migration.verified",
 	Failed:       "kit.core.migration.failed",
 	Reverted:     "kit.core.migration.reverted",
+	Baselined:    "kit.core.migration.baselined",
 }
 
 // migrationActions is the canonical order passed to bus.PrefixTopics.
 var migrationActions = []string{
 	"run_started", "run_completed", "run_failed",
-	"started", "applied", "verified", "failed", "reverted",
+	"started", "applied", "verified", "failed", "reverted", "baselined",
 }
 
 // MigrationRunPayload carries run_started, run_completed and run_failed.
@@ -59,6 +63,7 @@ type MigrationRunPayload struct {
 // MigrationPayload carries the per-migration events. From is the
 // version before the step; To the step's version. For reverted, From
 // is the version being attempted and To the stored version restored.
+// For baselined, From is "" and To the version the store was stamped at.
 type MigrationPayload struct {
 	Tool       string `json:"tool"`
 	Schema     string `json:"schema"`
@@ -89,7 +94,7 @@ func WithMigrationTopicPrefix(prefix string) MigratorOption {
 	t := MigrationTopics{
 		RunStarted: tm["run_started"], RunCompleted: tm["run_completed"], RunFailed: tm["run_failed"],
 		Started: tm["started"], Applied: tm["applied"], Verified: tm["verified"],
-		Failed: tm["failed"], Reverted: tm["reverted"],
+		Failed: tm["failed"], Reverted: tm["reverted"], Baselined: tm["baselined"],
 	}
 	return func(m *Migrator) { m.topics = t }
 }
@@ -111,6 +116,7 @@ func WithMigrationTopics(t MigrationTopics) MigratorOption {
 	keep(&t.Verified, d.Verified)
 	keep(&t.Failed, d.Failed)
 	keep(&t.Reverted, d.Reverted)
+	keep(&t.Baselined, d.Baselined)
 	return func(m *Migrator) { m.topics = t }
 }
 

@@ -67,6 +67,9 @@ pub enum MigrateError {
     PrepareBackup { schema: String, source: io::Error },
     #[error("migrate {schema}: prepare backup: write pre-run version: {source}")]
     SavePreRun { schema: String, source: io::Error },
+    /// The baseline function failed, or its answer could not be recorded.
+    #[error("migrate {schema}: baseline: {source}")]
+    Baseline { schema: String, source: BoxError },
     #[error("migrate {schema}: backup: {source}")]
     Backup { schema: String, source: BoxError },
     /// A migration step stopped the run (a refused version record
@@ -115,6 +118,13 @@ pub type FinalVerify = dyn Fn(&Context, &str, &str) -> Result<(), BoxError> + Se
 
 /// Final-state check: `(ctx, schema, version)`. Go `WithVerify`.
 pub type FinalVerifyFn = Arc<FinalVerify>;
+
+/// The baseline function behind [`BaselineFn`].
+pub type Baseline = dyn Fn(&Context, &str) -> Result<String, BoxError> + Send + Sync;
+
+/// Says what an unversioned schema is already at: `(ctx, schema)`.
+/// Go `WithBaseline`.
+pub type BaselineFn = Arc<Baseline>;
 
 /// Receives warnings (a failed backup prune). Defaults to stderr, as Go's `log.Printf`.
 pub type WarnFn = Arc<dyn Fn(&str) + Send + Sync>;
@@ -165,6 +175,7 @@ pub struct Migrator {
     drivers: Vec<Box<dyn SchemaDriver>>,
     history: Vec<AppliedMigration>,
     verify: Option<FinalVerifyFn>,
+    baseline: Option<BaselineFn>,
     publisher: Option<Arc<dyn MigrationPublisher>>,
     topics: MigrationTopics,
     warn: WarnFn,
@@ -183,6 +194,7 @@ impl fmt::Debug for Migrator {
             .field("drivers", &drivers)
             .field("history", &self.history)
             .field("verify", &self.verify.is_some())
+            .field("baseline", &self.baseline.is_some())
             .field("publisher", &self.publisher.is_some())
             .field("topics", &self.topics)
             .finish_non_exhaustive()
@@ -223,6 +235,7 @@ impl Migrator {
             drivers: Vec::new(),
             history: Vec::new(),
             verify: None,
+            baseline: None,
             publisher: None,
             topics: MigrationTopics::default(),
             warn: Arc::new(|w| eprintln!("{w}")),
@@ -238,6 +251,23 @@ impl Migrator {
         f: impl Fn(&Context, &str, &str) -> Result<(), BoxError> + Send + Sync + 'static,
     ) -> Migrator {
         self.verify = Some(Arc::new(f));
+        self
+    }
+
+    /// Sets what an unversioned store is already at. When a driver's
+    /// `version()` is `""`, `f(ctx, schema)` is called before pending
+    /// migrations are selected. A non-empty answer is recorded like any
+    /// version (event `baselined`) and used as the stored version, so
+    /// the migrations at or below it are not applied; `""` leaves the
+    /// store unversioned. An error fails that schema's run
+    /// ([`MigrateError::Baseline`]) before any backup or `up`. `f` is not
+    /// called when a version is stored or reading it failed, and
+    /// [`status`](Self::status) never calls it. Go `WithBaseline`.
+    pub fn baseline(
+        mut self,
+        f: impl Fn(&Context, &str) -> Result<String, BoxError> + Send + Sync + 'static,
+    ) -> Migrator {
+        self.baseline = Some(Arc::new(f));
         self
     }
 
@@ -360,6 +390,7 @@ impl Migrator {
                 retention: self.retention,
                 history: &mut self.history,
                 verify: self.verify.as_deref(),
+                baseline: self.baseline.as_deref(),
                 ev: &ev,
                 warn: &*self.warn,
                 applied: 0,
@@ -503,6 +534,7 @@ struct SchemaRun<'a> {
     retention: usize,
     history: &'a mut Vec<AppliedMigration>,
     verify: Option<&'a FinalVerify>,
+    baseline: Option<&'a Baseline>,
     ev: &'a Emitter<'a>,
     warn: &'a (dyn Fn(&str) + Send + Sync),
     applied: usize,
@@ -515,6 +547,11 @@ impl<'a> SchemaRun<'a> {
             schema: schema.clone(),
             source,
         })?;
+        let current = if current.is_empty() {
+            self.stamp_baseline(d, ctx)?
+        } else {
+            current
+        };
         let todo = pending(self.migrations, &schema, &current, self.target);
         let Some(first) = todo.first() else {
             return Ok(());
@@ -547,6 +584,33 @@ impl<'a> SchemaRun<'a> {
             (self.warn)(&format!("warning: prune old backups for {schema}: {e}"));
         }
         Ok(())
+    }
+
+    /// Asks the baseline function what the unversioned store is at and
+    /// records a non-empty answer; returns the version the run continues
+    /// from. A lock held for the schema covers this call: it sits between
+    /// the version read and the pending selection in `run`.
+    fn stamp_baseline(
+        &self,
+        d: &mut dyn SchemaDriver,
+        ctx: &Context,
+    ) -> Result<String, MigrateError> {
+        let Some(baseline) = self.baseline else {
+            return Ok(String::new());
+        };
+        let schema = d.name().to_string();
+        let fail = |source: BoxError| MigrateError::Baseline {
+            schema: schema.clone(),
+            source,
+        };
+        let v = baseline(ctx, &schema).map_err(fail)?;
+        if v.is_empty() {
+            return Ok(v);
+        }
+        record(self.data_dir, d, &v).map_err(|e| fail(record_error(&v, &e).into()))?;
+        self.ev
+            .emit(&self.ev.topics.baselined, self.ev.step(&schema, "", &v));
+        Ok(v)
     }
 
     fn apply_all<'m>(
