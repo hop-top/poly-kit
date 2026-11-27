@@ -13,8 +13,7 @@ config values is also not here.
 - host already owns a `config` parent → `config.RegisterPathSubcommands(parent, "<tool>", opts...)`
 - host has no `config` parent yet → `root.AddCommand(config.Command("<tool>", opts...))`
 - attach one subcommand at a time → `config.PathCommand(...)` / `config.PathsCommand(...)`
-- wire the chain from the root config (name, project marker, legacy user
-  paths) → `config.WithRootConfig(rootCfg)`
+- wire the chain from the root config (name, marker, legacy user paths) → `config.WithRootConfig(rootCfg)`
 - wire a custom chain → `config.WithResolver(func(cwd string) []config.ResolvedPath { ... })`
 - root error bridge must map "no config file" to exit 1 → `config.IsNoConfig(err)`
 
@@ -61,13 +60,9 @@ paths, highest precedence first. Production hosts adapt
   back to text.
 - `ResolvedPath` is field-for-field and tag-for-tag compatible with
   `core/config.ResolvedPath`, so a direct conversion works.
-- `WithRootConfig(cfg)` / `RootResolver(cfg)` build the chain from
-  `cli.Config`: `PathsForTool(cwd, cfg.Name)`, or `PathsForToolWithMarkers`
-  when `cfg.ProjectMarker` is set, plus `cfg.LegacyUserConfigPaths` as
-  `user-legacy` entries right after `user` (`core/config.WithLegacyUserPaths`).
-  Empty `Name` gives an empty chain; empty legacy list adds nothing. A
-  legacy entry ranks after `user`, so `path` prints it only while the `user`
-  file is absent, the same file a `Load` with those legacy paths reads.
+- `WithRootConfig(cfg)` / `RootResolver(cfg)` build the chain from `cli.Config`
+  (name, `ProjectMarker`, `LegacyUserConfigPaths` as `user-legacy` entries after
+  `user`); `path` prints a legacy file only while the `user` file is absent.
 - Both leaves are annotated read-only and idempotent.
 
 ## Neighbours
