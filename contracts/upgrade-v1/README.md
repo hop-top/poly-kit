@@ -61,8 +61,8 @@ no `reverted` event, the error ends `(rollback also failed: not restored: no bac
 restored: restore unsupported)` (Go `ErrNotRestored`, Rust `is_not_restored`), the version stays at the last
 step still applied. `rollback_latest` fails `no backups found for <schema>` (no backup dir) or `not restored:
 restore unsupported`; no record. Rust has no default registry (scenarios run as `registry: own`). Runners are strict: unknown fields, a `version`
-other than `v1` and an unconsumed corpus file fail the run; an unported file is listed pending by name (Python,
-TypeScript, PHP: `migrator.json`).
+other than `v1` and an unconsumed corpus file fail the run; an unported file is listed pending by name (TypeScript,
+PHP: `migrator.json`).
 
 ## Runners
 
