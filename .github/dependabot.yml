@@ -1,93 +1,68 @@
+# Org policy (hop-top/.github templates/dependabot.yml).
+#
+# Version updates: one PR at a time across every ecosystem. All entries join
+#   the `dependencies` multi-ecosystem group (open-pull-requests-limit 1);
+#   while its PR is open, Dependabot updates that PR instead of opening
+#   another. It carries majors too, unless an `ignore` below holds them.
+#   Sets that must move together (otel api/sdk/exporters, MCP server and
+#   core, vitest/vite, typescript-eslint, RustCrypto) therefore land in
+#   the same PR. Weekly, Monday 06:00.
+# Cooldown: a new release is proposed only once it is 14 days old (the
+#   dependency age gate). Owned packages are excluded, as they are from
+#   the age gate. It holds back version updates only.
+# Security updates: immediate (cooldown never applies); one grouped PR per
+#   ecosystem. Needs the repo setting "Dependabot security updates".
+# rebase-strategy disabled: an open PR is not rebased, and its CI not
+#   re-run, each time next moves. Comment `@dependabot rebase` on a PR to
+#   refresh it. This applies to security PRs as well.
+# Schedule, PR limit and commit prefix live on the group; a group-only key
+#   on an entry is a configuration error.
 version: 2
-# Every entry below sets:
-#   cooldown         a new release is proposed only once it is 14 days old
-#                    (the dependency age gate). It holds back version
-#                    updates only: Dependabot security updates ignore it and
-#                    open as soon as an advisory lands. Owned packages are
-#                    excluded, as they are from the age gate.
-#   rebase-strategy  disabled: an open PR is not rebased, and its CI not
-#                    re-run, each time next moves. Comment `@dependabot
-#                    rebase` on a PR to refresh it. This applies to security
-#                    PRs as well.
+
+multi-ecosystem-groups:
+  dependencies:
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "build(deps):"
+
 updates:
+  # Root module plus the two nested modules.
+  # otelconnect pins an exact otel release and a connect floor; the otel
+  # api, sdk and exporters must share a version.
   - package-ecosystem: gomod
-    directory: "/"
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-    commit-message:
-      prefix: "build(deps):"
-    # Version updates only; security updates are exempt.
+    directories:
+      - "/"
+      - "/extensions/mcp-tasks"
+      - "/incubator/qmochi"
+    multi-ecosystem-group: dependencies
+    patterns: ["*"]
     cooldown:
       default-days: 14
       exclude: ["hop.top/*", "github.com/hop-top/*"]
     rebase-strategy: disabled
     groups:
-      # otelconnect pins an exact otel release and a connect floor; the otel
-      # api, sdk and exporters must share a version: bump the set together.
-      connect-otel:
-        patterns: ["connectrpc.com/*", "go.opentelemetry.io/*"]
-      # Everything else: one PR for minor + patch. A dependency joins the
-      # first group it matches, so the groups above stay ahead of this one.
-      minor-patch:
+      go-security:
+        applies-to: security-updates
         patterns: ["*"]
-        update-types: ["minor", "patch"]
-
-  - package-ecosystem: gomod
-    directory: "/extensions/mcp-tasks"
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-    commit-message:
-      prefix: "build(deps):"
-    # Version updates only; security updates are exempt.
-    cooldown:
-      default-days: 14
-      exclude: ["hop.top/*", "github.com/hop-top/*"]
-    rebase-strategy: disabled
-    groups:
-      # One PR per run for minor + patch; majors stay separate for review.
-      minor-patch:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-
-  - package-ecosystem: gomod
-    directory: "/incubator/qmochi"
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-    commit-message:
-      prefix: "build(deps):"
-    # Version updates only; security updates are exempt.
-    cooldown:
-      default-days: 14
-      exclude: ["hop.top/*", "github.com/hop-top/*"]
-    rebase-strategy: disabled
-    groups:
-      # One PR per run for minor + patch; majors stay separate for review.
-      minor-patch:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
 
   # "/" is the pnpm workspace: its lockfile covers sdk/ts,
   # engine/sdk/ts-kit-engine and examples/spaced/ts. The other directories
   # are standalone examples outside it (package-lock.json or none).
+  # @modelcontextprotocol/* server pins core exactly; vitest peers on vite and
+  # @vitest/* ship in lockstep with it; typescript-eslint and
+  # @typescript-eslint/* ship in lockstep; esbuild is pinned by vite's range.
   - package-ecosystem: npm
     directories:
       - "/"
       - "/examples/notebook-ts"
       - "/examples/probe/ts"
       - "/examples/spaced/web"
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-    commit-message:
-      prefix: "build(deps):"
-    # Version updates only; security updates are exempt.
+    multi-ecosystem-group: dependencies
+    patterns: ["*"]
     cooldown:
       default-days: 14
       exclude: ["@hop-top/*"]
@@ -115,32 +90,17 @@ updates:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
     groups:
-      # server pins core exactly: they must move together.
-      modelcontextprotocol:
-        patterns: ["@modelcontextprotocol/*"]
-      # vitest peers on vite; @vitest/* ship in lockstep with vitest.
-      vitest:
-        patterns: ["vitest", "@vitest/*", "vite"]
-      # typescript-eslint and @typescript-eslint/* ship in lockstep.
-      typescript-eslint:
-        patterns: ["typescript-eslint", "@typescript-eslint/*"]
-      # Everything else: one PR for minor + patch. A dependency joins the
-      # first group it matches, so the groups above stay ahead of this one.
-      # esbuild stays out: vite pins its range, so it gets its own PR.
-      minor-patch:
+      npm-security:
+        applies-to: security-updates
         patterns: ["*"]
-        exclude-patterns: ["esbuild"]
-        update-types: ["minor", "patch"]
 
+  # mcp pins mcp-types exactly: they must move together.
   - package-ecosystem: uv
-    directory: "/sdk/py"
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-    commit-message:
-      prefix: "build(deps):"
-    # Version updates only; security updates are exempt.
+    directories:
+      - "/sdk/py"
+      - "/engine/sdk/py-kit-engine"
+    multi-ecosystem-group: dependencies
+    patterns: ["*"]
     cooldown:
       default-days: 14
       exclude: ["hop-top-*"]
@@ -150,122 +110,68 @@ updates:
       # (toolchain-parity). Moved by hand with the pin, never alone.
       - dependency-name: ruff
     groups:
-      # mcp pins mcp-types exactly: they must move together.
-      mcp:
-        patterns: ["mcp", "mcp-types"]
-      # Everything else: one PR for minor + patch. A dependency joins the
-      # first group it matches, so mcp stays ahead of this catch-all.
-      minor-patch:
+      uv-security:
+        applies-to: security-updates
         patterns: ["*"]
-        update-types: ["minor", "patch"]
-
-  - package-ecosystem: uv
-    directory: "/engine/sdk/py-kit-engine"
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-    commit-message:
-      prefix: "build(deps):"
-    # Version updates only; security updates are exempt.
-    cooldown:
-      default-days: 14
-      exclude: ["hop-top-*"]
-    rebase-strategy: disabled
-    ignore:
-      # ruff is a mise tool: the locked ruff must equal the mise.toml pin
-      # (toolchain-parity). Moved by hand with the pin, never alone.
-      - dependency-name: ruff
-    groups:
-      # One PR per run for minor + patch; majors stay separate for review.
-      minor-patch:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
 
   # The cross-lang runner builds against the SDK by path and shares its
-  # serde_json and tokio requirements.
+  # serde_json and tokio requirements. RustCrypto hash/KDF/MAC crates
+  # (sha2, hkdf, digest, hmac) share the `digest` major: bump together.
   - package-ecosystem: cargo
     directories:
       - "/sdk/rs"
       - "/sdk/tests/cross-lang/runners/rs"
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-    commit-message:
-      prefix: "build(deps):"
-    # Version updates only; security updates are exempt.
+    multi-ecosystem-group: dependencies
+    patterns: ["*"]
     cooldown:
       default-days: 14
       exclude: ["hop-top-*"]
     rebase-strategy: disabled
-    groups:
-      # RustCrypto hash/KDF/MAC crates share the `digest` major: bump together.
-      rustcrypto:
-        patterns: ["sha2", "hkdf", "digest", "hmac"]
-      # Everything else: one PR for minor + patch. A dependency joins the
-      # first group it matches, so rustcrypto stays ahead of this catch-all.
-      minor-patch:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
     ignore:
       # Stay on stable releases of the secretbox AEAD.
       - dependency-name: crypto_secretbox
         versions: [">= 0.2.0-pre.0, < 0.2.0"]
+    groups:
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   # Example apps: pyproject.toml without a uv.lock.
   - package-ecosystem: pip
     directories:
       - "/examples/probe/py"
       - "/examples/spaced/py"
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-    commit-message:
-      prefix: "build(deps):"
-    # Version updates only; security updates are exempt.
+    multi-ecosystem-group: dependencies
+    patterns: ["*"]
     cooldown:
       default-days: 14
       exclude: ["hop-top-*"]
     rebase-strategy: disabled
     groups:
-      # One PR per run for minor + patch; majors stay separate for review.
-      minor-patch:
+      pip-security:
+        applies-to: security-updates
         patterns: ["*"]
-        update-types: ["minor", "patch"]
 
   - package-ecosystem: composer
     directory: "/sdk/experimental/php"
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-    commit-message:
-      prefix: "build(deps):"
-    # Version updates only; security updates are exempt.
+    multi-ecosystem-group: dependencies
+    patterns: ["*"]
     cooldown:
       default-days: 14
       exclude: ["hop-top/*"]
     rebase-strategy: disabled
     groups:
-      # One PR per run for minor + patch; majors stay separate for review.
-      minor-patch:
+      composer-security:
+        applies-to: security-updates
         patterns: ["*"]
-        update-types: ["minor", "patch"]
 
   # Workflow and composite-action `uses:` refs: every one is pinned to a
   # commit SHA with its version in a trailing comment (make
   # lint-actions-pinned); Dependabot moves the SHA and the comment together.
   - package-ecosystem: github-actions
     directories: ["/", "/.github/actions/*"]
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-    commit-message:
-      prefix: "ci(deps):"
-    # Version updates only; security updates are exempt.
+    multi-ecosystem-group: dependencies
+    patterns: ["*"]
     cooldown:
       default-days: 14
       exclude: ["hop-top/*"]
@@ -277,7 +183,6 @@ updates:
       - dependency-name: "hop-top/.github"
       - dependency-name: "hop-top/.github/.github/workflows/release-please-*"
     groups:
-      # One PR per run for minor + patch; majors stay separate for review.
-      minor-patch:
+      actions-security:
+        applies-to: security-updates
         patterns: ["*"]
-        update-types: ["minor", "patch"]
