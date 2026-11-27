@@ -64,13 +64,7 @@ func loadServiceConfig(r *cli.Root) error {
 		return nil
 	}
 
-	var layers configoverrides.Options
-	if r.Config.ProjectMarker != "" {
-		layers = configoverrides.OptionsForToolWithMarkers(r.Config.Name, []string{r.Config.ProjectMarker})
-	} else {
-		layers = configoverrides.OptionsForTool(r.Config.Name)
-	}
-	layers.LegacyUserConfigPaths = r.Config.LegacyUserConfigPaths
+	layers := r.Config.ConfigOptions()
 	userPath, _, err := configoverrides.EffectiveUserPath(layers)
 	if err != nil {
 		return output.UsageError(err.Error())

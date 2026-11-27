@@ -83,9 +83,21 @@ opts.OnLegacyConfig = func(used, canonical string) {
   (`config.EffectiveUserPath(opts)` returns it and whether it is a legacy
   file), and `kitcliconfig.WithRootConfig(cfg)` gives `config path` /
   `config paths` a chain with the `user-legacy` entries, so `config path`
-  prints the legacy file while it is the one in use. Pass the same list as
-  `Options.LegacyUserConfigPaths` when loading the tool's own config. An
-  empty list means no legacy lookup.
+  prints the legacy file while it is the one in use. The tool's own loader
+  takes the list from `cfg.ConfigOptions()` (`cfg.ConfigOptionsFrom(cwd)`
+  with an explicit directory): `Options` for `cfg.Name` with system, user
+  and project paths (`ProjectMarker` when set) and the legacy list. Set
+  `Defaults`, `Migrations`, `OnLegacyConfig` or `Viper` on the returned value:
+
+  ```go
+  opts := rootCfg.ConfigOptions()
+  opts.Defaults = defaults
+  err := config.Load(&cfg, opts)
+  ```
+
+  An empty `Name` returns zero `Options`; an empty list means no legacy
+  lookup. A host with its own resolver passed to `kitcliconfig.WithResolver`
+  adds the list with `config.WithLegacyUserPaths(chain, legacy)`.
 
 ## Layer merge rules
 
