@@ -576,7 +576,7 @@ ed25519-dalek = { version = "=3.0.0", default-features = false, features = [
 # editor behind `set`/`unset`; scalars resolve through this crate's own
 # yaml.v3-compatible rules, not the parser's. Exact pin: 0.x and the
 # editor depends on span semantics.
-saphyr-parser = { version = "=0.3.3", optional = true }
+saphyr-parser = { version = "=0.3.4", optional = true }
 dirs = { version = "7", optional = true }
 # No crate-wide features: each feature that uses tokio names the pieces it
 # needs, so `full` (and its socket, process and multi-thread runtime
@@ -608,7 +608,7 @@ uuid = { version = "1", features = ["v7", "serde"], optional = true }
 # platforms and CI runners. Matches the Go side's pure-Go driver posture.
 # `default-features = false` drops the unused statement cache (hashlink)
 # and the wasm ffi shim.
-rusqlite = { version = "0.41", default-features = false, features = [
+rusqlite = { version = "0.42", default-features = false, features = [
     "bundled",
 ], optional = true }
 # bus-network and api-server-ws. Exact pins: both depend on their close,
@@ -641,7 +641,7 @@ tokio-rustls = { version = "=0.26.6", default-features = false, features = [
     "ring",
     "tls12",
 ], optional = true }
-webpki-roots = { version = "=1.0.11", optional = true }
+webpki-roots = { version = "=1.0.12", optional = true }
 # bus-network-axum: the router adapter and hyper's upgrade. axum's
 # `tokio` feature supplies `ConnectInfo`, the peer address a link is
 # keyed by; its deps are already in the bus-network tree. api-server
