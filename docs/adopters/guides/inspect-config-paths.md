@@ -61,7 +61,10 @@ A tool that migrated from its own loader can also list its old user
 locations (`config.PathsForToolWithLegacy`, fed the same list as
 `Options.LegacyUserConfigPaths`). Those rows have source `user-legacy`, sit
 right after `user`, and apply only while the `user` file is absent; `exists`
-is the file's real state either way.
+is the file's real state either way. A tool built on `cli.Root` gets these
+rows by declaring `cli.Config.LegacyUserConfigPaths` and registering the
+commands with `kitcliconfig.WithRootConfig(cfg)`; `config path` then prints the
+legacy file while it is the one that loads.
 
 The row with `WINS = *` is the highest-precedence file that exists.
 That is the file to edit (or override via env/flag) to change a

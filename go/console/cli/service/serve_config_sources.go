@@ -22,7 +22,9 @@ import (
 // the kit default — whatever the tool wired itself:
 //
 //   - config files: the services block of the tool's system, user
-//     (~/.config/<tool>/config.yaml) and project files, then of each
+//     (~/.config/<tool>/config.yaml, or the first existing
+//     cli.Config.LegacyUserConfigPaths entry when that is absent) and
+//     project files, then of each
 //     -c <path>, later files winning, at viper's config-file rung;
 //   - environment: every <TOOL>_SERVICES_* variable, bound to the key
 //     it spells (svcconfig.EnvKey), at viper's environment rung;
@@ -68,7 +70,12 @@ func loadServiceConfig(r *cli.Root) error {
 	} else {
 		layers = configoverrides.OptionsForTool(r.Config.Name)
 	}
-	for _, p := range []string{layers.SystemConfigPath, layers.UserConfigPath, layers.ProjectConfigPath} {
+	layers.LegacyUserConfigPaths = r.Config.LegacyUserConfigPaths
+	userPath, _, err := configoverrides.EffectiveUserPath(layers)
+	if err != nil {
+		return output.UsageError(err.Error())
+	}
+	for _, p := range []string{layers.SystemConfigPath, userPath, layers.ProjectConfigPath} {
 		if err := mergeServiceFile(r, p, false); err != nil {
 			return err
 		}

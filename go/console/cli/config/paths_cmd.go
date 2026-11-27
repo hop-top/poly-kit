@@ -47,7 +47,8 @@ func pathCommand(toolName string, o *options) *cobra.Command {
 
 The resolution chain is walked highest-precedence first (cwd, project,
 workspace, user, system, default). The first rung whose file exists is
-printed. If no rung exists, the command prints "no config file found
+printed (a user-legacy rung counts only while the user file is absent).
+If no rung exists, the command prints "no config file found
 in resolution chain" to stderr and exits 1.`,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
@@ -83,7 +84,7 @@ func pathsCommand(toolName string, o *options) *cobra.Command {
 		Short: "Print the full " + toolName + " config resolution chain",
 		Long: `Print every rung of the ` + toolName + ` config resolution
 chain, highest-precedence first. Each entry includes the source label
-(cwd|project|workspace|user|system|default), scope, file path, and
+(cwd|project|workspace|user|user-legacy|system|default), scope, file path, and
 whether the file exists on disk.
 
 In text format (default), one path is printed per line. JSON and YAML

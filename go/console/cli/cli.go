@@ -271,6 +271,17 @@ type Config struct {
 	// directory; a missing marker is a clear ConfigArgs error
 	// surfaced via Root.Validate(), not a silent skip.
 	ProjectMarker string
+	// LegacyUserConfigPaths lists, in order, the locations a tool's user
+	// config file lived before it adopted the canonical one. Consulted
+	// only when no file exists at the canonical user path; the first
+	// existing file is the user layer. Entries accept "~" and "~/"
+	// prefixes. Declared once here, it feeds the served-service config
+	// loader and, via config.WithRootConfig, `config path` /
+	// `config paths`; pass the same list as
+	// core/config.Options.LegacyUserConfigPaths when loading the tool's
+	// own config so every surface agrees on the user file. Empty means
+	// no legacy lookup.
+	LegacyUserConfigPaths []string
 }
 
 // Root wraps the cobra root command, viper instance, theme, and hint
