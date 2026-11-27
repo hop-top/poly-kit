@@ -2,7 +2,7 @@
 
 ## What it answers
 
-How a Python tool checks for a newer release, orders versions the way kit does, registers versioned migrations, migrates one JSON document by its own version field and runs migrations across schema drivers with a `Migrator`. Wrong module for self-update (download and replace): that half of `go/core/upgrade` is Go-only. Ships the driver protocol, no real drivers yet.
+How a Python tool checks for a newer release, orders versions the way kit does, registers versioned migrations, migrates one JSON document by its own version field and runs migrations across schema drivers with a `Migrator`. Wrong module for self-update (download and replace): that half of `go/core/upgrade` is Go-only. Ships the driver protocol and a SQLite driver.
 
 ## Use it when
 
@@ -11,6 +11,7 @@ How a Python tool checks for a newer release, orders versions the way kit does, 
 - order or select migration versions: `compare_versions(a, b)`, `Registry.pending(schema, from_, to)`
 - upgrade a stored JSON document: `migrate_document(bytes, steps, DocOptions(...))`
 - migrate stores: `Migrator(tool, version, bus=...)`, `add_driver(d)`, `run(cancel)`, `status()`, `rollback_latest()`
+- migrate a SQLite file: `SqliteDriver(path)` or `SqliteDriver(path, connect=engine.raw_connection)` from `hop_top_kit.upgrade.drivers`
 
 ## Quick start
 
@@ -20,6 +21,32 @@ from hop_top_kit.upgrade import DocStep, migrate_document
 steps = [DocStep(1, 2, lambda d: {**d, "title": d.pop("name")}, note="rename")]
 out, report = migrate_document(b'{"version": 1, "name": "x"}', steps)
 ```
+
+## SQLite driver
+
+```python
+import sqlite3
+from contextlib import closing
+
+from hop_top_kit.upgrade.drivers import SqliteDriver
+
+
+# Pre-versioning install: baseline stamps it, the additive migration runs once.
+def baseline(schema):  # a fresh database already has the column: nothing runs
+    with closing(sqlite3.connect(db_path)) as c:
+        cols = {r[1] for r in c.execute("PRAGMA table_info(items)")}
+    return "" if not cols else "1.1.0" if "note" in cols else "1.0.0"
+
+
+m = Migrator("mytool", "1.1.0", baseline=baseline)
+m.add_driver(SqliteDriver(db_path, name="appdb", tool="mytool"))
+m.run(threading.Event())
+```
+
+- Backup is `VACUUM INTO` (WAL rows included, never a file copy), to `<dest>/<db file name>`; a missing file means nothing to back up.
+- Path only: backup uses its own connection; restore swaps the file and drops `-wal`, `-shm`, `-journal`; no open handle may exist on the file then.
+- With `connect` (returns a PEP 249 connection): backup runs on it and never closes it; restore raises `BackupUnsupported`. A connection inside a transaction (also `autocommit=False`) makes backup raise `UpgradeError`: end it first.
+- Lock: `flock(2)` on `<data dir>/<name>/.lock`, the Go driver's file, so Go and Python Migrators exclude each other (`msvcrt.locking` on Windows, untested).
 
 ## Contract
 
