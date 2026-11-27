@@ -293,7 +293,7 @@
     }
   },
   "dependencies": {
-    "@bufbuild/protobuf": "^2.16.0",
+    "@bufbuild/protobuf": "^2.17.0",
     "@clack/prompts": "^1.8.1",
     "@connectrpc/connect": "^2.3.0",
     "@connectrpc/connect-web": "^2.3.0",
@@ -301,14 +301,14 @@
     "@modelcontextprotocol/core": "2.4.0",
     "@modelcontextprotocol/server": "2.4.0",
     "better-sqlite3": "^12.11.1",
-    "commander": "15.0.0",
+    "commander": "15.1.0",
     "csv-stringify": "^6.9.0",
     "eta": "^4.6.0",
-    "hono": "^4.13.16",
+    "hono": "^4.13.17",
     "js-yaml": "^4.3.2",
     "picomatch": "^4.0.7",
     "pino": "^10.4.0",
-    "semver": "^7.8.5",
+    "semver": "^7.8.6",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -323,8 +323,8 @@
     "typeid-js": "^1.2.0",
     "typescript": "^5",
     "typescript-eslint": "^8.72.1",
-    "vite": "^8.3.5",
-    "vitest": "^5.0.5"
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
   },
   "engines": {
     "node": ">=22.12"
