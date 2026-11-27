@@ -126,7 +126,7 @@ Shipped drivers (details in the
 | Config files | `driver/configfile` | `New(paths...)` |
 | Data directory | `driver/fsdir` | `New(name, dirPath)` |
 | SQLite file | `driver/sqlite` | `New(dbPath, opts...)` |
-| Shared TiDB/MySQL | `driver/tidb` | `New(dsn, table, opts...)` |
+| Shared TiDB/MySQL | `driver/tidb` | `New(dsn, table, opts...)` (no backup: `ErrBackupUnsupported`) |
 
 The driver's `Name()` is the key that ties migrations to it
 (`Migration.Schema`). The file-backed drivers keep the version in a
@@ -178,6 +178,15 @@ the run started at. A failed verification satisfies
 between steps and wraps `context.Canceled`. `WithManualRollback()`
 turns automatic rollback off. Old backups beyond the retention are
 pruned after success.
+
+A driver that cannot back its store up (a server database: `driver/tidb`)
+returns `upgrade.ErrBackupUnsupported` from `Backup`: the run still goes
+ahead, with no backup and no pruning for that schema. If a migration then
+fails and a `Down` is missing or fails, nothing can restore the schema:
+`Run` returns an error matching `upgrade.ErrNotRestored` (and
+`ErrBackupUnsupported`) and publishes no `reverted` event, and the stored
+version stays at the last step still applied. Give such a schema a `Down`
+for every migration, or take a backup outside kit first.
 
 `Status()` returns per-schema `Current`, `Target`, `Pending`;
 `History()` the migrations applied this session.

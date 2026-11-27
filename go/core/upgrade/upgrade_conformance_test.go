@@ -56,12 +56,16 @@ type upgradeConfVersions struct {
 }
 
 type upgradeConfDriver struct {
-	Name           string `json:"name"`
-	Version        string `json:"version"`
-	BackupFail     string `json:"backup_fail"`
-	RestoreFail    string `json:"restore_fail"`
-	VersionFail    string `json:"version_fail"`
-	SetVersionFail string `json:"set_version_fail"`
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	BackupFail  string `json:"backup_fail"`
+	RestoreFail string `json:"restore_fail"`
+	// BackupUnsupported and RestoreUnsupported make that call report
+	// ErrBackupUnsupported (before BackupFail or RestoreFail apply).
+	BackupUnsupported  bool   `json:"backup_unsupported"`
+	RestoreUnsupported bool   `json:"restore_unsupported"`
+	VersionFail        string `json:"version_fail"`
+	SetVersionFail     string `json:"set_version_fail"`
 	// SetVersionFailFor limits SetVersionFail to that one version.
 	SetVersionFailFor string `json:"set_version_fail_for"`
 	StoresVersion     bool   `json:"stores_version"`
@@ -304,11 +308,17 @@ func (d *recordingDriver) SetVersion(v string) error {
 
 func (d *recordingDriver) Backup(dest string) error {
 	d.record(d.Name() + " backup " + filepath.Base(dest))
+	if d.BackupUnsupported {
+		return ErrBackupUnsupported
+	}
 	return failIf(d.BackupFail)
 }
 
 func (d *recordingDriver) Restore(src string) error {
 	d.record(d.Name() + " restore " + filepath.Base(src))
+	if d.RestoreUnsupported {
+		return ErrBackupUnsupported
+	}
 	return failIf(d.RestoreFail)
 }
 

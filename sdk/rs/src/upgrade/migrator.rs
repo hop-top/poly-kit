@@ -8,6 +8,8 @@ use std::time::Instant;
 use super::backup::{Backups, LatestError, DEFAULT_RETENTION};
 use super::events::{MigrationPublisher, MigrationTopics, Payload, SOURCE};
 use super::lock::Held;
+use super::rollback::{roll_back, take_backup, BackupState};
+use super::unsupported::{is_backup_unsupported, is_not_restored, NotRestored};
 use super::{fs_util, pending, BoxError, Migration, SchemaDriver};
 use crate::bus::{Context, Event, Topic};
 
@@ -79,7 +81,8 @@ pub enum MigrateError {
     Backup { schema: String, source: BoxError },
     /// A migration step stopped the run (a refused version record
     /// included). With auto-rollback the schema was rolled back, unless
-    /// `rollback` says how that failed too.
+    /// `rollback` says how that failed too ([`NotRestored`] when nothing
+    /// could restore the schema).
     #[error("migrate {schema}: {}", step_text(*.kind, .version, .source, .rollback))]
     Step {
         schema: String,
@@ -100,6 +103,28 @@ impl MigrateError {
     pub fn step_kind(&self) -> Option<StepKind> {
         match self {
             MigrateError::Step { kind, .. } => Some(*kind),
+            _ => None,
+        }
+    }
+
+    /// The rollback restored nothing: a `down` was missing or failed and
+    /// the backup was not taken or its `restore` is unsupported (or
+    /// `rollback_latest` found no backup). The stored version stays at the
+    /// last step still applied. Go `errors.Is(err, ErrNotRestored)`.
+    pub fn is_not_restored(&self) -> bool {
+        self.rollback_error().is_some_and(is_not_restored)
+    }
+
+    /// A [`BackupUnsupported`](super::BackupUnsupported) sits in the
+    /// rollback's cause chain. Go `errors.Is(err, ErrBackupUnsupported)`.
+    pub fn is_backup_unsupported(&self) -> bool {
+        self.rollback_error().is_some_and(is_backup_unsupported)
+    }
+
+    fn rollback_error(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            MigrateError::Step { rollback, .. } => rollback.as_deref().map(|e| e as _),
+            MigrateError::Rollback { source, .. } => Some(&**source),
             _ => None,
         }
     }
@@ -442,9 +467,16 @@ impl Migrator {
             };
             let latest = Backups::new(&data_dir, &schema, self.retention)
                 .latest()
-                .map_err(|e: LatestError| fail(e.into()))?;
+                .map_err(|e: LatestError| match e {
+                    LatestError::Empty(_) => fail(Box::new(NotRestored::new(
+                        e.to_string(),
+                        Box::new(super::BackupUnsupported),
+                    ))),
+                    e => fail(e.into()),
+                })?;
             let pre_run = Backups::read_pre_run(&latest).map_err(|e| fail(e.into()))?;
-            d.restore(&latest).map_err(fail)?;
+            d.restore(&latest)
+                .map_err(|e| fail(super::unsupported::restore_error(e)))?;
             let Some(pre_run) = pre_run else {
                 return Err(MigrateError::Rollback {
                     schema: schema.clone(),
@@ -472,7 +504,7 @@ fn base_name(p: &Path) -> String {
 
 /// Names a failed version record; an empty version (the store reads back
 /// as unversioned) is quoted. Go `recordError`.
-fn record_error(version: &str, e: &BoxError) -> String {
+pub(super) fn record_error(version: &str, e: &BoxError) -> String {
     let v = if version.is_empty() { "\"\"" } else { version };
     format!("record {v} failed: {e}")
 }
@@ -481,7 +513,11 @@ fn record_error(version: &str, e: &BoxError) -> String {
 /// `set_version`; otherwise the version file first, then `set_version`,
 /// so a refused `set_version` leaves the file at the new version. Go
 /// `setVersion`.
-fn record(data_dir: &Path, d: &mut dyn SchemaDriver, version: &str) -> Result<(), BoxError> {
+pub(super) fn record(
+    data_dir: &Path,
+    d: &mut dyn SchemaDriver,
+    version: &str,
+) -> Result<(), BoxError> {
     if d.stores_version() {
         return d.set_version(version);
     }
@@ -577,30 +613,18 @@ impl<'a> SchemaRun<'a> {
         };
 
         let backups = Backups::new(self.data_dir, &schema, self.retention);
-        let backup =
-            backups
-                .create(&first.version)
-                .map_err(|source| MigrateError::PrepareBackup {
-                    schema: schema.clone(),
-                    source,
-                })?;
-        d.backup(&backup).map_err(|source| MigrateError::Backup {
-            schema: schema.clone(),
-            source,
-        })?;
-
-        Backups::save_pre_run(&backup, &current).map_err(|source| MigrateError::SavePreRun {
-            schema: schema.clone(),
-            source,
-        })?;
+        let backup = take_backup(&backups, d, &first.version, &current)?;
 
         if let Err(f) = self.apply_all(ctx, d, &current, &todo) {
-            return Err(self.fail(d, &schema, &current, &backup, f));
+            return Err(self.fail(d, &schema, &current, backup, f));
         }
 
-        // Non-fatal, as in Go, which logs it.
-        if let Err(e) = backups.prune() {
-            (self.warn)(&format!("warning: prune old backups for {schema}: {e}"));
+        // Non-fatal, as in Go, which logs it. A schema with no backup this
+        // run is left alone.
+        if matches!(backup, BackupState::Taken(_)) {
+            if let Err(e) = backups.prune() {
+                (self.warn)(&format!("warning: prune old backups for {schema}: {e}"));
+            }
         }
         Ok(())
     }
@@ -732,7 +756,7 @@ impl<'a> SchemaRun<'a> {
         d: &mut dyn SchemaDriver,
         schema: &str,
         current: &str,
-        backup: &Path,
+        backup: BackupState,
         f: Failure<'_>,
     ) -> MigrateError {
         let mut rollback = None;
@@ -757,37 +781,4 @@ impl<'a> SchemaRun<'a> {
             rollback,
         }
     }
-}
-
-/// `down` of each applied migration, newest first, on an uncanceled
-/// context, recording the version before each once its `down` succeeded;
-/// the backup is restored instead (and the starting version recorded) the
-/// moment one is missing or fails. A failed record stops the rollback:
-/// the store would not describe the data. Reports which of the two undid
-/// the changes.
-fn roll_back(
-    data_dir: &Path,
-    d: &mut dyn SchemaDriver,
-    current: &str,
-    applied: &[&Migration],
-    backup: &Path,
-) -> Result<&'static str, BoxError> {
-    let ctx = Context::background();
-    for (i, m) in applied.iter().enumerate().rev() {
-        match &m.down {
-            Some(down) if down(&ctx).is_ok() => {}
-            _ => {
-                d.restore(backup)?;
-                record(data_dir, d, current).map_err(|e| record_error(current, &e))?;
-                return Ok("restore");
-            }
-        }
-        let prev = if i == 0 {
-            current
-        } else {
-            &applied[i - 1].version
-        };
-        record(data_dir, d, prev).map_err(|e| record_error(prev, &e))?;
-    }
-    Ok("down")
 }

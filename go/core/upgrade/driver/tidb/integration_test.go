@@ -2,6 +2,7 @@ package tidb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -10,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"hop.top/kit/go/core/upgrade"
 )
 
 func startMySQL(t *testing.T) string {
@@ -102,4 +105,40 @@ func TestIntegration_MultipleSchemas(t *testing.T) {
 	assert.Equal(t, "3.0.0", v2)
 
 	d1.db.Exec("DROP TABLE test_multi_versions")
+}
+
+// A failed migration with no Down cannot be restored by this driver:
+// the run reports ErrNotRestored and the table holds the last step
+// still applied, not the starting version.
+func TestIntegration_RunWithoutDownIsNotRestored(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	testcontainers.SkipIfProviderIsNotHealthy(t)
+
+	dsn := startMySQL(t)
+	d, err := New(dsn, "test_notrestored_versions", WithName("app"))
+	if err != nil {
+		t.Skipf("skipping: could not connect to mysql: %v", err)
+	}
+	defer d.Close()
+	require.NoError(t, d.SetVersion("1.0.0"))
+
+	reg := upgrade.NewRegistry()
+	ok := func(context.Context) error { return nil }
+	reg.Register(upgrade.Migration{Version: "1.1.0", Schema: "app", Up: ok})
+	reg.Register(upgrade.Migration{Version: "1.2.0", Schema: "app",
+		Up: func(context.Context) error { return errors.New("boom") }})
+	m := upgrade.NewMigrator("tidbtest", "1.2.0", upgrade.WithRegistry(reg),
+		upgrade.WithDataDir(t.TempDir()))
+	m.AddDriver(d)
+
+	err = m.Run(context.Background())
+	require.ErrorIs(t, err, upgrade.ErrNotRestored)
+	require.ErrorIs(t, err, upgrade.ErrBackupUnsupported)
+
+	v, err := d.Version()
+	require.NoError(t, err)
+	assert.Equal(t, "1.1.0", v)
+	d.db.Exec("DROP TABLE test_notrestored_versions")
 }

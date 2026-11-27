@@ -13,7 +13,7 @@ restored, for one `upgrade.Migration.Schema`. Every backend implements
 | `configfile/` | `hop.top/kit/go/core/upgrade/driver/configfile` | `New(paths...)`, `NewWithOptions(opts, paths...)` | version file | copies each managed file to and from `dest` |
 | `fsdir/` | `hop.top/kit/go/core/upgrade/driver/fsdir` | `New(name, dirPath)`, `NewWithOptions(name, dirPath, opts...)` | version file | tar.gz of the directory; `Restore` removes the directory first |
 | `sqlite/` | `hop.top/kit/go/core/upgrade/driver/sqlite` | `New(dbPath, opts...)` | version file | copies the database file |
-| [`tidb/`](tidb/README.md) | `hop.top/kit/go/core/upgrade/driver/tidb` | `New(dsn, table, opts...)` | table row (`VersionStorer`: no version file) | no-ops; managed outside kit |
+| [`tidb/`](tidb/README.md) | `hop.top/kit/go/core/upgrade/driver/tidb` | `New(dsn, table, opts...)` | table row (`VersionStorer`: no version file) | both return `upgrade.ErrBackupUnsupported`; back up outside kit |
 
 - pick `configfile` for YAML/TOML config the migration rewrites in place
 - pick `fsdir` for a data directory (caches, per-project state)
@@ -37,7 +37,7 @@ fmt.Println(d.Name())
 
 - `Name()` must equal `Migration.Schema` for the migrations that target it. Defaults: `config`, the `name` argument for `fsdir`, `sqlite`, `tidb`. `WithName` overrides where offered.
 - Version file backends read and write `<XDG data dir>/hop/<tool>/<name>/version` via `upgrade.ReadVersionFile`; set the tool with `WithTool`; without it the path collapses to `<XDG data dir>/hop/<name>/version`. A missing file means version `""`.
-- `Backup(dest)` and `Restore(src)` take directories; the Migrator drives them around `Migration.Up` and on rollback.
+- `Backup(dest)` and `Restore(src)` take directories; the Migrator drives them around `Migration.Up` and on rollback. A store kit cannot back up returns `upgrade.ErrBackupUnsupported` (never nil): from `Backup` the run goes on with no backup, from `Restore` a rollback ends as `upgrade.ErrNotRestored`.
 
 ## Neighbours
 

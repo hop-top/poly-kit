@@ -131,11 +131,15 @@ func (m *Migrator) AddDriver(d SchemaDriver) {
 // WithBaseline function and record its answer), collect pending, backup (and
 // save the version the run starts at beside it), then per migration Up,
 // Verify and record that migration's version, then the final verify.
+// A Backup that returns ErrBackupUnsupported lets the run go on with no
+// backup: no backup directory is kept and nothing is pruned.
 // A crash re-applies at most the one migration whose Up had not been
 // recorded, so migrations should stay idempotent. On failure: rollback
 // (Down in reverse, recording the version before each, else Restore and
-// record the starting version). A context canceled between steps stops
-// before the next Up.
+// record the starting version). When a Down is missing or fails and no
+// backup can restore the schema, nothing is reverted: the error matches
+// ErrNotRestored and the stored version stays at the last step still
+// applied. A context canceled between steps stops before the next Up.
 func (m *Migrator) Run(ctx context.Context) error {
 	start := time.Now()
 	quiet := context.WithoutCancel(ctx)
@@ -194,6 +198,9 @@ func (m *Migrator) backups(schema string) *backupOrchestrator {
 // the version the run that took it started at (saved beside the backup).
 // A backup without that record (taken before it was saved) is still
 // restored, but the version is left as it is and the error says so.
+// A schema with no backup, or whose Restore returns ErrBackupUnsupported,
+// fails with an error matching ErrNotRestored and ErrBackupUnsupported;
+// nothing is recorded for it.
 // Only works when auto-rollback is disabled (manual mode).
 func (m *Migrator) RollbackLatest() error {
 	if m.autoRollback {
@@ -209,6 +216,9 @@ func (m *Migrator) RollbackLatest() error {
 			return fmt.Errorf("rollback %s: %w", d.Name(), err)
 		}
 		if err := d.Restore(latest); err != nil {
+			if errors.Is(err, ErrBackupUnsupported) {
+				err = notRestored{text: errRestoreUnsupported, cause: err}
+			}
 			return fmt.Errorf("rollback %s: %w", d.Name(), err)
 		}
 		if !recorded {
@@ -221,6 +231,12 @@ func (m *Migrator) RollbackLatest() error {
 	}
 	return nil
 }
+
+// Texts of a rollback that restored nothing; ports pin the same words.
+const (
+	errNoBackup           = "not restored: no backup was taken"
+	errRestoreUnsupported = "not restored: restore unsupported"
+)
 
 // stepFailure is what stopped a schema's run, with what to roll back.
 type stepFailure struct {
@@ -286,30 +302,59 @@ func (m *Migrator) runSchema(ctx context.Context, d SchemaDriver) (int, error) {
 	orch := m.backups(d.Name())
 
 	// Backup before applying migrations.
-	backupPath, err := orch.backupDir(pending[0].Version)
+	bk, err := m.takeBackup(orch, d, pending[0].Version, current)
 	if err != nil {
-		return 0, fmt.Errorf("prepare backup: %w", err)
-	}
-	if err := d.Backup(backupPath); err != nil {
-		return 0, fmt.Errorf("backup: %w", err)
-	}
-	// The directory is named after the first pending version; keep the
-	// version the run starts at so RollbackLatest can record it.
-	if err := savePreRun(backupPath, current); err != nil {
-		return 0, fmt.Errorf("prepare backup: %w", err)
+		return 0, err
 	}
 
 	fail, n := m.applyAll(ctx, d, current, pending)
 	if fail != nil {
-		return n, m.fail(ctx, d, current, backupPath, *fail)
+		return n, m.fail(ctx, d, current, bk, *fail)
 	}
 
-	// Prune old backups on success (non-fatal).
-	if pruneErr := orch.prune(); pruneErr != nil {
-		log.Printf("warning: prune old backups for %s: %v", d.Name(), pruneErr)
+	// Prune old backups on success (non-fatal); a schema with no backup
+	// this run is left alone.
+	if bk.path != "" {
+		if pruneErr := orch.prune(); pruneErr != nil {
+			log.Printf("warning: prune old backups for %s: %v", d.Name(), pruneErr)
+		}
 	}
 
 	return n, nil
+}
+
+// backupState is what a schema's run has to restore from: the backup
+// directory, or none (path "") with why: the error Backup returned.
+type backupState struct {
+	path        string
+	unsupported error
+}
+
+// takeBackup makes the backup directory (named after the first pending
+// version), asks the driver to fill it and saves beside it the version
+// the run starts at, so RollbackLatest can record it. A Backup that
+// returns ErrBackupUnsupported is no failure: the directory this call
+// created is removed again, no version is saved, and the run goes on
+// with no backup.
+func (m *Migrator) takeBackup(orch *backupOrchestrator, d SchemaDriver, first, current string) (backupState, error) {
+	existed := orch.hasBackup(first)
+	path, err := orch.backupDir(first)
+	if err != nil {
+		return backupState{}, fmt.Errorf("prepare backup: %w", err)
+	}
+	if err := d.Backup(path); err != nil {
+		if !errors.Is(err, ErrBackupUnsupported) {
+			return backupState{}, fmt.Errorf("backup: %w", err)
+		}
+		if !existed {
+			_ = os.RemoveAll(path)
+		}
+		return backupState{unsupported: err}, nil
+	}
+	if err := savePreRun(path, current); err != nil {
+		return backupState{}, fmt.Errorf("prepare backup: %w", err)
+	}
+	return backupState{path: path}, nil
 }
 
 // stampBaseline asks the baseline function what the unversioned store is
@@ -393,16 +438,16 @@ func withDuration(ev MigrationPayload, since time.Time) MigrationPayload {
 }
 
 // fail rolls back (in auto mode) and builds the schema's error.
-func (m *Migrator) fail(ctx context.Context, d SchemaDriver, current, backupPath string, f stepFailure) error {
+func (m *Migrator) fail(ctx context.Context, d SchemaDriver, current string, bk backupState, f stepFailure) error {
 	err := f.wrap()
 	if !m.autoRollback || len(f.undo) == 0 {
 		return err
 	}
 	quiet := context.WithoutCancel(ctx)
 	t := time.Now()
-	method, rollbackErr := m.rollback(quiet, d, current, f.undo, backupPath)
+	method, rollbackErr := m.rollback(quiet, d, current, f.undo, bk)
 	if rollbackErr != nil {
-		return fmt.Errorf("%w (rollback also failed: %v)", err, rollbackErr)
+		return fmt.Errorf("%w (rollback also failed: %w)", err, rollbackErr)
 	}
 	m.emit(quiet, m.topics.Reverted, MigrationPayload{Tool: m.tool, Schema: d.Name(),
 		From: f.version, To: current, Method: method, DurationMS: millis(t)})
@@ -413,18 +458,27 @@ func (m *Migrator) fail(ctx context.Context, d SchemaDriver, current, backupPath
 // migration once its Down succeeded; falls back to Restore (and records
 // the starting version) if a Down is missing or fails. It reports which
 // of the two undid the changes. A failed record stops the rollback: the
-// store would not describe the data.
+// store would not describe the data. With no backup, or a Restore that
+// returns ErrBackupUnsupported, nothing is restored: the error matches
+// ErrNotRestored, and the version stays at the last record, the step
+// whose Down was missing or failed.
 func (m *Migrator) rollback(
 	ctx context.Context,
 	d SchemaDriver,
 	current string,
 	applied []Migration,
-	backupPath string,
+	bk backupState,
 ) (string, error) {
 	for i := len(applied) - 1; i >= 0; i-- {
 		mig := applied[i]
 		if mig.Down == nil || mig.Down(ctx) != nil {
-			if err := d.Restore(backupPath); err != nil {
+			if bk.path == "" {
+				return "restore", notRestored{text: errNoBackup, cause: bk.unsupported}
+			}
+			if err := d.Restore(bk.path); err != nil {
+				if errors.Is(err, ErrBackupUnsupported) {
+					err = notRestored{text: errRestoreUnsupported, cause: err}
+				}
 				return "restore", err
 			}
 			if err := m.setVersion(d, current); err != nil {

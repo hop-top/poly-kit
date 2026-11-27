@@ -16,8 +16,8 @@ use std::sync::{Arc, Mutex};
 use hop_top_kit::bus::{Context, Event};
 use hop_top_kit::upgrade::{
     compare_versions, migrate_document, migrate_value, pending, read_version_file_in,
-    AppliedMigration, BoxError, DocApplied, DocErrorKind, DocOptions, DocReport, DocStep, Locker,
-    Migration, Migrator, SchemaDriver, Unlock,
+    AppliedMigration, BackupUnsupported, BoxError, DocApplied, DocErrorKind, DocOptions, DocReport,
+    DocStep, Locker, Migration, Migrator, SchemaDriver, Unlock,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -80,6 +80,12 @@ struct DriverCase {
     backup_fail: String,
     #[serde(default)]
     restore_fail: String,
+    /// `backup` / `restore` report `BackupUnsupported` (before the
+    /// matching `*_fail` applies).
+    #[serde(default)]
+    backup_unsupported: bool,
+    #[serde(default)]
+    restore_unsupported: bool,
     #[serde(default)]
     version_fail: String,
     #[serde(default)]
@@ -363,11 +369,17 @@ impl SchemaDriver for Recording {
 
     fn backup(&self, dest: &Path) -> Result<(), BoxError> {
         self.record(format!("{} backup {}", self.case.name, base_name(dest)));
+        if self.case.backup_unsupported {
+            return Err(Box::new(BackupUnsupported));
+        }
         fail_if(&self.case.backup_fail)
     }
 
     fn restore(&mut self, src: &Path) -> Result<(), BoxError> {
         self.record(format!("{} restore {}", self.case.name, base_name(src)));
+        if self.case.restore_unsupported {
+            return Err(Box::new(BackupUnsupported));
+        }
         fail_if(&self.case.restore_fail)
     }
 }

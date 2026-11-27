@@ -209,19 +209,32 @@ Observable behaviour:
 
 - `Backup` returns `ErrBackupUnsupported`: the run proceeds. No backup
   exists for the schema in this run, the Migrator leaves no backup
-  directory behind for it, and nothing is pruned on its account
+  directory and no `pre-<v>.version` file behind for it (a directory that
+  already existed is not removed), and nothing is pruned for that schema,
+  whatever backups it holds from earlier runs
 - any other `Backup` error fails the schema before any `Up` (`backup: ...`)
 - when a failure triggers rollback, `Down`s run newest first as today.
   `Restore` is called only if a `Down` is missing or fails
 - a rollback that needs `Restore` and has none to run (no backup was taken,
   or `Restore` returns `ErrBackupUnsupported`) fails: the returned error
-  satisfies `errors.Is(err, ErrNotRestored)`, still carries the failure
-  that started the rollback, and no `Reverted` event is published
+  satisfies `errors.Is(err, ErrNotRestored)` (and, as its cause,
+  `errors.Is(err, ErrBackupUnsupported)`), still carries the failure that
+  started the rollback, and no `Reverted` event is published. The stored
+  version stays at the last step still applied: each successful `Down`
+  recorded the version before its migration, so the step whose `Down` is
+  missing or failed is the one the store still reports (in manual mode,
+  the last applied migration). The text ends `(rollback also failed: not
+  restored: no backup was taken)` or `(rollback also failed: not restored:
+  restore unsupported)`; the lock, if held, is released as on any path
 - a rollback that completed through `Down`s alone is a revert (method
   `down`); one that completed through `Restore` is a revert (method
   `restore`). Nothing else is reported as a revert
-- `RollbackLatest` on a schema without a backup fails the same way
-  (`ErrNotRestored`); it never reports success without a restore
+- `RollbackLatest` on a schema without a backup directory fails
+  `rollback <schema>: no backups found for <schema>`, and when `Restore`
+  returns `ErrBackupUnsupported` it fails `rollback <schema>: not
+  restored: restore unsupported`; both match `ErrNotRestored` with
+  `ErrBackupUnsupported` as the cause, and neither records a version. It
+  never reports success without a restore
 
 A run that never needed a rollback is unaffected by missing backups. This
 is why an unsupported backup does not refuse the run up front: additive

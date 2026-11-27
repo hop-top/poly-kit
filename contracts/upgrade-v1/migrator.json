@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hop.top/kit/contracts/upgrade-v1/migrator.json",
   "version": "v1",
-  "description": "The migration runner (Go `core/upgrade.Migrator`) against a recording driver. Each scenario registers `migrations`, adds `drivers` in order and runs `steps` on one migrator with target `target`. A driver reports `version` until `set_version` succeeds; a `*_fail` field makes that driver call fail with that message (`set_version_fail_for` limits `set_version_fail` to that one version); `stores_version` makes it a version-storing driver, for which the runner writes and reads no version file. A migration with `fail` fails its Up with that message; `down` gives it a Down, `down_fail` a failing one. `backups` creates backup directories before the first step; `recorded_backups` (`{schema: {dir: pre-run version}}`) creates directories that also carry the pre-run version saved beside them, in `<backup dir>.version` (an empty file is a recorded empty version). `calls` is what the step did, in order: `<schema> backup|restore <backup dir name>`, `<schema> up|down <version>`, `<schema> set_version <version>`. `history` is cumulative; `versions` is each schema's version file (`\"\"` when absent); `stored` is what each driver reports as its version after the step; `backups` lists each schema's backup directories by name after the step; `pre_run_versions` is, per schema, every `<backup dir>.version` file beside the backups (by directory name) and nothing else; `no_version_dir` lists schemas whose `<data dir>/<schema>` directory must not exist. `error` is the exact error text, or null. Each migration may also carry `verify` (a passing verify step) or `verify_fail`, and `cancel` cancels the run's context after its Up. A scenario may set `final_verify` or `final_verify_fail` (the migrator's final verify), `data_dir` (an explicit data dir instead of XDG), `registry: own` with `default_migrations` (registered in the default registry, which an own registry must not see) and `locked_backups` (old backups that cannot be removed). A step may set `canceled` (run with a canceled context). Calls also log `<schema> verify <version>` and `<schema> final_verify <version>`. A `set_version` call follows each migration that applied (after its `verify`), each `down` of a rollback (the version before that migration), and each restore (the version the run started at); an empty version logs as `<schema> set_version ` with nothing after the space. `events` lists what the run published, in order, under the default topics; `duration_ms` is left out of the payloads (runners check it is a non-negative integer where present). `warnings` lists, as prefixes, what the run logged. A scenario may set `baseline` (`{schema: {version, error}}`): the Migrator gets a baseline function that logs `<schema> baseline` and returns that schema's `version` (empty when omitted) or fails with its `error`; a schema without an entry returns empty; without the field there is no baseline function. The baseline call follows the stored-version read and precedes the pending selection, backup and every `up`; a non-empty result is recorded like any version and publishes `baselined` (`from` is empty, `to` the recorded version), and a failing function or record is the schema's error, prefixed `baseline: `. A driver with `lock` is a lockable driver (Go `Locker`, Rust `Locker` via `as_locker`): `Lock` logs `<schema> lock`, the returned unlock logs `<schema> unlock`, and a lockable driver also logs every `Version()` read as `<schema> version`, so the order is pinned (`Status` reads it too, and takes no lock). `lock_fail` makes `Lock` fail with that message (no unlock follows: nothing was acquired); `lock_blocked` makes it wait for the run's context, so it fails with the context's error and the step must set `canceled`; `lock_sets_version` makes the lock, once acquired, report that version from then on (what another process recorded while this one waited); `unlock_fail` makes the unlock fail. A lockable driver is locked before its version is read and unlocked after its run ends, after any rollback, on every path once the lock is held; a failed `Lock` is the schema's error prefixed `lock: `, and a failed unlock is logged as a warning prefixed `warning: unlock <schema>: ` and changes no result.",
+  "description": "The migration runner (Go `core/upgrade.Migrator`) against a recording driver. Each scenario registers `migrations`, adds `drivers` in order and runs `steps` on one migrator with target `target`. A driver reports `version` until `set_version` succeeds; a `*_fail` field makes that driver call fail with that message (`set_version_fail_for` limits `set_version_fail` to that one version); `stores_version` makes it a version-storing driver, for which the runner writes and reads no version file. A migration with `fail` fails its Up with that message; `down` gives it a Down, `down_fail` a failing one. `backups` creates backup directories before the first step; `recorded_backups` (`{schema: {dir: pre-run version}}`) creates directories that also carry the pre-run version saved beside them, in `<backup dir>.version` (an empty file is a recorded empty version). `calls` is what the step did, in order: `<schema> backup|restore <backup dir name>`, `<schema> up|down <version>`, `<schema> set_version <version>`. `history` is cumulative; `versions` is each schema's version file (`\"\"` when absent); `stored` is what each driver reports as its version after the step; `backups` lists each schema's backup directories by name after the step; `pre_run_versions` is, per schema, every `<backup dir>.version` file beside the backups (by directory name) and nothing else; `no_version_dir` lists schemas whose `<data dir>/<schema>` directory must not exist. `error` is the exact error text, or null. Each migration may also carry `verify` (a passing verify step) or `verify_fail`, and `cancel` cancels the run's context after its Up. A scenario may set `final_verify` or `final_verify_fail` (the migrator's final verify), `data_dir` (an explicit data dir instead of XDG), `registry: own` with `default_migrations` (registered in the default registry, which an own registry must not see) and `locked_backups` (old backups that cannot be removed). A step may set `canceled` (run with a canceled context). Calls also log `<schema> verify <version>` and `<schema> final_verify <version>`. A `set_version` call follows each migration that applied (after its `verify`), each `down` of a rollback (the version before that migration), and each restore (the version the run started at); an empty version logs as `<schema> set_version ` with nothing after the space. `events` lists what the run published, in order, under the default topics; `duration_ms` is left out of the payloads (runners check it is a non-negative integer where present). `warnings` lists, as prefixes, what the run logged. A scenario may set `baseline` (`{schema: {version, error}}`): the Migrator gets a baseline function that logs `<schema> baseline` and returns that schema's `version` (empty when omitted) or fails with its `error`; a schema without an entry returns empty; without the field there is no baseline function. The baseline call follows the stored-version read and precedes the pending selection, backup and every `up`; a non-empty result is recorded like any version and publishes `baselined` (`from` is empty, `to` the recorded version), and a failing function or record is the schema's error, prefixed `baseline: `. A driver with `lock` is a lockable driver (Go `Locker`, Rust `Locker` via `as_locker`): `Lock` logs `<schema> lock`, the returned unlock logs `<schema> unlock`, and a lockable driver also logs every `Version()` read as `<schema> version`, so the order is pinned (`Status` reads it too, and takes no lock). `lock_fail` makes `Lock` fail with that message (no unlock follows: nothing was acquired); `lock_blocked` makes it wait for the run's context, so it fails with the context's error and the step must set `canceled`; `lock_sets_version` makes the lock, once acquired, report that version from then on (what another process recorded while this one waited); `unlock_fail` makes the unlock fail. A lockable driver is locked before its version is read and unlocked after its run ends, after any rollback, on every path once the lock is held; a failed `Lock` is the schema's error prefixed `lock: `, and a failed unlock is logged as a warning prefixed `warning: unlock <schema>: ` and changes no result. A driver may set `backup_unsupported` or `restore_unsupported`: its `backup` or `restore` call is still logged (`<schema> backup|restore <backup dir name>`) and then reports the unsupported sentinel (Go `ErrBackupUnsupported`, Rust `BackupUnsupported`; it wins over `backup_fail` or `restore_fail`). An unsupported backup is not a failure: the run goes on, with no `<schema>` backup directory and no `.version` file left behind (the directory the Migrator created for it is removed), no `set_version` change, and no prune for that schema. A rollback that needs a restore it cannot run (a `down` missing or failing and no backup was taken, or `restore` unsupported) restores nothing: no `reverted` event is published, the error ends `(rollback also failed: not restored: no backup was taken)` or `(rollback also failed: not restored: restore unsupported)` (Go `ErrNotRestored`, Rust `MigrateError::is_not_restored`), and the stored version stays at the last step still applied: each `down` that succeeded recorded the version before its migration, so the step whose `down` is missing or failed is the one still applied (in manual mode, the last applied migration). `rollback_latest` with no backup directory for a schema fails `rollback <schema>: no backups found for <schema>`, and with an unsupported `restore` `rollback <schema>: not restored: restore unsupported`; neither records a version.",
   "scenarios": [
     {
       "name": "applies pending in order, then a re-run is a no-op",
@@ -4745,6 +4745,1375 @@
               "error": null
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "an unsupported backup lets the run proceed and leaves no backup behind",
+      "target": "1.2.0",
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.0.0",
+          "backup_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "db",
+          "version": "1.1.0"
+        },
+        {
+          "schema": "db",
+          "version": "1.2.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": null,
+          "calls": [
+            "db backup pre-1.1.0",
+            "db up 1.1.0",
+            "db set_version 1.1.0",
+            "db up 1.2.0",
+            "db set_version 1.2.0"
+          ],
+          "history": [
+            {
+              "version": "1.1.0",
+              "schema": "db"
+            },
+            {
+              "version": "1.2.0",
+              "schema": "db"
+            }
+          ],
+          "events": [
+            {
+              "topic": "kit.core.migration.run_started",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.applied",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.1.0",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.applied",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.1.0",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.run_completed",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.2.0",
+                "applied": 2
+              }
+            }
+          ],
+          "versions": {
+            "db": "1.2.0"
+          },
+          "stored": {
+            "db": "1.2.0"
+          },
+          "backups": {
+            "db": []
+          },
+          "pre_run_versions": {
+            "db": {}
+          },
+          "warnings": []
+        },
+        {
+          "op": "run",
+          "error": null,
+          "calls": [],
+          "backups": {
+            "db": []
+          },
+          "pre_run_versions": {
+            "db": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "an unsupported backup skips the prune for that schema only",
+      "target": "2.0.0",
+      "retention": 2,
+      "recorded_backups": {
+        "a": {
+          "pre-1.0.0": "0.9.0",
+          "pre-1.1.0": "1.0.0",
+          "pre-1.2.0": "1.1.0"
+        },
+        "b": {
+          "pre-1.0.0": "0.9.0",
+          "pre-1.1.0": "1.0.0",
+          "pre-1.2.0": "1.1.0"
+        }
+      },
+      "drivers": [
+        {
+          "name": "a",
+          "version": "1.2.0",
+          "backup_unsupported": true
+        },
+        {
+          "name": "b",
+          "version": "1.2.0"
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "2.0.0"
+        },
+        {
+          "schema": "b",
+          "version": "2.0.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": null,
+          "calls": [
+            "a backup pre-2.0.0",
+            "a up 2.0.0",
+            "a set_version 2.0.0",
+            "b backup pre-2.0.0",
+            "b up 2.0.0",
+            "b set_version 2.0.0"
+          ],
+          "backups": {
+            "a": [
+              "pre-1.0.0",
+              "pre-1.1.0",
+              "pre-1.2.0"
+            ],
+            "b": [
+              "pre-1.2.0",
+              "pre-2.0.0"
+            ]
+          },
+          "pre_run_versions": {
+            "a": {
+              "pre-1.0.0": "0.9.0",
+              "pre-1.1.0": "1.0.0",
+              "pre-1.2.0": "1.1.0"
+            },
+            "b": {
+              "pre-1.2.0": "1.1.0",
+              "pre-2.0.0": "1.2.0"
+            }
+          },
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "name": "an unsupported backup with every Down present rolls back by Down",
+      "target": "1.3.0",
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.0.0",
+          "backup_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "db",
+          "version": "1.1.0",
+          "down": true
+        },
+        {
+          "schema": "db",
+          "version": "1.2.0",
+          "down": true
+        },
+        {
+          "schema": "db",
+          "version": "1.3.0",
+          "fail": "boom"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate db: up 1.3.0 failed: boom",
+          "calls": [
+            "db backup pre-1.1.0",
+            "db up 1.1.0",
+            "db set_version 1.1.0",
+            "db up 1.2.0",
+            "db set_version 1.2.0",
+            "db up 1.3.0",
+            "db down 1.2.0",
+            "db set_version 1.1.0",
+            "db down 1.1.0",
+            "db set_version 1.0.0"
+          ],
+          "events": [
+            {
+              "topic": "kit.core.migration.run_started",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.3.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.applied",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.1.0",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.applied",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.1.0",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.2.0",
+                "to": "1.3.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.failed",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.2.0",
+                "to": "1.3.0",
+                "stage": "up",
+                "error": "boom"
+              }
+            },
+            {
+              "topic": "kit.core.migration.reverted",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.3.0",
+                "to": "1.0.0",
+                "method": "down"
+              }
+            },
+            {
+              "topic": "kit.core.migration.run_failed",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.3.0",
+                "schema": "db",
+                "error": "migrate db: up 1.3.0 failed: boom"
+              }
+            }
+          ],
+          "versions": {
+            "db": "1.0.0"
+          },
+          "stored": {
+            "db": "1.0.0"
+          },
+          "backups": {
+            "db": []
+          },
+          "pre_run_versions": {
+            "db": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "an unsupported backup and a missing Down report not restored and leave the last applied version",
+      "target": "1.3.0",
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.0.0",
+          "backup_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "db",
+          "version": "1.1.0",
+          "down": true
+        },
+        {
+          "schema": "db",
+          "version": "1.2.0"
+        },
+        {
+          "schema": "db",
+          "version": "1.3.0",
+          "fail": "boom"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate db: up 1.3.0 failed: boom (rollback also failed: not restored: no backup was taken)",
+          "calls": [
+            "db backup pre-1.1.0",
+            "db up 1.1.0",
+            "db set_version 1.1.0",
+            "db up 1.2.0",
+            "db set_version 1.2.0",
+            "db up 1.3.0"
+          ],
+          "history": [
+            {
+              "version": "1.1.0",
+              "schema": "db"
+            },
+            {
+              "version": "1.2.0",
+              "schema": "db"
+            }
+          ],
+          "events": [
+            {
+              "topic": "kit.core.migration.run_started",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.3.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.applied",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.1.0",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.applied",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.1.0",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.2.0",
+                "to": "1.3.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.failed",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.2.0",
+                "to": "1.3.0",
+                "stage": "up",
+                "error": "boom"
+              }
+            },
+            {
+              "topic": "kit.core.migration.run_failed",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.3.0",
+                "schema": "db",
+                "error": "migrate db: up 1.3.0 failed: boom (rollback also failed: not restored: no backup was taken)"
+              }
+            }
+          ],
+          "versions": {
+            "db": "1.2.0"
+          },
+          "stored": {
+            "db": "1.2.0"
+          },
+          "backups": {
+            "db": []
+          },
+          "pre_run_versions": {
+            "db": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "a Down missing after later Downs succeeded leaves the version at the step whose Down is missing",
+      "target": "1.4.0",
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.0.0",
+          "backup_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "db",
+          "version": "1.1.0",
+          "down": true
+        },
+        {
+          "schema": "db",
+          "version": "1.2.0"
+        },
+        {
+          "schema": "db",
+          "version": "1.3.0",
+          "down": true
+        },
+        {
+          "schema": "db",
+          "version": "1.4.0",
+          "down": true,
+          "verify_fail": "bad shape"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate db: verify 1.4.0 failed: bad shape (rollback also failed: not restored: no backup was taken)",
+          "calls": [
+            "db backup pre-1.1.0",
+            "db up 1.1.0",
+            "db set_version 1.1.0",
+            "db up 1.2.0",
+            "db set_version 1.2.0",
+            "db up 1.3.0",
+            "db set_version 1.3.0",
+            "db up 1.4.0",
+            "db verify 1.4.0",
+            "db down 1.4.0",
+            "db set_version 1.3.0",
+            "db down 1.3.0",
+            "db set_version 1.2.0"
+          ],
+          "events": [
+            {
+              "topic": "kit.core.migration.run_started",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.4.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.applied",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.1.0",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.applied",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.1.0",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.2.0",
+                "to": "1.3.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.applied",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.2.0",
+                "to": "1.3.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.3.0",
+                "to": "1.4.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.applied",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.3.0",
+                "to": "1.4.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.failed",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.3.0",
+                "to": "1.4.0",
+                "stage": "verify",
+                "error": "bad shape"
+              }
+            },
+            {
+              "topic": "kit.core.migration.run_failed",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.4.0",
+                "schema": "db",
+                "error": "migrate db: verify 1.4.0 failed: bad shape (rollback also failed: not restored: no backup was taken)"
+              }
+            }
+          ],
+          "versions": {
+            "db": "1.2.0"
+          },
+          "stored": {
+            "db": "1.2.0"
+          },
+          "backups": {
+            "db": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "an unsupported backup and a failing Down report not restored",
+      "target": "1.3.0",
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.0.0",
+          "backup_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "db",
+          "version": "1.1.0",
+          "down": true
+        },
+        {
+          "schema": "db",
+          "version": "1.2.0",
+          "down_fail": "cannot undo"
+        },
+        {
+          "schema": "db",
+          "version": "1.3.0",
+          "fail": "boom"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate db: up 1.3.0 failed: boom (rollback also failed: not restored: no backup was taken)",
+          "calls": [
+            "db backup pre-1.1.0",
+            "db up 1.1.0",
+            "db set_version 1.1.0",
+            "db up 1.2.0",
+            "db set_version 1.2.0",
+            "db up 1.3.0",
+            "db down 1.2.0"
+          ],
+          "versions": {
+            "db": "1.2.0"
+          },
+          "stored": {
+            "db": "1.2.0"
+          },
+          "backups": {
+            "db": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "a failing first migration with an unsupported backup rolls nothing back",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.0.0",
+          "backup_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "db",
+          "version": "1.1.0",
+          "fail": "boom"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate db: up 1.1.0 failed: boom",
+          "calls": [
+            "db backup pre-1.1.0",
+            "db up 1.1.0"
+          ],
+          "events": [
+            {
+              "topic": "kit.core.migration.run_started",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.failed",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0",
+                "stage": "up",
+                "error": "boom"
+              }
+            },
+            {
+              "topic": "kit.core.migration.run_failed",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.1.0",
+                "schema": "db",
+                "error": "migrate db: up 1.1.0 failed: boom"
+              }
+            }
+          ],
+          "versions": {
+            "db": ""
+          },
+          "stored": {
+            "db": "1.0.0"
+          },
+          "backups": {
+            "db": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "manual mode with an unsupported backup leaves the last applied version and rollback_latest is refused",
+      "target": "1.3.0",
+      "manual_rollback": true,
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.0.0",
+          "backup_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "db",
+          "version": "1.1.0",
+          "down": true
+        },
+        {
+          "schema": "db",
+          "version": "1.2.0",
+          "down": true
+        },
+        {
+          "schema": "db",
+          "version": "1.3.0",
+          "fail": "boom"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate db: up 1.3.0 failed: boom",
+          "calls": [
+            "db backup pre-1.1.0",
+            "db up 1.1.0",
+            "db set_version 1.1.0",
+            "db up 1.2.0",
+            "db set_version 1.2.0",
+            "db up 1.3.0"
+          ],
+          "versions": {
+            "db": "1.2.0"
+          },
+          "stored": {
+            "db": "1.2.0"
+          },
+          "backups": {
+            "db": []
+          },
+          "pre_run_versions": {
+            "db": {}
+          }
+        },
+        {
+          "op": "rollback_latest",
+          "error": "rollback db: no backups found for db",
+          "calls": [],
+          "versions": {
+            "db": "1.2.0"
+          },
+          "stored": {
+            "db": "1.2.0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "rollback_latest on a schema that never took a backup is refused",
+      "target": "1.0.0",
+      "manual_rollback": true,
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.0.0"
+        }
+      ],
+      "migrations": [],
+      "steps": [
+        {
+          "op": "rollback_latest",
+          "error": "rollback db: no backups found for db",
+          "calls": []
+        }
+      ]
+    },
+    {
+      "name": "an unsupported restore after a missing Down reports not restored and keeps the backup",
+      "target": "1.2.0",
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.0.0",
+          "restore_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "db",
+          "version": "1.1.0"
+        },
+        {
+          "schema": "db",
+          "version": "1.2.0",
+          "fail": "boom"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate db: up 1.2.0 failed: boom (rollback also failed: not restored: restore unsupported)",
+          "calls": [
+            "db backup pre-1.1.0",
+            "db up 1.1.0",
+            "db set_version 1.1.0",
+            "db up 1.2.0",
+            "db restore pre-1.1.0"
+          ],
+          "events": [
+            {
+              "topic": "kit.core.migration.run_started",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.applied",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.1.0",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.failed",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.1.0",
+                "to": "1.2.0",
+                "stage": "up",
+                "error": "boom"
+              }
+            },
+            {
+              "topic": "kit.core.migration.run_failed",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.2.0",
+                "schema": "db",
+                "error": "migrate db: up 1.2.0 failed: boom (rollback also failed: not restored: restore unsupported)"
+              }
+            }
+          ],
+          "versions": {
+            "db": "1.1.0"
+          },
+          "stored": {
+            "db": "1.1.0"
+          },
+          "backups": {
+            "db": [
+              "pre-1.1.0"
+            ]
+          },
+          "pre_run_versions": {
+            "db": {
+              "pre-1.1.0": "1.0.0"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "rollback_latest with an unsupported restore is refused and records nothing",
+      "target": "1.2.0",
+      "manual_rollback": true,
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.0.0",
+          "restore_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "db",
+          "version": "1.1.0"
+        },
+        {
+          "schema": "db",
+          "version": "1.2.0",
+          "fail": "boom"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate db: up 1.2.0 failed: boom",
+          "versions": {
+            "db": "1.1.0"
+          }
+        },
+        {
+          "op": "rollback_latest",
+          "error": "rollback db: not restored: restore unsupported",
+          "calls": [
+            "db restore pre-1.1.0"
+          ],
+          "versions": {
+            "db": "1.1.0"
+          },
+          "stored": {
+            "db": "1.1.0"
+          },
+          "backups": {
+            "db": [
+              "pre-1.1.0"
+            ]
+          },
+          "pre_run_versions": {
+            "db": {
+              "pre-1.1.0": "1.0.0"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a driver whose restore is unsupported still backs up, applies and prunes",
+      "target": "2.0.0",
+      "retention": 2,
+      "backups": {
+        "db": [
+          "pre-1.0.0",
+          "pre-1.1.0",
+          "pre-1.2.0"
+        ]
+      },
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.2.0",
+          "restore_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "db",
+          "version": "2.0.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": null,
+          "calls": [
+            "db backup pre-2.0.0",
+            "db up 2.0.0",
+            "db set_version 2.0.0"
+          ],
+          "backups": {
+            "db": [
+              "pre-1.2.0",
+              "pre-2.0.0"
+            ]
+          },
+          "pre_run_versions": {
+            "db": {
+              "pre-2.0.0": "1.2.0"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a version-storing driver with an unsupported backup reports not restored through set_version alone",
+      "target": "1.3.0",
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.0.0",
+          "stores_version": true,
+          "backup_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "db",
+          "version": "1.1.0",
+          "down": true
+        },
+        {
+          "schema": "db",
+          "version": "1.2.0"
+        },
+        {
+          "schema": "db",
+          "version": "1.3.0",
+          "fail": "boom"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate db: up 1.3.0 failed: boom (rollback also failed: not restored: no backup was taken)",
+          "calls": [
+            "db backup pre-1.1.0",
+            "db up 1.1.0",
+            "db set_version 1.1.0",
+            "db up 1.2.0",
+            "db set_version 1.2.0",
+            "db up 1.3.0"
+          ],
+          "versions": {
+            "db": ""
+          },
+          "stored": {
+            "db": "1.2.0"
+          },
+          "no_version_dir": [
+            "db"
+          ],
+          "backups": {
+            "db": []
+          },
+          "pre_run_versions": {
+            "db": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "a not restored run with an unsupported backup unlocks last",
+      "target": "1.3.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "1.0.0",
+          "lock": true,
+          "backup_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        },
+        {
+          "schema": "a",
+          "version": "1.2.0"
+        },
+        {
+          "schema": "a",
+          "version": "1.3.0",
+          "fail": "boom"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate a: up 1.3.0 failed: boom (rollback also failed: not restored: no backup was taken)",
+          "calls": [
+            "a lock",
+            "a version",
+            "a backup pre-1.1.0",
+            "a up 1.1.0",
+            "a set_version 1.1.0",
+            "a up 1.2.0",
+            "a set_version 1.2.0",
+            "a up 1.3.0",
+            "a unlock"
+          ],
+          "stored": {
+            "a": "1.2.0"
+          },
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "name": "a not restored run with an unsupported restore unlocks after the restore call",
+      "target": "1.2.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "1.0.0",
+          "lock": true,
+          "restore_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        },
+        {
+          "schema": "a",
+          "version": "1.2.0",
+          "fail": "boom"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate a: up 1.2.0 failed: boom (rollback also failed: not restored: restore unsupported)",
+          "calls": [
+            "a lock",
+            "a version",
+            "a backup pre-1.1.0",
+            "a up 1.1.0",
+            "a set_version 1.1.0",
+            "a up 1.2.0",
+            "a restore pre-1.1.0",
+            "a unlock"
+          ],
+          "stored": {
+            "a": "1.1.0"
+          },
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "name": "a failed final verify with nothing to undo it reports not restored and keeps the last version",
+      "target": "1.2.0",
+      "final_verify_fail": "inconsistent",
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.0.0",
+          "backup_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "db",
+          "version": "1.1.0"
+        },
+        {
+          "schema": "db",
+          "version": "1.2.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate db: final verify 1.2.0 failed: inconsistent (rollback also failed: not restored: no backup was taken)",
+          "calls": [
+            "db backup pre-1.1.0",
+            "db up 1.1.0",
+            "db set_version 1.1.0",
+            "db up 1.2.0",
+            "db set_version 1.2.0",
+            "db final_verify 1.2.0"
+          ],
+          "events": [
+            {
+              "topic": "kit.core.migration.run_started",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.applied",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.1.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.started",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.1.0",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.applied",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.1.0",
+                "to": "1.2.0"
+              }
+            },
+            {
+              "topic": "kit.core.migration.failed",
+              "payload": {
+                "tool": "conftool",
+                "schema": "db",
+                "from": "1.0.0",
+                "to": "1.2.0",
+                "stage": "final",
+                "error": "inconsistent"
+              }
+            },
+            {
+              "topic": "kit.core.migration.run_failed",
+              "payload": {
+                "tool": "conftool",
+                "to": "1.2.0",
+                "schema": "db",
+                "error": "migrate db: final verify 1.2.0 failed: inconsistent (rollback also failed: not restored: no backup was taken)"
+              }
+            }
+          ],
+          "versions": {
+            "db": "1.2.0"
+          },
+          "stored": {
+            "db": "1.2.0"
+          },
+          "backups": {
+            "db": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "a failed final verify with an unsupported backup rolls every step back by Down",
+      "target": "1.2.0",
+      "final_verify_fail": "inconsistent",
+      "drivers": [
+        {
+          "name": "db",
+          "version": "1.0.0",
+          "backup_unsupported": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "db",
+          "version": "1.1.0",
+          "down": true
+        },
+        {
+          "schema": "db",
+          "version": "1.2.0",
+          "down": true
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate db: final verify 1.2.0 failed: inconsistent",
+          "calls": [
+            "db backup pre-1.1.0",
+            "db up 1.1.0",
+            "db set_version 1.1.0",
+            "db up 1.2.0",
+            "db set_version 1.2.0",
+            "db final_verify 1.2.0",
+            "db down 1.2.0",
+            "db set_version 1.1.0",
+            "db down 1.1.0",
+            "db set_version 1.0.0"
+          ],
+          "versions": {
+            "db": "1.0.0"
+          },
+          "stored": {
+            "db": "1.0.0"
+          },
+          "backups": {
+            "db": []
+          }
         }
       ]
     }

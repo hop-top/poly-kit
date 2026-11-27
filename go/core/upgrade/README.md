@@ -2,10 +2,9 @@
 
 Versioned state migrations and self-update for kit binaries.
 
-`Checker` polls release feeds, downloads upgrade artifacts,
-verifies them, and replaces the running binary. Lifecycle
-events are emitted on the kit bus when `WithPublisher` is
-wired.
+`Checker` polls release feeds, downloads upgrade artifacts, verifies them,
+and replaces the running binary; lifecycle events go to the kit bus when
+`WithPublisher` is wired.
 
 ## Default topics
 
@@ -16,8 +15,7 @@ wired.
 | `kit.core.upgrade.installed`       | Upgrade replaced the running binary |
 | `kit.core.upgrade.snoozed`         | user deferred notification |
 
-Without `WithPublisher` the checker is silent on the bus —
-emission is opt-in to preserve the historical behavior.
+Without `WithPublisher` the checker is silent on the bus (opt-in).
 
 ## Adopter rebrand
 
@@ -31,9 +29,8 @@ c := upgrade.New(
 // emits: myapp.core.upgrade.{released,downloaded,installed,snoozed}
 ```
 
-`WithTopics` overrides individual actions; empty fields keep
-the default. Publishing is best-effort, fire-and-forget on a
-goroutine — it never blocks or fails the upgrade flow.
+`WithTopics` overrides individual actions; empty fields keep the default.
+Publishing is best-effort on a goroutine; it never blocks or fails the flow.
 
 ## Migrations
 
@@ -47,15 +44,19 @@ migration on the next run: keep migrations idempotent. A failure
 record of the version before it, else the backup, then a record of the
 starting version. Manual mode leaves the last applied version; the
 backup keeps the starting version beside it (`pre-<v>.version`) so
-`RollbackLatest` records it after `Restore`. A driver implementing
-`VersionStorer` keeps its own version: only `SetVersion` is called,
-no version file is written. `WithBaseline(fn)` stamps a store that
-reports `""` before anything is selected: a non-empty answer is
-recorded (`kit.core.migration.baselined`), `""` changes nothing, an
-error fails that schema before any backup. A driver that is also a
-`Locker` (`Lock(ctx) (unlock func() error, err error)`) is locked before
-`Version()` and unlocked once its run ends, rollback included; a `Lock`
-error fails the schema (`lock: ...`), an unlock error is logged.
+`RollbackLatest` records it after `Restore`. A `VersionStorer` keeps its
+own version: only `SetVersion` is called, no version file. `WithBaseline(fn)`
+stamps a store that reports `""` before anything is selected: a non-empty
+answer is recorded (`kit.core.migration.baselined`), an error fails that
+schema before any backup. A driver that is also a `Locker`
+(`Lock(ctx) (unlock func() error, err error)`) is locked before `Version()`
+and unlocked once its run ends, rollback included; a `Lock` error fails
+the schema (`lock: ...`), an unlock error is logged. A `Backup` that
+returns `ErrBackupUnsupported` runs without a backup (no directory, no
+prune); a rollback that then needs a restore, or whose `Restore` returns
+it, reverts nothing: the error matches `ErrNotRestored` (cause kept, no
+`reverted` event) and the version stays at the last step still applied.
+`RollbackLatest` with no backup fails the same way.
 
 | Option | Effect |
 |--------|--------|

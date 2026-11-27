@@ -104,11 +104,14 @@ func (d *Driver) SetVersion(version string) error {
 // the Migrator calls SetVersion and writes no version file.
 func (d *Driver) StoresVersion() bool { return true }
 
-// Backup is a no-op; TiDB backup is managed externally.
-func (d *Driver) Backup(dest string) error { return nil }
+// Backup reports upgrade.ErrBackupUnsupported: kit does not back up a
+// server database, so a run goes on without a backup. Take one outside
+// kit before migrating when a failed migration must be recoverable.
+func (d *Driver) Backup(dest string) error { return upgrade.ErrBackupUnsupported }
 
-// Restore is a no-op; TiDB restore is managed externally.
-func (d *Driver) Restore(src string) error { return nil }
+// Restore reports upgrade.ErrBackupUnsupported: nothing is restored, so
+// a rollback that needs it ends as upgrade.ErrNotRestored.
+func (d *Driver) Restore(src string) error { return upgrade.ErrBackupUnsupported }
 
 // Close releases the underlying database connection.
 func (d *Driver) Close() error { return d.db.Close() }
