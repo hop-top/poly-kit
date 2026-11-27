@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hop.top/kit/contracts/upgrade-v1/migrator.json",
   "version": "v1",
-  "description": "The migration runner (Go `core/upgrade.Migrator`) against a recording driver. Each scenario registers `migrations`, adds `drivers` in order and runs `steps` on one migrator with target `target`. A driver reports `version` until `set_version` succeeds; a `*_fail` field makes that driver call fail with that message (`set_version_fail_for` limits `set_version_fail` to that one version); `stores_version` makes it a version-storing driver, for which the runner writes and reads no version file. A migration with `fail` fails its Up with that message; `down` gives it a Down, `down_fail` a failing one. `backups` creates backup directories before the first step; `recorded_backups` (`{schema: {dir: pre-run version}}`) creates directories that also carry the pre-run version saved beside them, in `<backup dir>.version` (an empty file is a recorded empty version). `calls` is what the step did, in order: `<schema> backup|restore <backup dir name>`, `<schema> up|down <version>`, `<schema> set_version <version>`. `history` is cumulative; `versions` is each schema's version file (`\"\"` when absent); `stored` is what each driver reports as its version after the step; `backups` lists each schema's backup directories by name after the step; `pre_run_versions` is, per schema, every `<backup dir>.version` file beside the backups (by directory name) and nothing else; `no_version_dir` lists schemas whose `<data dir>/<schema>` directory must not exist. `error` is the exact error text, or null. Each migration may also carry `verify` (a passing verify step) or `verify_fail`, and `cancel` cancels the run's context after its Up. A scenario may set `final_verify` or `final_verify_fail` (the migrator's final verify), `data_dir` (an explicit data dir instead of XDG), `registry: own` with `default_migrations` (registered in the default registry, which an own registry must not see) and `locked_backups` (old backups that cannot be removed). A step may set `canceled` (run with a canceled context). Calls also log `<schema> verify <version>` and `<schema> final_verify <version>`. A `set_version` call follows each migration that applied (after its `verify`), each `down` of a rollback (the version before that migration), and each restore (the version the run started at); an empty version logs as `<schema> set_version ` with nothing after the space. `events` lists what the run published, in order, under the default topics; `duration_ms` is left out of the payloads (runners check it is a non-negative integer where present). `warnings` lists, as prefixes, what the run logged. A scenario may set `baseline` (`{schema: {version, error}}`): the Migrator gets a baseline function that logs `<schema> baseline` and returns that schema's `version` (empty when omitted) or fails with its `error`; a schema without an entry returns empty; without the field there is no baseline function. The baseline call follows the stored-version read and precedes the pending selection, backup and every `up`; a non-empty result is recorded like any version and publishes `baselined` (`from` is empty, `to` the recorded version), and a failing function or record is the schema's error, prefixed `baseline: `.",
+  "description": "The migration runner (Go `core/upgrade.Migrator`) against a recording driver. Each scenario registers `migrations`, adds `drivers` in order and runs `steps` on one migrator with target `target`. A driver reports `version` until `set_version` succeeds; a `*_fail` field makes that driver call fail with that message (`set_version_fail_for` limits `set_version_fail` to that one version); `stores_version` makes it a version-storing driver, for which the runner writes and reads no version file. A migration with `fail` fails its Up with that message; `down` gives it a Down, `down_fail` a failing one. `backups` creates backup directories before the first step; `recorded_backups` (`{schema: {dir: pre-run version}}`) creates directories that also carry the pre-run version saved beside them, in `<backup dir>.version` (an empty file is a recorded empty version). `calls` is what the step did, in order: `<schema> backup|restore <backup dir name>`, `<schema> up|down <version>`, `<schema> set_version <version>`. `history` is cumulative; `versions` is each schema's version file (`\"\"` when absent); `stored` is what each driver reports as its version after the step; `backups` lists each schema's backup directories by name after the step; `pre_run_versions` is, per schema, every `<backup dir>.version` file beside the backups (by directory name) and nothing else; `no_version_dir` lists schemas whose `<data dir>/<schema>` directory must not exist. `error` is the exact error text, or null. Each migration may also carry `verify` (a passing verify step) or `verify_fail`, and `cancel` cancels the run's context after its Up. A scenario may set `final_verify` or `final_verify_fail` (the migrator's final verify), `data_dir` (an explicit data dir instead of XDG), `registry: own` with `default_migrations` (registered in the default registry, which an own registry must not see) and `locked_backups` (old backups that cannot be removed). A step may set `canceled` (run with a canceled context). Calls also log `<schema> verify <version>` and `<schema> final_verify <version>`. A `set_version` call follows each migration that applied (after its `verify`), each `down` of a rollback (the version before that migration), and each restore (the version the run started at); an empty version logs as `<schema> set_version ` with nothing after the space. `events` lists what the run published, in order, under the default topics; `duration_ms` is left out of the payloads (runners check it is a non-negative integer where present). `warnings` lists, as prefixes, what the run logged. A scenario may set `baseline` (`{schema: {version, error}}`): the Migrator gets a baseline function that logs `<schema> baseline` and returns that schema's `version` (empty when omitted) or fails with its `error`; a schema without an entry returns empty; without the field there is no baseline function. The baseline call follows the stored-version read and precedes the pending selection, backup and every `up`; a non-empty result is recorded like any version and publishes `baselined` (`from` is empty, `to` the recorded version), and a failing function or record is the schema's error, prefixed `baseline: `. A driver with `lock` is a lockable driver (Go `Locker`, Rust `Locker` via `as_locker`): `Lock` logs `<schema> lock`, the returned unlock logs `<schema> unlock`, and a lockable driver also logs every `Version()` read as `<schema> version`, so the order is pinned (`Status` reads it too, and takes no lock). `lock_fail` makes `Lock` fail with that message (no unlock follows: nothing was acquired); `lock_blocked` makes it wait for the run's context, so it fails with the context's error and the step must set `canceled`; `lock_sets_version` makes the lock, once acquired, report that version from then on (what another process recorded while this one waited); `unlock_fail` makes the unlock fail. A lockable driver is locked before its version is read and unlocked after its run ends, after any rollback, on every path once the lock is held; a failed `Lock` is the schema's error prefixed `lock: `, and a failed unlock is logged as a warning prefixed `warning: unlock <schema>: ` and changes no result.",
   "scenarios": [
     {
       "name": "applies pending in order, then a re-run is a no-op",
@@ -4018,6 +4018,733 @@
           "backups": {
             "db": []
           }
+        }
+      ]
+    },
+    {
+      "name": "a lockable driver is locked before the version is read and unlocked last",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": null,
+          "calls": [
+            "a lock",
+            "a version",
+            "a backup pre-1.1.0",
+            "a up 1.1.0",
+            "a set_version 1.1.0",
+            "a unlock"
+          ],
+          "history": [
+            {
+              "schema": "a",
+              "version": "1.1.0"
+            }
+          ],
+          "versions": {
+            "a": "1.1.0"
+          },
+          "stored": {
+            "a": "1.1.0"
+          }
+        },
+        {
+          "op": "run",
+          "error": null,
+          "calls": [
+            "a lock",
+            "a version",
+            "a unlock"
+          ],
+          "history": [
+            {
+              "schema": "a",
+              "version": "1.1.0"
+            }
+          ],
+          "stored": {
+            "a": "1.1.0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "the baseline runs inside the lock, after the version read",
+      "target": "1.2.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        },
+        {
+          "schema": "a",
+          "version": "1.2.0"
+        }
+      ],
+      "baseline": {
+        "a": {
+          "version": "1.1.0"
+        }
+      },
+      "steps": [
+        {
+          "op": "run",
+          "error": null,
+          "calls": [
+            "a lock",
+            "a version",
+            "a baseline",
+            "a set_version 1.1.0",
+            "a backup pre-1.2.0",
+            "a up 1.2.0",
+            "a set_version 1.2.0",
+            "a unlock"
+          ],
+          "history": [
+            {
+              "schema": "a",
+              "version": "1.2.0"
+            }
+          ],
+          "versions": {
+            "a": "1.2.0"
+          },
+          "stored": {
+            "a": "1.2.0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a run that waited for the lock sees the version the holder recorded and applies nothing",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true,
+          "lock_sets_version": "1.1.0"
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": null,
+          "calls": [
+            "a lock",
+            "a version",
+            "a unlock"
+          ],
+          "history": [],
+          "stored": {
+            "a": "1.1.0"
+          },
+          "backups": {
+            "a": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "a run that waited for the lock does not stamp a baseline over the holder's version",
+      "target": "1.2.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true,
+          "lock_sets_version": "1.2.0"
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        },
+        {
+          "schema": "a",
+          "version": "1.2.0"
+        }
+      ],
+      "baseline": {
+        "a": {
+          "version": "1.1.0"
+        }
+      },
+      "steps": [
+        {
+          "op": "run",
+          "error": null,
+          "calls": [
+            "a lock",
+            "a version",
+            "a unlock"
+          ],
+          "history": [],
+          "stored": {
+            "a": "1.2.0"
+          },
+          "backups": {
+            "a": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "a failed lock fails the schema before anything else",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true,
+          "lock_fail": "busy"
+        },
+        {
+          "name": "b",
+          "version": ""
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        },
+        {
+          "schema": "b",
+          "version": "1.1.0"
+        }
+      ],
+      "baseline": {
+        "a": {
+          "version": "1.0.0"
+        }
+      },
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate a: lock: busy",
+          "calls": [
+            "a lock"
+          ],
+          "history": [],
+          "versions": {
+            "a": "",
+            "b": ""
+          },
+          "stored": {
+            "a": "",
+            "b": ""
+          },
+          "backups": {
+            "a": [],
+            "b": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "a lock that cannot be acquired waits for the context and fails when it is done",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true,
+          "lock_blocked": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "canceled": true,
+          "error": "migrate a: lock: context canceled",
+          "calls": [
+            "a lock"
+          ],
+          "history": [],
+          "stored": {
+            "a": ""
+          },
+          "backups": {
+            "a": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "the lock is released before the next schema starts",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true
+        },
+        {
+          "name": "b",
+          "version": "",
+          "lock": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        },
+        {
+          "schema": "b",
+          "version": "1.1.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": null,
+          "calls": [
+            "a lock",
+            "a version",
+            "a backup pre-1.1.0",
+            "a up 1.1.0",
+            "a set_version 1.1.0",
+            "a unlock",
+            "b lock",
+            "b version",
+            "b backup pre-1.1.0",
+            "b up 1.1.0",
+            "b set_version 1.1.0",
+            "b unlock"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a failed and rolled-back run unlocks after the rollback",
+      "target": "1.2.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "1.0.0",
+          "lock": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0",
+          "down": true
+        },
+        {
+          "schema": "a",
+          "version": "1.2.0",
+          "fail": "boom"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate a: up 1.2.0 failed: boom",
+          "calls": [
+            "a lock",
+            "a version",
+            "a backup pre-1.1.0",
+            "a up 1.1.0",
+            "a set_version 1.1.0",
+            "a up 1.2.0",
+            "a down 1.1.0",
+            "a set_version 1.0.0",
+            "a unlock"
+          ],
+          "history": [
+            {
+              "schema": "a",
+              "version": "1.1.0"
+            }
+          ],
+          "versions": {
+            "a": "1.0.0"
+          },
+          "stored": {
+            "a": "1.0.0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a failed run that restores unlocks after the restore",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "1.0.0",
+          "lock": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0",
+          "verify_fail": "bad shape"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate a: verify 1.1.0 failed: bad shape",
+          "calls": [
+            "a lock",
+            "a version",
+            "a backup pre-1.1.0",
+            "a up 1.1.0",
+            "a verify 1.1.0",
+            "a restore pre-1.1.0",
+            "a set_version 1.0.0",
+            "a unlock"
+          ],
+          "history": [],
+          "stored": {
+            "a": "1.0.0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a canceled run unlocks",
+      "target": "1.2.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "1.0.0",
+          "lock": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0",
+          "down": true,
+          "cancel": true
+        },
+        {
+          "schema": "a",
+          "version": "1.2.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate a: up 1.2.0 canceled: context canceled",
+          "calls": [
+            "a lock",
+            "a version",
+            "a backup pre-1.1.0",
+            "a up 1.1.0",
+            "a set_version 1.1.0",
+            "a down 1.1.0",
+            "a set_version 1.0.0",
+            "a unlock"
+          ],
+          "history": [
+            {
+              "schema": "a",
+              "version": "1.1.0"
+            }
+          ],
+          "stored": {
+            "a": "1.0.0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a run started with a canceled context unlocks",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "canceled": true,
+          "error": "migrate a: up 1.1.0 canceled: context canceled",
+          "calls": [
+            "a lock",
+            "a version",
+            "a backup pre-1.1.0",
+            "a unlock"
+          ],
+          "history": [],
+          "stored": {
+            "a": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "a failing baseline unlocks",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        }
+      ],
+      "baseline": {
+        "a": {
+          "error": "cannot tell"
+        }
+      },
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate a: baseline: cannot tell",
+          "calls": [
+            "a lock",
+            "a version",
+            "a baseline",
+            "a unlock"
+          ],
+          "history": [],
+          "stored": {
+            "a": ""
+          },
+          "backups": {
+            "a": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "a failing version read unlocks",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true,
+          "version_fail": "gone"
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate a: read version: gone",
+          "calls": [
+            "a lock",
+            "a version",
+            "a unlock"
+          ],
+          "history": []
+        }
+      ]
+    },
+    {
+      "name": "a failed unlock after a successful run is a warning, not an error",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true,
+          "unlock_fail": "lost session"
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": null,
+          "calls": [
+            "a lock",
+            "a version",
+            "a backup pre-1.1.0",
+            "a up 1.1.0",
+            "a set_version 1.1.0",
+            "a unlock"
+          ],
+          "warnings": [
+            "warning: unlock a: lost session"
+          ],
+          "history": [
+            {
+              "schema": "a",
+              "version": "1.1.0"
+            }
+          ],
+          "stored": {
+            "a": "1.1.0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a failed unlock after a failed run keeps the run's error",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true,
+          "unlock_fail": "lost session"
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0",
+          "fail": "boom"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": "migrate a: up 1.1.0 failed: boom",
+          "calls": [
+            "a lock",
+            "a version",
+            "a backup pre-1.1.0",
+            "a up 1.1.0",
+            "a unlock"
+          ],
+          "warnings": [
+            "warning: unlock a: lost session"
+          ],
+          "history": []
+        }
+      ]
+    },
+    {
+      "name": "a version-storing driver can be locked",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true,
+          "stores_version": true
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "run",
+          "error": null,
+          "calls": [
+            "a lock",
+            "a version",
+            "a backup pre-1.1.0",
+            "a up 1.1.0",
+            "a set_version 1.1.0",
+            "a unlock"
+          ],
+          "stored": {
+            "a": "1.1.0"
+          },
+          "no_version_dir": [
+            "a"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "status takes no lock",
+      "target": "1.1.0",
+      "drivers": [
+        {
+          "name": "a",
+          "version": "",
+          "lock": true,
+          "lock_fail": "busy"
+        }
+      ],
+      "migrations": [
+        {
+          "schema": "a",
+          "version": "1.1.0"
+        }
+      ],
+      "steps": [
+        {
+          "op": "status",
+          "error": null,
+          "calls": [
+            "a version"
+          ],
+          "status": [
+            {
+              "schema": "a",
+              "current": "",
+              "target": "1.1.0",
+              "pending": 1,
+              "error": null
+            }
+          ]
         }
       ]
     }

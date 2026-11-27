@@ -30,7 +30,7 @@ rules it pins.
 | `versions.json` `compare[]` `{a, b, cmp}` | lenient semver order: `v` and build metadata dropped, missing or non-numeric parts 0, pre-release identifier rules; checked both ways |
 | `versions.json` `pending[]` | `from < version <= to` for one schema, ascending, versions as registered |
 | `document.json` `scenarios[]` | the in-memory JSON document migrator: chain by version field, refusing newer documents, missing or non-integer versions, gaps, invalid steps, step and verify failures (input untouched), byte-identical when current |
-| `migrator.json` `scenarios[]` | `run`, `rollback_latest` and `status` steps against a recording driver (optionally version-storing): calls in order, error text, history, version files, stored versions, backup directories and their saved starting versions, published events, logged warnings |
+| `migrator.json` `scenarios[]` | `run`, `rollback_latest` and `status` steps against a recording driver (optionally version-storing or lockable): calls in order, error text, history, version files, stored versions, backup directories and their saved starting versions, published events, logged warnings |
 
 What the scenarios pin, beyond order: a re-run applies nothing; the version is recorded after each
 migration's `up` and `verify`, before the next `up` (a stopped run leaves the last applied version, and a
@@ -54,11 +54,11 @@ before pending, backup and any `up`. A non-empty answer is recorded like any ver
 `baselined`; `""` changes nothing; a failing function or record is `baseline: <error>`, with no backup.
 A failed `set_version` is that step's failure (`record <version> failed: <error>`, event stage `record`):
 `up` completed, so the rollback includes the step, which is not in `history`. The file is written first, so
-it ends at the starting version in auto mode (even when `set_version` keeps failing) and at the failed
-step's version, ahead of the driver, in manual mode.
-
-Deliberate, kept from Go: history keeps migrations a later failure rolled back; a failing first `up` rolls
-nothing back (no `down`, no restore); the version file is written before the driver's `set_version`.
+it ends at the starting version in auto mode and at the failed step's version, ahead of the driver, in manual mode.
+A driver with `lock` is locked before its version is read and unlocked after its run ends, rollback included, on every
+path once held (`lock` and `unlock` are logged, as is each `version` read). A `lock` error is `lock: <error>`, no
+unlock; `lock_blocked` fails with the context's error; `unlock_fail` only logs `warning: unlock <schema>: <error>`.
+Kept from Go: history keeps migrations a later failure rolled back; a failing first `up` rolls nothing back.
 
 Rust has no default registry: its runner treats every scenario as `registry: own`. No vector holds equal
 versions (Go sorts them unstably). Runners are strict: unknown fields, a `version` other than `v1` and a corpus file no runner consumes fail the run. A port that has not

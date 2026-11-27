@@ -65,6 +65,15 @@ type upgradeConfDriver struct {
 	// SetVersionFailFor limits SetVersionFail to that one version.
 	SetVersionFailFor string `json:"set_version_fail_for"`
 	StoresVersion     bool   `json:"stores_version"`
+	// Lock makes the driver a Locker: it logs lock, unlock and every
+	// Version read. LockFail fails Lock; LockBlocked makes Lock wait for
+	// the context; LockSetsVersion is the version the driver reports once
+	// the lock is held; UnlockFail fails the returned unlock.
+	Lock            bool   `json:"lock"`
+	LockFail        string `json:"lock_fail"`
+	LockBlocked     bool   `json:"lock_blocked"`
+	LockSetsVersion string `json:"lock_sets_version"`
+	UnlockFail      string `json:"unlock_fail"`
 }
 
 type upgradeConfMigration struct {
@@ -242,6 +251,9 @@ func failIf(msg string) error {
 func (d *recordingDriver) Name() string { return d.upgradeConfDriver.Name }
 
 func (d *recordingDriver) Version() (string, error) {
+	if d.Lock {
+		d.record(d.Name() + " version")
+	}
 	if d.VersionFail != "" {
 		return "", errors.New(d.VersionFail)
 	}
@@ -252,6 +264,34 @@ func (d *recordingDriver) Version() (string, error) {
 type storingDriver struct{ *recordingDriver }
 
 func (storingDriver) StoresVersion() bool { return true }
+
+// lockingDriver is a recordingDriver that implements Locker; with
+// storingDriver's marker it is lockingStoringDriver.
+type lockingDriver struct{ *recordingDriver }
+
+func (d lockingDriver) Lock(ctx context.Context) (func() error, error) {
+	d.record(d.Name() + " lock")
+	if d.LockBlocked {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return nil, errors.New("lock would block forever: the step must set canceled")
+	}
+	if err := failIf(d.LockFail); err != nil {
+		return nil, err
+	}
+	if d.LockSetsVersion != "" {
+		d.upgradeConfDriver.Version = d.LockSetsVersion
+	}
+	return func() error {
+		d.record(d.Name() + " unlock")
+		return failIf(d.UnlockFail)
+	}, nil
+}
+
+type lockingStoringDriver struct{ lockingDriver }
+
+func (lockingStoringDriver) StoresVersion() bool { return true }
 
 func (d *recordingDriver) SetVersion(v string) error {
 	d.record(d.Name() + " set_version " + v)
@@ -469,9 +509,14 @@ func TestConformanceUpgradeMigrator(t *testing.T) {
 			m := NewMigrator(upgradeConfTool, sc.Target, opts...)
 			for _, dc := range sc.Drivers {
 				rd := &recordingDriver{upgradeConfDriver: dc, record: record}
-				if dc.StoresVersion {
+				switch {
+				case dc.Lock && dc.StoresVersion:
+					m.AddDriver(lockingStoringDriver{lockingDriver{rd}})
+				case dc.Lock:
+					m.AddDriver(lockingDriver{rd})
+				case dc.StoresVersion:
 					m.AddDriver(storingDriver{rd})
-				} else {
+				default:
 					m.AddDriver(rd)
 				}
 			}

@@ -232,6 +232,20 @@ baseline function asks the same question of the live store and turns
 the answer into a version. A fresh database and an upgraded one then
 end at the same version with the same shape.
 
+#### Several processes starting at once
+
+A driver that also implements `upgrade.Locker`
+(`Lock(ctx) (unlock func() error, err error)`) is locked before the
+Migrator reads its version and unlocked when that schema's run ends:
+the version read, the baseline, the backup, every `Up`, every version
+record, a rollback and the backup prune all happen under the lock. A
+second process blocks in `Lock` until the first unlocks (or its
+context is done, which fails that schema with `lock: ...`), then reads
+the version the first one recorded and finds nothing pending. An
+`unlock` error is logged, not returned. A driver without `Locker` runs
+unlocked. In Rust the driver returns a `Locker` from
+`SchemaDriver::as_locker`.
+
 ### 4. Give users a `migrate` command
 
 ```go
