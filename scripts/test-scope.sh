@@ -89,7 +89,7 @@ test-parity-taxonomy go/console/output/envelope $RS,$TS,$PY,$PHP
 test-parity-statemachine go/runtime/domain $RS
 test-parity-redact go/core/redact $RS
 test-parity-identity go/core/identity $RS
-test-parity-upgrade go/core/upgrade $RS,$TS
+test-parity-upgrade go/core/upgrade $RS,$PY,$TS
 test-parity-cli go/console/cli/... $RS,$TS,$PY,examples/spaced/rs
 test-parity-engine engine/sdk/parity/... engine/sdk/ts-kit-engine,engine/sdk/py-kit-engine,engine/sdk/php-kit-engine,engine/sdk/rs-kit-engine
 test-parity-alias go/console/alias,go/console/cli $RS,$TS,$PY
