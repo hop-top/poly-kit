@@ -122,7 +122,7 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | Audit log | done | none | none | none | none | no module in any SDK |
 | Identity | done | none | none | partial | none | make test-parity-identity (Go/Rs, contracts/identity-v1 derive-key corpus); rs:identity/ (keypair, JWT, encryption; `cli.WithIdentity` not ported), rs:sqlstore/crypto.rs |
 | TypeID | done | done | done | done | done | make test-parity-typeid (5 ports, contracts/typeid-v1); ts:id/ py:id/ rs:id/ php:Id/ |
-| Upgrade and migrations | done | partial | partial | partial | partial | make test-parity-upgrade (Go/Rs/Py/TS/PHP), every runner on all three corpus files; rs:upgrade/ is migrations plus the offline-aware release check (download and replace not ported); py:upgrade/ and ts:upgrade/ have the release check, lenient semver, Migration, Registry, the document migrator and the Migrator; php:Upgrade/ has the same without the release check; drivers: py sqlite; ts no drivers yet; php configfile,  fsdir; rs configfile |
+| Upgrade and migrations | done | partial | partial | partial | partial | make test-parity-upgrade (Go/Rs/Py/TS/PHP), every runner on all three corpus files; rs:upgrade/ is migrations plus the offline-aware release check (download and replace not ported); py:upgrade/ and ts:upgrade/ have the release check, lenient semver, Migration, Registry, the document migrator and the Migrator; php:Upgrade/ has the same without the release check; drivers: py configfile,  fsdir,  sqlite; ts no drivers yet; php configfile,  fsdir; rs configfile |
 | Utilities | done | none | none | partial | none | make test-parity-retry (Go/Rs); rs:util/retry.rs |
 | Avatars | done | none | none | none | none | no module in any SDK |
 
