@@ -532,7 +532,7 @@ serde = { version = "1", features = ["derive"], optional = true }
 # to; the netpolicy allowlist normalizes hosts (lower case, IDNA) with it
 # for the same reason. Exact pin to the version reqwest resolves in
 # Cargo.lock: the two must parse alike. servo/rust-url, MIT OR Apache-2.0, no advisories.
-url = { version = "=2.5.8", optional = true }
+url = { version = "=2.5.9", optional = true }
 # No crate-wide features: `output` adds preserve_order for itself.
 serde_json = { version = "1", optional = true }
 serde_norway = { version = "0.9", optional = true }
