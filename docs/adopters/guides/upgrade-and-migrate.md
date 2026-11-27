@@ -224,5 +224,8 @@ map and never modifies yours. Cross-language behavior is pinned by
 ## See also
 
 - [`go/core/upgrade` README](../../../go/core/upgrade/README.md)
+- [Upgrade migrations on SQL backends](../../contributors/architecture/upgrade-sql-backends.md):
+  version authority, locking, baseline, backup limits, and when to use
+  `storage/sqldb.Migrate` instead
 - [guard-destructive-commands](guard-destructive-commands.md)
 - [hook-cli-into-bus](hook-cli-into-bus.md)
