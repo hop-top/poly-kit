@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use super::backup::{Backups, LatestError, DEFAULT_RETENTION};
 use super::events::{MigrationPublisher, MigrationTopics, Payload, SOURCE};
+use super::lock::Held;
 use super::{fs_util, pending, BoxError, Migration, SchemaDriver};
 use crate::bus::{Context, Event, Topic};
 
@@ -61,6 +62,10 @@ fn step_text(
 /// What a [`Migrator`] run or rollback failed on. The texts match Go's.
 #[derive(Debug, thiserror::Error)]
 pub enum MigrateError {
+    /// The driver's lock could not be taken (its error, or the context's
+    /// when it was done while waiting); nothing else ran for the schema.
+    #[error("migrate {schema}: lock: {source}")]
+    Lock { schema: String, source: BoxError },
     #[error("migrate {schema}: read version: {source}")]
     ReadVersion { schema: String, source: BoxError },
     #[error("migrate {schema}: prepare backup: create backup dir: {source}")]
@@ -150,7 +155,8 @@ pub struct SchemaStatus {
 
 /// Runs versioned migrations across schema drivers. Go `Migrator`.
 ///
-/// Per driver, in the order added: read the stored version, collect the
+/// Per driver, in the order added: take its lock when it has one
+/// ([`SchemaDriver::as_locker`], held until that schema's run ends), read the stored version, collect the
 /// pending migrations up to the target, back up into
 /// `pre-<first pending version>` (saving the version the run starts at
 /// beside it), then per migration apply `up`, its `verify`, and record
@@ -541,7 +547,20 @@ struct SchemaRun<'a> {
 }
 
 impl<'a> SchemaRun<'a> {
+    /// Takes the driver's lock, if it has one, and holds it until the
+    /// schema's run is over, rollback and prune included (released on
+    /// every path, a failed unlock is a warning).
     fn run(&mut self, d: &mut dyn SchemaDriver, ctx: &Context) -> Result<(), MigrateError> {
+        let _held = Held::acquire(d.as_locker(), d.name(), ctx, self.warn).map_err(|source| {
+            MigrateError::Lock {
+                schema: d.name().to_string(),
+                source,
+            }
+        })?;
+        self.run_locked(d, ctx)
+    }
+
+    fn run_locked(&mut self, d: &mut dyn SchemaDriver, ctx: &Context) -> Result<(), MigrateError> {
         let schema = d.name().to_string();
         let current = d.version().map_err(|source| MigrateError::ReadVersion {
             schema: schema.clone(),
@@ -588,7 +607,7 @@ impl<'a> SchemaRun<'a> {
 
     /// Asks the baseline function what the unversioned store is at and
     /// records a non-empty answer; returns the version the run continues
-    /// from. A lock held for the schema covers this call: it sits between
+    /// from. The lock held for the schema covers this call: it sits between
     /// the version read and the pending selection in `run`.
     fn stamp_baseline(
         &self,

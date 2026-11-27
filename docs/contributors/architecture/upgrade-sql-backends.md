@@ -173,10 +173,10 @@ Per schema, in this order:
 5. `unlock()`
 
 The lock is acquired before the version is read and released after the run
-for that schema has finished, on success, failure and rollback alike. The
-Migrator calls `unlock` with a context that is not canceled, so a canceled
-run still releases. `Lock` honours the run's context while it waits.
-`Status()` takes no lock.
+for that schema has finished, on success, failure, cancel and rollback
+alike. `unlock` takes no context, so a canceled run still releases.
+`Lock` blocks until acquired or the run's context is done, and then
+returns the context's error. `Status()` takes no lock.
 
 Locks are per schema, not per run: the Migrator holds one at a time and
 releases it before the next driver starts. Two Migrators serialise only on
@@ -188,10 +188,15 @@ lock), the lock lives on one dedicated connection for the whole hold,
 a connection to a pool never stands in for it. A handle that is a pool of
 one connection is refused when the lock is taken, not deadlocked.
 
-Failure: an error from `Lock` fails the schema (`lock: ...`) before the
-version is read; nothing runs. An error from `unlock` after a successful
-run is returned as the schema's error (`unlock: ...`) and undoes nothing;
-after a failed run it is appended to the run's error.
+Failure: an error from `Lock` (or the context's, when it is done while
+waiting) fails the schema (`lock: ...`) before the version is read;
+nothing runs and no unlock follows. An error from `unlock` is logged
+(`warning: unlock <schema>: ...`), like a prune failure: it fails nothing,
+changes no result and undoes nothing, after a successful or a failed run.
+
+Rust has no interface assertion: `SchemaDriver::as_locker(&self) ->
+Option<&dyn Locker>` returns `None` by default, and a lockable driver
+returns itself. The unlock it hands back must not borrow the driver.
 
 ## 5. Backup, restore and honest rollback
 
@@ -291,7 +296,8 @@ recording driver, whose `calls` log lists every driver call in order
 (`db backup pre-1.1.0`, `db up 1.1.0`, `db set_version 1.2.0`). The rules
 add driver calls (`lock`, `unlock`, one `set_version` per applied
 migration and per rolled-back one) and driver settings per scenario: whether the driver is a
-`VersionStorer`, whether it is a `Locker` and whether `Lock` or `unlock`
+`VersionStorer`, whether it is a `Locker` and whether `Lock` fails, waits for the
+context or reports a version another holder recorded, whether `unlock`
 fails, what `Backup` and `Restore` return, and whether a baseline function
 is given. Expectations also cover the version files on disk (none for a
 `VersionStorer`), the stored version, the error text and sentinel, and the

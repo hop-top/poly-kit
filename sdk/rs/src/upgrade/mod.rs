@@ -10,6 +10,7 @@
 
 pub mod document;
 mod driver;
+mod lock;
 mod migration;
 mod version;
 
@@ -18,6 +19,7 @@ pub use document::{
     DocStep,
 };
 pub use driver::SchemaDriver;
+pub use lock::{Locker, Unlock};
 pub use migration::{pending, Migration, StepFn};
 pub use version::compare_versions;
 

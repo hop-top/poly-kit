@@ -16,8 +16,8 @@ use std::sync::{Arc, Mutex};
 use hop_top_kit::bus::{Context, Event};
 use hop_top_kit::upgrade::{
     compare_versions, migrate_document, migrate_value, pending, read_version_file_in,
-    AppliedMigration, BoxError, DocApplied, DocErrorKind, DocOptions, DocReport, DocStep,
-    Migration, Migrator, SchemaDriver,
+    AppliedMigration, BoxError, DocApplied, DocErrorKind, DocOptions, DocReport, DocStep, Locker,
+    Migration, Migrator, SchemaDriver, Unlock,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -89,6 +89,21 @@ struct DriverCase {
     set_version_fail_for: String,
     #[serde(default)]
     stores_version: bool,
+    /// A lockable driver: logs lock, unlock and every `version` read.
+    #[serde(default)]
+    lock: bool,
+    /// `lock` fails with this message.
+    #[serde(default)]
+    lock_fail: String,
+    /// `lock` waits for the context: fails with its error when done.
+    #[serde(default)]
+    lock_blocked: bool,
+    /// The version the driver reports once the lock is held.
+    #[serde(default)]
+    lock_sets_version: String,
+    /// The unlock fails with this message.
+    #[serde(default)]
+    unlock_fail: String,
 }
 
 /// One schema's baseline function: returns `version`, or fails with `error`.
@@ -304,6 +319,8 @@ fn base_name(p: &Path) -> String {
 /// scenario's migrations.
 struct Recording {
     case: DriverCase,
+    /// What the driver reports; shared so a lock can change it.
+    version: Arc<Mutex<String>>,
     log: Log,
 }
 
@@ -319,8 +336,11 @@ impl SchemaDriver for Recording {
     }
 
     fn version(&self) -> Result<String, BoxError> {
+        if self.case.lock {
+            self.record(format!("{} version", self.case.name));
+        }
         fail_if(&self.case.version_fail)?;
-        Ok(self.case.version.clone())
+        Ok(self.version.lock().unwrap().clone())
     }
 
     fn set_version(&mut self, version: &str) -> Result<(), BoxError> {
@@ -329,8 +349,12 @@ impl SchemaDriver for Recording {
         if only.is_empty() || only == version {
             fail_if(&self.case.set_version_fail)?;
         }
-        self.case.version = version.to_string();
+        *self.version.lock().unwrap() = version.to_string();
         Ok(())
+    }
+
+    fn as_locker(&self) -> Option<&dyn Locker> {
+        self.case.lock.then_some(self as &dyn Locker)
     }
 
     fn stores_version(&self) -> bool {
@@ -345,6 +369,31 @@ impl SchemaDriver for Recording {
     fn restore(&mut self, src: &Path) -> Result<(), BoxError> {
         self.record(format!("{} restore {}", self.case.name, base_name(src)));
         fail_if(&self.case.restore_fail)
+    }
+}
+
+impl Locker for Recording {
+    fn lock(&self, ctx: &Context) -> Result<Unlock, BoxError> {
+        self.record(format!("{} lock", self.case.name));
+        if self.case.lock_blocked {
+            return Err(match ctx.err() {
+                Some(e) => Box::new(e),
+                None => "lock would block forever: the step must set canceled".into(),
+            });
+        }
+        fail_if(&self.case.lock_fail)?;
+        if !self.case.lock_sets_version.is_empty() {
+            *self.version.lock().unwrap() = self.case.lock_sets_version.clone();
+        }
+        let (log, name, fail) = (
+            self.log.clone(),
+            self.case.name.clone(),
+            self.case.unlock_fail.clone(),
+        );
+        Ok(Box::new(move || {
+            log.lock().unwrap().push(format!("{name} unlock"));
+            fail_if(&fail)
+        }))
     }
 }
 
@@ -522,6 +571,7 @@ fn run_scenario(sc: &Scenario) {
     for dc in &sc.drivers {
         m.add_driver(Recording {
             case: dc.clone(),
+            version: Arc::new(Mutex::new(dc.version.clone())),
             log: log.clone(),
         });
     }

@@ -52,7 +52,10 @@ backup keeps the starting version beside it (`pre-<v>.version`) so
 no version file is written. `WithBaseline(fn)` stamps a store that
 reports `""` before anything is selected: a non-empty answer is
 recorded (`kit.core.migration.baselined`), `""` changes nothing, an
-error fails that schema before any backup.
+error fails that schema before any backup. A driver that is also a
+`Locker` (`Lock(ctx) (unlock func() error, err error)`) is locked before
+`Version()` and unlocked once its run ends, rollback included; a `Lock`
+error fails the schema (`lock: ...`), an unlock error is logged.
 
 | Option | Effect |
 |--------|--------|

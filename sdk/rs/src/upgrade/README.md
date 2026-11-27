@@ -16,6 +16,7 @@ failure. The release check (`check`) tells a tool a newer build is out. Self-upd
 - a step must be checked before the version is recorded → `with_verify` per migration, `Migrator::verify` for the final state
 - other parts of the app react to migrations → `publisher(bus)`: `kit.core.migration.*` events, in order
 - a store that predates the migrator is already at some version → `baseline(|ctx, schema| ..)`: stamped before anything is selected
+- several processes may migrate one store → `SchemaDriver::as_locker` returns a `Locker`: held for the schema's whole run
 - a failure must be inspected before undoing it → `manual_rollback()`, then `rollback_latest()`
 - the tool should say a newer release exists → `check::Checker::check` with the request in your transport (route it through `GuardedClient`), `notify` to print the notice; set `CheckConfig::offline(globals.offline)` so `--offline` skips it before any request or cache read
 - a `migrate status` view → `Migrator::status` (stored, target, pending per schema)
@@ -65,8 +66,7 @@ m.run(&Context::background()).unwrap(); // nothing pending
 - `check` never fails: errors sit in `CheckResult::error`, a fresh cache (default 4h) answers without a request, and an offline check returns `Skipped::Offline` touching neither transport, cache nor state dir.
 - in a repository that tags several components, `CheckConfig::tag_prefix("xray/v")` keeps only this tool's releases and `include_prereleases(true)` offers prereleases; either lists releases (3 pages of 100 at most, highest semver, drafts skipped), calling the transport once per page, and `CheckResult::tag` carries the tag the notice links.
 - A prune failure goes to `on_warning` (default stderr, Go's `log.Printf` text); never fatal.
-- Registration is per `Migrator`; Go's process-wide default registry has no Rust counterpart, since
-  Rust has no `init()` to fill it from. Only the `configfile` driver is ported.
+- Registration is per `Migrator` (no default registry: Rust has no `init()` to fill one). Only the `configfile` driver is ported.
 - Parity: [`contracts/upgrade-v1`](../../../../contracts/upgrade-v1/README.md), run by
   `tests/upgrade_conformance.rs` (`make test-parity-upgrade`).
 

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::BoxError;
+use super::{BoxError, Locker};
 
 /// One versioned store (a database, a set of files, a directory) taking
 /// part in migrations. Go `upgrade.SchemaDriver`.
@@ -30,6 +30,14 @@ pub trait SchemaDriver: Send + Sync {
     /// version file. Defaults to `false`.
     fn stores_version(&self) -> bool {
         false
+    }
+
+    /// The driver's lock, for a store several processes can migrate at
+    /// once; `None` (the default) runs unlocked. The migrator takes it
+    /// before [`version`](Self::version) and holds it for the whole run of
+    /// the schema. Go: the driver implements `Locker`.
+    fn as_locker(&self) -> Option<&dyn Locker> {
+        None
     }
 
     /// Copies the current state into the directory `dest`, which exists.

@@ -125,7 +125,9 @@ func (m *Migrator) AddDriver(d SchemaDriver) {
 }
 
 // Run executes pending migrations for all registered drivers.
-// For each schema: read current version (when none is stored, ask the
+// For each schema: take the driver's lock when it is a Locker (held until
+// the schema's run ends, rollback included; a failed unlock is logged),
+// read current version (when none is stored, ask the
 // WithBaseline function and record its answer), collect pending, backup (and
 // save the version the run starts at beside it), then per migration Up,
 // Verify and record that migration's version, then the final verify.
@@ -253,6 +255,18 @@ func recordError(version string, err error) error {
 }
 
 func (m *Migrator) runSchema(ctx context.Context, d SchemaDriver) (int, error) {
+	if l, ok := d.(Locker); ok {
+		unlock, err := l.Lock(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("lock: %w", err)
+		}
+		defer func() {
+			if err := unlock(); err != nil {
+				log.Printf("warning: unlock %s: %v", d.Name(), err)
+			}
+		}()
+	}
+
 	current, err := d.Version()
 	if err != nil {
 		return 0, fmt.Errorf("read version: %w", err)
@@ -300,7 +314,7 @@ func (m *Migrator) runSchema(ctx context.Context, d SchemaDriver) (int, error) {
 
 // stampBaseline asks the baseline function what the unversioned store is
 // at and records a non-empty answer. It returns the version the run
-// continues from. A lock held for the schema covers this call: it sits
+// continues from. The lock held for the schema covers this call: it sits
 // between the version read and the pending selection in runSchema.
 func (m *Migrator) stampBaseline(ctx context.Context, d SchemaDriver) (string, error) {
 	v, err := m.baseline(ctx, d.Name())
