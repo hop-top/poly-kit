@@ -14,11 +14,13 @@ restored, for one `upgrade.Migration.Schema`. Every backend implements
 | `fsdir/` | `hop.top/kit/go/core/upgrade/driver/fsdir` | `New(name, dirPath)`, `NewWithOptions(name, dirPath, opts...)` | version file | tar.gz of the directory; `Restore` removes the directory first |
 | `sqlite/` | `hop.top/kit/go/core/upgrade/driver/sqlite` | `New(dbPath, opts...)` | version file | copies the database file |
 | [`tidb/`](tidb/README.md) | `hop.top/kit/go/core/upgrade/driver/tidb` | `New(dsn, table, opts...)` | table row (`VersionStorer`: no version file) | both return `upgrade.ErrBackupUnsupported`; back up outside kit |
+| [`postgres/`](postgres/README.md) | `hop.top/kit/go/core/upgrade/driver/postgres` | `New(db, table, opts...)` over your `*sql.DB` | table row (`VersionStorer`: no version file); advisory `Locker` | both return `upgrade.ErrBackupUnsupported`; back up outside kit |
 
 - pick `configfile` for YAML/TOML config the migration rewrites in place
 - pick `fsdir` for a data directory (caches, per-project state)
 - pick `sqlite` for a local database file
 - pick `tidb` when the schema lives in a shared MySQL-compatible server
+- pick `postgres` when the schema lives in a shared PostgreSQL database and you already hold a `*sql.DB`
 
 ## Quick start
 

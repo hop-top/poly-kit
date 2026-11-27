@@ -127,6 +127,7 @@ Shipped drivers (details in the
 | Data directory | `driver/fsdir` | `New(name, dirPath)` |
 | SQLite file | `driver/sqlite` | `New(dbPath, opts...)` |
 | Shared TiDB/MySQL | `driver/tidb` | `New(dsn, table, opts...)` (no backup: `ErrBackupUnsupported`) |
+| Shared PostgreSQL | `driver/postgres` | `New(db, table, opts...)` over your `*sql.DB`; advisory lock (needs two or more connections, no transaction-mode pooler); no backup: `ErrBackupUnsupported` |
 
 The driver's `Name()` is the key that ties migrations to it
 (`Migration.Schema`). The file-backed drivers keep the version in a
