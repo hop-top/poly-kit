@@ -2,7 +2,7 @@
 
 ## What it answers
 
-How a Python tool checks for a newer release, orders versions the way kit does, registers versioned migrations, migrates one JSON document by its own version field and runs migrations across schema drivers with a `Migrator`. Wrong module for self-update (download and replace): that half of `go/core/upgrade` is Go-only. Ships the driver protocol and a SQLite driver.
+How a Python tool checks for a newer release, orders versions the way kit does, registers versioned migrations, migrates one JSON document by its own version field and runs migrations across schema drivers with a `Migrator`. Wrong module for self-update (download and replace): that half of `go/core/upgrade` is Go-only. Ships the driver protocol and the drivers in [`drivers/`](drivers/README.md): `ConfigFileDriver`, `FsDirDriver` and `SqliteDriver`.
 
 ## Use it when
 
@@ -55,6 +55,7 @@ m.run(threading.Event())
 - Document errors subclass `DocumentError`: newer, version, gap, step, invalid, and `DocVerifyError` (also a `VerifyError`). The input is never modified; a current document comes back byte-identical.
 - A driver has `name`, `version()`, `set_version(v)`, `backup(dest)`, `restore(src)`; optional `Locker.lock(cancel) -> unlock` and `VersionStorer.stores_version()` are found with `isinstance`. `backup`/`restore` raise `BackupUnsupported` when they cannot.
 - `run(cancel)` takes a `threading.Event`; set, it stops before the next `up` and wakes a waiting lock. Failures are `MigrateError`; match with `is_not_restored`, `is_backup_unsupported`, `is_verify`, `is_canceled`.
+- `drivers.ConfigFileDriver(paths, name="config", data_dir=...)` copies files under flattened names, `drivers.FsDirDriver(name, path, data_dir=...)` writes `<name>.tar.gz`; both match Go's backup layout and restore archives with a traversal guard, swapping a temp dir in only on success.
 - Events go to a `hop_top_kit.bus.Bus`; warnings to the `hop_top_kit.upgrade` logger.
 - Parity: [`contracts/upgrade-v1`](../../../../contracts/upgrade-v1/README.md), all three files, replayed by `tests/test_upgrade_conformance.py`.
 
