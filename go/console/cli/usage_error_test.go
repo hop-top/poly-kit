@@ -86,7 +86,7 @@ func TestUsage_CobraValidationErrorsExitTwo(t *testing.T) {
 		{"unknown shorthand", []string{"do", "-Z", "a"}, "unknown flag -Z", &notExist},
 		{"flag needs an argument", []string{"do", "--count"}, "missing value for --count", &valueRequired},
 		{"invalid flag value", []string{"do", "--count=x", "a"},
-			`invalid argument "x" for "--count" flag: strconv.ParseInt: parsing "x": invalid syntax`, &invalidValue},
+			`invalid argument "x" for "--count" flag: must be an integer`, &invalidValue},
 		{"flag group incomplete", []string{"do", "--name=n", "a"},
 			"if any flags in the group [name tag] are set they must all be set; missing [tag]", nil},
 	}
