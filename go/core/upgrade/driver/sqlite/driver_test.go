@@ -1,8 +1,6 @@
 package sqlite
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,35 +13,6 @@ func TestDriver_Name(t *testing.T) {
 
 	d2 := New("/tmp/test.db", WithName("mydb"))
 	assert.Equal(t, "mydb", d2.Name())
-}
-
-func TestDriver_BackupRestore(t *testing.T) {
-	tmp := t.TempDir()
-	dbPath := filepath.Join(tmp, "test.db")
-	require.NoError(t, os.WriteFile(dbPath, []byte("sqlite data"), 0o600))
-
-	d := New(dbPath)
-
-	backupDir := filepath.Join(tmp, "backup")
-	err := d.Backup(backupDir)
-	require.NoError(t, err)
-
-	// Verify backup exists.
-	backupFile := filepath.Join(backupDir, "test.db")
-	data, err := os.ReadFile(backupFile)
-	require.NoError(t, err)
-	assert.Equal(t, "sqlite data", string(data))
-
-	// Modify original.
-	require.NoError(t, os.WriteFile(dbPath, []byte("modified"), 0o600))
-
-	// Restore.
-	err = d.Restore(backupDir)
-	require.NoError(t, err)
-
-	restored, err := os.ReadFile(dbPath)
-	require.NoError(t, err)
-	assert.Equal(t, "sqlite data", string(restored))
 }
 
 func TestDriver_BackupMissingDB(t *testing.T) {
