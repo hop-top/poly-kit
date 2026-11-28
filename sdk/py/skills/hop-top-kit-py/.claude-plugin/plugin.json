@@ -1,6 +1,6 @@
 {
   "name": "hop-top-kit-py",
-  "version": "0.5.0-alpha.10",
+  "version": "0.5.0-alpha.11",
   "description": "Build a CLI or service in Python on kit with the hop-top-kit package (import hop_top_kit), covering Typer app factory, output formats, layered config, serve lifecycle, MCP surface, guardrails, migrations. Use when Python code imports hop_top_kit or the user asks for kit in Python, when choosing between kit modules in this port, or when checking whether this port covers a capability before building on it. Not for choosing a language; use the hop-top-kit router for that.",
   "author": {
     "name": "hop-top",

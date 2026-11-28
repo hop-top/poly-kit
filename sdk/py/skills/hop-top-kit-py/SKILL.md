@@ -4,7 +4,7 @@ description: Build a CLI or service in Python on kit with the hop-top-kit packag
 license: MIT
 compatibility: Python 3.11 or newer; pip install hop-top-kit
 metadata:
-  version: "0.5.0-alpha.10" # x-release-please-version
+  version: "0.5.0-alpha.11" # x-release-please-version
   min_version: "0.5.0-alpha.10"
 ---
 
@@ -84,7 +84,7 @@ The `upgrade-pg-test` extra in the source tree is the SDK's own test dependency,
 <!-- skills-sync:begin version -->
 ## Versions
 
-Written for 0.5.0-alpha.10 # x-release-please-version
+Written for 0.5.0-alpha.11 # x-release-please-version
 Expects 0.5.0-alpha.10 or newer.
 
 Installed: `pip show hop-top-kit` or `uv pip show hop-top-kit`; uv prints the PEP 440 spelling (a,
