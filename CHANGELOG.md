@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.5.0-beta.17](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.16...kit/v0.5.0-beta.17) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **py:** a failed up restores the backup instead of being left applied
+* **upgrade:** a failed up restores the backup instead of being left applied
+* **upgrade:** ErrBackupUnsupported and ErrNotRestored instead of silent no-op restore
+* **upgrade:** record the version after each applied migration
+
+### Features
+
+* **cli:** build core/config Options from cli.Config ([d56e029](https://github.com/hop-top/poly-kit/commit/d56e029ec4594276d00b66b9c718db7e4d5b1745))
+* **cli:** legacy user config paths on root config ([d46f803](https://github.com/hop-top/poly-kit/commit/d46f803d1b6820e002d3e3d1ccbf5c8606eaa452))
+* **config:** legacy user config paths ([da3c3ae](https://github.com/hop-top/poly-kit/commit/da3c3ae9f78f2be13b4b91d32b1cc8d7ac31cef7))
+* **php:** upgrade Migrator, ConfigFile and FsDir drivers ([e33633f](https://github.com/hop-top/poly-kit/commit/e33633fdb6ee27c50cdb1cb3e753ed5fdf390cff))
+* **php:** upgrade namespace, document migrator, conformance runner ([3d56b55](https://github.com/hop-top/poly-kit/commit/3d56b55026c280e0834f7cd33def6423ce52e5d5))
+* **php:** upgrade sqlite and postgres drivers over PDO ([8e32451](https://github.com/hop-top/poly-kit/commit/8e324518b6fa2f96091935f11d76c8919b1be413))
+* **py:** configfile and fsdir upgrade drivers ([b3fde9a](https://github.com/hop-top/poly-kit/commit/b3fde9a6a227136fd52de1790b7df83aff53061f))
+* **py:** upgrade Migrator, driver protocol, migrator.json runner ([f534456](https://github.com/hop-top/poly-kit/commit/f534456c6cb22a44028eebe9cda708d65ef3075c))
+* **py:** upgrade package with lenient semver, registry, document migrator ([5f7ae35](https://github.com/hop-top/poly-kit/commit/5f7ae35efa575863fa3d3f26c82f11413330bf5b))
+* **py:** upgrade postgres driver over DB-API connections ([373ad22](https://github.com/hop-top/poly-kit/commit/373ad2222a52aa136fd2f567062496b28927763a))
+* **py:** upgrade sqlite driver over a path or a DB-API connection ([50c78bd](https://github.com/hop-top/poly-kit/commit/50c78bd8b2bf150d7001afac668e986f8c43aeff))
+* **redact:** PII validators, WithValidator hook, LoadPresidioReader ([793ffa8](https://github.com/hop-top/poly-kit/commit/793ffa84a37347ed2aafc0355e174708bf01ebab))
+* **rs:** postgres upgrade driver over a caller-provided client ([b872e89](https://github.com/hop-top/poly-kit/commit/b872e89181492999d933b092a365901674191ae2))
+* **rs:** sqlite and fsdir upgrade drivers ([70ab92d](https://github.com/hop-top/poly-kit/commit/70ab92d84b4d47b280e7a95db2b1b7e40b2052af))
+* **skills:** each skill states the release it expects and how to update itself ([431e0a2](https://github.com/hop-top/poly-kit/commit/431e0a27d5ff943f7f961b28157fb29cc066a3d2))
+* **skills:** hop-top-kit router skill ([367ef08](https://github.com/hop-top/poly-kit/commit/367ef08e5afd33c88ab08dcb53f52ae59633033e))
+* **skills:** hop-top-kit-go skill ([aa43a2d](https://github.com/hop-top/poly-kit/commit/aa43a2d45791abeb2c762f83a6733e75897a4e54))
+* **skills:** hop-top-kit-php skill ([eb84e1d](https://github.com/hop-top/poly-kit/commit/eb84e1dc440b29848b7c372adb3a57323f5e779e))
+* **skills:** hop-top-kit-py skill ([40d51c8](https://github.com/hop-top/poly-kit/commit/40d51c8ec7828648836305ae291780fc3f6b3f7a))
+* **skills:** hop-top-kit-rs skill ([f6f83fa](https://github.com/hop-top/poly-kit/commit/f6f83fa48c555b2a6da2e683dd4f3df5179c9541))
+* **skills:** hop-top-kit-ts skill ([46380e4](https://github.com/hop-top/poly-kit/commit/46380e40f0d781d9a67180f607a7e93a67925261))
+* **skills:** probed install and update commands per channel ([fcfea33](https://github.com/hop-top/poly-kit/commit/fcfea3387bf3bd7f029ed35db462d3bb50e99016))
+* **tools:** skillsync generates skill content and channel metadata from the parity page ([a01df94](https://github.com/hop-top/poly-kit/commit/a01df945848581df9664c091e3ae2d29a7b1032c))
+* **tools:** skillsync lint for skill layout, caps, links and versions ([429aba9](https://github.com/hop-top/poly-kit/commit/429aba9bd428725f40d23c6243cba904accdc32f))
+* **ts:** configfile, fsdir and sqlite upgrade drivers ([bab92c8](https://github.com/hop-top/poly-kit/commit/bab92c8fcfb23329776040da52dd5b5cd3e91ef2))
+* **ts:** postgres upgrade driver over a caller-provided pg client ([d9b713c](https://github.com/hop-top/poly-kit/commit/d9b713c316ec1bf6c76157349f621f918d32966a))
+* **ts:** upgrade Migrator with baseline, lock, per-step versions, unsupported backup ([5a556d0](https://github.com/hop-top/poly-kit/commit/5a556d0fa4da8a47dc38b708931d53c6cae9fdfd))
+* **ts:** upgrade module with lenient semver, registry, document migrator ([632918c](https://github.com/hop-top/poly-kit/commit/632918cd4d1c095e6eab93b7193205dda775b9d3))
+* **upgrade:** baseline for stores with no recorded version ([0246c74](https://github.com/hop-top/poly-kit/commit/0246c7429935e9993d93d81585ad78194635ece0))
+* **upgrade:** driver lock held for the whole run ([b34aad3](https://github.com/hop-top/poly-kit/commit/b34aad344a9c93428196b9e05d4421d6cc10456b))
+* **upgrade:** ErrBackupUnsupported and ErrNotRestored instead of silent no-op restore ([8ed605a](https://github.com/hop-top/poly-kit/commit/8ed605a18c49550c5fc3d1eb63baa6f17a477cc4))
+* **upgrade:** postgres driver over caller-provided *sql.DB ([7981b4c](https://github.com/hop-top/poly-kit/commit/7981b4c97af627475d6d72e17a48e6a09df3ec76))
+* **upgrade:** record the version after each applied migration ([391739e](https://github.com/hop-top/poly-kit/commit/391739ec30090e16e03a35cc1978ca7feb26251c))
+* **upgrade:** rollback_latest takes the driver lock ([343ed05](https://github.com/hop-top/poly-kit/commit/343ed05846c87dced6cd180ccaff8d116b75c5ed))
+* **upgrade:** sqlite driver takes a handle, WAL-safe backup, file lock ([b8b7335](https://github.com/hop-top/poly-kit/commit/b8b7335ccf91a5c02a31f4416ac72c2214a8d44c))
+* **upgrade:** tidb driver takes caller handle, locks with GET_LOCK ([74ac5a5](https://github.com/hop-top/poly-kit/commit/74ac5a5309e13121d2f7f370bb74d14caf33b7f7))
+
+
+### Bug Fixes
+
+* **cli:** drop root go.mod replace so go install kit works ([44394d8](https://github.com/hop-top/poly-kit/commit/44394d876504c9245f81b4d64531d746f67eabc3))
+* **cli:** guard background probe fd and build tags ([b1f1857](https://github.com/hop-top/poly-kit/commit/b1f185747f962f92c7e9b10f6d7fe6787cd4648a))
+* **cli:** keep command help free of work references ([3f666c3](https://github.com/hop-top/poly-kit/commit/3f666c3c878f82032aab73523826f70e7dac179d))
+* **cli:** query terminal background once ([8f40109](https://github.com/hop-top/poly-kit/commit/8f40109ddd3cf80aeae177f8006e22c427269528))
+* **py:** a failed up restores the backup instead of being left applied ([2c13c66](https://github.com/hop-top/poly-kit/commit/2c13c663d9712c6537f5decd8347e7b3e670f5ce))
+* **skills:** descriptions on one frontmatter line ([cc7f856](https://github.com/hop-top/poly-kit/commit/cc7f8560981c0c639543b92e875a654e137ddc22))
+* **skills:** docs links follow the poly-kit default branch ([91c472f](https://github.com/hop-top/poly-kit/commit/91c472f2a7ef5c8b5a6e895cc3161c57838ac641))
+* **ts:** export uri, wizard, bus subpaths ([28623e1](https://github.com/hop-top/poly-kit/commit/28623e1f82376fb9d5397ecfa2ef25f6689d217a))
+* **upgrade:** a failed up restores the backup instead of being left applied ([1efa643](https://github.com/hop-top/poly-kit/commit/1efa6430458ace06adadf9f4195a6961c5bcc535))
+* **upgrade:** fsdir backup refuses symlinks and special files ([6b383ab](https://github.com/hop-top/poly-kit/commit/6b383abcdc75a870a77b20b89851639fd8e2da18))
+* **upgrade:** tidb lock never leaves a server-side wait behind on cancel ([93fe0fa](https://github.com/hop-top/poly-kit/commit/93fe0fa9d41cb08e0e5bccdf80e3a563c8274b09))
+
 ## [0.5.0-beta.16](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.15...kit/v0.5.0-beta.16) (2026-11-20)
 
 The hop-top team is happy to announce Kit 0.5.0-beta.16. This release includes maintenance release with bug fixes.
