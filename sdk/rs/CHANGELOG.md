@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.9...kit-rs/v0.5.0-alpha.10) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **rs:** a failed up restores the backup instead of being left applied
+* **upgrade:** ErrBackupUnsupported and ErrNotRestored instead of silent no-op restore
+* **upgrade:** record the version after each applied migration
+
+### Features
+
+* **rs:** postgres upgrade driver over a caller-provided client ([b872e89](https://github.com/hop-top/poly-kit/commit/b872e89181492999d933b092a365901674191ae2))
+* **rs:** sqlite and fsdir upgrade drivers ([70ab92d](https://github.com/hop-top/poly-kit/commit/70ab92d84b4d47b280e7a95db2b1b7e40b2052af))
+* **skills:** each skill states the release it expects and how to update itself ([431e0a2](https://github.com/hop-top/poly-kit/commit/431e0a27d5ff943f7f961b28157fb29cc066a3d2))
+* **skills:** hop-top-kit-rs skill ([f6f83fa](https://github.com/hop-top/poly-kit/commit/f6f83fa48c555b2a6da2e683dd4f3df5179c9541))
+* **skills:** probed install and update commands per channel ([fcfea33](https://github.com/hop-top/poly-kit/commit/fcfea3387bf3bd7f029ed35db462d3bb50e99016))
+* **upgrade:** baseline for stores with no recorded version ([0246c74](https://github.com/hop-top/poly-kit/commit/0246c7429935e9993d93d81585ad78194635ece0))
+* **upgrade:** driver lock held for the whole run ([b34aad3](https://github.com/hop-top/poly-kit/commit/b34aad344a9c93428196b9e05d4421d6cc10456b))
+* **upgrade:** ErrBackupUnsupported and ErrNotRestored instead of silent no-op restore ([8ed605a](https://github.com/hop-top/poly-kit/commit/8ed605a18c49550c5fc3d1eb63baa6f17a477cc4))
+* **upgrade:** record the version after each applied migration ([391739e](https://github.com/hop-top/poly-kit/commit/391739ec30090e16e03a35cc1978ca7feb26251c))
+* **upgrade:** rollback_latest takes the driver lock ([343ed05](https://github.com/hop-top/poly-kit/commit/343ed05846c87dced6cd180ccaff8d116b75c5ed))
+
+
+### Bug Fixes
+
+* **rs:** a failed up restores the backup instead of being left applied ([529853d](https://github.com/hop-top/poly-kit/commit/529853d4347a8269ff2b980ea6f357afa5ffe878))
+* **rs:** fsdir backup refuses links its restore would refuse ([d13a3aa](https://github.com/hop-top/poly-kit/commit/d13a3aa1886343ae44eb305bf24cdaec1ae20b09))
+* **rs:** fsdir restore refuses hard links whose source leaves the tree ([ef68b0e](https://github.com/hop-top/poly-kit/commit/ef68b0e0129ab57c867329d19efb2a8152a0eb38))
+* **rs:** gate NotRestored constructors off wasm32 ([9a80a09](https://github.com/hop-top/poly-kit/commit/9a80a09613c21fa369722513d1b4660a71a3eb13))
+* **skills:** descriptions on one frontmatter line ([cc7f856](https://github.com/hop-top/poly-kit/commit/cc7f8560981c0c639543b92e875a654e137ddc22))
+* **skills:** docs links follow the poly-kit default branch ([91c472f](https://github.com/hop-top/poly-kit/commit/91c472f2a7ef5c8b5a6e895cc3161c57838ac641))
+
 ## [0.5.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.8...kit-rs/v0.5.0-alpha.9) (2026-11-20)
 
 The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.9. This release includes maintenance release with bug fixes.
