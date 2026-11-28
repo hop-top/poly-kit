@@ -27,6 +27,7 @@ Excluded, with everything below them:
 | `internal` (except `internal/tools`) | private API; the parent README covers it |
 | `cmd` | entry points documented by the parent README |
 | `test`, `tests`, `e2e`, `*_test` | test directories |
+| `skills` | agent skill directories: entered through `SKILL.md`, snippet files are examples, see [`agent-skills.md`](agent-skills.md) |
 | hidden directories (`.git`, `.github`, ...) | tooling |
 | `examples/<name>/**`, `templates/<name>/**` | one README at the payload root covers the tree |
 
