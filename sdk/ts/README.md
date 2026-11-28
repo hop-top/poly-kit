@@ -46,8 +46,6 @@ completion's hidden `__complete` (scripts: `completionCommand(program)`).
 | [`src/telemetry/`](src/telemetry/README.md) | consent-gated usage events, redaction, sinks | you record usage under user consent |
 | [`src/id/`](src/id/README.md) | TypeID primitive | you mint or parse prefixed identifiers |
 | [`src/tui/`](src/tui/README.md) | TUI toolkit (parity, anim, prompts) | you build an interactive terminal surface |
-| [`src/router/`](src/router/README.md) | RouteLLM strong/weak model routing and its Hono handler | a prompt must pick a model in-process |
-| [`src/triton/`](src/triton/README.md) | Triton Inference Server client, KServe v2 over HTTP | you call a model hosted on Triton |
 
 Non-directory subpaths: `cli` (CLI factory), `serve` (serve hierarchy and
 service lifecycle), `netpolicy` (`--offline` enforcement, guards
@@ -57,6 +55,8 @@ upgrade detection), `llm`, `anthropic`, `openai`, `routellm`, `alias`, `uri`
 (facade over `@hop-top/cite`), `api`, `rpc`, `aim`, `scope`, `safety`,
 `provenance`, `stream`, `progress`, `auth`, `errcorrect`, `log`,
 `completion`, `completion-values`, `toolspec`, `compliance`, `wizard`, `bus`.
+
+`src/router/` and `src/triton/` are internal: not on the exports map.
 
 ## Contract
 

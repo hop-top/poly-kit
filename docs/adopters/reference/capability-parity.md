@@ -30,7 +30,7 @@ view for contributors, with the gap behind each `partial`, is
 | SDK | Counts |
 |---|---|
 | Go | 74 done |
-| TypeScript | 36 none, 18 unverified, 11 done, 8 partial, 1 n/a |
+| TypeScript | 36 none, 17 unverified, 11 done, 9 partial, 1 n/a |
 | Python | 38 none, 18 unverified, 9 done, 8 partial, 1 n/a |
 | Rust | 29 none, 19 partial, 13 done, 12 unverified, 1 n/a |
 | PHP | 57 none, 5 unverified, 7 partial, 4 done, 1 n/a |
@@ -131,8 +131,8 @@ which only the Go and Rust (and sometimes TypeScript and Python) runners read.
 | Capability | Go | TS | Py | Rust | PHP | Evidence |
 |---|---|---|---|---|---|---|
 | LLM client | done | partial | partial | partial | none | make test-parity-llm (Go/Rs/Py/TS, contracts/llm-v1); ts:llm.ts py:llm.py rs:llm/ |
-| LLM providers | done | partial | partial | partial | none | ts:llm-anthropic.ts llm-openai.ts triton/ py:llm_anthropic.py llm_openai.py rs:llm/ (anthropic, openai, google, ollama, triton); ts and py have no Google or Ollama adapter |
-| LLM routing | done | unverified | unverified | unverified | none | ts:router/ routellm.ts py:routellm_adapter.py routellm_grpc.py rs:llm/router/ rs:llm/routellm/ |
+| LLM providers | done | partial | partial | partial | none | ts:llm-anthropic.ts llm-openai.ts (a Triton client exists in `src/triton/` but is not exported); py:llm_anthropic.py llm_openai.py rs:llm/ (anthropic, openai, google, ollama, triton); ts and py have no Google or Ollama adapter |
+| LLM routing | done | partial | unverified | unverified | none | ts:routellm.ts (the RouteLLM adapter; the native router in `src/router/` exists but is not exported) py:routellm_adapter.py routellm_grpc.py rs:llm/router/ rs:llm/routellm/ |
 | Toolspec | done | done | unverified | none | none | toolspec-manifest and spec cross-lang fixtures (ts tests: toolspec-manifest.test.ts toolspec-spec.test.ts); py:toolspec.py |
 | Command reflection | done | none | none | none | none | no module in any SDK |
 | Agent CLI invocation | done | none | none | none | none | no module in any SDK |
