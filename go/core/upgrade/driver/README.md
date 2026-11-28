@@ -39,7 +39,7 @@ fmt.Println(d.Name())
 
 - `Name()` must equal `Migration.Schema` for the migrations that target it. Defaults: `config`, the `name` argument for `fsdir`, `sqlite`, `tidb`. `WithName` overrides where offered.
 - Version file backends read and write `<XDG data dir>/hop/<tool>/<name>/version` via `upgrade.ReadVersionFile`; set the tool with `WithTool`; without it the path collapses to `<XDG data dir>/hop/<name>/version`. A missing file means version `""`.
-- `Backup(dest)` and `Restore(src)` take directories; the Migrator drives them around `Migration.Up` and on rollback. A store kit cannot back up returns `upgrade.ErrBackupUnsupported` (never nil): from `Backup` the run goes on with no backup, from `Restore` a rollback ends as `upgrade.ErrNotRestored`.
+- `Backup(dest)` and `Restore(src)` take directories; the Migrator drives them around `Migration.Up` and on rollback. A store kit cannot back up returns `upgrade.ErrBackupUnsupported` (never nil): from `Backup` the run goes on with no backup, from `Restore` (or with no backup) a rollback ends as `upgrade.ErrNotRestored`. A failed `Up` is never downed: it always needs the restore, so a driver whose `Restore` is unsupported leaves its partial change.
 
 ## Neighbours
 

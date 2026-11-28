@@ -11,8 +11,9 @@ import "errors"
 var ErrBackupUnsupported = errors.New("upgrade: backup unsupported")
 
 // ErrNotRestored marks a rollback that could not undo a failed run: a
-// Down was missing or failed and no backup could restore the schema, so
-// the stored version stays at the last step still applied. Run and
+// Down was missing or failed, or the newest step's Up failed (it cannot
+// be downed), and no backup could restore the schema, so the stored
+// version stays at the last step still applied. Run and
 // RollbackLatest return it wrapped around the cause (the failure that
 // started the rollback stays in the text): errors.Is(err, ErrNotRestored).
 // No reverted event is published for such a rollback.

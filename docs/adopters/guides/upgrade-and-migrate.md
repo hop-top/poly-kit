@@ -173,23 +173,31 @@ Per schema, `Run` reads the stored version, backs the store up (under
 `<data dir>/backups/<schema>/pre-<version>/`), applies each `Up` then
 its `Verify`, records that migration's version, then runs the
 `WithVerify` check. A crash between an `Up` and its record re-applies
-that one migration on the next run, so keep migrations idempotent. On
-failure it runs the applied `Down`s newest first, recording the
-version before each, else restores the backup and records the version
-the run started at. A failed verification satisfies
+that one migration on the next run, so keep migrations idempotent. When
+a verification, a record or the final check fails, it runs the applied
+`Down`s newest first, recording the version before each, else restores
+the backup and records the version the run started at. When an `Up`
+itself fails, that migration counts as applied but cannot be downed (a
+`Down` assumes a completed `Up`, and yours may have changed the store
+part way): `Run` restores the backup at once and records the version the
+run started at, and no `Down` runs, not even an earlier step's. A failed
+verification satisfies
 `errors.Is(err, upgrade.ErrVerify)`; a cancelled context is checked
 between steps and wraps `context.Canceled`. `WithManualRollback()`
 turns automatic rollback off. Old backups beyond the retention are
 pruned after success.
 
-A driver that cannot back its store up (a server database: `driver/tidb`)
-returns `upgrade.ErrBackupUnsupported` from `Backup`: the run still goes
-ahead, with no backup and no pruning for that schema. If a migration then
-fails and a `Down` is missing or fails, nothing can restore the schema:
-`Run` returns an error matching `upgrade.ErrNotRestored` (and
-`ErrBackupUnsupported`) and publishes no `reverted` event, and the stored
-version stays at the last step still applied. Give such a schema a `Down`
-for every migration, or take a backup outside kit first.
+A driver that cannot back its store up (a server database: `driver/tidb`,
+`driver/postgres`) returns `upgrade.ErrBackupUnsupported` from `Backup`:
+the run still goes ahead, with no backup and no pruning for that schema.
+If a migration's `Up` then fails, or a `Down` is missing or fails during a
+rollback, nothing can restore the schema: `Run` returns an error matching
+`upgrade.ErrNotRestored` (and `ErrBackupUnsupported`) and publishes no
+`reverted` event, and the stored version stays at the last step still
+applied (the step before the failing `Up`). No `Down` runs for a failed
+`Up`, so its partial change stays: on such a store make each `Up` atomic
+(one transaction) or take a backup outside kit first. With a backup, a
+failed `Up` leaves the store as it was before the run.
 
 `Status()` returns per-schema `Current`, `Target`, `Pending`;
 `History()` the migrations applied this session.
@@ -269,8 +277,9 @@ WAL. `New(dbPath)` opens its own connection for it and `Restore` swaps
 the file back (close every handle on it first; `-wal`, `-shm` and
 `-journal` are removed). `New(dbPath, sqlite.WithDB(db))` snapshots
 through your handle, never closes it, and cannot restore under a live
-pool: `Restore` returns `upgrade.ErrBackupUnsupported`, so give each
-migration a `Down` and keep the snapshot for manual recovery.
+pool: `Restore` returns `upgrade.ErrBackupUnsupported`, so a failed `Up`
+ends not restored; keep the snapshot for manual recovery and give each
+migration a `Down` for the verify and final-check failures.
 
 ### 4. Give users a `migrate` command
 

@@ -100,8 +100,8 @@ func TestRun_PathOnlyFailureRestoresFile(t *testing.T) {
 	requireLockFree(t, d)
 }
 
-// With a handle there is no restore: a Down saves the run, a missing
-// Down ends it not restored, and the backup stays for manual recovery.
+// With a handle there is no restore: a failed Up ends the run not
+// restored, and the backup stays for manual recovery.
 func TestRun_WithDBMissingDownIsNotRestored(t *testing.T) {
 	e := newRunEnv(t)
 	d := e.driver(WithDB(e.db))
@@ -117,10 +117,22 @@ func TestRun_WithDBMissingDownIsNotRestored(t *testing.T) {
 	requireLockFree(t, d)
 }
 
+// With a handle a Down still rolls a run back: here a failed final verify.
 func TestRun_WithDBDownRollsBack(t *testing.T) {
 	e := newRunEnv(t)
 	d := e.driver(WithDB(e.db))
-	err := e.migrator(e.registry(true, nil), d).Run(context.Background())
+	reg := upgrade.NewRegistry()
+	for _, x := range []int{2, 3} {
+		reg.Register(upgrade.Migration{Version: map[int]string{2: "1.1.0", 3: "1.2.0"}[x], Schema: "appdb",
+			Up: func(context.Context) error { _, err := e.db.Exec(`INSERT INTO t (x) VALUES (?)`, x); return err },
+			Down: func(context.Context) error {
+				_, err := e.db.Exec(`DELETE FROM t WHERE x = ?`, x)
+				return err
+			}})
+	}
+	err := e.migrator(reg, d, upgrade.WithVerify(func(context.Context, string, string) error {
+		return errors.New("simulated failure")
+	})).Run(context.Background())
 	require.ErrorContains(t, err, "simulated failure")
 	require.NotErrorIs(t, err, upgrade.ErrNotRestored)
 	assert.Equal(t, []int{1}, rows(t, e.dbPath))

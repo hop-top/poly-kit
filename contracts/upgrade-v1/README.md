@@ -31,12 +31,11 @@ the vector. Each file carries `version: "v1"` and a `description` of its rules.
 
 What the scenarios pin, beyond order: a re-run applies nothing; the version is recorded after each
 migration's `up` and `verify`, before the next `up` (a stopped run leaves the last applied version, a re-run
-applies only what is left); a failure runs applied `down`s newest first and restores the backup the moment
-one is missing or fails; a failed `verify` (per migration or final) rolls back including the verified step; a
+applies only what is left); a failed `up` counts as applied but is never downed: the backup is restored and
+no `down` runs; a later failure runs applied `down`s newest first, restoring the moment one is missing or fails; a failed `verify` (per migration or final) rolls back including the verified step; a
 context canceled between steps stops before the next `up` (rollbacks still run); an explicit data dir
 replaces XDG; an own registry ignores the default; a prune failure is logged, never fatal; events come in
-order under `kit.core.migration.*`; history keeps migrations a later failure rolled back; a failing first
-`up` rolls nothing back.
+order under `kit.core.migration.*`; history keeps migrations a later failure rolled back, never a failed `up`.
 
 The recorded version describes the data after any rollback. Each record writes the version file, then calls
 `set_version`; a `stores_version` driver gets only `set_version`, no file. In auto mode each successful `down`
@@ -56,10 +55,10 @@ once held; `lock: <error>` means no unlock, `unlock_fail` only logs `warning: un
 error is `rollback <schema>: lock: <error>`. A driver's `backup_unsupported` or `restore_unsupported` makes that call (still logged) report the sentinel
 (Go `ErrBackupUnsupported`, Rust `BackupUnsupported`). An unsupported backup is no failure: the run goes on,
 leaves no backup directory or `.version` file and prunes nothing for that schema. A rollback needing a
-restore it cannot run (`down` missing or failing, and no backup or `restore` unsupported) restores nothing:
-no `reverted` event, the error ends `(rollback also failed: not restored: no backup was taken)` or `(...: not
-restored: restore unsupported)` (Go `ErrNotRestored`, Rust `is_not_restored`), the version stays at the last
-step still applied. `rollback_latest` fails `no backups found for <schema>` (no backup dir) or `not restored:
+restore it cannot run (`down` missing or failing or a failed `up`, and no backup or `restore` unsupported)
+restores nothing: no `reverted` event, the error ends `(rollback also failed: not restored: no backup was
+taken)` or `(...: not restored: restore unsupported)` (Go `ErrNotRestored`, Rust `is_not_restored`), the
+version stays at the last step still applied (before a failed `up`; no earlier `down` runs). `rollback_latest` fails `no backups found for <schema>` (no backup dir) or `not restored:
 restore unsupported`; no record. Rust has no default registry (scenarios run as `registry: own`). Runners are strict: unknown fields, a `version`
 other than `v1` and an unconsumed corpus file fail the run; an unported file is listed pending by name (none today).
 
