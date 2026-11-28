@@ -3,7 +3,7 @@ name: hop-top-kit-rs
 description: Build a CLI or service in Rust with the hop-top-kit crate, covering Cargo features per module, the kit CLI root, layered config, output formats, MCP, serve, upgrade migrations, wasm32. Use when a Rust project depends on or should adopt hop-top-kit, when picking its Cargo features, or when checking what the Rust port covers before promising a capability.
 license: MIT
 metadata:
-  version: "0.5.0-alpha.9" # x-release-please-version
+  version: "0.5.0-alpha.10" # x-release-please-version
   min_version: "0.5.0-alpha.9"
 ---
 
@@ -43,7 +43,7 @@ Tier: experimental.
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.5.0-alpha.9", features = ["cli", "config"] } # x-release-please-version
+hop-top-kit = { version = "0.5.0-alpha.10", features = ["cli", "config"] } # x-release-please-version
 ```
 
 Give the full prerelease version: a bare `"0.5"` cannot resolve one. Rust 1.89 or newer.
@@ -84,7 +84,7 @@ with `cargo test --features cli,config`; test each feature alone with
 <!-- skills-sync:begin version -->
 ## Versions
 
-Written for 0.5.0-alpha.9 # x-release-please-version
+Written for 0.5.0-alpha.10 # x-release-please-version
 Expects 0.5.0-alpha.9 or newer.
 
 Installed: `cargo tree -i hop-top-kit --depth 0`; `scripts/detect-port.sh` shows what the manifest
