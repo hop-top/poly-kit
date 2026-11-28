@@ -111,7 +111,7 @@ func within[T any](t *testing.T, release chan struct{}, call func() T) T {
 func TestAPIServiceRefusesOverloaded(t *testing.T) {
 	isolateHome(t)
 	rec := &auditRecorder{}
-	r := authRoot(t, WithAPI(APIConfig{}), WithAuditSinks(rec.spec()))
+	r := authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0"}), WithAuditSinks(rec.spec()))
 	started, release := addSlow(r)
 	r.Viper.Set("services.api.concurrency.max_queue", 0)
 	base, stop := serveAPI(t, r)
