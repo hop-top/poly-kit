@@ -197,8 +197,9 @@ impl SchemaDriver for PostgresDriver {
     }
 
     /// [`BackupUnsupported`]: kit does not back up a server database, so a
-    /// run goes on without one. Take one outside kit when a failed
-    /// migration must be recoverable.
+    /// run goes on without one. A failed `up` then ends not restored:
+    /// make each `up` atomic (one transaction), or take a backup outside
+    /// kit.
     fn backup(&self, _dest: &Path) -> Result<(), BoxError> {
         Err(Box::new(BackupUnsupported))
     }

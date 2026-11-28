@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 use hop_top_kit::bus::{validate_topic, Context, Event, SharedBus};
 use hop_top_kit::upgrade::configfile::{backup_file_name, ConfigFileDriver};
 use hop_top_kit::upgrade::{
-    default_data_dir, read_version_file_in, BoxError, MigrateError, Migration, MigrationTopics,
-    Migrator, SchemaDriver, StepKind,
+    default_data_dir, read_version_file_in, BackupUnsupported, BoxError, MigrateError, Migration,
+    MigrationTopics, Migrator, SchemaDriver, StepKind,
 };
 
 type Log = Arc<Mutex<Vec<String>>>;
@@ -27,6 +27,8 @@ struct Mock {
     name: String,
     version: String,
     log: Log,
+    /// `backup` returns `BackupUnsupported`: the run has no backup.
+    no_backup: bool,
 }
 
 impl Mock {
@@ -35,7 +37,13 @@ impl Mock {
             name: name.into(),
             version: version.into(),
             log: log.clone(),
+            no_backup: false,
         }
+    }
+
+    fn without_backup(mut self) -> Self {
+        self.no_backup = true;
+        self
     }
 }
 
@@ -55,6 +63,9 @@ impl SchemaDriver for Mock {
             .lock()
             .unwrap()
             .push(format!("backup {}", dest.display()));
+        if self.no_backup {
+            return Err(Box::new(BackupUnsupported));
+        }
         Ok(())
     }
     fn restore(&mut self, _src: &Path) -> Result<(), BoxError> {
@@ -133,8 +144,45 @@ fn run_without_pending_does_not_back_up() {
     assert!(!tmp.path().join("backups").exists());
 }
 
+/// A failed final verify rolls back by `down`: every `up` completed.
 #[test]
-fn failure_runs_down_of_applied_migrations() {
+fn failed_final_verify_runs_down_of_applied_migrations() {
+    let tmp = tempfile::tempdir().unwrap();
+    let log = Log::default();
+    let mut m = Migrator::new("testapp", "1.2.0")
+        .data_dir(tmp.path())
+        .verify(|_, _, _| Err("boom".into()));
+    m.register(
+        Migration::new("1.1.0", "testdb", step(&log, "up 1.1.0"))
+            .with_down(step(&log, "down 1.1.0")),
+    );
+    m.register(
+        Migration::new("1.2.0", "testdb", step(&log, "up 1.2.0"))
+            .with_down(step(&log, "down 1.2.0")),
+    );
+    m.add_driver(Mock::new("testdb", "1.0.0", &log));
+
+    let err = m.run(&bg()).unwrap_err();
+
+    assert!(err.to_string().contains("boom"), "{err}");
+    assert!(
+        matches!(err, MigrateError::Step { kind: StepKind::FinalVerify, ref version, .. } if version == "1.2.0")
+    );
+    assert!(!err.is_not_restored(), "{err}");
+    let log = entries(&log);
+    assert_eq!(
+        &log[1..],
+        ["up 1.1.0", "up 1.2.0", "down 1.2.0", "down 1.1.0"]
+    );
+    assert!(!log.contains(&"restore".to_string()));
+    assert_eq!(read_version_file_in(tmp.path(), "testdb").unwrap(), "1.0.0");
+}
+
+/// A failed `up` is an applied step that cannot be downed: the backup is
+/// restored at once, no `down` runs (neither its own nor an earlier one)
+/// and the starting version is recorded.
+#[test]
+fn failed_up_restores_the_backup_and_calls_no_down() {
     let tmp = tempfile::tempdir().unwrap();
     let log = Log::default();
     let mut m = Migrator::new("testapp", "1.2.0").data_dir(tmp.path());
@@ -142,7 +190,7 @@ fn failure_runs_down_of_applied_migrations() {
         Migration::new("1.1.0", "testdb", step(&log, "up 1.1.0"))
             .with_down(step(&log, "down 1.1.0")),
     );
-    m.register(Migration::new("1.2.0", "testdb", boom));
+    m.register(Migration::new("1.2.0", "testdb", boom).with_down(step(&log, "down 1.2.0")));
     m.add_driver(Mock::new("testdb", "1.0.0", &log));
 
     let err = m.run(&bg()).unwrap_err();
@@ -151,19 +199,119 @@ fn failure_runs_down_of_applied_migrations() {
     assert!(
         matches!(err, MigrateError::Step { kind: StepKind::Up, ref version, .. } if version == "1.2.0")
     );
-    let log = entries(&log);
-    assert_eq!(&log[1..], ["up 1.1.0", "down 1.1.0"]);
-    // 1.1.0 was recorded after its up; the rollback recorded the start.
+    assert!(!err.is_not_restored(), "{err}");
+    assert_eq!(&entries(&log)[1..], ["up 1.1.0", "restore"]);
     assert_eq!(read_version_file_in(tmp.path(), "testdb").unwrap(), "1.0.0");
+}
+
+/// A first step whose `up` fails is rolled back too (it used to roll
+/// nothing back): the backup is restored, its `down` is not called.
+#[test]
+fn failed_first_up_restores_the_backup() {
+    let tmp = tempfile::tempdir().unwrap();
+    let log = Log::default();
+    let mut m = Migrator::new("testapp", "1.1.0").data_dir(tmp.path());
+    m.register(Migration::new("1.1.0", "testdb", boom).with_down(step(&log, "down 1.1.0")));
+    m.add_driver(Mock::new("testdb", "1.0.0", &log));
+
+    let err = m.run(&bg()).unwrap_err();
+
+    assert!(!err.is_not_restored(), "{err}");
+    assert_eq!(&entries(&log)[1..], ["restore"]);
+    assert_eq!(read_version_file_in(tmp.path(), "testdb").unwrap(), "1.0.0");
+}
+
+/// An `up` that fails with the context's error is a failed `up`: the
+/// backup is restored and no `down` runs. A context done before the `up`
+/// starts is not (see `verify_and_cancel_have_their_own_kinds`).
+#[test]
+fn up_failing_with_the_cancellation_error_restores_the_backup() {
+    let tmp = tempfile::tempdir().unwrap();
+    let log = Log::default();
+    let (ctx, cancel) = bg().with_cancel();
+    let mut m = Migrator::new("testapp", "1.1.0").data_dir(tmp.path());
+    m.register(
+        Migration::new("1.1.0", "testdb", move |ctx: &Context| {
+            cancel.cancel();
+            Err(Box::new(ctx.err().unwrap()) as BoxError)
+        })
+        .with_down(step(&log, "down 1.1.0")),
+    );
+    m.add_driver(Mock::new("testdb", "1.0.0", &log));
+
+    let err = m.run(&ctx).unwrap_err();
+
+    assert!(
+        matches!(
+            err,
+            MigrateError::Step {
+                kind: StepKind::Up,
+                ..
+            }
+        ),
+        "{err}"
+    );
+    assert!(!err.is_not_restored(), "{err}");
+    assert_eq!(&entries(&log)[1..], ["restore"]);
+    assert_eq!(read_version_file_in(tmp.path(), "testdb").unwrap(), "1.0.0");
+}
+
+/// Nothing to restore (no backup was taken): the failed `up` is not
+/// downed, earlier steps are not downed either, and the version stays at
+/// the last step still applied.
+#[test]
+fn failed_up_without_a_backup_is_not_restored() {
+    let tmp = tempfile::tempdir().unwrap();
+    let log = Log::default();
+    let mut m = Migrator::new("testapp", "1.2.0").data_dir(tmp.path());
+    m.register(
+        Migration::new("1.1.0", "testdb", step(&log, "up 1.1.0"))
+            .with_down(step(&log, "down 1.1.0")),
+    );
+    m.register(Migration::new("1.2.0", "testdb", boom).with_down(step(&log, "down 1.2.0")));
+    m.add_driver(Mock::new("testdb", "1.0.0", &log).without_backup());
+
+    let err = m.run(&bg()).unwrap_err();
+
+    assert!(
+        err.is_not_restored() && err.is_backup_unsupported(),
+        "{err}"
+    );
+    assert!(err.to_string().contains("boom"), "{err}");
+    assert!(err.to_string().contains("no backup was taken"), "{err}");
+    let log = entries(&log);
+    assert_eq!(&log[1..], ["up 1.1.0"], "no down, no restore");
+    assert_eq!(read_version_file_in(tmp.path(), "testdb").unwrap(), "1.1.0");
+}
+
+/// The first step fails and there is no backup: the version stays at the
+/// pre-run one.
+#[test]
+fn failed_first_up_without_a_backup_keeps_the_pre_run_version() {
+    let tmp = tempfile::tempdir().unwrap();
+    let log = Log::default();
+    let mut m = Migrator::new("testapp", "1.1.0").data_dir(tmp.path());
+    m.register(Migration::new("1.1.0", "testdb", boom).with_down(step(&log, "down 1.1.0")));
+    m.add_driver(Mock::new("testdb", "1.0.0", &log).without_backup());
+
+    let err = m.run(&bg()).unwrap_err();
+
+    assert!(err.is_not_restored(), "{err}");
+    assert!(!entries(&log).iter().any(|e| e.starts_with("down")));
+    assert!(read_version_file_in(tmp.path(), "testdb")
+        .unwrap()
+        .is_empty());
 }
 
 #[test]
 fn failure_without_down_restores_backup() {
     let tmp = tempfile::tempdir().unwrap();
     let log = Log::default();
-    let mut m = Migrator::new("testapp", "1.2.0").data_dir(tmp.path());
+    let mut m = Migrator::new("testapp", "1.2.0")
+        .data_dir(tmp.path())
+        .verify(|_, _, _| Err("fail".into()));
     m.register(Migration::new("1.1.0", "testdb", |_| Ok(())));
-    m.register(Migration::new("1.2.0", "testdb", |_| Err("fail".into())));
+    m.register(Migration::new("1.2.0", "testdb", |_| Ok(())));
     m.add_driver(Mock::new("testdb", "1.0.0", &log));
 
     assert!(m.run(&bg()).is_err());

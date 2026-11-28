@@ -16,7 +16,9 @@ pub struct Migration {
     /// Matches [`SchemaDriver::name`](super::SchemaDriver::name).
     pub schema: String,
     pub up: StepFn,
-    /// Undoes `up`; `None` makes a rollback restore the backup instead.
+    /// Undoes a completed `up`; `None` makes a rollback restore the backup
+    /// instead. Never called for an `up` that failed: that rollback
+    /// restores the backup at once.
     pub down: Option<StepFn>,
     /// Checks the result after `up`, before the version is recorded. A
     /// failure is a failed step, and the rollback includes this one.
