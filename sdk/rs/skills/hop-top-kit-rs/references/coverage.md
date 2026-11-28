@@ -34,7 +34,7 @@ The SDK ships a subset: a documented gap, one leg of the capability, or a stub.
 - Upgrade and migrations (Guardrails and trust): make test-parity-upgrade (Go/Rs/Py/TS/PHP), every runner on all three corpus files; rs:upgrade/ is migrations plus the offline-aware release check (download and replace not ported); py:upgrade/ and ts:upgrade/ have the release check, lenient semver, Migration, Registry, the document migrator and the Migrator; php:Upgrade/ has the same without the release check; drivers: py configfile, fsdir, sqlite, postgres; ts configfile, fsdir, sqlite, postgres; php configfile, fsdir, sqlite, postgres; rs configfile, fsdir, sqlite, postgres; no port has the migrate command tree or a tidb driver
 - Utilities (Guardrails and trust): make test-parity-retry (Go/Rs); rs:util/retry.rs
 - LLM client (AI and agents): make test-parity-llm (Go/Rs/Py/TS, contracts/llm-v1); ts:llm.ts py:llm.py rs:llm/
-- LLM providers (AI and agents): ts:llm-anthropic.ts llm-openai.ts triton/ py:llm_anthropic.py llm_openai.py rs:llm/ (anthropic, openai, google, ollama, triton); ts and py have no Google or Ollama adapter
+- LLM providers (AI and agents): ts:llm-anthropic.ts llm-openai.ts (a Triton client exists in `src/triton/` but is not exported); py:llm_anthropic.py llm_openai.py rs:llm/ (anthropic, openai, google, ollama, triton); ts and py have no Google or Ollama adapter
 - 12-factor compliance check (AI and agents): sdk/tests/cross-lang run-compliance.sh + compare_compliance.py; ts:compliance.ts py:compliance.py rs:compliance/ (static pass; no runtime pass)
 
 ## unverified (12)

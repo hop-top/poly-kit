@@ -9,7 +9,7 @@ This file is a snapshot taken at the `metadata.version` recorded in this skill's
 | Port | Skill | Package | Install | Tier | Needs | Status counts |
 |---|---|---|---|---|---|---|
 | Go | [`hop-top-kit-go`](https://github.com/hop-top/kit/blob/main/skills/hop-top-kit-go/SKILL.md) | `hop.top/kit` | `go get hop.top/kit` | reference | Go 1.27 | 74 done |
-| TypeScript | [`hop-top-kit-ts`](https://github.com/hop-top/kit-ts/blob/main/skills/hop-top-kit-ts/SKILL.md) | `@hop-top/kit` | `pnpm add @hop-top/kit` | supported | Node 22.12+ | 11 done, 8 partial, 18 unverified, 36 none, 1 n/a |
+| TypeScript | [`hop-top-kit-ts`](https://github.com/hop-top/kit-ts/blob/main/skills/hop-top-kit-ts/SKILL.md) | `@hop-top/kit` | `pnpm add @hop-top/kit` | supported | Node 22.12+ | 11 done, 9 partial, 17 unverified, 36 none, 1 n/a |
 | Python | [`hop-top-kit-py`](https://github.com/hop-top/kit-py/blob/main/skills/hop-top-kit-py/SKILL.md) | `hop-top-kit` | `pip install hop-top-kit` | supported | Python 3.11+ | 9 done, 8 partial, 18 unverified, 38 none, 1 n/a |
 | Rust | [`hop-top-kit-rs`](https://github.com/hop-top/kit-rs/blob/main/skills/hop-top-kit-rs/SKILL.md) | `hop-top-kit` | `cargo add hop-top-kit` | experimental | Rust 1.89+ | 13 done, 19 partial, 12 unverified, 29 none, 1 n/a |
 | PHP | [`hop-top-kit-php`](https://github.com/hop-top/kit-php/blob/main/skills/hop-top-kit-php/SKILL.md) | `hop-top/kit` | `composer require hop-top/kit` | experimental | PHP 8.4+ | 4 done, 7 partial, 5 unverified, 57 none, 1 n/a |
