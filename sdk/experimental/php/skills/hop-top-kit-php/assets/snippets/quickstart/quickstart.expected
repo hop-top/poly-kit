@@ -1,0 +1,13 @@
+name   count
+alpha  1
+beta   2
+[
+  {
+    "name": "alpha",
+    "count": 1
+  },
+  {
+    "name": "beta",
+    "count": 2
+  }
+]
