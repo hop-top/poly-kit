@@ -69,11 +69,11 @@ upgrade detection), `llm`, `anthropic`, `openai`, `routellm`, `alias`, `uri`
 
 ## See also
 
-- [TypeScript API reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/ts-api-reference.md):
+- [TypeScript API reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/ts-api-reference.md):
   every module in depth, output formatting rules and worked examples,
   serve lifecycle, the MCP surface, the URI facade, telemetry envelope
   and redactor, LLM adapters and tool calling (`toolCalls` / `toolCallId`)
-- [Agent skill](skills/hop-top-kit-ts/SKILL.md), [Serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md), [serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md)
+- [Agent skill](skills/hop-top-kit-ts/SKILL.md), [Serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/serve-mcp-from-any-sdk.md), [serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/next/docs/contracts/serve-lifecycle.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/cli-parity-guide.md)
 
 MIT.
 

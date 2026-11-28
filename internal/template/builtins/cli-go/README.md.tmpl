@@ -145,7 +145,7 @@ What holds on every served surface:
 
   Every key, its default, and what each refusal looks like on each
   surface is in kit's
-  [served middleware reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/served-middleware.md).
+  [served middleware reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/served-middleware.md).
 
 Move the listen address into configuration rather than a flag:
 
@@ -216,7 +216,7 @@ MCP, delete the `mcpserve.With(...)` option and its import from
 
 `service start rpc` serves every command as one typed service,
 `cmdsurface.v1.Commands`, defined in
-[`commands.proto`](https://github.com/hop-top/poly-kit/blob/main/contracts/proto/cmdsurface/v1/commands.proto).
+[`commands.proto`](https://github.com/hop-top/poly-kit/blob/next/contracts/proto/cmdsurface/v1/commands.proto).
 A call names the command by path, with its flags and positional
 arguments; adding a command to `cmd/` needs no new stubs. One port
 answers Connect (JSON and binary protobuf), gRPC-Web, and gRPC over
@@ -291,7 +291,7 @@ above the marker are preserved verbatim.
 
 Refresh procedure (`kit init --check` / `kit init --update`) is
 documented in poly-kit's
-[templates/RUNBOOK-UPGRADE.md](https://github.com/hop-top/poly-kit/blob/main/templates/RUNBOOK-UPGRADE.md).
+[templates/RUNBOOK-UPGRADE.md](https://github.com/hop-top/poly-kit/blob/next/templates/RUNBOOK-UPGRADE.md).
 
 ## Development
 
