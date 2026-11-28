@@ -26,4 +26,4 @@ To pick another port, open [acme-kit](https://example.test/acme/kit/blob/main/sk
 | [scripts/detect.sh](scripts/detect.sh) | the language of the project is not known |
 | [references/cli-and-console.md](references/cli-and-console.md) | the task touches the command line surface |
 
-Source of truth: [capability parity](https://example.test/acme/mono/blob/main/parity.md).
+Source of truth: [capability parity](https://example.test/acme/mono/blob/next/parity.md).

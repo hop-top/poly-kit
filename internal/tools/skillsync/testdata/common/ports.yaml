@@ -1,6 +1,6 @@
 docs:
   repo: acme/mono
-  branch: main
+  branch: next
 host: https://example.test
 mirror_branch: main
 author:

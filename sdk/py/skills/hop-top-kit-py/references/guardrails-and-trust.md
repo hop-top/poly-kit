@@ -2,9 +2,9 @@
 
 Open when a tool deletes or mutates data, restricts file or network access,
 mints IDs, or migrates its own stores. References:
-[guard destructive commands](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/guard-destructive-commands.md),
-[upgrade and migrate](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/upgrade-and-migrate.md) and the
-[Python SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-sdk.md).
+[guard destructive commands](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/guard-destructive-commands.md),
+[upgrade and migrate](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/upgrade-and-migrate.md) and the
+[Python SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/py-sdk.md).
 
 ## Decisions
 
@@ -31,7 +31,7 @@ mints IDs, or migrates its own stores. References:
   a `connect` callable that returns a new connection each call, at least two
   at once, no transaction-mode pooler. Without a backup a failed `up` ends
   not restored: make each Postgres `up` one transaction. Details:
-  [drivers README](https://github.com/hop-top/poly-kit/blob/main/sdk/py/hop_top_kit/upgrade/drivers/README.md).
+  [drivers README](https://github.com/hop-top/poly-kit/blob/next/sdk/py/hop_top_kit/upgrade/drivers/README.md).
 - A Go and a Python `Migrator` on one table and schema name exclude each
   other. Not ported: the `migrate` command tree and a TiDB driver.
 

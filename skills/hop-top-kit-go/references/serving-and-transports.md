@@ -50,16 +50,16 @@ chosen surfaces.
 
 ## Pages
 
-- [manage the service lifecycle](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/manage-the-service-lifecycle.md),
-  [serve-lifecycle contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md),
-  [migrate to served commands](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/migrate-to-served-commands.md)
-- [expose over MCP](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/expose-cli-over-mcp.md),
-  [REST](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/expose-cli-over-rest.md),
-  [gRPC](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/expose-cli-over-grpc.md),
-  [Unix socket](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-cli-over-unix-socket.md)
-- [secure remote serving](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/secure-remote-serving.md),
-  [served middleware](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/served-middleware.md),
-  [served observability](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/served-observability.md)
-- [cmdsurface](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/cmdsurface.md),
-  [build a transport service](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/build-a-transport-service.md),
-  [route bridge payloads](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/route-bridge-payloads.md)
+- [manage the service lifecycle](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/manage-the-service-lifecycle.md),
+  [serve-lifecycle contract](https://github.com/hop-top/poly-kit/blob/next/docs/contracts/serve-lifecycle.md),
+  [migrate to served commands](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/migrate-to-served-commands.md)
+- [expose over MCP](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/expose-cli-over-mcp.md),
+  [REST](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/expose-cli-over-rest.md),
+  [gRPC](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/expose-cli-over-grpc.md),
+  [Unix socket](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/serve-cli-over-unix-socket.md)
+- [secure remote serving](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/secure-remote-serving.md),
+  [served middleware](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/served-middleware.md),
+  [served observability](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/served-observability.md)
+- [cmdsurface](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/cmdsurface.md),
+  [build a transport service](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/build-a-transport-service.md),
+  [route bridge payloads](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/route-bridge-payloads.md)

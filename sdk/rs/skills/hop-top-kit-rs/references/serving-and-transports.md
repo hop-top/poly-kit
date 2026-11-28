@@ -1,7 +1,7 @@
 # Serving and transports
 
 Open when hosting services, MCP tools, a REST or RPC server, a socket, or
-choosing between transports. Long form: [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#serve).
+choosing between transports. Long form: [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/rs-sdk.md#serve).
 
 | Need | Feature | Notes |
 |------|---------|-------|
@@ -15,7 +15,7 @@ choosing between transports. Long form: [Rust SDK reference](https://github.com/
 | Bearer, JWT and API-key auth | `authn`; `authn-rsa`, `authn-remote`, `authn-apikeys` | core is wasm-safe |
 | Guarded outbound HTTP, `--offline` | `api`, `netpolicy` | `netpolicy` alone is wasm-safe |
 
-The crate [feature table](https://github.com/hop-top/poly-kit/blob/main/sdk/rs/README.md#features)
+The crate [feature table](https://github.com/hop-top/poly-kit/blob/next/sdk/rs/README.md#features)
 lists what each feature pulls in with crate counts.
 
 Gaps taken from the parity page:

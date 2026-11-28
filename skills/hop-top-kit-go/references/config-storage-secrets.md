@@ -47,11 +47,11 @@ runtime; never commit a literal key.
 
 ## Pages
 
-- [config](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/config.md), [XDG](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/xdg.md),
-  [inspect config paths](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/inspect-config-paths.md)
-- [storage abstractions](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/concepts/storage-abstractions.md),
-  [blob](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/store-files-with-blob.md),
-  [SQLite JSON store](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/use-the-sqlite-json-store.md),
-  [HTTP cache](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cache-http-responses.md),
-  [project registry](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/use-the-project-registry.md)
-- [secret management](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/secret-management-guide.md)
+- [config](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/config.md), [XDG](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/xdg.md),
+  [inspect config paths](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/inspect-config-paths.md)
+- [storage abstractions](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/concepts/storage-abstractions.md),
+  [blob](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/store-files-with-blob.md),
+  [SQLite JSON store](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/use-the-sqlite-json-store.md),
+  [HTTP cache](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/cache-http-responses.md),
+  [project registry](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/use-the-project-registry.md)
+- [secret management](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/secret-management-guide.md)

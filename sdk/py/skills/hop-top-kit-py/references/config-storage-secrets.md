@@ -1,7 +1,7 @@
 # Config, storage and secrets
 
 Open when a tool reads layered config, needs XDG directories, or keeps small
-state in SQLite. Reference: [Python SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-sdk.md).
+state in SQLite. Reference: [Python SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/py-sdk.md).
 Every module here has cell `unverified` in [coverage](coverage.md): no
 shared corpus pins it to Go, so test before promising identical behaviour.
 

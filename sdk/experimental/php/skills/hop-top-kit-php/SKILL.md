@@ -95,9 +95,9 @@ driver needs a server and the `pdo_pgsql` extension.
 
 The coverage files are a snapshot at this skill's version. Compare with
 `composer show hop-top/kit`, and read the current
-[parity page](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/capability-parity.md).
+[parity page](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/capability-parity.md).
 Long-form PHP detail:
-[PHP SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/php-sdk.md).
+[PHP SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/php-sdk.md).
 
 ## Open when
 

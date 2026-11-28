@@ -1,7 +1,7 @@
 # Events, jobs and runtime
 
 Open when components must react to events, state changes must replicate, or
-a tool notifies or records usage. Long form: [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#bus).
+a tool notifies or records usage. Long form: [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/rs-sdk.md#bus).
 
 | Need | Feature | Notes |
 |------|---------|-------|

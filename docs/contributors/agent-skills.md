@@ -146,7 +146,7 @@ Absolute forms; no other branch, no other host:
 | Target | Form |
 |--------|------|
 | another skill | `https://github.com/hop-top/<mirror>/blob/main/skills/<name>/SKILL.md` |
-| a docs page | `https://github.com/hop-top/poly-kit/blob/main/docs/<path>` |
+| a docs page | `https://github.com/hop-top/poly-kit/blob/next/docs/<path>` |
 
 The mirror is the one that publishes that skill (table above). Installers
 copy bytes and gym pins a content digest, so links are never rewritten at

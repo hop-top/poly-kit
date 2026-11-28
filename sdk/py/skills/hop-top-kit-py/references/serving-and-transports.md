@@ -2,10 +2,10 @@
 
 Open when a tool needs a long-running `serve` command, a service lifecycle,
 or its commands callable as MCP tools. References:
-[Python SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-sdk.md), the
-[serve contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md) and the guides
-[serve MCP with the SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-with-the-sdk.md) and
-[manage the service lifecycle](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/manage-the-service-lifecycle.md).
+[Python SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/py-sdk.md), the
+[serve contract](https://github.com/hop-top/poly-kit/blob/next/docs/contracts/serve-lifecycle.md) and the guides
+[serve MCP with the SDK](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/serve-mcp-with-the-sdk.md) and
+[manage the service lifecycle](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/manage-the-service-lifecycle.md).
 
 ## Decisions
 

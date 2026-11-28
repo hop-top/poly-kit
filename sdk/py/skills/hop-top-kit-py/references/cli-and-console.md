@@ -2,8 +2,8 @@
 
 Open when building commands, rendering output, shaping errors, or adding
 aliases, completion, prompts or TUI widgets in this port. Reference pages:
-[Python SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-sdk.md) and
-[Python CLI API reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-api-reference.md).
+[Python SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/py-sdk.md) and
+[Python CLI API reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/py-api-reference.md).
 
 ## Decisions
 

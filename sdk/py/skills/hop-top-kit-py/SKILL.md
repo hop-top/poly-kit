@@ -101,7 +101,7 @@ codes: [CLI and console](references/cli-and-console.md).
 This skill is at `metadata.version`; installed:
 `python -c "import importlib.metadata as m; print(m.version('hop-top-kit'))"`.
 If they differ, read the
-[parity page](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/capability-parity.md).
+[parity page](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/capability-parity.md).
 
 ## Open when
 

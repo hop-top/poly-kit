@@ -2,7 +2,7 @@
 
 Open when adding delegation safety, path scope, offline enforcement, provenance, telemetry,
 TypeIDs or upgrade migrations. Status per capability: [coverage](coverage.md). Depth:
-[TypeScript API reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/ts-api-reference.md).
+[TypeScript API reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/ts-api-reference.md).
 
 ## Modules
 
@@ -29,7 +29,7 @@ are `partial`; read their Evidence in coverage. Tell the user what is unpinned a
   destructive. A value outside the tier set is refused before the handler runs.
 - Handlers under `--dry-run` call `isDryRun(cmd)` and `renderPlan`.
 - Permission rules and per-caller budgets are loaded but never evaluated here.
-- Guide: [guard destructive commands](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/guard-destructive-commands.md).
+- Guide: [guard destructive commands](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/guard-destructive-commands.md).
 
 ## Telemetry
 

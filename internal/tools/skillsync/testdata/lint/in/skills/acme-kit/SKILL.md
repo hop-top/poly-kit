@@ -25,4 +25,4 @@ Choose by language, then open [acme-kit-go](https://example.test/acme/kit/blob/m
 | [references/go-only.md](references/go-only.md) | the task needs a capability only Go has |
 | [scripts/detect.sh](scripts/detect.sh) | the language of the project is not known |
 
-Source of truth: [capability parity](https://example.test/acme/mono/blob/main/parity.md).
+Source of truth: [capability parity](https://example.test/acme/mono/blob/next/parity.md).

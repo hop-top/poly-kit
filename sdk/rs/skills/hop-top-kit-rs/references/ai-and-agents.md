@@ -1,7 +1,7 @@
 # AI and agents
 
 Open when calling models, routing between them, or grading a CLI. Long form:
-[Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#feature-notes).
+[Rust SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/rs-sdk.md#feature-notes).
 
 | Need | Feature | Notes |
 |------|---------|-------|

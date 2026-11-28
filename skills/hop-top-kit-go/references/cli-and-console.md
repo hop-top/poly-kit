@@ -41,17 +41,17 @@ package (completion, aliases, prompts, TUI, markdown, progress).
 
 ## Pages
 
-- [CLI API](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/cli-api-reference.md) and
-  [getting started](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/getting-started-cli.md)
-- [output](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/output.md),
-  [flag enums](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/flag-enums.md),
-  [help rendering](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/help-rendering.md)
-- [command annotations](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/declare-and-read-command-annotations.md),
-  [autocorrect](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/enable-flag-autocorrect.md),
-  [progress](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/report-command-progress.md)
-- [completion](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/completion-api.md),
-  [aliases](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/alias-api.md),
-  [wizard](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/wizard-api.md),
-  [TUI gallery](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/tui-component-gallery.md),
-  [markdown](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/render-markdown-in-the-terminal.md)
-- [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md): the contract every port shares
+- [CLI API](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/cli-api-reference.md) and
+  [getting started](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/getting-started-cli.md)
+- [output](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/output.md),
+  [flag enums](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/flag-enums.md),
+  [help rendering](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/help-rendering.md)
+- [command annotations](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/declare-and-read-command-annotations.md),
+  [autocorrect](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/enable-flag-autocorrect.md),
+  [progress](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/report-command-progress.md)
+- [completion](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/completion-api.md),
+  [aliases](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/alias-api.md),
+  [wizard](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/wizard-api.md),
+  [TUI gallery](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/tui-component-gallery.md),
+  [markdown](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/render-markdown-in-the-terminal.md)
+- [CLI parity guide](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/cli-parity-guide.md): the contract every port shares

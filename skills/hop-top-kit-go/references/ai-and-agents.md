@@ -36,11 +36,11 @@ making a tool legible to agent harnesses.
 
 ## Pages
 
-- [LLM](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/llm.md), [prompt](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/prompt.md),
-  [judge](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/judge.md)
-- [toolspec API](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/toolspec-api.md),
-  [adopter guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/integrations/toolspec-adopter-guide.md),
-  [cmdreflect](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/cmdreflect.md),
-  [uxp](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/uxp.md),
-  [compliance](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/compliance-api.md),
-  [extension discovery](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/ext-discover-protocol.md)
+- [LLM](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/llm.md), [prompt](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/prompt.md),
+  [judge](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/judge.md)
+- [toolspec API](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/toolspec-api.md),
+  [adopter guide](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/integrations/toolspec-adopter-guide.md),
+  [cmdreflect](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/cmdreflect.md),
+  [uxp](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/uxp.md),
+  [compliance](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/compliance-api.md),
+  [extension discovery](https://github.com/hop-top/poly-kit/blob/next/docs/contracts/ext-discover-protocol.md)

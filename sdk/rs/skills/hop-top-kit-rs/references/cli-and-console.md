@@ -1,7 +1,7 @@
 # CLI and console
 
 Open when building the CLI root, its flags and help, completion, aliases or
-progress output. Long form: [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#cli-root).
+progress output. Long form: [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/rs-sdk.md#cli-root).
 
 | Need | Feature | Entry point |
 |------|---------|-------------|

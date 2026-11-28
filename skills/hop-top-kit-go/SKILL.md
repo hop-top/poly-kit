@@ -46,7 +46,7 @@ Tier: reference.
   module needs the Go version its `go.mod` states.
 - Binary, any one of: `go install hop.top/kit/cmd/kit@latest`,
   `brew install hop-top/tap/kit`, or the release tarball
-  ([cmd/kit README](https://github.com/hop-top/poly-kit/blob/main/cmd/kit/README.md)).
+  ([cmd/kit README](https://github.com/hop-top/poly-kit/blob/next/cmd/kit/README.md)).
 - Run `scripts/detect-port.sh` in a project and compare its `kit=` line with
   `metadata.version` above; a mismatch means this skill's names may be stale.
 
@@ -67,7 +67,7 @@ command in-process like both `main_test.go` files: `root.Cmd.SetOut`,
 
 Find it by name in `references/coverage.md` (generated; the full catalogue
 with package paths is the
-[capability index](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/capability-index.md)).
+[capability index](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/capability-index.md)).
 A name in neither is not a kit capability: say so, do not invent a package.
 Package READMEs under `go/` are the API truth; this skill points, it does
 not restate.
