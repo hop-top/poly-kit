@@ -13,7 +13,7 @@ A parity contract, shared corpus or cross-language test pins the SDK's behavior 
 - Guardrails and trust: Path scope, TypeID
 - AI and agents: Toolspec, 12-factor compliance check
 
-## partial (8)
+## partial (9)
 
 The SDK ships a subset: a documented gap, one leg of the capability, or a stub.
 
@@ -24,9 +24,10 @@ The SDK ships a subset: a documented gap, one leg of the capability, or a stub.
 - Side-effect seams (Guardrails and trust): ts:sideeffect.ts py:sideeffect.py rs:sideeffect/ (--dry-run flag and per-command tiers not wired) php:Cli/SideEffect.php; shared annotation tiers, no corpus
 - Upgrade and migrations (Guardrails and trust): make test-parity-upgrade (Go/Rs/Py/TS/PHP), every runner on all three corpus files; rs:upgrade/ is migrations plus the offline-aware release check (download and replace not ported); py:upgrade/ and ts:upgrade/ have the release check, lenient semver, Migration, Registry, the document migrator and the Migrator; php:Upgrade/ has the same without the release check; drivers: py configfile, fsdir, sqlite, postgres; ts configfile, fsdir, sqlite, postgres; php configfile, fsdir, sqlite, postgres; rs configfile, fsdir, sqlite, postgres; no port has the migrate command tree or a tidb driver
 - LLM client (AI and agents): make test-parity-llm (Go/Rs/Py/TS, contracts/llm-v1); ts:llm.ts py:llm.py rs:llm/
-- LLM providers (AI and agents): ts:llm-anthropic.ts llm-openai.ts triton/ py:llm_anthropic.py llm_openai.py rs:llm/ (anthropic, openai, google, ollama, triton); ts and py have no Google or Ollama adapter
+- LLM providers (AI and agents): ts:llm-anthropic.ts llm-openai.ts (a Triton client exists in `src/triton/` but is not exported); py:llm_anthropic.py llm_openai.py rs:llm/ (anthropic, openai, google, ollama, triton); ts and py have no Google or Ollama adapter
+- LLM routing (AI and agents): ts:routellm.ts (the RouteLLM adapter; the native router in `src/router/` exists but is not exported) py:routellm_adapter.py routellm_grpc.py rs:llm/router/ rs:llm/routellm/
 
-## unverified (18)
+## unverified (17)
 
 A module exists but nothing in the repo pins it to Go; depth not checked.
 
@@ -35,7 +36,6 @@ A module exists but nothing in the repo pins it to Go; depth not checked.
 - Serving and transports: REST API toolkit, ConnectRPC, Served middleware
 - Events, jobs and runtime: Event bus, Telemetry
 - Guardrails and trust: Network policy, Delegation safety, Provenance
-- AI and agents: LLM routing
 
 ## none (36)
 
