@@ -3,7 +3,7 @@ name: hop-top-kit-php
 description: Build a PHP CLI with the experimental kit PHP port (Composer package hop-top/kit, namespace HopTop\Kit). Use when PHP code requires hop-top/kit, when adding kit's output formats, MCP surface or serve lifecycle to a PHP tool, or when asked whether the PHP port can do something. Most kit capabilities are absent from this port; it says what exists and when to switch to another port or the kit sidecar.
 license: MIT
 metadata:
-  version: "0.5.0-alpha.6" # x-release-please-version
+  version: "0.5.0-alpha.7" # x-release-please-version
   min_version: "0.5.0-alpha.6"
 ---
 
@@ -90,7 +90,7 @@ is newer. Long-form PHP detail:
 <!-- skills-sync:begin version -->
 ## Versions
 
-Written for 0.5.0-alpha.6 # x-release-please-version
+Written for 0.5.0-alpha.7 # x-release-please-version
 Expects 0.5.0-alpha.6 or newer.
 
 Installed: `composer show hop-top/kit`; `scripts/detect-port.sh` shows what the manifest pins. Older
