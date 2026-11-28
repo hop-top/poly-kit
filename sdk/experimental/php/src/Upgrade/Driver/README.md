@@ -48,12 +48,12 @@ echo file_get_contents("$dir/data/a.txt"); // one
   never quoted) to `<base>.tmp`, then renamed to `<dest>/<db file name>`; a missing file means nothing to back up
 - `Sqlite` path only: restore copies beside the db, fsyncs, renames over it, removes `-wal`, `-shm`, `-journal`;
   no open handle on the file. With `db:` the handle is never closed or reconfigured, backup runs on it, and
-  `restore` throws `BackupUnsupported` (a run with no `down` then ends not restored)
+  `restore` throws `BackupUnsupported` (a failed `up` then ends not restored, no `down` runs)
 - `Sqlite` lock: `flock(LOCK_EX | LOCK_NB)` polled every 50ms on `<data dir>/<name>/.lock`, the Go driver's file;
   a cancelled wait throws `CanceledException` and holds nothing
 - `Postgres` needs `pdo_pgsql`. Table `^[a-zA-Z_][a-zA-Z0-9_]{0,63}$` (`invalid table name: "<t>"`), created
-  under `pg_advisory_xact_lock`; a `VersionStorer`; `backup`/`restore` throw `BackupUnsupported`. `$pdo` does
-  version reads and writes, with any error mode, and is never closed
+  under `pg_advisory_xact_lock`; a `VersionStorer`; `backup`/`restore` throw `BackupUnsupported`
+  (a failed `up` ends not restored: make it atomic). `$pdo` does version reads and writes, any error mode, never closed
 - `Postgres` lock: key `kit-upgrade:<table>:<name>` hashed by the server, on a connection from the callable. The
   wait polls `pg_try_advisory_lock` every 50ms (a blocked `pg_advisory_lock` cannot be cancelled in PHP), so a
   cancelled wait holds nothing. Unlock is `pg_advisory_unlock` on that connection; `false` or an error ends the

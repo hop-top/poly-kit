@@ -53,25 +53,25 @@ try {
 
 ## Contract
 
-- Versions: a leading `v` and `+build` are dropped; major, minor and patch are the leading digits of
-  their part (missing or non-numeric is 0); a release sorts above its pre-releases
-- `pending($schema, $from, $to)`: `from < version <= to`, ascending, versions as registered
-- Documents: steps chain by `from`, never downgrade, refuse gaps, a missing or non-integer version
-  (unless `missingIsZero`) and malformed steps; on error the input is untouched
-- Errors extend `UpgradeException`: `DocNewerException`, `DocVersionException`, `DocGapException`,
-  `DocApplyException`, `DocInvalidException`, and `VerifyException` for a failed verify
-- An empty JSON object inside a document is an empty `stdClass`, so it re-encodes as `{}`; objects whose
-  keys are `0..n-1` decode as lists. Integers beyond `PHP_INT_MAX` are floats
+- Versions: a leading `v` and `+build` drop; major, minor, patch are the leading digits of their part (missing
+  or non-numeric is 0); a release sorts above its pre-releases. `pending($s, $from, $to)`: `from < v <= to`, ascending
+- Documents: steps chain by `from`, never downgrade, refuse gaps, a missing or non-integer version (unless
+  `missingIsZero`) and malformed steps; on error the input is untouched. Errors extend `UpgradeException`:
+  `DocNewerException`, `DocVersionException`, `DocGapException`, `DocApplyException`, `DocInvalidException`
+  and `VerifyException` (a failed verify). An empty JSON object is an empty `stdClass` (re-encodes as `{}`);
+  objects whose keys are `0..n-1` decode as lists; integers beyond `PHP_INT_MAX` are floats
 - `run()`: per schema `Locker::lock`, `version()`, baseline, pending, `backup`, each `up`, `verify`, version
-  record, final verify, rollback (`down` in reverse, else `restore`), prune, unlock (always, `finally`). A
-  version is recorded after each step: in `<dataDir>/<schema>/version` (0600), unless the driver is a
-  `VersionStorer`. Backups: `<dataDir>/backups/<schema>/pre-<v>/` plus `pre-<v>.version`
-- Capabilities are interfaces checked with `instanceof`: `VersionStorer`, `Locker`. A driver throws
-  `BackupUnsupported` from `backup`/`restore`; the run goes on without a backup, and a rollback that needs it
-  ends `NotRestored`. `UpgradeErrors::isNotRestored/isBackupUnsupported/isVerify/isCanceled` search the
-  `getPrevious()` chain and the failed rollback
+  record, final verify, rollback, prune, unlock (always, `finally`). A version is recorded after each step:
+  in `<dataDir>/<schema>/version` (0600), unless the driver is a `VersionStorer`. Backups:
+  `<dataDir>/backups/<schema>/pre-<v>/` plus `pre-<v>.version`
+- Rollback: a failed `up` counts as applied but is never downed: with a backup the run restores it and
+  records the pre-run version, no `down` runs; without one (server database, `Sqlite` with `db:`) it ends
+  `NotRestored`, so make each `up` atomic. A failed verify, record or final verify runs `down` newest first
+- Capabilities are interfaces checked with `instanceof`: `VersionStorer`, `Locker`. A driver throws `BackupUnsupported`
+  from `backup`/`restore`; the run goes on without a backup. `UpgradeErrors::isNotRestored/isBackupUnsupported/
+  isVerify/isCanceled` search the `getPrevious()` chain and the failed rollback
 - Events go to an optional `EventPublisher` (`kit.core.migration.*`); warnings to a `warn` closure (`error_log`)
-- Drivers `ConfigFile`, `FsDir`, `Sqlite` (PDO) and `Postgres` (PDO): [Driver](Driver/README.md)
+- Drivers `ConfigFile`, `FsDir`, `Sqlite` (PDO), `Postgres` (PDO): [Driver](Driver/README.md)
 - Parity: [`contracts/upgrade-v1`](../../../../../contracts/upgrade-v1/README.md), `versions.json`,
   `document.json` and `migrator.json`, run by `tests/Upgrade/Upgrade*ConformanceTest.php`
 

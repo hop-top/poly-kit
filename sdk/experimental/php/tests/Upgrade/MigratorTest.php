@@ -71,7 +71,10 @@ final class MigratorTest extends TestCase
     public function aSuccessfulRollbackIsNeitherNotRestoredNorUnsupported(): void
     {
         $reg = new Registry();
-        $reg->register($this->mig('1.1.0', static fn () => throw new \RuntimeException('boom'), down: true));
+        $rec = $this->rec();
+        $reg->register(new Migration('1.1.0', 'db', static function (): void {}, static function () use ($rec): void {
+            $rec('down 1.1.0');
+        }, static fn () => throw new \RuntimeException('boom')));
         $m = $this->migrator($reg);
         $m->addDriver(new RecordingDriver(['name' => 'db', 'version' => '1.0.0'], $this->rec()));
         try {
@@ -82,6 +85,53 @@ final class MigratorTest extends TestCase
             self::assertFalse(UpgradeErrors::isBackupUnsupported($e));
             self::assertSame('boom', $e->getPrevious()?->getPrevious()?->getMessage());
         }
+        self::assertContains('down 1.1.0', $this->calls, 'a failed verify is rolled back by down');
+    }
+
+    #[Test]
+    public function aFailedUpRestoresTheBackupAndNeverCallsAnyDown(): void
+    {
+        $downs = 0;
+        $reg = new Registry();
+        $count = static function () use (&$downs): void {
+            $downs++;
+        };
+        $reg->register(new Migration('1.1.0', 'db', static function (): void {}, $count));
+        $reg->register(new Migration('1.2.0', 'db', static fn () => throw new \RuntimeException('boom'), $count));
+        $m = $this->migrator($reg);
+        $m->addDriver(new RecordingDriver(['name' => 'db', 'version' => '1.0.0'], $this->rec()));
+        try {
+            $m->run();
+            self::fail('no exception');
+        } catch (MigrateException $e) {
+            self::assertSame('migrate db: up 1.2.0 failed: boom', $e->getMessage());
+        }
+        self::assertSame(0, $downs);
+        self::assertContains('db restore pre-1.1.0', $this->calls);
+        self::assertNotContains('db down 1.1.0', $this->calls);
+        self::assertSame('1.0.0', VersionFile::readIn("{$this->tmp}/data", 'db'), 'the pre-run version is recorded');
+    }
+
+    #[Test]
+    public function aFailedUpWithNoBackupIsNotRestoredAndNeverCallsAnyDown(): void
+    {
+        $downs = 0;
+        $count = static function () use (&$downs): void {
+            $downs++;
+        };
+        $reg = new Registry();
+        $reg->register(new Migration('1.1.0', 'db', static function (): void {}, $count));
+        $reg->register(new Migration('1.2.0', 'db', static fn () => throw new \RuntimeException('boom'), $count));
+        $m = $this->migrator($reg);
+        $m->addDriver(new RecordingDriver(['name' => 'db', 'version' => '1.0.0', 'backup_unsupported' => true], $this->rec()));
+        try {
+            $m->run();
+            self::fail('no exception');
+        } catch (MigrateException $e) {
+            self::assertTrue(UpgradeErrors::isNotRestored($e));
+        }
+        self::assertSame(0, $downs);
+        self::assertSame('1.1.0', VersionFile::readIn("{$this->tmp}/data", 'db'));
     }
 
     #[Test]

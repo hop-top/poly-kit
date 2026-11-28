@@ -18,6 +18,8 @@ final class StepFailure extends Exception
      * @param string $stage up, verify, record, final or canceled
      * @param string $version the version being attempted
      * @param list<Migration> $undo
+     * @param bool $upFailed the newest `$undo` entry is the step whose `up` failed: it counts as
+     *                       applied, but its `down` is never called
      */
     public function __construct(
         public readonly string $stage,
@@ -25,6 +27,7 @@ final class StepFailure extends Exception
         public readonly string $from,
         public readonly Throwable $cause,
         public readonly array $undo,
+        public readonly bool $upFailed = false,
     ) {
         parent::__construct($cause->getMessage(), 0, $cause);
     }
