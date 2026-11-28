@@ -53,6 +53,34 @@ describe('exports map contract', () => {
   });
 });
 
+describe('documented subpaths', () => {
+  const docs = ['README.md', '../../docs/adopters/reference/ts-api-reference.md'];
+
+  it.each(docs)('%s names only subpaths the exports map declares', (doc) => {
+    const text = readFileSync(join(pkgDir, doc), 'utf8');
+    const named = new Set(
+      [...text.matchAll(/@hop-top\/kit\/([a-z][a-z0-9/-]*[a-z0-9])/g)]
+        // `upgrade/drivers/{a,b}` is brace shorthand, not a subpath.
+        .filter((m) => !text.startsWith('/{', m.index + m[0].length))
+        .map((m) => `./${m[1]}`),
+    );
+    expect(named.size).toBeGreaterThan(0);
+    for (const sub of named) {
+      expect(pkg.exports, `${doc}: ${sub}`).toHaveProperty([sub]);
+    }
+  });
+
+  // Adopter-facing modules (README, API reference, capability parity page).
+  it.each(['uri', 'wizard', 'bus'])('%s is importable as a subpath', (name) => {
+    expect(pkg.exports).toHaveProperty([`./${name}`]);
+  });
+
+  // Plumbing behind the cli factory: its public names are re-exported from `./cli`.
+  it.each(['delegation', 'sideeffect', 'policy'])('%s stays internal (reached through ./cli)', (name) => {
+    expect(pkg.exports).not.toHaveProperty([`./${name}`]);
+  });
+});
+
 describe('root barrel', () => {
   it('re-exports every public subpath except sqlstore and the upgrade drivers as a namespace', () => {
     // Kebab-case subpaths become camelCase namespaces (completion-values -> completionValues).
