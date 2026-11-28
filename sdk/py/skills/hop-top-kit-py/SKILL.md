@@ -84,7 +84,7 @@ The `upgrade-pg-test` extra in the source tree is the SDK's own test dependency,
 <!-- skills-sync:begin version -->
 ## Versions
 
-Written for 0.5.0-alpha.10. # x-release-please-version
+Written for 0.5.0-alpha.10 # x-release-please-version
 Expects 0.5.0-alpha.10 or newer.
 
 Installed: `pip show hop-top-kit` or `uv pip show hop-top-kit`; uv prints the PEP 440 spelling (a,

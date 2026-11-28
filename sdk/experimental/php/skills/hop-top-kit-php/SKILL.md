@@ -90,7 +90,7 @@ is newer. Long-form PHP detail:
 <!-- skills-sync:begin version -->
 ## Versions
 
-Written for 0.5.0-alpha.6. # x-release-please-version
+Written for 0.5.0-alpha.6 # x-release-please-version
 Expects 0.5.0-alpha.6 or newer.
 
 Installed: `composer show hop-top/kit`; `scripts/detect-port.sh` shows what the manifest pins. Older

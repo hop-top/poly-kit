@@ -25,7 +25,7 @@ Hand-written intro.
 <!-- skills-sync:begin version -->
 ## Versions
 
-Written for 1.0.0. # x-release-please-version
+Written for 1.0.0 # x-release-please-version
 Expects 1.4.0-beta.2 or newer.
 
 The `kit` binary: `kit --version` prints `kit v<version>` (a source build prints `kit vdev`: nothing

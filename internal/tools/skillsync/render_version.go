@@ -13,7 +13,7 @@ const versionWidth = 100
 // the metadata.version line it copies; the second is the minimum release,
 // which no release tooling writes.
 func writtenForLine(version string) string {
-	return fmt.Sprintf("Written for %s. %s", version, versionAnnotation)
+	return fmt.Sprintf("Written for %s %s", version, versionAnnotation)
 }
 
 func expectsLine(min string) string { return fmt.Sprintf("Expects %s or newer.", min) }

@@ -22,7 +22,7 @@ Tier: experimental.
 <!-- skills-sync:begin version -->
 ## Versions
 
-Written for 1.0.0. # x-release-please-version
+Written for 1.0.0 # x-release-please-version
 Expects 0.3.0-alpha.3 or newer.
 
 Installed: `cargo tree -i acme-kit --depth 0`; `scripts/detect-port.sh` shows what the manifest

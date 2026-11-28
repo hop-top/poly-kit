@@ -103,6 +103,24 @@
           "type": "json",
           "path": "engine/sdk/ts-kit-engine/package.json",
           "jsonpath": "$.kit.version"
+        },
+        {
+          "type": "generic",
+          "path": "skills/hop-top-kit/SKILL.md"
+        },
+        {
+          "type": "json",
+          "path": "skills/hop-top-kit/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "generic",
+          "path": "skills/hop-top-kit-go/SKILL.md"
+        },
+        {
+          "type": "json",
+          "path": "skills/hop-top-kit-go/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
         }
       ],
       "prerelease": true,
@@ -151,6 +169,15 @@
         {
           "type": "generic",
           "path": "/internal/template/builtins/cli-php/composer.json.tmpl"
+        },
+        {
+          "type": "generic",
+          "path": "skills/hop-top-kit-php/SKILL.md"
+        },
+        {
+          "type": "json",
+          "path": "skills/hop-top-kit-php/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
         }
       ],
       "prerelease": true,
@@ -190,6 +217,15 @@
         {
           "type": "generic",
           "path": "/docs/adopters/guides/serve-mcp-from-any-sdk.md"
+        },
+        {
+          "type": "generic",
+          "path": "skills/hop-top-kit-rs/SKILL.md"
+        },
+        {
+          "type": "json",
+          "path": "skills/hop-top-kit-rs/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
         }
       ],
       "prerelease": true,
@@ -211,6 +247,15 @@
         {
           "type": "generic",
           "path": "/internal/template/builtins/cli-py/pyproject.toml.tmpl"
+        },
+        {
+          "type": "generic",
+          "path": "skills/hop-top-kit-py/SKILL.md"
+        },
+        {
+          "type": "json",
+          "path": "skills/hop-top-kit-py/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
         }
       ],
       "prerelease": true,
@@ -231,6 +276,15 @@
         {
           "type": "generic",
           "path": "/internal/template/builtins/cli-ts/package.json.tmpl"
+        },
+        {
+          "type": "generic",
+          "path": "skills/hop-top-kit-ts/SKILL.md"
+        },
+        {
+          "type": "json",
+          "path": "skills/hop-top-kit-ts/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
         }
       ],
       "prerelease": true,
