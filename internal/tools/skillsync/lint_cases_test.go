@@ -17,6 +17,7 @@ const (
 const (
 	tsDesc  = "  Use the Acme kit from TypeScript. Use when the project is TypeScript and needs the kit."
 	tsStamp = `  version: "0.3.0-alpha.4" # x-release-please-version`
+	tsMin   = `  min_version: "0.3.0-alpha.4"`
 	srcLine = "\nSource of truth:"
 )
 
@@ -126,14 +127,37 @@ var ruleCases = []lintCase{
 	// S6 versions
 	{Name: "S6/stamp-differs-from-manifest", Mut: mutation{Edits: [][3]string{
 		{tsDir + "/SKILL.md", tsStamp, strings.Replace(tsStamp, "alpha.4", "alpha.5", 1)},
+		{tsDir + "/SKILL.md", "Written for 0.3.0-alpha.4.", "Written for 0.3.0-alpha.5."},
 		{tsDir + "/.claude-plugin/plugin.json", `"version": "0.3.0-alpha.4"`, `"version": "0.3.0-alpha.5"`}}},
 		Want: []want{{File: "SKILL.md", Anchor: "alpha.5", Rule: "S6"}}},
 	{Name: "S6/stamp-not-annotated", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", tsStamp, `  version: "0.3.0-alpha.4"`}}},
 		Want: []want{{File: "SKILL.md", Anchor: `version: "0.3.0-alpha.4"`, Rule: "S6"}}},
-	{Name: "S6/no-stamp", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", "metadata:\n" + tsStamp + "\n", ""}}},
+	{Name: "S6/no-stamp", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", "metadata:\n" + tsStamp + "\n" + tsMin + "\n", ""}}},
 		Want: []want{{File: "SKILL.md", Line: 1, Rule: "S6"}}},
 	{Name: "S6/stray-version", Mut: mutation{Edits: [][3]string{addLine(tsDir, "Needs version 2.3.4 or later.")}},
 		Want: []want{{File: "SKILL.md", Anchor: "2.3.4", Rule: "S6"}}},
+	{Name: "S6/version-block-missing", Mut: mutation{Fn: dropVersionBlock(tsDir)},
+		Want: []want{{File: "SKILL.md", Line: 1, Rule: "S6"}}},
+	{Name: "S6/version-block-hand-edited", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", "`pnpm add @acme/kit@latest`", "`pnpm add @acme/kit`"}}},
+		Want: []want{{File: "SKILL.md", Anchor: "skills-sync:begin version", Rule: "S6"}}},
+	{Name: "S6/version-block-hand-edited-version", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", "`pnpm add @acme/kit@latest`", "`pnpm add @acme/kit@2.3.4`"}}},
+		Want: []want{{File: "SKILL.md", Anchor: "skills-sync:begin version", Rule: "S6"}}},
+	{Name: "S6/generated-line-copied-outside-block", Mut: mutation{Edits: [][3]string{addLine(tsDir, "- Expects 0.3.0-alpha.4 or newer.")}},
+		Want: []want{{File: "SKILL.md", Anchor: "- Expects", Rule: "S6"}}},
+	{Name: "S6/min-missing", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", tsMin + "\n", ""}}},
+		Want: []want{{File: "SKILL.md", Anchor: "metadata:", Rule: "S6"}}},
+	{Name: "S6/min-not-a-release", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", `min_version: "0.3.0-alpha.4"`, `min_version: "latest"`}}},
+		Want: []want{{File: "SKILL.md", Anchor: "min_version:", Rule: "S6"}}},
+	{Name: "S6/min-differs-from-ports", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", `min_version: "0.3.0-alpha.4"`, `min_version: "0.3.0-alpha.3"`}}},
+		Want: []want{{File: "SKILL.md", Anchor: "min_version:", Rule: "S6"}}},
+	{Name: "S6/min-above-version", Mut: mutation{Fn: func(t *testing.T, root string) {
+		edit(t, root, "ports.yaml", "min_version: 0.3.0-alpha.4", "min_version: 0.3.0-alpha.9")
+		resync(t, root)
+	}}, Want: []want{{File: "SKILL.md", Anchor: "min_version:", Rule: "S6"}}},
+	{Name: "S6/min-below-version-allowed", Mut: mutation{Fn: func(t *testing.T, root string) {
+		edit(t, root, "ports.yaml", "min_version: 0.3.0-alpha.4", "min_version: 0.3.0-alpha.1")
+		resync(t, root)
+	}}},
 	{Name: "S6/annotated-version-allowed", Mut: mutation{Edits: [][3]string{addLine(tsDir, "Needs version 2.3.4 or later. # x-release-please-version")}}},
 
 	// S7 module names
@@ -201,7 +225,9 @@ func TestStandaloneSkipsRulesThatNeedTheRepository(t *testing.T) {
 		"S4/docs-other-branch": true, "S4/skill-other-branch": true, "S4/docs-path-missing": true,
 		"S4/not-a-skill-url": true, "S4/repository-url": true,
 		"S5/area-without-capability": true, "S6/stamp-differs-from-manifest": true, "S6/stamp-not-annotated": true,
-		"S6/no-stamp": true, "S6/stray-version": true, "S7/ts-module": true, "S7/py-module": true,
+		"S6/no-stamp": true, "S6/stray-version": true, "S6/version-block-missing": true, "S6/version-block-hand-edited": true,
+		"S6/version-block-hand-edited-version": true, "S6/generated-line-copied-outside-block": true, "S6/min-missing": true,
+		"S6/min-not-a-release": true, "S6/min-differs-from-ports": true, "S6/min-above-version": true, "S7/ts-module": true, "S7/py-module": true,
 		"S7/rust-feature": true, "S7/go-package": true, "S7/php-namespace": true,
 	}
 	for _, c := range ruleCases {

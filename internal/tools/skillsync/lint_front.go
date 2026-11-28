@@ -83,19 +83,23 @@ func (fi *frontInfo) line(name string) int {
 	return 1
 }
 
-// metaVersion returns metadata.version and the line of that key.
-func (fi *frontInfo) metaVersion() (string, int, bool) {
+// metaValue returns metadata.<key>, the line of that key, and whether it
+// exists. When it does not, the line is the metadata key's (else 1).
+func (fi *frontInfo) metaValue(key string) (string, int, bool) {
 	meta, ok := fi.key("metadata")
 	if !ok || meta.Val.Kind != yaml.MappingNode {
 		return "", 1, false
 	}
 	for i := 0; i+1 < len(meta.Val.Content); i += 2 {
-		if meta.Val.Content[i].Value == "version" {
+		if meta.Val.Content[i].Value == key {
 			return meta.Val.Content[i+1].Value, meta.Val.Content[i].Line + 1, true
 		}
 	}
 	return "", meta.Line, false
 }
+
+// metaVersion returns metadata.version and the line of that key.
+func (fi *frontInfo) metaVersion() (string, int, bool) { return fi.metaValue("version") }
 
 // ruleS1 checks the frontmatter: keys, name, description, block style.
 func (l *lintSkill) ruleS1() {
@@ -169,39 +173,109 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-// ruleS6 checks the version stamp against the release manifest and that
-// every other three-part version sits on an annotated line.
+// ruleS6 checks the version stamp against the release manifest, the minimum
+// release against ports.yaml, the generated version block, and that every
+// other three-part version sits on an annotated line. Lines judged here are
+// not scanned again: the stamp, the minimum, and the block when it equals
+// what the generator writes (so only those exact generated lines may carry a
+// version outside an annotated line).
 func (l *lintSkill) ruleS6() {
-	stampLine := 0 // the metadata.version line, judged above
-	if l.front != nil {
-		ver, line, ok := l.front.metaVersion()
-		if ok {
-			stampLine = line
-		}
+	if l.front == nil {
+		return // S1 reports the frontmatter; there is nothing to judge a version against
+	}
+	judged := map[int]bool{} // SKILL.md lines already judged
+	ver, line, ok := l.front.metaVersion()
+	if ok {
+		judged[line] = true
+	}
+	switch {
+	case !ok:
+		l.add("SKILL.md", line, "S6", "metadata.version is missing")
+	case !strings.Contains(l.front.Text[line-1], versionAnnotation):
+		l.add("SKILL.md", line, "S6", "metadata.version line lacks the %q annotation", versionAnnotation)
+	default:
+		want, has := l.g.manifest[l.s.Comp.Dir]
 		switch {
-		case !ok:
-			l.add("SKILL.md", line, "S6", "metadata.version is missing")
-		case !strings.Contains(l.front.Text[line-1], versionAnnotation):
-			l.add("SKILL.md", line, "S6", "metadata.version line lacks the %q annotation", versionAnnotation)
-		default:
-			want, has := l.g.manifest[l.s.Comp.Dir]
-			switch {
-			case !has:
-				l.add("SKILL.md", line, "S6", "the release manifest has no entry for %q", l.s.Comp.Dir)
-			case ver != want:
-				l.add("SKILL.md", line, "S6", "metadata.version %q differs from the release manifest's %q for %q", ver, want, l.s.Comp.Dir)
-			}
+		case !has:
+			l.add("SKILL.md", line, "S6", "the release manifest has no entry for %q", l.s.Comp.Dir)
+		case ver != want:
+			l.add("SKILL.md", line, "S6", "metadata.version %q differs from the release manifest's %q for %q", ver, want, l.s.Comp.Dir)
 		}
 	}
+	if _, hasMeta := l.front.key("metadata"); hasMeta {
+		l.checkMinVersion(ver, ok, judged)
+	}
+	l.checkVersionBlock(ver, judged)
 	for _, f := range l.textFiles() {
 		for i, text := range strings.Split(string(f.Data), "\n") {
-			if strings.Contains(text, versionAnnotation) || f.Rel == "SKILL.md" && i+1 == stampLine {
+			if strings.Contains(text, versionAnnotation) || f.Rel == "SKILL.md" && judged[i+1] {
 				continue
 			}
 			for _, v := range threePartVersions(text) {
 				l.add(f.Rel, i+1, "S6", "version %q on a line without the %q annotation; say \"the current release\" instead", v, versionAnnotation)
 			}
 		}
+	}
+}
+
+// checkMinVersion judges metadata.min_version: present, a release, the one
+// ports.yaml gives this skill, and not newer than metadata.version.
+func (l *lintSkill) checkMinVersion(ver string, haveVer bool, judged map[int]bool) {
+	min, line, ok := l.front.metaValue("min_version")
+	if !ok {
+		l.add("SKILL.md", line, "S6", "metadata.min_version is missing (make skills-sync writes it from ports.yaml)")
+		return
+	}
+	judged[line] = true
+	switch {
+	case !validRelease(min):
+		l.add("SKILL.md", line, "S6", "metadata.min_version %q is not a release (x.y.z or x.y.z-prerelease)", min)
+		return
+	case min != l.s.Spec.MinVersion:
+		l.add("SKILL.md", line, "S6", "metadata.min_version %q differs from ports.yaml's %q; run: make skills-sync", min, l.s.Spec.MinVersion)
+	}
+	if haveVer && validRelease(ver) && compareRelease(min, ver) > 0 {
+		l.add("SKILL.md", line, "S6", "metadata.min_version %q is newer than metadata.version %q", min, ver)
+	}
+}
+
+// checkVersionBlock requires the `version` managed block to exist and to be
+// exactly what the generator writes for this skill.
+func (l *lintSkill) checkVersionBlock(ver string, judged map[int]bool) {
+	lines := l.front.Text
+	b, e := -1, -1
+	for i, t := range lines {
+		switch strings.TrimRight(t, "\r") {
+		case beginMarker("version"):
+			if b < 0 {
+				b = i
+			}
+		case endMarker("version"):
+			if e < 0 {
+				e = i
+			}
+		}
+	}
+	if b < 0 || e < b {
+		l.add("SKILL.md", 1, "S6", "the %s ... %s block is missing or misordered (make skills-sync writes it)", beginMarker("version"), endMarker("version"))
+		return
+	}
+	for i := b + 1; i < e; i++ {
+		judged[i+1] = true
+	}
+	if ver == "" {
+		return
+	}
+	s := *l.s
+	s.FM.Metadata.Version = ver
+	want, err := l.g.versionBlock(&s)
+	if err != nil {
+		l.add("SKILL.md", b+1, "S6", "%v", err)
+		return
+	}
+	have := strings.Join(lines[b+1:e], "\n")
+	if strings.TrimRight(have, "\n") != strings.TrimRight(want, "\n") {
+		l.add("SKILL.md", b+1, "S6", "the version block differs from what the generator writes; do not edit it by hand, run: make skills-sync")
 	}
 }
 

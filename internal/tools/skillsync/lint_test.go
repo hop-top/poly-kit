@@ -87,6 +87,7 @@ type mutation struct {
 	Edits  [][3]string // root-relative path, old, new
 	Remove []string
 	Chmod  map[string]fs.FileMode
+	Fn     func(t *testing.T, root string) // arbitrary change, run last
 }
 
 type lintCase struct {
@@ -122,6 +123,42 @@ func (m mutation) apply(t *testing.T, root string) {
 	}
 	for p, mode := range m.Chmod {
 		if err := os.Chmod(filepath.Join(root, p), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if m.Fn != nil {
+		m.Fn(t, root)
+	}
+}
+
+// resync regenerates every output of the fixture root, as `make skills-sync`.
+func resync(t *testing.T, root string) {
+	t.Helper()
+	pl, err := BuildPlan(fixtureOptions(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pl.Write(root); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// dropVersionBlock removes the version block, markers included, from a SKILL.md.
+func dropVersionBlock(dir string) func(*testing.T, string) {
+	return func(t *testing.T, root string) {
+		t.Helper()
+		p := filepath.Join(root, dir, "SKILL.md")
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := string(b)
+		i, j := strings.Index(src, beginMarker("version")), strings.Index(src, endMarker("version"))
+		if i < 0 || j < i {
+			t.Fatal("no version block to drop")
+		}
+		j += len(endMarker("version")) + 1
+		if err := os.WriteFile(p, []byte(src[:i]+src[j:]), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

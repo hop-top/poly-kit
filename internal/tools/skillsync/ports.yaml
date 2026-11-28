@@ -19,9 +19,29 @@ keywords: [hop-top, kit, agent-skill]
 # The parity column that is the reference implementation.
 reference_column: Go
 
+# The shared Claude Code plugin marketplace every hop-top project contributes
+# plugins to (this repository holds none); skills tell users to update from it.
+marketplace:
+  name: hop-top
+  repo: hop-top/skillset
+
+# The executable the router and the Go skill version-check. readme: the page
+# that documents every way to install or upgrade it.
+binary:
+  command: kit
+  upgrade: brew upgrade hop-top/tap/kit
+  readme: cmd/kit/README.md
+
+# min_version: the oldest release a skill copy works with. A maintainer raises
+# it when the skill starts relying on newer API; release tooling never writes
+# it. One value per component, a release string, never newer than the
+# component's release. installed: commands that print the installed package
+# version; upgrade: the command that upgrades the package; installed_note:
+# how that version prints, when it differs from the release string.
 router:
   skill: hop-top-kit
   component: kit
+  min_version: 0.5.0-beta.16
   keywords: [router, sdk-selection]
 
 # One entry per port, in the order tables and channel files list them.
@@ -37,6 +57,9 @@ ports:
     package: hop.top/kit
     tier: reference
     toolchain: Go 1.27
+    min_version: 0.5.0-beta.16
+    installed: ["go list -m hop.top/kit"]
+    upgrade: go get hop.top/kit@latest
     keywords: [go, golang]
   - component: kit-ts
     skill: hop-top-kit-ts
@@ -44,6 +67,9 @@ ports:
     language: TypeScript
     install: pnpm add @hop-top/kit
     toolchain: Node 22.12+
+    min_version: 0.5.0-alpha.12
+    installed: ["npm ls @hop-top/kit", "pnpm ls @hop-top/kit"]
+    upgrade: pnpm add @hop-top/kit@latest
     keywords: [typescript, node]
   - component: kit-py
     skill: hop-top-kit-py
@@ -51,6 +77,10 @@ ports:
     language: Python
     install: pip install hop-top-kit
     toolchain: Python 3.11+
+    min_version: 0.5.0-alpha.10
+    installed: ["pip show hop-top-kit", "uv pip show hop-top-kit"]
+    upgrade: pip install -U --pre hop-top-kit
+    installed_note: "uv prints the PEP 440 spelling (a, b, rc for -alpha., -beta., -rc.)"
     keywords: [python]
   - component: kit-rs
     skill: hop-top-kit-rs
@@ -58,6 +88,9 @@ ports:
     language: Rust
     install: cargo add hop-top-kit
     toolchain: Rust 1.89+
+    min_version: 0.5.0-alpha.9
+    installed: ["cargo tree -i hop-top-kit --depth 0"]
+    upgrade: cargo update -p hop-top-kit
     keywords: [rust]
   - component: kit-php
     skill: hop-top-kit-php
@@ -65,6 +98,9 @@ ports:
     language: PHP
     install: composer require hop-top/kit
     toolchain: PHP 8.4+
+    min_version: 0.5.0-alpha.6
+    installed: ["composer show hop-top/kit"]
+    upgrade: composer update hop-top/kit
     keywords: [php]
 
 # Publish matrix components that get no skill: not kit ports.

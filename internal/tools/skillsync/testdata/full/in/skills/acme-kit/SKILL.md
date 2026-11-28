@@ -16,4 +16,7 @@ Hand-written intro.
 stale
 <!-- skills-sync:end ports -->
 
+<!-- skills-sync:begin version -->
+<!-- skills-sync:end version -->
+
 Hand-written outro.

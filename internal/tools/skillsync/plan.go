@@ -237,21 +237,42 @@ func (g *gen) skillOutputs(s *skill) error {
 	}
 	g.put(s.rel(".claude-plugin/plugin.json"), manifest, 0o644)
 	g.put(s.rel("gym.json"), gymJSON(), 0o644)
+	if err := g.minVersion(s); err != nil {
+		return err
+	}
+	vb, err := g.versionBlock(s)
+	if err != nil {
+		return err
+	}
 	if s.Router {
 		g.putText(s.rel("references/capability-matrix.md"), g.capabilityMatrix())
 		g.putText(s.rel("references/go-only.md"), g.goOnlyPage())
-		return g.block(s, "ports", g.portsBlock())
+		return errors.Join(g.block(s, "ports", g.portsBlock()), g.block(s, "version", vb))
 	}
 	g.putText(s.rel("references/coverage.md"), g.coveragePage(s))
 	g.putText(s.rel("references/other-ports.md"), g.otherPorts())
-	return g.block(s, "coverage", g.coverageBlock(s))
+	return errors.Join(g.block(s, "coverage", g.coverageBlock(s)), g.block(s, "version", vb))
 }
 
+// minVersion writes metadata.min_version from ports.yaml into the SKILL.md.
+func (g *gen) minVersion(s *skill) error {
+	out, err := setMinVersion(s.Src, s.Spec.MinVersion)
+	if err != nil {
+		return fmt.Errorf("%s: %w", s.rel("SKILL.md"), err)
+	}
+	s.Src = out
+	g.put(s.rel("SKILL.md"), out, 0o644)
+	return nil
+}
+
+// block replaces one managed block of the skill's SKILL.md. Blocks chain: each
+// call starts from the text the previous one produced.
 func (g *gen) block(s *skill, id, body string) error {
 	out, err := replaceBlock(s.Src, id, body)
 	if err != nil {
 		return fmt.Errorf("%s: %w", s.rel("SKILL.md"), err)
 	}
+	s.Src = out
 	g.put(s.rel("SKILL.md"), out, 0o644)
 	return nil
 }

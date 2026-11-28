@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -13,6 +15,10 @@ type Frontmatter struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
 	License     string `yaml:"license"`
+	Metadata    struct {
+		Version    string `yaml:"version"`
+		MinVersion string `yaml:"min_version"`
+	} `yaml:"metadata"`
 }
 
 // splitFrontmatter returns the YAML text between the opening and closing ---
@@ -102,4 +108,56 @@ func replaceBlock(src []byte, id, body string) ([]byte, error) {
 		out.Write(l)
 	}
 	return out.Bytes(), nil
+}
+
+// minVersionLine is the frontmatter line holding the minimum release, written
+// by sync from ports.yaml and never by release tooling.
+func minVersionLine(indent, min string) string {
+	return indent + "min_version: " + strconv.Quote(min)
+}
+
+var metaKeyRe = regexp.MustCompile(`^(\s+)(version|min_version):`)
+
+// setMinVersion returns src with metadata.min_version set to min: the line is
+// replaced when present, else inserted right after metadata.version.
+func setMinVersion(src []byte, min string) ([]byte, error) {
+	lines := strings.SplitAfter(string(src), "\n")
+	if len(lines) == 0 || strings.TrimRight(lines[0], "\r\n") != "---" {
+		return nil, fmt.Errorf("no frontmatter: the first line must be ---")
+	}
+	verAt, minAt, indent, inMeta := -1, -1, "", false
+	for i := 1; i < len(lines); i++ {
+		t := strings.TrimRight(lines[i], "\r\n")
+		if t == "---" {
+			break
+		}
+		if strings.HasPrefix(t, "metadata:") {
+			inMeta = true
+			continue
+		}
+		if inMeta && t != "" && !strings.HasPrefix(t, " ") && !strings.HasPrefix(t, "\t") {
+			inMeta = false
+		}
+		if !inMeta {
+			continue
+		}
+		if m := metaKeyRe.FindStringSubmatch(t); m != nil {
+			indent = m[1]
+			if m[2] == "version" {
+				verAt = i
+			} else {
+				minAt = i
+			}
+		}
+	}
+	nl := "\n"
+	switch {
+	case minAt >= 0:
+		lines[minAt] = minVersionLine(indent, min) + nl
+	case verAt >= 0:
+		lines = append(lines[:verAt+1], append([]string{minVersionLine(indent, min) + nl}, lines[verAt+1:]...)...)
+	default:
+		return nil, fmt.Errorf("frontmatter has no metadata.version to put metadata.min_version after")
+	}
+	return []byte(strings.Join(lines, "")), nil
 }

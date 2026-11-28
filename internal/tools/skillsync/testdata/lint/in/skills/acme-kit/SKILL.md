@@ -17,6 +17,9 @@ Choose by language, then open [acme-kit-go](https://example.test/acme/kit/blob/m
 <!-- skills-sync:begin ports -->
 <!-- skills-sync:end ports -->
 
+<!-- skills-sync:begin version -->
+<!-- skills-sync:end version -->
+
 ## Open when
 
 | File | Open when |

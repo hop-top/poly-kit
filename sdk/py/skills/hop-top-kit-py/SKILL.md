@@ -12,23 +12,22 @@ license: MIT
 compatibility: Python 3.11 or newer; pip install hop-top-kit
 metadata:
   version: "0.5.0-alpha.10" # x-release-please-version
+  min_version: "0.5.0-alpha.10"
 ---
 
 # hop-top-kit-py
 
-Python port of kit: Typer-based CLI factory, output formatters, XDG paths,
-config files, serve lifecycle, a dual-spec MCP surface, guardrails, telemetry,
-LLM clients, versioned migrations. Distribution `hop-top-kit`, import package
-`hop_top_kit`. Go is the reference; this port covers part of it.
+Python port of kit: Typer-based CLI factory, output formatters, XDG paths, config files, serve
+lifecycle, a dual-spec MCP surface, guardrails, telemetry, LLM clients, versioned migrations.
+Distribution `hop-top-kit`, import package `hop_top_kit`. Go is the reference; this port covers part.
 
 ## Use another port when
 
-- The task needs the `kit` binary, `kit init` scaffolding or a capability the
-  coverage below lacks: Go (or run the binary as a sidecar), see
-  [other ports](references/other-ports.md).
+- The task needs the `kit` binary, `kit init` scaffolding or a capability the coverage below lacks:
+  Go (or run the binary as a sidecar), see [other ports](references/other-ports.md).
 - The project or team is not Python, or the language is still open: load the
-  [router skill](https://github.com/hop-top/kit/blob/main/skills/hop-top-kit/SKILL.md)
-  and pick there; do not start a Python service for a Rust or Go team.
+  [router skill](https://github.com/hop-top/kit/blob/main/skills/hop-top-kit/SKILL.md) and pick
+  there; do not start a Python service for a Rust or Go team.
 
 <!-- skills-sync:begin coverage -->
 Tier: supported.
@@ -44,20 +43,18 @@ Tier: supported.
 
 ## Check before promising
 
-Find the capability by name in [coverage](references/coverage.md) (the
-current matrix is linked at its top). Then:
+Find the capability by name in [coverage](references/coverage.md) (it links the current matrix). Then:
 
-- `partial`: the line names the gap. Stay if the task does not need it;
-  otherwise Go or the sidecar for that part.
-- `unverified`: a module exists, nothing pins it to Go. Fine for a Python-only
-  tool; say so to the user and test the behaviour. Cross-tool behaviour that
-  must match Go: use Go.
+- `partial`: the line names the gap. Stay if the task does not need it; otherwise Go or the sidecar
+  for that part.
+- `unverified`: a module exists, nothing pins it to Go. Fine for a Python-only tool; say so to the
+  user and test the behaviour. Cross-tool behaviour that must match Go: use Go.
 - `none`: no module here. Go, the sidecar, or build it yourself and say so.
 
 ## Install
 
-`pip install hop-top-kit`, Python 3.11 or newer. The base install pulls Typer,
-Rich, PyYAML and Pydantic. Extras (from the package metadata):
+`pip install hop-top-kit`, Python 3.11 or newer. The base install pulls Typer, Rich, PyYAML and
+Pydantic. Extras (from the package metadata):
 
 | Extra | Install when |
 |-------|--------------|
@@ -65,43 +62,46 @@ Rich, PyYAML and Pydantic. Extras (from the package metadata):
 | `telemetry-https` | telemetry goes to a remote collector (`httpx`) |
 | `dev` | you run the SDK's own tests (includes `mcp`) |
 
-The `upgrade-pg-test` extra in the source tree is the SDK's own test
-dependency, not a driver for you.
+The `upgrade-pg-test` extra in the source tree is the SDK's own test dependency, not a driver.
 
 ## Default path
 
-[quickstart](assets/snippets/quickstart/quickstart.py) is a runnable CLI with
-`list`, `--format json|yaml|csv|text`, `--cols`, `-o file`. Copy it, rename,
-add commands. Test with `typer.testing.CliRunner`. Output, errors and exit
-codes: [CLI and console](references/cli-and-console.md).
+[quickstart](assets/snippets/quickstart/quickstart.py) is a runnable CLI with `list`,
+`--format json|yaml|csv|text`, `--cols`, `-o file`. Copy it, rename, add commands. Test with
+`typer.testing.CliRunner`. Output, errors and exit codes:
+[CLI and console](references/cli-and-console.md).
 
 ## Traps
 
-- `create_app(name=, version=, help=)` returns `(typer.Typer, Theme)`, not an
-  app. Unpack it.
+- `create_app(name=, version=, help=)` returns `(typer.Typer, Theme)`, not an app. Unpack it.
 - Pass `version` without a `v`; kit prints `<name> v<version>`.
-- Call `register_output_flags(app)` before registering commands: it patches
-  `app.command`.
-- Import from submodules (`hop_top_kit.output.dispatch`, `hop_top_kit.serve`);
-  the package root re-exports only a few names (`create_app`, `config_dir`,
-  `load_config`, `open_store`, `new_id`).
+- Call `register_output_flags(app)` before registering commands: it patches `app.command`.
+- Import from submodules (`hop_top_kit.output.dispatch`, `hop_top_kit.serve`); the package root
+  re-exports only a few names (`create_app`, `config_dir`, `load_config`, `open_store`, `new_id`).
 - Names are snake_case; Go `Options` types are dataclasses in their module.
-- Async split: the migration `Migrator.run` is synchronous (takes a
-  `threading.Event`); `hop_top_kit.serve` runs on asyncio; the MCP surface is
-  an ASGI callable, not WSGI.
-- Destructive-looking leaves (`delete`, `remove`, `rm`, `destroy`, `purge`,
-  `drop`) are gated by the root: `--confirm` with no terminal means no.
-- No Django (or any web framework) integration exists. Kit config is a plain
-  dict loader; wiring it into framework settings is yours.
+- Async split: the migration `Migrator.run` is synchronous (takes a `threading.Event`);
+  `hop_top_kit.serve` runs on asyncio; the MCP surface is an ASGI callable, not WSGI.
+- Destructive-looking leaves (`delete`, `remove`, `rm`, `destroy`, `purge`, `drop`) are gated by the
+  root: `--confirm` with no terminal means no.
+- No Django (or any web framework) integration exists. Kit config is a plain dict loader; wiring it
+  into framework settings is yours.
 - Postgres migrations need the caller's connections; see
   [guardrails and trust](references/guardrails-and-trust.md).
 
+<!-- skills-sync:begin version -->
 ## Versions
 
-This skill is at `metadata.version`; installed:
-`python -c "import importlib.metadata as m; print(m.version('hop-top-kit'))"`.
-If they differ, read the
-[parity page](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/capability-parity.md).
+Written for 0.5.0-alpha.10. # x-release-please-version
+Expects 0.5.0-alpha.10 or newer.
+
+Installed: `pip show hop-top-kit` or `uv pip show hop-top-kit`; uv prints the PEP 440 spelling (a,
+b, rc for -alpha., -beta., -rc.). `scripts/detect-port.sh` shows what the manifest pins. Older than
+expected: tell the user, upgrade (`pip install -U --pre hop-top-kit`). Newer than written for: this
+copy may be stale; update it, then re-read it. Update by install channel, then restart the harness:
+Claude Code plugin `claude plugin marketplace update hop-top`, then
+`claude plugin update hop-top-kit-py@hop-top` (marketplace repository `hop-top/skillset`); gym,
+`npx skills` or by hand: take `skills/hop-top-kit-py` again from `hop-top/kit-py` at `main`.
+<!-- skills-sync:end version -->
 
 ## Open when
 

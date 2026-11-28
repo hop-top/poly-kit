@@ -23,6 +23,27 @@ type Spec struct {
 	Tier      string   `yaml:"tier"`      // only when the tiers page has no row
 	Toolchain string   `yaml:"toolchain"` // floor
 	Keywords  []string `yaml:"keywords"`
+
+	// MinVersion is the oldest release the skill copy works with. The
+	// maintainer raises it when a skill starts relying on newer API; release
+	// tooling never writes it.
+	MinVersion    string   `yaml:"min_version"`
+	Installed     []string `yaml:"installed"`      // commands that print the installed package version; ports only
+	Upgrade       string   `yaml:"upgrade"`        // command that upgrades the package; ports only
+	InstalledNote string   `yaml:"installed_note"` // one sentence on how the version prints; optional
+}
+
+// Binary is the executable the router and the reference port skill check.
+type Binary struct {
+	Command string `yaml:"command"`
+	Upgrade string `yaml:"upgrade"`
+	Readme  string `yaml:"readme"` // repository-relative page documenting the other upgrade routes
+}
+
+// Marketplace is the shared Claude Code plugin marketplace skills ship in.
+type Marketplace struct {
+	Name string `yaml:"name"`
+	Repo string `yaml:"repo"`
 }
 
 // CopySpec copies one repository file into skills.
@@ -44,13 +65,15 @@ type Ports struct {
 		Name string `yaml:"name"`
 		URL  string `yaml:"url"`
 	} `yaml:"author"`
-	Category        string     `yaml:"category"`
-	Keywords        []string   `yaml:"keywords"`
-	ReferenceColumn string     `yaml:"reference_column"`
-	Router          Spec       `yaml:"router"`
-	Ports           []Spec     `yaml:"ports"`
-	NoSkill         []string   `yaml:"no_skill"`
-	Copies          []CopySpec `yaml:"copies"`
+	Marketplace     Marketplace `yaml:"marketplace"`
+	Binary          Binary      `yaml:"binary"`
+	Category        string      `yaml:"category"`
+	Keywords        []string    `yaml:"keywords"`
+	ReferenceColumn string      `yaml:"reference_column"`
+	Router          Spec        `yaml:"router"`
+	Ports           []Spec      `yaml:"ports"`
+	NoSkill         []string    `yaml:"no_skill"`
+	Copies          []CopySpec  `yaml:"copies"`
 }
 
 func loadPorts(file, display string) (*Ports, error) {
@@ -84,11 +107,20 @@ func (p *Ports) validate() error {
 	need(p.Author.Name, "author.name")
 	need(p.Category, "category")
 	need(p.ReferenceColumn, "reference_column")
+	need(p.Marketplace.Name, "marketplace.name")
+	need(p.Marketplace.Repo, "marketplace.repo")
+	need(p.Binary.Command, "binary.command")
+	need(p.Binary.Upgrade, "binary.upgrade")
+	need(p.Binary.Readme, "binary.readme")
 	if !strings.HasPrefix(p.Host, "https://") || strings.HasSuffix(p.Host, "/") {
 		errs = append(errs, fmt.Errorf("host %q must be an https URL without a trailing slash", p.Host))
 	}
 	need(p.Router.Skill, "router.skill")
 	need(p.Router.Component, "router.component")
+	if !validRelease(p.Router.MinVersion) {
+		errs = append(errs, fmt.Errorf("router: min_version %q is not a release (x.y.z or x.y.z-prerelease)", p.Router.MinVersion))
+	}
+	mins := map[string]string{p.Router.Component: p.Router.MinVersion}
 	names := map[string]bool{p.Router.Skill: true}
 	cols := map[string]bool{}
 	for i, s := range p.Ports {
@@ -98,6 +130,17 @@ func (p *Ports) validate() error {
 				errs = append(errs, fmt.Errorf("%s: %s is empty", at, f[1]))
 			}
 		}
+		if !validRelease(s.MinVersion) {
+			errs = append(errs, fmt.Errorf("%s: min_version %q is not a release (x.y.z or x.y.z-prerelease)", at, s.MinVersion))
+		}
+		if prev, ok := mins[s.Component]; ok && prev != s.MinVersion {
+			errs = append(errs, fmt.Errorf("%s: min_version %q differs from %q, which another skill of component %s sets", at, s.MinVersion, prev, s.Component))
+		}
+		mins[s.Component] = s.MinVersion
+		if len(s.Installed) == 0 {
+			errs = append(errs, fmt.Errorf("%s: installed is empty (commands that print the installed package version)", at))
+		}
+		need(s.Upgrade, at+": upgrade")
 		if names[s.Skill] {
 			errs = append(errs, fmt.Errorf("%s: skill name used twice", at))
 		}
