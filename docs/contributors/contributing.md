@@ -22,6 +22,11 @@ Quick start:
 make setup
 ```
 
+The root `go.mod` carries no `replace` directives: a module that does
+cannot be installed with `go install hop.top/kit/cmd/kit@<version>`
+(`go test ./cmd/kit` enforces it). To build against a local
+`extensions/mcp-tasks`, keep an uncommitted `go.work` (`go work init . ./extensions/mcp-tasks`).
+
 ## Code Style
 
 - Follow existing conventions in the codebase
