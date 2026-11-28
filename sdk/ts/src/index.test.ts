@@ -75,6 +75,16 @@ describe('documented subpaths', () => {
     expect(pkg.exports).toHaveProperty([`./${name}`]);
   });
 
+  // Documented as internal: router would load hono from the root import; triton is only router's transport.
+  it.each(['router', 'triton'])('%s is intentionally not exported', (name) => {
+    expect(pkg.exports).not.toHaveProperty([`./${name}`]);
+  });
+
+  it.each(docs)('%s never presents router or triton as importable', (doc) => {
+    const text = readFileSync(join(pkgDir, doc), 'utf8');
+    expect(text).not.toMatch(/@hop-top\/kit\/(router|triton)\b/);
+  });
+
   // Plumbing behind the cli factory: its public names are re-exported from `./cli`.
   it.each(['delegation', 'sideeffect', 'policy'])('%s stays internal (reached through ./cli)', (name) => {
     expect(pkg.exports).not.toHaveProperty([`./${name}`]);
