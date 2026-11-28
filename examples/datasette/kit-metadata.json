@@ -1,6 +1,6 @@
 {
   "title": "kit instance",
-  "description_html": "Read-only browse of a kit serve SQLite store. See <a href=\"https://github.com/hop-top/poly-kit/blob/main/docs/inspect-with-datasette.md\">docs/inspect-with-datasette.md</a>.",
+  "description_html": "Read-only browse of a kit serve SQLite store. See <a href=\"https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/inspect-with-datasette.md\">docs/inspect-with-datasette.md</a>.",
   "license": "internal",
   "databases": {
     "data": {

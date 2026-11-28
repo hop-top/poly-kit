@@ -72,9 +72,9 @@ Every path is relative to `src/`; namespaces sit under `HopTop\Kit`.
 
 ## See also
 
-- [PHP SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/php-sdk.md):
+- [PHP SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/php-sdk.md):
   the URI facade, output formatting rules and worked examples, the MCP
   mount over PSR-15, offline enforcement in full, telemetry sinks and
   redaction
-- [Serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md), [Serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md)
+- [Serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/next/docs/contracts/serve-lifecycle.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/cli-parity-guide.md), [Serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/serve-mcp-from-any-sdk.md)
 - [Agent skill](skills/hop-top-kit-php/SKILL.md): what this port has, and when to use another

@@ -1,6 +1,6 @@
 # qmochi 🍡
 
-> **Incubating.** Developed in [hop-top/poly-kit](https://github.com/hop-top/poly-kit/tree/main/incubator/qmochi);
+> **Incubating.** Developed in [hop-top/poly-kit](https://github.com/hop-top/poly-kit/tree/next/incubator/qmochi);
 > submit issues, PRs and discussions there.
 
 Terminal charting for Go, built for

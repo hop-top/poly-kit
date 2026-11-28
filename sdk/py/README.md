@@ -73,8 +73,8 @@ Non-directory modules: `hop_top_kit.cli` (CLI factory), `hop_top_kit.serve` (ser
 
 ## See also
 
-- [Python SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-sdk.md): the MCP mount, the URI facade, output formatting rules and worked examples, custom formatters, offline enforcement, the telemetry envelope, LLM messages and tool calls
-- [Python CLI API reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-api-reference.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md)
+- [Python SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/py-sdk.md): the MCP mount, the URI facade, output formatting rules and worked examples, custom formatters, offline enforcement, the telemetry envelope, LLM messages and tool calls
+- [Python CLI API reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/py-api-reference.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/cli-parity-guide.md)
 - [Agent skill](skills/hop-top-kit-py/SKILL.md): when to use this port and what it covers, for coding agents
 
 <!-- release: track hop-top-cite >=0.1.0 -->
