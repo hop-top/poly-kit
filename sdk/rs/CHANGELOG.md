@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.9...kit-rs/v0.5.0-alpha.10) (2026-11-28)
 
+The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.10. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -31,6 +33,8 @@
 * **rs:** gate NotRestored constructors off wasm32 ([9a80a09](https://github.com/hop-top/poly-kit/commit/9a80a09613c21fa369722513d1b4660a71a3eb13))
 * **skills:** descriptions on one frontmatter line ([cc7f856](https://github.com/hop-top/poly-kit/commit/cc7f8560981c0c639543b92e875a654e137ddc22))
 * **skills:** docs links follow the poly-kit default branch ([91c472f](https://github.com/hop-top/poly-kit/commit/91c472f2a7ef5c8b5a6e895cc3161c57838ac641))
+
+Full diff: [kit-rs/v0.5.0-alpha.9...kit-rs/v0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.9...kit-rs/v0.5.0-alpha.10)
 
 ## [0.5.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.8...kit-rs/v0.5.0-alpha.9) (2026-11-20)
 
