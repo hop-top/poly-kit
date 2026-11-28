@@ -29,7 +29,8 @@ use PDOStatement;
  * transaction-mode pooler in front of the database.
  *
  * `backup` and `restore` throw `BackupUnsupported`: a run goes on without a
- * backup and a rollback that needs a restore ends `NotRestored`.
+ * backup and a failed `up`, or a `down` that is missing or fails, ends
+ * `NotRestored`: keep each `up` atomic (one transaction).
  */
 final class Postgres implements SchemaDriver, VersionStorer, Locker
 {

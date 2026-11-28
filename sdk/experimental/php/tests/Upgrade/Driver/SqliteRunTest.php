@@ -138,12 +138,28 @@ final class SqliteRunTest extends TestCase
     }
 
     #[Test]
-    public function withAHandleADownRollsBack(): void
+    public function withAHandleAFailedFinalVerifyIsRolledBackByDown(): void
     {
+        $reg = new Registry();
+        $reg->register(new Migration(
+            '1.1.0',
+            'appdb',
+            fn () => self::insert($this->db, 2),
+            fn () => $this->db->exec('DELETE FROM t WHERE x = 2'),
+        ));
+        $m = new Migrator(
+            'tool',
+            '1.1.0',
+            registry: $reg,
+            dataDir: $this->data,
+            verify: static fn () => throw new \RuntimeException('final check refused'),
+        );
+        $m->addDriver($this->driver(true));
         try {
-            $this->migrator($this->registry(true), $this->driver(true))->run();
+            $m->run();
             self::fail('no exception');
         } catch (MigrateException $e) {
+            self::assertStringContainsString('final verify 1.1.0 failed: final check refused', $e->getMessage());
             self::assertFalse(UpgradeErrors::isNotRestored($e));
         }
         self::assertSame([1], self::rows($this->path));

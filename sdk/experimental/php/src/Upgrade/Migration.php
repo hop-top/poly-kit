@@ -10,7 +10,8 @@ use Closure;
  * One versioned schema migration.
  *
  * `up` is required (a migration that cannot go forward is not one). `down`
- * null means no rollback. `verify`, when set, runs after `up` and before the
+ * null means no rollback; it is never called for a step whose `up` failed
+ * (the backup is restored instead). `verify`, when set, runs after `up` and before the
  * version is recorded; a failure counts as a failed step (`VerifyException`)
  * and the rollback includes this migration. Each closure signals failure by
  * throwing.

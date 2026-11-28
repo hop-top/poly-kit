@@ -20,9 +20,12 @@ use Throwable;
  * then the final verify. A `backup` that throws `BackupUnsupported` lets the
  * run go on with no backup. On failure, unless `manualRollback`: `down` in
  * reverse (recording the version before each), else `restore` and record the
- * starting version. When no `down` and no backup can undo the schema, the
- * exception chain holds `NotRestored` (`UpgradeErrors::isNotRestored()`) and
- * the stored version stays at the last step still applied.
+ * starting version. A migration whose `up` failed counts as applied but
+ * cannot be downed (its `down` is never called): the run restores the backup
+ * at once and no older `down` runs. When a `down` is missing or fails, or an
+ * `up` failed, and no backup can restore the schema, the exception chain
+ * holds `NotRestored` (`UpgradeErrors::isNotRestored()`) and the stored
+ * version stays at the last step still applied.
  *
  * Cancellation is cooperative: the `Cancellation` given to `run()` is
  * checked before each `up`. A migration cancelled mid-way is not interrupted.
@@ -360,7 +363,8 @@ final class Migrator
             try {
                 ($mig->up)();
             } catch (Throwable $e) {
-                throw $this->failed($ev + ['duration_ms' => MigrationEvents::millis($t)], 'up', $e, $applied);
+                // a failed up is an applied step that cannot be downed: it joins the undo list, newest
+                throw $this->failed($ev + ['duration_ms' => MigrationEvents::millis($t)], 'up', $e, [...$applied, $mig], true);
             }
             $this->events->emit($this->topics->applied, $ev + ['duration_ms' => MigrationEvents::millis($t)]);
             if ($mig->verify !== null) {
@@ -401,11 +405,11 @@ final class Migrator
      * @param array<string, mixed> $ev
      * @param list<Migration> $undo
      */
-    private function failed(array $ev, string $stage, Throwable $err, array $undo): StepFailure
+    private function failed(array $ev, string $stage, Throwable $err, array $undo, bool $upFailed = false): StepFailure
     {
         $this->events->emit($this->topics->failed, $ev + ['stage' => $stage, 'error' => $err->getMessage()]);
 
-        return new StepFailure($stage, (string) $ev['to'], (string) $ev['from'], $err, $undo);
+        return new StepFailure($stage, (string) $ev['to'], (string) $ev['from'], $err, $undo, $upFailed);
     }
 
     /**
@@ -421,7 +425,7 @@ final class Migrator
         }
         $t = hrtime(true);
         try {
-            $method = $this->rollback($d, $current, $f->undo, $bk);
+            $method = $this->rollback($d, $current, $f->undo, $f->upFailed, $bk);
         } catch (UpgradeException $rb) {
             return new MigrateException("{$err->getMessage()} (rollback also failed: {$rb->getMessage()})", '', $err, $rb);
         }
@@ -437,18 +441,21 @@ final class Migrator
      * `down` in reverse order, recording the version before each migration
      * once its `down` succeeded; falls back to `restore` (and records the
      * starting version) when a `down` is missing or fails. Returns which of
-     * the two undid the changes. A failed record stops the rollback. With no
-     * backup, or an unsupported restore, nothing is restored: `NotRestored`,
-     * and the version stays at the last record.
+     * the two undid the changes. When `$upFailed`, the newest step's `up`
+     * failed: its `down` is never called (a `down` assumes a completed `up`),
+     * so the rollback restores at once and no older `down` runs. A failed
+     * record stops the rollback. With no backup, or an unsupported restore,
+     * nothing is restored: `NotRestored`, and the version stays at the last
+     * record, the step whose `down` was missing, failed or not callable.
      *
      * @param list<Migration> $applied
      * @param array{path: string, unsupported: ?Throwable} $bk
      */
-    private function rollback(SchemaDriver $d, string $current, array $applied, array $bk): string
+    private function rollback(SchemaDriver $d, string $current, array $applied, bool $upFailed, array $bk): string
     {
         for ($i = count($applied) - 1; $i >= 0; $i--) {
             $mig = $applied[$i];
-            if (!$this->down($mig)) {
+            if (($upFailed && $i === count($applied) - 1) || !$this->down($mig)) {
                 if ($bk['path'] === '') {
                     throw new NotRestored('not restored: no backup was taken', 0, $bk['unsupported']);
                 }

@@ -61,7 +61,7 @@ final class UpgradeMigratorConformanceTest extends TestCase
     public function corpusHasScenarios(): void
     {
         [$f] = self::load('migrator.json');
-        self::assertCount(103, $f['scenarios']);
+        self::assertCount(109, $f['scenarios']);
     }
 
     #[Test]
