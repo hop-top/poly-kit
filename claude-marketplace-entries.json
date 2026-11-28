@@ -19,6 +19,25 @@
     ]
   },
   {
+    "name": "hop-top-kit-go",
+    "description": "Build with kit's Go reference implementation (module hop.top/kit), the kit binary and kit init scaffolding. Use when writing or changing Go code that imports hop.top/kit, when scaffolding a new CLI with kit init, when running the kit binary as a sidecar for a non-Go tool, or when a task needs a capability only Go has. Not for TypeScript, Python, Rust or PHP code: pick the port with the hop-top-kit router.",
+    "source": {
+      "source": "git-subdir",
+      "url": "https://github.com/hop-top/kit.git",
+      "path": "skills/hop-top-kit-go"
+    },
+    "homepage": "https://github.com/hop-top/kit/blob/main/skills/hop-top-kit-go/SKILL.md",
+    "license": "MIT",
+    "category": "development",
+    "keywords": [
+      "hop-top",
+      "kit",
+      "agent-skill",
+      "go",
+      "golang"
+    ]
+  },
+  {
     "name": "hop-top-kit-php",
     "description": "Build a PHP CLI with the experimental kit PHP port (Composer package hop-top/kit, namespace HopTop\\Kit). Use when PHP code requires hop-top/kit, when adding kit's output formats, MCP surface or serve lifecycle to a PHP tool, or when asked whether the PHP port can do something. Most kit capabilities are absent from this port: it says what exists and when to switch to another port or the kit sidecar.",
     "source": {
