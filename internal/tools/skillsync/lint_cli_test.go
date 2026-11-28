@@ -83,7 +83,7 @@ func TestLintCLI(t *testing.T) {
 		t.Fatalf("exit %d, want 1", code)
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != 2 || !strings.HasPrefix(lines[0], tsDir+"/SKILL.md:6: S1: ") || !strings.HasPrefix(lines[1], goDir+"/scripts/detect.sh:1: S9: ") {
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], tsDir+"/SKILL.md:5: S1: ") || !strings.HasPrefix(lines[1], goDir+"/scripts/detect.sh:1: S9: ") {
 		t.Fatalf("output:\n%s", out)
 	}
 	if !strings.Contains(errOut, "2 lint findings") {

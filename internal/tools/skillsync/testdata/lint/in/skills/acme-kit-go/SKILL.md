@@ -1,7 +1,6 @@
 ---
 name: acme-kit-go
-description: >-
-  Use the Acme kit from Go. Use when the project is Go and needs the kit.
+description: Use the Acme kit from Go. Use when the project is Go and needs the kit.
 license: MIT
 compatibility: Go 1.27
 metadata:

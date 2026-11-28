@@ -1,7 +1,6 @@
 ---
 name: acme-kit
-description: >-
-  Picks an Acme kit port for a language. Use when a task needs the kit and no language is chosen yet.
+description: Picks an Acme kit port for a language. Use when a task needs the kit and no language is chosen yet.
 license: MIT
 compatibility: any
 metadata:

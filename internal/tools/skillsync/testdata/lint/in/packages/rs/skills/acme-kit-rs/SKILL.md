@@ -1,7 +1,6 @@
 ---
 name: acme-kit-rs
-description: >-
-  Use the Acme kit from Rust. Use when the project is Rust and needs the kit.
+description: Use the Acme kit from Rust. Use when the project is Rust and needs the kit.
 license: MIT
 compatibility: Rust 1.89+
 metadata:

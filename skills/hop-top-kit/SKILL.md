@@ -1,12 +1,6 @@
 ---
 name: hop-top-kit
-description: >-
-  Pick which kit port to build with: Go, TypeScript, Python, Rust or PHP, or
-  the kit binary as a sidecar for any other language. Use when choosing a
-  language or SDK for a tool built on kit, when adding kit to an existing
-  project, when asked which port supports a capability, or when a port lacks a
-  capability the task needs. Not for writing code with one port: load that
-  port's skill for that.
+description: Pick which kit port to build with (Go, TypeScript, Python, Rust or PHP, or the kit binary as a sidecar for any other language). Use when choosing a language or SDK for a tool built on kit, when adding kit to an existing project, when asked which port supports a capability, or when a port lacks a capability the task needs. Not for writing code with one port; load that port's skill for that.
 license: MIT
 metadata:
   version: "0.5.0-beta.16" # x-release-please-version

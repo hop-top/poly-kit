@@ -138,9 +138,25 @@ func (l *lintSkill) ruleS1() {
 			l.add("SKILL.md", fi.line("description"), "S1", "description must contain \"Use when\"")
 		}
 	}
+	if k, ok := fi.key("description"); ok && !oneLine(fi, k) {
+		l.add("SKILL.md", k.Line, "S1", "description must be one plain or quoted line after \"description:\", not a block scalar or continued on the next line: some skill readers parse frontmatter line by line")
+	}
 	walkFlow(fi.Root, func(n *yaml.Node) {
 		l.add("SKILL.md", n.Line+1, "S1", "frontmatter uses flow-style YAML; write it in block style")
 	})
+}
+
+// oneLine reports whether a description sits on its key's line: neither a
+// folded or literal block scalar nor continued on indented following lines.
+func oneLine(fi *frontInfo, k fmKey) bool {
+	if k.Val.Kind != yaml.ScalarNode || k.Val.Style&(yaml.FoldedStyle|yaml.LiteralStyle) != 0 {
+		return false
+	}
+	if k.Line < len(fi.Text) {
+		next := fi.Text[k.Line]
+		return next == "" || next[0] != ' ' && next[0] != '\t'
+	}
+	return true
 }
 
 // skillName is the name the SKILL.md must carry: ports.yaml's, which the

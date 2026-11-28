@@ -1,7 +1,6 @@
 ---
 name: acme-kit-php
-description: >-
-  Use the Acme kit from PHP. Use when the project is PHP and needs the kit.
+description: Use the Acme kit from PHP. Use when the project is PHP and needs the kit.
 license: MIT
 compatibility: PHP 8.4+
 metadata:

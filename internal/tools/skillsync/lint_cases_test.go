@@ -15,7 +15,7 @@ const (
 )
 
 const (
-	tsDesc  = "  Use the Acme kit from TypeScript. Use when the project is TypeScript and needs the kit."
+	tsDesc  = "description: Use the Acme kit from TypeScript. Use when the project is TypeScript and needs the kit."
 	tsStamp = `  version: "0.3.0-alpha.4" # x-release-please-version`
 	tsMin   = `  min_version: "0.3.0-alpha.4"`
 	srcLine = "\nSource of truth:"
@@ -58,8 +58,15 @@ var ruleCases = []lintCase{
 		Want: []want{{File: "SKILL.md", Anchor: "name: aaaa", Rule: "S1"}}},
 	{Name: "S1/description-too-long", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", tsDesc, tsDesc + strings.Repeat(" word", 220)}}},
 		Want: []want{{File: "SKILL.md", Anchor: "description:", Rule: "S1"}}},
-	{Name: "S1/no-use-when", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", tsDesc, "  Use the Acme kit from TypeScript."}}},
+	{Name: "S1/no-use-when", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", tsDesc, "description: Use the Acme kit from TypeScript."}}},
 		Want: []want{{File: "SKILL.md", Anchor: "description:", Rule: "S1"}}},
+	{Name: "S1/description-folded", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", tsDesc, "description: >-\n  Use the Acme kit from TypeScript. Use when the project is TypeScript and needs the kit."}}},
+		Want: []want{{File: "SKILL.md", Anchor: "description:", Rule: "S1"}}},
+	{Name: "S1/description-literal", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", tsDesc, "description: |\n  Use the Acme kit from TypeScript. Use when the project is TypeScript and needs the kit."}}},
+		Want: []want{{File: "SKILL.md", Anchor: "description:", Rule: "S1"}}},
+	{Name: "S1/description-continued", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", tsDesc, "description: Use the Acme kit from TypeScript.\n  Use when the project is TypeScript and needs the kit."}}},
+		Want: []want{{File: "SKILL.md", Anchor: "description:", Rule: "S1"}}},
+	{Name: "S1/description-quoted-one-line", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", tsDesc, `description: "Use the Acme kit: from TypeScript. Use when the project is TypeScript and needs the kit."`}}}},
 	{Name: "S1/flow-style", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", "license: MIT\n", "license: MIT\nallowed-tools: [Read, Bash]\n"}}},
 		Want: []want{{File: "SKILL.md", Anchor: "allowed-tools:", Rule: "S1"}}},
 	{Name: "S1/no-license", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", "license: MIT\n", ""}}},

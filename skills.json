@@ -5,42 +5,42 @@
       "version": "0.5.0-beta.16",
       "source_url": "https://github.com/hop-top/kit.git",
       "path": "skills/hop-top-kit",
-      "description": "Pick which kit port to build with: Go, TypeScript, Python, Rust or PHP, or the kit binary as a sidecar for any other language. Use when choosing a language or SDK for a tool built on kit, when adding kit to an existing project, when asked which port supports a capability, or when a port lacks a capability the task needs. Not for writing code with one port: load that port's skill for that."
+      "description": "Pick which kit port to build with (Go, TypeScript, Python, Rust or PHP, or the kit binary as a sidecar for any other language). Use when choosing a language or SDK for a tool built on kit, when adding kit to an existing project, when asked which port supports a capability, or when a port lacks a capability the task needs. Not for writing code with one port; load that port's skill for that."
     },
     {
       "name": "hop-top-kit-go",
       "version": "0.5.0-beta.16",
       "source_url": "https://github.com/hop-top/kit.git",
       "path": "skills/hop-top-kit-go",
-      "description": "Build with kit's Go reference implementation (module hop.top/kit), the kit binary and kit init scaffolding. Use when writing or changing Go code that imports hop.top/kit, when scaffolding a new CLI with kit init, when running the kit binary as a sidecar for a non-Go tool, or when a task needs a capability only Go has. Not for TypeScript, Python, Rust or PHP code: pick the port with the hop-top-kit router."
+      "description": "Build with kit's Go reference implementation (module hop.top/kit), the kit binary and kit init scaffolding. Use when writing or changing Go code that imports hop.top/kit, when scaffolding a new CLI with kit init, when running the kit binary as a sidecar for a non-Go tool, or when a task needs a capability only Go has. Not for TypeScript, Python, Rust or PHP code; pick the port with the hop-top-kit router."
     },
     {
       "name": "hop-top-kit-ts",
       "version": "0.5.0-alpha.12",
       "source_url": "https://github.com/hop-top/kit-ts.git",
       "path": "skills/hop-top-kit-ts",
-      "description": "Build CLIs and services in TypeScript or JavaScript with the kit SDK `@hop-top/kit`: createCLI, output formats, layered config, MCP serving, safety guards, LLM adapters. Use when code imports `@hop-top/kit`, when adding kit to a Node project, or when a task needs a kit capability in TypeScript and you must check this port covers it. Not for choosing a language: the router skill does that."
+      "description": "Build CLIs and services in TypeScript or JavaScript with the kit SDK `@hop-top/kit`, covering createCLI, output formats, layered config, MCP serving, safety guards, LLM adapters. Use when code imports `@hop-top/kit`, when adding kit to a Node project, or when a task needs a kit capability in TypeScript and you must check this port covers it. Not for choosing a language; the router skill does that."
     },
     {
       "name": "hop-top-kit-py",
       "version": "0.5.0-alpha.10",
       "source_url": "https://github.com/hop-top/kit-py.git",
       "path": "skills/hop-top-kit-py",
-      "description": "Build a CLI or service in Python on kit with the hop-top-kit package (import hop_top_kit): Typer app factory, output formats, layered config, serve lifecycle, MCP surface, guardrails, migrations. Use when Python code imports hop_top_kit or the user asks for kit in Python, when choosing between kit modules in this port, or when checking whether this port covers a capability before building on it. Not for choosing a language: use the hop-top-kit router for that."
+      "description": "Build a CLI or service in Python on kit with the hop-top-kit package (import hop_top_kit), covering Typer app factory, output formats, layered config, serve lifecycle, MCP surface, guardrails, migrations. Use when Python code imports hop_top_kit or the user asks for kit in Python, when choosing between kit modules in this port, or when checking whether this port covers a capability before building on it. Not for choosing a language; use the hop-top-kit router for that."
     },
     {
       "name": "hop-top-kit-rs",
       "version": "0.5.0-alpha.9",
       "source_url": "https://github.com/hop-top/kit-rs.git",
       "path": "skills/hop-top-kit-rs",
-      "description": "Build a CLI or service in Rust with the hop-top-kit crate: Cargo features per module, the kit CLI root, layered config, output formats, MCP, serve, upgrade migrations, wasm32. Use when a Rust project depends on or should adopt hop-top-kit, when picking its Cargo features, or when checking what the Rust port covers before promising a capability."
+      "description": "Build a CLI or service in Rust with the hop-top-kit crate, covering Cargo features per module, the kit CLI root, layered config, output formats, MCP, serve, upgrade migrations, wasm32. Use when a Rust project depends on or should adopt hop-top-kit, when picking its Cargo features, or when checking what the Rust port covers before promising a capability."
     },
     {
       "name": "hop-top-kit-php",
       "version": "0.5.0-alpha.6",
       "source_url": "https://github.com/hop-top/kit-php.git",
       "path": "skills/hop-top-kit-php",
-      "description": "Build a PHP CLI with the experimental kit PHP port (Composer package hop-top/kit, namespace HopTop\\Kit). Use when PHP code requires hop-top/kit, when adding kit's output formats, MCP surface or serve lifecycle to a PHP tool, or when asked whether the PHP port can do something. Most kit capabilities are absent from this port: it says what exists and when to switch to another port or the kit sidecar."
+      "description": "Build a PHP CLI with the experimental kit PHP port (Composer package hop-top/kit, namespace HopTop\\Kit). Use when PHP code requires hop-top/kit, when adding kit's output formats, MCP surface or serve lifecycle to a PHP tool, or when asked whether the PHP port can do something. Most kit capabilities are absent from this port; it says what exists and when to switch to another port or the kit sidecar."
     }
   ]
 }
