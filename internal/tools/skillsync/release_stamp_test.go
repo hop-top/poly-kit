@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"regexp"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
