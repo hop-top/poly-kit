@@ -1,0 +1,17 @@
+{
+  "name": "acme-kit-py",
+  "version": "0.3.0-alpha.2",
+  "description": "Skill acme-kit-py. Use when testing.",
+  "author": {
+    "name": "acme",
+    "url": "https://example.test/acme"
+  },
+  "homepage": "https://example.test/acme/kit-py/blob/main/skills/acme-kit-py/SKILL.md",
+  "repository": "https://example.test/acme/kit-py",
+  "license": "MIT",
+  "keywords": [
+    "acme",
+    "kit",
+    "python"
+  ]
+}

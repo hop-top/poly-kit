@@ -1,0 +1,17 @@
+{
+  "name": "acme-kit-ts",
+  "version": "0.3.0-alpha.4",
+  "description": "Skill acme-kit-ts. Use when testing.",
+  "author": {
+    "name": "acme",
+    "url": "https://example.test/acme"
+  },
+  "homepage": "https://example.test/acme/kit-ts/blob/main/skills/acme-kit-ts/SKILL.md",
+  "repository": "https://example.test/acme/kit-ts",
+  "license": "MIT",
+  "keywords": [
+    "acme",
+    "kit",
+    "typescript"
+  ]
+}

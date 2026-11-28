@@ -1,0 +1,58 @@
+docs:
+  repo: acme/mono
+  branch: main
+host: https://example.test
+mirror_branch: main
+author:
+  name: acme
+  url: https://example.test/acme
+category: development
+keywords: [acme, kit]
+reference_column: Go
+router:
+  skill: acme-kit
+  component: kit
+  keywords: [router]
+ports:
+  - component: kit
+    skill: acme-kit-go
+    column: Go
+    language: Go
+    install: go get acme.test/kit
+    package: acme.test/kit
+    tier: reference
+    toolchain: Go 1.27
+    keywords: [go]
+  - component: kit-ts
+    skill: acme-kit-ts
+    column: TS
+    language: TypeScript
+    install: pnpm add @acme/kit
+    toolchain: Node 22.12+
+    keywords: [typescript]
+  - component: kit-py
+    skill: acme-kit-py
+    column: Py
+    language: Python
+    install: pip install acme-kit
+    toolchain: Python 3.11+
+    keywords: [python]
+  - component: kit-rs
+    skill: acme-kit-rs
+    column: Rust
+    language: Rust
+    install: cargo add acme-kit
+    toolchain: Rust 1.89+
+    keywords: [rust]
+  - component: kit-php
+    skill: acme-kit-php
+    column: PHP
+    language: PHP
+    install: composer require acme/kit
+    toolchain: PHP 8.4+
+    keywords: [php]
+no_skill: [tasks]
+copies:
+  - from: skills/acme-kit/scripts/detect.sh
+    to: scripts/detect.sh
+    skills: [ports]

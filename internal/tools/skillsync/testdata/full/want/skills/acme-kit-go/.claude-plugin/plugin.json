@@ -1,0 +1,17 @@
+{
+  "name": "acme-kit-go",
+  "version": "1.4.0-beta.2",
+  "description": "Skill acme-kit-go. Use when testing.",
+  "author": {
+    "name": "acme",
+    "url": "https://example.test/acme"
+  },
+  "homepage": "https://example.test/acme/kit/blob/main/skills/acme-kit-go/SKILL.md",
+  "repository": "https://example.test/acme/kit",
+  "license": "MIT",
+  "keywords": [
+    "acme",
+    "kit",
+    "go"
+  ]
+}
