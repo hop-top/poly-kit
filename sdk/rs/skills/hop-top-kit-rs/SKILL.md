@@ -84,7 +84,7 @@ with `cargo test --features cli,config`; test each feature alone with
 <!-- skills-sync:begin version -->
 ## Versions
 
-Written for 0.5.0-alpha.9. # x-release-please-version
+Written for 0.5.0-alpha.9 # x-release-please-version
 Expects 0.5.0-alpha.9 or newer.
 
 Installed: `cargo tree -i hop-top-kit --depth 0`; `scripts/detect-port.sh` shows what the manifest

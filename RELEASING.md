@@ -395,6 +395,34 @@ the proxy, not local tags: the proxy is what a generated project's
 `go get` resolves against. `go test ./cmd/kit/init/` holds the pin equal
 to the manifest's `kit` version.
 
+### The skills' version stamps
+
+Each component ships an agent skill (`skills/hop-top-kit` and
+`skills/hop-top-kit-go` with `kit`; `hop-top-kit-ts`, `-py`, `-rs` and
+`-php` under their SDK directory). A skill names the release it describes,
+so its component's release PR sets, as `extra-files` of that component's
+package:
+
+- `SKILL.md`, a generic entry. Two lines carry
+  `# x-release-please-version`: the `metadata.version` frontmatter line and
+  the generated version block's `Written for <v> # x-release-please-version`
+  line. The generic updater replaces the first version on a line and, on a
+  prerelease, takes a period after it: the block line has none, so write
+  nothing but a space between the version and the comment. `metadata.min_version`
+  is never stamped.
+- `.claude-plugin/plugin.json`, a json entry at `$.version`. Claude Code
+  compares it to detect an update, so it moves with every release.
+
+Rule S6 of `make lint-skills` holds both `SKILL.md` lines and the plugin
+manifest equal to the component's manifest version, and the skillsync tests
+hold a release-style rewrite of the two lines to `make check-skills`. A
+`SKILL.md` or plugin manifest missing from `extra-files` fails
+`go test ./internal/tools/skillsync`. `skills.json` carries a version per
+skill that the generator writes once and preserves; releases do not stamp it.
+
+A skill-only change ships with the component's next release, unless it is
+committed with a releasing type (`feat` or `fix`).
+
 ### The engine SDKs' kit pin
 
 The engine SDKs run `kit serve` and fetch a `kit` binary when no

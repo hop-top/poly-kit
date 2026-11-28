@@ -78,7 +78,7 @@ A name in neither is not a kit capability: say so, do not invent a package. Pack
 <!-- skills-sync:begin version -->
 ## Versions
 
-Written for 0.5.0-beta.16. # x-release-please-version
+Written for 0.5.0-beta.16 # x-release-please-version
 Expects 0.5.0-beta.16 or newer.
 
 Installed: `go list -m hop.top/kit`; `scripts/detect-port.sh` shows what the manifest pins. Older

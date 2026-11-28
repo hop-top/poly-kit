@@ -134,7 +134,7 @@ var ruleCases = []lintCase{
 	// S6 versions
 	{Name: "S6/stamp-differs-from-manifest", Mut: mutation{Edits: [][3]string{
 		{tsDir + "/SKILL.md", tsStamp, strings.Replace(tsStamp, "alpha.4", "alpha.5", 1)},
-		{tsDir + "/SKILL.md", "Written for 0.3.0-alpha.4.", "Written for 0.3.0-alpha.5."},
+		{tsDir + "/SKILL.md", "Written for 0.3.0-alpha.4 #", "Written for 0.3.0-alpha.5 #"},
 		{tsDir + "/.claude-plugin/plugin.json", `"version": "0.3.0-alpha.4"`, `"version": "0.3.0-alpha.5"`}}},
 		Want: []want{{File: "SKILL.md", Anchor: "alpha.5", Rule: "S6"}}},
 	{Name: "S6/stamp-not-annotated", Mut: mutation{Edits: [][3]string{{tsDir + "/SKILL.md", tsStamp, `  version: "0.3.0-alpha.4"`}}},

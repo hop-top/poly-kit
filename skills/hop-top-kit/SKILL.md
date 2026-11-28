@@ -84,7 +84,7 @@ installed, follow [install](references/install.md).
 <!-- skills-sync:begin version -->
 ## Versions
 
-Written for 0.5.0-beta.16. # x-release-please-version
+Written for 0.5.0-beta.16 # x-release-please-version
 Expects 0.5.0-beta.16 or newer.
 
 The `kit` binary: `kit --version` prints `kit v<version>` (a source build prints `kit vdev`: nothing

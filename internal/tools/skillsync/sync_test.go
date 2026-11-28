@@ -172,7 +172,7 @@ func TestVersionWrittenOnceThenPreserved(t *testing.T) {
 	// that copies it; it never touches min_version
 	ts := "packages/ts/skills/acme-kit-ts/SKILL.md"
 	edit(t, root, ts, `version: "1.0.0" # x-release-please-version`, `version: "1.0.1" # x-release-please-version`)
-	edit(t, root, ts, "Written for 1.0.0. # x-release-please-version", "Written for 1.0.1. # x-release-please-version")
+	edit(t, root, ts, "Written for 1.0.0 # x-release-please-version", "Written for 1.0.1 # x-release-please-version")
 	if code, out, e := runCLI(t, root, "sync", "--check"); code != 0 {
 		t.Fatalf("a release PR must not fail --check:\n%s%s", out, e)
 	}

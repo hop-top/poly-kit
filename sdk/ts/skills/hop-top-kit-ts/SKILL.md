@@ -88,7 +88,7 @@ port cannot scaffold, and the binary needs no Go toolchain when taken from a rel
 <!-- skills-sync:begin version -->
 ## Versions
 
-Written for 0.5.0-alpha.12. # x-release-please-version
+Written for 0.5.0-alpha.12 # x-release-please-version
 Expects 0.5.0-alpha.12 or newer.
 
 Installed: `npm ls @hop-top/kit` or `pnpm ls @hop-top/kit`; `scripts/detect-port.sh` shows what the

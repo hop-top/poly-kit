@@ -22,7 +22,7 @@ Tier: supported.
 <!-- skills-sync:begin version -->
 ## Versions
 
-Written for 1.0.0. # x-release-please-version
+Written for 1.0.0 # x-release-please-version
 Expects 0.3.0-alpha.2 or newer.
 
 Installed: `pip show acme-kit` or `uv pip show acme-kit`; Python may print the PEP 440 spelling (a,
