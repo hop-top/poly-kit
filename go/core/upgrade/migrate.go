@@ -136,10 +136,13 @@ func (m *Migrator) AddDriver(d SchemaDriver) {
 // A crash re-applies at most the one migration whose Up had not been
 // recorded, so migrations should stay idempotent. On failure: rollback
 // (Down in reverse, recording the version before each, else Restore and
-// record the starting version). When a Down is missing or fails and no
-// backup can restore the schema, nothing is reverted: the error matches
-// ErrNotRestored and the stored version stays at the last step still
-// applied. A context canceled between steps stops before the next Up.
+// record the starting version). A migration whose Up failed counts as
+// applied but cannot be downed (its Down is never called): the run
+// restores the backup at once and no older Down runs. When a Down is
+// missing or fails, or the Up failed, and no backup can restore the
+// schema, nothing is reverted: the error matches ErrNotRestored and the
+// stored version stays at the last step still applied. A context
+// canceled between steps stops before the next Up.
 func (m *Migrator) Run(ctx context.Context) error {
 	start := time.Now()
 	quiet := context.WithoutCancel(ctx)
@@ -283,6 +286,9 @@ type stepFailure struct {
 	from    string
 	err     error
 	undo    []Migration
+	// upFailed marks the newest undo entry as a step whose Up failed: it
+	// counts as applied, but its Down is never called.
+	upFailed bool
 }
 
 func (f stepFailure) wrap() error {
@@ -425,7 +431,11 @@ func (m *Migrator) applyAll(ctx context.Context, d SchemaDriver, current string,
 		m.emit(quiet, m.topics.Started, ev)
 		t := time.Now()
 		if err := mig.Up(ctx); err != nil {
-			return m.failed(quiet, withDuration(ev, t), "up", err, applied), len(applied)
+			// A failed Up is an applied step that cannot be downed: it
+			// joins the undo list, newest, and its Down is never called.
+			f := m.failed(quiet, withDuration(ev, t), "up", err, append(applied, mig))
+			f.upFailed = true
+			return f, len(applied)
 		}
 		m.emit(quiet, m.topics.Applied, withDuration(ev, t))
 		if mig.Verify != nil {
@@ -469,7 +479,8 @@ func withDuration(ev MigrationPayload, since time.Time) MigrationPayload {
 	return ev
 }
 
-// fail rolls back (in auto mode) and builds the schema's error.
+// fail rolls back (in auto mode) and builds the schema's error. The undo
+// list is empty only when nothing ran: a canceled run before the first Up.
 func (m *Migrator) fail(ctx context.Context, d SchemaDriver, current string, bk backupState, f stepFailure) error {
 	err := f.wrap()
 	if !m.autoRollback || len(f.undo) == 0 {
@@ -477,7 +488,7 @@ func (m *Migrator) fail(ctx context.Context, d SchemaDriver, current string, bk 
 	}
 	quiet := context.WithoutCancel(ctx)
 	t := time.Now()
-	method, rollbackErr := m.rollback(quiet, d, current, f.undo, bk)
+	method, rollbackErr := m.rollback(quiet, d, current, f.undo, f.upFailed, bk)
 	if rollbackErr != nil {
 		return fmt.Errorf("%w (rollback also failed: %w)", err, rollbackErr)
 	}
@@ -489,21 +500,25 @@ func (m *Migrator) fail(ctx context.Context, d SchemaDriver, current string, bk 
 // rollback runs Down in reverse order, recording the version before each
 // migration once its Down succeeded; falls back to Restore (and records
 // the starting version) if a Down is missing or fails. It reports which
-// of the two undid the changes. A failed record stops the rollback: the
-// store would not describe the data. With no backup, or a Restore that
-// returns ErrBackupUnsupported, nothing is restored: the error matches
-// ErrNotRestored, and the version stays at the last record, the step
-// whose Down was missing or failed.
+// of the two undid the changes. When upFailed, the newest step's Up
+// failed: its Down is never called (a Down assumes a completed Up), so
+// the rollback restores at once and no older Down runs. A failed record
+// stops the rollback: the store would not describe the data. With no
+// backup, or a Restore that returns ErrBackupUnsupported, nothing is
+// restored: the error matches ErrNotRestored, and the version stays at
+// the last record, the step whose Down was missing, failed or not
+// callable.
 func (m *Migrator) rollback(
 	ctx context.Context,
 	d SchemaDriver,
 	current string,
 	applied []Migration,
+	upFailed bool,
 	bk backupState,
 ) (string, error) {
 	for i := len(applied) - 1; i >= 0; i-- {
 		mig := applied[i]
-		if mig.Down == nil || mig.Down(ctx) != nil {
+		if (upFailed && i == len(applied)-1) || mig.Down == nil || mig.Down(ctx) != nil {
 			if bk.path == "" {
 				return "restore", notRestored{text: errNoBackup, cause: bk.unsupported}
 			}

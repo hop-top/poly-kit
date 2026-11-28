@@ -84,17 +84,18 @@ func TestMigrator_Run_RollbackOnFailure(t *testing.T) {
 	resetRegistry()
 	defer resetRegistry()
 
-	var applied []string
+	var downs []string
 	RegisterMigration(Migration{
 		Version: "1.1.0",
 		Schema:  "testdb",
-		Up:      func(ctx context.Context) error { applied = append(applied, "1.1.0"); return nil },
-		Down:    func(ctx context.Context) error { return nil },
+		Up:      func(ctx context.Context) error { return nil },
+		Down:    func(ctx context.Context) error { downs = append(downs, "1.1.0"); return nil },
 	})
 	RegisterMigration(Migration{
 		Version: "1.2.0",
 		Schema:  "testdb",
 		Up:      func(ctx context.Context) error { return errors.New("boom") },
+		Down:    func(ctx context.Context) error { downs = append(downs, "1.2.0"); return nil },
 	})
 
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
@@ -106,7 +107,74 @@ func TestMigrator_Run_RollbackOnFailure(t *testing.T) {
 	err := m.Run(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "boom")
-	// Down was called for 1.1.0 (the only applied migration).
+	assert.NotErrorIs(t, err, ErrNotRestored)
+	// A failed Up is an applied step that cannot be downed: the backup is
+	// restored and no Down runs, neither its own nor an earlier step's.
+	assert.Empty(t, downs)
+	assert.True(t, d.restored)
+	assert.Equal(t, "1.0.0", d.version)
+}
+
+// An Up that fails with the context's error is a failed Up: the run
+// restores the backup and calls no Down.
+func TestMigrator_Run_UpCanceledRestores(t *testing.T) {
+	resetRegistry()
+	defer resetRegistry()
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+
+	downs := 0
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	RegisterMigration(Migration{
+		Version: "1.1.0",
+		Schema:  "testdb",
+		Up:      func(ctx context.Context) error { cancel(); return ctx.Err() },
+		Down:    func(ctx context.Context) error { downs++; return nil },
+	})
+
+	d := &mockDriver{name: "testdb", version: "1.0.0"}
+	m := NewMigrator("testapp", "1.1.0")
+	m.AddDriver(d)
+
+	err := m.Run(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+	assert.NotErrorIs(t, err, ErrNotRestored)
+	assert.Zero(t, downs)
+	assert.True(t, d.restored)
+	assert.Equal(t, "1.0.0", d.version)
+}
+
+// Nothing to restore: the failed Up is not downed, earlier steps are not
+// downed either, and the version stays at the last step still applied.
+func TestMigrator_Run_FailedUpWithoutBackupIsNotRestored(t *testing.T) {
+	resetRegistry()
+	defer resetRegistry()
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+
+	downs := 0
+	RegisterMigration(Migration{
+		Version: "1.1.0",
+		Schema:  "testdb",
+		Up:      func(ctx context.Context) error { return nil },
+		Down:    func(ctx context.Context) error { downs++; return nil },
+	})
+	RegisterMigration(Migration{
+		Version: "1.2.0",
+		Schema:  "testdb",
+		Up:      func(ctx context.Context) error { return errors.New("boom") },
+		Down:    func(ctx context.Context) error { downs++; return nil },
+	})
+
+	d := &mockDriver{name: "testdb", version: "1.0.0", backupErr: ErrBackupUnsupported}
+	m := NewMigrator("testapp", "1.2.0")
+	m.AddDriver(d)
+
+	err := m.Run(context.Background())
+	require.ErrorIs(t, err, ErrNotRestored)
+	assert.Contains(t, err.Error(), "boom")
+	assert.Zero(t, downs)
+	assert.False(t, d.restored)
+	assert.Equal(t, "1.1.0", d.version)
 }
 
 func TestMigrator_Run_RestoreFallback(t *testing.T) {

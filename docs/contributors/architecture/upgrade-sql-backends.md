@@ -87,9 +87,9 @@ migration's record.
 
 Observable consequences:
 
-- a run that stops at migration k leaves the stored version at the version
-  of migration k-1 (the last applied and recorded), not at the pre-run
-  version and not at the target
+- a run that stops at migration k and is not rolled back leaves the stored
+  version at the version of migration k-1 (the last applied and recorded),
+  not at the pre-run version and not at the target
 - a re-run after such a stop selects only the migrations after k-1
 - a failed `Verify` (per migration) fails before that migration's record,
   so a migration that fails its own verify is never recorded
@@ -226,8 +226,20 @@ Observable behaviour:
   already existed is not removed), and nothing is pruned for that schema,
   whatever backups it holds from earlier runs
 - any other `Backup` error fails the schema before any `Up` (`backup: ...`)
-- when a failure triggers rollback, `Down`s run newest first, as before.
-  `Restore` is called only if a `Down` is missing or fails
+- a failed `Up` is an applied step that cannot be downed. With automatic
+  rollback the failing migration joins the rollback as its newest step, and
+  its `Down` is never called: a `Down` assumes a completed `Up`, and the
+  `Up` may have changed the store part way. The newest step cannot be
+  downed, so the Migrator restores the backup taken for this run and
+  records the pre-run version. No `Down` of an earlier step runs: the
+  restore already returned the store to its pre-run state. This holds for
+  the first migration and for a later one, and for an `Up` that fails with
+  the context's error
+- a failure after a completed `Up` (its `Verify`, its record, the final
+  `WithVerify`) rolls back with `Down`s newest first, the failing step's
+  included. `Restore` is called only if a `Down` is missing or fails
+- a context canceled before an `Up` starts is no failed `Up`: that step
+  never ran and is not part of the rollback
 - a rollback that needs `Restore` and has none to run (no backup was taken,
   or `Restore` returns `ErrBackupUnsupported`) fails: the returned error
   satisfies `errors.Is(err, ErrNotRestored)` (and, as its cause,
@@ -235,8 +247,11 @@ Observable behaviour:
   started the rollback, and no `Reverted` event is published. The stored
   version stays at the last step still applied: each successful `Down`
   recorded the version before its migration, so the step whose `Down` is
-  missing or failed is the one the store still reports (in manual mode,
-  the last applied migration). The text ends `(rollback also failed: not
+  missing or failed is the one the store still reports. After a failed
+  `Up` nothing is downed, so the store reports the step before the failing
+  one (the pre-run version when the first migration failed), and the
+  failing step's partial change stays; in manual mode the last applied
+  migration. The text ends `(rollback also failed: not
   restored: no backup was taken)` or `(rollback also failed: not restored:
   restore unsupported)`; the lock, if held, is released as on any path
 - a rollback that completed through `Down`s alone is a revert (method
@@ -252,7 +267,10 @@ Observable behaviour:
 A run that never needed a rollback is unaffected by missing backups. This
 is why an unsupported backup does not refuse the run up front: additive
 migrations on a server database are applied, and only a failure that would
-need a restore is reported as not restorable.
+need a restore is reported as not restorable. A failed `Up` always needs
+one, so on a server database it ends not restored whatever `Down`s exist: a
+migration that must not leave a partial change there makes its `Up`
+atomic (one transaction).
 
 Drivers handed an existing handle (rule 6) to a SQLite file cannot replace
 the file under a live pool: their `Restore` returns `ErrBackupUnsupported`.
