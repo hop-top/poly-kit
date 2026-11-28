@@ -1,1 +1,21 @@
-[]
+[
+  {
+    "name": "hop-top-kit",
+    "description": "Pick which kit port to build with: Go, TypeScript, Python, Rust or PHP, or the kit binary as a sidecar for any other language. Use when choosing a language or SDK for a tool built on kit, when adding kit to an existing project, when asked which port supports a capability, or when a port lacks a capability the task needs. Not for writing code with one port: load that port's skill for that.",
+    "source": {
+      "source": "git-subdir",
+      "url": "https://github.com/hop-top/kit.git",
+      "path": "skills/hop-top-kit"
+    },
+    "homepage": "https://github.com/hop-top/kit/blob/main/skills/hop-top-kit/SKILL.md",
+    "license": "MIT",
+    "category": "development",
+    "keywords": [
+      "hop-top",
+      "kit",
+      "agent-skill",
+      "router",
+      "sdk-selection"
+    ]
+  }
+]
