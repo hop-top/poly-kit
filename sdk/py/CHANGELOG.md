@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.5.0-alpha.11](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.10...kit-py/v0.5.0-alpha.11) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **py:** a failed up restores the backup instead of being left applied
+
+### Features
+
+* **py:** configfile and fsdir upgrade drivers ([b3fde9a](https://github.com/hop-top/poly-kit/commit/b3fde9a6a227136fd52de1790b7df83aff53061f))
+* **py:** upgrade Migrator, driver protocol, migrator.json runner ([f534456](https://github.com/hop-top/poly-kit/commit/f534456c6cb22a44028eebe9cda708d65ef3075c))
+* **py:** upgrade package with lenient semver, registry, document migrator ([5f7ae35](https://github.com/hop-top/poly-kit/commit/5f7ae35efa575863fa3d3f26c82f11413330bf5b))
+* **py:** upgrade postgres driver over DB-API connections ([373ad22](https://github.com/hop-top/poly-kit/commit/373ad2222a52aa136fd2f567062496b28927763a))
+* **py:** upgrade sqlite driver over a path or a DB-API connection ([50c78bd](https://github.com/hop-top/poly-kit/commit/50c78bd8b2bf150d7001afac668e986f8c43aeff))
+* **skills:** each skill states the release it expects and how to update itself ([431e0a2](https://github.com/hop-top/poly-kit/commit/431e0a27d5ff943f7f961b28157fb29cc066a3d2))
+* **skills:** hop-top-kit-py skill ([40d51c8](https://github.com/hop-top/poly-kit/commit/40d51c8ec7828648836305ae291780fc3f6b3f7a))
+* **skills:** probed install and update commands per channel ([fcfea33](https://github.com/hop-top/poly-kit/commit/fcfea3387bf3bd7f029ed35db462d3bb50e99016))
+
+
+### Bug Fixes
+
+* **py:** a failed up restores the backup instead of being left applied ([2c13c66](https://github.com/hop-top/poly-kit/commit/2c13c663d9712c6537f5decd8347e7b3e670f5ce))
+* **py:** fsdir backup refuses links its restore would refuse ([ecd12b0](https://github.com/hop-top/poly-kit/commit/ecd12b06bd8ad0742544b84d7fbcbf805cf109d8))
+* **py:** fsdir restore refuses link members without tarfile filters ([9e82d9b](https://github.com/hop-top/poly-kit/commit/9e82d9b9ab9cb7136fb2dfe798ef9c1e28b98eb4))
+* **skills:** descriptions on one frontmatter line ([cc7f856](https://github.com/hop-top/poly-kit/commit/cc7f8560981c0c639543b92e875a654e137ddc22))
+* **skills:** docs links follow the poly-kit default branch ([91c472f](https://github.com/hop-top/poly-kit/commit/91c472f2a7ef5c8b5a6e895cc3161c57838ac641))
+
 ## [0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.9...kit-py/v0.5.0-alpha.10) (2026-11-15)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.10. This release includes new features and bug fixes.
