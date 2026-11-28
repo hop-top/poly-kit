@@ -24,6 +24,7 @@ none of them ship.
 | [`install-hooks.sh`](install-hooks.sh) | points `core.hooksPath` at `.githooks/` for this clone | a fresh clone is not running the pre-push gate |
 | [`promote-release.sh`](promote-release.sh) | records and commits a target-versioning step (channel promotion, opened line) per package or group through hop-top/.github's `promote.js` | you promote a line or open one; see `RELEASING.md` |
 | [`rewrite-changelog.sh`](rewrite-changelog.sh) | rewrites a raw release-please changelog into the polished format, idempotently | the changelog-rewrite workflow needs a local run |
+| [`skill-mirror-smoke.sh`](skill-mirror-smoke.sh) | after a publish, checks each skill of the tag's component is in its mirror at the new tag with the tag's version | the publish workflow's `skill-mirror-smoke` job fails |
 | [`test-release-e2e.sh`](test-release-e2e.sh) | end-to-end tests for the promotion wrapper and changelog-rewrite scripts | you change either script |
 | [`setup-pypi-publisher.sh`](setup-pypi-publisher.sh) | creates a PyPI pending trusted publisher through a browser session | you add a Python package to the release |
 | [`verify-tier1.sh`](verify-tier1.sh) | asserts the dogfood-grade workflow never requests Tier 2/3 grader output | you touch `dogfood-grade.yml` |
