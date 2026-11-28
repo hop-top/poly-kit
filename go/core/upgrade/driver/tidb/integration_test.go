@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"regexp"
 	"strings"
@@ -310,6 +312,120 @@ func TestIntegration_LockReleasedAfterCancelledContext(t *testing.T) {
 	require.NoError(t, unlock())
 	assert.True(t, lockFree(t, db, name))
 	require.NoError(t, unlock(), "second unlock is a no-op")
+}
+
+// delayProxy forwards TCP to the server and, once armed, holds each
+// COM_STMT_EXECUTE back for delay and tells the server the client
+// has gone only closeLag after the last chunk. A client that gives up
+// while a statement is held back is then gone before the server has seen
+// the statement, and the server learns of it late: the window in which a
+// canceled statement can still be granted a lock.
+type delayProxy struct {
+	addr     string
+	delay    atomic.Int64
+	closeLag atomic.Int64
+}
+
+func startDelayProxy(t *testing.T, target string) *delayProxy {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	p := &delayProxy{addr: ln.Addr().String()}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go p.serve(c, target)
+		}
+	}()
+	return p
+}
+
+func (p *delayProxy) serve(c net.Conn, target string) {
+	s, err := net.Dial("tcp", target)
+	if err != nil {
+		_ = c.Close()
+		return
+	}
+	go func() {
+		_, _ = io.Copy(c, s)
+		_ = c.Close()
+	}()
+	chunks := make(chan []byte, 64)
+	go func() {
+		defer close(chunks)
+		buf := make([]byte, 32<<10)
+		for {
+			n, err := c.Read(buf)
+			if n > 0 {
+				chunks <- append([]byte(nil), buf[:n]...)
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	var lag time.Duration
+	for b := range chunks {
+		// Only COM_STMT_EXECUTE (0x17 after the 4-byte packet header) is held.
+		if d := time.Duration(p.delay.Load()); d > 0 && len(b) > 4 && b[4] == 0x17 {
+			time.Sleep(d)
+			lag = time.Duration(p.closeLag.Load())
+		}
+		if _, err := s.Write(b); err != nil {
+			break
+		}
+	}
+	time.Sleep(lag)
+	_ = s.Close()
+}
+
+// A statement canceled in flight can reach the server after the client
+// has closed its socket. Lock must never leave a server-side wait behind
+// for that statement: when the holder releases afterwards, the lock must
+// stay free instead of going to a session whose client is gone.
+func TestIntegration_LockCanceledStatementArrivesAfterClientGone(t *testing.T) {
+	dsn := startMySQL(t)
+	table := uniqueTable(t)
+	db := openDB(t, dsn)
+	holder, err := NewWithDB(db, table, WithName("app"))
+	require.NoError(t, err)
+	name := lockName(table, "app")
+
+	m := regexp.MustCompile(`@tcp\(([^)]*)\)`).FindStringSubmatch(dsn)
+	require.Len(t, m, 2)
+	proxy := startDelayProxy(t, m[1])
+	pdb := openDB(t, strings.Replace(dsn, m[1], proxy.addr, 1)) // pings: one idle conn
+	waiter, err := NewWithDB(pdb, table, WithName("app"))
+	require.NoError(t, err)
+
+	unlockHolder, err := holder.Lock(context.Background())
+	require.NoError(t, err)
+
+	// The waiter's statement is held back 300ms; its context ends at 100ms,
+	// so the client is gone before the server sees the statement.
+	proxy.delay.Store(int64(300 * time.Millisecond))
+	proxy.closeLag.Store(int64(2 * time.Second))
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	unlock, err := waiter.Lock(ctx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Nil(t, unlock)
+	proxy.delay.Store(0)
+
+	// Let the statement reach the server (the server does not yet know the
+	// client is gone), then release the holder.
+	time.Sleep(500 * time.Millisecond)
+	require.NoError(t, unlockHolder())
+
+	deadline := time.Now().Add(1200 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		require.True(t, lockFree(t, db, name), "canceled waiter's session holds the lock")
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // Two drivers on the same table and schema exclude each other; other

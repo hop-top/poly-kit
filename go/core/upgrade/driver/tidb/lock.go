@@ -9,15 +9,16 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 	"unicode/utf8"
 )
 
 const (
 	// maxLockName is the longest GET_LOCK name the server accepts.
 	maxLockName = 64
-	// lockPollSeconds is the server-side wait of each GET_LOCK attempt, so the
-	// loop re-checks its context at least once a second.
-	lockPollSeconds = 1
+	// lockPollInterval is the client-side pause between GET_LOCK attempts.
+	// The attempts themselves never wait on the server.
+	lockPollInterval = 50 * time.Millisecond
 )
 
 // lockName is the GET_LOCK name for a table and schema: "<table>:<schema>".
@@ -43,10 +44,13 @@ func lockName(table, schema string) string {
 // dedicated connection and returns the function that releases it. It
 // implements upgrade.Locker.
 //
-// It polls SELECT GET_LOCK(name, 1) until the server grants the lock or ctx
-// is done; each attempt waits at most one second on the server, so
-// cancellation is noticed within that time, and a query in flight is
-// interrupted when ctx ends. The lock belongs to the session, so it sits on
+// It polls SELECT GET_LOCK(name, 0), which never waits on the server, and
+// pauses lockPollInterval on the client between attempts until the server
+// grants the lock or ctx is done. Cancellation is noticed within one pause
+// and leaves no server-side wait behind: a blocking GET_LOCK that was
+// already sent when the client gave up would still be granted the lock
+// when the holder released it, and the dead session would hold it until the
+// server noticed the closed connection. The lock belongs to the session, so it sits on
 // one *sql.Conn for the whole run. unlock runs RELEASE_LOCK on that same
 // connection with a context that ignores the caller's cancellation; when
 // the release fails the physical connection is discarded, which ends the
@@ -66,7 +70,7 @@ func (d *Driver) Lock(ctx context.Context) (func() error, error) {
 	name := lockName(d.table, d.name)
 	for {
 		var got sql.NullInt64
-		err := conn.QueryRowContext(ctx, `SELECT GET_LOCK(?, ?)`, name, lockPollSeconds).Scan(&got)
+		err := conn.QueryRowContext(ctx, `SELECT GET_LOCK(?, 0)`, name).Scan(&got)
 		switch {
 		case err != nil:
 			discard(conn)
@@ -85,10 +89,12 @@ func (d *Driver) Lock(ctx context.Context) (func() error, error) {
 				return unlockErr
 			}, nil
 		}
-		// 0: held elsewhere past the one-second wait. Poll again unless done.
-		if err := ctx.Err(); err != nil {
+		// 0: held elsewhere. Pause on the client, then poll again unless done.
+		select {
+		case <-ctx.Done():
 			discard(conn)
-			return nil, err
+			return nil, ctx.Err()
+		case <-time.After(lockPollInterval):
 		}
 	}
 }
