@@ -265,3 +265,127 @@ describe('Migrator wiring', () => {
     await expect(m.rollbackLatest()).rejects.toThrow('rollback: only available in manual rollback mode');
   });
 });
+
+describe('Migrator failed up', () => {
+  /** A recording driver at 1.0.0; `backup` may be unsupported. */
+  function recording(backupUnsupported = false) {
+    const d: { version: string; restored: boolean; driver: SchemaDriver } = {
+      version: '1.0.0',
+      restored: false,
+      driver: {
+        name: () => 'db',
+        storesVersion: true,
+        version: () => d.version,
+        setVersion: (v: string) => {
+          d.version = v;
+        },
+        backup: () => {
+          if (backupUnsupported) throw new BackupUnsupportedError();
+        },
+        restore: () => {
+          d.restored = true;
+        },
+      },
+    };
+    return d;
+  }
+  const failing = (downs: string[], upError: unknown = new Error('boom')): Registry => {
+    const reg = new Registry();
+    reg.register({ schema: 'db', version: '1.1.0', up: () => {}, down: () => void downs.push('1.1.0') });
+    reg.register({ schema: 'db', version: '1.2.0', up: () => Promise.reject(upError), down: () => void downs.push('1.2.0') });
+    return reg;
+  };
+  const run = (m: Migrator) =>
+    m.run().then(
+      () => undefined,
+      (e: unknown) => e as Error,
+    );
+
+  it('restores the backup and calls no down, neither its own nor an earlier one', async () => {
+    const downs: string[] = [];
+    const d = recording();
+    const methods: string[] = [];
+    const m = new Migrator('t', '1.2.0', {
+      registry: failing(downs),
+      dataDir: dir,
+      publisher: { publish: (e) => e.topic.endsWith('.reverted') && methods.push((e.payload as { method: string }).method) },
+    });
+    m.addDriver(d.driver);
+    const err = await run(m);
+    expect(err?.message).toContain('up 1.2.0 failed: boom');
+    expect(isNotRestored(err)).toBe(false);
+    expect(downs).toEqual([]);
+    expect(d.restored).toBe(true);
+    expect(d.version).toBe('1.0.0');
+    expect(methods).toEqual(['restore']);
+  });
+
+  it('an up that fails with the abort error is a failed up: restore, no down', async () => {
+    const downs: string[] = [];
+    const ctl = new AbortController();
+    const d = recording();
+    const reg = new Registry();
+    reg.register({
+      schema: 'db',
+      version: '1.1.0',
+      up: () => {
+        ctl.abort();
+        throw abortError(ctl.signal);
+      },
+      down: () => void downs.push('1.1.0'),
+    });
+    const m = new Migrator('t', '1.1.0', { registry: reg, dataDir: dir });
+    m.addDriver(d.driver);
+    const err = await m.run(ctl.signal).then(
+      () => undefined,
+      (e: unknown) => e as Error,
+    );
+    expect(isCanceled(err)).toBe(true);
+    expect(isNotRestored(err)).toBe(false);
+    expect(downs).toEqual([]);
+    expect(d.restored).toBe(true);
+    expect(d.version).toBe('1.0.0');
+  });
+
+  it('with no backup it ends not restored at the step before, no down runs', async () => {
+    const downs: string[] = [];
+    const d = recording(true);
+    const methods: string[] = [];
+    const m = new Migrator('t', '1.2.0', {
+      registry: failing(downs),
+      dataDir: dir,
+      publisher: { publish: (e) => e.topic.endsWith('.reverted') && methods.push('reverted') },
+    });
+    m.addDriver(d.driver);
+    const err = await run(m);
+    expect(isNotRestored(err)).toBe(true);
+    expect(err?.message).toContain('up 1.2.0 failed: boom');
+    expect(err?.message).toContain('(rollback also failed: not restored: no backup was taken)');
+    expect(downs).toEqual([]);
+    expect(d.restored).toBe(false);
+    expect(d.version).toBe('1.1.0');
+    expect(methods).toEqual([]);
+  });
+
+  it('a failed final verify still rolls back by down, newest first', async () => {
+    const downs: string[] = [];
+    const reg = new Registry();
+    reg.register({ schema: 'db', version: '1.1.0', up: () => {}, down: () => void downs.push('1.1.0') });
+    reg.register({ schema: 'db', version: '1.2.0', up: () => {}, down: () => void downs.push('1.2.0') });
+    const d = recording();
+    const m = new Migrator('t', '1.2.0', {
+      registry: reg,
+      dataDir: dir,
+      verify: () => {
+        throw new Error('bad state');
+      },
+    });
+    m.addDriver(d.driver);
+    const err = await run(m);
+    expect(err?.message).toContain('final verify 1.2.0 failed: bad state');
+    expect(isNotRestored(err)).toBe(false);
+    expect(downs).toEqual(['1.2.0', '1.1.0']);
+    expect(d.restored).toBe(false);
+    expect(d.version).toBe('1.0.0');
+  });
+});

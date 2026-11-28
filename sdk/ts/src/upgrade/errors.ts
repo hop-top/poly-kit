@@ -40,8 +40,9 @@ export class BackupUnsupportedError extends Error {
 
 /**
  * A rollback that could not undo a failed run: a `down` was missing or
- * failed and no backup could restore the schema, so the stored version
- * stays at the last step still applied. The run's error carries it in its
+ * failed, or the newest step's `up` failed (it cannot be downed), and no
+ * backup could restore the schema, so the stored version stays at the last
+ * step still applied. The run's error carries it in its
  * chain: {@link isNotRestored}. No `reverted` event is published for it.
  * `message` is the text the vectors pin; `cause` is typically a
  * {@link BackupUnsupportedError}.

@@ -14,7 +14,7 @@ Where a schema's data and version live, and how it is backed up, restored and lo
 | Postgres | `@hop-top/kit/upgrade/drivers/postgres` | `await openPostgresDriver({ db, connect, table, name? })` over your `pg` Pool | table row (`storesVersion`); advisory `lock` | both throw `BackupUnsupportedError`; back up outside kit |
 
 - file-backed drivers read the Migrator's version file: give them the Migrator's `dataDir`
-- `SqliteDriver` with `db`: backup runs on your `Database` and never closes it; `restore` throws `BackupUnsupportedError`, so a run with a missing `down` ends not restored
+- `SqliteDriver` with `db`: backup runs on your `Database` and never closes it; `restore` throws `BackupUnsupportedError`, so a failed `up`, or a failure with a missing `down`, ends not restored; path-only mode restores the file
 - pick Postgres when the schema lives in a shared database that several installs or a Go and a TypeScript tool migrate
 
 ## Quick start

@@ -1,7 +1,7 @@
 // Needs the native better-sqlite3 build: run by `make test-ts-upgrade-integration`.
 
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,6 +15,7 @@ import {
   BackupUnsupportedError,
   Migrator,
   Registry,
+  type EventPublisher,
   isBackupUnsupported,
   isCanceled,
   isNotRestored,
@@ -252,24 +253,90 @@ describe('two processes', () => {
   }, 30_000);
 });
 
+// Collects the method of every reverted event.
+function reverts(): EventPublisher & { methods: string[] } {
+  const methods: string[] = [];
+  return {
+    methods,
+    publish(e) {
+      if (e.topic.endsWith('.reverted')) methods.push((e.payload as { method: string }).method);
+    },
+  };
+}
+function addColumn(path: string, col: string): void {
+  const c = new Database(path);
+  try {
+    c.exec(`ALTER TABLE t ADD COLUMN ${col} TEXT`);
+  } finally {
+    c.close();
+  }
+}
+function columns(path: string): string[] {
+  const c = new Database(path, { readonly: true, fileMustExist: true });
+  try {
+    return (c.prepare("SELECT name FROM pragma_table_info('t') ORDER BY cid").all() as { name: string }[]).map((r) => r.name);
+  } finally {
+    c.close();
+  }
+}
+// Backup directories only: `pre-<v>.version` sidecars sit beside them.
+const backupDirs = (): string[] =>
+  readdirSync(join(data, 'backups', 'appdb'), { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+
 // End to end: 1.1.0 inserts row 2; 1.2.0 fails (after `before12`).
-function migrator(withDown: boolean, d: SqliteDriver, before12?: () => void, manual = false): Migrator {
+// With `finalVerify`, 1.2.0 applies (inserting row 3) and the final verify
+// fails instead. `downs` collects the versions whose down ran.
+function migrator(
+  withDown: boolean,
+  d: SqliteDriver,
+  before12?: () => void,
+  manual = false,
+  finalVerify = false,
+  publisher?: EventPublisher,
+  downs: string[] = [],
+): Migrator {
   const reg = new Registry();
   reg.register({
     version: '1.1.0',
     schema: 'appdb',
     up: () => void db.prepare('INSERT INTO t (x) VALUES (2)').run(),
-    down: withDown ? () => void db.prepare('DELETE FROM t WHERE x = 2').run() : undefined,
+    down: withDown
+      ? () => {
+          downs.push('1.1.0');
+          db.prepare('DELETE FROM t WHERE x = 2').run();
+        }
+      : undefined,
   });
   reg.register({
     version: '1.2.0',
     schema: 'appdb',
     up: () => {
       before12?.();
+      if (finalVerify) return void db.prepare('INSERT INTO t (x) VALUES (3)').run();
       throw new Error('simulated failure');
     },
+    down: withDown
+      ? () => {
+          downs.push('1.2.0');
+          db.prepare('DELETE FROM t WHERE x = 3').run();
+        }
+      : undefined,
   });
-  const m = new Migrator('tool', '1.2.0', { registry: reg, dataDir: data, manualRollback: manual, warn: () => {} });
+  const m = new Migrator('tool', '1.2.0', {
+    registry: reg,
+    dataDir: data,
+    manualRollback: manual,
+    warn: () => {},
+    publisher,
+    verify: finalVerify
+      ? () => {
+          throw new Error('simulated failure');
+        }
+      : undefined,
+  });
   m.addDriver(d);
   return m;
 }
@@ -302,13 +369,88 @@ describe('through the Migrator', () => {
     await unlocked(d);
   });
 
-  it('caller handle, with down: rolls back', async () => {
-    const err = await failure(migrator(true, driver({ db })).run());
-    expect(err.message).toContain('simulated failure');
+  it('caller handle, with down: a failed final verify rolls back by down', async () => {
+    const m = migrator(true, driver({ db }), undefined, false, true);
+    const err = await failure(m.run());
+    expect(err.message).toContain('final verify 1.2.0 failed: simulated failure');
     expect(isNotRestored(err)).toBe(false);
     expect(rows(dbPath)).toEqual([1]);
     expect(await readVersionFile(data, 'appdb')).toBe('1.0.0');
     expect(db.open).toBe(true);
+  });
+
+  it('caller handle, a failed up is not downed: not restored even with every down', async () => {
+    const downs: string[] = [];
+    const pub = reverts();
+    const d = driver({ db });
+    const m = migrator(true, d, undefined, false, false, pub, downs);
+    const err = await failure(m.run());
+    expect(isNotRestored(err)).toBe(true);
+    expect(err.message).toContain('up 1.2.0 failed: simulated failure');
+    expect(downs).toEqual([]);
+    expect(await readVersionFile(data, 'appdb')).toBe('1.1.0');
+    expect(rows(dbPath)).toEqual([1, 2]);
+    expect(pub.methods).toEqual([]);
+    expect(db.open).toBe(true);
+    await unlocked(d);
+  });
+
+  it('path only: a first up that fails after a partial change is restored', async () => {
+    const reg = new Registry();
+    reg.register({
+      version: '1.1.0',
+      schema: 'appdb',
+      up: () => {
+        db.close(); // precondition of a path-only restore: no handle on the file
+        addColumn(dbPath, 'note');
+        throw new Error('boom');
+      },
+    });
+    const pub = reverts();
+    const d = driver();
+    const m = new Migrator('tool', '1.1.0', { registry: reg, dataDir: data, publisher: pub, warn: () => {} });
+    m.addDriver(d);
+    const err = await failure(m.run());
+    expect(err.message).toContain('up 1.1.0 failed: boom');
+    expect(isNotRestored(err)).toBe(false);
+    expect(columns(dbPath)).not.toContain('note');
+    expect(rows(dbPath)).toEqual([1]);
+    expect(await readVersionFile(data, 'appdb')).toBe('1.0.0');
+    expect(backupDirs()).toEqual(['pre-1.1.0']);
+    expect(pub.methods).toEqual(['restore']);
+    await unlocked(d);
+  });
+
+  it('path only: a later up that fails restores without calling any down', async () => {
+    const downs: string[] = [];
+    const reg = new Registry();
+    reg.register({
+      version: '1.1.0',
+      schema: 'appdb',
+      up: () => void db.prepare('INSERT INTO t (x) VALUES (2)').run(),
+      down: () => void downs.push('1.1.0'),
+    });
+    reg.register({
+      version: '1.2.0',
+      schema: 'appdb',
+      up: () => {
+        db.close();
+        addColumn(dbPath, 'note');
+        throw new Error('boom');
+      },
+      down: () => void downs.push('1.2.0'),
+    });
+    const pub = reverts();
+    const m = new Migrator('tool', '1.2.0', { registry: reg, dataDir: data, publisher: pub, warn: () => {} });
+    m.addDriver(driver());
+    const err = await failure(m.run());
+    expect(err.message).toContain('up 1.2.0 failed: boom');
+    expect(isNotRestored(err)).toBe(false);
+    expect(downs).toEqual([]);
+    expect(columns(dbPath)).not.toContain('note');
+    expect(rows(dbPath)).toEqual([1]);
+    expect(await readVersionFile(data, 'appdb')).toBe('1.0.0');
+    expect(pub.methods).toEqual(['restore']);
   });
 
   it('manual rollback, path only: restores and drops the sidecars', async () => {

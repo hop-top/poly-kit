@@ -71,7 +71,10 @@ function registry(schema: string, steps: Array<[string, () => Promise<void> | vo
   return reg;
 }
 
-function migrator(reg: Registry, opts: { manual?: boolean; baseline?: () => string } = {}): Migrator {
+function migrator(
+  reg: Registry,
+  opts: { manual?: boolean; baseline?: () => string; verify?: () => void } = {},
+): Migrator {
   const dir = mkdtempSync(join(tmpdir(), 'kit-ts-pg-'));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   return new Migrator('pgtest', '9.9.9', {
@@ -79,6 +82,7 @@ function migrator(reg: Registry, opts: { manual?: boolean; baseline?: () => stri
     dataDir: dir,
     manualRollback: opts.manual,
     baseline: opts.baseline,
+    verify: opts.verify,
     warn: (m) => warnings.push(m),
   });
 }
@@ -172,16 +176,36 @@ describe('Migrator over the driver', () => {
     const p = pool();
     const t = table();
     const d = await driver(p, t);
+    // A failed final verify is rolled back by the Downs.
+    const reg = registry('app', [
+      ['1.1.0', () => {}, () => {}],
+      ['1.2.0', () => {}, () => {}],
+    ]);
+    const m2 = migrator(reg, { verify: () => { throw new Error('boom'); } });
+    m2.addDriver(d);
+    await expect(m2.run()).rejects.toThrow('boom');
+    expect(await otherCanLock(goKey(t, 'app'))).toBe(true);
+    expect(await d.version()).toBe(''); // both steps undone by their Down
+  });
+
+  it('a failed up is not downed: not restored at the last step, lock released', async () => {
+    const p = pool();
+    const t = table();
+    const d = await driver(p, t);
+    const downs: string[] = [];
     const m = migrator(
       registry('app', [
-        ['1.1.0', () => {}, () => {}],
-        ['1.2.0', () => { throw new Error('boom'); }, () => {}],
+        ['1.1.0', () => {}, () => void downs.push('1.1.0')],
+        ['1.2.0', () => { throw new Error('boom'); }, () => void downs.push('1.2.0')],
       ]),
     );
     m.addDriver(d);
-    await expect(m.run()).rejects.toThrow('boom');
+    const err = await m.run().then(() => undefined, (e: unknown) => e as Error);
+    expect(err?.message).toContain('up 1.2.0 failed: boom');
+    expect(isNotRestored(err)).toBe(true);
+    expect(downs).toEqual([]);
     expect(await otherCanLock(goKey(t, 'app'))).toBe(true);
-    expect(await d.version()).toBe(''); // both steps undone by their Down
+    expect(await d.version()).toBe('1.1.0');
   });
 
   it('a failed migration with no Down is not restored and keeps the last step', async () => {
