@@ -27,15 +27,16 @@ Package `skills` (`npx skills`), run with the release of 2026-11-11; later relea
 npx skills add <owner>/<mirror> -s <name> -a claude-code -a codex -g -y
 ```
 
-- With `-g` it writes `~/.agents/skills/<name>`, which Codex reads, and a
-  symlink `~/.claude/skills/<name>` for Claude Code. Without `-g` the same
+- With `-g` it writes `.agents/skills/<name>` in the home directory, which
+  Codex reads, and a symlink `.claude/skills/<name>` there for Claude Code. Without `-g` the same
   layout goes under `./.agents/skills` and `./.claude/skills` of the project.
 - `--copy` copies into each agent directory instead of linking.
 - The directory is copied whole, `.claude-plugin/` and `gym.json` included.
 - `npx skills add <mirror-url-or-dir> --list` lists what a source holds.
 
 Update, for a GitHub source (the install is recorded in
-`~/.agents/.skill-lock.json`, project scope `skills-lock.json`):
+`.agents/.skill-lock.json` in the home directory, project scope
+`skills-lock.json`):
 `npx skills update -g -y`, or `npx skills update -p -y` for the project.
 A source given as a local path or a non-GitHub git URL is not tracked: run the
 same `npx skills add` again, which replaces the files. `npx skills remove <name>`
