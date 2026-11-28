@@ -108,10 +108,9 @@ contract is "show what was written to the spool, faithfully".
 
 Flags:
   --next N   Show next N pending events (default 10 when both flags
-             unset). v1 reads from the on-disk spool — these are the
+             unset). Reads from the on-disk spool — these are the
              events that failed to ship and are queued for retry.
-  --last N   Synonym for --next in v1. A future enhancement may add
-             an in-memory snapshot of recently-shipped events.
+  --last N   Synonym for --next.
 
 Output:
   When the spool is empty (the common case for a healthy adopter),

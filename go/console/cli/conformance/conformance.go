@@ -268,7 +268,7 @@ func ExitCode(err error) (int, bool) {
 func reservedCmd(name, track string) *cobra.Command {
 	return &cobra.Command{
 		Use:    name,
-		Short:  fmt.Sprintf("Reserved for %s (not yet implemented)", track),
+		Short:  "Reserved command name; running it returns a usage error",
 		Hidden: false,
 		Args:   cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

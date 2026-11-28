@@ -34,10 +34,8 @@ func whyCmd(cfg Config) *cobra.Command {
 the default policy/stage.yaml ruleset (rule name + message); adopters
 that ship a custom ruleset see their own rules.
 
-Recent kit.runtime.stage.violated events would also show here, but
-that requires a bus log subscriber — left as a follow-up; the
-subcommand intentionally only prints the rule set today so it works
-without a bus connection.`,
+Recent violations are not listed: the subcommand prints the rule set
+only, so it works without a bus connection.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			scope := resolveScope(args, cfg)
