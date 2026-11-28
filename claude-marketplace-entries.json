@@ -38,6 +38,25 @@
     ]
   },
   {
+    "name": "hop-top-kit-ts",
+    "description": "Build CLIs and services in TypeScript or JavaScript with the kit SDK `@hop-top/kit`: createCLI, output formats, layered config, MCP serving, safety guards, LLM adapters. Use when code imports `@hop-top/kit`, when adding kit to a Node project, or when a task needs a kit capability in TypeScript and you must check this port covers it. Not for choosing a language: the router skill does that.",
+    "source": {
+      "source": "git-subdir",
+      "url": "https://github.com/hop-top/kit-ts.git",
+      "path": "skills/hop-top-kit-ts"
+    },
+    "homepage": "https://github.com/hop-top/kit-ts/blob/main/skills/hop-top-kit-ts/SKILL.md",
+    "license": "MIT",
+    "category": "development",
+    "keywords": [
+      "hop-top",
+      "kit",
+      "agent-skill",
+      "typescript",
+      "node"
+    ]
+  },
+  {
     "name": "hop-top-kit-py",
     "description": "Build a CLI or service in Python on kit with the hop-top-kit package (import hop_top_kit): Typer app factory, output formats, layered config, serve lifecycle, MCP surface, guardrails, migrations. Use when Python code imports hop_top_kit or the user asks for kit in Python, when choosing between kit modules in this port, or when checking whether this port covers a capability before building on it. Not for choosing a language: use the hop-top-kit router for that.",
     "source": {

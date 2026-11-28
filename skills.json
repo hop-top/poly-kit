@@ -15,6 +15,13 @@
       "description": "Build with kit's Go reference implementation (module hop.top/kit), the kit binary and kit init scaffolding. Use when writing or changing Go code that imports hop.top/kit, when scaffolding a new CLI with kit init, when running the kit binary as a sidecar for a non-Go tool, or when a task needs a capability only Go has. Not for TypeScript, Python, Rust or PHP code: pick the port with the hop-top-kit router."
     },
     {
+      "name": "hop-top-kit-ts",
+      "version": "0.5.0-alpha.12",
+      "source_url": "https://github.com/hop-top/kit-ts.git",
+      "path": "skills/hop-top-kit-ts",
+      "description": "Build CLIs and services in TypeScript or JavaScript with the kit SDK `@hop-top/kit`: createCLI, output formats, layered config, MCP serving, safety guards, LLM adapters. Use when code imports `@hop-top/kit`, when adding kit to a Node project, or when a task needs a kit capability in TypeScript and you must check this port covers it. Not for choosing a language: the router skill does that."
+    },
+    {
       "name": "hop-top-kit-py",
       "version": "0.5.0-alpha.10",
       "source_url": "https://github.com/hop-top/kit-py.git",
