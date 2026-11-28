@@ -1,0 +1,2 @@
+tools: greet ping
+greet: hello, Ada

@@ -1,0 +1,17 @@
+$ demo list --format json
+exit 0
+[
+  {
+    "name": "alpha",
+    "size": 1
+  },
+  {
+    "name": "beta",
+    "size": 2
+  }
+]
+$ demo greet --name Ada hi
+exit 0
+hi, Ada
+$ demo list --bogus
+exit 2
