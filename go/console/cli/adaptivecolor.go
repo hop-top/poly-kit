@@ -18,7 +18,6 @@ import (
 	"os"
 	"sync"
 
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/term"
 )
 
@@ -67,7 +66,7 @@ func hasDarkBackground() bool {
 		bgDark = detectDarkBackground(
 			os.Getenv("NO_COLOR"),
 			probe != nil && term.IsTerminal(os.Stdout.Fd()),
-			func() bool { return lipgloss.HasDarkBackground(probe, probe) },
+			func() bool { return probeBackground(probe) },
 		)
 	})
 	return bgDark
