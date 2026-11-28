@@ -93,7 +93,9 @@ routes](https://github.com/hop-top/poly-kit/blob/next/cmd/kit/README.md)); newer
 update this skill. Port skills carry their own Versions block; update them the same way. Update by
 install channel, then restart the harness: Claude Code plugin
 `claude plugin marketplace update hop-top`, then `claude plugin update hop-top-kit@hop-top`
-(marketplace repository `hop-top/skillset`); gym, `npx skills` or by hand: take `skills/hop-top-kit`
+(marketplace repository `hop-top/skillset`); `npx skills` from a GitHub source
+`npx skills update -g -y` (project scope `npx skills update -p -y`), from any other source run the
+same `npx skills add` again; gym `gym update`, then `gym train`; by hand: take `skills/hop-top-kit`
 again from `hop-top/kit` at `main`.
 <!-- skills-sync:end version -->
 

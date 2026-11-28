@@ -34,8 +34,10 @@ routes](https://example.test/acme/mono/blob/next/cmd/kit/README.md)); newer than
 this skill. Port skills carry their own Versions block; update them the same way. Update by install
 channel, then restart the harness: Claude Code plugin
 `claude plugin marketplace update acme-market`, then `claude plugin update acme-kit@acme-market`
-(marketplace repository `acme/skillset`); gym, `npx skills` or by hand: take `skills/acme-kit` again
-from `acme/kit` at `main`.
+(marketplace repository `acme/skillset`); `npx skills` from a GitHub source
+`npx skills update -g -y` (project scope `npx skills update -p -y`), from any other source run the
+same `npx skills add` again; gym `gym update`, then `gym train`; by hand: take `skills/acme-kit`
+again from `acme/kit` at `main`.
 <!-- skills-sync:end version -->
 
 Hand-written outro.

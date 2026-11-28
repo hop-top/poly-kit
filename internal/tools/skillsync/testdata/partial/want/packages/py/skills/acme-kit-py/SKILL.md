@@ -30,8 +30,11 @@ b, rc for -alpha., -beta., -rc.). `scripts/detect-port.sh` shows what the manife
 expected: tell the user, upgrade (`pip install -U --pre acme-kit`). Newer than written for: this
 copy may be stale; update it, then re-read it. Update by install channel, then restart the harness:
 Claude Code plugin `claude plugin marketplace update acme-market`, then
-`claude plugin update acme-kit-py@acme-market` (marketplace repository `acme/skillset`); gym,
-`npx skills` or by hand: take `skills/acme-kit-py` again from `acme/kit-py` at `main`.
+`claude plugin update acme-kit-py@acme-market` (marketplace repository `acme/skillset`);
+`npx skills` from a GitHub source `npx skills update -g -y` (project scope
+`npx skills update -p -y`), from any other source run the same `npx skills add` again; gym
+`gym update`, then `gym train`; by hand: take `skills/acme-kit-py` again from `acme/kit-py` at
+`main`.
 <!-- skills-sync:end version -->
 
 Hand-written outro.

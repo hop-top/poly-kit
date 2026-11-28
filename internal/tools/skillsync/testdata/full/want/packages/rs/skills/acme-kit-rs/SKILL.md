@@ -29,8 +29,11 @@ Installed: `cargo tree -i acme-kit --depth 0`; `scripts/detect-port.sh` shows wh
 pins. Older than expected: tell the user, upgrade (`cargo update -p acme-kit`). Newer than written
 for: this copy may be stale; update it, then re-read it. Update by install channel, then restart the
 harness: Claude Code plugin `claude plugin marketplace update acme-market`, then
-`claude plugin update acme-kit-rs@acme-market` (marketplace repository `acme/skillset`); gym,
-`npx skills` or by hand: take `skills/acme-kit-rs` again from `acme/kit-rs` at `main`.
+`claude plugin update acme-kit-rs@acme-market` (marketplace repository `acme/skillset`);
+`npx skills` from a GitHub source `npx skills update -g -y` (project scope
+`npx skills update -p -y`), from any other source run the same `npx skills add` again; gym
+`gym update`, then `gym train`; by hand: take `skills/acme-kit-rs` again from `acme/kit-rs` at
+`main`.
 <!-- skills-sync:end version -->
 
 Hand-written outro.
