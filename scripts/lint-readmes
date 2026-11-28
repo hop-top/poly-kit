@@ -52,6 +52,7 @@ PRUNE_NAMES=(
   gen
   internal   # internal/ packages: API is private, parent README covers them
   node_modules
+  skills     # agent skill directories: entered through SKILL.md; snippet files are examples
   target
   test
   testdata
