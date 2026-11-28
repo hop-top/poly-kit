@@ -20,7 +20,7 @@ first.
 
 - Output formats are `table`, `json` and `yaml`. A format Go has and PHP
   lacks is a gap: see the Evidence in [coverage](coverage.md) and the
-  [parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md).
+  [parity guide](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/cli-parity-guide.md).
 - Only the output flags and the delegation flags are wired. Verbosity,
   config-file loading and the rest of Go's global flags are not: say so
   rather than adding them by hand and calling it parity.
@@ -37,4 +37,4 @@ Package READMEs ship with the install: `src/Cli/README.md`,
 `src/Output/README.md`, `src/Output/Formatter/Builtin/README.md` (the
 `--format-opt` keys), `src/Uri/README.md`, all under `vendor/hop-top/kit/`.
 Long-form rules and worked examples:
-[PHP SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/php-sdk.md).
+[PHP SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/php-sdk.md).

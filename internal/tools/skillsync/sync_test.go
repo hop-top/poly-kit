@@ -259,7 +259,7 @@ func TestPluginManifestShape(t *testing.T) {
 
 func TestDocsBranchIsOneValue(t *testing.T) {
 	root := stage(t, "full")
-	edit(t, root, "ports.yaml", "branch: main", "branch: next")
+	edit(t, root, "ports.yaml", "branch: next", "branch: trunk")
 	if code, _, e := runCLI(t, root, "sync"); code != 0 {
 		t.Fatal(e)
 	}
@@ -268,10 +268,10 @@ func TestDocsBranchIsOneValue(t *testing.T) {
 		if strings.HasPrefix(p, "manifest") || p == "ports.yaml" || p == "parity.md" || p == "tiers.md" || p == "publish.yml" {
 			continue
 		}
-		if strings.Contains(c, "example.test/acme/mono/blob/main/") {
+		if strings.Contains(c, "example.test/acme/mono/blob/next/") {
 			t.Errorf("%s still links the old docs branch", p)
 		}
-		if strings.Contains(c, "example.test/acme/mono/blob/next/parity.md") {
+		if strings.Contains(c, "example.test/acme/mono/blob/trunk/parity.md") {
 			seen++
 		}
 	}

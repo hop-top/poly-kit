@@ -6,7 +6,7 @@
 # URL a skill carries; mirror_branch is the branch of every link to a skill.
 docs:
   repo: hop-top/poly-kit
-  branch: main
+  branch: next
 host: https://github.com
 mirror_branch: main
 

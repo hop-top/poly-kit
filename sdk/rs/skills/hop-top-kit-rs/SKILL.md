@@ -37,7 +37,7 @@ Tier: experimental.
 
 - Capability `none` here, `kit init` scaffolding, or the `kit` binary: Go
   skill, or the binary as a sidecar. Scaffolding is the Go binary's
-  [`kit init`](https://github.com/hop-top/poly-kit/blob/main/cmd/kit/README.md);
+  [`kit init`](https://github.com/hop-top/poly-kit/blob/next/cmd/kit/README.md);
   run it with `--dry-run` first to see what it writes for Rust.
 - Capability `partial` or `unverified` and the task depends on the gap: read
   the area reference, test the behaviour, or use Go.
@@ -89,7 +89,7 @@ is not built for wasm32 in CI: treat it as native (`cli`, `serve`, `api`,
 [`cli-root.rs`](assets/snippets/cli-root/cli-root.rs): a kit root with a
 rendered list command. Test with `cargo test --features cli,config`; test
 each feature alone with
-[`check-rs-features.sh`](https://github.com/hop-top/poly-kit/blob/main/scripts/check-rs-features.sh).
+[`check-rs-features.sh`](https://github.com/hop-top/poly-kit/blob/next/scripts/check-rs-features.sh).
 
 ## Traps
 

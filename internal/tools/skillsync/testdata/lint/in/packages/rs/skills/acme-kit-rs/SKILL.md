@@ -25,4 +25,4 @@ To pick another port, open [acme-kit](https://example.test/acme/kit/blob/main/sk
 | [references/other-ports.md](references/other-ports.md) | the task belongs to another language |
 | [scripts/detect.sh](scripts/detect.sh) | the language of the project is not known |
 
-Source of truth: [capability parity](https://example.test/acme/mono/blob/main/parity.md).
+Source of truth: [capability parity](https://example.test/acme/mono/blob/next/parity.md).

@@ -37,8 +37,8 @@ Apply in order; stop at the first rule that fits.
    `done`).
 4. A language with no port: run the `kit` binary as a sidecar and call it
    over HTTP. Read the
-   [cmd/kit README](https://github.com/hop-top/poly-kit/blob/main/cmd/kit/README.md)
-   and [run the engine](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/run-the-engine.md).
+   [cmd/kit README](https://github.com/hop-top/poly-kit/blob/next/cmd/kit/README.md)
+   and [run the engine](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/run-the-engine.md).
 
 `detect-port.sh` prints one line per manifest: `port=` (go, ts, py, rs,
 php), `manifest=`, `kit=` (the version, `unpinned`, or `absent`), `skill=`,
@@ -63,9 +63,9 @@ Do this before telling the user a port will do the job.
      sidecar.
    - `none` or `n/a`: no module. Go, the sidecar, or a different port.
 3. The matrix is a snapshot at this skill's version. The
-   [parity page](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/capability-parity.md)
+   [parity page](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/capability-parity.md)
    is current, and the
-   [tiers page](https://github.com/hop-top/poly-kit/blob/main/docs/contributors/sdk-support-tiers.md)
+   [tiers page](https://github.com/hop-top/poly-kit/blob/next/docs/contributors/sdk-support-tiers.md)
    says what each tier promises.
 
 ## Ports

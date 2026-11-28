@@ -19,12 +19,12 @@ Only Go ships this; other languages scaffold through it and call it.
 | a language with no port needs kit state, events or sync | run the engine as a sidecar, below |
 
 Flags and defaults are in the
-[cmd/kit README](https://github.com/hop-top/poly-kit/blob/main/cmd/kit/README.md)
+[cmd/kit README](https://github.com/hop-top/poly-kit/blob/next/cmd/kit/README.md)
 and `kit init --help`; do not guess them. Default tier is 4 (CI, lint,
 Makefile, README, toolspec). Existing files are never overwritten: augment
 writes a sibling `.kit-suggested.<file>` to merge by hand. Scaffolding
 calls `git` and `gh`; a missing tool skips its step silently
-([troubleshooting](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/troubleshoot-scaffold.md)).
+([troubleshooting](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/troubleshoot-scaffold.md)).
 
 ## Tiers
 
@@ -51,13 +51,13 @@ For a language without a port, or a port missing one Go-only capability:
 spawn `kit service start --port 0 --data <dir>` from the tool (port 0 picks a
 free one; it logs readiness on stderr and answers `GET /health`) and call it
 over localhost HTTP. Not a library: start it, wait for readiness, stop it.
-Reading: [run the engine](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/run-the-engine.md),
-[engine protocol](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/engine-protocol.md),
-[serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md).
+Reading: [run the engine](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/run-the-engine.md),
+[engine protocol](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/engine-protocol.md),
+[serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/serve-mcp-from-any-sdk.md).
 
 ## Pages
 
-- [kit init](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/kit-init.md): modes, flags, release-please, pinned actions
-- [create a CLI project](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/create-cli-project.md): the verified first run
-- [kit-template.yaml](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/kit-template-yaml.md) and
-  [author a template](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/author-a-template.md): your own template
+- [kit init](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/kit-init.md): modes, flags, release-please, pinned actions
+- [create a CLI project](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/create-cli-project.md): the verified first run
+- [kit-template.yaml](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/kit-template-yaml.md) and
+  [author a template](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/author-a-template.md): your own template

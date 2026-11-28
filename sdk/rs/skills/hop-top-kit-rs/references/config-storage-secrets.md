@@ -1,7 +1,7 @@
 # Config, storage and secrets
 
 Open when loading config files, resolving paths, or storing keys, blobs or
-typed records. Long form: [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#storage).
+typed records. Long form: [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/rs-sdk.md#storage).
 
 | Need | Feature | Notes |
 |------|---------|-------|

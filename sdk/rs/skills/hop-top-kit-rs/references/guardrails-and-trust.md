@@ -1,7 +1,7 @@
 # Guardrails and trust
 
 Open when limiting, redacting, consenting, signing or migrating. Long form:
-[Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md#identity).
+[Rust SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/rs-sdk.md#identity).
 
 | Need | Feature | Notes |
 |------|---------|-------|

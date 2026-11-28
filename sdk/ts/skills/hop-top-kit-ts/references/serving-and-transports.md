@@ -2,7 +2,7 @@
 
 Open when running a service lifecycle, serving a command tree over MCP, or calling REST or
 ConnectRPC from TypeScript. Status per capability: [coverage](coverage.md). Depth:
-[TypeScript API reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/ts-api-reference.md)
+[TypeScript API reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/ts-api-reference.md)
 (sections Serve and MCP surface).
 
 ## This port ships no server
@@ -30,7 +30,7 @@ audit and safety slice only). Check coverage, tell the user, test the calls you 
   5 policy denied.
 - This port does not resolve dotted config keys: pass the resolved blocks as `configs`.
 - Contract and parity: serve lifecycle corpus is shared with Go; see the
-  [serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md).
+  [serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/next/docs/contracts/serve-lifecycle.md).
 
 ## MCP
 
@@ -46,4 +46,4 @@ audit and safety slice only). Check coverage, tell the user, test the calls you 
   `serveStdio` for a host that spawns the tool.
 - Confirmation on the modern era: `headerConfirmationGate` or `ElicitationConfirmGate`; the
   `audit` option records every refusal.
-- Guide: [serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md).
+- Guide: [serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/serve-mcp-from-any-sdk.md).

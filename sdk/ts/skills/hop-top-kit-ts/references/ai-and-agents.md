@@ -2,7 +2,7 @@
 
 Open when calling an LLM, routing between models, emitting a capability manifest or running the
 12-factor check. Status per capability: [coverage](coverage.md). Depth:
-[TypeScript API reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/ts-api-reference.md)
+[TypeScript API reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/ts-api-reference.md)
 (sections LLM adapters, LLM tool calling, Capability manifest).
 
 ## Modules

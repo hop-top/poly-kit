@@ -27,4 +27,4 @@ To pick another port, open [acme-kit](https://example.test/acme/kit/blob/main/sk
 | [references/cli-and-console.md](references/cli-and-console.md) | the task touches the command line surface |
 | [assets/snippets/hello/hello.go](assets/snippets/hello/hello.go) | starting a new Go command from a working example |
 
-Source of truth: [capability parity](https://example.test/acme/mono/blob/main/parity.md).
+Source of truth: [capability parity](https://example.test/acme/mono/blob/next/parity.md).

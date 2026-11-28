@@ -1,7 +1,7 @@
 # Events, jobs and runtime
 
 Open when a tool publishes in-process events or emits usage telemetry.
-Reference: [telemetry guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/telemetry.md). Both modules
+Reference: [telemetry guide](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/telemetry.md). Both modules
 carry cell `unverified` in [coverage](coverage.md): test them, and do not
 promise wire or topic parity with Go.
 

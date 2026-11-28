@@ -59,14 +59,14 @@ contract; see `other-ports.md`.
 
 ## Pages
 
-- [guard destructive commands](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/guard-destructive-commands.md),
-  [choose enforcement mode](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/choose-enforcement-mode.md),
-  [side effects](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/sideeffect.md)
-- [audit log](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/keep-a-tamper-evident-audit-log.md),
-  [redact](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/redact.md),
-  [scope](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/scope.md),
-  [breaker](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/breaker.md)
-- [upgrade and migrate](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/upgrade-and-migrate.md)
-- [stage](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/stage.md),
-  [consent](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/consent-grants.md),
-  [utilities](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/util-helpers.md)
+- [guard destructive commands](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/guard-destructive-commands.md),
+  [choose enforcement mode](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/choose-enforcement-mode.md),
+  [side effects](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/sideeffect.md)
+- [audit log](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/keep-a-tamper-evident-audit-log.md),
+  [redact](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/redact.md),
+  [scope](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/scope.md),
+  [breaker](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/breaker.md)
+- [upgrade and migrate](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/upgrade-and-migrate.md)
+- [stage](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/stage.md),
+  [consent](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/consent-grants.md),
+  [utilities](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/util-helpers.md)

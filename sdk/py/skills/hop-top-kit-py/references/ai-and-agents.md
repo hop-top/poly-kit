@@ -2,7 +2,7 @@
 
 Open when a tool calls an LLM, routes between models, exposes a tool spec, or
 must pass the 12-factor check. Reference:
-[Python SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-sdk.md) (LLM messages,
+[Python SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/py-sdk.md) (LLM messages,
 provider adapters, tool names).
 
 ## Decisions

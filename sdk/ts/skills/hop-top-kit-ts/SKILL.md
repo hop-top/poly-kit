@@ -49,10 +49,10 @@ exists and nothing pins it to Go; tell the user and test the behaviour
 
 `kit init` scaffolds a TypeScript project from the Go binary
 (`kit init <name> --runtime ts`, see
-[kit init](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/kit-init.md));
+[kit init](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/kit-init.md));
 this port cannot scaffold, and the binary needs no Go toolchain when taken
 from a release or Homebrew (see its
-[README](https://github.com/hop-top/poly-kit/blob/main/cmd/kit/README.md)).
+[README](https://github.com/hop-top/poly-kit/blob/next/cmd/kit/README.md)).
 
 ## Install and first program
 

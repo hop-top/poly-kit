@@ -2,7 +2,7 @@
 
 Open when wiring a command tree, output flags, completion, aliases, styled terminal output,
 logging, layered config or XDG paths. Status per capability: [coverage](coverage.md). Depth:
-[TypeScript API reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/ts-api-reference.md).
+[TypeScript API reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/ts-api-reference.md).
 
 ## Modules
 

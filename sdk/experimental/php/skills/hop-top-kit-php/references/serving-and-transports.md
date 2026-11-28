@@ -28,11 +28,11 @@ your choice; kit does not pick one.
   reason to run the `kit` binary as a sidecar instead of hosting services here.
 - The serve exit codes and event names are a shared contract; read it before
   changing them:
-  [serve lifecycle](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md).
+  [serve lifecycle](https://github.com/hop-top/poly-kit/blob/next/docs/contracts/serve-lifecycle.md).
 
 ## Detail
 
 `src/Serve/README.md`, `src/Mcp/README.md`, `src/Api/README.md` in the
 installed package. Guides:
-[serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md);
-[PHP SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/php-sdk.md).
+[serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/guides/serve-mcp-from-any-sdk.md);
+[PHP SDK reference](https://github.com/hop-top/poly-kit/blob/next/docs/adopters/reference/php-sdk.md).
