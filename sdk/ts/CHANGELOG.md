@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.5.0-alpha.13](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.12...kit-ts/v0.5.0-alpha.13) (2026-11-28)
 
+The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.13. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -28,6 +30,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * **skills:** docs links follow the poly-kit default branch ([91c472f](https://github.com/hop-top/poly-kit/commit/91c472f2a7ef5c8b5a6e895cc3161c57838ac641))
 * **ts:** a failed up restores the backup instead of being left applied ([4239446](https://github.com/hop-top/poly-kit/commit/4239446e5ae73f7f9eccb082977599dcde8185a4))
 * **ts:** export uri, wizard, bus subpaths ([28623e1](https://github.com/hop-top/poly-kit/commit/28623e1f82376fb9d5397ecfa2ef25f6689d217a))
+
+Full diff: [kit-ts/v0.5.0-alpha.12...kit-ts/v0.5.0-alpha.13](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.12...kit-ts/v0.5.0-alpha.13)
 
 ## [0.5.0-alpha.12](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.11...kit-ts/v0.5.0-alpha.12) (2026-11-15)
 
