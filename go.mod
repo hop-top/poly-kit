@@ -90,7 +90,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	hop.top/aim v0.1.0-alpha.6
 	hop.top/cite v0.1.1
-	hop.top/mcp-tasks v0.1.0-alpha.1
+	hop.top/mcp-tasks v0.1.0-alpha.3
 	hop.top/xrr v0.1.0-alpha.5
 	modernc.org/sqlite v1.62.0
 )
@@ -251,5 +251,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
-
-replace hop.top/mcp-tasks => ./extensions/mcp-tasks

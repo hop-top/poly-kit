@@ -49,3 +49,7 @@ examples/spaced/media/*.png
 .env
 .env.local
 .env.*.local
+
+# local multi-module workspace (never committed; see docs/contributors/contributing.md)
+go.work
+go.work.sum
