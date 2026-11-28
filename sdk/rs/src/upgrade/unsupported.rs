@@ -26,8 +26,9 @@ impl fmt::Display for BackupUnsupported {
 impl Error for BackupUnsupported {}
 
 /// A rollback that could not undo a failed run: a `down` was missing or
-/// failed and no backup could restore the schema, so the stored version
-/// stays at the last step still applied. It is the `rollback` of
+/// failed, or the newest step's `up` failed (it cannot be downed), and no
+/// backup could restore the schema, so the stored version stays at the
+/// last step still applied. It is the `rollback` of
 /// [`MigrateError::Step`](super::MigrateError::Step) (or the source of
 /// [`MigrateError::Rollback`](super::MigrateError::Rollback)); its
 /// [`source`](Error::source) is the cause, typically [`BackupUnsupported`].

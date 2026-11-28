@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use hop_top_kit::bus::{Context, ContextError};
+use hop_top_kit::bus::{Context, ContextError, Event};
 use hop_top_kit::sqldb::{self, Options};
 use hop_top_kit::upgrade::sqlite::{SharedConnection, SqliteDriver};
 use hop_top_kit::upgrade::{
@@ -611,38 +611,186 @@ fn close_caller(c: &SharedConnection) {
     *c.lock().unwrap() = Connection::open_in_memory().unwrap();
 }
 
-/// With a connection there is no restore: a missing down ends the run not
-/// restored and the backup stays for manual recovery.
+/// With a connection there is no restore: a failed `up` ends the run not
+/// restored (a `down` does not matter: a failed `up` is never downed) and
+/// the backup stays for manual recovery.
 #[test]
-fn run_with_connection_missing_down_is_not_restored() {
-    let e = RunEnv::new();
-    let err = e
-        .migrator(true, false, false, || {})
-        .run(&bg())
-        .unwrap_err();
-    assert!(err.is_not_restored(), "{err}");
-    assert!(err.is_backup_unsupported(), "{err}");
-    assert!(err.to_string().contains("simulated failure"), "{err}");
+fn run_with_connection_failed_up_is_not_restored() {
+    for with_down in [false, true] {
+        let e = RunEnv::new();
+        let err = e
+            .migrator(true, with_down, false, || {})
+            .run(&bg())
+            .unwrap_err();
+        assert!(err.is_not_restored(), "{err}");
+        assert!(err.is_backup_unsupported(), "{err}");
+        assert!(err.to_string().contains("simulated failure"), "{err}");
 
-    assert_eq!(e.version(), "1.1.0", "stays at the last step applied");
-    assert_eq!(rows(&e.db_path), vec![1, 2]);
-    assert_eq!(
-        rows(&e.data_dir.join("backups/appdb/pre-1.1.0/app.db")),
-        vec![1]
-    );
-    insert(&e.conn.lock().unwrap(), &[9]); // the caller's connection is open
-    require_lock_free(&e.driver(true));
+        assert_eq!(e.version(), "1.1.0", "stays at the last step applied");
+        assert_eq!(
+            rows(&e.db_path),
+            vec![1, 2],
+            "the earlier step is not downed"
+        );
+        assert_eq!(
+            rows(&e.data_dir.join("backups/appdb/pre-1.1.0/app.db")),
+            vec![1]
+        );
+        insert(&e.conn.lock().unwrap(), &[9]); // the caller's connection is open
+        require_lock_free(&e.driver(true));
+    }
 }
 
+/// With a connection a `down` still rolls a run back: here a failed final
+/// verify, after both `up`s completed.
 #[test]
-fn run_with_connection_down_rolls_back() {
+fn run_with_connection_down_rolls_back_a_failed_final_verify() {
     let e = RunEnv::new();
-    let err = e.migrator(true, true, false, || {}).run(&bg()).unwrap_err();
+    let mut m = Migrator::new("tool", "1.2.0")
+        .data_dir(&e.data_dir)
+        .verify(|_, _, _| Err("simulated failure".into()));
+    for (v, x) in [("1.1.0", 2), ("1.2.0", 3)] {
+        let (up, down) = (e.conn.clone(), e.conn.clone());
+        m.register(
+            Migration::new(v, "appdb", move |_| {
+                insert(&up.lock().unwrap(), &[x]);
+                Ok(())
+            })
+            .with_down(move |_| {
+                down.lock()
+                    .unwrap()
+                    .execute("DELETE FROM t WHERE x = ?1", [x])?;
+                Ok(())
+            }),
+        );
+    }
+    m.add_driver(e.driver(true));
+    let err = m.run(&bg()).unwrap_err();
     assert!(err.to_string().contains("simulated failure"), "{err}");
     assert!(!err.is_not_restored(), "{err}");
     assert_eq!(rows(&e.db_path), vec![1]);
     assert_eq!(e.version(), "1.0.0");
     insert(&e.conn.lock().unwrap(), &[9]);
+}
+
+fn columns(path: &Path) -> Vec<String> {
+    let c = Connection::open(path).unwrap();
+    let mut s = c
+        .prepare("SELECT name FROM pragma_table_info('t') ORDER BY cid")
+        .unwrap();
+    let r = s.query_map([], |r| r.get(0)).unwrap();
+    r.map(Result::unwrap).collect()
+}
+
+/// An `up` that adds a column on a connection of its own, then fails: a
+/// partial change.
+fn add_column_then_fail(
+    db: PathBuf,
+    col: &'static str,
+) -> impl Fn(&Context) -> Result<(), BoxError> {
+    move |_| {
+        let c = Connection::open(&db)?;
+        c.execute(&format!("ALTER TABLE t ADD COLUMN {col} TEXT"), [])?;
+        Err("boom".into())
+    }
+}
+
+/// The `reverted` methods a run published.
+type Seen = Arc<Mutex<Vec<String>>>;
+
+/// A publisher recording the `method` of each `reverted` event.
+fn reverted_methods() -> (Seen, impl Fn(&Context, &Event) + Send + Sync) {
+    let seen = Seen::default();
+    let s = seen.clone();
+    (seen, move |_: &Context, e: &Event| {
+        if e.topic.as_str().ends_with(".reverted") {
+            let m = e.payload["method"].as_str().unwrap_or("").to_string();
+            s.lock().unwrap().push(m);
+        }
+    })
+}
+
+/// The backup directories of `appdb`, directories only (the version
+/// sidecar `pre-<v>.version` is a file beside them).
+fn backup_dirs(e: &RunEnv) -> Vec<String> {
+    let mut v: Vec<String> = fs::read_dir(e.data_dir.join("backups/appdb"))
+        .unwrap()
+        .map(Result::unwrap)
+        .filter(|d| d.path().is_dir())
+        .map(|d| d.file_name().to_string_lossy().into_owned())
+        .collect();
+    v.sort();
+    v
+}
+
+/// Path only, the first `up` adds a column and fails: the run restores the
+/// backup it took, so the column is gone and the version stays the
+/// pre-run one; the backup directory stays.
+#[test]
+fn failed_first_up_restores_the_file() {
+    let e = RunEnv::new();
+    close_caller(&e.conn); // precondition: no open handle on the file
+    let (seen, publisher) = reverted_methods();
+    let mut m = Migrator::new("tool", "1.1.0")
+        .data_dir(&e.data_dir)
+        .publisher(publisher);
+    m.register(Migration::new(
+        "1.1.0",
+        "appdb",
+        add_column_then_fail(e.db_path.clone(), "note"),
+    ));
+    m.add_driver(e.driver(false));
+
+    let err = m.run(&bg()).unwrap_err();
+    assert!(err.to_string().contains("up 1.1.0 failed: boom"), "{err}");
+    assert!(!err.is_not_restored(), "{err}");
+
+    assert!(!columns(&e.db_path).contains(&"note".to_string()));
+    assert_eq!(rows(&e.db_path), vec![1]);
+    assert_eq!(e.version(), "1.0.0");
+    assert_eq!(backup_dirs(&e), ["pre-1.1.0"], "the backup stays");
+    assert_eq!(*seen.lock().unwrap(), ["restore"]);
+    require_lock_free(&e.driver(false));
+}
+
+/// Path only, a later `up` adds a column and fails: no `down` runs, the
+/// backup is restored and the earlier step is undone with the rest.
+#[test]
+fn failed_later_up_restores_the_file_without_down() {
+    let e = RunEnv::new();
+    close_caller(&e.conn);
+    let downs = Arc::new(Mutex::new(0));
+    let (d, db) = (downs.clone(), e.db_path.clone());
+    let (seen, publisher) = reverted_methods();
+    let mut m = Migrator::new("tool", "1.2.0")
+        .data_dir(&e.data_dir)
+        .publisher(publisher);
+    m.register(
+        Migration::new("1.1.0", "appdb", move |_| {
+            insert(&Connection::open(&db)?, &[2]);
+            Ok(())
+        })
+        .with_down(move |_| {
+            *d.lock().unwrap() += 1;
+            Ok(())
+        }),
+    );
+    m.register(Migration::new(
+        "1.2.0",
+        "appdb",
+        add_column_then_fail(e.db_path.clone(), "note"),
+    ));
+    m.add_driver(e.driver(false));
+
+    let err = m.run(&bg()).unwrap_err();
+    assert!(err.to_string().contains("up 1.2.0 failed: boom"), "{err}");
+    assert!(!err.is_not_restored(), "{err}");
+
+    assert_eq!(*downs.lock().unwrap(), 0, "no down runs");
+    assert!(!columns(&e.db_path).contains(&"note".to_string()));
+    assert_eq!(rows(&e.db_path), vec![1]);
+    assert_eq!(e.version(), "1.0.0");
+    assert_eq!(*seen.lock().unwrap(), ["restore"]);
 }
 
 /// Manual rollback, path only: `rollback_latest` restores the backup and

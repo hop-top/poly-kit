@@ -17,7 +17,8 @@ use crate::bus::{Context, Event, Topic};
 /// `errors.Is(err, ErrVerify)` and `errors.Is(err, context.Canceled)`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StepKind {
-    /// The migration's `up` failed.
+    /// The migration's `up` failed. It counts as applied but is never
+    /// downed: the rollback restores the backup (no backup: not restored).
     Up,
     /// The migration's `verify` failed.
     Verify,
@@ -574,6 +575,9 @@ struct Failure<'m> {
     version: String,
     source: BoxError,
     undo: Vec<&'m Migration>,
+    /// The newest `undo` entry is a step whose `up` failed: it counts as
+    /// applied, but its `down` is never called.
+    up_failed: bool,
 }
 
 struct SchemaRun<'a> {
@@ -690,8 +694,14 @@ impl<'a> SchemaRun<'a> {
             ev.emit(&ev.topics.started, base());
             let t = Instant::now();
             if let Err(e) = (m.up)(ctx) {
+                // A failed `up` is an applied step that cannot be downed: it
+                // joins the undo list, newest, and its `down` is never called.
+                let mut undo = done;
+                undo.push(m);
                 let p = base().set("duration_ms", millis(t));
-                return Err(self.failed(p, StepKind::Up, &m.version, e, done));
+                let mut f = self.failed(p, StepKind::Up, &m.version, e, undo);
+                f.up_failed = true;
+                return Err(f);
             }
             ev.emit(&ev.topics.applied, base().set("duration_ms", millis(t)));
             if let Some(verify) = &m.verify {
@@ -755,6 +765,7 @@ impl<'a> SchemaRun<'a> {
             version: version.to_string(),
             source,
             undo,
+            up_failed: false,
         }
     }
 
@@ -770,7 +781,7 @@ impl<'a> SchemaRun<'a> {
         let mut rollback = None;
         if self.auto_rollback && !f.undo.is_empty() {
             let t = Instant::now();
-            match roll_back(self.data_dir, d, current, &f.undo, backup) {
+            match roll_back(self.data_dir, d, current, &f.undo, f.up_failed, backup) {
                 Ok(method) => self.ev.emit(
                     &self.ev.topics.reverted,
                     self.ev

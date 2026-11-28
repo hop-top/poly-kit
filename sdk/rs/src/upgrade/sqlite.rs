@@ -6,7 +6,8 @@
 //! [`with_connection`](SqliteDriver::with_connection): `backup` runs on
 //! the caller's connection, which the driver never closes, and `restore`
 //! returns [`BackupUnsupported`] (the file cannot be swapped under a live
-//! connection). Both lock `<data dir>/<name>/.lock`.
+//! connection: a failed `up` then ends not restored). Both lock
+//! `<data dir>/<name>/.lock`.
 
 use std::error::Error;
 use std::ffi::OsString;

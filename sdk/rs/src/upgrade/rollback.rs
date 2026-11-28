@@ -22,18 +22,26 @@ pub(super) enum BackupState {
 /// the store would not describe the data. With no backup, or a `restore`
 /// that is unsupported, nothing is restored: the error is
 /// [`NotRestored`], and the version stays at the last record, the step
-/// whose `down` was missing or failed. Reports which of the two undid
-/// the changes.
+/// whose `down` was missing, failed or not callable. With `up_failed`
+/// the newest step's `up` failed: its `down` is never called (a `down`
+/// assumes a completed `up`), so the backup is restored at once and no
+/// older `down` runs. Reports which of the two undid the changes.
 pub(super) fn roll_back(
     data_dir: &Path,
     d: &mut dyn SchemaDriver,
     current: &str,
     applied: &[&Migration],
+    up_failed: bool,
     backup: BackupState,
 ) -> Result<&'static str, BoxError> {
     let ctx = Context::background();
     for (i, m) in applied.iter().enumerate().rev() {
-        match &m.down {
+        let down = if up_failed && i == applied.len() - 1 {
+            None
+        } else {
+            m.down.as_ref()
+        };
+        match down {
             Some(down) if down(&ctx).is_ok() => {}
             _ => {
                 let dir: &Path = match backup {

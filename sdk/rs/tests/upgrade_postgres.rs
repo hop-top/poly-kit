@@ -1,8 +1,8 @@
 //! The Postgres upgrade driver against a real server. Ports of the Go
 //! `upgrade/driver/postgres` integration tests: round trip through the
 //! Migrator, the version table, two runners racing one database, raw-key
-//! interop with another session, a cancelled wait, a missing `down`, a
-//! failed unlock and the table-name rule.
+//! interop with another session, a cancelled wait, a failed `up` (not
+//! restored), a failed unlock and the table-name rule.
 //!
 //! Every test is `#[ignore]`d, so `cargo test --all-features` (`make
 //! test-rs`) needs no database. `make test-rs-upgrade-integration` starts a
@@ -19,7 +19,7 @@ use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use hop_top_kit::bus::{Context, ContextError};
+use hop_top_kit::bus::{Context, ContextError, Event};
 use hop_top_kit::upgrade::postgres::{PostgresDriver, SharedClient};
 use hop_top_kit::upgrade::{
     is_backup_unsupported, BoxError, Locker, MigrateError, Migration, Migrator, SchemaDriver,
@@ -429,40 +429,77 @@ fn connect_failure_fails_the_schema() {
     assert_eq!(err.to_string(), "postgres upgrade: lock: no route to host");
 }
 
+/// No backup, so a failed `up` ends not restored whether or not its
+/// migrations have a `down`: none runs, the version stays at the last
+/// step still applied and no `reverted` event is published.
 #[test]
 #[ignore]
-fn missing_down_is_not_restored() {
+fn failed_up_is_not_restored() {
     let db = TestDb::new();
     db.exec("CREATE TABLE applied (v TEXT)");
-    let tmp = tempfile::tempdir().unwrap();
-    let mut m = Migrator::new("failtool", "0.2.0").data_dir(tmp.path());
-    m.register(recording(&db, "0.1.0", "app", Duration::ZERO));
-    m.register(Migration::new("0.2.0", "app", |_| Err("boom".into())));
-    m.add_driver(db.driver("schema_versions").with_name("app"));
+    for with_down in [false, true] {
+        let tmp = tempfile::tempdir().unwrap();
+        let downs = Arc::new(Mutex::new(0));
+        let reverted = Arc::new(Mutex::new(0));
+        let r = reverted.clone();
+        let mut m = Migrator::new("failtool", "0.2.0")
+            .data_dir(tmp.path())
+            .publisher(move |_: &Context, e: &Event| {
+                if e.topic.as_str().ends_with(".reverted") {
+                    *r.lock().unwrap() += 1;
+                }
+            });
+        let mut first = recording(&db, "0.1.0", "app", Duration::ZERO);
+        let mut second = Migration::new("0.2.0", "app", |_| Err("boom".into()));
+        if with_down {
+            let (d1, d2) = (downs.clone(), downs.clone());
+            first = first.with_down(move |_| {
+                *d1.lock().unwrap() += 1;
+                Ok(())
+            });
+            second = second.with_down(move |_| {
+                *d2.lock().unwrap() += 1;
+                Ok(())
+            });
+        }
+        m.register(first);
+        m.register(second);
+        m.add_driver(db.driver("schema_versions").with_name("app"));
 
-    let err = m.run(&Context::background()).unwrap_err();
-    assert!(err.is_not_restored(), "{err}");
-    assert!(err.is_backup_unsupported(), "{err}");
-    assert_eq!(
-        stored(&db, "schema_versions", "app").as_deref(),
-        Some("0.1.0"),
-        "the version stays at the last step still applied"
-    );
-    assert_eq!(db.advisory_locks(), 0);
+        let err = m.run(&Context::background()).unwrap_err();
+        assert!(err.is_not_restored(), "{err}");
+        assert!(err.is_backup_unsupported(), "{err}");
+        assert!(err.to_string().contains("boom"), "{err}");
+        assert_eq!(*downs.lock().unwrap(), 0, "no down runs");
+        assert_eq!(*reverted.lock().unwrap(), 0, "nothing was reverted");
+        assert_eq!(
+            stored(&db, "schema_versions", "app").as_deref(),
+            Some("0.1.0"),
+            "the version stays at the last step still applied"
+        );
+        assert_eq!(db.advisory_locks(), 0);
+        // Reset for the second pass: the schema is back at nothing.
+        db.exec("DELETE FROM schema_versions");
+    }
 }
 
+/// A `down` still rolls a run back on Postgres when the run fails after
+/// its `up`s completed: here a failed final verify.
 #[test]
 #[ignore]
-fn down_rolls_back_without_a_backup() {
+fn down_rolls_back_a_failed_final_verify_without_a_backup() {
     let db = TestDb::new();
     let tmp = tempfile::tempdir().unwrap();
-    let mut m = Migrator::new("downtool", "0.2.0").data_dir(tmp.path());
+    let mut m = Migrator::new("downtool", "0.2.0")
+        .data_dir(tmp.path())
+        .verify(|_, _, _| Err("boom".into()));
     m.register(Migration::new("0.1.0", "app", |_| Ok(())).with_down(|_| Ok(())));
-    m.register(Migration::new("0.2.0", "app", |_| Err("boom".into())).with_down(|_| Ok(())));
+    m.register(Migration::new("0.2.0", "app", |_| Ok(())).with_down(|_| Ok(())));
     m.add_driver(db.driver("schema_versions").with_name("app"));
 
     let err = m.run(&Context::background()).unwrap_err();
     assert!(!err.is_not_restored(), "{err}");
+    assert!(err.to_string().contains("boom"), "{err}");
     assert_eq!(stored(&db, "schema_versions", "app").as_deref(), Some(""));
 }
 

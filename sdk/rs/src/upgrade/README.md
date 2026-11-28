@@ -51,22 +51,22 @@ m.run(&Context::background()).unwrap(); // nothing pending
   `preserve_order` (the `output` feature has it), else sorted.
 - `compare_versions`, `pending`, `Migration`, `SchemaDriver`, `document` and the unsupported-backup errors
   build on wasm32; `Migrator`, `configfile` and the version-file helpers do not.
-- Pending is `stored < version <= target` per schema, in semver order; each version is recorded after
-  its `up` and `verify` under the data dir (default `<XDG data home>/hop/<tool>`, or `data_dir`) unless
+- Pending is `stored < version <= target` per schema, in semver order; each version is recorded after its
+  `up` and `verify` under the data dir (default `<XDG data home>/hop/<tool>`, or `data_dir`) unless
   `stores_version` (no file). A crash re-applies at most the unrecorded migration: keep them idempotent.
-- A failed `up`, `verify` or record (`StepKind::Record`), or a context done before the next `up`
-  (`is_verify`, `is_canceled`), stops the run; in auto mode applied `down`s run newest first on a fresh
-  context, each followed by a record of the version before it, else the backup is restored and the starting
-  version recorded. A failed verify undoes its own step too. Manual mode keeps the last applied version;
-  `rollback_latest` records the version saved beside the backup, under the driver's lock. Texts match Go's.
-- A `backup` returning `BackupUnsupported` (boxed) runs without a backup: no directory, no prune. A rollback
-  needing a restore it cannot run (no backup, or `restore` unsupported) restores nothing:
-  `MigrateError::is_not_restored()` (the step's `rollback` is a `NotRestored`), no reverted event, the
-  version stays at the last step still applied; `is_backup_unsupported()` finds the cause; `rollback_latest`
-  with no backup fails alike. Free fns `is_not_restored`, `is_backup_unsupported` take any error.
+- A failed `up`, `verify` or record (`StepKind::Record`), or a context done before the next `up` (`is_verify`, `is_canceled`), stops
+  the run; in auto mode applied `down`s run newest first on a fresh context, each followed by a record of the version before it, else
+  the backup is restored and the starting version recorded. A failed verify undoes its own step too; a failed `up` cannot be downed:
+  the backup is restored at once, no `down` runs. Manual mode keeps the last applied version; `rollback_latest` records the version
+  saved beside the backup, under the lock. Texts match Go's.
+- A `backup` returning `BackupUnsupported` (boxed) runs without a backup: no directory, no prune. A rollback needing a restore it
+  cannot run (no backup or unsupported `restore`; a failed `up` always needs one) restores nothing: `MigrateError::is_not_restored()`
+  (the step's `rollback` is a `NotRestored`), no reverted event, the version stays at the last step still applied, a failed `up`'s
+  partial change stays (make `up` atomic); `is_backup_unsupported()` finds the cause; `rollback_latest` with no backup fails alike.
+  Free fns `is_not_restored`, `is_backup_unsupported` take any error.
 - `check` never fails: errors sit in `CheckResult::error`, a fresh cache (default 4h) answers without a request, an offline check returns `Skipped::Offline` touching neither transport, cache nor state dir. `CheckConfig::tag_prefix("xray/v")` keeps only one component's releases, `include_prereleases(true)` offers prereleases; either lists releases (3 pages of 100 at most, highest semver, drafts skipped), one transport call per page; `CheckResult::tag` carries the tag the notice links.
 - A prune failure goes to `on_warning` (default stderr, Go's `log.Printf` text), never fatal; registration is per `Migrator`.
-- `sqlite::SqliteDriver::new(path)` backs up with `VACUUM INTO ?` (WAL rows included) on its own connection and restores by swapping the file (no open connection allowed, stale `-wal`/`-shm`/`-journal` removed); `.with_connection(Arc<Mutex<Connection>>)` backs up on yours, never closes it, and `restore` is `BackupUnsupported`.
+- `sqlite::SqliteDriver::new(path)` backs up with `VACUUM INTO ?` (WAL rows included) on its own connection and restores by swapping the file (no open connection allowed, stale `-wal`/`-shm`/`-journal` removed); `.with_connection(Arc<Mutex<Connection>>)` backs up on yours, never closes it, and `restore` is `BackupUnsupported` (a failed `up` ends not restored).
 - `fsdir::FsDirDriver::new(name, dir)` writes `<name>.tar.gz` (Go's layout, restorable both ways) and restores via a temp directory then a swap. Symlinks staying inside the directory are stored; `backup` fails, naming the link, on one `restore` would refuse (absolute, leaving the directory). Both lock with `File::lock` (flock(2), as Go) on `<data dir>/<name>/.lock`, polling for `ctx`; native only.
 - `postgres::PostgresDriver::new(Arc<Mutex<postgres::Client>>, table, connect)` keeps the version in `<table>` (it stores it: no version file) and locks with a session `pg_advisory_lock` key on a NEW connection from `connect` (a pooled or shared one is refused: same `pg_backend_pid`); the wait polls `pg_try_advisory_lock` (50ms) for `ctx`. `backup`/`restore` are `BackupUnsupported`. Same table, SQL and key as Go, so ports exclude each other; TLS is yours, no transaction-mode pooler.
 - Parity: [`contracts/upgrade-v1`](../../../../contracts/upgrade-v1/README.md), run by `tests/upgrade_conformance.rs`.
