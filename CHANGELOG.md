@@ -2,6 +2,8 @@
 
 ## [0.5.0-beta.17](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.16...kit/v0.5.0-beta.17) (2026-11-28)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.17. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -63,6 +65,8 @@
 * **upgrade:** a failed up restores the backup instead of being left applied ([1efa643](https://github.com/hop-top/poly-kit/commit/1efa6430458ace06adadf9f4195a6961c5bcc535))
 * **upgrade:** fsdir backup refuses symlinks and special files ([6b383ab](https://github.com/hop-top/poly-kit/commit/6b383abcdc75a870a77b20b89851639fd8e2da18))
 * **upgrade:** tidb lock never leaves a server-side wait behind on cancel ([93fe0fa](https://github.com/hop-top/poly-kit/commit/93fe0fa9d41cb08e0e5bccdf80e3a563c8274b09))
+
+Full diff: [kit/v0.5.0-beta.16...kit/v0.5.0-beta.17](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.16...kit/v0.5.0-beta.17)
 
 ## [0.5.0-beta.16](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.15...kit/v0.5.0-beta.16) (2026-11-20)
 
