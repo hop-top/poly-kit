@@ -56,6 +56,7 @@ m.run(threading.Event())
 - A driver has `name`, `version()`, `set_version(v)`, `backup(dest)`, `restore(src)`; optional `Locker.lock(cancel) -> unlock` and `VersionStorer.stores_version()` are found with `isinstance`. `backup`/`restore` raise `BackupUnsupported` when they cannot.
 - `run(cancel)` takes a `threading.Event`; set, it stops before the next `up` and wakes a waiting lock. Failures are `MigrateError`; match with `is_not_restored`, `is_backup_unsupported`, `is_verify`, `is_canceled`.
 - `drivers.ConfigFileDriver(paths, name="config", data_dir=...)` copies files under flattened names, `drivers.FsDirDriver(name, path, data_dir=...)` writes `<name>.tar.gz`; both match Go's backup layout and restore archives with a traversal guard, swapping a temp dir in only on success.
+- A failed `up` is an applied step that cannot be downed: its `down` never runs and, in automatic mode, the run restores the backup taken for it and records the pre-run version (event `reverted`, method `restore`); no earlier `down` runs. With no backup (server databases, a `connect` SQLite handle) the error ends `not restored` and the version stays at the step before the failing one, so an `up` there should be atomic. A failed `verify`, record or final verify is still undone by `down`s, newest first.
 - Events go to a `hop_top_kit.bus.Bus`; warnings to the `hop_top_kit.upgrade` logger.
 - Parity: [`contracts/upgrade-v1`](../../../../contracts/upgrade-v1/README.md), all three files, replayed by `tests/test_upgrade_conformance.py`.
 

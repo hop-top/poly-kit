@@ -180,7 +180,11 @@ def test_lock_released_when_migration_raises_ordinary_exception(tmp_path: Path) 
 
     m = Migrator(TOOL, "1.1.0", data_dir=tmp_path, registry=_registry(Migration("1.1.0", "db", up)))
     m.add_driver(d)
-    with pytest.raises(MigrateError, match=r"^migrate db: up 1\.1\.0 failed: boom$") as ei:
+    # MemDriver has no backup, so the failed up ends not restored.
+    with pytest.raises(
+        MigrateError,
+        match=r"^migrate db: up 1\.1\.0 failed: boom \(rollback also failed: not restored: no backup was taken\)$",
+    ) as ei:
         m.run()
     assert isinstance(ei.value.__cause__, MigrateError)
     assert d.log == ["lock", "unlock"]
@@ -252,6 +256,103 @@ def test_not_restored_and_backup_unsupported_match_through_the_run_error(tmp_pat
     assert isinstance(ei.value.__cause__, MigrateError)
     nr = [e for e in ei.value.__cause__.errors if isinstance(e, NotRestored)]
     assert nr, "NotRestored is among the causes"
+
+
+def test_failed_up_restores_the_backup_and_calls_no_down(tmp_path: Path) -> None:
+    d = _Plain()
+    downs: list[str] = []
+
+    def up() -> None:
+        raise RuntimeError("boom")
+
+    reg = _registry(
+        Migration("1.1.0", "db", lambda: None, lambda: downs.append("1.1.0")),
+        Migration("1.2.0", "db", up, lambda: downs.append("1.2.0")),
+    )
+    bus, seen = create_bus(), []
+    bus.subscribe("#", seen.append)
+    m = Migrator(TOOL, "1.2.0", data_dir=tmp_path, registry=reg, bus=bus)
+    m.add_driver(d)
+    with pytest.raises(MigrateError, match=r"^migrate db: up 1\.2\.0 failed: boom$") as ei:
+        m.run()
+    assert not is_not_restored(ei.value)
+    assert downs == []  # neither the failed step's down nor an earlier one
+    assert d.restored == ["pre-1.1.0"]
+    assert d.version() == "1.0.0"
+    reverted = [e.payload["method"] for e in seen if e.topic.endswith(".reverted")]
+    assert reverted == ["restore"]
+
+
+def test_up_failing_with_the_cancel_error_restores_and_calls_no_down(tmp_path: Path) -> None:
+    d = _Plain()
+    downs: list[str] = []
+    cancel = threading.Event()
+
+    def up() -> None:
+        cancel.set()
+        raise Canceled
+
+    reg = _registry(Migration("1.1.0", "db", up, lambda: downs.append("1.1.0")))
+    m = Migrator(TOOL, "1.1.0", data_dir=tmp_path, registry=reg)
+    m.add_driver(d)
+    with pytest.raises(MigrateError) as ei:
+        m.run(cancel)
+    assert is_canceled(ei.value)
+    assert not is_not_restored(ei.value)
+    assert downs == []
+    assert d.restored == ["pre-1.1.0"]
+    assert d.version() == "1.0.0"
+
+
+def test_failed_up_without_a_backup_is_not_restored_and_calls_no_down(tmp_path: Path) -> None:
+    class NoBackup(_Plain):
+        def backup(self, dest: Path) -> None:
+            raise BackupUnsupported
+
+    d = NoBackup()
+    downs: list[str] = []
+
+    def up() -> None:
+        raise RuntimeError("boom")
+
+    reg = _registry(
+        Migration("1.1.0", "db", lambda: None, lambda: downs.append("1.1.0")),
+        Migration("1.2.0", "db", up, lambda: downs.append("1.2.0")),
+    )
+    bus, seen = create_bus(), []
+    bus.subscribe("#", seen.append)
+    m = Migrator(TOOL, "1.2.0", data_dir=tmp_path, registry=reg, bus=bus)
+    m.add_driver(d)
+    with pytest.raises(MigrateError) as ei:
+        m.run()
+    assert str(ei.value) == (
+        "migrate db: up 1.2.0 failed: boom (rollback also failed: not restored: no backup was taken)"
+    )
+    assert is_not_restored(ei.value)
+    assert downs == []
+    assert d.restored == []
+    assert d.version() == "1.1.0"  # the step before the failing one
+    assert not [e for e in seen if e.topic.endswith(".reverted")]
+
+
+def test_failed_final_verify_still_rolls_back_with_downs_newest_first(tmp_path: Path) -> None:
+    d = _Plain()
+    downs: list[str] = []
+    reg = _registry(
+        Migration("1.1.0", "db", lambda: None, lambda: downs.append("1.1.0")),
+        Migration("1.2.0", "db", lambda: None, lambda: downs.append("1.2.0")),
+    )
+
+    def final(schema: str, version: str) -> None:
+        raise RuntimeError("bad")
+
+    m = Migrator(TOOL, "1.2.0", data_dir=tmp_path, registry=reg, verify=final)
+    m.add_driver(d)
+    with pytest.raises(MigrateError, match=r"final verify 1\.2\.0 failed"):
+        m.run()
+    assert downs == ["1.2.0", "1.1.0"]
+    assert d.restored == []
+    assert d.version() == "1.0.0"
 
 
 def test_verify_failure_matches_is_verify_and_keeps_the_original_cause(tmp_path: Path) -> None:

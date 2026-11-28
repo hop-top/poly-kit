@@ -169,7 +169,10 @@ class Migrator:
 
         On failure, in automatic mode: roll back (``down`` in reverse,
         recording the version before each, else restore and record the
-        starting version). When a ``down`` is missing or fails and no backup
+        starting version). A migration whose ``up`` failed counts as applied
+        but cannot be downed (its ``down`` is never called): the run
+        restores the backup at once and no older ``down`` runs. When a
+        ``down`` is missing or fails, or the ``up`` failed, and no backup
         can restore the schema, nothing is reverted: the error matches
         :func:`is_not_restored` and the stored version stays at the last step
         still applied. A *cancel* set between steps stops before the next
@@ -314,7 +317,11 @@ class Migrator:
             try:
                 mig.up()
             except Exception as e:
-                return failed(ev(mig.version, from_, t), "up", e, applied), len(applied)
+                # A failed up is an applied step that cannot be downed: it
+                # joins the undo list, newest, and its down is never called.
+                f = failed(ev(mig.version, from_, t), "up", e, [*applied, mig])
+                f.up_failed = True
+                return f, len(applied)
             em.emit("applied", ev(mig.version, from_, t))
             if mig.verify is not None:
                 t = time.monotonic()
@@ -344,13 +351,14 @@ class Migrator:
         return None, len(applied)
 
     def _fail(self, d: SchemaDriver, current: str, bk: Backup, f: Failure) -> Exception:
-        """Roll back (automatic mode) and build the schema's error."""
+        """Roll back (automatic mode) and build the schema's error. The undo
+        list is empty only when nothing ran: a cancel before the first up."""
         err = f.wrap()
         if not self._auto_rollback or not f.undo:
             return err
         t = time.monotonic()
         try:
-            method = self._rollback(d, current, f.undo, bk)
+            method = self._rollback(d, current, f.undo, f.up_failed, bk)
         except Exception as rb:
             return MigrateError(f"{err} (rollback also failed: {rb})", err, rb)
         self._emitter.emit(
@@ -361,17 +369,22 @@ class Migrator:
         )
         return err
 
-    def _rollback(self, d: SchemaDriver, current: str, applied: list[Migration], bk: Backup) -> str:
+    def _rollback(
+        self, d: SchemaDriver, current: str, applied: list[Migration], up_failed: bool, bk: Backup
+    ) -> str:
         """``down`` in reverse order, recording the version before each
         migration once its ``down`` succeeded; falls back to restore (and
         records the starting version) if a ``down`` is missing or fails.
-        Returns which of the two undid the changes. A failed record stops
-        the rollback: the store would not describe the data. With no
-        backup, or a restore that is unsupported, nothing is restored:
+        Returns which of the two undid the changes. When *up_failed* the
+        newest step's ``up`` failed: its ``down`` is never called (a
+        ``down`` assumes a completed ``up``), so the rollback restores at
+        once and no older ``down`` runs. A failed record stops the
+        rollback: the store would not describe the data. With no backup,
+        or a restore that is unsupported, nothing is restored:
         :class:`NotRestored`, and the version stays at the last record."""
         for i in range(len(applied) - 1, -1, -1):
             mig = applied[i]
-            if not down_ok(mig):
+            if (up_failed and i == len(applied) - 1) or not down_ok(mig):
                 if bk.path is None:
                     raise NotRestored(ERR_NO_BACKUP, bk.unsupported)
                 restore_from(d, bk.path)

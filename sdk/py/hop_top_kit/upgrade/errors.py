@@ -39,8 +39,9 @@ class BackupUnsupported(UpgradeError):  # noqa: N818 - names shared with the Go 
 
 class NotRestored(UpgradeError):  # noqa: N818 - names shared with the Go and Rust ports
     """A rollback that could not undo a failed run: a ``down`` was missing or
-    failed and no backup could restore the schema, so the stored version
-    stays at the last step still applied. Its text is pinned by the vectors;
+    failed, or an ``up`` failed (it cannot be downed), and no backup could
+    restore the schema, so the stored version stays at the last step still
+    applied. Its text is pinned by the vectors;
     its cause is typically :class:`BackupUnsupported`."""
 
     def __init__(self, text: str, cause: BaseException | None = None) -> None:
