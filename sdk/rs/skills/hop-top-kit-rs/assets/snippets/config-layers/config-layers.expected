@@ -1,0 +1,3 @@
+user + project: name=from-user port=9100 debug=true
+user + project + override: name=cli port=9100 debug=true
+project only (user file absent): name=demo port=9100 debug=true

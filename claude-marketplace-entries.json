@@ -75,6 +75,24 @@
     ]
   },
   {
+    "name": "hop-top-kit-rs",
+    "description": "Build a CLI or service in Rust with the hop-top-kit crate: Cargo features per module, the kit CLI root, layered config, output formats, MCP, serve, upgrade migrations, wasm32. Use when a Rust project depends on or should adopt hop-top-kit, when picking its Cargo features, or when checking what the Rust port covers before promising a capability.",
+    "source": {
+      "source": "git-subdir",
+      "url": "https://github.com/hop-top/kit-rs.git",
+      "path": "skills/hop-top-kit-rs"
+    },
+    "homepage": "https://github.com/hop-top/kit-rs/blob/main/skills/hop-top-kit-rs/SKILL.md",
+    "license": "MIT",
+    "category": "development",
+    "keywords": [
+      "hop-top",
+      "kit",
+      "agent-skill",
+      "rust"
+    ]
+  },
+  {
     "name": "hop-top-kit-php",
     "description": "Build a PHP CLI with the experimental kit PHP port (Composer package hop-top/kit, namespace HopTop\\Kit). Use when PHP code requires hop-top/kit, when adding kit's output formats, MCP surface or serve lifecycle to a PHP tool, or when asked whether the PHP port can do something. Most kit capabilities are absent from this port: it says what exists and when to switch to another port or the kit sidecar.",
     "source": {
