@@ -19,7 +19,7 @@ a third-party corpus.
 
 | Tool | Purpose | Output | Target |
 |------|---------|--------|--------|
-| [`skillsync/`](skillsync/README.md) | Generate skill content and channel metadata from the parity page and the publish matrix | skill directories, `skills.json` | `make skills-sync`, `make check-skills-sync` |
+| [`skillsync/`](skillsync/README.md) | Generate skill content and channel metadata from the parity page and the publish matrix; lint skills against the authoring contract | skill directories, `skills.json`; findings | `make skills-sync`, `make check-skills` |
 
 One checker lives here too, because it is Go for the same reason the
 generators are: it needs `golang.org/x/mod`'s semver ordering.

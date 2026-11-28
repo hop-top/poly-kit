@@ -217,13 +217,8 @@ func (g *gen) readSkills() error {
 			errs = append(errs, fmt.Errorf("%s: %w", at, err))
 			continue
 		}
-		switch {
-		case s.FM.Name != s.Spec.Skill:
-			errs = append(errs, fmt.Errorf("%s: frontmatter name %q must equal the skill name %q", at, s.FM.Name, s.Spec.Skill))
-		case s.FM.Description == "":
-			errs = append(errs, fmt.Errorf("%s: frontmatter has no description", at))
-		case s.FM.License == "":
-			errs = append(errs, fmt.Errorf("%s: frontmatter has no license", at))
+		if p := frontmatterProblem(s.Spec.Skill, s.FM); p != "" {
+			errs = append(errs, fmt.Errorf("%s: %s", at, p))
 		}
 	}
 	return errors.Join(errs...)

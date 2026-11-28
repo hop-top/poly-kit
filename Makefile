@@ -1142,6 +1142,14 @@ skills-sync: ## Generate skill content and channel metadata (parity page, publis
 check-skills-sync: ## Verify generated skill content is what skills-sync produces (writes nothing)
 	@go run ./internal/tools/skillsync sync --check
 
+# lint-skills checks every skill directory against the authoring contract
+# (docs/contributors/agent-skills.md); check-skills is the whole gate.
+.PHONY: lint-skills check-skills
+lint-skills: ## Lint skill layout, frontmatter, caps, links, module names and versions
+	@go run ./internal/tools/skillsync lint
+
+check-skills: check-skills-sync lint-skills ## Skills gate: generated content in sync, then lint
+
 .PHONY: check-template-kit-pin
 check-template-kit-pin: ## Fail when the cli-go template's kit pin lags proxy.golang.org by more than one release
 	@go run ./internal/tools/check-kit-pin

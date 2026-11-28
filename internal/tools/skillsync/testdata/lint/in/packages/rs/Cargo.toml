@@ -1,0 +1,7 @@
+[package]
+name = "acme-kit"
+
+[features]
+default = []
+api = ["dep:reqwest"]
+serve = []
