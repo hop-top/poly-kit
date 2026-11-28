@@ -97,7 +97,7 @@ func (g *gen) versionBlock(s *skill) (string, error) {
 		}
 	}
 	m := g.ports.Marketplace
-	parts = append(parts, fmt.Sprintf("Update by install channel, then restart the harness: Claude Code plugin `claude plugin marketplace update %[1]s`, then `claude plugin update %[3]s@%[1]s` (marketplace repository `%[2]s`); gym, `npx skills` or by hand: take `skills/%[3]s` again from `%[4]s` at `%[5]s`.",
+	parts = append(parts, fmt.Sprintf("Update by install channel, then restart the harness: Claude Code plugin `claude plugin marketplace update %[1]s`, then `claude plugin update %[3]s@%[1]s` (marketplace repository `%[2]s`); `npx skills` from a GitHub source `npx skills update -g -y` (project scope `npx skills update -p -y`), from any other source run the same `npx skills add` again; gym `gym update`, then `gym train`; by hand: take `skills/%[3]s` again from `%[4]s` at `%[5]s`.",
 		m.Name, m.Repo, s.Spec.Skill, s.Comp.Mirror, g.ports.MirrorBranch))
 	b.WriteString(wrapMD(strings.Join(parts, " "), "", "", versionWidth))
 	return b.String(), nil
