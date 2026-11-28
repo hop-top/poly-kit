@@ -1,0 +1,8 @@
+{
+  "name": "@hop-top/kit",
+  "exports": {
+    ".": "./dist/index.js",
+    "./cli": "./dist/cli.js",
+    "./upgrade/drivers/configfile": "./dist/configfile.js"
+  }
+}

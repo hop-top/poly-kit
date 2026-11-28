@@ -15,28 +15,48 @@ type Frontmatter struct {
 	License     string `yaml:"license"`
 }
 
+// splitFrontmatter returns the YAML text between the opening and closing ---
+// lines of a SKILL.md.
+func splitFrontmatter(src []byte) (string, error) {
+	lines := strings.Split(string(src), "\n")
+	if len(lines) == 0 || strings.TrimRight(lines[0], "\r") != "---" {
+		return "", fmt.Errorf("no frontmatter: the first line must be ---")
+	}
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimRight(lines[i], "\r") == "---" {
+			return strings.Join(lines[1:i], "\n"), nil
+		}
+	}
+	return "", fmt.Errorf("frontmatter is not closed by a --- line")
+}
+
 // parseFrontmatter reads the YAML block at the top of a SKILL.md.
 func parseFrontmatter(src []byte) (Frontmatter, error) {
 	var fm Frontmatter
-	lines := strings.Split(string(src), "\n")
-	if len(lines) == 0 || strings.TrimRight(lines[0], "\r") != "---" {
-		return fm, fmt.Errorf("no frontmatter: the first line must be ---")
+	text, err := splitFrontmatter(src)
+	if err != nil {
+		return fm, err
 	}
-	end := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimRight(lines[i], "\r") == "---" {
-			end = i
-			break
-		}
-	}
-	if end < 0 {
-		return fm, fmt.Errorf("frontmatter is not closed by a --- line")
-	}
-	if err := yaml.Unmarshal([]byte(strings.Join(lines[1:end], "\n")), &fm); err != nil {
+	if err := yaml.Unmarshal([]byte(text), &fm); err != nil {
 		return fm, fmt.Errorf("frontmatter: %w", err)
 	}
 	fm.Description = strings.TrimSpace(fm.Description)
 	return fm, nil
+}
+
+// frontmatterProblem is the one check that a SKILL.md names its skill and
+// carries a description and a license. The generator and the lint both call
+// it. want is the skill's name; it returns "" when the frontmatter is fine.
+func frontmatterProblem(want string, fm Frontmatter) string {
+	switch {
+	case fm.Name != want:
+		return fmt.Sprintf("frontmatter name %q must equal the skill name %q", fm.Name, want)
+	case fm.Description == "":
+		return "frontmatter has no description"
+	case fm.License == "":
+		return "frontmatter has no license"
+	}
+	return ""
 }
 
 func beginMarker(id string) string { return "<!-- skills-sync:begin " + id + " -->" }
