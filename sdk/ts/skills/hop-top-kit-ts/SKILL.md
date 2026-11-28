@@ -3,7 +3,7 @@ name: hop-top-kit-ts
 description: Build CLIs and services in TypeScript or JavaScript with the kit SDK `@hop-top/kit`, covering createCLI, output formats, layered config, MCP serving, safety guards, LLM adapters. Use when code imports `@hop-top/kit`, when adding kit to a Node project, or when a task needs a kit capability in TypeScript and you must check this port covers it. Not for choosing a language; the router skill does that.
 license: MIT
 metadata:
-  version: "0.5.0-alpha.12" # x-release-please-version
+  version: "0.5.0-alpha.13" # x-release-please-version
   min_version: "0.5.0-alpha.12"
 ---
 
@@ -88,7 +88,7 @@ port cannot scaffold, and the binary needs no Go toolchain when taken from a rel
 <!-- skills-sync:begin version -->
 ## Versions
 
-Written for 0.5.0-alpha.12 # x-release-please-version
+Written for 0.5.0-alpha.13 # x-release-please-version
 Expects 0.5.0-alpha.12 or newer.
 
 Installed: `npm ls @hop-top/kit` or `pnpm ls @hop-top/kit`; `scripts/detect-port.sh` shows what the

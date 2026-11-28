@@ -4,6 +4,31 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha.13](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.12...kit-ts/v0.5.0-alpha.13) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ts:** a failed up restores the backup instead of being left applied
+
+### Features
+
+* **skills:** each skill states the release it expects and how to update itself ([431e0a2](https://github.com/hop-top/poly-kit/commit/431e0a27d5ff943f7f961b28157fb29cc066a3d2))
+* **skills:** hop-top-kit-ts skill ([46380e4](https://github.com/hop-top/poly-kit/commit/46380e40f0d781d9a67180f607a7e93a67925261))
+* **skills:** probed install and update commands per channel ([fcfea33](https://github.com/hop-top/poly-kit/commit/fcfea3387bf3bd7f029ed35db462d3bb50e99016))
+* **ts:** configfile, fsdir and sqlite upgrade drivers ([bab92c8](https://github.com/hop-top/poly-kit/commit/bab92c8fcfb23329776040da52dd5b5cd3e91ef2))
+* **ts:** postgres upgrade driver over a caller-provided pg client ([d9b713c](https://github.com/hop-top/poly-kit/commit/d9b713c316ec1bf6c76157349f621f918d32966a))
+* **ts:** upgrade Migrator with baseline, lock, per-step versions, unsupported backup ([5a556d0](https://github.com/hop-top/poly-kit/commit/5a556d0fa4da8a47dc38b708931d53c6cae9fdfd))
+* **ts:** upgrade module with lenient semver, registry, document migrator ([632918c](https://github.com/hop-top/poly-kit/commit/632918cd4d1c095e6eab93b7193205dda775b9d3))
+
+
+### Bug Fixes
+
+* **skills:** descriptions on one frontmatter line ([cc7f856](https://github.com/hop-top/poly-kit/commit/cc7f8560981c0c639543b92e875a654e137ddc22))
+* **skills:** docs links follow the poly-kit default branch ([91c472f](https://github.com/hop-top/poly-kit/commit/91c472f2a7ef5c8b5a6e895cc3161c57838ac641))
+* **ts:** a failed up restores the backup instead of being left applied ([4239446](https://github.com/hop-top/poly-kit/commit/4239446e5ae73f7f9eccb082977599dcde8185a4))
+* **ts:** export uri, wizard, bus subpaths ([28623e1](https://github.com/hop-top/poly-kit/commit/28623e1f82376fb9d5397ecfa2ef25f6689d217a))
+
 ## [0.5.0-alpha.12](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.11...kit-ts/v0.5.0-alpha.12) (2026-11-15)
 
 The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.12. This release includes new features and bug fixes.
