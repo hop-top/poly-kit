@@ -81,7 +81,7 @@ Consequences, each *enforced*:
 | Datum | Source |
 |-------|--------|
 | `name`, `description`, `license` | `SKILL.md` frontmatter |
-| language label, install command, toolchain floor, mirror, keywords, copy list | `internal/tools/skillsync/ports.yaml` |
+| language label, install, upgrade and version-read commands, `min_version`, toolchain floor, mirror, keywords, plugin marketplace, binary, copy list | `internal/tools/skillsync/ports.yaml` |
 | capability tables, statuses, tiers | [`capability-parity.md`](../adopters/reference/capability-parity.md) and [`sdk-support-tiers.md`](sdk-support-tiers.md) |
 | component directory and mirror per port | the `ecosystems` map in `.github/workflows/publish.yml` |
 
@@ -175,11 +175,32 @@ install time.
 
 ## Versions
 
-`metadata.version` carries the annotation `# x-release-please-version` on
-its line; the release tooling bumps it with the component. A version number
-appears only on a line with that annotation (*enforced*): everywhere else a
-skill says "the current release" and links the source. The plugin manifest
-`version` is written once at creation and left to the release tooling after.
+Each skill states two releases in `metadata`, both quoted strings:
+
+| Key | Meaning | Source |
+|-----|---------|--------|
+| `version` | the release the copy was written for | the release manifest; annotated `# x-release-please-version` and bumped with the component by release tooling |
+| `min_version` | the oldest release the copy works with | `min_version` per skill in `ports.yaml`, written by `make skills-sync`; release tooling never touches it |
+
+A maintainer raises `min_version` when a skill starts relying on newer API.
+It is a release string (`x.y.z` or `x.y.z-prerelease`, no `v`), never newer
+than `version`, and one value per component. Both are *enforced*: `version`
+equals the release manifest; `min_version` equals `ports.yaml`.
+
+Every skill carries one managed block, `version`, written by `make skills-sync`
+and identical in structure across skills. It says which release the copy was
+written for and expects, how to read the installed version (the port's own
+command from `ports.yaml`; the `kit` binary for the router and the Go skill),
+the decision (installed older than `min_version`: upgrade the package;
+installed newer than `version`: the copy may be stale, update the skill, then
+re-read it; otherwise go on), and how to update the skill per install channel.
+The lint requires the block and rejects a hand-edited one (*enforced*).
+
+A version number appears only on a line annotated `# x-release-please-version`
+or on a line the generator writes (the block's two version lines and the
+`min_version` line) (*enforced*): everywhere else a skill says "the current
+release" and links the source. The plugin manifest `version` is written once at
+creation and left to the release tooling after.
 
 ## Never in a skill
 

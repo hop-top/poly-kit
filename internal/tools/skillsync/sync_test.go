@@ -168,6 +168,11 @@ func TestVersionWrittenOnceThenPreserved(t *testing.T) {
 	edit(t, root, pj, "0.3.0-alpha.4", "0.3.0-alpha.5")
 	edit(t, root, "skills.json", `"version": "0.3.0-alpha.4"`, `"version": "0.3.0-alpha.5"`)
 	edit(t, root, "manifest.json", "0.3.0-alpha.4", "0.3.0-alpha.9")
+	// release tooling bumps the annotated stamp and the annotated block line
+	// that copies it; it never touches min_version
+	ts := "packages/ts/skills/acme-kit-ts/SKILL.md"
+	edit(t, root, ts, `version: "1.0.0" # x-release-please-version`, `version: "1.0.1" # x-release-please-version`)
+	edit(t, root, ts, "Written for 1.0.0. # x-release-please-version", "Written for 1.0.1. # x-release-please-version")
 	if code, out, e := runCLI(t, root, "sync", "--check"); code != 0 {
 		t.Fatalf("a release PR must not fail --check:\n%s%s", out, e)
 	}
@@ -180,6 +185,21 @@ func TestVersionWrittenOnceThenPreserved(t *testing.T) {
 	}
 	if v := readJSON(t, root, pj)["version"]; v != "0.3.0-alpha.5" {
 		t.Fatalf("version regenerated: %v", v)
+	}
+}
+
+// A release that bumps metadata.version but not the block line that copies it
+// leaves drift: the annotation on that line is what keeps release PRs green.
+func TestReleaseBumpOfStampAloneIsDriftInTheBlock(t *testing.T) {
+	root := stage(t, "full")
+	if code, _, e := runCLI(t, root, "sync"); code != 0 {
+		t.Fatal(e)
+	}
+	ts := "packages/ts/skills/acme-kit-ts/SKILL.md"
+	edit(t, root, ts, `version: "1.0.0" # x-release-please-version`, `version: "1.0.1" # x-release-please-version`)
+	code, out, e := runCLI(t, root, "sync", "--check")
+	if code != 1 || !strings.Contains(out+e, ts) {
+		t.Fatalf("exit %d, want 1 naming %s:\n%s%s", code, ts, out, e)
 	}
 }
 

@@ -29,17 +29,18 @@ Exit codes: 0 ok, 1 drift, findings or inconsistent inputs, 2 usage or I/O.
 
 `sync` writes only into skill directories whose `SKILL.md` exists
 (`--require-all` makes a missing one an error): per skill `plugin.json`,
-`gym.json`, managed blocks and generated references; at the root `skills.json`
-and `claude-marketplace-entries.json`. A managed block sits between
+`gym.json`, managed blocks (`coverage` or `ports`, and `version`),
+`metadata.min_version` and generated references; at the root `skills.json` and
+`claude-marketplace-entries.json`. A managed block sits between
 `<!-- skills-sync:begin <id> -->` and `<!-- skills-sync:end <id> -->`; a
 missing or misordered marker fails the run. `sync --check` prints each
 differing path and writes nothing. It also owns: name equal to the
 `ports.yaml` skill name, a description and a license, and the markers.
-`version` is written once from the release manifest, then preserved.
-Skill, package and mirror paths come from the publish matrix; skill URLs use
+`version` is written once from the release manifest, then preserved (the
+`version` block copies it); `min_version` comes from `ports.yaml` only. Skill,
+package and mirror paths come from the publish matrix; skill URLs use
 `mirror_branch`, every docs URL the single `docs.branch`. `expected` prints
-mirror, repository skill directory and mirror skill directory, tab
-separated.
+mirror, repository skill directory and mirror skill directory, tab separated.
 
 `lint` checks the skill directories `ports.yaml` names (default: those that
 exist; none is a pass) and prints `path:line: rule: message`, sorted. A
@@ -53,7 +54,7 @@ the rules marked `s` and nothing outside it.
 | S3 | every file under `references/`, `scripts/`, `assets/snippets/` named in `SKILL.md`; relative links exist | s |
 | S4 | no relative link leaves the skill; links into the org are a skill URL, a docs URL whose path exists, the one branch | s (relative) |
 | S5 | `references/<area>.md` only if the port has a done, partial or unverified capability there | |
-| S6 | `metadata.version` equals the release manifest and is annotated; no other unannotated `x.y.z` | |
+| S6 | `metadata.version` equals the manifest and is annotated; `min_version` is a release, equals `ports.yaml`, at most `version`; the `version` block exists and equals the generated one; no other unannotated `x.y.z` | |
 | S7 | named `@hop-top/kit/<sub>`, `hop_top_kit.<mod>`, Cargo features, `hop.top/kit/go/<pkg>`, `HopTop\Kit\<Ns>` exist | |
 | S8 | no tracker id, no `tlc://`, no fence over 15 lines outside `assets/snippets/` | s |
 | S9 | scripts: `#!/bin/sh` first line, executable | s |
@@ -66,7 +67,8 @@ module and PSR-4 paths for PHP. Not enforced by tooling: script safety
 Tracker-id shape and the three-part version shape are heuristics.
 
 `ports.yaml` keys: `docs`, `host`, `mirror_branch`, `author`, `category`,
-`keywords`, `reference_column`, `router`, `ports`, `no_skill`, `copies`.
+`keywords`, `reference_column`, `marketplace`, `binary`, `router`, `ports`,
+`no_skill`, `copies`; per skill `min_version`; per port `installed`, `upgrade`.
 
 ## Neighbours
 

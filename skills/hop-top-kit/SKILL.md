@@ -10,6 +10,7 @@ description: >-
 license: MIT
 metadata:
   version: "0.5.0-beta.16" # x-release-please-version
+  min_version: "0.5.0-beta.16"
 ---
 
 # hop-top-kit
@@ -85,6 +86,22 @@ Do this before telling the user a port will do the job.
 Once a port is chosen, load its skill by name when the harness lists it.
 Otherwise read its `SKILL.md` at the URL in the table; if the user wants it
 installed, follow [install](references/install.md).
+
+<!-- skills-sync:begin version -->
+## Versions
+
+Written for 0.5.0-beta.16. # x-release-please-version
+Expects 0.5.0-beta.16 or newer.
+
+The `kit` binary: `kit --version` prints `kit v<version>` (a source build prints `kit vdev`: nothing
+to compare); older than expected: upgrade it (`brew upgrade hop-top/tap/kit`; [other
+routes](https://github.com/hop-top/poly-kit/blob/next/cmd/kit/README.md)); newer than written for:
+update this skill. Port skills carry their own Versions block; update them the same way. Update by
+install channel, then restart the harness: Claude Code plugin
+`claude plugin marketplace update hop-top`, then `claude plugin update hop-top-kit@hop-top`
+(marketplace repository `hop-top/skillset`); gym, `npx skills` or by hand: take `skills/hop-top-kit`
+again from `hop-top/kit` at `main`.
+<!-- skills-sync:end version -->
 
 ## Open when
 

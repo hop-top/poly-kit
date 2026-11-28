@@ -17,6 +17,9 @@ To pick another port, open [acme-kit](https://example.test/acme/kit/blob/main/sk
 <!-- skills-sync:begin coverage -->
 <!-- skills-sync:end coverage -->
 
+<!-- skills-sync:begin version -->
+<!-- skills-sync:end version -->
+
 ## Open when
 
 | File | Open when |

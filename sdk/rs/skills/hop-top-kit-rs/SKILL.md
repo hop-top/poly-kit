@@ -9,19 +9,19 @@ description: >-
 license: MIT
 metadata:
   version: "0.5.0-alpha.9" # x-release-please-version
+  min_version: "0.5.0-alpha.9"
 ---
 
 # hop-top-kit-rs
 
-The `hop-top-kit` crate (Rust path `hop_top_kit`): kit's Rust port. Every
-module is behind a Cargo feature and nothing is on by default, so choosing
-features comes first. The API is sync except `serve` and the
-network features (tokio).
+The `hop-top-kit` crate (Rust path `hop_top_kit`): kit's Rust port. Every module is behind a Cargo
+feature and nothing is on by default, so choosing features comes first. The API is sync except
+`serve` and the network features (tokio).
 
 ## Use another port when
 
-Rust releases are alpha prereleases: a task needing a stable release goes
-elsewhere ([other ports](references/other-ports.md), with the router skill).
+Rust releases are alpha prereleases: a task needing a stable release goes elsewhere
+([other ports](references/other-ports.md), with the router skill).
 
 <!-- skills-sync:begin coverage -->
 Tier: experimental.
@@ -35,14 +35,14 @@ Tier: experimental.
 - Conformance and integrations. Has only: nothing.
 <!-- skills-sync:end coverage -->
 
-- Capability `none` here, `kit init` scaffolding, or the `kit` binary: Go
-  skill, or the binary as a sidecar. Scaffolding is the Go binary's
-  [`kit init`](https://github.com/hop-top/poly-kit/blob/next/cmd/kit/README.md);
-  run it with `--dry-run` first to see what it writes for Rust.
-- Capability `partial` or `unverified` and the task depends on the gap: read
-  the area reference, test the behaviour, or use Go.
-- The project is already Go (or TypeScript, Python): stay while its matrix
-  cells cover the task; add this crate only for a separate Rust component.
+- Capability `none` here, `kit init` scaffolding, or the `kit` binary: Go skill, or the binary as a
+  sidecar. Scaffolding is the Go binary's
+  [`kit init`](https://github.com/hop-top/poly-kit/blob/next/cmd/kit/README.md); run it with
+  `--dry-run` first to see what it writes for Rust.
+- Capability `partial` or `unverified` and the task depends on the gap: read the area reference,
+  test the behaviour, or use Go.
+- The project is already Go (or TypeScript, Python): stay while its matrix cells cover the task; add
+  this crate only for a separate Rust component.
 
 ## Install
 
@@ -51,9 +51,7 @@ Tier: experimental.
 hop-top-kit = { version = "0.5.0-alpha.9", features = ["cli", "config"] } # x-release-please-version
 ```
 
-Give the full prerelease version: a bare `"0.5"` cannot resolve one. Rust
-1.89 or newer. A newer `hop-top-kit` in `Cargo.lock` than this skill's:
-trust the parity page over the generated coverage.
+Give the full prerelease version: a bare `"0.5"` cannot resolve one. Rust 1.89 or newer.
 
 ## Pick features
 
@@ -67,40 +65,40 @@ trust the parity page over the generated coverage.
 | Migrations, versioned state | `upgrade`, `upgrade-sqlite`, `upgrade-fsdir`, `upgrade-postgres` | below |
 | HTTP honouring `--offline` | `api`, or `netpolicy` alone | reqwest, tokio |
 
-`upgrade` is the registry, runner and config-file driver: a handful of
-crates. `upgrade-sqlite` adds bundled SQLite (needs a C compiler);
-`upgrade-fsdir` adds `tar` and `flate2`; `upgrade-postgres` adds the
-`postgres` client and its async stack, several times the others, over a
-`postgres::Client` you pass in (TLS is yours). Recount any feature with
+`upgrade` is the registry, runner and config-file driver: a handful of crates. `upgrade-sqlite` adds
+bundled SQLite (needs a C compiler); `upgrade-fsdir` adds `tar` and `flate2`; `upgrade-postgres`
+adds the `postgres` client and its async stack, several times the others, over a `postgres::Client`
+you pass in (TLS is yours). Recount any feature with
 `cargo tree --no-default-features --features <f> -e normal`.
-
-## wasm32
-
-Only `wasm32-unknown-unknown` is built, with `--no-default-features`. CI
-builds these: `bus`, `netpolicy`, `domain`, `upgrade`, `sideeffect`,
-`breaker`, `sync`, `consent`, `llm`, `llm-picker`, `redact`, `policy`,
-`notify`, `authn`, `identity`. File, process and clock code is compiled out
-there: pass the clock, seeds and transport yourself. A feature not listed
-is not built for wasm32 in CI: treat it as native (`cli`, `serve`, `api`,
-`telemetry`, `-sqlite`, `-fsdir`, `-postgres`, `-real`, `-http`, `-server`).
 
 ## Smallest program
 
-[`cli-root.rs`](assets/snippets/cli-root/cli-root.rs): a kit root with a
-rendered list command. Test with `cargo test --features cli,config`; test
-each feature alone with
+[`cli-root.rs`](assets/snippets/cli-root/cli-root.rs): a kit root with a rendered list command. Test
+with `cargo test --features cli,config`; test each feature alone with
 [`check-rs-features.sh`](https://github.com/hop-top/poly-kit/blob/next/scripts/check-rs-features.sh).
 
 ## Traps
 
-- Types are kit-owned (`CommandSpec`, `FlagSpec`, `Invocation`); no clap type
-  appears in your code.
-- `Root::run(argv, out, err)` returns the exit code; you call `exit`. Run
-  examples with their features: `cargo run --example cli --features cli,config`.
+- Types are kit-owned (`CommandSpec`, `FlagSpec`, `Invocation`); no clap type appears in your code.
+- `Root::run(argv, out, err)` returns the exit code; you call `exit`. Run examples with their
+  features: `cargo run --example cli --features cli,config`.
 - `cli` does not pull `config`; `Invocation::layer_config` needs it.
-- tokio carries no runtime flavour: add your own with `rt-multi-thread` and
-  `macros` for `serve`.
+- tokio carries no runtime flavour: add your own with `rt-multi-thread` and `macros` for `serve`.
 - `ring` (`bus-network`, `notify-email`, `authn-rsa`) needs a C compiler.
+
+<!-- skills-sync:begin version -->
+## Versions
+
+Written for 0.5.0-alpha.9. # x-release-please-version
+Expects 0.5.0-alpha.9 or newer.
+
+Installed: `cargo tree -i hop-top-kit --depth 0`; `scripts/detect-port.sh` shows what the manifest
+pins. Older than expected: tell the user, upgrade (`cargo update -p hop-top-kit`). Newer than
+written for: this copy may be stale; update it, then re-read it. Update by install channel, then
+restart the harness: Claude Code plugin `claude plugin marketplace update hop-top`, then
+`claude plugin update hop-top-kit-rs@hop-top` (marketplace repository `hop-top/skillset`); gym,
+`npx skills` or by hand: take `skills/hop-top-kit-rs` again from `hop-top/kit-rs` at `main`.
+<!-- skills-sync:end version -->
 
 ## Open when
 
@@ -114,6 +112,7 @@ each feature alone with
 | `references/events-jobs-runtime.md` | bus, state machines, sync, notifications, telemetry |
 | `references/guardrails-and-trust.md` | breaker, redaction, consent, identity, upgrade migrations, retry |
 | `references/ai-and-agents.md` | calling models, routing, the 12-factor check |
+| `references/wasm32.md` | building for wasm32: which features CI builds and what is compiled out |
 | `scripts/detect-port.sh` | the project's kit dependency or language is unknown |
 | `assets/snippets/cli-root/cli-root.rs`, `assets/snippets/cli-root/cli-root.expected` | writing the first command, or checking its output |
 | `assets/snippets/config-layers/config-layers.rs`, `assets/snippets/config-layers/config-layers.expected` | loading a typed config from files and `-c` overrides |
