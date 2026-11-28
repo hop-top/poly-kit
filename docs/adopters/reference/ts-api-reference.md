@@ -326,6 +326,10 @@ Subpath imports follow the package's `exports` map (see
 - `@hop-top/kit/alias` — alias resolution + completion.
 - `@hop-top/kit/uri` — thin facade over `@hop-top/cite` for URI parsing,
   action resolution, completions, registries, and OS handler metadata.
+- `@hop-top/kit/wizard` — headless sequential wizard engine (steps,
+  validation, actions).
+- `@hop-top/kit/bus` — in-process event bus (`createBus`, `createEvent`,
+  `MemoryAdapter`, topic patterns).
 - `@hop-top/kit/tui` — TUI toolkit (parity, anim, prompts).
 - `@hop-top/kit/mcp` — dual-spec MCP surface (see [MCP surface](#mcp-surface)).
 - `@hop-top/kit/serve` — the serve hierarchy and service lifecycle (see
@@ -685,7 +689,7 @@ Wire behaviour is pinned by the shared cross-language fixtures in
 ### Use the v2 scoped packages
 
 The protocol layer comes from `@modelcontextprotocol/core` and
-`@modelcontextprotocol/server`, both pinned at `2.3.1`. They are already
+`@modelcontextprotocol/server`, both pinned at `2.4.0`. They are already
 dependencies of this package.
 
 **`@modelcontextprotocol/sdk` — the v1 package — is deliberately not a

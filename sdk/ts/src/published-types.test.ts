@@ -15,6 +15,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import * as ts from 'typescript';
@@ -108,6 +109,13 @@ describe('published declarations', () => {
   }, 120_000);
 
   afterAll(() => { rmSync(stageDir, { recursive: true, force: true }); });
+
+  // Runtime resolution through the package `exports` map, outside any test alias.
+  it.each(Object.keys(pkg.exports))('%s resolves and loads from the built package', (key) => {
+    const req = createRequire(files[1]);
+    const spec = key === '.' ? pkg.name : `${pkg.name}/${key.slice(2)}`;
+    expect(typeof req(spec)).toBe('object');
+  });
 
   it.each(Object.entries(modes).map(([name, m]) => [name, m.skipLibCheck] as const))(
     'type-check clean (moduleResolution %s, skipLibCheck %s)', (mode) => {
