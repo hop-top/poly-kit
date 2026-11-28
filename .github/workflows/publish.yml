@@ -126,3 +126,30 @@ jobs:
           done
           echo "::error::hop-top-kit ${version} did not build from the registry"
           exit 1
+
+  # Proves the skills a component ships reached its mirror: the shared
+  # workflow above splits the component directory and pushes it, and
+  # nothing else here would notice if a skill stopped arriving. For the
+  # tag's component, `skillsync expected` names the mirror and the skill
+  # paths; each must hold SKILL.md and .claude-plugin/plugin.json at
+  # the mirror's v<version> tag with that version in both (the plugin
+  # manifest's version is what makes installed plugins update). A
+  # component without a skill passes. Reads public files only; the
+  # mirror push can trail the publish run, so the script retries.
+  skill-mirror-smoke:
+    needs: publish
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Check each skill at the mirror's new tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: scripts/skill-mirror-smoke.sh "$TAG"
