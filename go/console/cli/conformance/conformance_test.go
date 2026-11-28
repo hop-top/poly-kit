@@ -231,11 +231,10 @@ func TestSharedSlotsUseKitsConstants(t *testing.T) {
 func TestReservedChild_HelpLine(t *testing.T) {
 	out, err := runCmd(t, "--help")
 	require.NoError(t, err)
-	// The help summary for a reserved name should signal that it
-	// belongs to a sibling track so contributors don't try to
-	// re-implement it here.
+	// The help summary for a reserved name should signal that the
+	// name is reserved.
 	lower := strings.ToLower(out)
-	assert.Contains(t, lower, "reserved for 12fcc-static")
+	assert.Contains(t, lower, "reserved command name")
 	// harness is implemented now; its help line must no longer read
 	// as reserved.
 	assert.NotContains(t, lower, "reserved for 12fcc-harness")
