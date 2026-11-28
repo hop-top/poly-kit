@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.11](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.10...kit-py/v0.5.0-alpha.11) (2026-11-28)
 
+The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.11. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -26,6 +28,8 @@
 * **py:** fsdir restore refuses link members without tarfile filters ([9e82d9b](https://github.com/hop-top/poly-kit/commit/9e82d9b9ab9cb7136fb2dfe798ef9c1e28b98eb4))
 * **skills:** descriptions on one frontmatter line ([cc7f856](https://github.com/hop-top/poly-kit/commit/cc7f8560981c0c639543b92e875a654e137ddc22))
 * **skills:** docs links follow the poly-kit default branch ([91c472f](https://github.com/hop-top/poly-kit/commit/91c472f2a7ef5c8b5a6e895cc3161c57838ac641))
+
+Full diff: [kit-py/v0.5.0-alpha.10...kit-py/v0.5.0-alpha.11](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.10...kit-py/v0.5.0-alpha.11)
 
 ## [0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.9...kit-py/v0.5.0-alpha.10) (2026-11-15)
 
