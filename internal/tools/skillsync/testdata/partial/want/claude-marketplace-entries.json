@@ -1,0 +1,36 @@
+[
+  {
+    "name": "acme-kit",
+    "description": "Skill acme-kit. Use when testing.",
+    "source": {
+      "source": "git-subdir",
+      "url": "https://example.test/acme/kit.git",
+      "path": "skills/acme-kit"
+    },
+    "homepage": "https://example.test/acme/kit/blob/main/skills/acme-kit/SKILL.md",
+    "license": "MIT",
+    "category": "development",
+    "keywords": [
+      "acme",
+      "kit",
+      "router"
+    ]
+  },
+  {
+    "name": "acme-kit-py",
+    "description": "Skill acme-kit-py. Use when testing.",
+    "source": {
+      "source": "git-subdir",
+      "url": "https://example.test/acme/kit-py.git",
+      "path": "skills/acme-kit-py"
+    },
+    "homepage": "https://example.test/acme/kit-py/blob/main/skills/acme-kit-py/SKILL.md",
+    "license": "MIT",
+    "category": "development",
+    "keywords": [
+      "acme",
+      "kit",
+      "python"
+    ]
+  }
+]

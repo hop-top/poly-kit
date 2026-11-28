@@ -1,0 +1,46 @@
+{
+  "skills": [
+    {
+      "name": "acme-kit",
+      "version": "1.4.0-beta.2",
+      "source_url": "https://example.test/acme/kit.git",
+      "path": "skills/acme-kit",
+      "description": "Skill acme-kit. Use when testing."
+    },
+    {
+      "name": "acme-kit-go",
+      "version": "1.4.0-beta.2",
+      "source_url": "https://example.test/acme/kit.git",
+      "path": "skills/acme-kit-go",
+      "description": "Skill acme-kit-go. Use when testing."
+    },
+    {
+      "name": "acme-kit-ts",
+      "version": "0.3.0-alpha.4",
+      "source_url": "https://example.test/acme/kit-ts.git",
+      "path": "skills/acme-kit-ts",
+      "description": "Skill acme-kit-ts. Use when testing."
+    },
+    {
+      "name": "acme-kit-py",
+      "version": "0.3.0-alpha.2",
+      "source_url": "https://example.test/acme/kit-py.git",
+      "path": "skills/acme-kit-py",
+      "description": "Skill acme-kit-py. Use when testing."
+    },
+    {
+      "name": "acme-kit-rs",
+      "version": "0.3.0-alpha.3",
+      "source_url": "https://example.test/acme/kit-rs.git",
+      "path": "skills/acme-kit-rs",
+      "description": "Skill acme-kit-rs. Use when testing."
+    },
+    {
+      "name": "acme-kit-php",
+      "version": "0.3.0-alpha.1",
+      "source_url": "https://example.test/acme/kit-php.git",
+      "path": "skills/acme-kit-php",
+      "description": "Skill acme-kit-php. Use when testing."
+    }
+  ]
+}

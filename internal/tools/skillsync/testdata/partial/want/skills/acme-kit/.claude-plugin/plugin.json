@@ -1,0 +1,17 @@
+{
+  "name": "acme-kit",
+  "version": "1.4.0-beta.2",
+  "description": "Skill acme-kit. Use when testing.",
+  "author": {
+    "name": "acme",
+    "url": "https://example.test/acme"
+  },
+  "homepage": "https://example.test/acme/kit/blob/main/skills/acme-kit/SKILL.md",
+  "repository": "https://example.test/acme/kit",
+  "license": "MIT",
+  "keywords": [
+    "acme",
+    "kit",
+    "router"
+  ]
+}

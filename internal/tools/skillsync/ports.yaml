@@ -1,0 +1,79 @@
+# Hand-written inputs to skillsync (see README.md). Component keys, SDK
+# directories, packages and mirrors come from the publish workflow, never
+# from here; this file adds what that matrix cannot say.
+
+# Where generated links point. docs.branch is the ONE branch of every docs
+# URL a skill carries; mirror_branch is the branch of every link to a skill.
+docs:
+  repo: hop-top/poly-kit
+  branch: main
+host: https://github.com
+mirror_branch: main
+
+author:
+  name: hop-top
+  url: https://github.com/hop-top
+category: development
+keywords: [hop-top, kit, agent-skill]
+
+# The parity column that is the reference implementation.
+reference_column: Go
+
+router:
+  skill: hop-top-kit
+  component: kit
+  keywords: [router, sdk-selection]
+
+# One entry per port, in the order tables and channel files list them.
+# column: header of its parity-table column; language: its Summary row label.
+# package: only when the publish matrix names none; tier: only when the
+# tiers page has no row naming its directory.
+ports:
+  - component: kit
+    skill: hop-top-kit-go
+    column: Go
+    language: Go
+    install: go get hop.top/kit
+    package: hop.top/kit
+    tier: reference
+    toolchain: Go 1.27
+    keywords: [go, golang]
+  - component: kit-ts
+    skill: hop-top-kit-ts
+    column: TS
+    language: TypeScript
+    install: pnpm add @hop-top/kit
+    toolchain: Node 22.12+
+    keywords: [typescript, node]
+  - component: kit-py
+    skill: hop-top-kit-py
+    column: Py
+    language: Python
+    install: pip install hop-top-kit
+    toolchain: Python 3.11+
+    keywords: [python]
+  - component: kit-rs
+    skill: hop-top-kit-rs
+    column: Rust
+    language: Rust
+    install: cargo add hop-top-kit
+    toolchain: Rust 1.89+
+    keywords: [rust]
+  - component: kit-php
+    skill: hop-top-kit-php
+    column: PHP
+    language: PHP
+    install: composer require hop-top/kit
+    toolchain: PHP 8.4+
+    keywords: [php]
+
+# Publish matrix components that get no skill: not kit ports.
+no_skill: [mcp-tasks, qmochi]
+
+# Files copied byte for byte into skills. from: repository-relative source;
+# to: destination inside the skill; skills: skill names, or [ports] for every
+# port skill.
+copies:
+  - from: skills/hop-top-kit/scripts/detect-port.sh
+    to: scripts/detect-port.sh
+    skills: [ports]

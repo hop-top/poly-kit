@@ -1,0 +1,39 @@
+name: publish
+on:
+  push:
+    tags: ['*/v*']
+jobs:
+  publish:
+    uses: acme/.github/.github/workflows/publish-on-tag.yml@main
+    with:
+      homepage: https://example.test/acme/mono
+      ecosystems: |
+        kit:
+          dir: .
+          ecosystem: go
+          mirror: acme/kit
+        tasks:
+          dir: extensions/tasks
+          ecosystem: go
+          mirror: acme/tasks
+        kit-php:
+          dir: packages/php
+          ecosystem: php
+          package: acme/kit
+          mirror: acme/kit-php
+        kit-py:
+          dir: packages/py
+          ecosystem: py
+          package: acme-kit
+          mirror: acme/kit-py
+          python-version: '3.11'
+        kit-rs:
+          dir: packages/rs
+          ecosystem: rs
+          package: acme-kit
+          mirror: acme/kit-rs
+        kit-ts:
+          dir: packages/ts
+          ecosystem: ts
+          package: "@acme/kit"
+          mirror: acme/kit-ts

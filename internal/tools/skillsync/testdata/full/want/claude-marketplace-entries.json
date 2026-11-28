@@ -1,0 +1,104 @@
+[
+  {
+    "name": "acme-kit",
+    "description": "Skill acme-kit. Use when testing.",
+    "source": {
+      "source": "git-subdir",
+      "url": "https://example.test/acme/kit.git",
+      "path": "skills/acme-kit"
+    },
+    "homepage": "https://example.test/acme/kit/blob/main/skills/acme-kit/SKILL.md",
+    "license": "MIT",
+    "category": "development",
+    "keywords": [
+      "acme",
+      "kit",
+      "router"
+    ]
+  },
+  {
+    "name": "acme-kit-go",
+    "description": "Skill acme-kit-go. Use when testing.",
+    "source": {
+      "source": "git-subdir",
+      "url": "https://example.test/acme/kit.git",
+      "path": "skills/acme-kit-go"
+    },
+    "homepage": "https://example.test/acme/kit/blob/main/skills/acme-kit-go/SKILL.md",
+    "license": "MIT",
+    "category": "development",
+    "keywords": [
+      "acme",
+      "kit",
+      "go"
+    ]
+  },
+  {
+    "name": "acme-kit-ts",
+    "description": "Skill acme-kit-ts. Use when testing.",
+    "source": {
+      "source": "git-subdir",
+      "url": "https://example.test/acme/kit-ts.git",
+      "path": "skills/acme-kit-ts"
+    },
+    "homepage": "https://example.test/acme/kit-ts/blob/main/skills/acme-kit-ts/SKILL.md",
+    "license": "MIT",
+    "category": "development",
+    "keywords": [
+      "acme",
+      "kit",
+      "typescript"
+    ]
+  },
+  {
+    "name": "acme-kit-py",
+    "description": "Skill acme-kit-py. Use when testing.",
+    "source": {
+      "source": "git-subdir",
+      "url": "https://example.test/acme/kit-py.git",
+      "path": "skills/acme-kit-py"
+    },
+    "homepage": "https://example.test/acme/kit-py/blob/main/skills/acme-kit-py/SKILL.md",
+    "license": "MIT",
+    "category": "development",
+    "keywords": [
+      "acme",
+      "kit",
+      "python"
+    ]
+  },
+  {
+    "name": "acme-kit-rs",
+    "description": "Skill acme-kit-rs. Use when testing.",
+    "source": {
+      "source": "git-subdir",
+      "url": "https://example.test/acme/kit-rs.git",
+      "path": "skills/acme-kit-rs"
+    },
+    "homepage": "https://example.test/acme/kit-rs/blob/main/skills/acme-kit-rs/SKILL.md",
+    "license": "MIT",
+    "category": "development",
+    "keywords": [
+      "acme",
+      "kit",
+      "rust"
+    ]
+  },
+  {
+    "name": "acme-kit-php",
+    "description": "Skill acme-kit-php. Use when testing.",
+    "source": {
+      "source": "git-subdir",
+      "url": "https://example.test/acme/kit-php.git",
+      "path": "skills/acme-kit-php"
+    },
+    "homepage": "https://example.test/acme/kit-php/blob/main/skills/acme-kit-php/SKILL.md",
+    "license": "MIT",
+    "category": "development",
+    "keywords": [
+      "acme",
+      "kit",
+      "php"
+    ]
+  }
+]

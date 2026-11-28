@@ -30,10 +30,10 @@ view for contributors, with the gap behind each `partial`, is
 | SDK | Counts |
 |---|---|
 | Go | 74 done |
-| TypeScript | 36 none, 19 unverified, 11 done, 7 partial, 1 n/a |
-| Python | 38 none, 19 unverified, 9 done, 7 partial, 1 n/a |
+| TypeScript | 36 none, 18 unverified, 11 done, 8 partial, 1 n/a |
+| Python | 38 none, 18 unverified, 9 done, 8 partial, 1 n/a |
 | Rust | 29 none, 19 partial, 13 done, 12 unverified, 1 n/a |
-| PHP | 58 none, 5 unverified, 6 partial, 4 done, 1 n/a |
+| PHP | 57 none, 5 unverified, 7 partial, 4 done, 1 n/a |
 
 Rust and PHP serve lifecycle parity is complete for the 13 behaviors in
 `contracts/parity/serve.json`; the MCP wire is pinned for all four SDKs.

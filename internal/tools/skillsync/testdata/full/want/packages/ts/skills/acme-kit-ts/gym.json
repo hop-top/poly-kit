@@ -1,0 +1,5 @@
+{
+  "schema": "gym.skill/v1",
+  "allowed_tools": [],
+  "data_class": "public"
+}

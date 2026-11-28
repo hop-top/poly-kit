@@ -1,0 +1,17 @@
+{
+  "name": "acme-kit-php",
+  "version": "0.3.0-alpha.1",
+  "description": "Skill acme-kit-php. Use when testing.",
+  "author": {
+    "name": "acme",
+    "url": "https://example.test/acme"
+  },
+  "homepage": "https://example.test/acme/kit-php/blob/main/skills/acme-kit-php/SKILL.md",
+  "repository": "https://example.test/acme/kit-php",
+  "license": "MIT",
+  "keywords": [
+    "acme",
+    "kit",
+    "php"
+  ]
+}

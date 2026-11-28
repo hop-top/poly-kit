@@ -1131,6 +1131,17 @@ check-mirror-sync: check-template-sources ## Verify internal/template/builtins/ 
 	fi
 	@echo "Mirror in sync."
 
+# Skill content and channel metadata are generated from the capability
+# parity page, the publish matrix, the tiers page and ports.yaml; see
+# internal/tools/skillsync/README.md. check-skills-sync regenerates in
+# memory and fails on drift, like check-mirror-sync.
+.PHONY: skills-sync check-skills-sync
+skills-sync: ## Generate skill content and channel metadata (parity page, publish matrix, ports.yaml)
+	@go run ./internal/tools/skillsync sync
+
+check-skills-sync: ## Verify generated skill content is what skills-sync produces (writes nothing)
+	@go run ./internal/tools/skillsync sync --check
+
 .PHONY: check-template-kit-pin
 check-template-kit-pin: ## Fail when the cli-go template's kit pin lags proxy.golang.org by more than one release
 	@go run ./internal/tools/check-kit-pin

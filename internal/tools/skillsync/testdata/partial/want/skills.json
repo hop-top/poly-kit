@@ -1,0 +1,18 @@
+{
+  "skills": [
+    {
+      "name": "acme-kit",
+      "version": "1.4.0-beta.2",
+      "source_url": "https://example.test/acme/kit.git",
+      "path": "skills/acme-kit",
+      "description": "Skill acme-kit. Use when testing."
+    },
+    {
+      "name": "acme-kit-py",
+      "version": "0.3.0-alpha.2",
+      "source_url": "https://example.test/acme/kit-py.git",
+      "path": "skills/acme-kit-py",
+      "description": "Skill acme-kit-py. Use when testing."
+    }
+  ]
+}

@@ -2,8 +2,8 @@
 
 Build-time generators. Not part of the kit binary, not published.
 
-Each subdirectory is a standalone Go program that vendors a
-third-party rule corpus into kit at a pinned upstream tag, with
+Each subdirectory is a standalone Go program. The `vendor-*` generators
+vendor a third-party rule corpus into kit at a pinned upstream tag, with
 provenance headers, license, and attribution. Output files are
 generated, embedded via `//go:embed`, and committed to the repo.
 
@@ -13,6 +13,13 @@ generated, embedded via `//go:embed`, and committed to the repo.
 | [`vendor-presidio/`](vendor-presidio/main.go) | Vendor Microsoft Presidio PII rules | `go/core/redact/rules/` | `make refresh-pii-rules` |
 
 Refresh both at once: `make refresh-rules`.
+
+One generator derives skill text from repository docs instead of vendoring
+a third-party corpus.
+
+| Tool | Purpose | Output | Target |
+|------|---------|--------|--------|
+| [`skillsync/`](skillsync/README.md) | Generate skill content and channel metadata from the parity page and the publish matrix | skill directories, `skills.json` | `make skills-sync`, `make check-skills-sync` |
 
 One checker lives here too, because it is Go for the same reason the
 generators are: it needs `golang.org/x/mod`'s semver ordering.
@@ -40,6 +47,8 @@ Use this directory when:
 - It needs provenance tracking (tag, SHA, license, attribution).
 - It runs from `go run ./internal/tools/<name>` and is invoked from a
   `make refresh-*` target, not from the runtime binary.
+- Or it derives committed files from this repository's own docs and a
+  `make check-*` target fails on drift (`skillsync`).
 
 For ad-hoc scripts or one-off generators, prefer `scripts/`.
 
