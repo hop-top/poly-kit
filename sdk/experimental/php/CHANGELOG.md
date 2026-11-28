@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.6...kit-php/v0.5.0-alpha.7) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **php:** a failed up restores the backup instead of being left applied
+
+### Features
+
+* **php:** upgrade Migrator, ConfigFile and FsDir drivers ([e33633f](https://github.com/hop-top/poly-kit/commit/e33633fdb6ee27c50cdb1cb3e753ed5fdf390cff))
+* **php:** upgrade namespace, document migrator, conformance runner ([3d56b55](https://github.com/hop-top/poly-kit/commit/3d56b55026c280e0834f7cd33def6423ce52e5d5))
+* **php:** upgrade sqlite and postgres drivers over PDO ([8e32451](https://github.com/hop-top/poly-kit/commit/8e324518b6fa2f96091935f11d76c8919b1be413))
+* **skills:** each skill states the release it expects and how to update itself ([431e0a2](https://github.com/hop-top/poly-kit/commit/431e0a27d5ff943f7f961b28157fb29cc066a3d2))
+* **skills:** hop-top-kit-php skill ([eb84e1d](https://github.com/hop-top/poly-kit/commit/eb84e1dc440b29848b7c372adb3a57323f5e779e))
+* **skills:** probed install and update commands per channel ([fcfea33](https://github.com/hop-top/poly-kit/commit/fcfea3387bf3bd7f029ed35db462d3bb50e99016))
+
+
+### Bug Fixes
+
+* **php:** a failed up restores the backup instead of being left applied ([ce073ca](https://github.com/hop-top/poly-kit/commit/ce073ca9d5391057c06a786801fa476513d0d9ba))
+* **skills:** descriptions on one frontmatter line ([cc7f856](https://github.com/hop-top/poly-kit/commit/cc7f8560981c0c639543b92e875a654e137ddc22))
+* **skills:** docs links follow the poly-kit default branch ([91c472f](https://github.com/hop-top/poly-kit/commit/91c472f2a7ef5c8b5a6e895cc3161c57838ac641))
+
 ## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.5...kit-php/v0.5.0-alpha.6) (2026-11-15)
 
 The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.6. This release includes maintenance release with bug fixes.
