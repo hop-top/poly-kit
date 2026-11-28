@@ -1,0 +1,22 @@
+$ mcp.py --help
+Usage: mcp.py [OPTIONS] COMMAND [ARGS]...
+
+  does things
+
+COMMANDS:
+  tools [--flags]  Print the tools/list reply.
+
+FLAGS:
+  -v, --version   Print mytool version and exit
+  -V, --verbose   Increase log verbosity (-V=debug, -VV=trace)  [default: 0]
+  --format <str>  Output format
+  --quiet         Suppress non-essential output
+  --no-color      Disable ANSI color output
+  --no-hints      Suppress next-step hints after command output
+  --offline       Disable network access
+  --stream <str>  Enable diagnostic streams (comma-separated)
+  --help          Show this message and exit.
+
+$ mcp.py tools
+200 {"jsonrpc":"2.0","id":1,"result":{"tools":[{"description":"Ping the server","inputSchema":{"properties":{},"type":"object"},"name":"ping"}]}}
+
