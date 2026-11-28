@@ -17,5 +17,23 @@
       "router",
       "sdk-selection"
     ]
+  },
+  {
+    "name": "hop-top-kit-php",
+    "description": "Build a PHP CLI with the experimental kit PHP port (Composer package hop-top/kit, namespace HopTop\\Kit). Use when PHP code requires hop-top/kit, when adding kit's output formats, MCP surface or serve lifecycle to a PHP tool, or when asked whether the PHP port can do something. Most kit capabilities are absent from this port: it says what exists and when to switch to another port or the kit sidecar.",
+    "source": {
+      "source": "git-subdir",
+      "url": "https://github.com/hop-top/kit-php.git",
+      "path": "skills/hop-top-kit-php"
+    },
+    "homepage": "https://github.com/hop-top/kit-php/blob/main/skills/hop-top-kit-php/SKILL.md",
+    "license": "MIT",
+    "category": "development",
+    "keywords": [
+      "hop-top",
+      "kit",
+      "agent-skill",
+      "php"
+    ]
   }
 ]
