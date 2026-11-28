@@ -44,6 +44,11 @@ interface StepFailure {
   version: string;
   err: unknown;
   undo: Migration[];
+  /**
+   * The newest undo entry is a step whose `up` failed: it counts as
+   * applied, but its `down` is never called.
+   */
+  upFailed?: boolean;
 }
 
 /** The backup a schema's run can restore from: a path, or none with why. */
@@ -120,8 +125,12 @@ export class Migrator {
    * record, then the final verify. An unsupported backup lets the run go
    * on with no backup. On failure in auto mode: roll back (`down` in
    * reverse, recording the version before each, else `restore` and record
-   * the starting version). When no backup can restore the schema nothing
-   * is reverted and the error matches `isNotRestored`. An aborted `signal`
+   * the starting version). A migration whose `up` failed counts as applied
+   * but cannot be downed (its `down` is never called): the run restores
+   * the backup at once and no older `down` runs. When a `down` is missing
+   * or fails, or the `up` failed, and no backup can restore the schema,
+   * nothing is reverted and the error matches `isNotRestored`; the stored
+   * version stays at the last step still applied. An aborted `signal`
    * stops before the next `up` (`up <v> canceled: context canceled`).
    * Rejects with the first failing schema's error, `migrate <schema>: ...`.
    */
@@ -361,7 +370,13 @@ export class Migrator {
     const pub = this.opts.publisher;
     const done: Migration[] = [];
     let from = current;
-    const failed = (ev: MigrationPayload, t: number | undefined, stage: Stage, err: unknown, undo: Migration[]) => {
+    const failed = (
+      ev: MigrationPayload,
+      t: number | undefined,
+      stage: Stage,
+      err: unknown,
+      undo: Migration[],
+    ): { fail: StepFailure; n: number } => {
       const payload: MigrationPayload = { ...ev, stage, error: errorText(err) };
       if (t !== undefined) payload.duration_ms = millisSince(t);
       emit(pub, this.topics.failed, payload);
@@ -375,7 +390,11 @@ export class Migrator {
       try {
         await mig.up(signal);
       } catch (e) {
-        return failed(ev, t, 'up', e, done);
+        // A failed up is an applied step that cannot be downed: it joins
+        // the undo list, newest, and its down is never called.
+        const f = failed(ev, t, 'up', e, [...done, mig]);
+        f.fail.upFailed = true;
+        return f;
       }
       emit(pub, this.topics.applied, { ...ev, duration_ms: millisSince(t) });
       if (mig.verify) {
@@ -411,14 +430,17 @@ export class Migrator {
     return { n: done.length };
   }
 
-  /** Rolls back (auto mode) and builds the schema's error. */
+  /**
+   * Rolls back (auto mode) and builds the schema's error. The undo list is
+   * empty only when nothing ran: a canceled run before the first `up`.
+   */
   private async fail(d: SchemaDriver, current: string, bk: BackupState, f: StepFailure): Promise<Error> {
     const err = wrapFailure(f);
     if (this.opts.manualRollback || f.undo.length === 0) return err;
     const t = performance.now();
     let method: string;
     try {
-      method = await this.rollback(d, current, f.undo, bk);
+      method = await this.rollback(d, current, f.undo, f.upFailed === true, bk);
     } catch (rollbackErr) {
       return new UpgradeError(`${err.message} (rollback also failed: ${errorText(rollbackErr)})`, err, [
         err,
@@ -440,17 +462,26 @@ export class Migrator {
    * Runs `down` in reverse order, recording the version before each
    * migration once its `down` succeeded; falls back to `restore` (and
    * records the starting version) if a `down` is missing or fails. Returns
-   * which of the two undid the changes. A failed record stops the
-   * rollback. With no backup, or a `restore` that is unsupported, nothing
-   * is restored: a NotRestoredError, and the version stays at the last
-   * record, the step whose `down` was missing or failed. Runs without the
-   * run's signal, so a canceled run still rolls back.
+   * which of the two undid the changes. When `upFailed`, the newest step's
+   * `up` failed: its `down` is never called (a `down` assumes a completed
+   * `up`), so the rollback restores at once and no older `down` runs. A
+   * failed record stops the rollback. With no backup, or a `restore` that
+   * is unsupported, nothing is restored: a NotRestoredError, and the
+   * version stays at the last record, the step whose `down` was missing,
+   * failed or not callable. Runs without the run's signal, so a canceled
+   * run still rolls back.
    */
-  private async rollback(d: SchemaDriver, current: string, applied: Migration[], bk: BackupState): Promise<string> {
+  private async rollback(
+    d: SchemaDriver,
+    current: string,
+    applied: Migration[],
+    upFailed: boolean,
+    bk: BackupState,
+  ): Promise<string> {
     for (let i = applied.length - 1; i >= 0; i--) {
       const mig = applied[i];
       let downOk = false;
-      if (mig.down) {
+      if (mig.down && !(upFailed && i === applied.length - 1)) {
         try {
           await mig.down();
           downOk = true;

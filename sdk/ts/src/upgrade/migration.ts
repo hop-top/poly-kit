@@ -12,8 +12,17 @@ export interface Migration {
   version: string;
   /** Matches the schema driver's name. */
   schema: string;
+  /**
+   * A failed `up` is an applied step that cannot be downed: the run
+   * restores the backup it took (none on a server database or a handle:
+   * the run ends not restored), so keep an `up` atomic where there is none.
+   */
   up(signal?: AbortSignal): void | Promise<void>;
-  /** Absent means no rollback. */
+  /**
+   * Undoes a completed `up` (after a failed `verify`, version record or
+   * final verify). Never called for a step whose own `up` failed. Absent
+   * means the rollback falls back to the backup.
+   */
   down?(signal?: AbortSignal): void | Promise<void>;
   /**
    * When set, runs after `up` and before the version is recorded. A failure
