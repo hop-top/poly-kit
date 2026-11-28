@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from hop_top_kit.bus import Event, create_bus
 from hop_top_kit.upgrade import (
     MigrateError,
     Migration,
@@ -21,6 +22,7 @@ from hop_top_kit.upgrade import (
     read_version_file_in,
 )
 from hop_top_kit.upgrade.drivers import SqliteDriver
+from hop_top_kit.upgrade.versionfile import write_version_file
 from tests.sqlite_helpers import Proxy, open_wal, rows
 
 SCHEMA = "appdb"
@@ -101,6 +103,111 @@ def test_connect_mode_missing_down_ends_not_restored(tmp_path: Path) -> None:
     live.close()
 
 
+def columns(path: Path) -> list[str]:
+    return rows(path, "SELECT name FROM pragma_table_info('t') ORDER BY cid")
+
+
+def backup_dirs(data: Path) -> list[str]:
+    """Backup directories only: ``pre-<v>.version`` sidecars are files."""
+    root = data / "backups" / SCHEMA
+    return sorted(p.name for p in root.iterdir() if p.is_dir())
+
+
+def add_column_then_fail(path: Path, col: str):
+    """An ``up`` that changes the schema on its own connection, then fails."""
+
+    def up() -> None:
+        conn = sqlite3.connect(path)
+        try:
+            conn.execute(f"ALTER TABLE t ADD COLUMN {col} TEXT")
+            conn.commit()
+        finally:
+            conn.close()
+        raise RuntimeError("boom")
+
+    return up
+
+
+def reverted_methods(events: list[Event]) -> list[str]:
+    return [e.payload["method"] for e in events if e.topic == "kit.core.migration.reverted"]
+
+
+def test_path_mode_failed_first_up_restores_the_backup(tmp_path: Path) -> None:
+    db, data = tmp_path / "app.db", tmp_path / "data"
+    new_db(db)
+    write_version_file(data, SCHEMA, "1.0.0")
+    downs: list[str] = []
+    reg = registry(
+        Migration("1.1.0", SCHEMA, add_column_then_fail(db, "note"), lambda: downs.append("1.1.0"))
+    )
+    bus, seen = create_bus(), []
+    bus.subscribe("#", seen.append)
+    m = migrator(data, reg, SqliteDriver(db, name=SCHEMA, data_dir=data), bus=bus)
+    with pytest.raises(MigrateError, match=r"up 1\.1\.0 failed: boom") as ei:
+        m.run(threading.Event())
+    assert not is_not_restored(ei.value)
+    assert "note" not in columns(db)  # the partial change is undone
+    assert rows(db) == [0]
+    assert read_version_file_in(data, SCHEMA) == "1.0.0"
+    assert downs == []  # the failed step's down is never called
+    assert backup_dirs(data) == ["pre-1.1.0"]  # the backup stays
+    assert reverted_methods(seen) == ["restore"]
+
+
+def test_path_mode_failed_later_up_restores_without_any_down(tmp_path: Path) -> None:
+    db, data = tmp_path / "app.db", tmp_path / "data"
+    new_db(db)
+    write_version_file(data, SCHEMA, "1.0.0")
+    downs: list[str] = []
+    reg = registry(
+        Migration("1.1.0", SCHEMA, bump(db, 11), lambda: downs.append("1.1.0")),
+        Migration("1.2.0", SCHEMA, add_column_then_fail(db, "note"), lambda: downs.append("1.2.0")),
+    )
+    bus, seen = create_bus(), []
+    bus.subscribe("#", seen.append)
+    m = migrator(data, reg, SqliteDriver(db, name=SCHEMA, data_dir=data), bus=bus)
+    with pytest.raises(MigrateError, match=r"up 1\.2\.0 failed: boom") as ei:
+        m.run(threading.Event())
+    assert not is_not_restored(ei.value)
+    assert downs == []
+    assert "note" not in columns(db)
+    assert rows(db) == [0]  # 1.1.0's row is gone with the restore
+    assert read_version_file_in(data, SCHEMA) == "1.0.0"
+    assert reverted_methods(seen) == ["restore"]
+
+
+def test_connect_mode_failed_up_is_not_restored_and_downs_nothing(tmp_path: Path) -> None:
+    db, data = tmp_path / "app.db", tmp_path / "data"
+    new_db(db)
+    write_version_file(data, SCHEMA, "1.0.0")
+    live = sqlite3.connect(db, isolation_level=None)
+    downs: list[str] = []
+    reg = registry(
+        Migration(
+            "1.1.0",
+            SCHEMA,
+            lambda: live.execute("INSERT INTO t VALUES (11)"),
+            lambda: downs.append("1.1.0"),
+        ),
+        Migration("1.2.0", SCHEMA, boom, lambda: downs.append("1.2.0")),
+    )
+    bus, seen = create_bus(), []
+    bus.subscribe("#", seen.append)
+    d = SqliteDriver(db, connect=lambda: live, name=SCHEMA, data_dir=data)
+    m = migrator(data, reg, d, bus=bus)
+    with pytest.raises(MigrateError) as ei:
+        m.run(threading.Event())
+    assert is_not_restored(ei.value)
+    assert "up 1.2.0 failed: boom (rollback also failed: not restored: restore unsupported)" in str(
+        ei.value
+    )
+    assert downs == []
+    assert rows(db) == [0, 11]
+    assert read_version_file_in(data, SCHEMA) == "1.1.0"  # the step before the failing one
+    assert reverted_methods(seen) == []
+    live.close()
+
+
 def test_connect_mode_with_down_rolls_back_through_down(tmp_path: Path) -> None:
     db = tmp_path / "app.db"
     new_db(db)
@@ -109,9 +216,13 @@ def test_connect_mode_with_down_rolls_back_through_down(tmp_path: Path) -> None:
     def down() -> None:
         live.execute("DELETE FROM t WHERE x = 11")
 
+    # 1.2.0's up completes and its verify fails: a Down-driven rollback.
+    def bad_verify() -> None:
+        raise RuntimeError("bad")
+
     reg = registry(
         Migration("1.1.0", SCHEMA, lambda: live.execute("INSERT INTO t VALUES (11)"), down),
-        Migration("1.2.0", SCHEMA, boom, None),
+        Migration("1.2.0", SCHEMA, lambda: None, lambda: None, verify=bad_verify),
     )
     d = SqliteDriver(db, connect=lambda: live, name=SCHEMA, data_dir=tmp_path / "data")
     m = migrator(tmp_path / "data", reg, d)

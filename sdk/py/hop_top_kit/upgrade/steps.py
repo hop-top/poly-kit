@@ -25,6 +25,9 @@ class Failure:
     from_: str
     err: Exception
     undo: list[Migration] = field(default_factory=list)
+    #: The newest ``undo`` entry is a step whose ``up`` failed: it counts as
+    #: applied, but its ``down`` is never called.
+    up_failed: bool = False
 
     def wrap(self) -> MigrateError:
         v, e = self.version, self.err

@@ -347,9 +347,15 @@ print([(a.schema, a.version) for a in m.history()])
 `run(cancel=None)` backs each store up under
 `<data dir>/backups/<schema>/pre-<version>/` first, applies each `up`
 then its `verify`, records that migration's version, then the
-Migrator-wide `verify=` check. On failure it runs the applied `down`s
-newest first, else restores the backup; `manual_rollback=True` turns
-that off and leaves `rollback_latest()` to you. `backup_retention`
+Migrator-wide `verify=` check. When a `verify`, a version record or the
+final check fails, it runs the applied `down`s newest first, else
+restores the backup. When an `up` itself fails, that migration counts as
+applied but cannot be downed (a `down` assumes a completed `up`, and
+yours may have changed the store part way): `run` restores the backup at
+once and records the version the run started at, and no `down` runs, not
+even an earlier step's. Without a backup that ends not restored (see
+below). `manual_rollback=True` turns rollback off and leaves
+`rollback_latest()` to you. `backup_retention`
 (default 5), `registry` (an isolated `Registry()` for tests), `bus` and
 `topics` (events) are the other options. Keep migrations idempotent: a
 crash between an `up` and its record re-applies that one.
@@ -473,10 +479,12 @@ What each driver does with the connections it gets:
   The connection must not be inside a transaction (including
   `autocommit=False`): backup then raises `UpgradeError` and changes
   nothing. `restore` raises `BackupUnsupported`: the file cannot be
-  replaced under a live pool, so give each migration a `down` and keep
-  the snapshot for manual recovery. Without `connect=`, `SqliteDriver(db_path)`
-  opens its own connection and restores by swapping the file; no handle
-  may be open on it then.
+  replaced under a live pool, so a failed `up` ends not restored; keep
+  the snapshot for manual recovery and give each migration a `down` for
+  the `verify` and final-check failures. Without `connect=`,
+  `SqliteDriver(db_path)` opens its own connection and a failed `up`
+  restores the backup by swapping the file back; no handle may be open
+  on it then.
 - `PostgresDriver`: closes only connections it got from `connect`, and
   only after unlocking them, because `close()` on a pooled connection
   returns it with the session lock still held. A failed unlock
@@ -549,12 +557,14 @@ except Exception as e:
 
 Kit does not back up a server database: `PostgresDriver.backup` raises
 `BackupUnsupported`. The run still goes ahead, with no backup. If a
-migration then fails and its `down` is missing or fails, nothing can
-restore the schema: `run` raises a `MigrateError` that matches
-`is_not_restored` (and `is_backup_unsupported`), publishes no
-`reverted` event, and the stored version stays at the last step that
-applied. Give such a schema a `down` for every migration, or take a
-backup outside kit first.
+migration's `up` then fails, or a `down` is missing or fails during a
+rollback, nothing can restore the schema: `run` raises a `MigrateError`
+that matches `is_not_restored` (and `is_backup_unsupported`), publishes
+no `reverted` event, and the stored version stays at the step before the
+failing `up`. No `down` runs for a failed `up`, so its partial change
+stays: on Postgres make each `up` atomic (one transaction), or take a
+backup outside kit first. Downs still undo a failed `verify` or final
+check.
 
 ```python
 import os
@@ -579,8 +589,8 @@ def broken() -> None:
 
 
 reg = Registry()
-reg.register(Migration("2.1.0", "appdb", lambda: None))  # applies, has no down
-reg.register(Migration("2.2.0", "appdb", broken))  # fails, has no down
+reg.register(Migration("2.1.0", "appdb", lambda: None, lambda: None))  # applies; its down never runs
+reg.register(Migration("2.2.0", "appdb", broken))  # up fails: cannot be downed
 engine = create_engine(os.environ["DATABASE_URL"], pool_size=3, max_overflow=0)
 driver = PostgresDriver(engine.raw_connection, "kit_versions", name="appdb")
 m = Migrator("mytool", "2.2.0", data_dir=Path("state"), registry=reg)
@@ -593,8 +603,7 @@ except MigrateError as e:
 
 Treat `is_not_restored` as "repair by hand": the store is at the last
 recorded version, plus whatever the failed `up` did before it raised.
-`SqliteDriver(..., connect=...)` ends the same way on a rollback that
-needs a restore.
+`SqliteDriver(..., connect=...)` ends the same way on a failed `up`.
 
 ### Several processes starting at once
 

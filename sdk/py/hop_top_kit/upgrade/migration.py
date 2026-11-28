@@ -24,10 +24,12 @@ class Migration:
         version: Semver, pre-release included; ordered by kit's lenient rules.
         schema:  Matches the schema driver's name.
         up:      Applies the migration. Required.
-        down:    Reverts it; ``None`` means no rollback.
+        down:    Reverts a completed *up*; ``None`` means no rollback. Never
+                 called for a step whose *up* failed: that run restores the
+                 backup instead.
         verify:  Runs after *up* and before the version is recorded; a
                  failure counts as a failed step and the rollback includes
-                 this migration.
+                 this migration (its *down* runs).
     """
 
     version: str

@@ -5,7 +5,7 @@ Run level: ``run_started``, then ``run_completed`` or ``run_failed``.
 schema's migrations. Per migration: ``started``, then ``applied`` (up
 succeeded) and ``verified`` (its verify passed), or ``failed`` (stage
 ``record``: the version could not be recorded). ``reverted`` follows a
-rollback that succeeded. The final verify publishes ``verified`` with
+rollback that succeeded (``restore`` after a failed ``up``). The final verify publishes ``verified`` with
 ``final: true`` or ``failed`` with stage ``final``.
 
 Payloads are plain dicts with the Go field names; absent optional fields
