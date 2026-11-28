@@ -18,11 +18,6 @@ func writtenForLine(version string) string {
 
 func expectsLine(min string) string { return fmt.Sprintf("Expects %s or newer.", min) }
 
-// versionLines are the generated lines that may carry a version number.
-func versionLines(version, min string) []string {
-	return []string{writtenForLine(version), expectsLine(min)}
-}
-
 // wrapMD fills text to width columns: first prefixes the first line, rest every
 // later one. A backtick span is never split.
 func wrapMD(text, first, rest string, width int) string {
