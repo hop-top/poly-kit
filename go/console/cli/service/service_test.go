@@ -117,7 +117,7 @@ func TestService_FlagsRegisteredAfterNewReachTheAlias(t *testing.T) {
 }
 
 func TestService_WithheldFromServedSurfaces(t *testing.T) {
-	r := authRoot(t, WithAPI(APIConfig{}))
+	r := authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
 
 	// Without the reserved lookup only their own mark withholds them:
 	// neither start, stop nor restart is named serve.

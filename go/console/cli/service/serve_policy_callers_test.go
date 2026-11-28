@@ -38,7 +38,7 @@ func callersPolicy(maxOps int) policy.Policy {
 func callersRoot(t *testing.T, p policy.Policy, auth api.AuthFunc, store kv.Store) *cli.Root {
 	t.Helper()
 	opts := []func(*cli.Root){
-		WithAPI(APIConfig{Auth: auth}),
+		WithAPI(APIConfig{Addr: "127.0.0.1:0", Auth: auth}),
 		cli.WithPolicy(func(string) (policy.Policy, error) { return p, nil }),
 	}
 	if store != nil {
