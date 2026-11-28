@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build unix
 
 package cli
 
@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
@@ -25,9 +26,13 @@ var backgroundQueryTimeout = 2 * time.Second
 // output it queries that tty twice, so a terminal that never answers costs
 // two full timeouts and receives the query twice. This is lipgloss's single
 // try: raw mode, OSC 11 plus DA1, read until the DA1 reply or the timeout,
-// restore. The wait is a select on the fd (poll(2) reports POLLNVAL for /dev/tty on macOS), not a goroutine, so the terminal
-// is restored on every path.
+// restore. The wait is a select on the fd (poll(2) reports POLLNVAL for
+// /dev/tty on macOS), not a goroutine, so the terminal is restored on
+// every path.
 func probeBackground(f *os.File) bool {
+	if !fitsFdSet(f.Fd()) {
+		return true
+	}
 	c := queryBackground(f, backgroundQueryTimeout)
 	if c == nil {
 		return true
@@ -35,6 +40,14 @@ func probeBackground(f *os.File) bool {
 	r, g, b, _ := c.RGBA()
 	hi, lo := max(r, g, b), min(r, g, b)
 	return float64(hi+lo)/(2*0xffff) < 0.5 // HSL lightness, as lipgloss
+}
+
+// fitsFdSet reports whether fd can be put in a select(2) set. FdSet.Set
+// indexes a fixed array and panics past it; the capacity is read from the
+// type, as unix.FD_SETSIZE is not defined on every platform.
+func fitsFdSet(fd uintptr) bool {
+	var rs unix.FdSet
+	return fd < uintptr(len(rs.Bits))*unsafe.Sizeof(rs.Bits[0])*8
 }
 
 func queryBackground(f *os.File, timeout time.Duration) (c color.Color) {

@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build unix
 
 package cli
 
@@ -143,5 +143,24 @@ func TestProbeBackground_SilentTerminalRestoresState(t *testing.T) {
 	_ = probeBackground(pt.slave)
 	if after := termState(t, pt.slave); before != after {
 		t.Errorf("terminal state not restored after timeout:\n before %+v\n after  %+v", before, after)
+	}
+}
+
+// TestFitsFdSet pins the select(2) guard: an fd at or past the set's
+// capacity must be refused, since FdSet.Set would panic on it.
+func TestFitsFdSet(t *testing.T) {
+	for _, tc := range []struct {
+		fd   uintptr
+		want bool
+	}{
+		{0, true},
+		{3, true},
+		{1023, true},
+		{1024, false},
+		{1 << 20, false},
+	} {
+		if got := fitsFdSet(tc.fd); got != tc.want {
+			t.Errorf("fitsFdSet(%d) = %v, want %v", tc.fd, got, tc.want)
+		}
 	}
 }
