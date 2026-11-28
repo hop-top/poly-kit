@@ -324,7 +324,7 @@ wheels = [
 
 [[package]]
 name = "hop-top-kit"
-version = "0.5.0a10"
+version = "0.5.0a11"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
