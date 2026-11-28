@@ -1,7 +1,6 @@
 ---
 name: acme-kit
-description: >-
-  Skill acme-kit. Use when testing.
+description: Skill acme-kit. Use when testing.
 license: MIT
 compatibility: any
 metadata:

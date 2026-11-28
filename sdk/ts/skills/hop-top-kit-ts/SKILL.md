@@ -1,12 +1,6 @@
 ---
 name: hop-top-kit-ts
-description: >-
-  Build CLIs and services in TypeScript or JavaScript with the kit SDK
-  `@hop-top/kit`: createCLI, output formats, layered config, MCP serving,
-  safety guards, LLM adapters. Use when code imports `@hop-top/kit`, when
-  adding kit to a Node project, or when a task needs a kit capability in
-  TypeScript and you must check this port covers it. Not for choosing a
-  language: the router skill does that.
+description: Build CLIs and services in TypeScript or JavaScript with the kit SDK `@hop-top/kit`, covering createCLI, output formats, layered config, MCP serving, safety guards, LLM adapters. Use when code imports `@hop-top/kit`, when adding kit to a Node project, or when a task needs a kit capability in TypeScript and you must check this port covers it. Not for choosing a language; the router skill does that.
 license: MIT
 metadata:
   version: "0.5.0-alpha.12" # x-release-please-version

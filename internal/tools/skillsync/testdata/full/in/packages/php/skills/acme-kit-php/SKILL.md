@@ -1,7 +1,6 @@
 ---
 name: acme-kit-php
-description: >-
-  Skill acme-kit-php. Use when testing.
+description: Skill acme-kit-php. Use when testing.
 license: MIT
 compatibility: any
 metadata:

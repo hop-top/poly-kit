@@ -96,7 +96,7 @@ generator output, not a hand-kept file.
 | `SKILL.md` | at most 120 lines |
 | a file under `references/` | at most 200 lines |
 | `name` | equals the directory name; lowercase letters, digits, hyphens; at most 64 characters |
-| `description` | at most 1024 characters; contains `Use when` |
+| `description` | at most 1024 characters; contains `Use when`; one plain or quoted line after `description:` (no `>`/`|`, no continuation: some readers parse frontmatter by line; avoid `: ` unquoted) |
 | frontmatter keys | `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools` only; block-style YAML only |
 
 All *enforced*. A reference that outgrows its cap is split by topic, not

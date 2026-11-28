@@ -1,12 +1,6 @@
 ---
 name: hop-top-kit-go
-description: >-
-  Build with kit's Go reference implementation (module hop.top/kit), the kit
-  binary and kit init scaffolding. Use when writing or changing Go code that
-  imports hop.top/kit, when scaffolding a new CLI with kit init, when running
-  the kit binary as a sidecar for a non-Go tool, or when a task needs a
-  capability only Go has. Not for TypeScript, Python, Rust or PHP code: pick
-  the port with the hop-top-kit router.
+description: Build with kit's Go reference implementation (module hop.top/kit), the kit binary and kit init scaffolding. Use when writing or changing Go code that imports hop.top/kit, when scaffolding a new CLI with kit init, when running the kit binary as a sidecar for a non-Go tool, or when a task needs a capability only Go has. Not for TypeScript, Python, Rust or PHP code; pick the port with the hop-top-kit router.
 license: MIT
 metadata:
   version: "0.5.0-beta.16" # x-release-please-version

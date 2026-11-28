@@ -1,11 +1,6 @@
 ---
 name: hop-top-kit-rs
-description: >-
-  Build a CLI or service in Rust with the hop-top-kit crate: Cargo features
-  per module, the kit CLI root, layered config, output formats, MCP, serve,
-  upgrade migrations, wasm32. Use when a Rust project depends on or should
-  adopt hop-top-kit, when picking its Cargo features, or when checking what
-  the Rust port covers before promising a capability.
+description: Build a CLI or service in Rust with the hop-top-kit crate, covering Cargo features per module, the kit CLI root, layered config, output formats, MCP, serve, upgrade migrations, wasm32. Use when a Rust project depends on or should adopt hop-top-kit, when picking its Cargo features, or when checking what the Rust port covers before promising a capability.
 license: MIT
 metadata:
   version: "0.5.0-alpha.9" # x-release-please-version

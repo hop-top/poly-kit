@@ -1,7 +1,6 @@
 ---
 name: acme-kit-ts
-description: >-
-  Use the Acme kit from TypeScript. Use when the project is TypeScript and needs the kit.
+description: Use the Acme kit from TypeScript. Use when the project is TypeScript and needs the kit.
 license: MIT
 compatibility: Node 22.12+
 metadata:

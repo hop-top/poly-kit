@@ -49,7 +49,7 @@ the rules marked `s` and nothing outside it.
 
 | Rule | Checks | s |
 |------|--------|---|
-| S1 | frontmatter keys, name pattern, length, directory; description length, `Use when`; block-style YAML | s |
+| S1 | frontmatter keys, name pattern, length, directory; description length, `Use when`; block-style YAML; description on one line | s |
 | S2 | `SKILL.md` 120 lines, reference 200, allowed layout | s |
 | S3 | every file under `references/`, `scripts/`, `assets/snippets/` named in `SKILL.md`; relative links exist | s |
 | S4 | no relative link leaves the skill; links into the org are a skill URL, a docs URL whose path exists, the one branch | s (relative) |

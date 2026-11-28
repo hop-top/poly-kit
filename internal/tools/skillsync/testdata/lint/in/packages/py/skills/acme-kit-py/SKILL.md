@@ -1,7 +1,6 @@
 ---
 name: acme-kit-py
-description: >-
-  Use the Acme kit from Python. Use when the project is Python and needs the kit.
+description: Use the Acme kit from Python. Use when the project is Python and needs the kit.
 license: MIT
 compatibility: Python 3.11+
 metadata:
