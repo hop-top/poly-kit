@@ -1,0 +1,35 @@
+$ quickstart.py --help
+Usage: quickstart.py [OPTIONS] COMMAND [ARGS]...
+
+  does things
+
+COMMANDS:
+  list [--flags]  
+
+FLAGS:
+  -v, --version   Print mytool version and exit
+  -V, --verbose   Increase log verbosity (-V=debug, -VV=trace)  [default: 0]
+  --format <str>  Output format
+  --quiet         Suppress non-essential output
+  --no-color      Disable ANSI color output
+  --no-hints      Suppress next-step hints after command output
+  --offline       Disable network access
+  --stream <str>  Enable diagnostic streams (comma-separated)
+  --help          Show this message and exit.
+
+$ quickstart.py list
+name   count
+alpha  1
+beta   2
+
+$ quickstart.py list --format json
+[
+  {
+    "name": "alpha",
+    "count": 1
+  },
+  {
+    "name": "beta",
+    "count": 2
+  }
+]

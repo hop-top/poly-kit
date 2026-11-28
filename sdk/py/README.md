@@ -27,7 +27,7 @@ from hop_top_kit.output.cli import register_output_flags
 from hop_top_kit.output.dispatch import dispatch
 from hop_top_kit.output.formatter import ColumnSpec
 
-app = create_app(name="mytool", version="1.0.0", help="does things")
+app, _theme = create_app(name="mytool", version="1.0.0", help="does things")
 register_output_flags(app)
 
 
@@ -75,5 +75,6 @@ Non-directory modules: `hop_top_kit.cli` (CLI factory), `hop_top_kit.serve` (ser
 
 - [Python SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-sdk.md): the MCP mount, the URI facade, output formatting rules and worked examples, custom formatters, offline enforcement, the telemetry envelope, LLM messages and tool calls
 - [Python CLI API reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-api-reference.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md)
+- [Agent skill](skills/hop-top-kit-py/SKILL.md): when to use this port and what it covers, for coding agents
 
 <!-- release: track hop-top-cite >=0.1.0 -->

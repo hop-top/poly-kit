@@ -15,6 +15,13 @@
       "description": "Build with kit's Go reference implementation (module hop.top/kit), the kit binary and kit init scaffolding. Use when writing or changing Go code that imports hop.top/kit, when scaffolding a new CLI with kit init, when running the kit binary as a sidecar for a non-Go tool, or when a task needs a capability only Go has. Not for TypeScript, Python, Rust or PHP code: pick the port with the hop-top-kit router."
     },
     {
+      "name": "hop-top-kit-py",
+      "version": "0.5.0-alpha.10",
+      "source_url": "https://github.com/hop-top/kit-py.git",
+      "path": "skills/hop-top-kit-py",
+      "description": "Build a CLI or service in Python on kit with the hop-top-kit package (import hop_top_kit): Typer app factory, output formats, layered config, serve lifecycle, MCP surface, guardrails, migrations. Use when Python code imports hop_top_kit or the user asks for kit in Python, when choosing between kit modules in this port, or when checking whether this port covers a capability before building on it. Not for choosing a language: use the hop-top-kit router for that."
+    },
+    {
       "name": "hop-top-kit-php",
       "version": "0.5.0-alpha.6",
       "source_url": "https://github.com/hop-top/kit-php.git",
